@@ -110,6 +110,45 @@ class AutomationConfig:
 
 
 @dataclass
+class ParallelAutomationConfig:
+    """Parallel automation configuration.
+
+    Extends AutomationConfig with parallel-specific settings.
+    """
+
+    max_workers: int = 2
+    p0_sequential: bool = True
+    worktree_base: str = ".worktrees"
+    state_file: str = ".parallel-manage-state.json"
+    timeout_per_issue: int = 3600
+    max_merge_retries: int = 2
+    include_p0: bool = False
+    stream_subprocess_output: bool = False
+    command_prefix: str = "/br:"
+    ready_command: str = "ready_issue {{issue_id}}"
+    manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ParallelAutomationConfig:
+        """Create ParallelAutomationConfig from dictionary."""
+        return cls(
+            max_workers=data.get("max_workers", 2),
+            p0_sequential=data.get("p0_sequential", True),
+            worktree_base=data.get("worktree_base", ".worktrees"),
+            state_file=data.get("state_file", ".parallel-manage-state.json"),
+            timeout_per_issue=data.get("timeout_per_issue", 3600),
+            max_merge_retries=data.get("max_merge_retries", 2),
+            include_p0=data.get("include_p0", False),
+            stream_subprocess_output=data.get("stream_subprocess_output", False),
+            command_prefix=data.get("command_prefix", "/br:"),
+            ready_command=data.get("ready_command", "ready_issue {{issue_id}}"),
+            manage_command=data.get(
+                "manage_command", "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+            ),
+        )
+
+
+@dataclass
 class CommandsConfig:
     """Command customization configuration."""
 
@@ -192,6 +231,9 @@ class BRConfig:
 
         self._issues = IssuesConfig.from_dict(self._raw_config.get("issues", {}))
         self._automation = AutomationConfig.from_dict(self._raw_config.get("automation", {}))
+        self._parallel = ParallelAutomationConfig.from_dict(
+            self._raw_config.get("parallel", {})
+        )
         self._commands = CommandsConfig.from_dict(self._raw_config.get("commands", {}))
         self._scan = ScanConfig.from_dict(self._raw_config.get("scan", {}))
 
@@ -209,6 +251,11 @@ class BRConfig:
     def automation(self) -> AutomationConfig:
         """Get automation configuration."""
         return self._automation
+
+    @property
+    def parallel(self) -> ParallelAutomationConfig:
+        """Get parallel automation configuration."""
+        return self._parallel
 
     @property
     def commands(self) -> CommandsConfig:
@@ -279,6 +326,58 @@ class BRConfig:
         """Get the state file path."""
         return self.project_root / self._automation.state_file
 
+    def get_parallel_state_file(self) -> Path:
+        """Get the parallel state file path."""
+        return self.project_root / self._parallel.state_file
+
+    def create_parallel_config(
+        self,
+        *,
+        max_workers: int | None = None,
+        priority_filter: list[str] | None = None,
+        max_issues: int = 0,
+        dry_run: bool = False,
+        include_p0: bool | None = None,
+        timeout_per_issue: int | None = None,
+        stream_subprocess_output: bool | None = None,
+    ) -> "ParallelConfig":
+        """Create a ParallelConfig from BRConfig settings with optional overrides.
+
+        Args:
+            max_workers: Override max_workers (default: from config)
+            priority_filter: Override priority filter (default: from issues config)
+            max_issues: Maximum issues to process (default: 0 = unlimited)
+            dry_run: Preview mode (default: False)
+            include_p0: Include P0 in parallel (default: from config)
+            timeout_per_issue: Per-issue timeout (default: from config)
+            stream_subprocess_output: Stream output (default: from config)
+
+        Returns:
+            ParallelConfig configured from BRConfig
+        """
+        from brentech_toolkit.parallel.types import ParallelConfig
+
+        return ParallelConfig(
+            max_workers=max_workers or self._parallel.max_workers,
+            p0_sequential=self._parallel.p0_sequential,
+            worktree_base=Path(self._parallel.worktree_base),
+            state_file=Path(self._parallel.state_file),
+            max_merge_retries=self._parallel.max_merge_retries,
+            priority_filter=priority_filter or self._issues.priorities,
+            max_issues=max_issues,
+            dry_run=dry_run,
+            timeout_per_issue=timeout_per_issue or self._parallel.timeout_per_issue,
+            include_p0=include_p0 if include_p0 is not None else self._parallel.include_p0,
+            stream_subprocess_output=(
+                stream_subprocess_output
+                if stream_subprocess_output is not None
+                else self._parallel.stream_subprocess_output
+            ),
+            command_prefix=self._parallel.command_prefix,
+            ready_command=self._parallel.ready_command,
+            manage_command=self._parallel.manage_command,
+        )
+
     @property
     def issue_categories(self) -> list[str]:
         """Get list of configured issue category names."""
@@ -320,6 +419,19 @@ class BRConfig:
                 "worktree_base": self._automation.worktree_base,
                 "max_workers": self._automation.max_workers,
                 "stream_output": self._automation.stream_output,
+            },
+            "parallel": {
+                "max_workers": self._parallel.max_workers,
+                "p0_sequential": self._parallel.p0_sequential,
+                "worktree_base": self._parallel.worktree_base,
+                "state_file": self._parallel.state_file,
+                "timeout_per_issue": self._parallel.timeout_per_issue,
+                "max_merge_retries": self._parallel.max_merge_retries,
+                "include_p0": self._parallel.include_p0,
+                "stream_subprocess_output": self._parallel.stream_subprocess_output,
+                "command_prefix": self._parallel.command_prefix,
+                "ready_command": self._parallel.ready_command,
+                "manage_command": self._parallel.manage_command,
             },
             "commands": {
                 "pre_implement": self._commands.pre_implement,

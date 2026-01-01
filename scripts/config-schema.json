@@ -107,7 +107,7 @@
     },
     "automation": {
       "type": "object",
-      "description": "Automation script settings",
+      "description": "Sequential automation script settings (br-auto)",
       "properties": {
         "timeout_seconds": {
           "type": "integer",
@@ -136,6 +136,73 @@
           "type": "boolean",
           "description": "Stream subprocess output to console",
           "default": true
+        }
+      },
+      "additionalProperties": false
+    },
+    "parallel": {
+      "type": "object",
+      "description": "Parallel automation settings with git worktree isolation (br-parallel)",
+      "properties": {
+        "max_workers": {
+          "type": "integer",
+          "description": "Number of parallel workers",
+          "default": 2,
+          "minimum": 1,
+          "maximum": 8
+        },
+        "p0_sequential": {
+          "type": "boolean",
+          "description": "Process P0 issues sequentially (not in parallel)",
+          "default": true
+        },
+        "worktree_base": {
+          "type": "string",
+          "description": "Base directory for git worktrees",
+          "default": ".worktrees"
+        },
+        "state_file": {
+          "type": "string",
+          "description": "State file for parallel processing resume",
+          "default": ".parallel-manage-state.json"
+        },
+        "timeout_per_issue": {
+          "type": "integer",
+          "description": "Timeout per issue in seconds",
+          "default": 3600,
+          "minimum": 60
+        },
+        "max_merge_retries": {
+          "type": "integer",
+          "description": "Maximum rebase attempts before failing merge",
+          "default": 2,
+          "minimum": 0,
+          "maximum": 5
+        },
+        "include_p0": {
+          "type": "boolean",
+          "description": "Include P0 issues in parallel processing",
+          "default": false
+        },
+        "stream_subprocess_output": {
+          "type": "boolean",
+          "description": "Stream Claude CLI output to console",
+          "default": false
+        },
+        "command_prefix": {
+          "type": "string",
+          "description": "Prefix for slash commands (e.g., /br:, /cl:)",
+          "default": "/br:"
+        },
+        "ready_command": {
+          "type": "string",
+          "description": "Template for ready_issue command (supports {{issue_id}})",
+          "default": "ready_issue {{issue_id}}"
+        },
+        "manage_command": {
+          "type": "string",
+          "description": "Template for manage_issue command (supports {{issue_type}}, {{action}}, {{issue_id}})",
+          "default": "manage_issue {{issue_type}} {{action}} {{issue_id}}"
         }
       },
       "additionalProperties": false

@@ -102,6 +102,20 @@ brentech-toolkit uses `.claude/br-config.json` for project-specific settings. Al
     "stream_output": true
   },
 
+  "parallel": {
+    "max_workers": 2,
+    "p0_sequential": true,
+    "worktree_base": ".worktrees",
+    "state_file": ".parallel-manage-state.json",
+    "timeout_per_issue": 3600,
+    "max_merge_retries": 2,
+    "include_p0": false,
+    "stream_subprocess_output": false,
+    "command_prefix": "/br:",
+    "ready_command": "ready_issue {{issue_id}}",
+    "manage_command": "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+  },
+
   "commands": {
     "pre_implement": null,
     "post_implement": null,
@@ -145,7 +159,7 @@ Issue management settings:
 
 #### `automation`
 
-Automation script settings:
+Sequential automation settings (`br-auto`):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -153,6 +167,26 @@ Automation script settings:
 | `state_file` | `.auto-manage-state.json` | State persistence |
 | `max_workers` | `2` | Parallel workers |
 | `stream_output` | `true` | Stream subprocess output |
+
+#### `parallel`
+
+Parallel automation settings with git worktree isolation (`br-parallel`):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `max_workers` | `2` | Number of parallel workers (1-8) |
+| `p0_sequential` | `true` | Process P0 issues sequentially first |
+| `worktree_base` | `.worktrees` | Base directory for git worktrees |
+| `state_file` | `.parallel-manage-state.json` | State persistence file |
+| `timeout_per_issue` | `3600` | Per-issue timeout in seconds |
+| `max_merge_retries` | `2` | Maximum rebase attempts on conflicts |
+| `include_p0` | `false` | Include P0 issues in processing |
+| `stream_subprocess_output` | `false` | Stream Claude CLI output |
+| `command_prefix` | `/br:` | Prefix for slash commands |
+| `ready_command` | `ready_issue {{issue_id}}` | Command template for validation |
+| `manage_command` | See below | Command template for processing |
+
+The `manage_command` default is: `manage_issue {{issue_type}} {{action}} {{issue_id}}`
 
 ## Commands
 
@@ -220,13 +254,51 @@ br-auto --category bugs    # Only process bugs
 
 ### br-parallel
 
-Parallel issue processing with git worktrees:
+Parallel issue processing with git worktree isolation. Each worker operates in its own worktree, enabling true parallel processing of multiple issues. Changes are merged back to main with automatic conflict resolution.
+
+**How it works:**
+
+1. Discovers issues from `.issues/` directory
+2. Groups by priority (P0-P5)
+3. Optionally processes P0 issues sequentially first (for critical fixes)
+4. Spawns parallel workers, each in its own git worktree
+5. Each worker runs `ready_issue` then `manage_issue` commands
+6. Merges completed work back to main with rebase strategy
+7. Cleans up worktrees when done
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--dry-run` | Preview issues without processing |
+| `--workers N` | Number of parallel workers (default: 2) |
+| `--max-issues N` | Limit total issues to process |
+| `--category TYPE` | Filter by category (bugs, features, enhancements) |
+| `--include-p0` | Include P0 issues in parallel queue |
+| `--stream` | Stream subprocess output to console |
+| `--cleanup` | Clean up all worktrees and exit |
+| `--resume` | Resume from previous state file |
+| `--config PATH` | Use custom config file |
+
+**Examples:**
 
 ```bash
-br-parallel                 # Process with 2 workers
-br-parallel --workers 3     # Use 3 workers
-br-parallel --cleanup       # Clean up worktrees
+br-parallel                       # Process all issues with 2 workers
+br-parallel --dry-run             # Preview what would be processed
+br-parallel --workers 4           # Use 4 parallel workers
+br-parallel --max-issues 10       # Process at most 10 issues
+br-parallel --category bugs       # Only process bugs
+br-parallel --include-p0          # Include critical P0 issues
+br-parallel --stream              # See Claude CLI output in real-time
+br-parallel --cleanup             # Remove all worktrees
+br-parallel --resume              # Continue from saved state
 ```
+
+**Priority handling:**
+
+- **P0 issues** are processed sequentially by default (critical fixes shouldn't be parallelized)
+- Use `--include-p0` to include them in the parallel queue if needed
+- Issues within each priority level are processed in parallel up to worker limit
 
 ## Command Override
 
@@ -323,9 +395,16 @@ brentech-toolkit/
     ├── pyproject.toml
     └── brentech_toolkit/
         ├── __init__.py
-        ├── cli.py
-        ├── config.py
-        └── ...
+        ├── cli.py           # CLI entry points (br-auto, br-parallel)
+        ├── config.py        # Configuration loading
+        ├── issue_utils.py   # Issue discovery utilities
+        └── parallel/        # Parallel processing module
+            ├── types.py          # Data types and enums
+            ├── priority_queue.py # Priority-based issue queue
+            ├── worker_pool.py    # Worker pool management
+            ├── merge_coordinator.py  # Git merge coordination
+            ├── orchestrator.py   # Main orchestrator
+            └── output_parsing.py # Claude output parsing
 ```
 
 ### Contributing

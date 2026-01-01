@@ -100,6 +100,7 @@ Examples:
   %(prog)s --dry-run          # Preview what would be processed
   %(prog)s --priority P1,P2   # Only process P1 and P2 issues
   %(prog)s --cleanup          # Clean up worktrees and exit
+  %(prog)s --stream-output    # Stream Claude CLI output in real-time
 """,
     )
 
@@ -159,6 +160,11 @@ Examples:
         help="Clean up all worktrees and exit",
     )
     parser.add_argument(
+        "--stream-output",
+        action="store_true",
+        help="Stream Claude CLI subprocess output to console",
+    )
+    parser.add_argument(
         "--config",
         type=Path,
         default=None,
@@ -174,50 +180,49 @@ Examples:
 
     # Handle cleanup mode
     if args.cleanup:
-        worktree_base = args.worktree_base or config.get_worktree_base()
-        if worktree_base.exists():
-            import subprocess
-            # List and remove worktrees
-            result = subprocess.run(
-                ["git", "worktree", "list", "--porcelain"],
-                capture_output=True,
-                text=True,
-            )
-            for line in result.stdout.split("\n"):
-                if line.startswith("worktree "):
-                    path = line.split(" ", 1)[1]
-                    if str(worktree_base) in path:
-                        logger.info(f"Removing worktree: {path}")
-                        subprocess.run(
-                            ["git", "worktree", "remove", "--force", path],
-                            capture_output=True,
-                        )
-            logger.success("Cleanup complete")
-        else:
-            logger.info("No worktrees to clean up")
+        from brentech_toolkit.parallel import WorkerPool
+
+        parallel_config = config.create_parallel_config()
+        pool = WorkerPool(parallel_config, config, logger, project_root)
+        pool.cleanup_all_worktrees()
+        logger.success("Cleanup complete")
         return 0
 
-    # Build priority filter (for future parallel processing)
-    # Currently unused as we fall back to sequential processing
-    _ = [p.strip().upper() for p in args.priority.split(",")] if args.priority else config.issue_priorities
-
-    # Parallel processing requires the orchestrator from blender_agents
-    # For now, fall back to sequential processing with a warning
-    logger.warning(
-        "Parallel processing requires project-specific orchestrator. "
-        "Falling back to sequential processing."
+    # Build priority filter
+    priority_filter = (
+        [p.strip().upper() for p in args.priority.split(",")]
+        if args.priority
+        else None
     )
-    logger.info("For full parallel support, use the project's parallel_issue_manager.py")
 
-    # Use sequential manager as fallback
-    manager = AutoManager(
-        config=config,
-        dry_run=args.dry_run,
+    # Create parallel config with CLI overrides
+    parallel_config = config.create_parallel_config(
+        max_workers=args.workers,
+        priority_filter=priority_filter,
         max_issues=args.max_issues,
-        resume=args.resume,
+        dry_run=args.dry_run,
+        include_p0=args.include_p0 if args.include_p0 else None,
+        timeout_per_issue=args.timeout,
+        stream_subprocess_output=args.stream_output if args.stream_output else None,
     )
 
-    return manager.run()
+    # Delete state file if not resuming
+    if not args.resume:
+        state_file = config.get_parallel_state_file()
+        if state_file.exists():
+            state_file.unlink()
+
+    # Create and run orchestrator
+    from brentech_toolkit.parallel import ParallelOrchestrator
+
+    orchestrator = ParallelOrchestrator(
+        parallel_config=parallel_config,
+        br_config=config,
+        repo_path=project_root,
+        verbose=not args.quiet,
+    )
+
+    return orchestrator.run()
 
 
 if __name__ == "__main__":
