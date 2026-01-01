@@ -1,0 +1,318 @@
+"""Type definitions for parallel issue processing.
+
+Provides dataclasses for worker results, merge requests, orchestrator state,
+and parallel configuration. Reuses IssueInfo from issue_parser.py.
+"""
+
+from __future__ import annotations
+
+import time
+from dataclasses import dataclass, field
+from enum import Enum
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from brentech_toolkit.issue_parser import IssueInfo
+
+
+@dataclass
+class QueuedIssue:
+    """Issue in priority queue with ordering support.
+
+    Uses __lt__ for priority queue comparison. Lower priority number = higher priority.
+    Within same priority level, earlier timestamp wins (FIFO).
+
+    Attributes:
+        priority: Numeric priority (0=P0, 1=P1, etc.)
+        issue_info: The parsed issue information
+        timestamp: When the issue was queued (for FIFO ordering)
+    """
+
+    priority: int
+    issue_info: IssueInfo
+    timestamp: float = field(default_factory=time.time)
+
+    def __lt__(self, other: QueuedIssue) -> bool:
+        """Compare issues for priority queue ordering."""
+        if self.priority != other.priority:
+            return self.priority < other.priority
+        return self.timestamp < other.timestamp
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "priority": self.priority,
+            "issue_info": self.issue_info.to_dict(),
+            "timestamp": self.timestamp,
+        }
+
+
+@dataclass
+class WorkerResult:
+    """Result from a worker processing an issue.
+
+    Attributes:
+        issue_id: ID of the processed issue
+        success: Whether processing succeeded
+        branch_name: Git branch created for this issue
+        worktree_path: Path to the worker's git worktree
+        changed_files: List of files modified during processing
+        duration: Processing time in seconds
+        error: Error message if processing failed
+        stdout: Captured standard output
+        stderr: Captured standard error
+    """
+
+    issue_id: str
+    success: bool
+    branch_name: str
+    worktree_path: Path
+    changed_files: list[str] = field(default_factory=list)
+    duration: float = 0.0
+    error: str | None = None
+    stdout: str = ""
+    stderr: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "issue_id": self.issue_id,
+            "success": self.success,
+            "branch_name": self.branch_name,
+            "worktree_path": str(self.worktree_path),
+            "changed_files": self.changed_files,
+            "duration": self.duration,
+            "error": self.error,
+            "stdout": self.stdout,
+            "stderr": self.stderr,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> WorkerResult:
+        """Create from dictionary (JSON deserialization)."""
+        return cls(
+            issue_id=data["issue_id"],
+            success=data["success"],
+            branch_name=data["branch_name"],
+            worktree_path=Path(data["worktree_path"]),
+            changed_files=data.get("changed_files", []),
+            duration=data.get("duration", 0.0),
+            error=data.get("error"),
+            stdout=data.get("stdout", ""),
+            stderr=data.get("stderr", ""),
+        )
+
+
+class MergeStatus(Enum):
+    """Status of a merge operation."""
+
+    PENDING = "pending"
+    IN_PROGRESS = "in_progress"
+    SUCCESS = "success"
+    CONFLICT = "conflict"
+    FAILED = "failed"
+    RETRYING = "retrying"
+
+
+@dataclass
+class MergeRequest:
+    """Request to merge a completed worker's changes.
+
+    Attributes:
+        worker_result: The result from the worker
+        status: Current merge status
+        retry_count: Number of merge/rebase attempts
+        error: Error message if merge failed
+        queued_at: When the merge was requested
+    """
+
+    worker_result: WorkerResult
+    status: MergeStatus = MergeStatus.PENDING
+    retry_count: int = 0
+    error: str | None = None
+    queued_at: float = field(default_factory=time.time)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "worker_result": self.worker_result.to_dict(),
+            "status": self.status.value,
+            "retry_count": self.retry_count,
+            "error": self.error,
+            "queued_at": self.queued_at,
+        }
+
+
+@dataclass
+class OrchestratorState:
+    """Persistent state for the parallel orchestrator.
+
+    Enables resume capability after interruption.
+
+    Attributes:
+        in_progress_issues: Issues currently being processed by workers
+        completed_issues: Successfully completed issue IDs
+        failed_issues: Mapping of issue ID to failure reason
+        pending_merges: Issues awaiting merge
+        timing: Per-issue timing breakdown
+        started_at: When orchestration started
+        last_checkpoint: Last state save timestamp
+    """
+
+    in_progress_issues: list[str] = field(default_factory=list)
+    completed_issues: list[str] = field(default_factory=list)
+    failed_issues: dict[str, str] = field(default_factory=dict)
+    pending_merges: list[str] = field(default_factory=list)
+    timing: dict[str, dict[str, float]] = field(default_factory=dict)
+    started_at: str = ""
+    last_checkpoint: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert state to dictionary for JSON serialization."""
+        return {
+            "in_progress_issues": self.in_progress_issues,
+            "completed_issues": self.completed_issues,
+            "failed_issues": self.failed_issues,
+            "pending_merges": self.pending_merges,
+            "timing": self.timing,
+            "started_at": self.started_at,
+            "last_checkpoint": self.last_checkpoint,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> OrchestratorState:
+        """Create state from dictionary (JSON deserialization)."""
+        return cls(
+            in_progress_issues=data.get("in_progress_issues", []),
+            completed_issues=data.get("completed_issues", []),
+            failed_issues=data.get("failed_issues", {}),
+            pending_merges=data.get("pending_merges", []),
+            timing=data.get("timing", {}),
+            started_at=data.get("started_at", ""),
+            last_checkpoint=data.get("last_checkpoint", ""),
+        )
+
+
+@dataclass
+class ParallelConfig:
+    """Configuration for the parallel issue manager.
+
+    Supports configurable command templates for different project setups.
+    Commands use placeholders: {{issue_id}}, {{issue_type}}, {{action}}
+
+    Attributes:
+        max_workers: Number of parallel workers (default: 2)
+        p0_sequential: Process P0 issues sequentially (default: True)
+        merge_interval: Seconds between merge attempts (default: 30.0)
+        worktree_base: Base directory for git worktrees
+        state_file: Path to state persistence file
+        max_merge_retries: Maximum rebase attempts before giving up (default: 2)
+        priority_filter: Which priority levels to process
+        max_issues: Maximum issues to process (0 = unlimited)
+        dry_run: Preview mode without actual processing
+        timeout_per_issue: Timeout in seconds for each issue (default: 3600)
+        include_p0: Include P0 issues in parallel processing
+        orchestrator_timeout: Timeout for waiting on workers (default: 0 = auto)
+        stream_subprocess_output: Whether to stream subprocess output
+        command_prefix: Prefix for slash commands (default: "/br:")
+        ready_command: Template for ready_issue command
+        manage_command: Template for manage_issue command
+    """
+
+    max_workers: int = 2
+    p0_sequential: bool = True
+    merge_interval: float = 30.0
+    worktree_base: Path = field(default_factory=lambda: Path(".worktrees"))
+    state_file: Path = field(default_factory=lambda: Path(".parallel-manage-state.json"))
+    max_merge_retries: int = 2
+    priority_filter: list[str] = field(
+        default_factory=lambda: ["P0", "P1", "P2", "P3", "P4", "P5"]
+    )
+    max_issues: int = 0
+    dry_run: bool = False
+    timeout_per_issue: int = 3600
+    include_p0: bool = False
+    orchestrator_timeout: int = 0  # 0 = use timeout_per_issue * max_workers
+    stream_subprocess_output: bool = False
+    # Configurable command templates
+    command_prefix: str = "/br:"
+    ready_command: str = "ready_issue {{issue_id}}"
+    manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+
+    def get_ready_command(self, issue_id: str) -> str:
+        """Build the ready_issue command string.
+
+        Args:
+            issue_id: Issue identifier
+
+        Returns:
+            Complete command string
+        """
+        cmd = self.ready_command.replace("{{issue_id}}", issue_id)
+        return f"{self.command_prefix}{cmd}"
+
+    def get_manage_command(self, issue_type: str, action: str, issue_id: str) -> str:
+        """Build the manage_issue command string.
+
+        Args:
+            issue_type: Type of issue (bug, feature, enhancement)
+            action: Action to perform (fix, implement, improve)
+            issue_id: Issue identifier
+
+        Returns:
+            Complete command string
+        """
+        cmd = (
+            self.manage_command.replace("{{issue_type}}", issue_type)
+            .replace("{{action}}", action)
+            .replace("{{issue_id}}", issue_id)
+        )
+        return f"{self.command_prefix}{cmd}"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "max_workers": self.max_workers,
+            "p0_sequential": self.p0_sequential,
+            "merge_interval": self.merge_interval,
+            "worktree_base": str(self.worktree_base),
+            "state_file": str(self.state_file),
+            "max_merge_retries": self.max_merge_retries,
+            "priority_filter": self.priority_filter,
+            "max_issues": self.max_issues,
+            "dry_run": self.dry_run,
+            "timeout_per_issue": self.timeout_per_issue,
+            "include_p0": self.include_p0,
+            "orchestrator_timeout": self.orchestrator_timeout,
+            "stream_subprocess_output": self.stream_subprocess_output,
+            "command_prefix": self.command_prefix,
+            "ready_command": self.ready_command,
+            "manage_command": self.manage_command,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ParallelConfig:
+        """Create from dictionary (JSON deserialization)."""
+        return cls(
+            max_workers=data.get("max_workers", 2),
+            p0_sequential=data.get("p0_sequential", True),
+            merge_interval=data.get("merge_interval", 30.0),
+            worktree_base=Path(data.get("worktree_base", ".worktrees")),
+            state_file=Path(data.get("state_file", ".parallel-manage-state.json")),
+            max_merge_retries=data.get("max_merge_retries", 2),
+            priority_filter=data.get(
+                "priority_filter", ["P0", "P1", "P2", "P3", "P4", "P5"]
+            ),
+            max_issues=data.get("max_issues", 0),
+            dry_run=data.get("dry_run", False),
+            timeout_per_issue=data.get("timeout_per_issue", 3600),
+            include_p0=data.get("include_p0", False),
+            orchestrator_timeout=data.get("orchestrator_timeout", 0),
+            stream_subprocess_output=data.get("stream_subprocess_output", False),
+            command_prefix=data.get("command_prefix", "/br:"),
+            ready_command=data.get("ready_command", "ready_issue {{issue_id}}"),
+            manage_command=data.get(
+                "manage_command", "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+            ),
+        )

@@ -1,0 +1,576 @@
+"""Main orchestrator for parallel issue processing.
+
+Coordinates the priority queue, worker pool, and merge coordinator to process
+multiple issues concurrently.
+"""
+
+from __future__ import annotations
+
+import json
+import re
+import signal
+import subprocess
+import time
+from datetime import datetime
+from pathlib import Path
+from typing import TYPE_CHECKING, Any
+
+from brentech_toolkit.issue_parser import IssueInfo
+from brentech_toolkit.logger import Logger, format_duration
+from brentech_toolkit.parallel.merge_coordinator import MergeCoordinator
+from brentech_toolkit.parallel.priority_queue import IssuePriorityQueue
+from brentech_toolkit.parallel.types import (
+    OrchestratorState,
+    ParallelConfig,
+    WorkerResult,
+)
+from brentech_toolkit.parallel.worker_pool import WorkerPool
+
+if TYPE_CHECKING:
+    from brentech_toolkit.config import BRConfig
+
+
+class ParallelOrchestrator:
+    """Main controller for parallel issue processing.
+
+    Coordinates:
+    - Issue scanning and prioritization
+    - Worker dispatch (P0 sequential, P1-P5 parallel)
+    - Merge coordination
+    - State persistence for resume capability
+    - Graceful shutdown on signals
+
+    Example:
+        >>> from brentech_toolkit.config import BRConfig
+        >>> from brentech_toolkit.parallel import ParallelConfig, ParallelOrchestrator
+        >>> br_config = BRConfig(Path.cwd())
+        >>> parallel_config = ParallelConfig(max_workers=2)
+        >>> orchestrator = ParallelOrchestrator(parallel_config, br_config)
+        >>> exit_code = orchestrator.run()
+    """
+
+    def __init__(
+        self,
+        parallel_config: ParallelConfig,
+        br_config: BRConfig,
+        repo_path: Path | None = None,
+        verbose: bool = True,
+    ) -> None:
+        """Initialize the orchestrator.
+
+        Args:
+            parallel_config: Parallel processing configuration
+            br_config: Project configuration
+            repo_path: Path to the git repository (default: current directory)
+            verbose: Whether to output progress messages
+        """
+        self.parallel_config = parallel_config
+        self.br_config = br_config
+        self.repo_path = repo_path or Path.cwd()
+        self.logger = Logger(verbose=verbose)
+
+        # Initialize components
+        self.queue = IssuePriorityQueue()
+        self.worker_pool = WorkerPool(
+            parallel_config, br_config, self.logger, self.repo_path
+        )
+        self.merge_coordinator = MergeCoordinator(
+            parallel_config, self.logger, self.repo_path
+        )
+
+        # State management
+        self.state = OrchestratorState()
+        self._shutdown_requested = False
+        self._original_sigint: Any = None
+        self._original_sigterm: Any = None
+
+        # Track issue info for lifecycle completion after merge
+        self._issue_info_by_id: dict[str, IssueInfo] = {}
+
+    def run(self) -> int:
+        """Run the parallel issue processor.
+
+        Returns:
+            Exit code (0 = success, 1 = failure)
+        """
+        try:
+            self._setup_signal_handlers()
+            self._load_state()
+
+            if self.parallel_config.dry_run:
+                return self._dry_run()
+
+            return self._execute()
+
+        except KeyboardInterrupt:
+            self.logger.warning("Interrupted by user")
+            return 1
+        except Exception as e:
+            self.logger.error(f"Fatal error: {e}")
+            return 1
+        finally:
+            self._cleanup()
+            self._restore_signal_handlers()
+
+    def _setup_signal_handlers(self) -> None:
+        """Setup signal handlers for graceful shutdown."""
+        self._original_sigint = signal.signal(signal.SIGINT, self._signal_handler)
+        self._original_sigterm = signal.signal(signal.SIGTERM, self._signal_handler)
+
+    def _restore_signal_handlers(self) -> None:
+        """Restore original signal handlers."""
+        if self._original_sigint is not None:
+            signal.signal(signal.SIGINT, self._original_sigint)
+        if self._original_sigterm is not None:
+            signal.signal(signal.SIGTERM, self._original_sigterm)
+
+    def _signal_handler(self, signum: int, frame: object) -> None:
+        """Handle shutdown signals gracefully."""
+        self._shutdown_requested = True
+        self.logger.warning(f"Received signal {signum}, shutting down gracefully...")
+
+    def _load_state(self) -> None:
+        """Load state from file for resume capability."""
+        state_file = self.repo_path / self.parallel_config.state_file
+        if not state_file.exists():
+            self.state.started_at = datetime.now().isoformat()
+            return
+
+        try:
+            data = json.loads(state_file.read_text())
+            self.state = OrchestratorState.from_dict(data)
+
+            # Restore queue state
+            self.queue.load_completed(self.state.completed_issues)
+            self.queue.load_failed(self.state.failed_issues.keys())
+
+            self.logger.info(
+                f"Resumed from previous state: "
+                f"{len(self.state.completed_issues)} completed, "
+                f"{len(self.state.failed_issues)} failed"
+            )
+        except Exception as e:
+            self.logger.warning(f"Could not load state: {e}")
+            self.state.started_at = datetime.now().isoformat()
+
+    def _save_state(self) -> None:
+        """Save current state to file."""
+        self.state.last_checkpoint = datetime.now().isoformat()
+        self.state.completed_issues = self.queue.completed_ids
+        self.state.failed_issues = dict.fromkeys(self.queue.failed_ids, "Failed")
+        self.state.in_progress_issues = self.queue.in_progress_ids
+
+        state_file = self.repo_path / self.parallel_config.state_file
+        state_file.write_text(json.dumps(self.state.to_dict(), indent=2))
+
+    def _cleanup_state(self) -> None:
+        """Remove state file on successful completion."""
+        state_file = self.repo_path / self.parallel_config.state_file
+        if state_file.exists():
+            state_file.unlink()
+
+    def _dry_run(self) -> int:
+        """Preview what would be processed without executing.
+
+        Returns:
+            Exit code (always 0 for dry run)
+        """
+        issues = self._scan_issues()
+
+        self.logger.info("=" * 60)
+        self.logger.info("DRY RUN - No changes will be made")
+        self.logger.info("=" * 60)
+        self.logger.info("")
+
+        if not issues:
+            self.logger.info("No issues found matching criteria")
+            return 0
+
+        self.logger.info(f"Found {len(issues)} issues to process:")
+        self.logger.info("")
+
+        # Group by priority
+        by_priority: dict[str, list[IssueInfo]] = {}
+        for issue in issues:
+            by_priority.setdefault(issue.priority, []).append(issue)
+
+        for priority in IssuePriorityQueue.DEFAULT_PRIORITIES:
+            if priority not in by_priority:
+                continue
+
+            priority_issues = by_priority[priority]
+            self.logger.info(f"  {priority} ({len(priority_issues)} issues):")
+            for issue in priority_issues:
+                mode = (
+                    "sequential"
+                    if priority == "P0" and self.parallel_config.p0_sequential
+                    else "parallel"
+                )
+                self.logger.info(f"    - {issue.issue_id}: {issue.title} [{mode}]")
+
+        self.logger.info("")
+        self.logger.info("Configuration:")
+        self.logger.info(f"  Workers: {self.parallel_config.max_workers}")
+        self.logger.info(f"  P0 Sequential: {self.parallel_config.p0_sequential}")
+        self.logger.info(f"  Max Issues: {self.parallel_config.max_issues or 'unlimited'}")
+        self.logger.info(f"  Command Prefix: {self.parallel_config.command_prefix}")
+
+        return 0
+
+    def _execute(self) -> int:
+        """Execute parallel issue processing.
+
+        Returns:
+            Exit code (0 = success, 1 = failure)
+        """
+        start_time = time.time()
+
+        # Scan and queue issues
+        issues = self._scan_issues()
+        if not issues:
+            self.logger.info("No issues to process")
+            return 0
+
+        # Store issue info for lifecycle completion after merge
+        for issue in issues:
+            self._issue_info_by_id[issue.issue_id] = issue
+
+        added = self.queue.add_many(issues)
+        self.logger.info(f"Queued {added} issues for processing")
+
+        # Start components
+        self.worker_pool.start()
+        self.merge_coordinator.start()
+
+        # Process issues
+        issues_processed = 0
+        max_issues = self.parallel_config.max_issues or float("inf")
+
+        while not self._shutdown_requested:
+            # Check if done
+            if self.queue.empty() and self.worker_pool.active_count == 0:
+                # Wait for pending merges
+                if self.merge_coordinator.pending_count == 0:
+                    break
+
+            # Check max issues limit
+            if issues_processed >= max_issues:
+                self.logger.info(f"Reached max issues limit ({max_issues})")
+                break
+
+            # Get next issue if workers available
+            if self.worker_pool.active_count < self.parallel_config.max_workers:
+                queued = self.queue.get(block=False)
+                if queued:
+                    issue = queued.issue_info
+
+                    # P0 sequential processing
+                    if issue.priority == "P0" and self.parallel_config.p0_sequential:
+                        self._process_sequential(issue)
+                    else:
+                        self._process_parallel(issue)
+
+                    issues_processed += 1
+
+            # Save state periodically
+            self._save_state()
+
+            # Small sleep to prevent busy loop
+            time.sleep(0.1)
+
+        # Wait for completion
+        self._wait_for_completion()
+
+        # Report results
+        self._report_results(start_time)
+
+        # Cleanup state on success
+        if not self._shutdown_requested and self.queue.failed_count == 0:
+            self._cleanup_state()
+
+        return 0 if self.queue.failed_count == 0 else 1
+
+    def _scan_issues(self) -> list[IssueInfo]:
+        """Scan for issues matching criteria.
+
+        Returns:
+            List of issues sorted by priority
+        """
+        skip_ids = set(self.state.completed_issues) | set(self.state.failed_issues.keys())
+
+        # Adjust priority filter based on include_p0
+        priority_filter = list(self.parallel_config.priority_filter)
+        if not self.parallel_config.include_p0 and "P0" in priority_filter:
+            priority_filter.remove("P0")
+
+        issues = IssuePriorityQueue.scan_issues(
+            self.br_config,
+            priority_filter=priority_filter,
+            skip_ids=skip_ids,
+        )
+
+        # Apply max issues limit
+        if self.parallel_config.max_issues > 0:
+            issues = issues[: self.parallel_config.max_issues]
+
+        return issues
+
+    def _process_sequential(self, issue: IssueInfo) -> None:
+        """Process an issue sequentially (blocking).
+
+        Args:
+            issue: Issue to process
+        """
+        self.logger.info(f"Processing {issue.issue_id} sequentially (P0)")
+
+        # Wait for any parallel work to finish
+        while self.worker_pool.active_count > 0:
+            time.sleep(0.5)
+
+        # Process in main repo (no worktree isolation needed)
+        future = self.worker_pool.submit(issue, self._on_worker_complete)
+
+        # Wait for completion
+        try:
+            result = future.result(timeout=self.parallel_config.timeout_per_issue)
+            if result.success:
+                # Merge immediately for P0
+                self._merge_sequential(result)
+        except Exception as e:
+            self.logger.error(f"Sequential processing failed: {e}")
+            self.queue.mark_failed(issue.issue_id)
+
+    def _process_parallel(self, issue: IssueInfo) -> None:
+        """Process an issue in parallel (non-blocking).
+
+        Args:
+            issue: Issue to process
+        """
+        self.logger.info(f"Dispatching {issue.issue_id} to worker pool")
+        self.worker_pool.submit(issue, self._on_worker_complete)
+
+    def _on_worker_complete(self, result: WorkerResult) -> None:
+        """Callback when a worker completes.
+
+        Args:
+            result: Result from the worker
+        """
+        if result.success:
+            self.logger.success(
+                f"{result.issue_id} completed in {format_duration(result.duration)}"
+            )
+            self.merge_coordinator.queue_merge(result)
+        else:
+            self.logger.error(f"{result.issue_id} failed: {result.error}")
+            self.queue.mark_failed(result.issue_id)
+
+        # Update timing
+        self.state.timing[result.issue_id] = {
+            "total": result.duration,
+        }
+
+    def _merge_sequential(self, result: WorkerResult) -> None:
+        """Merge a sequential (P0) result immediately.
+
+        Args:
+            result: Result to merge
+        """
+        self.merge_coordinator.queue_merge(result)
+        # Wait for this specific merge
+        self.merge_coordinator.wait_for_completion(timeout=60)
+
+        if result.issue_id in self.merge_coordinator.merged_ids:
+            self.queue.mark_completed(result.issue_id)
+            self._complete_issue_lifecycle_if_needed(result.issue_id)
+        else:
+            self.queue.mark_failed(result.issue_id)
+
+    def _wait_for_completion(self) -> None:
+        """Wait for all workers and merges to complete."""
+        self.logger.info("Waiting for workers to complete...")
+
+        # Calculate timeout
+        if self.parallel_config.orchestrator_timeout > 0:
+            timeout = self.parallel_config.orchestrator_timeout
+        else:
+            timeout = self.parallel_config.timeout_per_issue * self.parallel_config.max_workers
+
+        start = time.time()
+        while self.worker_pool.active_count > 0:
+            if time.time() - start > timeout:
+                self.logger.warning(f"Timeout waiting for workers after {timeout}s")
+                self.worker_pool.terminate_all_processes()
+                break
+            time.sleep(1.0)
+
+        # Wait for merges
+        self.logger.info("Waiting for pending merges...")
+        self.merge_coordinator.wait_for_completion(timeout=120)
+
+        # Update queue with merge results and complete lifecycle
+        for issue_id in self.merge_coordinator.merged_ids:
+            self.queue.mark_completed(issue_id)
+            self._complete_issue_lifecycle_if_needed(issue_id)
+
+        for issue_id in self.merge_coordinator.failed_merges:
+            self.queue.mark_failed(issue_id)
+
+    def _report_results(self, start_time: float) -> None:
+        """Report processing results.
+
+        Args:
+            start_time: When processing started
+        """
+        total_time = time.time() - start_time
+
+        self.logger.info("")
+        self.logger.info("=" * 60)
+        self.logger.info("PARALLEL ISSUE PROCESSING COMPLETE")
+        self.logger.info("=" * 60)
+        self.logger.info("")
+        self.logger.timing(f"Total time: {format_duration(total_time)}")
+        self.logger.info(f"Completed: {self.queue.completed_count}")
+        self.logger.info(f"Failed: {self.queue.failed_count}")
+
+        if self.queue.completed_count > 0:
+            total_issue_time = sum(t.get("total", 0) for t in self.state.timing.values())
+            if total_issue_time > 0:
+                speedup = total_issue_time / total_time
+                self.logger.info(f"Estimated speedup: {speedup:.2f}x")
+
+        if self.queue.failed_ids:
+            self.logger.info("")
+            self.logger.warning("Failed issues:")
+            for issue_id in self.queue.failed_ids:
+                self.logger.warning(f"  - {issue_id}")
+
+    def _complete_issue_lifecycle_if_needed(self, issue_id: str) -> bool:
+        """Complete issue lifecycle if the issue file wasn't moved during merge.
+
+        Args:
+            issue_id: ID of the issue to complete
+
+        Returns:
+            True if lifecycle was completed (or already complete), False on error
+        """
+        info = self._issue_info_by_id.get(issue_id)
+        if not info:
+            self.logger.warning(f"No issue info found for {issue_id}")
+            return False
+
+        original_path = info.path
+        completed_dir = self.br_config.get_completed_dir()
+        completed_path = completed_dir / original_path.name
+
+        # Check if already moved to completed
+        if completed_path.exists():
+            return True
+
+        # Check if still in original location
+        if not original_path.exists():
+            return True
+
+        # Issue file still in original location - complete lifecycle
+        self.logger.info(f"Completing lifecycle for {issue_id} (merged but file not moved)")
+
+        try:
+            completed_dir.mkdir(parents=True, exist_ok=True)
+
+            # Read original content
+            content = original_path.read_text()
+
+            # Add resolution section if not already present
+            if "## Resolution" not in content:
+                action = self.br_config.get_category_action(info.issue_type)
+                resolution = f"""
+
+---
+
+## Resolution
+
+- **Action**: {action}
+- **Completed**: {datetime.now().strftime("%Y-%m-%d")}
+- **Status**: Completed (parallel merge fallback)
+- **Implementation**: Merged from parallel worker branch
+
+### Changes Made
+- See git history for implementation details
+
+### Verification Results
+- Work verification passed before merge
+
+### Commits
+- See `git log --oneline` for merge commit details
+"""
+                content += resolution
+
+            # Write to completed location
+            completed_path.write_text(content)
+
+            # Use git mv if possible
+            result = subprocess.run(
+                ["git", "mv", str(original_path), str(completed_path)],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+            )
+
+            if result.returncode != 0:
+                self.logger.warning(f"git mv failed for {issue_id}: {result.stderr}")
+                original_path.unlink()
+
+            # Stage and commit
+            subprocess.run(
+                ["git", "add", "-A"],
+                cwd=self.repo_path,
+                capture_output=True,
+            )
+
+            action = self.br_config.get_category_action(info.issue_type)
+            commit_msg = f"""{action}({info.issue_type}): complete {issue_id} lifecycle
+
+Parallel merge fallback - issue file moved to completed.
+
+Issue: {issue_id}
+Type: {info.issue_type}
+Title: {info.title}
+"""
+            commit_result = subprocess.run(
+                ["git", "commit", "-m", commit_msg],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+            )
+
+            if commit_result.returncode != 0:
+                if "nothing to commit" not in commit_result.stdout.lower():
+                    self.logger.warning(f"git commit failed: {commit_result.stderr}")
+            else:
+                commit_hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]+)\]", commit_result.stdout)
+                if commit_hash_match:
+                    self.logger.success(
+                        f"Completed lifecycle for {issue_id}: {commit_hash_match.group(1)}"
+                    )
+                else:
+                    self.logger.success(f"Completed lifecycle for {issue_id}")
+
+            return True
+
+        except Exception as e:
+            self.logger.error(f"Failed to complete lifecycle for {issue_id}: {e}")
+            return False
+
+    def _cleanup(self) -> None:
+        """Clean up resources."""
+        self.logger.info("Cleaning up...")
+
+        # Save final state
+        self._save_state()
+
+        # Shutdown components
+        self.worker_pool.shutdown(wait=True)
+        self.merge_coordinator.shutdown(wait=True, timeout=30)
+
+        # Clean up worktrees if not interrupted
+        if not self._shutdown_requested:
+            self.worker_pool.cleanup_all_worktrees()
