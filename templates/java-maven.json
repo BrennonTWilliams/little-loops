@@ -1,0 +1,33 @@
+{
+  "$schema": "../config-schema.json",
+  "_meta": {
+    "name": "Java (Maven)",
+    "description": "Java project with Maven build system",
+    "detect": ["pom.xml"],
+    "tags": ["java", "maven", "jvm"]
+  },
+  "project": {
+    "src_dir": "src/main/java/",
+    "test_cmd": "mvn test",
+    "lint_cmd": "mvn checkstyle:check",
+    "type_cmd": null,
+    "format_cmd": null,
+    "build_cmd": "mvn package -DskipTests"
+  },
+  "scan": {
+    "focus_dirs": ["src/main/java/", "src/test/java/"],
+    "exclude_patterns": [
+      "**/target/**",
+      "**/.idea/**",
+      "**/*.class"
+    ]
+  },
+  "issues": {
+    "base_dir": ".issues",
+    "categories": {
+      "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+      "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+    }
+  }
+}

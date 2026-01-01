@@ -1,0 +1,35 @@
+{
+  "$schema": "../config-schema.json",
+  "_meta": {
+    "name": "TypeScript",
+    "description": "TypeScript project with npm/pnpm tooling",
+    "detect": ["tsconfig.json"],
+    "tags": ["typescript", "node", "npm"]
+  },
+  "project": {
+    "src_dir": "src/",
+    "test_cmd": "npm test",
+    "lint_cmd": "npm run lint",
+    "type_cmd": "npx tsc --noEmit",
+    "format_cmd": "npm run format",
+    "build_cmd": "npm run build"
+  },
+  "scan": {
+    "focus_dirs": ["src/", "tests/", "test/", "lib/"],
+    "exclude_patterns": [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/.next/**",
+      "**/coverage/**"
+    ]
+  },
+  "issues": {
+    "base_dir": ".issues",
+    "categories": {
+      "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+      "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+    }
+  }
+}

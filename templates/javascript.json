@@ -1,0 +1,35 @@
+{
+  "$schema": "../config-schema.json",
+  "_meta": {
+    "name": "JavaScript (Node.js)",
+    "description": "JavaScript/Node.js project with npm tooling",
+    "detect": ["package.json"],
+    "detect_exclude": ["tsconfig.json"],
+    "tags": ["javascript", "node", "npm"]
+  },
+  "project": {
+    "src_dir": "src/",
+    "test_cmd": "npm test",
+    "lint_cmd": "npm run lint",
+    "type_cmd": null,
+    "format_cmd": "npm run format",
+    "build_cmd": null
+  },
+  "scan": {
+    "focus_dirs": ["src/", "lib/", "tests/", "test/"],
+    "exclude_patterns": [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/build/**",
+      "**/coverage/**"
+    ]
+  },
+  "issues": {
+    "base_dir": ".issues",
+    "categories": {
+      "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+      "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+    }
+  }
+}

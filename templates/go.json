@@ -1,0 +1,32 @@
+{
+  "$schema": "../config-schema.json",
+  "_meta": {
+    "name": "Go",
+    "description": "Go project with standard tooling",
+    "detect": ["go.mod"],
+    "tags": ["go", "golang"]
+  },
+  "project": {
+    "src_dir": ".",
+    "test_cmd": "go test ./...",
+    "lint_cmd": "golangci-lint run",
+    "type_cmd": null,
+    "format_cmd": "gofmt -w .",
+    "build_cmd": "go build ./..."
+  },
+  "scan": {
+    "focus_dirs": ["cmd/", "pkg/", "internal/"],
+    "exclude_patterns": [
+      "**/vendor/**",
+      "**/testdata/**"
+    ]
+  },
+  "issues": {
+    "base_dir": ".issues",
+    "categories": {
+      "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+      "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+    }
+  }
+}

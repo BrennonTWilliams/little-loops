@@ -1,0 +1,31 @@
+{
+  "$schema": "../config-schema.json",
+  "_meta": {
+    "name": "Rust",
+    "description": "Rust project with Cargo tooling",
+    "detect": ["Cargo.toml"],
+    "tags": ["rust", "cargo"]
+  },
+  "project": {
+    "src_dir": "src/",
+    "test_cmd": "cargo test",
+    "lint_cmd": "cargo clippy -- -D warnings",
+    "type_cmd": null,
+    "format_cmd": "cargo fmt",
+    "build_cmd": "cargo build"
+  },
+  "scan": {
+    "focus_dirs": ["src/", "tests/", "benches/"],
+    "exclude_patterns": [
+      "**/target/**"
+    ]
+  },
+  "issues": {
+    "base_dir": ".issues",
+    "categories": {
+      "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+      "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+    }
+  }
+}

@@ -1,0 +1,37 @@
+{
+  "$schema": "../config-schema.json",
+  "_meta": {
+    "name": "Generic",
+    "description": "Fallback template for undetected project types",
+    "detect": [],
+    "priority": -1,
+    "tags": ["generic", "fallback"]
+  },
+  "project": {
+    "src_dir": "src/",
+    "test_cmd": null,
+    "lint_cmd": null,
+    "type_cmd": null,
+    "format_cmd": null,
+    "build_cmd": null
+  },
+  "scan": {
+    "focus_dirs": ["src/", "lib/"],
+    "exclude_patterns": [
+      "**/node_modules/**",
+      "**/__pycache__/**",
+      "**/.git/**",
+      "**/vendor/**",
+      "**/dist/**",
+      "**/build/**"
+    ]
+  },
+  "issues": {
+    "base_dir": ".issues",
+    "categories": {
+      "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+      "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+    }
+  }
+}

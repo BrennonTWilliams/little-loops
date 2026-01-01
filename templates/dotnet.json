@@ -1,0 +1,33 @@
+{
+  "$schema": "../config-schema.json",
+  "_meta": {
+    "name": ".NET",
+    "description": ".NET/C# project with dotnet CLI",
+    "detect": ["*.csproj", "*.sln", "*.fsproj"],
+    "tags": ["dotnet", "csharp", "fsharp"]
+  },
+  "project": {
+    "src_dir": "src/",
+    "test_cmd": "dotnet test",
+    "lint_cmd": "dotnet format --verify-no-changes",
+    "type_cmd": null,
+    "format_cmd": "dotnet format",
+    "build_cmd": "dotnet build"
+  },
+  "scan": {
+    "focus_dirs": ["src/", "tests/"],
+    "exclude_patterns": [
+      "**/bin/**",
+      "**/obj/**",
+      "**/.vs/**"
+    ]
+  },
+  "issues": {
+    "base_dir": ".issues",
+    "categories": {
+      "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+      "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+    }
+  }
+}
