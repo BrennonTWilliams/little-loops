@@ -1,0 +1,362 @@
+"""Configuration management for brentech-toolkit.
+
+Provides the BRConfig class for loading, merging, and accessing project configuration.
+Configuration is read from .claude/br-config.json and merged with sensible defaults.
+"""
+
+from __future__ import annotations
+
+import json
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+
+@dataclass
+class CategoryConfig:
+    """Configuration for an issue category."""
+
+    prefix: str
+    dir: str
+    action: str = "fix"
+
+    @classmethod
+    def from_dict(cls, key: str, data: dict[str, Any]) -> CategoryConfig:
+        """Create CategoryConfig from dictionary."""
+        return cls(
+            prefix=data.get("prefix", key.upper()[:3]),
+            dir=data.get("dir", key),
+            action=data.get("action", "fix"),
+        )
+
+
+@dataclass
+class ProjectConfig:
+    """Project-level configuration."""
+
+    name: str = ""
+    src_dir: str = "src/"
+    test_cmd: str = "pytest"
+    lint_cmd: str = "ruff check ."
+    type_cmd: str | None = "mypy"
+    format_cmd: str | None = "ruff format ."
+    build_cmd: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ProjectConfig:
+        """Create ProjectConfig from dictionary."""
+        return cls(
+            name=data.get("name", ""),
+            src_dir=data.get("src_dir", "src/"),
+            test_cmd=data.get("test_cmd", "pytest"),
+            lint_cmd=data.get("lint_cmd", "ruff check ."),
+            type_cmd=data.get("type_cmd", "mypy"),
+            format_cmd=data.get("format_cmd", "ruff format ."),
+            build_cmd=data.get("build_cmd"),
+        )
+
+
+@dataclass
+class IssuesConfig:
+    """Issue management configuration."""
+
+    base_dir: str = ".issues"
+    categories: dict[str, CategoryConfig] = field(default_factory=dict)
+    completed_dir: str = "completed"
+    priorities: list[str] = field(default_factory=lambda: ["P0", "P1", "P2", "P3", "P4", "P5"])
+    templates_dir: str | None = None
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> IssuesConfig:
+        """Create IssuesConfig from dictionary."""
+        categories_data = data.get("categories", {
+            "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+            "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+            "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
+        })
+        categories = {
+            key: CategoryConfig.from_dict(key, value)
+            for key, value in categories_data.items()
+        }
+        return cls(
+            base_dir=data.get("base_dir", ".issues"),
+            categories=categories,
+            completed_dir=data.get("completed_dir", "completed"),
+            priorities=data.get("priorities", ["P0", "P1", "P2", "P3", "P4", "P5"]),
+            templates_dir=data.get("templates_dir"),
+        )
+
+
+@dataclass
+class AutomationConfig:
+    """Automation script configuration."""
+
+    timeout_seconds: int = 3600
+    state_file: str = ".auto-manage-state.json"
+    worktree_base: str = ".worktrees"
+    max_workers: int = 2
+    stream_output: bool = True
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> AutomationConfig:
+        """Create AutomationConfig from dictionary."""
+        return cls(
+            timeout_seconds=data.get("timeout_seconds", 3600),
+            state_file=data.get("state_file", ".auto-manage-state.json"),
+            worktree_base=data.get("worktree_base", ".worktrees"),
+            max_workers=data.get("max_workers", 2),
+            stream_output=data.get("stream_output", True),
+        )
+
+
+@dataclass
+class CommandsConfig:
+    """Command customization configuration."""
+
+    pre_implement: str | None = None
+    post_implement: str | None = None
+    custom_verification: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> CommandsConfig:
+        """Create CommandsConfig from dictionary."""
+        return cls(
+            pre_implement=data.get("pre_implement"),
+            post_implement=data.get("post_implement"),
+            custom_verification=data.get("custom_verification", []),
+        )
+
+
+@dataclass
+class ScanConfig:
+    """Codebase scanning configuration."""
+
+    focus_dirs: list[str] = field(default_factory=lambda: ["src/", "tests/"])
+    exclude_patterns: list[str] = field(
+        default_factory=lambda: ["**/node_modules/**", "**/__pycache__/**", "**/.git/**"]
+    )
+    custom_agents: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ScanConfig:
+        """Create ScanConfig from dictionary."""
+        return cls(
+            focus_dirs=data.get("focus_dirs", ["src/", "tests/"]),
+            exclude_patterns=data.get(
+                "exclude_patterns",
+                ["**/node_modules/**", "**/__pycache__/**", "**/.git/**"],
+            ),
+            custom_agents=data.get("custom_agents", []),
+        )
+
+
+class BRConfig:
+    """Main configuration class for brentech-toolkit.
+
+    Loads configuration from .claude/br-config.json and merges with defaults.
+    Provides convenient property access to all configuration values.
+
+    Example:
+        config = BRConfig(Path.cwd())
+        print(config.project.src_dir)  # "src/"
+        print(config.issues.base_dir)  # ".issues"
+        print(config.get_issue_dir("bugs"))  # Path(".issues/bugs")
+    """
+
+    CONFIG_FILENAME = "br-config.json"
+    CONFIG_DIR = ".claude"
+
+    def __init__(self, project_root: Path) -> None:
+        """Initialize configuration from project root.
+
+        Args:
+            project_root: Path to the project root directory
+        """
+        self.project_root = project_root.resolve()
+        self._raw_config = self._load_config()
+        self._parse_config()
+
+    def _load_config(self) -> dict[str, Any]:
+        """Load configuration from file."""
+        config_path = self.project_root / self.CONFIG_DIR / self.CONFIG_FILENAME
+        if config_path.exists():
+            with open(config_path, encoding="utf-8") as f:
+                return json.load(f)
+        return {}
+
+    def _parse_config(self) -> None:
+        """Parse raw config into typed dataclasses."""
+        self._project = ProjectConfig.from_dict(self._raw_config.get("project", {}))
+        if not self._project.name:
+            self._project.name = self.project_root.name
+
+        self._issues = IssuesConfig.from_dict(self._raw_config.get("issues", {}))
+        self._automation = AutomationConfig.from_dict(self._raw_config.get("automation", {}))
+        self._commands = CommandsConfig.from_dict(self._raw_config.get("commands", {}))
+        self._scan = ScanConfig.from_dict(self._raw_config.get("scan", {}))
+
+    @property
+    def project(self) -> ProjectConfig:
+        """Get project configuration."""
+        return self._project
+
+    @property
+    def issues(self) -> IssuesConfig:
+        """Get issues configuration."""
+        return self._issues
+
+    @property
+    def automation(self) -> AutomationConfig:
+        """Get automation configuration."""
+        return self._automation
+
+    @property
+    def commands(self) -> CommandsConfig:
+        """Get commands configuration."""
+        return self._commands
+
+    @property
+    def scan(self) -> ScanConfig:
+        """Get scan configuration."""
+        return self._scan
+
+    # Convenience methods for common operations
+
+    def get_issue_dir(self, category: str) -> Path:
+        """Get the directory path for an issue category.
+
+        Args:
+            category: Category key (e.g., "bugs", "features")
+
+        Returns:
+            Path to the issue category directory
+        """
+        if category in self._issues.categories:
+            dir_name = self._issues.categories[category].dir
+        else:
+            dir_name = category
+        return self.project_root / self._issues.base_dir / dir_name
+
+    def get_completed_dir(self) -> Path:
+        """Get the path to the completed issues directory."""
+        return self.project_root / self._issues.base_dir / self._issues.completed_dir
+
+    def get_issue_prefix(self, category: str) -> str:
+        """Get the issue ID prefix for a category.
+
+        Args:
+            category: Category key (e.g., "bugs", "features")
+
+        Returns:
+            Issue prefix (e.g., "BUG", "FEAT")
+        """
+        if category in self._issues.categories:
+            return self._issues.categories[category].prefix
+        return category.upper()[:3]
+
+    def get_category_action(self, category: str) -> str:
+        """Get the default action for a category.
+
+        Args:
+            category: Category key (e.g., "bugs", "features")
+
+        Returns:
+            Action verb (e.g., "fix", "implement")
+        """
+        if category in self._issues.categories:
+            return self._issues.categories[category].action
+        return "fix"
+
+    def get_src_path(self) -> Path:
+        """Get the source directory path."""
+        return self.project_root / self._project.src_dir
+
+    def get_worktree_base(self) -> Path:
+        """Get the worktree base directory path."""
+        return self.project_root / self._automation.worktree_base
+
+    def get_state_file(self) -> Path:
+        """Get the state file path."""
+        return self.project_root / self._automation.state_file
+
+    @property
+    def issue_categories(self) -> list[str]:
+        """Get list of configured issue category names."""
+        return list(self._issues.categories.keys())
+
+    @property
+    def issue_priorities(self) -> list[str]:
+        """Get list of valid priority prefixes."""
+        return self._issues.priorities
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert configuration to dictionary.
+
+        Useful for variable substitution in command templates.
+        """
+        return {
+            "project": {
+                "name": self._project.name,
+                "src_dir": self._project.src_dir,
+                "test_cmd": self._project.test_cmd,
+                "lint_cmd": self._project.lint_cmd,
+                "type_cmd": self._project.type_cmd,
+                "format_cmd": self._project.format_cmd,
+                "build_cmd": self._project.build_cmd,
+            },
+            "issues": {
+                "base_dir": self._issues.base_dir,
+                "categories": {
+                    k: {"prefix": v.prefix, "dir": v.dir, "action": v.action}
+                    for k, v in self._issues.categories.items()
+                },
+                "completed_dir": self._issues.completed_dir,
+                "priorities": self._issues.priorities,
+                "templates_dir": self._issues.templates_dir,
+            },
+            "automation": {
+                "timeout_seconds": self._automation.timeout_seconds,
+                "state_file": self._automation.state_file,
+                "worktree_base": self._automation.worktree_base,
+                "max_workers": self._automation.max_workers,
+                "stream_output": self._automation.stream_output,
+            },
+            "commands": {
+                "pre_implement": self._commands.pre_implement,
+                "post_implement": self._commands.post_implement,
+                "custom_verification": self._commands.custom_verification,
+            },
+            "scan": {
+                "focus_dirs": self._scan.focus_dirs,
+                "exclude_patterns": self._scan.exclude_patterns,
+                "custom_agents": self._scan.custom_agents,
+            },
+        }
+
+    def resolve_variable(self, var_path: str) -> str | None:
+        """Resolve a variable path like 'project.src_dir' to its value.
+
+        Args:
+            var_path: Dot-separated path to configuration value
+
+        Returns:
+            The resolved value as a string, or None if not found
+        """
+        parts = var_path.split(".")
+        value: Any = self.to_dict()
+
+        for part in parts:
+            if isinstance(value, dict) and part in value:
+                value = value[part]
+            else:
+                return None
+
+        if value is None:
+            return None
+        if isinstance(value, list):
+            return " ".join(str(v) for v in value)
+        return str(value)
+
+
+# Backwards compatibility alias
+CLConfig = BRConfig

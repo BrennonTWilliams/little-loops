@@ -1,0 +1,41 @@
+{
+  "$schema": "https://claude.ai/schemas/plugin/v1",
+  "name": "brentech-toolkit",
+  "version": "1.0.0",
+  "description": "Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing",
+  "author": "brentech",
+  "license": "MIT",
+  "homepage": "https://github.com/brentech/brentech-toolkit",
+  "keywords": [
+    "development",
+    "workflow",
+    "issue-management",
+    "automation",
+    "code-quality"
+  ],
+  "engines": {
+    "claude-code": ">=1.0.0"
+  },
+  "config": {
+    "file": "br-config.json",
+    "schema": "config-schema.json"
+  },
+  "commands": {
+    "directory": "commands",
+    "prefix": "br"
+  },
+  "agents": {
+    "directory": "agents"
+  },
+  "hooks": {
+    "file": "hooks/hooks.json"
+  },
+  "scripts": {
+    "directory": "scripts",
+    "package": "brentech_toolkit",
+    "entrypoints": {
+      "br-auto": "brentech_toolkit.cli:main_auto",
+      "br-parallel": "brentech_toolkit.cli:main_parallel"
+    }
+  }
+}
