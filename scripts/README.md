@@ -6,7 +6,7 @@ Development workflow toolkit for Claude Code with issue management, code quality
 
 little-loops is a Claude Code plugin that provides a complete development workflow toolkit. It includes:
 
-- **30+ slash commands** for development workflows
+- **15 slash commands** for development workflows
 - **4 specialized agents** for codebase analysis
 - **Automation scripts** for autonomous issue processing
 - **Configuration system** for project customization
@@ -300,10 +300,10 @@ ll-parallel --resume              # Continue from saved state
 
 ## Command Override
 
-Projects can override plugin commands by placing files in `.claude/commands/br/`.
+Projects can override plugin commands by placing files in `.claude/commands/ll/`.
 
 Override priority:
-1. Project `.claude/commands/br/*.md` (highest)
+1. Project `.claude/commands/ll/*.md` (highest)
 2. Plugin `commands/*.md`
 3. Default behavior
 
@@ -312,7 +312,7 @@ Override priority:
 To add project-specific verification to `manage_issue`:
 
 ```bash
-# .claude/commands/br/manage_issue.md
+# .claude/commands/ll/manage_issue.md
 # Copy from plugin and modify as needed
 ```
 
@@ -370,7 +370,7 @@ Commands use `{{config.*}}` for configuration values:
 
 ## Migration from Existing Setup
 
-If you have existing `.claude/commands/br/` files:
+If you have existing `.claude/commands/ll/` files:
 
 1. Install little-loops
 2. Create `.claude/ll-config.json` with your project settings

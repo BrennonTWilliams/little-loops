@@ -1,7 +1,7 @@
 """Configuration management for little-loops.
 
 Provides the BRConfig class for loading, merging, and accessing project configuration.
-Configuration is read from .claude/br-config.json and merged with sensible defaults.
+Configuration is read from .claude/ll-config.json and merged with sensible defaults.
 """
 
 from __future__ import annotations
@@ -195,7 +195,7 @@ class ScanConfig:
 class BRConfig:
     """Main configuration class for little-loops.
 
-    Loads configuration from .claude/br-config.json and merges with defaults.
+    Loads configuration from .claude/ll-config.json and merges with defaults.
     Provides convenient property access to all configuration values.
 
     Example:
@@ -205,7 +205,7 @@ class BRConfig:
         print(config.get_issue_dir("bugs"))  # Path(".issues/bugs")
     """
 
-    CONFIG_FILENAME = "br-config.json"
+    CONFIG_FILENAME = "ll-config.json"
     CONFIG_DIR = ".claude"
 
     def __init__(self, project_root: Path) -> None:
