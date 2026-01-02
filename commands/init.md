@@ -191,41 +191,53 @@ Based on detected project type, use these presets:
 
 ### 5. Interactive Mode (if --interactive)
 
-If `--interactive` flag is set, prompt for each configuration option:
+If `--interactive` flag is set, you MUST use the `AskUserQuestion` tool to gather user preferences step by step. Do NOT just display prompts as text - actually prompt the user interactively.
 
-#### Section: Project Settings
+**IMPORTANT**: Use AskUserQuestion for each section to get real user input:
+
+#### Step 5a: Project Settings
+
+Use AskUserQuestion with these questions:
+1. **Project name**: Ask if detected name is correct or provide custom name
+2. **Source directory**: Offer detected dir or common alternatives (src/, lib/, app/, .)
+3. **Test command**: Offer detected default or "Other" for custom command
+4. **Lint command**: Offer detected default or common alternatives
+5. **Format command**: Offer detected default or common alternatives
+
+Example AskUserQuestion call for test command:
 ```
-Project name [detected-name]:
-Source directory [src/]:
-Test command [pytest]:
-Lint command [ruff check .]:
-Type check command [mypy]:
-Format command [ruff format .]:
-Build command [null]:
+header: "Test Command"
+question: "Which test command should be used?"
+options:
+  - label: "pytest" (detected default)
+  - label: "pytest -v"
+  - label: "python -m pytest"
+multiSelect: false
 ```
 
-#### Section: Issue Management
-```
-Use issue management? [Y/n]:
-Issues base directory [.issues]:
-```
+#### Step 5b: Issue Management
 
-#### Section: Scan Settings
-```
-Focus directories (comma-separated) [src/, tests/]:
-Additional exclude patterns (comma-separated) []:
-```
+Use AskUserQuestion:
+1. **Enable issues**: Yes/No for issue management features
+2. **Issues directory**: Only if enabled - offer .issues or custom
 
-For each prompt:
-- Show the default value in brackets
-- Accept Enter to use the default
-- Accept user input to override
+#### Step 5c: Scan Settings
+
+Use AskUserQuestion:
+1. **Focus directories**: Offer detected dirs or custom selection
+2. **Exclude patterns**: Offer adding custom patterns beyond defaults
+
+**Key behavior**:
+- Wait for each AskUserQuestion response before proceeding
+- Use the responses to build the final configuration
+- Show detected defaults as the first/recommended option
+- Allow "Other" for custom values (built-in to AskUserQuestion)
 
 ### 6. Display Summary
 
 ```
 ================================================================================
-BRENTECH-TOOLKIT INITIALIZATION
+LITTLE-LOOPS INITIALIZATION
 ================================================================================
 
 Detected project type: [TYPE]
