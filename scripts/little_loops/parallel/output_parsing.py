@@ -11,7 +11,7 @@ import re
 from typing import Any
 
 # Regex patterns for standardized output parsing
-SECTION_PATTERN = re.compile(r"^## (\w+)$", re.MULTILINE)
+SECTION_PATTERN = re.compile(r"^## (\w+)\s*$", re.MULTILINE)
 TABLE_ROW_PATTERN = re.compile(r"\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(.+?)\s*\|")
 STATUS_PATTERN = re.compile(r"^- (\w+): (\w+)", re.MULTILINE)
 
@@ -97,7 +97,7 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
     """Extract verdict and concerns from ready_issue output.
 
     The ready_issue command outputs structured sections with a VERDICT
-    section containing READY, NOT_READY, or NEEDS_REVIEW.
+    section containing READY, CORRECTED, NOT_READY, NEEDS_REVIEW, or CLOSE.
 
     Supports both old format (VERDICT: READY) and new standardized format
     (## VERDICT\\nREADY) for backwards compatibility.
@@ -107,9 +107,15 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
 
     Returns:
         dict with keys:
-        - verdict: str ("READY", "NOT_READY", "NEEDS_REVIEW", or "UNKNOWN")
+        - verdict: str ("READY", "CORRECTED", "NOT_READY", "NEEDS_REVIEW",
+                        "CLOSE", or "UNKNOWN")
         - concerns: list[str] of concern messages
         - is_ready: bool indicating if issue is ready for implementation
+        - was_corrected: bool indicating if corrections were made
+        - should_close: bool indicating if issue should be closed
+        - close_reason: str|None (e.g., "already_fixed", "invalid_ref")
+        - close_status: str|None (e.g., "Closed - Already Fixed")
+        - corrections: list[str] of corrections made
         - sections: dict of parsed sections (if standardized format)
         - validation: dict of validation results (if standardized format)
     """
@@ -117,20 +123,29 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
     sections = parse_sections(output)
     verdict = "UNKNOWN"
     concerns: list[str] = []
+    corrections: list[str] = []
     validation: dict[str, dict[str, str]] = {}
+    close_reason: str | None = None
+    close_status: str | None = None
+
+    # Valid verdicts including new ones
+    valid_verdicts = ("READY", "CORRECTED", "NOT_READY", "NEEDS_REVIEW", "CLOSE")
 
     # Check for VERDICT section (new format)
     if "VERDICT" in sections:
-        verdict_content = sections["VERDICT"].strip().upper()
-        # Strip markdown bold formatting (**text**)
-        verdict_content = verdict_content.strip("*")
-        if verdict_content in ("READY", "NOT_READY", "NEEDS_REVIEW"):
+        # Extract first non-empty line (verdict may be followed by explanatory text)
+        verdict_lines = sections["VERDICT"].strip().split("\n")
+        first_line = next((line.strip() for line in verdict_lines if line.strip()), "")
+        verdict_content = first_line.upper()
+        # Strip markdown bold formatting (**text**) and template brackets ([TEXT])
+        verdict_content = verdict_content.strip("*").strip("[]")
+        if verdict_content in valid_verdicts:
             verdict = verdict_content
 
     # Fall back to old format (VERDICT: READY)
     if verdict == "UNKNOWN":
         verdict_match = re.search(
-            r"VERDICT:\s*(READY|NOT[_\s]?READY|NEEDS[_\s]?REVIEW)",
+            r"VERDICT:\s*(READY|CORRECTED|NOT[_\s]?READY|NEEDS[_\s]?REVIEW|CLOSE)",
             output,
             re.IGNORECASE,
         )
@@ -155,14 +170,56 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
             ):
                 concerns.append(line_stripped)
 
+    # Parse CORRECTIONS_MADE section if present
+    if "CORRECTIONS_MADE" in sections:
+        corrections_content = sections["CORRECTIONS_MADE"]
+        for line in corrections_content.split("\n"):
+            line = line.strip()
+            if line.startswith("- ") and line != "- None":
+                corrections.append(line[2:])
+
+    # Parse CLOSE_REASON section if present (for CLOSE verdict)
+    if "CLOSE_REASON" in sections:
+        close_reason_content = sections["CLOSE_REASON"]
+        # Look for "- Reason: <value>" line
+        for line in close_reason_content.split("\n"):
+            line = line.strip()
+            if line.lower().startswith("- reason:"):
+                close_reason = line.split(":", 1)[1].strip().lower()
+                break
+            # Also handle "Reason: <value>" without dash
+            if line.lower().startswith("reason:"):
+                close_reason = line.split(":", 1)[1].strip().lower()
+                break
+
+    # Parse CLOSE_STATUS section if present
+    if "CLOSE_STATUS" in sections:
+        close_status_content = sections["CLOSE_STATUS"].strip()
+        # Take first non-empty line as the status
+        for line in close_status_content.split("\n"):
+            line = line.strip()
+            if line and not line.startswith("#"):
+                close_status = line
+                break
+
     # Parse VALIDATION section if present
     if "VALIDATION" in sections:
         validation = parse_validation_table(sections["VALIDATION"])
 
+    # Determine flags based on verdict
+    is_ready = verdict in ("READY", "CORRECTED")
+    was_corrected = verdict == "CORRECTED" or len(corrections) > 0
+    should_close = verdict == "CLOSE"
+
     return {
         "verdict": verdict,
         "concerns": concerns,
-        "is_ready": verdict == "READY",
+        "is_ready": is_ready,
+        "was_corrected": was_corrected,
+        "should_close": should_close,
+        "close_reason": close_reason,
+        "close_status": close_status,
+        "corrections": corrections,
         "sections": sections,
         "validation": validation,
     }

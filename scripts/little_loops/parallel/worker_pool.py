@@ -6,6 +6,7 @@ processing without file conflicts.
 
 from __future__ import annotations
 
+import json
 import selectors
 import shutil
 import subprocess
@@ -218,6 +219,23 @@ class WorkerPool:
 
             # Step 3: Parse ready_issue output and check verdict
             ready_parsed = parse_ready_issue_output(ready_result.stdout)
+
+            # Handle CLOSE verdict - issue should not be implemented
+            if ready_parsed.get("should_close"):
+                return WorkerResult(
+                    issue_id=issue.issue_id,
+                    success=True,  # Closure is a valid outcome
+                    branch_name=branch_name,
+                    worktree_path=worktree_path,
+                    duration=time.time() - start_time,
+                    should_close=True,
+                    close_reason=ready_parsed.get("close_reason"),
+                    close_status=ready_parsed.get("close_status"),
+                    stdout=ready_result.stdout,
+                    stderr=ready_result.stderr,
+                )
+
+            # Handle NOT_READY verdict
             if not ready_parsed["is_ready"]:
                 concerns = ready_parsed.get("concerns", [])
                 concern_msg = "; ".join(concerns) if concerns else "Issue not ready"
@@ -231,6 +249,9 @@ class WorkerPool:
                     stdout=ready_result.stdout,
                     stderr=ready_result.stderr,
                 )
+
+            # Track if issue was corrected (corrections stay in worktree)
+            was_corrected = ready_parsed.get("was_corrected", False)
 
             # Step 4: Get action from BRConfig
             action = self.br_config.get_category_action(issue.issue_type)
@@ -287,6 +308,7 @@ class WorkerPool:
                 error=None,
                 stdout=manage_result.stdout,
                 stderr=manage_result.stderr,
+                was_corrected=was_corrected,
             )
 
         except Exception as e:
@@ -349,6 +371,51 @@ class WorkerPool:
                 self.logger.info("Copied .claude/settings.local.json to worktree")
 
         self.logger.info(f"Created worktree at {worktree_path} on branch {branch_name}")
+
+        # Verify model if --show-model flag is set (requires API call)
+        if self.parallel_config.show_model:
+            model = self._detect_worktree_model_via_api(worktree_path)
+            if model:
+                self.logger.info(f"  Using model: {model}")
+            else:
+                self.logger.warning("  Could not detect Claude CLI model")
+
+    def _detect_worktree_model_via_api(self, worktree_path: Path) -> str | None:
+        """Detect the model Claude will use by making an API call.
+
+        Runs a minimal Claude command with JSON output and parses the modelUsage
+        field to verify settings.local.json is being respected.
+
+        Args:
+            worktree_path: Path to the worktree to test
+
+        Returns:
+            Model name (e.g., "claude-sonnet-4-20250514") or None if unable to detect
+        """
+        try:
+            # Use a minimal prompt that requires an API call to get modelUsage
+            result = subprocess.run(
+                [
+                    "claude",
+                    "-p",
+                    "reply with just 'ok'",
+                    "--output-format",
+                    "json",
+                ],
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if result.returncode == 0 and result.stdout.strip():
+                data = json.loads(result.stdout.strip())
+                model_usage = data.get("modelUsage", {})
+                # Return the first (primary) model from modelUsage
+                if model_usage:
+                    return next(iter(model_usage.keys()))
+        except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
+            pass
+        return None
 
     def _cleanup_worktree(self, worktree_path: Path) -> None:
         """Remove a git worktree and its associated branch.

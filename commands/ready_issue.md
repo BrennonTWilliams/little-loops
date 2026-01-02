@@ -1,5 +1,5 @@
 ---
-description: Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready
+description: Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid
 arguments:
   - name: issue_id
     description: Issue ID to validate (e.g., BUG-004, FEAT-001)
@@ -8,7 +8,10 @@ arguments:
 
 # Ready Issue
 
-You are tasked with analyzing an issue file to determine if it's ready for implementation and auto-correcting any issues found.
+You are tasked with analyzing an issue file to determine if it's ready for implementation. You should:
+1. Auto-correct any fixable issues
+2. Close issues that should not be implemented
+3. Only reject issues that truly need manual intervention
 
 ## Configuration
 
@@ -57,15 +60,35 @@ Check for completeness:
 - [ ] Labels section present
 - [ ] Status section present
 
-### 3. Determine Verdict
+### 3. Check for Closure Conditions
 
-| Verdict | Meaning | Action |
-|---------|---------|--------|
-| READY | Issue is complete and accurate | Proceed to implementation |
-| NOT_READY | Missing critical information | Auto-correct or reject |
-| NEEDS_REVIEW | Minor issues found | Update and proceed |
+**IMPORTANT**: Before returning NOT_READY, check if the issue should be CLOSED instead:
 
-### 4. Auto-Correction
+| Condition | Close Reason | Close Status |
+|-----------|--------------|--------------|
+| Bug behavior no longer exists in code | already_fixed | Closed - Already Fixed |
+| Feature/enhancement already implemented | already_fixed | Closed - Already Fixed |
+| Referenced files/functions don't exist and can't be found | invalid_ref | Closed - Invalid |
+| Issue is too stale/outdated to be relevant | stale | Closed - Invalid |
+| Issue is too vague even after attempting to clarify | too_vague | Closed - Invalid |
+| Duplicate of another issue | duplicate | Closed - Duplicate |
+| Out of scope or rejected requirement | wont_do | Closed - Won't Do |
+
+### 4. Determine Verdict
+
+| Verdict | Meaning | When to Use |
+|---------|---------|-------------|
+| READY | Issue is complete and accurate | No changes needed |
+| CORRECTED | Auto-corrections made, now ready | Fixed issues, proceed to implementation |
+| NOT_READY | Cannot auto-correct | Needs manual intervention (use sparingly) |
+| CLOSE | Issue should not be implemented | See closure conditions above |
+
+**Priority order**:
+1. First, try to auto-correct any issues
+2. If issue is invalid/obsolete, use CLOSE
+3. Only use NOT_READY if manual intervention is truly required
+
+### 5. Auto-Correction
 
 If issues found, attempt to fix:
 
@@ -74,12 +97,24 @@ If issues found, attempt to fix:
 3. **Add missing sections** with placeholder text
 4. **Update code snippets** to match current code
 5. **Add verification notes** documenting changes
+6. **Save the corrected issue file** with your changes
 
-### 5. Output Format
+After making corrections, use verdict CORRECTED (not READY or NOT_READY).
+
+### 6. Output Format
 
 ```markdown
 ## VERDICT
-[READY|NOT_READY|NEEDS_REVIEW]
+[READY|CORRECTED|NOT_READY|CLOSE]
+
+## CLOSE_REASON
+[Only include this section if verdict is CLOSE]
+- Reason: already_fixed|invalid_ref|stale|too_vague|duplicate|wont_do
+- Evidence: [Specific evidence supporting closure, e.g., "The function foo() was removed in commit abc123" or "Feature X already exists in src/features/x.py"]
+
+## CLOSE_STATUS
+[Only include this section if verdict is CLOSE]
+Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't Do
 
 ## VALIDATION
 
@@ -100,6 +135,7 @@ If issues found, attempt to fix:
 - Updated line 42 -> 45 in src/module.py reference
 - Added missing ## Expected Behavior section
 - Refreshed code snippet on line 20
+- [Or "None" if no corrections needed]
 
 ## READY_FOR
 - Implementation: Yes/No
@@ -107,6 +143,7 @@ If issues found, attempt to fix:
 
 ## NEXT_STEPS
 - [Recommended actions if not ready]
+- [Or "Proceed to implementation" if ready/corrected]
 ```
 
 ---
@@ -143,4 +180,13 @@ This command is typically run before `/ll:manage_issue` to ensure:
 2. Implementation can proceed smoothly
 3. No surprises during development
 
-The automation scripts (`cl-auto`) run this automatically before each issue.
+The automation scripts (`ll-auto`, `ll-parallel`) run this automatically before each issue.
+
+### Verdict Handling by Automation
+
+| Verdict | Automation Action |
+|---------|-------------------|
+| READY | Proceed to implementation |
+| CORRECTED | Proceed to implementation (corrections saved) |
+| NOT_READY | Mark as failed, skip issue |
+| CLOSE | Move to completed directory with closure status |

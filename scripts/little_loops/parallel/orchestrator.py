@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from little_loops.issue_manager import close_issue
 from little_loops.issue_parser import IssueInfo
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.merge_coordinator import MergeCoordinator
@@ -355,10 +356,32 @@ class ParallelOrchestrator:
         Args:
             result: Result from the worker
         """
-        if result.success:
+        # Handle issue closure (no merge needed)
+        if result.should_close:
+            self.logger.info(
+                f"{result.issue_id} should be closed: {result.close_status}"
+            )
+            info = self._issue_info_by_id.get(result.issue_id)
+            if info:
+                if close_issue(
+                    info,
+                    self.br_config,
+                    self.logger,
+                    result.close_reason,
+                    result.close_status,
+                ):
+                    self.queue.mark_completed(result.issue_id)
+                else:
+                    self.queue.mark_failed(result.issue_id)
+            else:
+                self.logger.warning(f"No issue info found for {result.issue_id}")
+                self.queue.mark_failed(result.issue_id)
+        elif result.success:
             self.logger.success(
                 f"{result.issue_id} completed in {format_duration(result.duration)}"
             )
+            if result.was_corrected:
+                self.logger.info(f"{result.issue_id} was auto-corrected during validation")
             self.merge_coordinator.queue_merge(result)
         else:
             self.logger.error(f"{result.issue_id} failed: {result.error}")
@@ -375,6 +398,21 @@ class ParallelOrchestrator:
         Args:
             result: Result to merge
         """
+        # Handle closure for sequential issues
+        if result.should_close:
+            info = self._issue_info_by_id.get(result.issue_id)
+            if info and close_issue(
+                info,
+                self.br_config,
+                self.logger,
+                result.close_reason,
+                result.close_status,
+            ):
+                self.queue.mark_completed(result.issue_id)
+            else:
+                self.queue.mark_failed(result.issue_id)
+            return
+
         self.merge_coordinator.queue_merge(result)
         # Wait for this specific merge
         self.merge_coordinator.wait_for_completion(timeout=60)

@@ -345,6 +345,126 @@ Investigate the error output above and address the root cause.
         return None
 
 
+def close_issue(
+    info: IssueInfo,
+    config: BRConfig,
+    logger: Logger,
+    close_reason: str | None,
+    close_status: str | None,
+) -> bool:
+    """Close an issue by moving it to completed with closure status.
+
+    Used when ready_issue determines an issue should not be implemented
+    (e.g., already fixed, invalid, duplicate).
+
+    Args:
+        info: Issue info
+        config: Project configuration
+        logger: Logger for output
+        close_reason: Reason code (e.g., "already_fixed", "invalid_ref")
+        close_status: Status text (e.g., "Closed - Already Fixed")
+
+    Returns:
+        True if successful, False otherwise
+    """
+    completed_dir = config.get_completed_dir()
+    completed_dir.mkdir(parents=True, exist_ok=True)
+
+    original_path = info.path
+    completed_path = completed_dir / original_path.name
+
+    # Use defaults if not provided
+    if not close_status:
+        close_status = "Closed - Invalid"
+    if not close_reason:
+        close_reason = "unknown"
+
+    logger.info(f"Closing {info.issue_id}: {close_status} (reason: {close_reason})")
+
+    try:
+        # Read original content
+        content = original_path.read_text()
+
+        # Add resolution section for closure
+        if "## Resolution" not in content:
+            resolution = f"""
+
+---
+
+## Resolution
+
+- **Status**: {close_status}
+- **Closed**: {datetime.now().strftime("%Y-%m-%d")}
+- **Reason**: {close_reason}
+- **Closure**: Automated (ready_issue validation)
+
+### Closure Notes
+Issue was automatically closed during validation.
+The issue was determined to be invalid, already resolved, or not actionable.
+"""
+            content += resolution
+
+        # Write to completed location
+        completed_path.write_text(content)
+
+        # Use git mv if possible
+        result = subprocess.run(
+            ["git", "mv", str(original_path), str(completed_path)],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            # git mv failed, file was already written above, just remove original
+            logger.warning(f"git mv failed: {result.stderr}")
+            original_path.unlink()
+        else:
+            logger.success(f"Used git mv to move {info.issue_id}")
+
+        # Stage and commit
+        stage_result = subprocess.run(
+            ["git", "add", "-A"],
+            capture_output=True,
+            text=True,
+        )
+        if stage_result.returncode != 0:
+            logger.warning(f"git add failed: {stage_result.stderr}")
+
+        # Create commit for closure
+        commit_msg = f"""close({info.issue_type}): {info.issue_id} - {close_status}
+
+Automated closure - issue determined to be invalid or already resolved.
+
+Issue: {info.issue_id}
+Reason: {close_reason}
+Status: {close_status}
+"""
+        commit_result = subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            capture_output=True,
+            text=True,
+        )
+        if commit_result.returncode != 0:
+            if "nothing to commit" in commit_result.stdout.lower():
+                logger.info("No changes to commit (already committed)")
+            else:
+                logger.warning(f"git commit failed: {commit_result.stderr}")
+        else:
+            import re
+            commit_hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]+)\]", commit_result.stdout)
+            if commit_hash_match:
+                logger.success(f"Committed closure: {commit_hash_match.group(1)}")
+            else:
+                logger.success("Committed issue closure")
+
+        logger.success(f"Closed {info.issue_id}: {close_status}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to close {info.issue_id}: {e}")
+        return False
+
+
 def complete_issue_lifecycle(
     info: IssueInfo,
     config: BRConfig,
@@ -625,12 +745,41 @@ class AutoManager:
                     parsed = parse_ready_issue_output(result.stdout)
                     self.logger.info(f"ready_issue verdict: {parsed['verdict']}")
 
+                    # Log any corrections made
+                    if parsed.get("was_corrected"):
+                        self.logger.info(f"Issue {info.issue_id} was auto-corrected")
+                        corrections = parsed.get("corrections", [])
+                        for correction in corrections:
+                            self.logger.info(f"  Correction: {correction}")
+
                     # Log any concerns found
                     if parsed["concerns"]:
                         for concern in parsed["concerns"]:
                             self.logger.warning(f"  Concern: {concern}")
 
-                    # Check if issue is NOT READY
+                    # Handle CLOSE verdict - issue should not be implemented
+                    if parsed.get("should_close"):
+                        self.logger.info(
+                            f"Issue {info.issue_id} should be closed "
+                            f"(reason: {parsed.get('close_reason', 'unknown')})"
+                        )
+                        if close_issue(
+                            info,
+                            self.config,
+                            self.logger,
+                            parsed.get("close_reason"),
+                            parsed.get("close_status"),
+                        ):
+                            self.state_manager.mark_completed(info.issue_id)
+                            return True
+                        else:
+                            self.state_manager.mark_failed(
+                                info.issue_id,
+                                f"CLOSE failed: {parsed.get('close_status', 'unknown')}"
+                            )
+                            return False
+
+                    # Check if issue is NOT READY (and not closeable)
                     if not parsed["is_ready"]:
                         self.logger.error(
                             f"Issue {info.issue_id} is NOT READY for implementation "
@@ -642,6 +791,12 @@ class AutoManager:
                             f"NOT READY: {parsed['verdict']} - {len(parsed['concerns'])} concern(s)"
                         )
                         return False
+
+                    # Log if proceeding with corrected issue
+                    if parsed.get("was_corrected"):
+                        self.logger.success(
+                            f"Issue {info.issue_id} corrected and ready for implementation"
+                        )
             else:
                 self.logger.info(f"Would run: /ll:ready_issue {info.issue_id}")
         issue_timing["ready"] = phase1_timing.get("elapsed", 0.0)

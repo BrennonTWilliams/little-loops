@@ -62,6 +62,10 @@ class WorkerResult:
         error: Error message if processing failed
         stdout: Captured standard output
         stderr: Captured standard error
+        was_corrected: Whether the issue file was auto-corrected
+        should_close: Whether the issue should be closed (not implemented)
+        close_reason: Reason code for closure (e.g., "already_fixed")
+        close_status: Status text for closure (e.g., "Closed - Already Fixed")
     """
 
     issue_id: str
@@ -73,6 +77,10 @@ class WorkerResult:
     error: str | None = None
     stdout: str = ""
     stderr: str = ""
+    was_corrected: bool = False
+    should_close: bool = False
+    close_reason: str | None = None
+    close_status: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -86,6 +94,10 @@ class WorkerResult:
             "error": self.error,
             "stdout": self.stdout,
             "stderr": self.stderr,
+            "was_corrected": self.was_corrected,
+            "should_close": self.should_close,
+            "close_reason": self.close_reason,
+            "close_status": self.close_status,
         }
 
     @classmethod
@@ -101,6 +113,10 @@ class WorkerResult:
             error=data.get("error"),
             stdout=data.get("stdout", ""),
             stderr=data.get("stderr", ""),
+            was_corrected=data.get("was_corrected", False),
+            should_close=data.get("should_close", False),
+            close_reason=data.get("close_reason"),
+            close_status=data.get("close_status"),
         )
 
 
@@ -215,6 +231,7 @@ class ParallelConfig:
         include_p0: Include P0 issues in parallel processing
         orchestrator_timeout: Timeout for waiting on workers (default: 0 = auto)
         stream_subprocess_output: Whether to stream subprocess output
+        show_model: Make API call to verify and display model on worktree setup
         command_prefix: Prefix for slash commands (default: "/ll:")
         ready_command: Template for ready_issue command
         manage_command: Template for manage_issue command
@@ -235,6 +252,7 @@ class ParallelConfig:
     include_p0: bool = False
     orchestrator_timeout: int = 0  # 0 = use timeout_per_issue * max_workers
     stream_subprocess_output: bool = False
+    show_model: bool = False  # Make API call to verify model on worktree setup
     # Configurable command templates
     command_prefix: str = "/ll:"
     ready_command: str = "ready_issue {{issue_id}}"
@@ -286,6 +304,7 @@ class ParallelConfig:
             "include_p0": self.include_p0,
             "orchestrator_timeout": self.orchestrator_timeout,
             "stream_subprocess_output": self.stream_subprocess_output,
+            "show_model": self.show_model,
             "command_prefix": self.command_prefix,
             "ready_command": self.ready_command,
             "manage_command": self.manage_command,
@@ -310,6 +329,7 @@ class ParallelConfig:
             include_p0=data.get("include_p0", False),
             orchestrator_timeout=data.get("orchestrator_timeout", 0),
             stream_subprocess_output=data.get("stream_subprocess_output", False),
+            show_model=data.get("show_model", False),
             command_prefix=data.get("command_prefix", "/ll:"),
             ready_command=data.get("ready_command", "ready_issue {{issue_id}}"),
             manage_command=data.get(
