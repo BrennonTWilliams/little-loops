@@ -152,13 +152,13 @@ $ARGUMENTS
 
 ```bash
 # Full architecture audit
-/br:audit_architecture
+/ll:audit_architecture
 
 # Focus on large files
-/br:audit_architecture large-files
+/ll:audit_architecture large-files
 
 # Analyze patterns
-/br:audit_architecture patterns
+/ll:audit_architecture patterns
 ```
 
 ---

@@ -253,14 +253,14 @@ $ARGUMENTS
 
 ```bash
 # Fix highest priority bug
-/br:manage_issue bug fix
+/ll:manage_issue bug fix
 
 # Implement specific feature
-/br:manage_issue feature implement FEAT-042
+/ll:manage_issue feature implement FEAT-042
 
 # Improve highest priority enhancement
-/br:manage_issue enhancement improve
+/ll:manage_issue enhancement improve
 
 # Just verify an issue (no implementation)
-/br:manage_issue bug verify BUG-123
+/ll:manage_issue bug verify BUG-123
 ```

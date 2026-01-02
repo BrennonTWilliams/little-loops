@@ -1,4 +1,4 @@
-"""Issue file parsing for brentech-toolkit.
+"""Issue file parsing for little-loops.
 
 Parses issue markdown files to extract metadata like priority, ID, type, and title.
 """
@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from brentech_toolkit.config import BRConfig
+    from little_loops.config import BRConfig
 
 
 def slugify(text: str) -> str:

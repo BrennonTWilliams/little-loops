@@ -114,8 +114,8 @@ Group findings by confidence level:
 
 ## Recommended Actions
 
-1. Run `/br:check_code` after removals
-2. Run `/br:run_tests all` to verify no regressions
+1. Run `/ll:check_code` after removals
+2. Run `/ll:run_tests all` to verify no regressions
 3. Consider deprecation warnings before removing public APIs
 ```
 
@@ -133,12 +133,12 @@ No arguments required. The command analyzes the entire codebase.
 
 ```bash
 # Find all dead code
-/br:find_dead_code
+/ll:find_dead_code
 
 # After review, remove high-confidence items
 # Then run verification:
-/br:check_code all
-/br:run_tests all
+/ll:check_code all
+/ll:run_tests all
 ```
 
 ---
@@ -150,4 +150,4 @@ After finding dead code:
 2. Start with high-confidence items
 3. Run tests after each batch of removals
 4. Consider deprecation for public APIs
-5. Use `/br:commit` to save changes
+5. Use `/ll:commit` to save changes

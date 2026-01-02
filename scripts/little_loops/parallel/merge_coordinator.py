@@ -14,7 +14,7 @@ from pathlib import Path
 from queue import Queue
 from typing import TYPE_CHECKING
 
-from brentech_toolkit.parallel.types import (
+from little_loops.parallel.types import (
     MergeRequest,
     MergeStatus,
     ParallelConfig,
@@ -22,7 +22,7 @@ from brentech_toolkit.parallel.types import (
 )
 
 if TYPE_CHECKING:
-    from brentech_toolkit.logger import Logger
+    from little_loops.logger import Logger
 
 
 class MergeCoordinator:

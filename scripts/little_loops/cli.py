@@ -1,4 +1,4 @@
-"""CLI entry points for brentech-toolkit.
+"""CLI entry points for little-loops.
 
 Provides command-line interfaces for automated issue management:
 - br-auto: Sequential issue processing
@@ -11,9 +11,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from brentech_toolkit.config import BRConfig
-from brentech_toolkit.issue_manager import AutoManager
-from brentech_toolkit.logger import Logger
+from little_loops.config import BRConfig
+from little_loops.issue_manager import AutoManager
+from little_loops.logger import Logger
 
 
 def main_auto() -> int:
@@ -180,7 +180,7 @@ Examples:
 
     # Handle cleanup mode
     if args.cleanup:
-        from brentech_toolkit.parallel import WorkerPool
+        from little_loops.parallel import WorkerPool
 
         parallel_config = config.create_parallel_config()
         pool = WorkerPool(parallel_config, config, logger, project_root)
@@ -213,7 +213,7 @@ Examples:
             state_file.unlink()
 
     # Create and run orchestrator
-    from brentech_toolkit.parallel import ParallelOrchestrator
+    from little_loops.parallel import ParallelOrchestrator
 
     orchestrator = ParallelOrchestrator(
         parallel_config=parallel_config,

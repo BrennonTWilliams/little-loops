@@ -10,10 +10,10 @@ Components:
     ParallelOrchestrator: Main controller coordinating all components
 """
 
-from brentech_toolkit.parallel.merge_coordinator import MergeCoordinator
-from brentech_toolkit.parallel.orchestrator import ParallelOrchestrator
-from brentech_toolkit.parallel.priority_queue import IssuePriorityQueue
-from brentech_toolkit.parallel.types import (
+from little_loops.parallel.merge_coordinator import MergeCoordinator
+from little_loops.parallel.orchestrator import ParallelOrchestrator
+from little_loops.parallel.priority_queue import IssuePriorityQueue
+from little_loops.parallel.types import (
     MergeRequest,
     MergeStatus,
     OrchestratorState,
@@ -21,7 +21,7 @@ from brentech_toolkit.parallel.types import (
     QueuedIssue,
     WorkerResult,
 )
-from brentech_toolkit.parallel.worker_pool import WorkerPool
+from little_loops.parallel.worker_pool import WorkerPool
 
 __all__ = [
     "IssuePriorityQueue",

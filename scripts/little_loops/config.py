@@ -1,4 +1,4 @@
-"""Configuration management for brentech-toolkit.
+"""Configuration management for little-loops.
 
 Provides the BRConfig class for loading, merging, and accessing project configuration.
 Configuration is read from .claude/br-config.json and merged with sensible defaults.
@@ -124,7 +124,7 @@ class ParallelAutomationConfig:
     max_merge_retries: int = 2
     include_p0: bool = False
     stream_subprocess_output: bool = False
-    command_prefix: str = "/br:"
+    command_prefix: str = "/ll:"
     ready_command: str = "ready_issue {{issue_id}}"
     manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
 
@@ -140,7 +140,7 @@ class ParallelAutomationConfig:
             max_merge_retries=data.get("max_merge_retries", 2),
             include_p0=data.get("include_p0", False),
             stream_subprocess_output=data.get("stream_subprocess_output", False),
-            command_prefix=data.get("command_prefix", "/br:"),
+            command_prefix=data.get("command_prefix", "/ll:"),
             ready_command=data.get("ready_command", "ready_issue {{issue_id}}"),
             manage_command=data.get(
                 "manage_command", "manage_issue {{issue_type}} {{action}} {{issue_id}}"
@@ -190,7 +190,7 @@ class ScanConfig:
 
 
 class BRConfig:
-    """Main configuration class for brentech-toolkit.
+    """Main configuration class for little-loops.
 
     Loads configuration from .claude/br-config.json and merges with defaults.
     Provides convenient property access to all configuration values.
@@ -355,7 +355,7 @@ class BRConfig:
         Returns:
             ParallelConfig configured from BRConfig
         """
-        from brentech_toolkit.parallel.types import ParallelConfig
+        from little_loops.parallel.types import ParallelConfig
 
         return ParallelConfig(
             max_workers=max_workers or self._parallel.max_workers,

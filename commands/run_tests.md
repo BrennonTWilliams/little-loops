@@ -149,17 +149,17 @@ $ARGUMENTS
 
 ```bash
 # Run all unit tests
-/br:run_tests unit
+/ll:run_tests unit
 
 # Run integration tests
-/br:run_tests integration
+/ll:run_tests integration
 
 # Run tests matching "template"
-/br:run_tests all template
+/ll:run_tests all template
 
 # Run tests for changed files
-/br:run_tests affected
+/ll:run_tests affected
 
 # Run specific test pattern in unit tests
-/br:run_tests unit "test_create"
+/ll:run_tests unit "test_create"
 ```

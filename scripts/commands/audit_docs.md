@@ -156,13 +156,13 @@ $ARGUMENTS
 
 ```bash
 # Audit README and linked docs
-/br:audit_docs
+/ll:audit_docs
 
 # Full documentation audit
-/br:audit_docs full
+/ll:audit_docs full
 
 # Audit specific file
-/br:audit_docs file:docs/api.md
+/ll:audit_docs file:docs/api.md
 ```
 
 ---
@@ -172,4 +172,4 @@ $ARGUMENTS
 After auditing:
 - Fix critical issues immediately
 - Create enhancement issues for major updates
-- Use `/br:commit` to save documentation fixes
+- Use `/ll:commit` to save documentation fixes

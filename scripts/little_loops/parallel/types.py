@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
-    from brentech_toolkit.issue_parser import IssueInfo
+    from little_loops.issue_parser import IssueInfo
 
 
 @dataclass
@@ -215,7 +215,7 @@ class ParallelConfig:
         include_p0: Include P0 issues in parallel processing
         orchestrator_timeout: Timeout for waiting on workers (default: 0 = auto)
         stream_subprocess_output: Whether to stream subprocess output
-        command_prefix: Prefix for slash commands (default: "/br:")
+        command_prefix: Prefix for slash commands (default: "/ll:")
         ready_command: Template for ready_issue command
         manage_command: Template for manage_issue command
     """
@@ -236,7 +236,7 @@ class ParallelConfig:
     orchestrator_timeout: int = 0  # 0 = use timeout_per_issue * max_workers
     stream_subprocess_output: bool = False
     # Configurable command templates
-    command_prefix: str = "/br:"
+    command_prefix: str = "/ll:"
     ready_command: str = "ready_issue {{issue_id}}"
     manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
 
@@ -310,7 +310,7 @@ class ParallelConfig:
             include_p0=data.get("include_p0", False),
             orchestrator_timeout=data.get("orchestrator_timeout", 0),
             stream_subprocess_output=data.get("stream_subprocess_output", False),
-            command_prefix=data.get("command_prefix", "/br:"),
+            command_prefix=data.get("command_prefix", "/ll:"),
             ready_command=data.get("ready_command", "ready_issue {{issue_id}}"),
             manage_command=data.get(
                 "manage_command", "manage_issue {{issue_type}} {{action}} {{issue_id}}"

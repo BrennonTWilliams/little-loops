@@ -1,5 +1,5 @@
 ---
-description: Initialize brentech-toolkit configuration for a project
+description: Initialize little-loops configuration for a project
 arguments:
   - name: flags
     description: Optional flags (--interactive, --yes, --force)
@@ -8,7 +8,7 @@ arguments:
 
 # Initialize Configuration
 
-You are tasked with initializing brentech-toolkit configuration for a project by creating `.claude/br-config.json`.
+You are tasked with initializing little-loops configuration for a project by creating `.claude/ll-config.json`.
 
 ## Arguments
 
@@ -36,10 +36,10 @@ if [[ "$FLAGS" == *"--force"* ]]; then FORCE=true; fi
 
 ### 2. Check Existing Configuration
 
-Before proceeding, check if `.claude/br-config.json` already exists:
+Before proceeding, check if `.claude/ll-config.json` already exists:
 
 - If it exists and `--force` was NOT provided:
-  - Display warning: "Configuration already exists at .claude/br-config.json"
+  - Display warning: "Configuration already exists at .claude/ll-config.json"
   - Suggest: "Use --force to overwrite, or edit the existing file directly"
   - **Stop here** - do not proceed
 
@@ -254,7 +254,7 @@ Configuration Summary:
 ### 7. Confirm and Create
 
 If `--yes` flag is NOT set:
-- Ask: "Create .claude/br-config.json with these settings? (y/n)"
+- Ask: "Create .claude/ll-config.json with these settings? (y/n)"
 - Wait for confirmation
 - If user declines, abort without changes
 
@@ -271,7 +271,7 @@ If `--yes` flag IS set:
 2. Write the configuration file with the `$schema` reference:
    ```json
    {
-     "$schema": "https://raw.githubusercontent.com/brentech/brentech-toolkit/main/config-schema.json",
+     "$schema": "https://raw.githubusercontent.com/little-loops/little-loops/main/config-schema.json",
      "project": { ... },
      "issues": { ... },
      "scan": { ... }
@@ -287,14 +287,14 @@ If `--yes` flag IS set:
 INITIALIZATION COMPLETE
 ================================================================================
 
-Created: .claude/br-config.json
+Created: .claude/ll-config.json
 
 Next steps:
-  1. Review and customize: .claude/br-config.json
-  2. Try a command: /br:check_code
+  1. Review and customize: .claude/ll-config.json
+  2. Try a command: /ll:check_code
   3. Set up issue tracking: mkdir -p .issues/{bugs,features,enhancements}
 
-Documentation: https://github.com/brentech/brentech-toolkit
+Documentation: https://github.com/little-loops/little-loops
 
 ================================================================================
 ```
@@ -305,17 +305,17 @@ Documentation: https://github.com/brentech/brentech-toolkit
 
 ```bash
 # Initialize with smart defaults (detect project type, confirm)
-/br:init
+/ll:init
 
 # Initialize with full interactive wizard
-/br:init --interactive
+/ll:init --interactive
 
 # Initialize accepting all defaults without confirmation
-/br:init --yes
+/ll:init --yes
 
 # Overwrite existing configuration
-/br:init --force
+/ll:init --force
 
 # Combine flags
-/br:init --yes --force
+/ll:init --yes --force
 ```

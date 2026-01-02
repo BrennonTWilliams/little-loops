@@ -1,4 +1,4 @@
-"""State persistence for brentech-toolkit automation.
+"""State persistence for little-loops automation.
 
 Provides state management for resume capability during automated processing.
 """
@@ -11,7 +11,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from brentech_toolkit.logger import Logger
+from little_loops.logger import Logger
 
 
 @dataclass

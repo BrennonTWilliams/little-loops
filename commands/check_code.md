@@ -53,7 +53,7 @@ if [ "$MODE" = "lint" ] || [ "$MODE" = "all" ]; then
     else
         echo "[FAIL] Linting errors detected"
         echo ""
-        echo "To auto-fix: /br:check_code fix"
+        echo "To auto-fix: /ll:check_code fix"
     fi
 fi
 ```
@@ -74,7 +74,7 @@ if [ "$MODE" = "format" ] || [ "$MODE" = "all" ]; then
     else
         echo "[FAIL] Formatting issues detected"
         echo ""
-        echo "To auto-fix: /br:check_code fix"
+        echo "To auto-fix: /ll:check_code fix"
     fi
 fi
 ```
@@ -119,7 +119,7 @@ if [ "$MODE" = "fix" ]; then
     echo "AUTO-FIX COMPLETE"
     echo "========================================"
     echo ""
-    echo "Run '/br:check_code all' to verify all issues are resolved"
+    echo "Run '/ll:check_code all' to verify all issues are resolved"
     echo "Note: Type errors cannot be auto-fixed"
 fi
 ```
@@ -141,7 +141,7 @@ Results:
   Types:      [PASS/FAIL]
 
 Next steps:
-- If FAIL: Fix issues manually or run '/br:check_code fix' for auto-fixable issues
+- If FAIL: Fix issues manually or run '/ll:check_code fix' for auto-fixable issues
 - If PASS: Code is ready for commit
 
 ================================================================================
@@ -166,17 +166,17 @@ $ARGUMENTS
 
 ```bash
 # Run all checks
-/br:check_code
+/ll:check_code
 
 # Just check linting
-/br:check_code lint
+/ll:check_code lint
 
 # Just check formatting
-/br:check_code format
+/ll:check_code format
 
 # Just type checking
-/br:check_code types
+/ll:check_code types
 
 # Auto-fix issues
-/br:check_code fix
+/ll:check_code fix
 ```

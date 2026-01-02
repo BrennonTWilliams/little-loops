@@ -1,4 +1,4 @@
-"""Logging utilities for brentech-toolkit.
+"""Logging utilities for little-loops.
 
 Provides colorized console output with timestamps for automation tools.
 """

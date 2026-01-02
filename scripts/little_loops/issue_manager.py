@@ -1,4 +1,4 @@
-"""Automated issue management for brentech-toolkit.
+"""Automated issue management for little-loops.
 
 Provides the AutoManager class for sequential issue processing with
 Claude CLI integration and state persistence for resume capability.
@@ -16,17 +16,17 @@ from contextlib import contextmanager
 from datetime import datetime
 from types import FrameType
 
-from brentech_toolkit.config import BRConfig
-from brentech_toolkit.issue_parser import (
+from little_loops.config import BRConfig
+from little_loops.issue_parser import (
     IssueInfo,
     IssueParser,
     find_highest_priority_issue,
     get_next_issue_number,
     slugify,
 )
-from brentech_toolkit.logger import Logger, format_duration
-from brentech_toolkit.parallel.output_parsing import parse_ready_issue_output
-from brentech_toolkit.state import ProcessingState, StateManager
+from little_loops.logger import Logger, format_duration
+from little_loops.parallel.output_parsing import parse_ready_issue_output
+from little_loops.state import ProcessingState, StateManager
 
 
 @contextmanager
@@ -311,7 +311,7 @@ Implementation should complete without errors.
 Discovered during automated processing of `{parent_info.path}`.
 
 ## Reproduction Steps
-1. Run: `/br:manage_issue {parent_info.issue_type} fix {parent_info.issue_id}`
+1. Run: `/ll:manage_issue {parent_info.issue_type} fix {parent_info.issue_id}`
 2. Observe error
 
 ## Proposed Fix
@@ -613,7 +613,7 @@ class AutoManager:
         with timed_phase(self.logger, "Phase 1 (ready_issue)") as phase1_timing:
             if not self.dry_run:
                 result = run_claude_command(
-                    f"/br:ready_issue {info.issue_id}",
+                    f"/ll:ready_issue {info.issue_id}",
                     self.logger,
                     timeout=self.config.automation.timeout_seconds,
                     stream_output=self.config.automation.stream_output,
@@ -643,7 +643,7 @@ class AutoManager:
                         )
                         return False
             else:
-                self.logger.info(f"Would run: /br:ready_issue {info.issue_id}")
+                self.logger.info(f"Would run: /ll:ready_issue {info.issue_id}")
         issue_timing["ready"] = phase1_timing.get("elapsed", 0.0)
 
         # Phase 2: Implement the issue
@@ -655,13 +655,13 @@ class AutoManager:
                 # Use category name that matches the directory (bugs -> bug, features -> feature)
                 type_name = info.issue_type.rstrip("s")  # bugs -> bug
                 result = run_claude_command(
-                    f"/br:manage_issue {type_name} {action} {info.issue_id}",
+                    f"/ll:manage_issue {type_name} {action} {info.issue_id}",
                     self.logger,
                     timeout=self.config.automation.timeout_seconds,
                     stream_output=self.config.automation.stream_output,
                 )
             else:
-                self.logger.info(f"Would run: /br:manage_issue {info.issue_type} {action} {info.issue_id}")
+                self.logger.info(f"Would run: /ll:manage_issue {info.issue_type} {action} {info.issue_id}")
                 result = subprocess.CompletedProcess(args=[], returncode=0)
         issue_timing["implement"] = phase2_timing.get("elapsed", 0.0)
 

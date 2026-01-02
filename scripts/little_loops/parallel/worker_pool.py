@@ -18,13 +18,13 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from brentech_toolkit.parallel.output_parsing import parse_ready_issue_output
-from brentech_toolkit.parallel.types import ParallelConfig, WorkerResult
+from little_loops.parallel.output_parsing import parse_ready_issue_output
+from little_loops.parallel.types import ParallelConfig, WorkerResult
 
 if TYPE_CHECKING:
-    from brentech_toolkit.config import BRConfig
-    from brentech_toolkit.issue_parser import IssueInfo
-    from brentech_toolkit.logger import Logger
+    from little_loops.config import BRConfig
+    from little_loops.issue_parser import IssueInfo
+    from little_loops.logger import Logger
 
 
 class WorkerPool:
@@ -387,7 +387,7 @@ class WorkerPool:
         """Run a Claude CLI command with real-time output streaming.
 
         Args:
-            command: The command to run (e.g., "/br:ready_issue BUG-123")
+            command: The command to run (e.g., "/ll:ready_issue BUG-123")
             working_dir: Directory to run the command in
             issue_id: Optional issue ID for subprocess tracking
 

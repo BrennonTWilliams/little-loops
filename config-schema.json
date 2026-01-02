@@ -1,8 +1,8 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "$id": "brentech-toolkit://config-schema.json",
-  "title": "brentech-toolkit Configuration",
-  "description": "Configuration schema for brentech-toolkit development workflow plugin",
+  "$id": "little-loops://config-schema.json",
+  "title": "little-loops Configuration",
+  "description": "Configuration schema for little-loops development workflow plugin",
   "type": "object",
   "properties": {
     "$schema": {
@@ -107,7 +107,7 @@
     },
     "automation": {
       "type": "object",
-      "description": "Sequential automation script settings (br-auto)",
+      "description": "Sequential automation script settings (ll-auto)",
       "properties": {
         "timeout_seconds": {
           "type": "integer",
@@ -142,7 +142,7 @@
     },
     "parallel": {
       "type": "object",
-      "description": "Parallel automation settings with git worktree isolation (br-parallel)",
+      "description": "Parallel automation settings with git worktree isolation (ll-parallel)",
       "properties": {
         "max_workers": {
           "type": "integer",
@@ -191,8 +191,8 @@
         },
         "command_prefix": {
           "type": "string",
-          "description": "Prefix for slash commands (e.g., /br:, /cl:)",
-          "default": "/br:"
+          "description": "Prefix for slash commands (e.g., /ll:, /cl:)",
+          "default": "/ll:"
         },
         "ready_command": {
           "type": "string",

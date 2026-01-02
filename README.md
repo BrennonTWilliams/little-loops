@@ -1,10 +1,10 @@
-# brentech-toolkit
+# little-loops
 
 Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing.
 
 ## Overview
 
-brentech-toolkit is a Claude Code plugin that provides a complete development workflow toolkit. It includes:
+little-loops is a Claude Code plugin that provides a complete development workflow toolkit. It includes:
 
 - **30+ slash commands** for development workflows
 - **4 specialized agents** for codebase analysis
@@ -15,10 +15,10 @@ brentech-toolkit is a Claude Code plugin that provides a complete development wo
 
 ```bash
 # From plugin marketplace (when available)
-claude plugin install brentech-toolkit
+claude plugin install little-loops
 
 # From git repository
-claude plugin install https://github.com/brentech/brentech-toolkit
+claude plugin install https://github.com/little-loops/little-loops
 ```
 
 ## Quick Start
@@ -27,9 +27,9 @@ claude plugin install https://github.com/brentech/brentech-toolkit
 
 ```bash
 mkdir -p .claude
-cat > .claude/br-config.json << 'EOF'
+cat > .claude/ll-config.json << 'EOF'
 {
-  "$schema": "https://raw.githubusercontent.com/brentech/brentech-toolkit/main/config-schema.json",
+  "$schema": "https://raw.githubusercontent.com/little-loops/little-loops/main/config-schema.json",
   "project": {
     "name": "my-project",
     "src_dir": "src/",
@@ -44,34 +44,34 @@ EOF
 
 ```bash
 # Check code quality
-/br:check_code all
+/ll:check_code all
 
 # Run tests
-/br:run_tests unit
+/ll:run_tests unit
 
 # Manage issues
-/br:manage_issue bug fix BUG-001
+/ll:manage_issue bug fix BUG-001
 ```
 
 3. **Run automation** (requires Python package):
 
 ```bash
 # Install CLI tools
-pip install ./brentech-toolkit/scripts
+pip install ./little-loops/scripts
 
 # Process issues automatically
-br-auto --max-issues 5
+ll-auto --max-issues 5
 ```
 
 ## Configuration
 
-brentech-toolkit uses `.claude/br-config.json` for project-specific settings. All settings have sensible defaults.
+little-loops uses `.claude/ll-config.json` for project-specific settings. All settings have sensible defaults.
 
 ### Full Configuration Example
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/brentech/brentech-toolkit/main/config-schema.json",
+  "$schema": "https://raw.githubusercontent.com/little-loops/little-loops/main/config-schema.json",
 
   "project": {
     "name": "my-project",
@@ -111,7 +111,7 @@ brentech-toolkit uses `.claude/br-config.json` for project-specific settings. Al
     "max_merge_retries": 2,
     "include_p0": false,
     "stream_subprocess_output": false,
-    "command_prefix": "/br:",
+    "command_prefix": "/ll:",
     "ready_command": "ready_issue {{issue_id}}",
     "manage_command": "manage_issue {{issue_type}} {{action}} {{issue_id}}"
   },
@@ -159,7 +159,7 @@ Issue management settings:
 
 #### `automation`
 
-Sequential automation settings (br-auto):
+Sequential automation settings (ll-auto):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -171,7 +171,7 @@ Sequential automation settings (br-auto):
 
 #### `parallel`
 
-Parallel automation settings with git worktree isolation (br-parallel):
+Parallel automation settings with git worktree isolation (ll-parallel):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -183,7 +183,7 @@ Parallel automation settings with git worktree isolation (br-parallel):
 | `max_merge_retries` | `2` | Rebase attempts before failing |
 | `include_p0` | `false` | Include P0 in parallel processing |
 | `stream_subprocess_output` | `false` | Stream Claude CLI output |
-| `command_prefix` | `/br:` | Prefix for slash commands |
+| `command_prefix` | `/ll:` | Prefix for slash commands |
 | `ready_command` | `ready_issue {{issue_id}}` | Ready command template |
 | `manage_command` | `manage_issue {{issue_type}} {{action}} {{issue_id}}` | Manage command template |
 
@@ -193,34 +193,34 @@ Parallel automation settings with git worktree isolation (br-parallel):
 
 | Command | Description |
 |---------|-------------|
-| `/br:check_code [mode]` | Run linting, formatting, type checks |
-| `/br:run_tests [scope]` | Run test suites |
-| `/br:find_dead_code` | Find unused code |
+| `/ll:check_code [mode]` | Run linting, formatting, type checks |
+| `/ll:run_tests [scope]` | Run test suites |
+| `/ll:find_dead_code` | Find unused code |
 
 ### Issue Management
 
 | Command | Description |
 |---------|-------------|
-| `/br:manage_issue <type> <action> [id]` | Full issue lifecycle |
-| `/br:ready_issue [id]` | Validate issue for implementation |
-| `/br:prioritize_issues` | Assign priorities to issues |
-| `/br:verify_issues` | Verify issues against codebase |
-| `/br:scan_codebase` | Find new issues |
+| `/ll:manage_issue <type> <action> [id]` | Full issue lifecycle |
+| `/ll:ready_issue [id]` | Validate issue for implementation |
+| `/ll:prioritize_issues` | Assign priorities to issues |
+| `/ll:verify_issues` | Verify issues against codebase |
+| `/ll:scan_codebase` | Find new issues |
 
 ### Documentation & Analysis
 
 | Command | Description |
 |---------|-------------|
-| `/br:audit_docs [scope]` | Audit documentation |
-| `/br:audit_architecture [focus]` | Analyze architecture |
-| `/br:describe_pr` | Generate PR description |
+| `/ll:audit_docs [scope]` | Audit documentation |
+| `/ll:audit_architecture [focus]` | Analyze architecture |
+| `/ll:describe_pr` | Generate PR description |
 
 ### Git & Workflow
 
 | Command | Description |
 |---------|-------------|
-| `/br:commit` | Create commits with approval |
-| `/br:iterate_plan [path]` | Update existing plans |
+| `/ll:commit` | Create commits with approval |
+| `/ll:iterate_plan [path]` | Update existing plans |
 
 ## Agents
 
@@ -236,29 +236,29 @@ Parallel automation settings with git worktree isolation (br-parallel):
 After installing the Python package:
 
 ```bash
-pip install ./brentech-toolkit/scripts
+pip install ./little-loops/scripts
 ```
 
-### br-auto
+### ll-auto
 
 Sequential issue processing:
 
 ```bash
-br-auto                    # Process all issues
-br-auto --max-issues 5     # Limit to 5 issues
-br-auto --resume           # Resume from state
-br-auto --dry-run          # Preview only
-br-auto --category bugs    # Only process bugs
+ll-auto                    # Process all issues
+ll-auto --max-issues 5     # Limit to 5 issues
+ll-auto --resume           # Resume from state
+ll-auto --dry-run          # Preview only
+ll-auto --category bugs    # Only process bugs
 ```
 
-### br-parallel
+### ll-parallel
 
 Parallel issue processing with git worktrees:
 
 ```bash
-br-parallel                 # Process with 2 workers
-br-parallel --workers 3     # Use 3 workers
-br-parallel --cleanup       # Clean up worktrees
+ll-parallel                 # Process with 2 workers
+ll-parallel --workers 3     # Use 3 workers
+ll-parallel --cleanup       # Clean up worktrees
 ```
 
 ## Command Override
@@ -335,8 +335,8 @@ Commands use `{{config.*}}` for configuration values:
 
 If you have existing `.claude/commands/br/` files:
 
-1. Install brentech-toolkit
-2. Create `.claude/br-config.json` with your project settings
+1. Install little-loops
+2. Create `.claude/ll-config.json` with your project settings
 3. Keep project-specific commands as overrides
 4. Generic commands will now come from the plugin
 
@@ -345,7 +345,7 @@ If you have existing `.claude/commands/br/` files:
 ### Plugin Structure
 
 ```
-brentech-toolkit/
+little-loops/
 ├── plugin.json           # Plugin manifest
 ├── config-schema.json    # Configuration schema
 ├── README.md             # This file
@@ -354,7 +354,7 @@ brentech-toolkit/
 ├── hooks/                # Lifecycle hooks
 └── scripts/              # Python CLI tools
     ├── pyproject.toml
-    └── brentech_toolkit/
+    └── little_loops/
         ├── __init__.py
         ├── cli.py
         ├── config.py
@@ -366,7 +366,7 @@ brentech-toolkit/
 1. Fork the repository
 2. Create a feature branch
 3. Make changes
-4. Run tests: `pytest brentech-toolkit/scripts/tests/`
+4. Run tests: `pytest little-loops/scripts/tests/`
 5. Submit a pull request
 
 ## License

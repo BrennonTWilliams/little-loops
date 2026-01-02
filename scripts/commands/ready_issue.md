@@ -125,20 +125,20 @@ $ARGUMENTS
 
 ```bash
 # Validate specific issue
-/br:ready_issue BUG-042
+/ll:ready_issue BUG-042
 
 # Validate highest priority issue
-/br:ready_issue
+/ll:ready_issue
 
 # After validation, implement
-/br:manage_issue bug fix BUG-042
+/ll:manage_issue bug fix BUG-042
 ```
 
 ---
 
 ## Integration
 
-This command is typically run before `/br:manage_issue` to ensure:
+This command is typically run before `/ll:manage_issue` to ensure:
 1. Issue is accurate and up-to-date
 2. Implementation can proceed smoothly
 3. No surprises during development

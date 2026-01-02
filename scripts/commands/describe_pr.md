@@ -116,7 +116,7 @@ No arguments required. Analyzes the current branch.
 
 ```bash
 # Generate PR description for current branch
-/br:describe_pr
+/ll:describe_pr
 
 # Review the generated description
 # Modify if needed
@@ -128,6 +128,6 @@ No arguments required. Analyzes the current branch.
 ## Integration
 
 This command works well with:
-- `/br:commit` - Commit changes first
-- `/br:check_code` - Ensure code quality before PR
-- `/br:run_tests` - Verify tests pass
+- `/ll:commit` - Commit changes first
+- `/ll:check_code` - Ensure code quality before PR
+- `/ll:run_tests` - Verify tests pass

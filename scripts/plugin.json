@@ -1,11 +1,11 @@
 {
   "$schema": "https://claude.ai/schemas/plugin/v1",
-  "name": "brentech-toolkit",
+  "name": "little-loops",
   "version": "1.0.0",
   "description": "Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing",
-  "author": "brentech",
+  "author": "little-loops",
   "license": "MIT",
-  "homepage": "https://github.com/brentech/brentech-toolkit",
+  "homepage": "https://github.com/little-loops/little-loops",
   "keywords": [
     "development",
     "workflow",
@@ -17,12 +17,12 @@
     "claude-code": ">=1.0.0"
   },
   "config": {
-    "file": "br-config.json",
+    "file": "ll-config.json",
     "schema": "config-schema.json"
   },
   "commands": {
     "directory": "commands",
-    "prefix": "br"
+    "prefix": "ll"
   },
   "agents": {
     "directory": "agents"
@@ -32,10 +32,10 @@
   },
   "scripts": {
     "directory": "scripts",
-    "package": "brentech_toolkit",
+    "package": "little_loops",
     "entrypoints": {
-      "br-auto": "brentech_toolkit.cli:main_auto",
-      "br-parallel": "brentech_toolkit.cli:main_parallel"
+      "ll-auto": "little_loops.cli:main_auto",
+      "ll-parallel": "little_loops.cli:main_parallel"
     }
   }
 }

@@ -102,7 +102,7 @@ git mv "{{config.issues.base_dir}}/[category]/[old-name].md" \
 
 ## Next Steps
 1. Review assignments for accuracy
-2. Run `/br:manage_issue` to process highest priority
+2. Run `/ll:manage_issue` to process highest priority
 ```
 
 ---
@@ -119,10 +119,10 @@ No arguments required. Processes all unprioritized issues.
 
 ```bash
 # Prioritize all unprioritized issues
-/br:prioritize_issues
+/ll:prioritize_issues
 
 # Then manage the highest priority
-/br:manage_issue bug fix
+/ll:manage_issue bug fix
 ```
 
 ---

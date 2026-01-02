@@ -15,19 +15,19 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from brentech_toolkit.issue_parser import IssueInfo
-from brentech_toolkit.logger import Logger, format_duration
-from brentech_toolkit.parallel.merge_coordinator import MergeCoordinator
-from brentech_toolkit.parallel.priority_queue import IssuePriorityQueue
-from brentech_toolkit.parallel.types import (
+from little_loops.issue_parser import IssueInfo
+from little_loops.logger import Logger, format_duration
+from little_loops.parallel.merge_coordinator import MergeCoordinator
+from little_loops.parallel.priority_queue import IssuePriorityQueue
+from little_loops.parallel.types import (
     OrchestratorState,
     ParallelConfig,
     WorkerResult,
 )
-from brentech_toolkit.parallel.worker_pool import WorkerPool
+from little_loops.parallel.worker_pool import WorkerPool
 
 if TYPE_CHECKING:
-    from brentech_toolkit.config import BRConfig
+    from little_loops.config import BRConfig
 
 
 class ParallelOrchestrator:
@@ -41,8 +41,8 @@ class ParallelOrchestrator:
     - Graceful shutdown on signals
 
     Example:
-        >>> from brentech_toolkit.config import BRConfig
-        >>> from brentech_toolkit.parallel import ParallelConfig, ParallelOrchestrator
+        >>> from little_loops.config import BRConfig
+        >>> from little_loops.parallel import ParallelConfig, ParallelOrchestrator
         >>> br_config = BRConfig(Path.cwd())
         >>> parallel_config = ParallelConfig(max_workers=2)
         >>> orchestrator = ParallelOrchestrator(parallel_config, br_config)

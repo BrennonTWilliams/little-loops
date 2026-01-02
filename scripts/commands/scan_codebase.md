@@ -141,7 +141,7 @@ git add "{{config.issues.base_dir}}/"
 ## Next Steps
 1. Review created issues for accuracy
 2. Adjust priorities as needed
-3. Run `/br:manage_issue` to start processing
+3. Run `/ll:manage_issue` to start processing
 ```
 
 ---
@@ -158,13 +158,13 @@ No arguments required. Scans the entire codebase.
 
 ```bash
 # Scan codebase for issues
-/br:scan_codebase
+/ll:scan_codebase
 
 # Review created issues
 ls {{config.issues.base_dir}}/*/
 
 # Start processing issues
-/br:manage_issue bug fix
+/ll:manage_issue bug fix
 ```
 
 ---
@@ -173,6 +173,6 @@ ls {{config.issues.base_dir}}/*/
 
 After scanning:
 1. Review created issues for accuracy
-2. Run `/br:prioritize_issues` if needed
-3. Use `/br:manage_issue` to process issues
-4. Commit new issues: `/br:commit`
+2. Run `/ll:prioritize_issues` if needed
+3. Use `/ll:manage_issue` to process issues
+4. Commit new issues: `/ll:commit`

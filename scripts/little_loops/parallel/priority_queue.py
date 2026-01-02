@@ -10,13 +10,13 @@ import threading
 from queue import PriorityQueue
 from typing import TYPE_CHECKING
 
-from brentech_toolkit.issue_parser import IssueInfo, find_issues
-from brentech_toolkit.parallel.types import QueuedIssue
+from little_loops.issue_parser import IssueInfo, find_issues
+from little_loops.parallel.types import QueuedIssue
 
 if TYPE_CHECKING:
     from collections.abc import Iterable
 
-    from brentech_toolkit.config import BRConfig
+    from little_loops.config import BRConfig
 
 
 class IssuePriorityQueue:

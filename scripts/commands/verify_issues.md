@@ -116,13 +116,13 @@ No arguments required. Verifies all open issues.
 
 ```bash
 # Verify all open issues
-/br:verify_issues
+/ll:verify_issues
 
 # After verification, process resolved issues
-/br:manage_issue bug fix RESOLVED-ISSUE-ID
+/ll:manage_issue bug fix RESOLVED-ISSUE-ID
 
 # Update issues that need correction
-# Then commit: /br:commit
+# Then commit: /ll:commit
 ```
 
 ---
@@ -130,6 +130,6 @@ No arguments required. Verifies all open issues.
 ## Integration
 
 Works well with:
-- `/br:scan_codebase` - Find new issues after verification
-- `/br:prioritize_issues` - Re-prioritize after verification
-- `/br:manage_issue` - Process verified issues
+- `/ll:scan_codebase` - Find new issues after verification
+- `/ll:prioritize_issues` - Re-prioritize after verification
+- `/ll:manage_issue` - Process verified issues
