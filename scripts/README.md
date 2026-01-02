@@ -14,11 +14,9 @@ little-loops is a Claude Code plugin that provides a complete development workfl
 ## Installation
 
 ```bash
-# From plugin marketplace (when available)
-claude plugin install little-loops
-
-# From git repository
-claude plugin install https://github.com/little-loops/little-loops
+# Add the marketplace and install
+claude plugin marketplace add github:little-loops/little-loops
+claude plugin install ll@ll
 ```
 
 ## Quick Start
