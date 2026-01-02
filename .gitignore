@@ -35,6 +35,7 @@ build/
 
 # Test coverage
 coverage/
+.coverage
 .nyc_output/
 
 # Temporary files
