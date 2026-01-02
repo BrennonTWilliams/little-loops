@@ -296,7 +296,10 @@ class ParallelOrchestrator:
         Returns:
             List of issues sorted by priority
         """
+        # Combine skip_ids from state and config
         skip_ids = set(self.state.completed_issues) | set(self.state.failed_issues.keys())
+        if self.parallel_config.skip_ids:
+            skip_ids |= self.parallel_config.skip_ids
 
         # Adjust priority filter based on include_p0
         priority_filter = list(self.parallel_config.priority_filter)
@@ -307,6 +310,7 @@ class ParallelOrchestrator:
             self.br_config,
             priority_filter=priority_filter,
             skip_ids=skip_ids,
+            only_ids=self.parallel_config.only_ids,
         )
 
         # Apply max issues limit

@@ -34,6 +34,8 @@ Examples:
   %(prog)s --resume           # Resume from previous state
   %(prog)s --dry-run          # Preview what would be processed
   %(prog)s --category bugs    # Only process bugs
+  %(prog)s --only BUG-001,BUG-002  # Process only specific issues
+  %(prog)s --skip BUG-003     # Skip specific issues
 """,
     )
 
@@ -60,6 +62,18 @@ Examples:
         help="Filter to specific category (bugs, features, enhancements)",
     )
     parser.add_argument(
+        "--only",
+        type=str,
+        default=None,
+        help="Comma-separated list of issue IDs to process (e.g., BUG-001,FEAT-002)",
+    )
+    parser.add_argument(
+        "--skip",
+        type=str,
+        default=None,
+        help="Comma-separated list of issue IDs to skip (e.g., BUG-003,FEAT-004)",
+    )
+    parser.add_argument(
         "--config",
         type=Path,
         default=None,
@@ -71,12 +85,26 @@ Examples:
     project_root = args.config or Path.cwd()
     config = BRConfig(project_root)
 
+    # Parse issue ID filters
+    only_ids = (
+        {i.strip().upper() for i in args.only.split(",")}
+        if args.only
+        else None
+    )
+    skip_ids = (
+        {i.strip().upper() for i in args.skip.split(",")}
+        if args.skip
+        else None
+    )
+
     manager = AutoManager(
         config=config,
         dry_run=args.dry_run,
         max_issues=args.max_issues,
         resume=args.resume,
         category=args.category,
+        only_ids=only_ids,
+        skip_ids=skip_ids,
     )
 
     return manager.run()
@@ -101,6 +129,8 @@ Examples:
   %(prog)s --priority P1,P2   # Only process P1 and P2 issues
   %(prog)s --cleanup          # Clean up worktrees and exit
   %(prog)s --stream-output    # Stream Claude CLI output in real-time
+  %(prog)s --only BUG-001,BUG-002  # Process only specific issues
+  %(prog)s --skip BUG-003     # Skip specific issues
 """,
     )
 
@@ -170,6 +200,18 @@ Examples:
         help="Make API call to verify and display model on worktree setup",
     )
     parser.add_argument(
+        "--only",
+        type=str,
+        default=None,
+        help="Comma-separated list of issue IDs to process (e.g., BUG-001,FEAT-002)",
+    )
+    parser.add_argument(
+        "--skip",
+        type=str,
+        default=None,
+        help="Comma-separated list of issue IDs to skip (e.g., BUG-003,FEAT-004)",
+    )
+    parser.add_argument(
         "--config",
         type=Path,
         default=None,
@@ -200,6 +242,18 @@ Examples:
         else None
     )
 
+    # Parse issue ID filters
+    only_ids = (
+        {i.strip().upper() for i in args.only.split(",")}
+        if args.only
+        else None
+    )
+    skip_ids = (
+        {i.strip().upper() for i in args.skip.split(",")}
+        if args.skip
+        else None
+    )
+
     # Create parallel config with CLI overrides
     parallel_config = config.create_parallel_config(
         max_workers=args.workers,
@@ -210,6 +264,8 @@ Examples:
         timeout_per_issue=args.timeout,
         stream_subprocess_output=args.stream_output if args.stream_output else None,
         show_model=args.show_model if args.show_model else None,
+        only_ids=only_ids,
+        skip_ids=skip_ids,
     )
 
     # Delete state file if not resuming

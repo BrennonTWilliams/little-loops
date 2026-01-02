@@ -17,7 +17,6 @@ from pathlib import Path
 from types import FrameType
 
 from little_loops.config import BRConfig
-from little_loops.subprocess_utils import run_claude_command as _run_claude_base
 from little_loops.issue_parser import (
     IssueInfo,
     IssueParser,
@@ -28,6 +27,7 @@ from little_loops.issue_parser import (
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.output_parsing import parse_ready_issue_output
 from little_loops.state import ProcessingState, StateManager
+from little_loops.subprocess_utils import run_claude_command as _run_claude_base
 
 
 @contextmanager
@@ -596,6 +596,8 @@ class AutoManager:
         max_issues: int = 0,
         resume: bool = False,
         category: str | None = None,
+        only_ids: set[str] | None = None,
+        skip_ids: set[str] | None = None,
     ) -> None:
         """Initialize the auto manager.
 
@@ -605,12 +607,16 @@ class AutoManager:
             max_issues: Maximum issues to process (0 = unlimited)
             resume: Whether to resume from previous state
             category: Optional category to filter (e.g., "bugs")
+            only_ids: If provided, only process these issue IDs
+            skip_ids: Issue IDs to skip (in addition to attempted issues)
         """
         self.config = config
         self.dry_run = dry_run
         self.max_issues = max_issues
         self.resume = resume
         self.category = category
+        self.only_ids = only_ids
+        self.skip_ids = skip_ids or set()
 
         self.logger = Logger(verbose=True)
         self.state_manager = StateManager(config.get_state_file(), self.logger)
@@ -662,9 +668,10 @@ class AutoManager:
                     self.logger.info(f"Reached max issues limit: {self.max_issues}")
                     break
 
-                skip_ids = self.state_manager.state.attempted_issues
+                # Combine skip_ids from state and CLI argument
+                skip_ids = self.state_manager.state.attempted_issues | self.skip_ids
                 info = find_highest_priority_issue(
-                    self.config, self.category, skip_ids
+                    self.config, self.category, skip_ids, self.only_ids
                 )
                 if not info:
                     self.logger.success("No more issues to process!")

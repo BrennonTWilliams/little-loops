@@ -235,6 +235,8 @@ class ParallelConfig:
         command_prefix: Prefix for slash commands (default: "/ll:")
         ready_command: Template for ready_issue command
         manage_command: Template for manage_issue command
+        only_ids: If provided, only process these issue IDs
+        skip_ids: Issue IDs to skip (in addition to completed/failed)
     """
 
     max_workers: int = 2
@@ -257,6 +259,9 @@ class ParallelConfig:
     command_prefix: str = "/ll:"
     ready_command: str = "ready_issue {{issue_id}}"
     manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+    # Issue ID filters
+    only_ids: set[str] | None = None
+    skip_ids: set[str] | None = None
 
     def get_ready_command(self, issue_id: str) -> str:
         """Build the ready_issue command string.
@@ -308,11 +313,15 @@ class ParallelConfig:
             "command_prefix": self.command_prefix,
             "ready_command": self.ready_command,
             "manage_command": self.manage_command,
+            "only_ids": list(self.only_ids) if self.only_ids else None,
+            "skip_ids": list(self.skip_ids) if self.skip_ids else None,
         }
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ParallelConfig:
         """Create from dictionary (JSON deserialization)."""
+        only_ids_data = data.get("only_ids")
+        skip_ids_data = data.get("skip_ids")
         return cls(
             max_workers=data.get("max_workers", 2),
             p0_sequential=data.get("p0_sequential", True),
@@ -335,4 +344,6 @@ class ParallelConfig:
             manage_command=data.get(
                 "manage_command", "manage_issue {{issue_type}} {{action}} {{issue_id}}"
             ),
+            only_ids=set(only_ids_data) if only_ids_data else None,
+            skip_ids=set(skip_ids_data) if skip_ids_data else None,
         )

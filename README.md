@@ -27,7 +27,7 @@ little-loops is a Claude Code plugin that provides a complete development workfl
 
 ```bash
 # Add the local directory as a marketplace (alias derived from plugin.json name)
-/plugin marketplace add /Users/brennon/AIProjects/brenentech/little-loops
+/plugin marketplace add /path/to/little-loops
 
 # Install the plugin
 /plugin install ll
@@ -43,7 +43,7 @@ Add to your project's `.claude/settings.local.json`:
     "local": {
       "source": {
         "source": "directory",
-        "path": "/Users/brennon/AIProjects/brenentech/little-loops"
+        "path": "/path/to/little-loops"
       }
     }
   },

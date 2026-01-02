@@ -26,6 +26,7 @@ class Logger:
     YELLOW = "\033[33m"
     RED = "\033[31m"
     MAGENTA = "\033[35m"
+    GRAY = "\033[90m"
     RESET = "\033[0m"
 
     def __init__(self, verbose: bool = True, use_color: bool = True) -> None:
@@ -53,6 +54,11 @@ class Logger:
         """Log an info message."""
         if self.verbose:
             print(self._format(self.CYAN, msg))
+
+    def debug(self, msg: str) -> None:
+        """Log a debug message (gray/dim)."""
+        if self.verbose:
+            print(self._format(self.GRAY, msg))
 
     def success(self, msg: str) -> None:
         """Log a success message."""

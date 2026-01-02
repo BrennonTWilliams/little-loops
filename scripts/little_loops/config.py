@@ -344,6 +344,8 @@ class BRConfig:
         timeout_per_issue: int | None = None,
         stream_subprocess_output: bool | None = None,
         show_model: bool | None = None,
+        only_ids: set[str] | None = None,
+        skip_ids: set[str] | None = None,
     ) -> ParallelConfig:
         """Create a ParallelConfig from BRConfig settings with optional overrides.
 
@@ -356,6 +358,8 @@ class BRConfig:
             timeout_per_issue: Per-issue timeout (default: from config)
             stream_subprocess_output: Stream output (default: from config)
             show_model: Make API call to verify model (default: False)
+            only_ids: If provided, only process these issue IDs
+            skip_ids: Issue IDs to skip (in addition to completed/failed)
 
         Returns:
             ParallelConfig configured from BRConfig
@@ -382,6 +386,8 @@ class BRConfig:
             command_prefix=self._parallel.command_prefix,
             ready_command=self._parallel.ready_command,
             manage_command=self._parallel.manage_command,
+            only_ids=only_ids,
+            skip_ids=skip_ids,
         )
 
     @property

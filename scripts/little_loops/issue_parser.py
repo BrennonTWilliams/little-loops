@@ -251,6 +251,7 @@ def find_issues(
     config: BRConfig,
     category: str | None = None,
     skip_ids: set[str] | None = None,
+    only_ids: set[str] | None = None,
 ) -> list[IssueInfo]:
     """Find all issues matching criteria.
 
@@ -258,6 +259,7 @@ def find_issues(
         config: Project configuration
         category: Optional category to filter (e.g., "bugs")
         skip_ids: Issue IDs to skip
+        only_ids: If provided, only include these issue IDs
 
     Returns:
         List of IssueInfo sorted by priority
@@ -279,8 +281,13 @@ def find_issues(
 
         for issue_file in issue_dir.glob("*.md"):
             info = parser.parse_file(issue_file)
-            if info.issue_id not in skip_ids:
-                issues.append(info)
+            # Apply skip filter
+            if info.issue_id in skip_ids:
+                continue
+            # Apply only filter (if specified)
+            if only_ids is not None and info.issue_id not in only_ids:
+                continue
+            issues.append(info)
 
     # Sort by priority (lower int = higher priority)
     issues.sort(key=lambda x: (x.priority_int, x.issue_id))
@@ -291,6 +298,7 @@ def find_highest_priority_issue(
     config: BRConfig,
     category: str | None = None,
     skip_ids: set[str] | None = None,
+    only_ids: set[str] | None = None,
 ) -> IssueInfo | None:
     """Find the highest priority issue.
 
@@ -298,9 +306,10 @@ def find_highest_priority_issue(
         config: Project configuration
         category: Optional category to filter
         skip_ids: Issue IDs to skip
+        only_ids: If provided, only include these issue IDs
 
     Returns:
         Highest priority IssueInfo or None if no issues found
     """
-    issues = find_issues(config, category, skip_ids)
+    issues = find_issues(config, category, skip_ids, only_ids)
     return issues[0] if issues else None
