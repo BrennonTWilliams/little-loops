@@ -13,32 +13,62 @@ little-loops is a Claude Code plugin that provides a complete development workfl
 
 ## Installation
 
-```bash
-# From plugin marketplace (when available)
-claude plugin install little-loops
+### From GitHub (recommended)
 
-# From git repository
-claude plugin install https://github.com/little-loops/little-loops
+```bash
+# Add the GitHub repository as a marketplace
+/plugin marketplace add little-loops/little-loops
+
+# Install the plugin
+/plugin install ll@little-loops
+```
+
+### From local path (development)
+
+```bash
+# Add the local directory as a marketplace (alias derived from plugin.json name)
+/plugin marketplace add /Users/brennon/AIProjects/brenentech/little-loops
+
+# Install the plugin
+/plugin install ll
+```
+
+### Manual configuration
+
+Add to your project's `.claude/settings.local.json`:
+
+```json
+{
+  "extraKnownMarketplaces": {
+    "local": {
+      "source": {
+        "source": "directory",
+        "path": "/Users/brennon/AIProjects/brenentech/little-loops"
+      }
+    }
+  },
+  "enabledPlugins": {
+    "ll@local": true
+  }
+}
 ```
 
 ## Quick Start
 
-1. **Create a configuration file** (optional):
+1. **Initialize configuration** (recommended):
 
 ```bash
-mkdir -p .claude
-cat > .claude/ll-config.json << 'EOF'
-{
-  "$schema": "https://raw.githubusercontent.com/little-loops/little-loops/main/config-schema.json",
-  "project": {
-    "name": "my-project",
-    "src_dir": "src/",
-    "test_cmd": "pytest tests/",
-    "lint_cmd": "ruff check src/"
-  }
-}
-EOF
+# Auto-detect project type and generate config
+/ll:init
+
+# Or use interactive wizard for full customization
+/ll:init --interactive
+
+# Or accept all defaults without prompts
+/ll:init --yes
 ```
+
+This detects your project type (Python, Node.js, Go, Rust, Java, .NET) and creates `.claude/ll-config.json` with appropriate defaults.
 
 2. **Use commands**:
 
@@ -56,8 +86,8 @@ EOF
 3. **Run automation** (requires Python package):
 
 ```bash
-# Install CLI tools
-pip install ./little-loops/scripts
+# Install CLI tools (use the path to your little-loops installation)
+pip install /path/to/little-loops/scripts
 
 # Process issues automatically
 ll-auto --max-issues 5
@@ -189,6 +219,18 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 
 ## Commands
 
+### Setup & Help
+
+| Command | Description |
+|---------|-------------|
+| `/ll:init [flags]` | Initialize config for a project (auto-detects type) |
+| `/ll:help` | Show available commands and usage |
+
+**Init flags:**
+- `--interactive` - Full guided wizard with prompts for each option
+- `--yes` - Accept all defaults without confirmation
+- `--force` - Overwrite existing configuration
+
 ### Code Quality
 
 | Command | Description |
@@ -236,7 +278,11 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 After installing the Python package:
 
 ```bash
-pip install ./little-loops/scripts
+# Use the absolute path to your little-loops installation
+pip install /path/to/little-loops/scripts
+
+# Example with home directory
+pip install ~/code/little-loops/scripts
 ```
 
 ### ll-auto
