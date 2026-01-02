@@ -165,6 +165,11 @@ Examples:
         help="Stream Claude CLI subprocess output to console",
     )
     parser.add_argument(
+        "--show-model",
+        action="store_true",
+        help="Make API call to verify and display model on worktree setup",
+    )
+    parser.add_argument(
         "--config",
         type=Path,
         default=None,
@@ -204,6 +209,7 @@ Examples:
         include_p0=args.include_p0 if args.include_p0 else None,
         timeout_per_issue=args.timeout,
         stream_subprocess_output=args.stream_output if args.stream_output else None,
+        show_model=args.show_model if args.show_model else None,
     )
 
     # Delete state file if not resuming

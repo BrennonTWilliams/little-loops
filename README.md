@@ -6,7 +6,7 @@ Development workflow toolkit for Claude Code with issue management, code quality
 
 little-loops is a Claude Code plugin that provides a complete development workflow toolkit. It includes:
 
-- **30+ slash commands** for development workflows
+- **15 slash commands** for development workflows
 - **4 specialized agents** for codebase analysis
 - **Automation scripts** for autonomous issue processing
 - **Configuration system** for project customization
@@ -154,7 +154,7 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
 
   "scan": {
     "focus_dirs": ["src/", "tests/"],
-    "exclude_patterns": ["**/node_modules/**", "**/__pycache__/**"],
+    "exclude_patterns": ["**/node_modules/**", "**/__pycache__/**", "**/.git/**"],
     "custom_agents": []
   }
 }
@@ -304,15 +304,16 @@ Parallel issue processing with git worktrees:
 ```bash
 ll-parallel                 # Process with 2 workers
 ll-parallel --workers 3     # Use 3 workers
+ll-parallel --show-model    # Display model info on worktree setup
 ll-parallel --cleanup       # Clean up worktrees
 ```
 
 ## Command Override
 
-Projects can override plugin commands by placing files in `.claude/commands/br/`.
+Projects can override plugin commands by placing files in `.claude/commands/ll/`.
 
 Override priority:
-1. Project `.claude/commands/br/*.md` (highest)
+1. Project `.claude/commands/ll/*.md` (highest)
 2. Plugin `commands/*.md`
 3. Default behavior
 
@@ -321,7 +322,7 @@ Override priority:
 To add project-specific verification to `manage_issue`:
 
 ```bash
-# .claude/commands/br/manage_issue.md
+# .claude/commands/ll/manage_issue.md
 # Copy from plugin and modify as needed
 ```
 
@@ -395,16 +396,32 @@ little-loops/
 ├── plugin.json           # Plugin manifest
 ├── config-schema.json    # Configuration schema
 ├── README.md             # This file
-├── commands/             # Slash command templates
-├── agents/               # Agent definitions
+├── commands/             # Slash command templates (15 commands)
+├── agents/               # Agent definitions (4 agents)
 ├── hooks/                # Lifecycle hooks
+├── templates/            # Project type config templates
+│   ├── python-generic.json
+│   ├── javascript.json
+│   ├── typescript.json
+│   ├── go.json
+│   ├── rust.json
+│   └── ...
 └── scripts/              # Python CLI tools
     ├── pyproject.toml
     └── little_loops/
         ├── __init__.py
-        ├── cli.py
-        ├── config.py
-        └── ...
+        ├── cli.py          # CLI entrypoints
+        ├── config.py       # Configuration loading
+        ├── state.py        # State persistence
+        ├── issue_manager.py
+        ├── issue_parser.py
+        ├── logger.py
+        └── parallel/       # Parallel processing
+            ├── orchestrator.py
+            ├── worker_pool.py
+            ├── priority_queue.py
+            ├── merge_coordinator.py
+            └── ...
 ```
 
 ### Contributing
@@ -412,9 +429,8 @@ little-loops/
 1. Fork the repository
 2. Create a feature branch
 3. Make changes
-4. Run tests: `pytest little-loops/scripts/tests/`
-5. Submit a pull request
+4. Submit a pull request
 
 ## License
 
-MIT License - See LICENSE file for details.
+MIT License

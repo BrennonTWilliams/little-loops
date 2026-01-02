@@ -340,6 +340,7 @@ class BRConfig:
         include_p0: bool | None = None,
         timeout_per_issue: int | None = None,
         stream_subprocess_output: bool | None = None,
+        show_model: bool | None = None,
     ) -> "ParallelConfig":
         """Create a ParallelConfig from BRConfig settings with optional overrides.
 
@@ -351,6 +352,7 @@ class BRConfig:
             include_p0: Include P0 in parallel (default: from config)
             timeout_per_issue: Per-issue timeout (default: from config)
             stream_subprocess_output: Stream output (default: from config)
+            show_model: Make API call to verify model (default: False)
 
         Returns:
             ParallelConfig configured from BRConfig
@@ -373,6 +375,7 @@ class BRConfig:
                 if stream_subprocess_output is not None
                 else self._parallel.stream_subprocess_output
             ),
+            show_model=show_model if show_model is not None else False,
             command_prefix=self._parallel.command_prefix,
             ready_command=self._parallel.ready_command,
             manage_command=self._parallel.manage_command,
