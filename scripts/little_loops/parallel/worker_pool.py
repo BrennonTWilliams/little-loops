@@ -337,6 +337,17 @@ class WorkerPool:
                     capture_output=True,
                 )
 
+        # Copy .claude settings from main repo to worktree (for auth tokens, etc.)
+        main_claude_dir = self.repo_path / ".claude"
+        worktree_claude_dir = worktree_path / ".claude"
+
+        if main_claude_dir.exists():
+            settings_file = main_claude_dir / "settings.local.json"
+            if settings_file.exists():
+                worktree_claude_dir.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(settings_file, worktree_claude_dir / "settings.local.json")
+                self.logger.info("Copied .claude/settings.local.json to worktree")
+
         self.logger.info(f"Created worktree at {worktree_path} on branch {branch_name}")
 
     def _cleanup_worktree(self, worktree_path: Path) -> None:
