@@ -6,7 +6,6 @@ Claude CLI integration and state persistence for resume capability.
 
 from __future__ import annotations
 
-import selectors
 import signal
 import subprocess
 import sys
@@ -18,6 +17,7 @@ from pathlib import Path
 from types import FrameType
 
 from little_loops.config import BRConfig
+from little_loops.subprocess_utils import run_claude_command as _run_claude_base
 from little_loops.issue_parser import (
     IssueInfo,
     IssueParser,
@@ -73,56 +73,19 @@ def run_claude_command(
     Returns:
         CompletedProcess with stdout/stderr captured
     """
-    cmd_args = ["claude", "--dangerously-skip-permissions", "-p", command]
     logger.info(f"Running: claude --dangerously-skip-permissions -p {command!r}")
 
-    stdout_lines: list[str] = []
-    stderr_lines: list[str] = []
-
-    process = subprocess.Popen(
-        cmd_args,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.PIPE,
-        text=True,
-        bufsize=1,
-    )
-
-    sel = selectors.DefaultSelector()
-    if process.stdout:
-        sel.register(process.stdout, selectors.EVENT_READ)
-    if process.stderr:
-        sel.register(process.stderr, selectors.EVENT_READ)
-
-    start_time = time.time()
-    while sel.get_map():
-        if timeout and (time.time() - start_time) > timeout:
-            process.kill()
-            raise subprocess.TimeoutExpired(cmd_args, timeout)
-
-        ready = sel.select(timeout=1.0)
-        for key, _ in ready:
-            line = key.fileobj.readline()  # type: ignore[union-attr]
-            if not line:
-                sel.unregister(key.fileobj)
-                continue
-
-            line = line.rstrip("\n")
-            if key.fileobj is process.stdout:
-                stdout_lines.append(line)
-                if stream_output:
-                    print(f"  {line}")
+    def stream_callback(line: str, is_stderr: bool) -> None:
+        if stream_output:
+            if is_stderr:
+                print(f"  {line}", file=sys.stderr)
             else:
-                stderr_lines.append(line)
-                if stream_output:
-                    print(f"  {line}", file=sys.stderr)
+                print(f"  {line}")
 
-    process.wait()
-
-    return subprocess.CompletedProcess(
-        cmd_args,
-        process.returncode or 0,
-        stdout="\n".join(stdout_lines),
-        stderr="\n".join(stderr_lines),
+    return _run_claude_base(
+        command=command,
+        timeout=timeout,
+        stream_callback=stream_callback if stream_output else None,
     )
 
 

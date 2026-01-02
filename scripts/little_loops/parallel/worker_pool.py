@@ -7,7 +7,6 @@ processing without file conflicts.
 from __future__ import annotations
 
 import json
-import selectors
 import shutil
 import subprocess
 import sys
@@ -21,6 +20,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from little_loops.parallel.output_parsing import parse_ready_issue_output
 from little_loops.parallel.types import ParallelConfig, WorkerResult
+from little_loops.subprocess_utils import run_claude_command as _run_claude_base
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -472,71 +472,32 @@ class WorkerPool:
         Returns:
             CompletedProcess with stdout and stderr
         """
-        cmd_args = ["claude", "--dangerously-skip-permissions", "-p", command]
-
-        process = subprocess.Popen(
-            cmd_args,
-            cwd=working_dir,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.PIPE,
-            text=True,
-            bufsize=1,  # Line buffered
-        )
-
-        # Register subprocess for tracking
-        if issue_id:
-            with self._process_lock:
-                self._active_processes[issue_id] = process
-
-        stdout_lines: list[str] = []
-        stderr_lines: list[str] = []
-
-        # Use selectors for non-blocking read from both streams
-        sel = selectors.DefaultSelector()
-        if process.stdout:
-            sel.register(process.stdout, selectors.EVENT_READ)
-        if process.stderr:
-            sel.register(process.stderr, selectors.EVENT_READ)
-
-        start_time = time.time()
-        timeout = self.parallel_config.timeout_per_issue
         stream_output = self.parallel_config.stream_subprocess_output
 
-        try:
-            while sel.get_map():
-                if timeout and (time.time() - start_time) > timeout:
-                    process.kill()
-                    raise subprocess.TimeoutExpired(cmd_args, timeout)
+        def stream_callback(line: str, is_stderr: bool) -> None:
+            if stream_output:
+                if is_stderr:
+                    print(f"  {line}", file=sys.stderr)
+                else:
+                    self.logger.info(f"  {line}")
 
-                ready = sel.select(timeout=1.0)
-                for key, _ in ready:
-                    line = key.fileobj.readline()  # type: ignore[union-attr]
-                    if not line:
-                        sel.unregister(key.fileobj)
-                        continue
+        def on_start(process: subprocess.Popen[str]) -> None:
+            if issue_id:
+                with self._process_lock:
+                    self._active_processes[issue_id] = process
 
-                    line = line.rstrip("\n")
-                    if key.fileobj is process.stdout:
-                        stdout_lines.append(line)
-                        if stream_output:
-                            self.logger.info(f"  {line}")
-                    else:
-                        stderr_lines.append(line)
-                        if stream_output:
-                            print(f"  {line}", file=sys.stderr)
-
-            process.wait()
-        finally:
-            # Unregister subprocess
+        def on_end(process: subprocess.Popen[str]) -> None:
             if issue_id:
                 with self._process_lock:
                     self._active_processes.pop(issue_id, None)
 
-        return subprocess.CompletedProcess(
-            cmd_args,
-            process.returncode or 0,
-            stdout="\n".join(stdout_lines),
-            stderr="\n".join(stderr_lines),
+        return _run_claude_base(
+            command=command,
+            timeout=self.parallel_config.timeout_per_issue,
+            working_dir=working_dir,
+            stream_callback=stream_callback if stream_output else None,
+            on_process_start=on_start if issue_id else None,
+            on_process_end=on_end if issue_id else None,
         )
 
     def _get_changed_files(self, worktree_path: Path) -> list[str]:
