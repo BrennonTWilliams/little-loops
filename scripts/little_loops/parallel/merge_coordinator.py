@@ -63,6 +63,8 @@ class MergeCoordinator:
         self._failed: dict[str, str] = {}
         self._lock = threading.Lock()
         self._stash_active = False  # Track if we have an active stash
+        self._consecutive_failures = 0  # Circuit breaker counter
+        self._paused = False  # Set when circuit breaker trips
 
     def start(self) -> None:
         """Start the merge coordinator background thread."""
@@ -142,10 +144,15 @@ class MergeCoordinator:
 
         return False
 
-    def _pop_stash(self) -> None:
-        """Restore stashed changes if any were stashed."""
+    def _pop_stash(self) -> bool:
+        """Restore stashed changes if any were stashed.
+
+        Returns:
+            True if stash was successfully popped or no stash was active,
+            False if pop failed and recovery was needed.
+        """
         if not self._stash_active:
-            return
+            return True
 
         pop_result = subprocess.run(
             ["git", "stash", "pop"],
@@ -155,14 +162,43 @@ class MergeCoordinator:
             timeout=30,
         )
 
-        self._stash_active = False
-
         if pop_result.returncode != 0:
             self.logger.warning(
-                f"Failed to pop stash (may need manual recovery): {pop_result.stderr}"
+                f"Failed to pop stash: {pop_result.stderr.strip()}"
             )
-        else:
-            self.logger.debug("Restored stashed local changes")
+            # Attempt recovery: reset index to HEAD to clear conflicts
+            reset_result = subprocess.run(
+                ["git", "reset", "--hard", "HEAD"],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if reset_result.returncode == 0:
+                self.logger.info("Reset git index after stash pop failure")
+                # Stash is still in the stash list, drop it since we reset
+                subprocess.run(
+                    ["git", "stash", "drop"],
+                    cwd=self.repo_path,
+                    capture_output=True,
+                    timeout=10,
+                )
+                self._stash_active = False
+                self.logger.warning(
+                    "Dropped stash after reset - local changes were lost, please re-apply manually"
+                )
+            else:
+                self.logger.error(
+                    f"Failed to reset git index: {reset_result.stderr.strip()}. "
+                    "Manual recovery required: run 'git reset --hard HEAD' and 'git stash drop'"
+                )
+                # Mark as inactive to avoid infinite loops, but index may still be broken
+                self._stash_active = False
+            return False
+
+        self._stash_active = False
+        self.logger.debug("Restored stashed local changes")
+        return True
 
     def _is_local_changes_error(self, error_output: str) -> bool:
         """Check if the error is due to uncommitted local changes.
@@ -179,6 +215,88 @@ class MergeCoordinator:
             "error: cannot pull with rebase: You have unstaged changes",
         ]
         return any(indicator in error_output for indicator in indicators)
+
+    def _is_index_error(self, error_output: str) -> bool:
+        """Check if the error is due to a corrupted git index.
+
+        Args:
+            error_output: The stderr/stdout from the failed git command
+
+        Returns:
+            True if the error indicates index problems
+        """
+        indicators = [
+            "you need to resolve your current index first",
+            "fatal: cannot do a partial commit during a merge",
+            "error: you have not concluded your merge",
+        ]
+        return any(indicator in error_output for indicator in indicators)
+
+    def _check_and_recover_index(self) -> bool:
+        """Check git index health and attempt recovery if needed.
+
+        Returns:
+            True if index is healthy or was recovered, False if unrecoverable
+        """
+        # Check if we're in the middle of a merge
+        merge_head = self.repo_path / ".git" / "MERGE_HEAD"
+        if merge_head.exists():
+            self.logger.warning("Detected incomplete merge, aborting...")
+            abort_result = subprocess.run(
+                ["git", "merge", "--abort"],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if abort_result.returncode != 0:
+                self.logger.error(f"Failed to abort merge: {abort_result.stderr}")
+                return False
+            self.logger.info("Aborted incomplete merge")
+
+        # Check if we're in the middle of a rebase
+        rebase_dir = self.repo_path / ".git" / "rebase-merge"
+        rebase_apply = self.repo_path / ".git" / "rebase-apply"
+        if rebase_dir.exists() or rebase_apply.exists():
+            self.logger.warning("Detected incomplete rebase, aborting...")
+            abort_result = subprocess.run(
+                ["git", "rebase", "--abort"],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if abort_result.returncode != 0:
+                self.logger.error(f"Failed to abort rebase: {abort_result.stderr}")
+                return False
+            self.logger.info("Aborted incomplete rebase")
+
+        # Verify index is clean
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if status_result.returncode != 0:
+            self.logger.error(f"git status failed: {status_result.stderr}")
+            # Try hard reset as last resort
+            self.logger.warning("Attempting hard reset to recover...")
+            reset_result = subprocess.run(
+                ["git", "reset", "--hard", "HEAD"],
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if reset_result.returncode != 0:
+                self.logger.error("Hard reset failed - manual intervention required")
+                return False
+            self.logger.info("Hard reset successful")
+
+        return True
 
     def _merge_loop(self) -> None:
         """Background thread loop for processing merge requests."""
@@ -209,7 +327,28 @@ class MergeCoordinator:
         result = request.worker_result
         self.logger.info(f"Processing merge for {result.issue_id}")
 
+        # Circuit breaker check
+        if self._paused:
+            self.logger.warning(
+                f"Merge coordinator paused due to repeated failures. "
+                f"Skipping {result.issue_id}. Manual intervention required."
+            )
+            self._handle_failure(request, "Merge coordinator paused - circuit breaker tripped")
+            return
+
         request.status = MergeStatus.IN_PROGRESS
+
+        # Health check: ensure git index is clean before proceeding
+        if not self._check_and_recover_index():
+            self._consecutive_failures += 1
+            if self._consecutive_failures >= 3:
+                self._paused = True
+                self.logger.error(
+                    f"Circuit breaker tripped after {self._consecutive_failures} consecutive failures. "
+                    "Merge coordinator paused. Manual recovery required."
+                )
+            self._handle_failure(request, "Git index recovery failed")
+            return
 
         # Stash any local changes before merge operations
         had_local_changes = self._stash_local_changes()
@@ -231,7 +370,25 @@ class MergeCoordinator:
                     self.logger.warning(
                         "Checkout failed due to local changes despite stash attempt"
                     )
-                raise RuntimeError(f"Failed to checkout main: {checkout_result.stderr}")
+                if self._is_index_error(error_output):
+                    # Try recovery
+                    if self._check_and_recover_index():
+                        # Retry checkout
+                        checkout_result = subprocess.run(
+                            ["git", "checkout", "main"],
+                            cwd=self.repo_path,
+                            capture_output=True,
+                            text=True,
+                            timeout=30,
+                        )
+                        if checkout_result.returncode == 0:
+                            self.logger.info("Recovered from index error, checkout succeeded")
+                        else:
+                            raise RuntimeError(f"Failed to checkout main after recovery: {checkout_result.stderr}")
+                    else:
+                        raise RuntimeError(f"Failed to checkout main: {checkout_result.stderr}")
+                else:
+                    raise RuntimeError(f"Failed to checkout main: {checkout_result.stderr}")
 
             # Pull latest changes
             pull_result = subprocess.run(
@@ -362,6 +519,9 @@ class MergeCoordinator:
         """
         result = request.worker_result
         request.status = MergeStatus.SUCCESS
+
+        # Reset circuit breaker on success
+        self._consecutive_failures = 0
 
         with self._lock:
             self._merged.append(result.issue_id)

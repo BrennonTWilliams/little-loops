@@ -270,7 +270,9 @@ class WorkerPool:
             changed_files = self._get_changed_files(worktree_path)
 
             # Step 7: Verify actual work was done
-            work_verified, verification_error = self._verify_work_was_done(changed_files)
+            work_verified, verification_error = self._verify_work_was_done(
+                changed_files, issue.issue_id
+            )
 
             if manage_result.returncode != 0:
                 return WorkerResult(
@@ -522,20 +524,38 @@ class WorkerPool:
 
         return [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
 
-    def _verify_work_was_done(self, changed_files: list[str]) -> tuple[bool, str]:
+    def _verify_work_was_done(
+        self, changed_files: list[str], issue_id: str
+    ) -> tuple[bool, str]:
         """Verify that actual implementation work was done.
 
         Checks that changed files include source code, not just issue files,
         documentation, or other non-implementation artifacts.
 
+        Allows doc-only changes if:
+        - require_code_changes is False in config
+        - Issue ID contains doc-related keywords (e.g., "documentation")
+
         Args:
             changed_files: List of files changed during processing
+            issue_id: The issue ID being processed (for keyword matching)
 
         Returns:
             Tuple of (success, error_message)
         """
         if not changed_files:
             return False, "No files were changed during implementation"
+
+        # Check if code changes are required
+        if not self.parallel_config.require_code_changes:
+            return True, ""
+
+        # Check if this is a documentation-related issue
+        issue_id_lower = issue_id.lower()
+        is_doc_issue = any(
+            keyword in issue_id_lower
+            for keyword in self.parallel_config.doc_only_keywords
+        )
 
         # Patterns that indicate non-implementation changes
         non_code_patterns = (
@@ -589,6 +609,13 @@ class WorkerPool:
                 non_code_files.append(file_path)
 
         if not code_files:
+            # Allow doc-only changes for documentation issues
+            if is_doc_issue and non_code_files:
+                self.logger.info(
+                    f"Allowing doc-only changes for documentation issue {issue_id}"
+                )
+                return True, ""
+
             if non_code_files:
                 return False, (
                     f"Only non-code files changed ({len(non_code_files)} files): "
