@@ -122,6 +122,8 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
     # Check for VERDICT section (new format)
     if "VERDICT" in sections:
         verdict_content = sections["VERDICT"].strip().upper()
+        # Strip markdown bold formatting (**text**)
+        verdict_content = verdict_content.strip("*")
         if verdict_content in ("READY", "NOT_READY", "NEEDS_REVIEW"):
             verdict = verdict_content
 
