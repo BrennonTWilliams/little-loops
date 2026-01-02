@@ -140,14 +140,16 @@ class StateManager:
         self.state.phase = phase
         self.save()
 
-    def mark_attempted(self, issue_id: str) -> None:
+    def mark_attempted(self, issue_id: str, *, save: bool = True) -> None:
         """Mark an issue as attempted.
 
         Args:
             issue_id: Issue identifier
+            save: Whether to persist state immediately (default True)
         """
         self.state.attempted_issues.add(issue_id)
-        self.save()
+        if save:
+            self.save()
 
     def mark_completed(self, issue_id: str, timing: dict[str, float] | None = None) -> None:
         """Mark an issue as completed.

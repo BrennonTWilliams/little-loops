@@ -602,8 +602,8 @@ class AutoManager:
 
         self.logger.header(f"Processing: {info.issue_id} - {info.title}")
 
-        # Mark as attempted
-        self.state_manager.mark_attempted(info.issue_id)
+        # Mark as attempted and update current (single save)
+        self.state_manager.mark_attempted(info.issue_id, save=False)
         self.state_manager.update_current(str(info.path), "processing")
 
         issue_timing: dict[str, float] = {}
