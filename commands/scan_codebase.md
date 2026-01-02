@@ -8,7 +8,7 @@ You are tasked with scanning the codebase to identify potential bugs, enhancemen
 
 ## Configuration
 
-This command uses project configuration from `.claude/cl-config.json`:
+This command uses project configuration from `.claude/ll-config.json`:
 - **Source directory**: `{{config.project.src_dir}}`
 - **Focus directories**: `{{config.scan.focus_dirs}}`
 - **Exclude patterns**: `{{config.scan.exclude_patterns}}`

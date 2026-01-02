@@ -12,7 +12,7 @@ You are tasked with analyzing an issue file to determine if it's ready for imple
 
 ## Configuration
 
-This command uses project configuration from `.claude/cl-config.json`:
+This command uses project configuration from `.claude/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Categories**: `{{config.issues.categories}}`
 

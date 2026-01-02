@@ -1,47 +1,43 @@
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.so
-.Python
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
 
-# Virtual environments
-.env
-.venv
-env/
-venv/
-ENV/
-
-# IDE
+# Editor/IDE
 .idea/
 .vscode/
 *.swp
 *.swo
 *~
+.project
+.settings/
 
-# Runtime state
-.auto-manage-state.json
-.parallel-manage-state.json
+# Logs
 *.log
+logs/
 
-# Git worktrees (automation creates these)
-.worktrees/
+# Environment
+.env
+.env.local
+.env.*.local
 
-# OS
-.DS_Store
-Thumbs.db
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+build/
+*.tgz
+
+# Test coverage
+coverage/
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp

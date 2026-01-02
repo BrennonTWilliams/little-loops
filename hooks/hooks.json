@@ -1,4 +1,10 @@
 {
   "$schema": "https://claude.ai/schemas/hooks/v1",
-  "hooks": []
+  "hooks": [
+    {
+      "event": "SessionStart",
+      "type": "command",
+      "command": ["bash", "-c", "CONFIG_FILE=\"ll-config.json\"; if [ -f \"$CONFIG_FILE\" ]; then echo \"[little-loops] Config loaded: $CONFIG_FILE\"; cat \"$CONFIG_FILE\" | head -50; else echo \"[little-loops] Warning: $CONFIG_FILE not found. Run /ll:init to create one.\"; fi"]
+    }
+  ]
 }

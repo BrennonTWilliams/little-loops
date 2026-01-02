@@ -12,7 +12,7 @@ You are tasked with running code quality checks on the codebase.
 
 ## Configuration
 
-This command uses project configuration from `.claude/cl-config.json`:
+This command uses project configuration from `.claude/ll-config.json`:
 - **Source directory**: `{{config.project.src_dir}}`
 - **Lint command**: `{{config.project.lint_cmd}}`
 - **Format command**: `{{config.project.format_cmd}}`

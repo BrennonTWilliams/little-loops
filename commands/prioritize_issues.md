@@ -8,7 +8,7 @@ You are tasked with analyzing issue files and assigning priority prefixes to the
 
 ## Configuration
 
-This command uses project configuration from `.claude/cl-config.json`:
+This command uses project configuration from `.claude/ll-config.json`:
 - **Issues base directory**: `{{config.issues.base_dir}}`
 - **Issue categories**: `{{config.issues.categories}}`
 - **Valid priorities**: `{{config.issues.priorities}}`

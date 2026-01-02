@@ -1,6 +1,34 @@
 ---
 name: web-search-researcher
-description: Do you find yourself desiring information that you don't quite feel well-trained (confident) on? Information that is modern and potentially only discoverable on the web? Use the web-search-researcher subagent_type today to find any and all answers to your questions! It will research deeply to figure out and attempt to answer your questions!
+description: |
+  Use this agent when you need current web information, documentation, or research beyond your training data. Trigger when user asks about recent releases, current best practices, library documentation, API references, or needs fact-checking from authoritative sources.
+
+  <example>
+  User: "What's new in React 19?"
+  → Spawn web-search-researcher to find current React 19 features and changelog
+  </example>
+
+  <example>
+  User: "How do I configure Tailwind v4 with Vite?"
+  → Spawn web-search-researcher to find current Tailwind v4 documentation
+  </example>
+
+  <example>
+  User: "What's the recommended way to handle auth in Next.js 15?"
+  → Spawn web-search-researcher to research current auth patterns and libraries
+  </example>
+
+  <example>
+  User: "Find documentation on the Stripe webhooks API"
+  → Spawn web-search-researcher to fetch official Stripe webhook docs
+  </example>
+
+  <example>
+  User: "Research best practices for container security in 2025"
+  → Spawn web-search-researcher to find current security recommendations
+  </example>
+
+  Keywords: "look up", "search for", "find docs", "what's new in", "current version", "latest release", "how do I [with recent tech]", "research", "documentation for"
 tools: WebSearch, WebFetch, TodoWrite, Read, Grep, Glob, LS
 color: yellow
 model: sonnet

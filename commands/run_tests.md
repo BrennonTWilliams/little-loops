@@ -15,7 +15,7 @@ You are tasked with running the test suite based on the specified scope and opti
 
 ## Configuration
 
-This command uses project configuration from `.claude/cl-config.json`:
+This command uses project configuration from `.claude/ll-config.json`:
 - **Test command**: `{{config.project.test_cmd}}`
 - **Source directory**: `{{config.project.src_dir}}`
 

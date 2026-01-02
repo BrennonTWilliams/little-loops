@@ -18,7 +18,7 @@ You are tasked with autonomously managing issues across the project. This comman
 
 ## Configuration
 
-This command uses project configuration from `.claude/cl-config.json`:
+This command uses project configuration from `.claude/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Categories**: `{{config.issues.categories}}`
 - **Completed dir**: `{{config.issues.completed_dir}}`
