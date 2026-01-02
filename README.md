@@ -387,6 +387,14 @@ If you have existing `.claude/commands/br/` files:
 3. Keep project-specific commands as overrides
 4. Generic commands will now come from the plugin
 
+## Documentation
+
+For detailed documentation, see:
+
+- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [Architecture Overview](docs/ARCHITECTURE.md) - System design and diagrams
+- [API Reference](docs/API.md) - Python module documentation
+
 ## Development
 
 ### Plugin Structure

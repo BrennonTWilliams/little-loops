@@ -71,6 +71,10 @@ little-loops/
 ├── agents/               # Agent definitions (*.md)
 ├── hooks/                # Lifecycle hooks
 ├── templates/            # Project-type config templates
+├── docs/                 # Documentation
+│   ├── TROUBLESHOOTING.md  # Common issues and solutions
+│   ├── ARCHITECTURE.md     # System design diagrams
+│   └── API.md              # Python API reference
 └── scripts/              # Python CLI tools
     ├── pyproject.toml    # Package configuration
     ├── tests/            # Test suite
@@ -83,6 +87,8 @@ little-loops/
         ├── logger.py
         └── parallel/     # Parallel processing module
 ```
+
+For architecture details and system design, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Making Changes
 
@@ -183,6 +189,8 @@ Agents are defined as Markdown files in `agents/`:
 
 ## Questions?
 
+- Check [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for common issues
+- Review [docs/API.md](docs/API.md) for Python module documentation
 - Open an issue for bugs or feature requests
 - Check existing issues before creating new ones
 - Use discussions for questions and ideas
