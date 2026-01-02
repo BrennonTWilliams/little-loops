@@ -373,6 +373,23 @@ def close_issue(
     original_path = info.path
     completed_path = completed_dir / original_path.name
 
+    # Safety checks - handle stale state gracefully
+    if completed_path.exists():
+        logger.info(f"{info.issue_id} already in completed/ - cleaning up source")
+        if original_path.exists():
+            original_path.unlink()
+            subprocess.run(["git", "add", "-A"], capture_output=True, text=True)
+            subprocess.run(
+                ["git", "commit", "-m", f"cleanup: remove stale {info.issue_id} from bugs/"],
+                capture_output=True,
+                text=True,
+            )
+        return True
+
+    if not original_path.exists():
+        logger.info(f"{info.issue_id} source already removed - nothing to close")
+        return True
+
     # Use defaults if not provided
     if not close_status:
         close_status = "Closed - Invalid"
@@ -487,6 +504,23 @@ def complete_issue_lifecycle(
 
     original_path = info.path
     completed_path = completed_dir / original_path.name
+
+    # Safety checks - handle stale state gracefully
+    if completed_path.exists():
+        logger.info(f"{info.issue_id} already in completed/ - cleaning up source")
+        if original_path.exists():
+            original_path.unlink()
+            subprocess.run(["git", "add", "-A"], capture_output=True, text=True)
+            subprocess.run(
+                ["git", "commit", "-m", f"cleanup: remove stale {info.issue_id} from bugs/"],
+                capture_output=True,
+                text=True,
+            )
+        return True
+
+    if not original_path.exists():
+        logger.info(f"{info.issue_id} source already removed - nothing to complete")
+        return True
 
     logger.info(f"Completing lifecycle for {info.issue_id} (command may have exited early)...")
 
