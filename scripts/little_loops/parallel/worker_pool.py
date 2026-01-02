@@ -17,7 +17,7 @@ from collections.abc import Callable
 from concurrent.futures import Future, ThreadPoolExecutor
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, cast
 
 from little_loops.parallel.output_parsing import parse_ready_issue_output
 from little_loops.parallel.types import ParallelConfig, WorkerResult
@@ -408,11 +408,11 @@ class WorkerPool:
                 timeout=30,
             )
             if result.returncode == 0 and result.stdout.strip():
-                data = json.loads(result.stdout.strip())
-                model_usage = data.get("modelUsage", {})
+                data: dict[str, Any] = json.loads(result.stdout.strip())
+                model_usage: dict[str, Any] = data.get("modelUsage", {})
                 # Return the first (primary) model from modelUsage
                 if model_usage:
-                    return next(iter(model_usage.keys()))
+                    return cast(str, next(iter(model_usage.keys())))
         except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
             pass
         return None

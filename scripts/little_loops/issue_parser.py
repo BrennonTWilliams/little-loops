@@ -28,7 +28,7 @@ def slugify(text: str) -> str:
     return text.strip("-").lower()
 
 
-def get_next_issue_number(config: "BRConfig", category: str) -> int:
+def get_next_issue_number(config: BRConfig, category: str) -> int:
     """Determine the next issue number for a category.
 
     Scans both active and completed issue directories to find the highest
@@ -118,7 +118,7 @@ class IssueParser:
     Uses BRConfig to understand issue categories, prefixes, and priorities.
     """
 
-    def __init__(self, config: "BRConfig") -> None:
+    def __init__(self, config: BRConfig) -> None:
         """Initialize parser with project configuration.
 
         Args:
@@ -196,10 +196,10 @@ class IssueParser:
 
         # Fall back to inferring from directory
         parent_name = issue_path.parent.name
-        for category_name, category in self.config.issues.categories.items():
-            if parent_name == category.dir:
+        for category_name, category_config in self.config.issues.categories.items():
+            if parent_name == category_config.dir:
                 # Generate ID from filename
-                issue_id = self._generate_id_from_filename(filename, category.prefix)
+                issue_id = self._generate_id_from_filename(filename, category_config.prefix)
                 return category_name, issue_id
 
         # Last resort: use filename as ID
@@ -248,7 +248,7 @@ class IssueParser:
 
 
 def find_issues(
-    config: "BRConfig",
+    config: BRConfig,
     category: str | None = None,
     skip_ids: set[str] | None = None,
 ) -> list[IssueInfo]:
@@ -288,7 +288,7 @@ def find_issues(
 
 
 def find_highest_priority_issue(
-    config: "BRConfig",
+    config: BRConfig,
     category: str | None = None,
     skip_ids: set[str] | None = None,
 ) -> IssueInfo | None:

@@ -9,7 +9,10 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any, cast
+
+if TYPE_CHECKING:
+    from little_loops.parallel.types import ParallelConfig
 
 
 @dataclass
@@ -220,7 +223,7 @@ class BRConfig:
         config_path = self.project_root / self.CONFIG_DIR / self.CONFIG_FILENAME
         if config_path.exists():
             with open(config_path, encoding="utf-8") as f:
-                return json.load(f)
+                return cast(dict[str, Any], json.load(f))
         return {}
 
     def _parse_config(self) -> None:
@@ -341,7 +344,7 @@ class BRConfig:
         timeout_per_issue: int | None = None,
         stream_subprocess_output: bool | None = None,
         show_model: bool | None = None,
-    ) -> "ParallelConfig":
+    ) -> ParallelConfig:
         """Create a ParallelConfig from BRConfig settings with optional overrides.
 
         Args:
