@@ -44,3 +44,12 @@ temp/
 
 # Claude Code
 .claude/settings.local.json
+.claude-plugin/
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Runtime state files
+scripts/.parallel-manage-state.json
