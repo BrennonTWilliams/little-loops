@@ -29,7 +29,8 @@ class MergeCoordinator:
     """Sequential merge queue with conflict handling.
 
     Processes merge requests one at a time to avoid conflicts. Supports
-    automatic rebase and retry on merge failures.
+    automatic rebase and retry on merge failures. Handles uncommitted local
+    changes by stashing them before merge operations.
 
     Example:
         >>> coordinator = MergeCoordinator(config, logger, repo_path)
@@ -61,6 +62,7 @@ class MergeCoordinator:
         self._merged: list[str] = []
         self._failed: dict[str, str] = {}
         self._lock = threading.Lock()
+        self._stash_active = False  # Track if we have an active stash
 
     def start(self) -> None:
         """Start the merge coordinator background thread."""
@@ -106,6 +108,78 @@ class MergeCoordinator:
             f"Queued merge for {worker_result.issue_id} (branch: {worker_result.branch_name})"
         )
 
+    def _stash_local_changes(self) -> bool:
+        """Stash any uncommitted local changes in the main repo.
+
+        Returns:
+            True if changes were stashed, False if working tree was clean
+        """
+        # Check if there are any changes to stash
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if not status_result.stdout.strip():
+            return False  # Working tree is clean
+
+        # Stash the changes
+        stash_result = subprocess.run(
+            ["git", "stash", "push", "-m", "ll-parallel: auto-stash before merge"],
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if stash_result.returncode == 0:
+            self._stash_active = True
+            self.logger.debug("Stashed local changes before merge")
+            return True
+
+        return False
+
+    def _pop_stash(self) -> None:
+        """Restore stashed changes if any were stashed."""
+        if not self._stash_active:
+            return
+
+        pop_result = subprocess.run(
+            ["git", "stash", "pop"],
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        self._stash_active = False
+
+        if pop_result.returncode != 0:
+            self.logger.warning(
+                f"Failed to pop stash (may need manual recovery): {pop_result.stderr}"
+            )
+        else:
+            self.logger.debug("Restored stashed local changes")
+
+    def _is_local_changes_error(self, error_output: str) -> bool:
+        """Check if the error is due to uncommitted local changes.
+
+        Args:
+            error_output: The stderr/stdout from the failed git command
+
+        Returns:
+            True if the error indicates local changes would be overwritten
+        """
+        indicators = [
+            "Your local changes to the following files would be overwritten",
+            "Please commit your changes or stash them before you merge",
+            "error: cannot pull with rebase: You have unstaged changes",
+        ]
+        return any(indicator in error_output for indicator in indicators)
+
     def _merge_loop(self) -> None:
         """Background thread loop for processing merge requests."""
         while not self._shutdown_event.is_set():
@@ -126,6 +200,9 @@ class MergeCoordinator:
     def _process_merge(self, request: MergeRequest) -> None:
         """Process a single merge request.
 
+        Stashes any uncommitted local changes before attempting the merge,
+        and restores them afterward (regardless of success/failure).
+
         Args:
             request: Merge request to process
         """
@@ -133,6 +210,9 @@ class MergeCoordinator:
         self.logger.info(f"Processing merge for {result.issue_id}")
 
         request.status = MergeStatus.IN_PROGRESS
+
+        # Stash any local changes before merge operations
+        had_local_changes = self._stash_local_changes()
 
         try:
             # Ensure we're on main branch in the main repo
@@ -145,16 +225,31 @@ class MergeCoordinator:
             )
 
             if checkout_result.returncode != 0:
+                error_output = checkout_result.stderr + checkout_result.stdout
+                if self._is_local_changes_error(error_output):
+                    # This shouldn't happen since we stashed, but handle it anyway
+                    self.logger.warning(
+                        "Checkout failed due to local changes despite stash attempt"
+                    )
                 raise RuntimeError(f"Failed to checkout main: {checkout_result.stderr}")
 
-            # Pull latest changes (ignore result - merge will fail if needed)
-            subprocess.run(
+            # Pull latest changes
+            pull_result = subprocess.run(
                 ["git", "pull", "--rebase", "origin", "main"],
                 cwd=self.repo_path,
                 capture_output=True,
                 text=True,
                 timeout=60,
             )
+
+            # Check if pull failed due to local changes (edge case)
+            if pull_result.returncode != 0:
+                error_output = pull_result.stderr + pull_result.stdout
+                if self._is_local_changes_error(error_output):
+                    self.logger.warning(
+                        f"Pull failed due to local changes: {error_output[:200]}"
+                    )
+                # Continue anyway - merge will fail if there's a real issue
 
             # Attempt merge with no-ff
             merge_result = subprocess.run(
@@ -174,8 +269,19 @@ class MergeCoordinator:
             )
 
             if merge_result.returncode != 0:
-                # Merge failed - check if conflict
-                if "CONFLICT" in merge_result.stdout or "CONFLICT" in merge_result.stderr:
+                error_output = merge_result.stderr + merge_result.stdout
+
+                # Check for local changes error (shouldn't happen after stash)
+                if self._is_local_changes_error(error_output):
+                    self.logger.warning(
+                        f"Merge blocked by local changes despite stash: {error_output[:200]}"
+                    )
+                    raise RuntimeError(
+                        f"Merge failed due to local changes: {error_output[:200]}"
+                    )
+
+                # Check for merge conflict
+                if "CONFLICT" in error_output:
                     self._handle_conflict(request)
                     return
                 else:
@@ -186,6 +292,11 @@ class MergeCoordinator:
 
         except Exception as e:
             self._handle_failure(request, str(e))
+
+        finally:
+            # Always restore stashed changes
+            if had_local_changes:
+                self._pop_stash()
 
     def _handle_conflict(self, request: MergeRequest) -> None:
         """Handle a merge conflict with retry logic.
