@@ -1,0 +1,200 @@
+# Parallel Test Suite Task Definition
+# Runs test suites across different modules/packages concurrently
+#
+# Usage:
+#   br-task run test-suite
+#   br-task run test-suite --coverage
+#   br-task run test-suite --modules "auth,api,core"
+
+name: test-suite
+description: |
+  Run test suites in parallel across different modules or test categories.
+  Supports coverage reporting, test filtering, and isolated execution.
+  Results are aggregated with timing and failure analysis.
+
+version: "1.0"
+
+# Worker configuration
+workers:
+  count: 4                    # Number of parallel test runners
+  timeout: 600                # Per-worker timeout (10 minutes)
+  isolation: process          # process | thread | worktree
+  retry:
+    enabled: true
+    max_attempts: 2
+    delay: 3
+    retry_failed_only: true   # Only retry failed tests, not entire suite
+
+# Task inputs
+inputs:
+  modules:
+    type: array
+    default: []               # Empty = auto-discover
+    description: Specific modules to test (empty for auto-discovery)
+
+  coverage:
+    type: boolean
+    default: false
+    description: Enable coverage reporting
+
+  verbose:
+    type: boolean
+    default: false
+    description: Verbose test output
+
+  fail_fast:
+    type: boolean
+    default: false
+    description: Stop all workers on first failure
+
+  markers:
+    type: string
+    default: ""
+    description: Pytest markers to filter tests (e.g., "not slow")
+
+  parallel_within:
+    type: boolean
+    default: true
+    description: Use pytest-xdist within each module
+
+# Parallel subtasks - dynamically generated from modules or predefined
+subtasks:
+  - id: unit-tests
+    name: Unit Tests
+    description: Fast isolated unit tests
+    priority: 1               # Lower = runs first
+    command: |
+      pytest tests/unit/ \
+        {{#if inputs.coverage}}--cov=src --cov-report=xml:coverage-unit.xml{{/if}} \
+        {{#if inputs.verbose}}-v{{/if}} \
+        {{#if inputs.markers}}-m "{{inputs.markers}}"{{/if}} \
+        {{#if inputs.parallel_within}}-n auto{{/if}} \
+        --tb=short
+    file_patterns: ["tests/unit/**/*.py"]
+    on_failure: "{{#if inputs.fail_fast}}stop_all{{else}}continue{{/if}}"
+
+  - id: integration-tests
+    name: Integration Tests
+    description: Tests with external dependencies
+    priority: 2
+    command: |
+      pytest tests/integration/ \
+        {{#if inputs.coverage}}--cov=src --cov-append --cov-report=xml:coverage-integration.xml{{/if}} \
+        {{#if inputs.verbose}}-v{{/if}} \
+        {{#if inputs.markers}}-m "{{inputs.markers}}"{{/if}} \
+        --tb=short
+    file_patterns: ["tests/integration/**/*.py"]
+    on_failure: continue
+    environment:
+      TEST_DATABASE_URL: "sqlite:///:memory:"
+
+  - id: api-tests
+    name: API Tests
+    description: HTTP API endpoint tests
+    priority: 2
+    command: |
+      pytest tests/api/ \
+        {{#if inputs.coverage}}--cov=src --cov-append --cov-report=xml:coverage-api.xml{{/if}} \
+        {{#if inputs.verbose}}-v{{/if}} \
+        --tb=short
+    file_patterns: ["tests/api/**/*.py"]
+    on_failure: continue
+
+  - id: e2e-tests
+    name: End-to-End Tests
+    description: Full workflow tests
+    priority: 3               # Runs last (longest)
+    command: |
+      pytest tests/e2e/ \
+        {{#if inputs.coverage}}--cov=src --cov-append --cov-report=xml:coverage-e2e.xml{{/if}} \
+        {{#if inputs.verbose}}-v{{/if}} \
+        --tb=long \
+        --timeout=120
+    file_patterns: ["tests/e2e/**/*.py"]
+    on_failure: continue
+    timeout: 900              # Override: 15 minutes for E2E
+
+# Output configuration
+outputs:
+  format: json
+  include_timing: true
+  artifacts:
+    - path: "coverage-*.xml"
+      type: coverage
+    - path: "test-results-*.xml"
+      type: junit
+  summary:
+    show_passed: true
+    show_failed: true
+    show_skipped: true
+    show_duration: true
+    show_slowest: 5           # Show 5 slowest tests
+
+# Dependencies
+dependencies:
+  required:
+    - name: pytest
+      check: "pytest --version"
+      install: "pip install pytest"
+  optional:
+    - name: pytest-cov
+      check: "python -c 'import pytest_cov'"
+      install: "pip install pytest-cov"
+    - name: pytest-xdist
+      check: "python -c 'import xdist'"
+      install: "pip install pytest-xdist"
+    - name: pytest-timeout
+      check: "python -c 'import pytest_timeout'"
+      install: "pip install pytest-timeout"
+
+# Post-processing for coverage merging
+post_process:
+  coverage_merge:
+    enabled: true
+    command: |
+      if [ -f coverage-unit.xml ]; then
+        coverage combine
+        coverage report --show-missing
+        coverage xml -o coverage-combined.xml
+      fi
+
+# Example executions
+examples:
+  - description: Run all test suites
+    command: br-task run test-suite
+
+  - description: Run with coverage reporting
+    command: br-task run test-suite --coverage
+
+  - description: Run specific modules only
+    command: br-task run test-suite --modules "unit,api"
+
+  - description: Run with fail-fast (stop on first failure)
+    command: br-task run test-suite --fail-fast
+
+  - description: Run excluding slow tests
+    command: br-task run test-suite --markers "not slow"
+
+  - description: Verbose output with 6 workers
+    command: br-task run test-suite --verbose --workers 6
+
+# Hooks
+hooks:
+  pre_run:
+    - echo "Discovering test modules..."
+    - pytest --collect-only -q 2>/dev/null | tail -1 || true
+  post_run:
+    - |
+      echo ""
+      echo "========================================"
+      echo "TEST SUITE SUMMARY"
+      echo "========================================"
+      echo "Total Duration: ${TOTAL_DURATION}s"
+      echo "Passed: ${PASSED_COUNT}"
+      echo "Failed: ${FAILED_COUNT}"
+      echo "Skipped: ${SKIPPED_COUNT}"
+      if [ ${FAILED_COUNT} -gt 0 ]; then
+        echo ""
+        echo "Failed tests require attention!"
+        exit 1
+      fi

@@ -121,14 +121,6 @@ Group findings by confidence level:
 
 ---
 
-## Arguments
-
-$ARGUMENTS
-
-No arguments required. The command analyzes the entire codebase.
-
----
-
 ## Examples
 
 ```bash

@@ -1,0 +1,251 @@
+# Parallel Asset Build Task Definition
+# Compiles and optimizes various asset types concurrently
+#
+# Usage:
+#   br-task run build-assets
+#   br-task run build-assets --production
+#   br-task run build-assets --only "images,css"
+
+name: build-assets
+description: |
+  Build and optimize static assets in parallel.
+  Handles images, CSS, JavaScript bundles, and other static resources.
+  Supports development and production modes with different optimization levels.
+
+version: "1.0"
+
+# Worker configuration
+workers:
+  count: 4                    # Parallel build workers
+  timeout: 300                # 5 minutes per asset type
+  memory_limit: "2G"          # Memory limit per worker
+  retry:
+    enabled: true
+    max_attempts: 2
+    delay: 5
+
+# Task inputs
+inputs:
+  mode:
+    type: string
+    default: development
+    enum: [development, production]
+    description: Build mode (development = fast, production = optimized)
+
+  only:
+    type: array
+    default: []               # Empty = build all
+    description: Specific asset types to build
+
+  source_maps:
+    type: boolean
+    default: true
+    description: Generate source maps
+
+  clean:
+    type: boolean
+    default: false
+    description: Clean output directories before build
+
+  watch:
+    type: boolean
+    default: false
+    description: Watch for changes (development only)
+
+# Parallel subtasks
+subtasks:
+  - id: images
+    name: Image Optimization
+    description: Compress and convert images to modern formats
+    priority: 1
+    command: |
+      {{#if inputs.clean}}rm -rf dist/images && {{/if}}
+      mkdir -p dist/images
+
+      # Process images in parallel using find + xargs
+      find src/assets/images -type f \( -name "*.png" -o -name "*.jpg" -o -name "*.jpeg" -o -name "*.gif" \) | \
+      xargs -P 4 -I {} sh -c '
+        filename=$(basename "{}")
+        {{#if (eq inputs.mode "production")}}
+        # Production: heavy optimization + WebP/AVIF conversion
+        sharp -i "{}" -o "dist/images/${filename%.*}.webp" --quality 85
+        sharp -i "{}" -o "dist/images/${filename%.*}.avif" --quality 80
+        imagemin "{}" --out-dir=dist/images --plugin=pngquant --plugin=mozjpeg
+        {{else}}
+        # Development: simple copy with basic optimization
+        cp "{}" "dist/images/"
+        {{/if}}
+      '
+    file_patterns: ["src/assets/images/**/*.{png,jpg,jpeg,gif,svg}"]
+    on_failure: continue
+    outputs:
+      - "dist/images/**/*"
+
+  - id: css
+    name: CSS Compilation
+    description: Compile SCSS/CSS with PostCSS processing
+    priority: 1
+    command: |
+      {{#if inputs.clean}}rm -rf dist/css && {{/if}}
+      mkdir -p dist/css
+
+      {{#if (eq inputs.mode "production")}}
+      # Production: minified with autoprefixer
+      sass src/styles/main.scss:dist/css/main.css --style=compressed --no-source-map
+      postcss dist/css/main.css --use autoprefixer cssnano -o dist/css/main.min.css
+      {{else}}
+      # Development: expanded with source maps
+      sass src/styles/main.scss:dist/css/main.css --style=expanded {{#if inputs.source_maps}}--source-map{{/if}}
+      postcss dist/css/main.css --use autoprefixer -o dist/css/main.css {{#if inputs.source_maps}}--map{{/if}}
+      {{/if}}
+    file_patterns: ["src/styles/**/*.{css,scss,sass}"]
+    on_failure: stop_all
+    outputs:
+      - "dist/css/**/*.css"
+      - "dist/css/**/*.css.map"
+
+  - id: javascript
+    name: JavaScript Bundling
+    description: Bundle and transpile JavaScript/TypeScript
+    priority: 2
+    command: |
+      {{#if inputs.clean}}rm -rf dist/js && {{/if}}
+      mkdir -p dist/js
+
+      {{#if (eq inputs.mode "production")}}
+      # Production: minified with tree-shaking
+      esbuild src/js/main.ts \
+        --bundle \
+        --minify \
+        --tree-shaking=true \
+        --target=es2020 \
+        --outfile=dist/js/main.min.js \
+        --metafile=dist/js/meta.json
+      {{else}}
+      # Development: fast build with source maps
+      esbuild src/js/main.ts \
+        --bundle \
+        --target=es2020 \
+        --outfile=dist/js/main.js \
+        {{#if inputs.source_maps}}--sourcemap{{/if}}
+      {{/if}}
+    file_patterns: ["src/js/**/*.{js,ts,jsx,tsx}"]
+    on_failure: stop_all
+    outputs:
+      - "dist/js/**/*.js"
+      - "dist/js/**/*.js.map"
+
+  - id: fonts
+    name: Font Processing
+    description: Subset and convert fonts
+    priority: 3
+    command: |
+      {{#if inputs.clean}}rm -rf dist/fonts && {{/if}}
+      mkdir -p dist/fonts
+
+      {{#if (eq inputs.mode "production")}}
+      # Production: subset fonts to used characters
+      for font in src/assets/fonts/*.ttf; do
+        fontname=$(basename "$font" .ttf)
+        # Generate WOFF2 (modern browsers)
+        fonttools subset "$font" --output-file="dist/fonts/${fontname}.woff2" --flavor=woff2
+        # Generate WOFF (fallback)
+        fonttools subset "$font" --output-file="dist/fonts/${fontname}.woff" --flavor=woff
+      done
+      {{else}}
+      # Development: simple copy
+      cp src/assets/fonts/* dist/fonts/
+      {{/if}}
+    file_patterns: ["src/assets/fonts/**/*.{ttf,woff,woff2,otf}"]
+    on_failure: continue
+    outputs:
+      - "dist/fonts/**/*"
+
+# Output configuration
+outputs:
+  format: json
+  include_timing: true
+  include_file_sizes: true
+  artifacts:
+    - path: "dist/**/*"
+      type: build
+  summary:
+    show_sizes: true
+    show_compression: true    # Show before/after sizes
+    show_duration: true
+
+# Dependencies
+dependencies:
+  required:
+    - name: esbuild
+      check: "esbuild --version"
+      install: "npm install -g esbuild"
+  optional:
+    - name: sass
+      check: "sass --version"
+      install: "npm install -g sass"
+    - name: postcss-cli
+      check: "postcss --version"
+      install: "npm install -g postcss-cli autoprefixer cssnano"
+    - name: sharp-cli
+      check: "sharp --version"
+      install: "npm install -g sharp-cli"
+    - name: imagemin-cli
+      check: "imagemin --version"
+      install: "npm install -g imagemin-cli imagemin-pngquant imagemin-mozjpeg"
+    - name: fonttools
+      check: "fonttools --version"
+      install: "pip install fonttools brotli"
+
+# Post-processing
+post_process:
+  manifest:
+    enabled: true
+    command: |
+      # Generate asset manifest with hashes
+      find dist -type f \( -name "*.js" -o -name "*.css" -o -name "*.woff2" \) | \
+      while read file; do
+        hash=$(sha256sum "$file" | cut -c1-8)
+        echo "$(basename "$file"): $hash"
+      done > dist/manifest.json
+
+# Example executions
+examples:
+  - description: Development build (fast, with source maps)
+    command: br-task run build-assets
+
+  - description: Production build (optimized, minified)
+    command: br-task run build-assets --mode production
+
+  - description: Build only images and CSS
+    command: br-task run build-assets --only "images,css"
+
+  - description: Clean build (remove old files first)
+    command: br-task run build-assets --clean --mode production
+
+  - description: Development with file watching
+    command: br-task run build-assets --watch
+
+  - description: Production without source maps
+    command: br-task run build-assets --mode production --source-maps false
+
+# Hooks
+hooks:
+  pre_run:
+    - |
+      echo "Asset Build Configuration:"
+      echo "  Mode: {{inputs.mode}}"
+      echo "  Source Maps: {{inputs.source_maps}}"
+      echo "  Clean: {{inputs.clean}}"
+  post_run:
+    - |
+      echo ""
+      echo "========================================"
+      echo "BUILD COMPLETE"
+      echo "========================================"
+      echo "Output directory: dist/"
+      du -sh dist/* 2>/dev/null || true
+      echo ""
+      if [ "{{inputs.mode}}" = "production" ]; then
+        echo "Production assets ready for deployment"
+      fi

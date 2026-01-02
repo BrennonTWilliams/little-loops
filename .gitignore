@@ -35,8 +35,12 @@ ENV/
 *~
 
 # Runtime state
+.auto-manage-state.json
 .parallel-manage-state.json
 *.log
+
+# Git worktrees (automation creates these)
+.worktrees/
 
 # OS
 .DS_Store

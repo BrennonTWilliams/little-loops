@@ -104,14 +104,6 @@ EOF
 
 ---
 
-## Arguments
-
-$ARGUMENTS
-
-No arguments required. Analyzes the current branch.
-
----
-
 ## Examples
 
 ```bash

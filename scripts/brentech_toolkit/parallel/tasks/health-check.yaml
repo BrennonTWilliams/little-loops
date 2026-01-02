@@ -1,0 +1,310 @@
+# Parallel Health Check Task Definition
+# Performs concurrent health checks across multiple services
+#
+# Usage:
+#   br-task run health-check
+#   br-task run health-check --environment staging
+#   br-task run health-check --services "api,auth,db"
+
+name: health-check
+description: |
+  Perform parallel health checks across microservices and infrastructure.
+  Checks HTTP endpoints, database connections, message queues, and external services.
+  Returns aggregated health status with detailed diagnostics.
+
+version: "1.0"
+
+# Worker configuration
+workers:
+  count: 8                    # Check many services in parallel
+  timeout: 30                 # Quick timeout per service
+  retry:
+    enabled: true
+    max_attempts: 3
+    delay: 2
+    backoff: exponential      # 2s, 4s, 8s
+
+# Task inputs
+inputs:
+  environment:
+    type: string
+    default: development
+    enum: [development, staging, production]
+    description: Target environment for health checks
+
+  services:
+    type: array
+    default: []               # Empty = check all
+    description: Specific services to check
+
+  deep_check:
+    type: boolean
+    default: false
+    description: Perform deep health checks (includes DB queries, etc.)
+
+  alert:
+    type: boolean
+    default: true
+    description: Send alerts on failure (production only)
+
+  format:
+    type: string
+    default: table
+    enum: [table, json, prometheus]
+    description: Output format
+
+# Environment-specific configuration
+environments:
+  development:
+    base_url: "http://localhost"
+    services:
+      api: { port: 8080, path: "/health" }
+      auth: { port: 8081, path: "/health" }
+      worker: { port: 8082, path: "/health" }
+  staging:
+    base_url: "https://staging.example.com"
+    services:
+      api: { path: "/api/health" }
+      auth: { path: "/auth/health" }
+      worker: { path: "/worker/health" }
+  production:
+    base_url: "https://api.example.com"
+    services:
+      api: { path: "/health" }
+      auth: { path: "/auth/health" }
+      worker: { path: "/worker/health" }
+
+# Parallel subtasks
+subtasks:
+  - id: api-service
+    name: API Service
+    description: Main API service health
+    priority: 1
+    check_type: http
+    config:
+      url: "{{environments[inputs.environment].base_url}}{{environments[inputs.environment].services.api.path}}"
+      port: "{{environments[inputs.environment].services.api.port | default ''}}"
+      method: GET
+      expected_status: [200]
+      timeout: 10
+      headers:
+        Accept: "application/json"
+    assertions:
+      - type: json_path
+        path: "$.status"
+        expected: "healthy"
+      - type: response_time
+        max_ms: 500
+    on_failure: continue
+
+  - id: auth-service
+    name: Authentication Service
+    description: OAuth/JWT authentication service
+    priority: 1
+    check_type: http
+    config:
+      url: "{{environments[inputs.environment].base_url}}{{environments[inputs.environment].services.auth.path}}"
+      method: GET
+      expected_status: [200]
+      timeout: 10
+    assertions:
+      - type: json_path
+        path: "$.status"
+        expected: "healthy"
+    on_failure: continue
+
+  - id: database
+    name: Database Connection
+    description: Primary database health
+    priority: 1
+    check_type: command
+    config:
+      command: |
+        {{#if (eq inputs.environment "development")}}
+        pg_isready -h localhost -p 5432 -d myapp
+        {{else}}
+        pg_isready -h $DATABASE_HOST -p 5432 -d myapp
+        {{/if}}
+      expected_exit_code: 0
+    deep_check:
+      enabled: "{{inputs.deep_check}}"
+      command: |
+        psql $DATABASE_URL -c "SELECT 1" > /dev/null 2>&1 && \
+        psql $DATABASE_URL -c "SELECT count(*) FROM pg_stat_activity" | grep -q '[0-9]'
+    on_failure: continue
+
+  - id: redis-cache
+    name: Redis Cache
+    description: Redis cache cluster health
+    priority: 2
+    check_type: command
+    config:
+      command: |
+        {{#if (eq inputs.environment "development")}}
+        redis-cli -h localhost ping
+        {{else}}
+        redis-cli -h $REDIS_HOST -a $REDIS_PASSWORD ping
+        {{/if}}
+      expected_output: "PONG"
+      timeout: 5
+    deep_check:
+      enabled: "{{inputs.deep_check}}"
+      command: |
+        redis-cli -h $REDIS_HOST INFO replication | grep -q "role:master"
+    on_failure: continue
+
+  - id: message-queue
+    name: Message Queue
+    description: RabbitMQ/SQS health
+    priority: 2
+    check_type: http
+    config:
+      url: "{{#if (eq inputs.environment 'development')}}http://localhost:15672/api/healthchecks/node{{else}}$RABBITMQ_MANAGEMENT_URL/api/healthchecks/node{{/if}}"
+      method: GET
+      expected_status: [200]
+      auth:
+        type: basic
+        username: "{{#if (eq inputs.environment 'development')}}guest{{else}}$RABBITMQ_USER{{/if}}"
+        password: "{{#if (eq inputs.environment 'development')}}guest{{else}}$RABBITMQ_PASSWORD{{/if}}"
+    on_failure: continue
+
+  - id: external-payment
+    name: Payment Gateway
+    description: External payment service connectivity
+    priority: 3
+    check_type: http
+    config:
+      url: "https://api.stripe.com/v1/health"
+      method: GET
+      expected_status: [200, 401]  # 401 is ok (auth required, but reachable)
+      timeout: 15
+    on_failure: continue
+
+  - id: external-email
+    name: Email Service
+    description: Email delivery service connectivity
+    priority: 3
+    check_type: command
+    config:
+      command: |
+        # Check SMTP connectivity
+        nc -zv smtp.sendgrid.net 587 2>&1 | grep -q "succeeded"
+      timeout: 10
+    on_failure: continue
+
+  - id: storage
+    name: Object Storage
+    description: S3/MinIO storage health
+    priority: 2
+    check_type: command
+    config:
+      command: |
+        {{#if (eq inputs.environment "development")}}
+        aws --endpoint-url http://localhost:9000 s3 ls s3://uploads/ > /dev/null 2>&1
+        {{else}}
+        aws s3 ls s3://$S3_BUCKET/ --max-items 1 > /dev/null 2>&1
+        {{/if}}
+      timeout: 10
+    on_failure: continue
+
+# Output configuration
+outputs:
+  format: "{{inputs.format}}"
+  include_timing: true
+  include_details: true
+  prometheus:
+    metric_prefix: "service_health"
+    labels:
+      environment: "{{inputs.environment}}"
+  summary:
+    show_healthy: true
+    show_unhealthy: true
+    show_degraded: true
+    show_response_times: true
+
+# Alerting (production only)
+alerting:
+  enabled: "{{#if (and inputs.alert (eq inputs.environment 'production'))}}true{{else}}false{{/if}}"
+  channels:
+    - type: slack
+      webhook: "$SLACK_WEBHOOK_URL"
+      on: [unhealthy, degraded]
+    - type: pagerduty
+      routing_key: "$PAGERDUTY_KEY"
+      on: [unhealthy]
+  thresholds:
+    degraded: 1               # 1+ services slow
+    unhealthy: 1              # 1+ services down
+
+# Dependencies
+dependencies:
+  required:
+    - name: curl
+      check: "curl --version"
+  optional:
+    - name: jq
+      check: "jq --version"
+      install: "apt-get install jq || brew install jq"
+    - name: pg_isready
+      check: "pg_isready --version"
+      install: "apt-get install postgresql-client"
+    - name: redis-cli
+      check: "redis-cli --version"
+      install: "apt-get install redis-tools"
+    - name: aws-cli
+      check: "aws --version"
+      install: "pip install awscli"
+
+# Example executions
+examples:
+  - description: Quick health check (development)
+    command: br-task run health-check
+
+  - description: Check staging environment
+    command: br-task run health-check --environment staging
+
+  - description: Deep health check with DB queries
+    command: br-task run health-check --deep-check
+
+  - description: Check specific services only
+    command: br-task run health-check --services "api,database,redis"
+
+  - description: Production check with alerts
+    command: br-task run health-check --environment production --alert
+
+  - description: Output in Prometheus format
+    command: br-task run health-check --format prometheus
+
+  - description: JSON output for CI/CD pipelines
+    command: br-task run health-check --format json --environment staging
+
+# Hooks
+hooks:
+  pre_run:
+    - |
+      echo "Health Check Configuration:"
+      echo "  Environment: {{inputs.environment}}"
+      echo "  Deep Check: {{inputs.deep_check}}"
+      echo "  Alerting: {{#if (and inputs.alert (eq inputs.environment 'production'))}}enabled{{else}}disabled{{/if}}"
+      echo ""
+  post_run:
+    - |
+      echo ""
+      echo "========================================"
+      echo "HEALTH CHECK SUMMARY"
+      echo "========================================"
+      echo "Environment: {{inputs.environment}}"
+      echo "Healthy: ${HEALTHY_COUNT}/${TOTAL_COUNT}"
+      echo "Degraded: ${DEGRADED_COUNT}"
+      echo "Unhealthy: ${UNHEALTHY_COUNT}"
+      echo "Total Duration: ${TOTAL_DURATION}ms"
+      echo ""
+      if [ ${UNHEALTHY_COUNT} -gt 0 ]; then
+        echo "ALERT: ${UNHEALTHY_COUNT} service(s) are unhealthy!"
+        exit 1
+      elif [ ${DEGRADED_COUNT} -gt 0 ]; then
+        echo "WARNING: ${DEGRADED_COUNT} service(s) are degraded"
+        exit 0
+      else
+        echo "All services healthy"
+      fi

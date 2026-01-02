@@ -104,14 +104,6 @@ For resolved issues:
 
 ---
 
-## Arguments
-
-$ARGUMENTS
-
-No arguments required. Verifies all open issues.
-
----
-
 ## Examples
 
 ```bash

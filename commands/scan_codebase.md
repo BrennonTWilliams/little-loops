@@ -146,14 +146,6 @@ git add "{{config.issues.base_dir}}/"
 
 ---
 
-## Arguments
-
-$ARGUMENTS
-
-No arguments required. Scans the entire codebase.
-
----
-
 ## Examples
 
 ```bash

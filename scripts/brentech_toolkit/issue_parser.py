@@ -8,9 +8,59 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
-from brentech_toolkit.config import BRConfig
+if TYPE_CHECKING:
+    from brentech_toolkit.config import BRConfig
+
+
+def slugify(text: str) -> str:
+    """Convert text to slug format for filenames.
+
+    Args:
+        text: Text to convert
+
+    Returns:
+        Lowercase slug with hyphens
+    """
+    text = re.sub(r"[^\w\s-]", "", text)
+    text = re.sub(r"[-\s]+", "-", text)
+    return text.strip("-").lower()
+
+
+def get_next_issue_number(config: "BRConfig", category: str) -> int:
+    """Determine the next issue number for a category.
+
+    Scans both active and completed issue directories to find the highest
+    existing number for the category's prefix.
+
+    Args:
+        config: Project configuration
+        category: Category key (e.g., "bugs", "features")
+
+    Returns:
+        Next available issue number
+    """
+    prefix = config.get_issue_prefix(category)
+    max_num = 0
+
+    # Directories to scan
+    dirs_to_scan = [
+        config.get_issue_dir(category),
+        config.get_completed_dir(),
+    ]
+
+    for dir_path in dirs_to_scan:
+        if not dir_path.exists():
+            continue
+        for file in dir_path.glob("*.md"):
+            match = re.search(rf"{prefix}-(\d+)", file.name)
+            if match:
+                num = int(match.group(1))
+                if num > max_num:
+                    max_num = num
+
+    return max_num + 1
 
 
 @dataclass
@@ -68,7 +118,7 @@ class IssueParser:
     Uses BRConfig to understand issue categories, prefixes, and priorities.
     """
 
-    def __init__(self, config: BRConfig) -> None:
+    def __init__(self, config: "BRConfig") -> None:
         """Initialize parser with project configuration.
 
         Args:
@@ -198,7 +248,7 @@ class IssueParser:
 
 
 def find_issues(
-    config: BRConfig,
+    config: "BRConfig",
     category: str | None = None,
     skip_ids: set[str] | None = None,
 ) -> list[IssueInfo]:
@@ -238,7 +288,7 @@ def find_issues(
 
 
 def find_highest_priority_issue(
-    config: BRConfig,
+    config: "BRConfig",
     category: str | None = None,
     skip_ids: set[str] | None = None,
 ) -> IssueInfo | None:

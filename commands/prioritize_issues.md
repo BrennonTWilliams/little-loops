@@ -107,14 +107,6 @@ git mv "{{config.issues.base_dir}}/[category]/[old-name].md" \
 
 ---
 
-## Arguments
-
-$ARGUMENTS
-
-No arguments required. Processes all unprioritized issues.
-
----
-
 ## Examples
 
 ```bash

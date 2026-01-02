@@ -29,7 +29,7 @@ claude plugin install https://github.com/brentech/brentech-toolkit
 mkdir -p .claude
 cat > .claude/br-config.json << 'EOF'
 {
-  "$schema": "brentech-toolkit://config-schema.json",
+  "$schema": "https://raw.githubusercontent.com/brentech/brentech-toolkit/main/config-schema.json",
   "project": {
     "name": "my-project",
     "src_dir": "src/",
@@ -71,7 +71,7 @@ brentech-toolkit uses `.claude/br-config.json` for project-specific settings. Al
 
 ```json
 {
-  "$schema": "brentech-toolkit://config-schema.json",
+  "$schema": "https://raw.githubusercontent.com/brentech/brentech-toolkit/main/config-schema.json",
 
   "project": {
     "name": "my-project",
@@ -100,6 +100,20 @@ brentech-toolkit uses `.claude/br-config.json` for project-specific settings. Al
     "worktree_base": ".worktrees",
     "max_workers": 2,
     "stream_output": true
+  },
+
+  "parallel": {
+    "max_workers": 2,
+    "p0_sequential": true,
+    "worktree_base": ".worktrees",
+    "state_file": ".parallel-manage-state.json",
+    "timeout_per_issue": 3600,
+    "max_merge_retries": 2,
+    "include_p0": false,
+    "stream_subprocess_output": false,
+    "command_prefix": "/br:",
+    "ready_command": "ready_issue {{issue_id}}",
+    "manage_command": "manage_issue {{issue_type}} {{action}} {{issue_id}}"
   },
 
   "commands": {
@@ -145,14 +159,33 @@ Issue management settings:
 
 #### `automation`
 
-Automation script settings:
+Sequential automation settings (br-auto):
 
 | Key | Default | Description |
 |-----|---------|-------------|
 | `timeout_seconds` | `3600` | Per-issue timeout |
 | `state_file` | `.auto-manage-state.json` | State persistence |
+| `worktree_base` | `.worktrees` | Git worktree directory |
 | `max_workers` | `2` | Parallel workers |
 | `stream_output` | `true` | Stream subprocess output |
+
+#### `parallel`
+
+Parallel automation settings with git worktree isolation (br-parallel):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `max_workers` | `2` | Number of parallel workers |
+| `p0_sequential` | `true` | Process P0 issues sequentially |
+| `worktree_base` | `.worktrees` | Git worktree directory |
+| `state_file` | `.parallel-manage-state.json` | State persistence |
+| `timeout_per_issue` | `3600` | Per-issue timeout in seconds |
+| `max_merge_retries` | `2` | Rebase attempts before failing |
+| `include_p0` | `false` | Include P0 in parallel processing |
+| `stream_subprocess_output` | `false` | Stream Claude CLI output |
+| `command_prefix` | `/br:` | Prefix for slash commands |
+| `ready_command` | `ready_issue {{issue_id}}` | Ready command template |
+| `manage_command` | `manage_issue {{issue_type}} {{action}} {{issue_id}}` | Manage command template |
 
 ## Commands
 

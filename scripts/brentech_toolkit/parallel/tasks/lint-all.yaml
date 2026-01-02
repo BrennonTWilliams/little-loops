@@ -1,0 +1,132 @@
+# Parallel Linting Task Definition
+# Runs linters across multiple file types concurrently
+#
+# Usage:
+#   br-task run lint-all
+#   br-task run lint-all --fix
+#   br-task run lint-all --workers 4
+
+name: lint-all
+description: |
+  Run linting checks across multiple file types in parallel.
+  Each linter runs in its own worker, with results aggregated at completion.
+  Supports auto-fix mode for compatible linters.
+
+version: "1.0"
+
+# Worker configuration
+workers:
+  count: 3                    # Number of parallel workers (one per linter type)
+  timeout: 300                # Per-worker timeout in seconds (5 minutes)
+  retry:
+    enabled: true
+    max_attempts: 2
+    delay: 5                  # Seconds between retries
+
+# Task inputs
+inputs:
+  fix:
+    type: boolean
+    default: false
+    description: Apply automatic fixes where supported
+
+  paths:
+    type: array
+    default: ["src/", "tests/", "scripts/"]
+    description: Directories to lint
+
+  exclude:
+    type: array
+    default: ["**/node_modules/**", "**/__pycache__/**", "**/dist/**", "**/.git/**"]
+    description: Glob patterns to exclude from linting
+
+# Parallel subtasks - each runs in its own worker
+subtasks:
+  - id: python-lint
+    name: Python Linting
+    description: Run ruff linter on Python files
+    enabled: true
+    command: |
+      {{#if inputs.fix}}
+      ruff check --fix {{inputs.paths | join " "}}
+      {{else}}
+      ruff check {{inputs.paths | join " "}}
+      {{/if}}
+    file_patterns: ["**/*.py"]
+    on_failure: continue      # continue | stop_all
+
+  - id: typescript-lint
+    name: TypeScript/JavaScript Linting
+    description: Run ESLint on TypeScript and JavaScript files
+    enabled: true
+    command: |
+      {{#if inputs.fix}}
+      eslint --fix "{{inputs.paths | join '" "'}}" --ext .js,.jsx,.ts,.tsx
+      {{else}}
+      eslint "{{inputs.paths | join '" "'}}" --ext .js,.jsx,.ts,.tsx
+      {{/if}}
+    file_patterns: ["**/*.ts", "**/*.tsx", "**/*.js", "**/*.jsx"]
+    on_failure: continue
+
+  - id: css-lint
+    name: CSS/SCSS Linting
+    description: Run stylelint on CSS and SCSS files
+    enabled: true
+    command: |
+      {{#if inputs.fix}}
+      stylelint "{{inputs.paths | join '" "'}}/**/*.{css,scss}" --fix
+      {{else}}
+      stylelint "{{inputs.paths | join '" "'}}/**/*.{css,scss}"
+      {{/if}}
+    file_patterns: ["**/*.css", "**/*.scss", "**/*.less"]
+    on_failure: continue
+
+# Output configuration
+outputs:
+  format: json                # json | text | markdown
+  include_timing: true
+  include_file_counts: true
+  summary:
+    show_errors: true
+    show_warnings: true
+    show_fixed: true          # Count of auto-fixed issues
+
+# Dependencies (tools that must be available)
+dependencies:
+  required:
+    - name: ruff
+      check: "ruff --version"
+      install: "pip install ruff"
+  optional:
+    - name: eslint
+      check: "eslint --version"
+      install: "npm install -g eslint"
+    - name: stylelint
+      check: "stylelint --version"
+      install: "npm install -g stylelint"
+
+# Example executions
+examples:
+  - description: Run all linters with defaults
+    command: br-task run lint-all
+
+  - description: Run with auto-fix enabled
+    command: br-task run lint-all --fix
+
+  - description: Lint specific directories with more workers
+    command: br-task run lint-all --paths "src/ lib/" --workers 4
+
+  - description: Dry run to see what would be executed
+    command: br-task run lint-all --dry-run
+
+# Hooks
+hooks:
+  pre_run:
+    - echo "Starting parallel lint across $(echo {{inputs.paths}} | wc -w) directories..."
+  post_run:
+    - |
+      if [ $EXIT_CODE -eq 0 ]; then
+        echo "All linters passed successfully"
+      else
+        echo "Linting found issues - see output above"
+      fi
