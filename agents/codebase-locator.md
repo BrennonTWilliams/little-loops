@@ -1,7 +1,21 @@
 ---
 name: codebase-locator
-description: Locates files, directories, and components relevant to a feature or task. Call `codebase-locator` with human language prompt describing what you're looking for. Basically a "Super Grep/Glob/LS tool" - Use it if you find yourself desiring to use one of these tools more than once.
-tools: Grep, Glob, LS
+description: |
+  Locates files, directories, and components relevant to a feature or task. Call `codebase-locator` with human language prompt describing what you're looking for. Basically a "Super Grep/Glob/LS tool" - Use it if you find yourself desiring to use one of these tools more than once.
+
+  <example>
+  User: "Where are all the API routes defined?"
+  → Spawn codebase-locator to find route definitions across the codebase
+  </example>
+
+  <example>
+  User: "Find all files related to user authentication"
+  → Spawn codebase-locator to locate auth-related files and directories
+  </example>
+allowed_tools:
+  - Grep
+  - Glob
+  - LS
 model: sonnet
 ---
 

@@ -1,7 +1,22 @@
 ---
 name: codebase-analyzer
-description: Analyzes codebase implementation details. Call the codebase-analyzer agent when you need to find detailed information about specific components. As always, the more detailed your request prompt, the better! :)
-tools: Read, Grep, Glob, LS
+description: |
+  Analyzes codebase implementation details. Call the codebase-analyzer agent when you need to find detailed information about specific components. As always, the more detailed your request prompt, the better! :)
+
+  <example>
+  User: "How does the authentication flow work in this app?"
+  → Spawn codebase-analyzer to trace the auth implementation with file:line references
+  </example>
+
+  <example>
+  User: "Explain the data flow in the webhook handler"
+  → Spawn codebase-analyzer to analyze webhook processing logic
+  </example>
+allowed_tools:
+  - Read
+  - Grep
+  - Glob
+  - LS
 model: sonnet
 ---
 

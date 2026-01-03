@@ -29,7 +29,14 @@ description: |
   </example>
 
   Keywords: "look up", "search for", "find docs", "what's new in", "current version", "latest release", "how do I [with recent tech]", "research", "documentation for"
-tools: WebSearch, WebFetch, TodoWrite, Read, Grep, Glob, LS
+allowed_tools:
+  - WebSearch
+  - WebFetch
+  - TodoWrite
+  - Read
+  - Grep
+  - Glob
+  - LS
 color: yellow
 model: sonnet
 ---
