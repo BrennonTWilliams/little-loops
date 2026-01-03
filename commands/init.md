@@ -227,6 +227,51 @@ Use AskUserQuestion:
 1. **Focus directories**: Offer detected dirs or custom selection
 2. **Exclude patterns**: Offer adding custom patterns beyond defaults
 
+#### Step 5d: Parallel Processing (ll-parallel)
+
+Use AskUserQuestion to ask about parallel issue processing:
+
+1. **Enable parallel processing**: Ask if user wants to configure `ll-parallel` for processing multiple issues concurrently using git worktrees.
+
+```
+header: "Parallel"
+question: "Enable parallel issue processing with git worktrees (ll-parallel)?"
+options:
+  - label: "No"
+    description: "Skip parallel config (can add later)"
+  - label: "Yes"
+    description: "Configure ll-parallel for concurrent issue processing"
+multiSelect: false
+```
+
+2. **Worktree file copying** (only if parallel enabled): Ask which files should be copied from the main repo to each worktree. Use multi-select since users often need multiple files.
+
+```
+header: "Worktree Files"
+question: "Which files should be copied to each git worktree?"
+options:
+  - label: ".env"
+    description: "Environment variables (API keys, secrets)"
+  - label: ".claude/settings.local.json"
+    description: "Local Claude Code settings"
+  - label: ".env.local"
+    description: "Local environment overrides"
+  - label: ".secrets"
+    description: "Secrets file"
+multiSelect: true
+```
+
+If parallel is enabled, add to configuration:
+```json
+{
+  "parallel": {
+    "worktree_copy_files": ["<selected files>"]
+  }
+}
+```
+
+Only include non-default values. If user selects exactly `[".env", ".claude/settings.local.json"]` (the defaults), the `worktree_copy_files` key can be omitted.
+
 **Key behavior**:
 - Wait for each AskUserQuestion response before proceeding
 - Use the responses to build the final configuration
@@ -260,6 +305,9 @@ Configuration Summary:
   scan.focus_dirs:    [focus_dirs]
   scan.exclude_patterns: [exclude_patterns]
 
+  [PARALLEL]                              # Only show if configured
+  parallel.worktree_copy_files: [files]
+
 ================================================================================
 ```
 
@@ -286,11 +334,14 @@ If `--yes` flag IS set:
      "$schema": "https://raw.githubusercontent.com/little-loops/little-loops/main/config-schema.json",
      "project": { ... },
      "issues": { ... },
-     "scan": { ... }
+     "scan": { ... },
+     "parallel": { ... }
    }
    ```
 
 3. Only include sections with non-default values to keep the file minimal
+   - Omit `parallel` section entirely if not configured in interactive mode
+   - Omit `parallel.worktree_copy_files` if user selected exactly the defaults
 
 ### 9. Display Completion Message
 
@@ -305,6 +356,7 @@ Next steps:
   1. Review and customize: .claude/ll-config.json
   2. Try a command: /ll:check_code
   3. Set up issue tracking: mkdir -p .issues/{bugs,features,enhancements}
+  4. Run parallel processing: ll-parallel      # Only show if parallel configured
 
 Documentation: https://github.com/little-loops/little-loops
 
