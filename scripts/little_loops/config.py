@@ -14,6 +14,18 @@ from typing import TYPE_CHECKING, Any, cast
 if TYPE_CHECKING:
     from little_loops.parallel.types import ParallelConfig
 
+__all__ = [
+    "BRConfig",
+    "CLConfig",
+    "CategoryConfig",
+    "ProjectConfig",
+    "IssuesConfig",
+    "AutomationConfig",
+    "ParallelAutomationConfig",
+    "CommandsConfig",
+    "ScanConfig",
+]
+
 
 @dataclass
 class CategoryConfig:
