@@ -385,10 +385,7 @@ The issue was determined to be invalid, already resolved, or not actionable.
 """
             content += resolution
 
-        # Write to completed location
-        completed_path.write_text(content)
-
-        # Use git mv if possible
+        # Use git mv first to preserve history, then write updated content
         result = subprocess.run(
             ["git", "mv", str(original_path), str(completed_path)],
             capture_output=True,
@@ -396,11 +393,14 @@ The issue was determined to be invalid, already resolved, or not actionable.
         )
 
         if result.returncode != 0:
-            # git mv failed, file was already written above, just remove original
+            # git mv failed, fall back to manual copy + delete
             logger.warning(f"git mv failed: {result.stderr}")
+            completed_path.write_text(content)
             original_path.unlink()
         else:
             logger.success(f"Used git mv to move {info.issue_id}")
+            # Write updated content to the moved file
+            completed_path.write_text(content)
 
         # Stage and commit
         stage_result = subprocess.run(
@@ -517,10 +517,7 @@ def complete_issue_lifecycle(
 """
             content += resolution
 
-        # Write to completed location
-        completed_path.write_text(content)
-
-        # Use git mv if possible, otherwise regular mv
+        # Use git mv first to preserve history, then write updated content
         result = subprocess.run(
             ["git", "mv", str(original_path), str(completed_path)],
             capture_output=True,
@@ -528,11 +525,14 @@ def complete_issue_lifecycle(
         )
 
         if result.returncode != 0:
-            # git mv failed, file was already written above, just remove original
+            # git mv failed, fall back to manual copy + delete
             logger.warning(f"git mv failed: {result.stderr}")
+            completed_path.write_text(content)
             original_path.unlink()
         else:
             logger.success(f"Used git mv to move {info.issue_id}")
+            # Write updated content to the moved file
+            completed_path.write_text(content)
 
         # Commit all implementation changes + issue file move
         # Stage all changes (implementation code + issue file move)
