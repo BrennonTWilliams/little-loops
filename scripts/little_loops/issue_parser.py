@@ -268,6 +268,9 @@ def find_issues(
     parser = IssueParser(config)
     issues: list[IssueInfo] = []
 
+    # Get completed directory for duplicate detection
+    completed_dir = config.get_completed_dir()
+
     # Determine which categories to search
     if category:
         categories = [category] if category in config.issue_categories else []
@@ -280,6 +283,11 @@ def find_issues(
             continue
 
         for issue_file in issue_dir.glob("*.md"):
+            # Pre-flight check: skip if already exists in completed directory
+            completed_path = completed_dir / issue_file.name
+            if completed_path.exists():
+                continue
+
             info = parser.parse_file(issue_file)
             # Apply skip filter
             if info.issue_id in skip_ids:

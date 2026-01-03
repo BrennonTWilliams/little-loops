@@ -390,6 +390,38 @@ class TestFindIssues:
 
         assert len(issues) == 0
 
+    def test_find_issues_skips_duplicates_in_completed(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test that issues already in completed/ are skipped from active directories."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        # Setup directories
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        completed_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create an issue in bugs/
+        duplicate_file = "P0-BUG-100-duplicate-test.md"
+        (bugs_dir / duplicate_file).write_text("# BUG-100: Duplicate Test\n\nContent.")
+
+        # Create the same file in completed/ (simulating already-completed issue)
+        (completed_dir / duplicate_file).write_text("# BUG-100: Duplicate Test\n\nContent.")
+
+        # Create a non-duplicate issue
+        (bugs_dir / "P1-BUG-101-not-duplicate.md").write_text("# BUG-101: Not Duplicate\n\nContent.")
+
+        issues = find_issues(config, category="bugs")
+
+        # Should only find the non-duplicate issue
+        issue_ids = [i.issue_id for i in issues]
+        assert "BUG-100" not in issue_ids
+        assert "BUG-101" in issue_ids
+        assert len(issues) == 1
+
 
 class TestFindHighestPriorityIssue:
     """Tests for find_highest_priority_issue function."""
