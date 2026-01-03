@@ -18,8 +18,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
-from little_loops.issue_manager import verify_work_was_done
 from little_loops.parallel.output_parsing import parse_ready_issue_output
+from little_loops.work_verification import verify_work_was_done
 from little_loops.parallel.types import ParallelConfig, WorkerResult
 from little_loops.subprocess_utils import run_claude_command as _run_claude_base
 
