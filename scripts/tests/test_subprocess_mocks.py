@@ -283,13 +283,29 @@ class TestVerifyWorkWasDone:
 
         assert result is True
 
-    def test_excludes_markdown_files(self, mock_logger: MagicMock) -> None:
-        """Markdown files are excluded from code change detection."""
+    def test_markdown_files_count_as_work(self, mock_logger: MagicMock) -> None:
+        """Markdown files outside excluded dirs count as meaningful work."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
                 args=[],
                 returncode=0,
-                stdout="README.md\nCHANGELOG.md\nthoughts/notes.md\n",
+                stdout="README.md\nCHANGELOG.md\n",
+                stderr="",
+            )
+
+            from little_loops.issue_manager import verify_work_was_done
+            result = verify_work_was_done(mock_logger)
+
+        # Markdown files are now considered valid work
+        assert result is True
+
+    def test_excludes_thoughts_directory(self, mock_logger: MagicMock) -> None:
+        """Files in thoughts/ directory are excluded from work detection."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout="thoughts/notes.md\nthoughts/scratch.txt\n",
                 stderr="",
             )
 

@@ -152,43 +152,79 @@ def check_git_status(logger: Logger) -> bool:
         return True
 
 
-def verify_work_was_done(logger: Logger) -> bool:
-    """Verify that actual code changes were made (not just issue file moves).
+# Directories that are excluded when verifying work was done.
+# Changes to files in these directories don't count as "real work".
+EXCLUDED_DIRECTORIES = (
+    ".issues/",
+    ".speckit/",
+    "thoughts/",
+    ".worktrees/",
+    ".auto-manage",
+)
 
-    Returns True if there's evidence of implementation work:
-    - Changes to src/ files
-    - Changes to tests/ files
-    - New commits since workflow started
 
-    This prevents the fallback from marking issues as "completed" when
-    no actual fix was implemented.
+def filter_excluded_files(files: list[str]) -> list[str]:
+    """Filter out files in excluded directories.
+
+    Args:
+        files: List of file paths to filter
+
+    Returns:
+        List of files not in excluded directories
+    """
+    return [
+        f
+        for f in files
+        if f and not any(f.startswith(excluded) for excluded in EXCLUDED_DIRECTORIES)
+    ]
+
+
+def verify_work_was_done(
+    logger: Logger, changed_files: list[str] | None = None
+) -> bool:
+    """Verify that actual work was done (not just issue file moves).
+
+    Returns True if there's evidence of implementation work - changes to files
+    outside of excluded directories like .issues/, thoughts/, etc.
+
+    This prevents marking issues as "completed" when no actual fix was implemented.
 
     Args:
         logger: Logger for output
+        changed_files: Optional list of changed files. If not provided,
+            will detect via git diff commands.
 
     Returns:
-        True if code changes were detected
+        True if meaningful file changes were detected
     """
+    # If changed_files provided, use them directly (ll-parallel case)
+    if changed_files is not None:
+        meaningful_changes = filter_excluded_files(changed_files)
+        if meaningful_changes:
+            logger.info(
+                f"Found {len(meaningful_changes)} file(s) changed: "
+                f"{meaningful_changes[:5]}"
+            )
+            return True
+        logger.warning("No meaningful changes detected - only excluded files modified")
+        return False
+
+    # Otherwise detect via git (ll-auto case)
     try:
-        # Check for uncommitted changes in source code (not just .issues/)
+        # Check for uncommitted changes
         result = subprocess.run(
             ["git", "diff", "--name-only"],
             capture_output=True,
             text=True,
         )
         if result.returncode == 0:
-            changed_files = result.stdout.strip().split("\n")
-            # Filter to actual code changes (exclude issue files and docs)
-            code_changes = [
-                f
-                for f in changed_files
-                if f
-                and not f.startswith(".issues/")
-                and not f.startswith("thoughts/")
-                and not f.endswith(".md")
-            ]
-            if code_changes:
-                logger.info(f"Found {len(code_changes)} code file(s) changed: {code_changes[:5]}")
+            files = result.stdout.strip().split("\n")
+            meaningful_changes = filter_excluded_files(files)
+            if meaningful_changes:
+                logger.info(
+                    f"Found {len(meaningful_changes)} file(s) changed: "
+                    f"{meaningful_changes[:5]}"
+                )
                 return True
 
         # Also check staged changes
@@ -198,20 +234,16 @@ def verify_work_was_done(logger: Logger) -> bool:
             text=True,
         )
         if result.returncode == 0:
-            staged_files = result.stdout.strip().split("\n")
-            code_staged = [
-                f
-                for f in staged_files
-                if f
-                and not f.startswith(".issues/")
-                and not f.startswith("thoughts/")
-                and not f.endswith(".md")
-            ]
-            if code_staged:
-                logger.info(f"Found {len(code_staged)} staged code file(s): {code_staged[:5]}")
+            staged = result.stdout.strip().split("\n")
+            meaningful_staged = filter_excluded_files(staged)
+            if meaningful_staged:
+                logger.info(
+                    f"Found {len(meaningful_staged)} staged file(s): "
+                    f"{meaningful_staged[:5]}"
+                )
                 return True
 
-        logger.warning("No code changes detected - only issue/doc files modified")
+        logger.warning("No meaningful changes detected - only excluded files modified")
         return False
 
     except Exception as e:

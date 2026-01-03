@@ -263,15 +263,7 @@ class ParallelConfig:
     only_ids: set[str] | None = None
     skip_ids: set[str] | None = None
     # Validation settings
-    require_code_changes: bool = True  # If False, allow doc-only changes
-    doc_only_keywords: tuple[str, ...] = (
-        "doc",
-        "docs",
-        "documentation",
-        "readme",
-        "changelog",
-        "license",
-    )  # Issue IDs containing these keywords can have doc-only changes
+    require_code_changes: bool = True  # If False, allow changes to only excluded dirs
     # Files to copy from main repo to worktrees
     worktree_copy_files: list[str] = field(
         default_factory=lambda: [".claude/settings.local.json", ".env"]
@@ -330,7 +322,6 @@ class ParallelConfig:
             "only_ids": list(self.only_ids) if self.only_ids else None,
             "skip_ids": list(self.skip_ids) if self.skip_ids else None,
             "require_code_changes": self.require_code_changes,
-            "doc_only_keywords": list(self.doc_only_keywords),
         }
 
     @classmethod
@@ -338,10 +329,6 @@ class ParallelConfig:
         """Create from dictionary (JSON deserialization)."""
         only_ids_data = data.get("only_ids")
         skip_ids_data = data.get("skip_ids")
-        doc_only_keywords = data.get(
-            "doc_only_keywords",
-            ("doc", "docs", "documentation", "readme", "changelog", "license"),
-        )
         return cls(
             max_workers=data.get("max_workers", 2),
             p0_sequential=data.get("p0_sequential", True),
@@ -367,5 +354,4 @@ class ParallelConfig:
             only_ids=set(only_ids_data) if only_ids_data else None,
             skip_ids=set(skip_ids_data) if skip_ids_data else None,
             require_code_changes=data.get("require_code_changes", True),
-            doc_only_keywords=tuple(doc_only_keywords),
         )

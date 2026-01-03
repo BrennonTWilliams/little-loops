@@ -133,6 +133,8 @@ class ParallelAutomationConfig:
     worktree_copy_files: list[str] = field(
         default_factory=lambda: [".claude/settings.local.json", ".env"]
     )
+    # Validation settings
+    require_code_changes: bool = True  # If False, allow changes to only excluded dirs
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ParallelAutomationConfig:
@@ -154,6 +156,7 @@ class ParallelAutomationConfig:
             worktree_copy_files=data.get(
                 "worktree_copy_files", [".claude/settings.local.json", ".env"]
             ),
+            require_code_changes=data.get("require_code_changes", True),
         )
 
 
@@ -395,6 +398,7 @@ class BRConfig:
             only_ids=only_ids,
             skip_ids=skip_ids,
             worktree_copy_files=self._parallel.worktree_copy_files,
+            require_code_changes=self._parallel.require_code_changes,
         )
 
     @property
