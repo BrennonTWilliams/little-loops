@@ -359,6 +359,121 @@ Issue: File not found
         assert any("WARNING" in c for c in result["concerns"])
         assert any("Concern" in c for c in result["concerns"])
 
+    def test_verdict_in_code_block(self) -> None:
+        """Test parsing verdict wrapped in code block."""
+        output = """
+## VERDICT
+```
+READY
+```
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+        assert result["is_ready"] is True
+
+    def test_verdict_in_code_block_with_language(self) -> None:
+        """Test parsing verdict in code block with language specifier."""
+        output = """
+## VERDICT
+```markdown
+CORRECTED
+```
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "CORRECTED"
+        assert result["is_ready"] is True
+
+    def test_verdict_with_inline_backticks(self) -> None:
+        """Test parsing verdict with inline code backticks."""
+        output = """
+## VERDICT
+`NOT_READY`
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "NOT_READY"
+        assert result["is_ready"] is False
+
+    def test_single_hash_header(self) -> None:
+        """Test parsing with single # header instead of ##."""
+        output = """
+# VERDICT
+READY
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+        assert result["is_ready"] is True
+
+    def test_verdict_with_explanation(self) -> None:
+        """Test verdict with inline explanation text."""
+        output = """
+## VERDICT
+READY - The issue is complete and ready for implementation
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+
+    def test_verdict_space_variant(self) -> None:
+        """Test verdict with space instead of underscore."""
+        output = """
+## VERDICT
+NOT READY
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "NOT_READY"
+        assert result["is_ready"] is False
+
+    def test_verdict_hyphen_variant(self) -> None:
+        """Test verdict with hyphen instead of underscore."""
+        output = """
+## VERDICT
+NEEDS-REVIEW
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "NEEDS_REVIEW"
+        assert result["is_ready"] is False
+
+    def test_verdict_near_keyword(self) -> None:
+        """Test finding verdict near 'verdict' keyword without section."""
+        output = """
+After analysis, the verdict is READY for implementation.
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+        assert result["is_ready"] is True
+
+    def test_verdict_lowercase(self) -> None:
+        """Test parsing lowercase verdict."""
+        output = """
+## VERDICT
+ready
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+        assert result["is_ready"] is True
+
+    def test_verdict_fallback_scan(self) -> None:
+        """Test fallback to scanning entire output for verdict."""
+        output = """
+Some preamble text here.
+
+After reviewing the issue, it is CORRECTED and ready to proceed.
+
+More text follows.
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "CORRECTED"
+        assert result["is_ready"] is True
+
     def test_validation_section_parsing(self) -> None:
         """Test that validation section is parsed."""
         output = """

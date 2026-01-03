@@ -1,3 +1,7 @@
+<p align="center">
+  <img src="assets/little-loops.jpeg" alt="Little Loops Logo" width="200">
+</p>
+
 # little-loops
 
 Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing.

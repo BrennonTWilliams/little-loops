@@ -11,9 +11,73 @@ import re
 from typing import Any
 
 # Regex patterns for standardized output parsing
-SECTION_PATTERN = re.compile(r"^## (\w+)\s*$", re.MULTILINE)
+# Support both ## SECTION and # SECTION headers
+SECTION_PATTERN = re.compile(r"^#{1,2} (\w+)\s*$", re.MULTILINE)
 TABLE_ROW_PATTERN = re.compile(r"\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(.+?)\s*\|")
 STATUS_PATTERN = re.compile(r"^- (\w+): (\w+)", re.MULTILINE)
+
+# Valid verdicts for ready_issue
+VALID_VERDICTS = ("READY", "CORRECTED", "NOT_READY", "NEEDS_REVIEW", "CLOSE")
+
+
+def _clean_verdict_content(content: str) -> str:
+    """Clean verdict content by removing common formatting artifacts.
+
+    Handles:
+    - Code block markers (``` and `)
+    - Markdown bold/italic (** and *)
+    - Template brackets ([])
+    - Leading/trailing whitespace
+    - Colons after verdict
+
+    Args:
+        content: Raw verdict content from output
+
+    Returns:
+        Cleaned content ready for verdict extraction
+    """
+    # Remove code fence markers (``` or ```)
+    content = re.sub(r"^```\w*\s*", "", content)
+    content = re.sub(r"\s*```$", "", content)
+    # Remove inline code backticks
+    content = content.replace("`", "")
+    # Remove markdown bold/italic
+    content = content.replace("**", "").replace("*", "")
+    # Remove template brackets
+    content = content.strip("[]")
+    return content.strip()
+
+
+def _extract_verdict_from_text(text: str) -> str | None:
+    """Extract a valid verdict from arbitrary text.
+
+    Searches for valid verdict keywords in the text, handling various
+    formats like "READY", "The verdict is READY", "NOT_READY", etc.
+
+    Args:
+        text: Text that may contain a verdict
+
+    Returns:
+        Valid verdict string or None if not found
+    """
+    text_upper = text.upper()
+
+    # Check each valid verdict (check NOT_READY before READY to avoid partial match)
+    # Order matters: check longer/compound verdicts first
+    for verdict in ("NOT_READY", "NEEDS_REVIEW", "CORRECTED", "READY", "CLOSE"):
+        # Match verdict as a word boundary (not part of another word)
+        # Handle both underscore and space variants
+        patterns = [
+            rf"\b{verdict}\b",
+            rf"\b{verdict.replace('_', ' ')}\b",  # NOT READY, NEEDS REVIEW
+            rf"\b{verdict.replace('_', '-')}\b",  # NOT-READY, NEEDS-REVIEW
+        ]
+        for pattern in patterns:
+            if re.search(pattern, text_upper):
+                # Normalize to underscore format
+                return verdict
+
+    return None
 
 
 def parse_sections(output: str) -> dict[str, str]:
@@ -128,34 +192,53 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
     close_reason: str | None = None
     close_status: str | None = None
 
-    # Valid verdicts including new ones
-    valid_verdicts = ("READY", "CORRECTED", "NOT_READY", "NEEDS_REVIEW", "CLOSE")
-
-    # Check for VERDICT section (new format)
+    # Strategy 1: Check for VERDICT section (new format with # or ## header)
     if "VERDICT" in sections:
-        # Extract first non-empty line (verdict may be followed by explanatory text)
-        verdict_lines = sections["VERDICT"].strip().split("\n")
-        first_line = next((line.strip() for line in verdict_lines if line.strip()), "")
-        verdict_content = first_line.upper()
-        # Remove markdown formatting (bold ** and italic *) and template brackets
-        # Use replace to handle markers anywhere in the string
-        verdict_content = verdict_content.replace("**", "").replace("*", "").strip("[]")
-        # Take only the first word (verdict may have trailing explanation like
-        # "CORRECTED -> Issue status changed...")
-        verdict_word = verdict_content.split()[0] if verdict_content.split() else ""
-        verdict_word = verdict_word.rstrip(":*")  # Handle "CORRECTED:" or trailing *
-        if verdict_word in valid_verdicts:
-            verdict = verdict_word
+        verdict_section = sections["VERDICT"].strip()
 
-    # Fall back to old format (VERDICT: READY)
+        # Try each non-empty line until we find a verdict
+        for line in verdict_section.split("\n"):
+            line = line.strip()
+            if not line:
+                continue
+
+            # Clean the line of formatting artifacts
+            cleaned = _clean_verdict_content(line)
+            if not cleaned:
+                continue
+
+            # Try to extract verdict from cleaned line
+            extracted = _extract_verdict_from_text(cleaned)
+            if extracted:
+                verdict = extracted
+                break
+
+    # Strategy 2: Old format (VERDICT: READY) anywhere in output
     if verdict == "UNKNOWN":
         verdict_match = re.search(
-            r"VERDICT:\s*(READY|CORRECTED|NOT[_\s]?READY|NEEDS[_\s]?REVIEW|CLOSE)",
+            r"VERDICT:\s*(READY|CORRECTED|NOT[_\s-]?READY|NEEDS[_\s-]?REVIEW|CLOSE)",
             output,
             re.IGNORECASE,
         )
         if verdict_match:
-            verdict = verdict_match.group(1).upper().replace(" ", "_")
+            verdict = verdict_match.group(1).upper().replace(" ", "_").replace("-", "_")
+
+    # Strategy 3: Look for verdict keywords near "verdict" mentions
+    if verdict == "UNKNOWN":
+        # Find lines containing "verdict" and check for verdict keywords
+        for line in output.split("\n"):
+            if "verdict" in line.lower():
+                extracted = _extract_verdict_from_text(line)
+                if extracted:
+                    verdict = extracted
+                    break
+
+    # Strategy 4: Scan entire output for standalone verdict keywords
+    # (last resort - may have false positives but better than UNKNOWN)
+    if verdict == "UNKNOWN":
+        extracted = _extract_verdict_from_text(output)
+        if extracted:
+            verdict = extracted
 
     # Parse CONCERNS section (new format)
     if "CONCERNS" in sections:
