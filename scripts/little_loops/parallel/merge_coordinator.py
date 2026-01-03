@@ -113,12 +113,24 @@ class MergeCoordinator:
     def _stash_local_changes(self) -> bool:
         """Stash any uncommitted local changes in the main repo.
 
+        Excludes the state file from the check since it's constantly updated
+        during parallel execution and would cause stash/pop conflicts.
+
         Returns:
             True if changes were stashed, False if working tree was clean
         """
-        # Check if there are any changes to stash
+        # Check if there are any changes to stash, excluding the state file
+        # which is constantly updated during execution
+        state_file_path = str(self.config.state_file)
         status_result = subprocess.run(
-            ["git", "status", "--porcelain"],
+            [
+                "git",
+                "status",
+                "--porcelain",
+                "--",
+                ".",
+                f":(exclude){state_file_path}",
+            ],
             cwd=self.repo_path,
             capture_output=True,
             text=True,
@@ -126,9 +138,9 @@ class MergeCoordinator:
         )
 
         if not status_result.stdout.strip():
-            return False  # Working tree is clean
+            return False  # Working tree is clean (ignoring state file)
 
-        # Stash the changes
+        # Stash the changes (excluding untracked files which includes state file)
         stash_result = subprocess.run(
             ["git", "stash", "push", "-m", "ll-parallel: auto-stash before merge"],
             cwd=self.repo_path,
