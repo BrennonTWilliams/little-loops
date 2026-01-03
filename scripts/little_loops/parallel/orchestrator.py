@@ -362,7 +362,7 @@ class ParallelOrchestrator:
         # Handle issue closure (no merge needed)
         if result.should_close:
             # Lazy import to avoid circular dependency
-            from little_loops.issue_manager import close_issue
+            from little_loops.issue_lifecycle import close_issue
 
             self.logger.info(
                 f"{result.issue_id} should be closed: {result.close_status}"
@@ -407,7 +407,7 @@ class ParallelOrchestrator:
         # Handle closure for sequential issues
         if result.should_close:
             # Lazy import to avoid circular dependency
-            from little_loops.issue_manager import close_issue
+            from little_loops.issue_lifecycle import close_issue
 
             info = self._issue_info_by_id.get(result.issue_id)
             if info and close_issue(

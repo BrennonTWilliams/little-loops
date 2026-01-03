@@ -164,7 +164,7 @@ class TestCheckGitStatus:
                 args=[], returncode=0, stdout="", stderr=""
             )
 
-            from little_loops.issue_manager import check_git_status
+            from little_loops.git_operations import check_git_status
             result = check_git_status(mock_logger)
 
         assert result is False
@@ -178,7 +178,7 @@ class TestCheckGitStatus:
                 args=[], returncode=1, stdout="", stderr=""
             )
 
-            from little_loops.issue_manager import check_git_status
+            from little_loops.git_operations import check_git_status
             result = check_git_status(mock_logger)
 
         assert result is True
@@ -194,7 +194,7 @@ class TestCheckGitStatus:
                 subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr=""),
             ]
 
-            from little_loops.issue_manager import check_git_status
+            from little_loops.git_operations import check_git_status
             result = check_git_status(mock_logger)
 
         assert result is True
@@ -206,7 +206,7 @@ class TestCheckGitStatus:
                 args=[], returncode=0, stdout="", stderr=""
             )
 
-            from little_loops.issue_manager import check_git_status
+            from little_loops.git_operations import check_git_status
             check_git_status(mock_logger)
 
         assert mock_run.call_count == 2
@@ -233,7 +233,7 @@ class TestVerifyWorkWasDone:
                 stderr="",
             )
 
-            from little_loops.issue_manager import verify_work_was_done
+            from little_loops.git_operations import verify_work_was_done
             result = verify_work_was_done(mock_logger)
 
         assert result is True
@@ -249,7 +249,7 @@ class TestVerifyWorkWasDone:
                 stderr="",
             )
 
-            from little_loops.issue_manager import verify_work_was_done
+            from little_loops.git_operations import verify_work_was_done
             result = verify_work_was_done(mock_logger)
 
         assert result is False
@@ -261,7 +261,7 @@ class TestVerifyWorkWasDone:
                 args=[], returncode=0, stdout="", stderr=""
             )
 
-            from little_loops.issue_manager import verify_work_was_done
+            from little_loops.git_operations import verify_work_was_done
             result = verify_work_was_done(mock_logger)
 
         assert result is False
@@ -278,7 +278,7 @@ class TestVerifyWorkWasDone:
                 ),
             ]
 
-            from little_loops.issue_manager import verify_work_was_done
+            from little_loops.git_operations import verify_work_was_done
             result = verify_work_was_done(mock_logger)
 
         assert result is True
@@ -293,7 +293,7 @@ class TestVerifyWorkWasDone:
                 stderr="",
             )
 
-            from little_loops.issue_manager import verify_work_was_done
+            from little_loops.git_operations import verify_work_was_done
             result = verify_work_was_done(mock_logger)
 
         # Markdown files are now considered valid work
@@ -309,7 +309,7 @@ class TestVerifyWorkWasDone:
                 stderr="",
             )
 
-            from little_loops.issue_manager import verify_work_was_done
+            from little_loops.git_operations import verify_work_was_done
             result = verify_work_was_done(mock_logger)
 
         assert result is False
@@ -319,7 +319,7 @@ class TestVerifyWorkWasDone:
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = OSError("Git not found")
 
-            from little_loops.issue_manager import verify_work_was_done
+            from little_loops.git_operations import verify_work_was_done
             result = verify_work_was_done(mock_logger)
 
         assert result is False

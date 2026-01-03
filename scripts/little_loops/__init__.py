@@ -5,6 +5,33 @@ and development workflows that can be configured for any software project.
 """
 
 from little_loops.config import BRConfig
+from little_loops.git_operations import (
+    EXCLUDED_DIRECTORIES,
+    check_git_status,
+    filter_excluded_files,
+    verify_work_was_done,
+)
+from little_loops.issue_lifecycle import (
+    close_issue,
+    complete_issue_lifecycle,
+    create_issue_from_failure,
+    verify_issue_completed,
+)
+from little_loops.issue_manager import AutoManager
 
 __version__ = "1.0.0"
-__all__ = ["BRConfig"]
+__all__ = [
+    "BRConfig",
+    # git_operations
+    "EXCLUDED_DIRECTORIES",
+    "check_git_status",
+    "filter_excluded_files",
+    "verify_work_was_done",
+    # issue_lifecycle
+    "close_issue",
+    "complete_issue_lifecycle",
+    "create_issue_from_failure",
+    "verify_issue_completed",
+    # issue_manager
+    "AutoManager",
+]
