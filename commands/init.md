@@ -237,10 +237,10 @@ Use AskUserQuestion to ask about parallel issue processing:
 header: "Parallel"
 question: "Enable parallel issue processing with git worktrees (ll-parallel)?"
 options:
-  - label: "No"
-    description: "Skip parallel config (can add later)"
   - label: "Yes"
     description: "Configure ll-parallel for concurrent issue processing"
+  - label: "No"
+    description: "Skip parallel config (can add later)"
 multiSelect: false
 ```
 
