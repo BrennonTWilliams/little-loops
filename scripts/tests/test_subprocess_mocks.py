@@ -453,7 +453,7 @@ class TestMergeCoordinatorGitOperations:
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             captured_commands.append(cmd)
-            if cmd == ["git", "status", "--porcelain"]:
+            if cmd[:3] == ["git", "status", "--porcelain"]:
                 return subprocess.CompletedProcess(
                     cmd, 0, stdout="M src/file.py\n", stderr=""
                 )
