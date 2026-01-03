@@ -70,20 +70,33 @@ little-loops/
 ├── templates/               # Project type configs
 │   ├── python-generic.json
 │   ├── javascript.json
-│   └── ...
+│   ├── typescript.json
+│   ├── go.json
+│   ├── rust.json
+│   ├── java-maven.json
+│   ├── java-gradle.json
+│   ├── dotnet.json
+│   └── generic.json
 └── scripts/                 # Python package
     └── little_loops/
-        ├── cli.py
-        ├── config.py
-        ├── issue_manager.py
-        ├── issue_parser.py
-        ├── state.py
-        ├── logger.py
+        ├── __init__.py
+        ├── cli.py               # CLI entrypoints
+        ├── config.py            # Configuration loading
+        ├── state.py             # State persistence
+        ├── logger.py            # Logging utilities
+        ├── issue_manager.py     # Sequential automation
+        ├── issue_parser.py      # Issue file parsing
+        ├── issue_lifecycle.py   # Issue lifecycle operations
+        ├── git_operations.py    # Git utilities
+        ├── work_verification.py # Verification helpers
+        ├── subprocess_utils.py  # Subprocess handling
         └── parallel/
+            ├── __init__.py
             ├── orchestrator.py
             ├── worker_pool.py
             ├── merge_coordinator.py
             ├── priority_queue.py
+            ├── output_parsing.py
             └── types.py
 ```
 

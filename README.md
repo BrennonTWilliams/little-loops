@@ -413,23 +413,32 @@ little-loops/
 │   ├── typescript.json
 │   ├── go.json
 │   ├── rust.json
-│   └── ...
+│   ├── java-maven.json
+│   ├── java-gradle.json
+│   ├── dotnet.json
+│   └── generic.json
 └── scripts/              # Python CLI tools
     ├── pyproject.toml
     └── little_loops/
         ├── __init__.py
-        ├── cli.py          # CLI entrypoints
-        ├── config.py       # Configuration loading
-        ├── state.py        # State persistence
-        ├── issue_manager.py
-        ├── issue_parser.py
-        ├── logger.py
-        └── parallel/       # Parallel processing
+        ├── cli.py              # CLI entrypoints
+        ├── config.py           # Configuration loading
+        ├── state.py            # State persistence
+        ├── logger.py           # Logging utilities
+        ├── issue_manager.py    # Sequential automation
+        ├── issue_parser.py     # Issue file parsing
+        ├── issue_lifecycle.py  # Issue lifecycle operations
+        ├── git_operations.py   # Git utilities
+        ├── work_verification.py # Verification helpers
+        ├── subprocess_utils.py # Subprocess handling
+        └── parallel/           # Parallel processing
+            ├── __init__.py
             ├── orchestrator.py
             ├── worker_pool.py
             ├── priority_queue.py
             ├── merge_coordinator.py
-            └── ...
+            ├── output_parsing.py
+            └── types.py
 ```
 
 ### Contributing
