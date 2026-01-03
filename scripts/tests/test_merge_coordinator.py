@@ -150,6 +150,66 @@ Merge with strategy ort failed."""
         assert coordinator._is_local_changes_error(error_message) is False
 
 
+class TestIsUntrackedFilesError:
+    """Tests for _is_untracked_files_error detection."""
+
+    def test_detects_untracked_files_error(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should detect 'untracked working tree files would be overwritten' error."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        error_message = """error: The following untracked working tree files would be overwritten by merge:
+        tests/unit/ai/ooda/test_constraint_validator.py
+Please move or remove them before you merge.
+Aborting
+Merge with strategy ort failed."""
+
+        assert coordinator._is_untracked_files_error(error_message) is True
+
+    def test_detects_move_or_remove_suggestion(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should detect error suggesting to move or remove files."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        error_message = "Please move or remove them before you merge."
+
+        assert coordinator._is_untracked_files_error(error_message) is True
+
+    def test_does_not_match_local_changes_error(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should not match local changes (tracked files) error."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        error_message = "Your local changes to the following files would be overwritten"
+
+        assert coordinator._is_untracked_files_error(error_message) is False
+
+    def test_does_not_match_unrelated_error(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should not match unrelated git errors."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        error_message = "fatal: not a git repository"
+
+        assert coordinator._is_untracked_files_error(error_message) is False
+
+
 class TestStashLocalChanges:
     """Tests for _stash_local_changes functionality."""
 
@@ -194,7 +254,7 @@ class TestStashLocalChanges:
         mock_logger: MagicMock,
         temp_git_repo: Path,
     ) -> None:
-        """Should handle untracked files (they appear in porcelain output)."""
+        """Should stash untracked files with -u flag."""
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
 
         # Create untracked file
@@ -203,9 +263,17 @@ class TestStashLocalChanges:
 
         result = coordinator._stash_local_changes()
 
-        # Untracked files are detected but may not be stashed by default
-        # The important thing is we don't error
-        assert isinstance(result, bool)
+        # Untracked files should now be stashed with -u flag
+        assert result is True
+        assert coordinator._stash_active is True
+
+        # Verify file was removed (stashed)
+        assert not new_file.exists()
+
+        # Pop stash and verify file is restored
+        coordinator._pop_stash()
+        assert new_file.exists()
+        assert new_file.read_text() == "new content"
 
 
 class TestPopStash:
@@ -339,3 +407,86 @@ class TestProcessMergeStashIntegration:
         # Local changes should still be restored
         assert test_file.read_text() == "local modification"
         assert coordinator._stash_active is False
+
+
+class TestHandleUntrackedConflict:
+    """Tests for _handle_untracked_conflict functionality."""
+
+    def test_parses_and_backs_up_conflicting_files(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should parse file paths from error and back them up."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create an untracked file that would conflict
+        test_dir = temp_git_repo / "tests" / "unit"
+        test_dir.mkdir(parents=True)
+        conflicting_file = test_dir / "test_example.py"
+        conflicting_file.write_text("# untracked test file")
+
+        # Create fake worktree
+        fake_worktree = temp_git_repo / ".worktrees" / "fake"
+        fake_worktree.mkdir(parents=True)
+
+        worker_result = WorkerResult(
+            issue_id="TEST-001",
+            branch_name="parallel/test-branch",
+            worktree_path=fake_worktree,
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        error_output = """error: The following untracked working tree files would be overwritten by merge:
+        tests/unit/test_example.py
+Please move or remove them before you merge.
+Aborting"""
+
+        # Handle the conflict
+        coordinator._handle_untracked_conflict(request, error_output)
+
+        # Original file should be moved
+        assert not conflicting_file.exists()
+
+        # Backup should exist
+        backup_file = temp_git_repo / ".ll-backup" / "TEST-001" / "tests" / "unit" / "test_example.py"
+        assert backup_file.exists()
+        assert backup_file.read_text() == "# untracked test file"
+
+        # Request should be re-queued
+        assert request.retry_count == 1
+        assert coordinator._queue.qsize() == 1
+
+    def test_respects_max_retries(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should fail after max retries exceeded."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        fake_worktree = temp_git_repo / ".worktrees" / "fake"
+        fake_worktree.mkdir(parents=True)
+
+        worker_result = WorkerResult(
+            issue_id="TEST-001",
+            branch_name="parallel/test-branch",
+            worktree_path=fake_worktree,
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+        request.retry_count = default_config.max_merge_retries  # Already at max
+
+        error_output = """error: The following untracked working tree files would be overwritten by merge:
+        tests/unit/test_example.py
+Please move or remove them before you merge."""
+
+        coordinator._handle_untracked_conflict(request, error_output)
+
+        # Should not be re-queued
+        assert coordinator._queue.qsize() == 0
+        # Should be marked as failed
+        assert "TEST-001" in coordinator._failed

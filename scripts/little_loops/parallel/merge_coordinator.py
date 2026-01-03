@@ -113,8 +113,8 @@ class MergeCoordinator:
     def _stash_local_changes(self) -> bool:
         """Stash any uncommitted local changes in the main repo.
 
-        Excludes the state file from the check since it's constantly updated
-        during parallel execution and would cause stash/pop conflicts.
+        Includes untracked files (except the state file) to prevent merge
+        conflicts with newly created files from other workers.
 
         Returns:
             True if changes were stashed, False if working tree was clean
@@ -140,9 +140,21 @@ class MergeCoordinator:
         if not status_result.stdout.strip():
             return False  # Working tree is clean (ignoring state file)
 
-        # Stash the changes (excluding untracked files which includes state file)
+        # Stash the changes including untracked files (-u) to prevent
+        # "untracked working tree files would be overwritten" errors.
+        # Use pathspec to exclude the state file from the stash.
         stash_result = subprocess.run(
-            ["git", "stash", "push", "-m", "ll-parallel: auto-stash before merge"],
+            [
+                "git",
+                "stash",
+                "push",
+                "-u",  # Include untracked files
+                "-m",
+                "ll-parallel: auto-stash before merge",
+                "--",
+                ".",
+                f":(exclude){state_file_path}",
+            ],
             cwd=self.repo_path,
             capture_output=True,
             text=True,
@@ -151,7 +163,7 @@ class MergeCoordinator:
 
         if stash_result.returncode == 0:
             self._stash_active = True
-            self.logger.debug("Stashed local changes before merge")
+            self.logger.info("Stashed local changes before merge")
             return True
 
         return False
@@ -159,9 +171,12 @@ class MergeCoordinator:
     def _pop_stash(self) -> bool:
         """Restore stashed changes if any were stashed.
 
+        Important: This method preserves the merge even if stash pop fails.
+        We never reset --hard HEAD here because that would undo a successful merge.
+
         Returns:
             True if stash was successfully popped or no stash was active,
-            False if pop failed and recovery was needed.
+            False if pop failed (stash is left for manual recovery).
         """
         if not self._stash_active:
             return True
@@ -178,38 +193,52 @@ class MergeCoordinator:
             self.logger.warning(
                 f"Failed to pop stash: {pop_result.stderr.strip()}"
             )
-            # Attempt recovery: reset index to HEAD to clear conflicts
-            reset_result = subprocess.run(
-                ["git", "reset", "--hard", "HEAD"],
+
+            # Check if it's a conflict issue - in that case, stash pop may have
+            # partially applied. We need to clean up the index but preserve the merge.
+            status_result = subprocess.run(
+                ["git", "status", "--porcelain"],
                 cwd=self.repo_path,
                 capture_output=True,
                 text=True,
                 timeout=30,
             )
-            if reset_result.returncode == 0:
-                self.logger.info("Reset git index after stash pop failure")
-                # Stash is still in the stash list, drop it since we reset
+
+            # Check for unmerged entries from the stash pop attempt
+            unmerged_prefixes = ("UU", "AA", "DD", "AU", "UA", "DU", "UD")
+            has_unmerged = any(
+                line[:2] in unmerged_prefixes
+                for line in status_result.stdout.splitlines()
+                if len(line) >= 2
+            )
+
+            if has_unmerged:
+                # Clean up the conflicted stash pop without affecting the merge
+                # Use checkout to restore conflicted files to their post-merge state
                 subprocess.run(
-                    ["git", "stash", "drop"],
+                    ["git", "checkout", "--theirs", "."],
                     cwd=self.repo_path,
                     capture_output=True,
-                    timeout=10,
+                    timeout=30,
                 )
-                self._stash_active = False
-                self.logger.warning(
-                    "Dropped stash after reset - local changes were lost, please re-apply manually"
+                subprocess.run(
+                    ["git", "reset", "HEAD"],
+                    cwd=self.repo_path,
+                    capture_output=True,
+                    timeout=30,
                 )
-            else:
-                self.logger.error(
-                    f"Failed to reset git index: {reset_result.stderr.strip()}. "
-                    "Manual recovery required: run 'git reset --hard HEAD' and 'git stash drop'"
-                )
-                # Mark as inactive to avoid infinite loops, but index may still be broken
-                self._stash_active = False
+                self.logger.info("Cleaned up conflicted stash pop, merge preserved")
+
+            # Leave the stash intact for manual recovery
+            self._stash_active = False
+            self.logger.warning(
+                "Stash could not be restored - your changes are saved in 'git stash list'. "
+                "Run 'git stash show' to view and 'git stash pop' to retry manually."
+            )
             return False
 
         self._stash_active = False
-        self.logger.debug("Restored stashed local changes")
+        self.logger.info("Restored stashed local changes")
         return True
 
     def _is_local_changes_error(self, error_output: str) -> bool:
@@ -225,6 +254,21 @@ class MergeCoordinator:
             "Your local changes to the following files would be overwritten",
             "Please commit your changes or stash them before you merge",
             "error: cannot pull with rebase: You have unstaged changes",
+        ]
+        return any(indicator in error_output for indicator in indicators)
+
+    def _is_untracked_files_error(self, error_output: str) -> bool:
+        """Check if the error is due to untracked files blocking merge.
+
+        Args:
+            error_output: The stderr/stdout from the failed git command
+
+        Returns:
+            True if the error indicates untracked files would be overwritten
+        """
+        indicators = [
+            "untracked working tree files would be overwritten by merge",
+            "Please move or remove them before you merge",
         ]
         return any(indicator in error_output for indicator in indicators)
 
@@ -474,6 +518,11 @@ class MergeCoordinator:
                         f"Merge failed due to local changes: {error_output[:200]}"
                     )
 
+                # Check for untracked files blocking merge
+                if self._is_untracked_files_error(error_output):
+                    self._handle_untracked_conflict(request, error_output)
+                    return
+
                 # Check for merge conflict
                 if "CONFLICT" in error_output:
                     self._handle_conflict(request)
@@ -547,6 +596,77 @@ class MergeCoordinator:
                 request,
                 f"Merge conflict after {request.retry_count} retries",
             )
+
+    def _handle_untracked_conflict(
+        self, request: MergeRequest, error_output: str
+    ) -> None:
+        """Handle untracked files that would be overwritten by merge.
+
+        Backs up conflicting untracked files and retries the merge.
+
+        Args:
+            request: The merge request that failed
+            error_output: Git error message containing file list
+        """
+        result = request.worker_result
+        request.retry_count += 1
+
+        if request.retry_count > self.config.max_merge_retries:
+            self._handle_failure(
+                request,
+                f"Untracked file conflict after {request.retry_count} retries",
+            )
+            return
+
+        # Parse conflicting files from error message
+        # Format: "error: The following untracked working tree files would be overwritten..."
+        # followed by file paths, then "Please move or remove them..."
+        conflicting_files = []
+        in_file_list = False
+        for line in error_output.splitlines():
+            line = line.strip()
+            if "untracked working tree files would be overwritten" in line:
+                in_file_list = True
+                continue
+            if "Please move or remove them" in line:
+                in_file_list = False
+                continue
+            if in_file_list and line and not line.startswith("error:"):
+                conflicting_files.append(line)
+
+        if not conflicting_files:
+            self._handle_failure(
+                request,
+                f"Could not parse conflicting files from: {error_output[:200]}",
+            )
+            return
+
+        # Create backup directory
+        backup_dir = self.repo_path / ".ll-backup" / result.issue_id
+        backup_dir.mkdir(parents=True, exist_ok=True)
+
+        # Move conflicting files to backup
+        moved_files = []
+        for file_path in conflicting_files:
+            src = self.repo_path / file_path
+            if src.exists():
+                dst = backup_dir / file_path
+                dst.parent.mkdir(parents=True, exist_ok=True)
+                shutil.move(str(src), str(dst))
+                moved_files.append(file_path)
+
+        if moved_files:
+            self.logger.info(
+                f"Backed up {len(moved_files)} conflicting untracked file(s) to {backup_dir}"
+            )
+
+        # Retry the merge
+        self.logger.warning(
+            f"Untracked files conflict for {result.issue_id}, "
+            f"retrying after backup (attempt {request.retry_count}/{self.config.max_merge_retries})"
+        )
+        request.status = MergeStatus.RETRYING
+        self._queue.put(request)
 
     def _finalize_merge(self, request: MergeRequest) -> None:
         """Finalize a successful merge.
