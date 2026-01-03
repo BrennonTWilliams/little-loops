@@ -137,10 +137,15 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
         verdict_lines = sections["VERDICT"].strip().split("\n")
         first_line = next((line.strip() for line in verdict_lines if line.strip()), "")
         verdict_content = first_line.upper()
-        # Strip markdown bold formatting (**text**) and template brackets ([TEXT])
-        verdict_content = verdict_content.strip("*").strip("[]")
-        if verdict_content in valid_verdicts:
-            verdict = verdict_content
+        # Remove markdown formatting (bold ** and italic *) and template brackets
+        # Use replace to handle markers anywhere in the string
+        verdict_content = verdict_content.replace("**", "").replace("*", "").strip("[]")
+        # Take only the first word (verdict may have trailing explanation like
+        # "CORRECTED -> Issue status changed...")
+        verdict_word = verdict_content.split()[0] if verdict_content.split() else ""
+        verdict_word = verdict_word.rstrip(":*")  # Handle "CORRECTED:" or trailing *
+        if verdict_word in valid_verdicts:
+            verdict = verdict_word
 
     # Fall back to old format (VERDICT: READY)
     if verdict == "UNKNOWN":
@@ -183,13 +188,17 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
         close_reason_content = sections["CLOSE_REASON"]
         # Look for "- Reason: <value>" line
         for line in close_reason_content.split("\n"):
-            line = line.strip()
+            # Strip whitespace and bold markers (**) that Claude sometimes adds
+            line = line.strip().replace("**", "")
             if line.lower().startswith("- reason:"):
-                close_reason = line.split(":", 1)[1].strip().lower()
+                reason_value = line.split(":", 1)[1].strip().lower()
+                # Also strip backticks that may wrap the value
+                close_reason = reason_value.strip("`").strip()
                 break
             # Also handle "Reason: <value>" without dash
             if line.lower().startswith("reason:"):
-                close_reason = line.split(":", 1)[1].strip().lower()
+                reason_value = line.split(":", 1)[1].strip().lower()
+                close_reason = reason_value.strip("`").strip()
                 break
 
     # Parse CLOSE_STATUS section if present

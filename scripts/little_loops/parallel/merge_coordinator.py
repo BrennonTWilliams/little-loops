@@ -283,7 +283,8 @@ class MergeCoordinator:
                 return False
             self.logger.info("Aborted incomplete rebase")
 
-        # Verify index is clean
+        # Check for unmerged files in the index (UU, AA, DD, AU, UA, DU, UD prefixes)
+        # These can persist even after merge --abort in some edge cases
         status_result = subprocess.run(
             ["git", "status", "--porcelain"],
             cwd=self.repo_path,
@@ -294,20 +295,44 @@ class MergeCoordinator:
 
         if status_result.returncode != 0:
             self.logger.error(f"git status failed: {status_result.stderr}")
-            # Try hard reset as last resort
-            self.logger.warning("Attempting hard reset to recover...")
-            reset_result = subprocess.run(
-                ["git", "reset", "--hard", "HEAD"],
-                cwd=self.repo_path,
-                capture_output=True,
-                text=True,
-                timeout=30,
-            )
-            if reset_result.returncode != 0:
-                self.logger.error("Hard reset failed - manual intervention required")
-                return False
-            self.logger.info("Hard reset successful")
+            return self._attempt_hard_reset()
 
+        # Check for unmerged entries (first two chars indicate index/worktree status)
+        # Unmerged states: UU (both modified), AA (both added), DD (both deleted),
+        # AU/UA (added by us/them), DU/UD (deleted by us/them)
+        unmerged_prefixes = ("UU", "AA", "DD", "AU", "UA", "DU", "UD")
+        has_unmerged = any(
+            line[:2] in unmerged_prefixes
+            for line in status_result.stdout.splitlines()
+            if len(line) >= 2
+        )
+
+        if has_unmerged:
+            self.logger.warning("Detected unmerged files in index, resetting...")
+            if not self._attempt_hard_reset():
+                return False
+            self.logger.info("Cleared unmerged files from index")
+
+        return True
+
+    def _attempt_hard_reset(self) -> bool:
+        """Attempt a hard reset to recover from index issues.
+
+        Returns:
+            True if reset succeeded, False otherwise
+        """
+        self.logger.warning("Attempting hard reset to recover...")
+        reset_result = subprocess.run(
+            ["git", "reset", "--hard", "HEAD"],
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if reset_result.returncode != 0:
+            self.logger.error("Hard reset failed - manual intervention required")
+            return False
+        self.logger.info("Hard reset successful")
         return True
 
     def _merge_loop(self) -> None:
