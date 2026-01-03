@@ -1,8 +1,8 @@
 """CLI entry points for little-loops.
 
 Provides command-line interfaces for automated issue management:
-- br-auto: Sequential issue processing
-- br-parallel: Parallel issue processing with git worktrees
+- ll-auto: Sequential issue processing
+- ll-parallel: Parallel issue processing with git worktrees
 """
 
 from __future__ import annotations
@@ -17,7 +17,7 @@ from little_loops.logger import Logger
 
 
 def main_auto() -> int:
-    """Entry point for br-auto command.
+    """Entry point for ll-auto command.
 
     Sequential automated issue management with Claude CLI.
 
@@ -111,7 +111,7 @@ Examples:
 
 
 def main_parallel() -> int:
-    """Entry point for br-parallel command.
+    """Entry point for ll-parallel command.
 
     Parallel issue management using git worktrees.
 

@@ -393,16 +393,24 @@ little-loops/
     ├── pyproject.toml
     └── little_loops/
         ├── __init__.py
-        ├── cli.py           # CLI entry points (ll-auto, ll-parallel)
-        ├── config.py        # Configuration loading
-        ├── issue_utils.py   # Issue discovery utilities
-        └── parallel/        # Parallel processing module
-            ├── types.py          # Data types and enums
-            ├── priority_queue.py # Priority-based issue queue
-            ├── worker_pool.py    # Worker pool management
+        ├── cli.py                # CLI entry points (ll-auto, ll-parallel)
+        ├── config.py             # Configuration loading
+        ├── git_operations.py     # Git operations utilities
+        ├── issue_lifecycle.py    # Issue lifecycle management
+        ├── issue_manager.py      # Issue management
+        ├── issue_parser.py       # Issue discovery and parsing
+        ├── logger.py             # Logging utilities
+        ├── state.py              # State management
+        ├── subprocess_utils.py   # Subprocess execution utilities
+        ├── work_verification.py  # Work verification utilities
+        └── parallel/             # Parallel processing module
+            ├── __init__.py
+            ├── types.py              # Data types and enums
+            ├── priority_queue.py     # Priority-based issue queue
+            ├── worker_pool.py        # Worker pool management
             ├── merge_coordinator.py  # Git merge coordination
-            ├── orchestrator.py   # Main orchestrator
-            └── output_parsing.py # Claude output parsing
+            ├── orchestrator.py       # Main orchestrator
+            └── output_parsing.py     # Claude output parsing
 ```
 
 ### Contributing

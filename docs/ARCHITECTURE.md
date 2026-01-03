@@ -67,6 +67,11 @@ little-loops/
 │   ├── codebase-locator.md
 │   ├── codebase-pattern-finder.md
 │   └── web-search-researcher.md
+├── hooks/                   # Lifecycle hooks
+│   ├── hooks.json           # Hook configuration
+│   └── prompts/
+│       ├── post-tool-state-tracking.md
+│       └── pre-compact-state.md
 ├── templates/               # Project type configs
 │   ├── python-generic.json
 │   ├── javascript.json
@@ -97,7 +102,13 @@ little-loops/
             ├── merge_coordinator.py
             ├── priority_queue.py
             ├── output_parsing.py
-            └── types.py
+            ├── types.py
+            └── tasks/
+                ├── README.md
+                ├── lint-all.yaml
+                ├── test-suite.yaml
+                ├── build-assets.yaml
+                └── health-check.yaml
 ```
 
 ---

@@ -138,8 +138,8 @@ def create_parallel_config(
     max_issues: int = 0,
     dry_run: bool = False,
     include_p0: bool | None = None,
-    timeout_per_issue: int | None = None,
-    stream_subprocess_output: bool | None = None,
+    timeout_seconds: int | None = None,
+    stream_output: bool | None = None,
     show_model: bool | None = None,
 ) -> ParallelConfig
 ```
@@ -152,8 +152,8 @@ Create a `ParallelConfig` from BRConfig settings with optional overrides.
 - `max_issues` - Maximum issues to process (0 = unlimited)
 - `dry_run` - Preview mode without processing
 - `include_p0` - Include P0 in parallel queue
-- `timeout_per_issue` - Per-issue timeout in seconds
-- `stream_subprocess_output` - Stream Claude output
+- `timeout_seconds` - Per-issue timeout in seconds
+- `stream_output` - Stream Claude output
 - `show_model` - Display model info on setup
 
 **Returns:** Configured `ParallelConfig`
@@ -250,23 +250,30 @@ class AutomationConfig:
 
 ### ParallelAutomationConfig
 
-Parallel automation configuration stored in BRConfig.
+Parallel automation configuration stored in BRConfig using composition.
+
+Uses `AutomationConfig` for shared settings (max_workers, worktree_base, state_file, timeout_seconds, stream_output) plus parallel-specific fields.
 
 ```python
 @dataclass
 class ParallelAutomationConfig:
-    max_workers: int = 2
+    base: AutomationConfig  # Shared automation settings
     p0_sequential: bool = True
-    worktree_base: str = ".worktrees"
-    state_file: str = ".parallel-manage-state.json"
-    timeout_per_issue: int = 3600
     max_merge_retries: int = 2
     include_p0: bool = False
-    stream_subprocess_output: bool = False
     command_prefix: str = "/ll:"
     ready_command: str = "ready_issue {{issue_id}}"
     manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+    worktree_copy_files: list[str] = [".claude/settings.local.json", ".env"]
+    require_code_changes: bool = True
 ```
+
+**Note:** Shared fields from `AutomationConfig` are accessed via `base.*`:
+- `base.max_workers` - Maximum parallel workers (default: 2)
+- `base.worktree_base` - Base directory for worktrees (default: ".worktrees")
+- `base.state_file` - State file path (default: ".parallel-manage-state.json")
+- `base.timeout_seconds` - Per-issue timeout in seconds (default: 3600)
+- `base.stream_output` - Stream subprocess output (default: False for parallel)
 
 ---
 
