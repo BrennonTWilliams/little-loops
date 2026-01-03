@@ -564,3 +564,88 @@ class TestMergeCoordinatorGitOperations:
             # Verify merge command was called with branch name
             merge_cmds = [c for c in captured_commands if "merge" in c and "ll-BUG-001" in c]
             assert len(merge_cmds) >= 1
+
+    def test_restash_after_pull_with_local_changes(self, mock_logger: MagicMock) -> None:
+        """Test that local changes appearing after pull are re-stashed."""
+        import tempfile
+        from pathlib import Path
+        from little_loops.parallel.merge_coordinator import MergeCoordinator
+        from little_loops.parallel.types import ParallelConfig, WorkerResult, MergeRequest
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_path = Path(tmpdir)
+            worktree_path = repo_path / ".worktrees" / "ll-BUG-001"
+            worktree_path.mkdir(parents=True)
+
+            config = ParallelConfig(max_workers=2, worktree_base=repo_path / ".worktrees")
+            coordinator = MergeCoordinator(config, mock_logger, repo_path)
+
+            worker_result = WorkerResult(
+                issue_id="BUG-001",
+                success=True,
+                branch_name="ll-BUG-001",
+                worktree_path=worktree_path,
+            )
+            merge_request = MergeRequest(worker_result=worker_result)
+
+            captured_commands: list[list[str]] = []
+            call_count = {"status": 0}
+
+            def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+                captured_commands.append(cmd)
+
+                # First status check: clean (no changes)
+                # Second status check (after pull fails): has changes
+                if cmd[:3] == ["git", "status", "--porcelain"]:
+                    call_count["status"] += 1
+                    if call_count["status"] == 1:
+                        # Initial check: clean
+                        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+                    else:
+                        # After pull: local changes appeared
+                        return subprocess.CompletedProcess(
+                            cmd, 0, stdout="M .issues/completed/test.md\n", stderr=""
+                        )
+
+                # Checkout main: success
+                if cmd[:3] == ["git", "checkout", "main"]:
+                    return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+                # Pull --rebase: fails with local changes error
+                if cmd[:4] == ["git", "pull", "--rebase", "origin"]:
+                    return subprocess.CompletedProcess(
+                        cmd,
+                        1,
+                        stdout="",
+                        stderr="error: Your local changes to the following files would be overwritten by merge:\n"
+                        "  .issues/completed/test.md\n"
+                        "Please commit your changes or stash them before you merge.",
+                    )
+
+                # Stash push: success
+                if "stash" in cmd and "push" in cmd:
+                    return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+                # Stash pop: success
+                if "stash" in cmd and "pop" in cmd:
+                    return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+                # Merge: success
+                if "merge" in cmd:
+                    return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+            with patch("subprocess.run", side_effect=mock_run):
+                coordinator._process_merge(merge_request)
+
+            # Verify that status was checked twice (initial + after pull failure)
+            status_cmds = [c for c in captured_commands if "status" in c and "--porcelain" in c]
+            assert len(status_cmds) >= 2, f"Expected 2+ status checks, got {len(status_cmds)}"
+
+            # Verify that stash push was called (for re-stash)
+            stash_push_cmds = [c for c in captured_commands if "stash" in c and "push" in c]
+            assert len(stash_push_cmds) >= 1, "Expected stash push for re-stash"
+
+            # Verify re-stash was logged
+            mock_logger.info.assert_any_call("Re-stashed local changes after pull conflict")

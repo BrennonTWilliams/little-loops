@@ -140,6 +140,9 @@ class MergeCoordinator:
         if not status_result.stdout.strip():
             return False  # Working tree is clean (ignoring state file)
 
+        # Log files to be stashed for debugging
+        self.logger.debug(f"Files to stash: {status_result.stdout.strip()[:500]}")
+
         # Stash the changes including untracked files (-u) to prevent
         # "untracked working tree files would be overwritten" errors.
         # Use pathspec to exclude the state file from the stash.
@@ -166,6 +169,7 @@ class MergeCoordinator:
             self.logger.info("Stashed local changes before merge")
             return True
 
+        self.logger.error(f"Failed to stash local changes: {stash_result.stderr}")
         return False
 
     def _pop_stash(self) -> bool:
@@ -485,9 +489,13 @@ class MergeCoordinator:
                 error_output = pull_result.stderr + pull_result.stdout
                 if self._is_local_changes_error(error_output):
                     self.logger.warning(
-                        f"Pull failed due to local changes: {error_output[:200]}"
+                        f"Pull failed due to local changes, attempting re-stash: {error_output[:200]}"
                     )
-                # Continue anyway - merge will fail if there's a real issue
+                    # Re-stash any local changes that appeared during pull
+                    if self._stash_local_changes():
+                        self.logger.info("Re-stashed local changes after pull conflict")
+                        had_local_changes = True
+                # Continue - merge will fail if there's still an issue
 
             # Attempt merge with no-ff
             merge_result = subprocess.run(
