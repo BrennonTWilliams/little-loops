@@ -507,6 +507,90 @@ READY
         assert "METADATA" in result["sections"]
         assert "VERDICT" in result["sections"]
 
+    def test_triple_hash_header(self) -> None:
+        """Test parsing with ### header (3 hashes)."""
+        output = """
+### VERDICT
+READY
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+        assert result["is_ready"] is True
+
+    def test_no_space_after_hashes(self) -> None:
+        """Test parsing when there's no space after hashes."""
+        output = """
+##VERDICT
+READY
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+        assert result["is_ready"] is True
+
+    def test_bold_in_header(self) -> None:
+        """Test parsing when header name has bold markers."""
+        output = """
+## **VERDICT**
+READY
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+        assert result["is_ready"] is True
+
+    def test_phrasing_ready_for_implementation(self) -> None:
+        """Test extracting verdict from 'ready for implementation' phrasing."""
+        output = """
+After reviewing the issue, it is ready for implementation.
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+        assert result["is_ready"] is True
+
+    def test_phrasing_should_be_closed(self) -> None:
+        """Test extracting verdict from 'should be closed' phrasing."""
+        output = """
+This issue should be closed as the feature already exists.
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "CLOSE"
+        assert result["should_close"] is True
+
+    def test_phrasing_needs_more_work(self) -> None:
+        """Test extracting verdict from 'needs more work' phrasing."""
+        output = """
+This issue needs more work before implementation can proceed.
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "NOT_READY"
+        assert result["is_ready"] is False
+
+    def test_phrasing_corrections_made(self) -> None:
+        """Test extracting verdict from 'corrections made' phrasing."""
+        output = """
+Corrections made to the issue file. Line numbers updated.
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "CORRECTED"
+        assert result["is_ready"] is True
+
+    def test_double_space_after_hashes(self) -> None:
+        """Test parsing when there are multiple spaces after hashes."""
+        output = """
+##  VERDICT
+READY
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+        assert result["is_ready"] is True
+
 
 class TestParseManageIssueOutput:
     """Tests for parse_manage_issue_output function."""

@@ -11,8 +11,12 @@ import re
 from typing import Any
 
 # Regex patterns for standardized output parsing
-# Support both ## SECTION and # SECTION headers
-SECTION_PATTERN = re.compile(r"^#{1,2} (\w+)\s*$", re.MULTILINE)
+# Support #, ##, and ### headers with flexible spacing and optional formatting
+# Handles: ## VERDICT, ###VERDICT, ## **VERDICT**, ##  VERDICT
+SECTION_PATTERN = re.compile(
+    r"^#{1,3}\s*\**(\w+)\**\s*$",
+    re.MULTILINE,
+)
 TABLE_ROW_PATTERN = re.compile(r"\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(.+?)\s*\|")
 STATUS_PATTERN = re.compile(r"^- (\w+): (\w+)", re.MULTILINE)
 
@@ -76,6 +80,35 @@ def _extract_verdict_from_text(text: str) -> str | None:
             if re.search(pattern, text_upper):
                 # Normalize to underscore format
                 return verdict
+
+    # Try common Claude phrasings that map to verdicts
+    # Note: Using re.IGNORECASE since patterns are lowercase
+    phrasing_map = [
+        # Patterns for READY
+        (r"\bissue\s+is\s+ready\b", "READY"),
+        (r"\bready\s+for\s+implementation\b", "READY"),
+        (r"\bimplementation[\s-]ready\b", "READY"),
+        (r"\bapproved\s+for\s+implementation\b", "READY"),
+        # Patterns for CLOSE
+        (r"\bshould\s+be\s+closed\b", "CLOSE"),
+        (r"\bclose\s+this\s+issue\b", "CLOSE"),
+        (r"\bmark\s+as\s+closed\b", "CLOSE"),
+        (r"\balready\s+fixed\b", "CLOSE"),
+        (r"\binvalid\s+reference\b", "CLOSE"),
+        # Patterns for NOT_READY
+        (r"\bnot\s+ready\s+for\b", "NOT_READY"),
+        (r"\bneeds?\s+more\s+work\b", "NOT_READY"),
+        (r"\brequires?\s+clarification\b", "NOT_READY"),
+        (r"\bmissing\s+information\b", "NOT_READY"),
+        # Patterns for CORRECTED
+        (r"\bcorrections?\s+made\b", "CORRECTED"),
+        (r"\bupdated?\s+and\s+ready\b", "CORRECTED"),
+        (r"\bfixed?\s+and\s+ready\b", "CORRECTED"),
+    ]
+
+    for pattern, verdict in phrasing_map:
+        if re.search(pattern, text, re.IGNORECASE):
+            return verdict
 
     return None
 
@@ -237,6 +270,14 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
     # (last resort - may have false positives but better than UNKNOWN)
     if verdict == "UNKNOWN":
         extracted = _extract_verdict_from_text(output)
+        if extracted:
+            verdict = extracted
+
+    # Strategy 5: Clean the entire output and retry extraction
+    # Handles cases where formatting artifacts (bold, backticks) break word boundaries
+    if verdict == "UNKNOWN":
+        cleaned_output = _clean_verdict_content(output)
+        extracted = _extract_verdict_from_text(cleaned_output)
         if extracted:
             verdict = extracted
 
