@@ -16,6 +16,194 @@ from little_loops.issue_parser import IssueInfo, get_next_issue_number, slugify
 from little_loops.logger import Logger
 
 
+# =============================================================================
+# Content Manipulation Helpers
+# =============================================================================
+
+
+def _build_closure_resolution(close_status: str, close_reason: str) -> str:
+    """Build resolution section for closed issues.
+
+    Args:
+        close_status: Status text (e.g., "Closed - Already Fixed")
+        close_reason: Reason code (e.g., "already_fixed", "invalid_ref")
+
+    Returns:
+        Resolution section markdown string
+    """
+    return f"""
+
+---
+
+## Resolution
+
+- **Status**: {close_status}
+- **Closed**: {datetime.now().strftime("%Y-%m-%d")}
+- **Reason**: {close_reason}
+- **Closure**: Automated (ready_issue validation)
+
+### Closure Notes
+Issue was automatically closed during validation.
+The issue was determined to be invalid, already resolved, or not actionable.
+"""
+
+
+def _build_completion_resolution(action: str) -> str:
+    """Build resolution section for completed issues.
+
+    Args:
+        action: Action verb (e.g., "fix", "implement")
+
+    Returns:
+        Resolution section markdown string
+    """
+    return f"""
+
+---
+
+## Resolution
+
+- **Action**: {action}
+- **Completed**: {datetime.now().strftime("%Y-%m-%d")}
+- **Status**: Completed (automated fallback)
+- **Implementation**: Command exited early but issue was addressed
+
+### Changes Made
+- See git history for changes
+
+### Verification Results
+- Automated verification passed
+
+### Commits
+- See git log for details
+"""
+
+
+def _prepare_issue_content(original_path: Path, resolution: str) -> str:
+    """Read issue file and append resolution section if needed.
+
+    Args:
+        original_path: Path to the original issue file
+        resolution: Resolution section to append
+
+    Returns:
+        Updated file content with resolution section
+    """
+    content = original_path.read_text()
+    if "## Resolution" not in content:
+        content += resolution
+    return content
+
+
+# =============================================================================
+# Git Operations Helpers
+# =============================================================================
+
+
+def _cleanup_stale_source(
+    original_path: Path, issue_id: str, logger: Logger
+) -> None:
+    """Remove orphaned source file and commit cleanup.
+
+    Args:
+        original_path: Path to the stale source file
+        issue_id: Issue identifier for commit message
+        logger: Logger for output
+    """
+    original_path.unlink()
+    subprocess.run(["git", "add", "-A"], capture_output=True, text=True)
+    subprocess.run(
+        ["git", "commit", "-m", f"cleanup: remove stale {issue_id} from bugs/"],
+        capture_output=True,
+        text=True,
+    )
+
+
+def _move_issue_to_completed(
+    original_path: Path,
+    completed_path: Path,
+    content: str,
+    logger: Logger,
+) -> bool:
+    """Move issue file to completed dir, preferring git mv for history.
+
+    Args:
+        original_path: Source path of issue file
+        completed_path: Destination path in completed directory
+        content: Updated file content to write
+        logger: Logger for output
+
+    Returns:
+        True if move succeeded
+    """
+    result = subprocess.run(
+        ["git", "mv", str(original_path), str(completed_path)],
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0:
+        # git mv failed, fall back to manual copy + delete
+        logger.warning(f"git mv failed: {result.stderr}")
+        completed_path.write_text(content)
+        original_path.unlink()
+    else:
+        logger.success(f"Used git mv to move {original_path.stem}")
+        # Write updated content to the moved file
+        completed_path.write_text(content)
+
+    return True
+
+
+def _commit_issue_completion(
+    info: IssueInfo,
+    commit_prefix: str,
+    commit_body: str,
+    logger: Logger,
+) -> bool:
+    """Stage all changes and create completion commit.
+
+    Args:
+        info: Issue information
+        commit_prefix: Prefix for commit message (e.g., "close" or action verb)
+        commit_body: Body text for commit message
+        logger: Logger for output
+
+    Returns:
+        True if commit succeeded or nothing to commit
+    """
+    # Stage all changes
+    stage_result = subprocess.run(
+        ["git", "add", "-A"],
+        capture_output=True,
+        text=True,
+    )
+    if stage_result.returncode != 0:
+        logger.warning(f"git add failed: {stage_result.stderr}")
+
+    # Create commit
+    commit_msg = f"{commit_prefix}({info.issue_type}): {commit_body}"
+    commit_result = subprocess.run(
+        ["git", "commit", "-m", commit_msg],
+        capture_output=True,
+        text=True,
+    )
+
+    if commit_result.returncode != 0:
+        if "nothing to commit" in commit_result.stdout.lower():
+            logger.info("No changes to commit (already committed)")
+        else:
+            logger.warning(f"git commit failed: {commit_result.stderr}")
+    else:
+        commit_hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]+)\]", commit_result.stdout)
+        if commit_hash_match:
+            logger.success(f"Committed: {commit_hash_match.group(1)}")
+        else:
+            logger.success("Committed changes")
+
+    return True
+
+
 def verify_issue_completed(info: IssueInfo, config: BRConfig, logger: Logger) -> bool:
     """Verify that an issue was moved to completed directory.
 
@@ -165,13 +353,7 @@ def close_issue(
     if completed_path.exists():
         logger.info(f"{info.issue_id} already in completed/ - cleaning up source")
         if original_path.exists():
-            original_path.unlink()
-            subprocess.run(["git", "add", "-A"], capture_output=True, text=True)
-            subprocess.run(
-                ["git", "commit", "-m", f"cleanup: remove stale {info.issue_id} from bugs/"],
-                capture_output=True,
-                text=True,
-            )
+            _cleanup_stale_source(original_path, info.issue_id, logger)
         return True
 
     if not original_path.exists():
@@ -187,79 +369,22 @@ def close_issue(
     logger.info(f"Closing {info.issue_id}: {close_status} (reason: {close_reason})")
 
     try:
-        # Read original content
-        content = original_path.read_text()
+        # Prepare content with resolution section
+        resolution = _build_closure_resolution(close_status, close_reason)
+        content = _prepare_issue_content(original_path, resolution)
 
-        # Add resolution section for closure
-        if "## Resolution" not in content:
-            resolution = f"""
+        # Move to completed directory
+        _move_issue_to_completed(original_path, completed_path, content, logger)
 
----
-
-## Resolution
-
-- **Status**: {close_status}
-- **Closed**: {datetime.now().strftime("%Y-%m-%d")}
-- **Reason**: {close_reason}
-- **Closure**: Automated (ready_issue validation)
-
-### Closure Notes
-Issue was automatically closed during validation.
-The issue was determined to be invalid, already resolved, or not actionable.
-"""
-            content += resolution
-
-        # Use git mv first to preserve history, then write updated content
-        result = subprocess.run(
-            ["git", "mv", str(original_path), str(completed_path)],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            # git mv failed, fall back to manual copy + delete
-            logger.warning(f"git mv failed: {result.stderr}")
-            completed_path.write_text(content)
-            original_path.unlink()
-        else:
-            logger.success(f"Used git mv to move {info.issue_id}")
-            # Write updated content to the moved file
-            completed_path.write_text(content)
-
-        # Stage and commit
-        stage_result = subprocess.run(
-            ["git", "add", "-A"],
-            capture_output=True,
-            text=True,
-        )
-        if stage_result.returncode != 0:
-            logger.warning(f"git add failed: {stage_result.stderr}")
-
-        # Create commit for closure
-        commit_msg = f"""close({info.issue_type}): {info.issue_id} - {close_status}
+        # Commit the closure
+        commit_body = f"""{info.issue_id} - {close_status}
 
 Automated closure - issue determined to be invalid or already resolved.
 
 Issue: {info.issue_id}
 Reason: {close_reason}
-Status: {close_status}
-"""
-        commit_result = subprocess.run(
-            ["git", "commit", "-m", commit_msg],
-            capture_output=True,
-            text=True,
-        )
-        if commit_result.returncode != 0:
-            if "nothing to commit" in commit_result.stdout.lower():
-                logger.info("No changes to commit (already committed)")
-            else:
-                logger.warning(f"git commit failed: {commit_result.stderr}")
-        else:
-            commit_hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]+)\]", commit_result.stdout)
-            if commit_hash_match:
-                logger.success(f"Committed closure: {commit_hash_match.group(1)}")
-            else:
-                logger.success("Committed issue closure")
+Status: {close_status}"""
+        _commit_issue_completion(info, "close", commit_body, logger)
 
         logger.success(f"Closed {info.issue_id}: {close_status}")
         return True
@@ -296,13 +421,7 @@ def complete_issue_lifecycle(
     if completed_path.exists():
         logger.info(f"{info.issue_id} already in completed/ - cleaning up source")
         if original_path.exists():
-            original_path.unlink()
-            subprocess.run(["git", "add", "-A"], capture_output=True, text=True)
-            subprocess.run(
-                ["git", "commit", "-m", f"cleanup: remove stale {info.issue_id} from bugs/"],
-                capture_output=True,
-                text=True,
-            )
+            _cleanup_stale_source(original_path, info.issue_id, logger)
         return True
 
     if not original_path.exists():
@@ -312,89 +431,23 @@ def complete_issue_lifecycle(
     logger.info(f"Completing lifecycle for {info.issue_id} (command may have exited early)...")
 
     try:
-        # Read original content
-        content = original_path.read_text()
-
-        # Add resolution section if not already present
-        if "## Resolution" not in content:
-            action = config.get_category_action(info.issue_type)
-            resolution = f"""
-
----
-
-## Resolution
-
-- **Action**: {action}
-- **Completed**: {datetime.now().strftime("%Y-%m-%d")}
-- **Status**: Completed (automated fallback)
-- **Implementation**: Command exited early but issue was addressed
-
-### Changes Made
-- See git history for changes
-
-### Verification Results
-- Automated verification passed
-
-### Commits
-- See git log for details
-"""
-            content += resolution
-
-        # Use git mv first to preserve history, then write updated content
-        result = subprocess.run(
-            ["git", "mv", str(original_path), str(completed_path)],
-            capture_output=True,
-            text=True,
-        )
-
-        if result.returncode != 0:
-            # git mv failed, fall back to manual copy + delete
-            logger.warning(f"git mv failed: {result.stderr}")
-            completed_path.write_text(content)
-            original_path.unlink()
-        else:
-            logger.success(f"Used git mv to move {info.issue_id}")
-            # Write updated content to the moved file
-            completed_path.write_text(content)
-
-        # Commit all implementation changes + issue file move
-        # Stage all changes (implementation code + issue file move)
-        stage_result = subprocess.run(
-            ["git", "add", "-A"],
-            capture_output=True,
-            text=True,
-        )
-        if stage_result.returncode != 0:
-            logger.warning(f"git add failed: {stage_result.stderr}")
-
-        # Create the commit
+        # Prepare content with resolution section
         action = config.get_category_action(info.issue_type)
-        commit_msg = f"""{action}({info.issue_type}): implement {info.issue_id}
+        resolution = _build_completion_resolution(action)
+        content = _prepare_issue_content(original_path, resolution)
+
+        # Move to completed directory
+        _move_issue_to_completed(original_path, completed_path, content, logger)
+
+        # Commit the completion
+        commit_body = f"""implement {info.issue_id}
 
 Automated fallback commit - command exited before completion.
 
 Issue: {info.issue_id}
 Action: {action}
-Status: Completed via fallback lifecycle completion
-"""
-        commit_result = subprocess.run(
-            ["git", "commit", "-m", commit_msg],
-            capture_output=True,
-            text=True,
-        )
-        if commit_result.returncode != 0:
-            # Check if it's just "nothing to commit"
-            if "nothing to commit" in commit_result.stdout.lower():
-                logger.info("No changes to commit (already committed or no changes)")
-            else:
-                logger.warning(f"git commit failed: {commit_result.stderr}")
-        else:
-            # Extract commit hash from output
-            commit_hash_match = re.search(r"\[[\w-]+\s+([a-f0-9]+)\]", commit_result.stdout)
-            if commit_hash_match:
-                logger.success(f"Committed changes: {commit_hash_match.group(1)}")
-            else:
-                logger.success("Committed implementation changes")
+Status: Completed via fallback lifecycle completion"""
+        _commit_issue_completion(info, action, commit_body, logger)
 
         logger.success(f"Completed lifecycle for {info.issue_id}")
         return True
