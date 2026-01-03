@@ -5,6 +5,26 @@
       "event": "SessionStart",
       "type": "command",
       "command": ["bash", "-c", "CONFIG_FILE=\"ll-config.json\"; if [ -f \"$CONFIG_FILE\" ]; then echo \"[little-loops] Config loaded: $CONFIG_FILE\"; cat \"$CONFIG_FILE\" | head -50; else echo \"[little-loops] Warning: $CONFIG_FILE not found. Run /ll:init to create one.\"; fi"]
+    },
+    {
+      "event": "UserPromptSubmit",
+      "type": "command",
+      "command": ["bash", "-c", "if [ ! -f \".claude/ll-config.json\" ] && [ ! -f \"ll-config.json\" ]; then echo '[little-loops] No config found. Run /ll:init to set up little-loops for this project.'; fi"]
+    },
+    {
+      "event": "PostToolUse",
+      "type": "prompt",
+      "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/post-tool-state-tracking.md"
+    },
+    {
+      "event": "PreCompact",
+      "type": "prompt",
+      "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/pre-compact-state.md"
+    },
+    {
+      "event": "Stop",
+      "type": "command",
+      "command": ["bash", "-c", "rm -f .claude/.ll-lock 2>/dev/null; if [ -d .worktrees ] && command -v git >/dev/null 2>&1; then git worktree list 2>/dev/null | grep '.worktrees' | awk '{print $1}' | while read w; do git worktree remove --force \"$w\" 2>/dev/null || true; done; fi; echo '[little-loops] Session cleanup complete'"]
     }
   ]
 }
