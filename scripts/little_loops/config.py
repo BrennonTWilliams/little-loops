@@ -126,40 +126,44 @@ class AutomationConfig:
 
 @dataclass
 class ParallelAutomationConfig:
-    """Parallel automation configuration.
+    """Parallel automation configuration using composition.
 
-    Extends AutomationConfig with parallel-specific settings.
+    Uses AutomationConfig for shared settings (max_workers, worktree_base,
+    state_file, timeout_seconds, stream_output) plus parallel-specific fields.
     """
 
-    max_workers: int = 2
+    base: AutomationConfig
     p0_sequential: bool = True
-    worktree_base: str = ".worktrees"
-    state_file: str = ".parallel-manage-state.json"
-    timeout_per_issue: int = 3600
     max_merge_retries: int = 2
     include_p0: bool = False
-    stream_subprocess_output: bool = False
     command_prefix: str = "/ll:"
     ready_command: str = "ready_issue {{issue_id}}"
     manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
     worktree_copy_files: list[str] = field(
         default_factory=lambda: [".claude/settings.local.json", ".env"]
     )
-    # Validation settings
-    require_code_changes: bool = True  # If False, allow changes to only excluded dirs
+    require_code_changes: bool = True
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ParallelAutomationConfig:
-        """Create ParallelAutomationConfig from dictionary."""
-        return cls(
-            max_workers=data.get("max_workers", 2),
-            p0_sequential=data.get("p0_sequential", True),
-            worktree_base=data.get("worktree_base", ".worktrees"),
+        """Create ParallelAutomationConfig from dictionary.
+
+        Shared fields use parallel-specific defaults:
+        - state_file: ".parallel-manage-state.json"
+        - stream_output: False
+        """
+        base = AutomationConfig(
+            timeout_seconds=data.get("timeout_seconds", 3600),
             state_file=data.get("state_file", ".parallel-manage-state.json"),
-            timeout_per_issue=data.get("timeout_per_issue", 3600),
+            worktree_base=data.get("worktree_base", ".worktrees"),
+            max_workers=data.get("max_workers", 2),
+            stream_output=data.get("stream_output", False),
+        )
+        return cls(
+            base=base,
+            p0_sequential=data.get("p0_sequential", True),
             max_merge_retries=data.get("max_merge_retries", 2),
             include_p0=data.get("include_p0", False),
-            stream_subprocess_output=data.get("stream_subprocess_output", False),
             command_prefix=data.get("command_prefix", "/ll:"),
             ready_command=data.get("ready_command", "ready_issue {{issue_id}}"),
             manage_command=data.get(
@@ -352,7 +356,7 @@ class BRConfig:
 
     def get_parallel_state_file(self) -> Path:
         """Get the parallel state file path."""
-        return self.project_root / self._parallel.state_file
+        return self.project_root / self._parallel.base.state_file
 
     def create_parallel_config(
         self,
@@ -362,8 +366,8 @@ class BRConfig:
         max_issues: int = 0,
         dry_run: bool = False,
         include_p0: bool | None = None,
-        timeout_per_issue: int | None = None,
-        stream_subprocess_output: bool | None = None,
+        timeout_seconds: int | None = None,
+        stream_output: bool | None = None,
         show_model: bool | None = None,
         only_ids: set[str] | None = None,
         skip_ids: set[str] | None = None,
@@ -376,8 +380,8 @@ class BRConfig:
             max_issues: Maximum issues to process (default: 0 = unlimited)
             dry_run: Preview mode (default: False)
             include_p0: Include P0 in parallel (default: from config)
-            timeout_per_issue: Per-issue timeout (default: from config)
-            stream_subprocess_output: Stream output (default: from config)
+            timeout_seconds: Per-issue timeout (default: from config)
+            stream_output: Stream output (default: from config)
             show_model: Make API call to verify model (default: False)
             only_ids: If provided, only process these issue IDs
             skip_ids: Issue IDs to skip (in addition to completed/failed)
@@ -388,20 +392,20 @@ class BRConfig:
         from little_loops.parallel.types import ParallelConfig
 
         return ParallelConfig(
-            max_workers=max_workers or self._parallel.max_workers,
+            max_workers=max_workers or self._parallel.base.max_workers,
             p0_sequential=self._parallel.p0_sequential,
-            worktree_base=Path(self._parallel.worktree_base),
-            state_file=Path(self._parallel.state_file),
+            worktree_base=Path(self._parallel.base.worktree_base),
+            state_file=Path(self._parallel.base.state_file),
             max_merge_retries=self._parallel.max_merge_retries,
             priority_filter=priority_filter or self._issues.priorities,
             max_issues=max_issues,
             dry_run=dry_run,
-            timeout_per_issue=timeout_per_issue or self._parallel.timeout_per_issue,
+            timeout_per_issue=timeout_seconds or self._parallel.base.timeout_seconds,
             include_p0=include_p0 if include_p0 is not None else self._parallel.include_p0,
             stream_subprocess_output=(
-                stream_subprocess_output
-                if stream_subprocess_output is not None
-                else self._parallel.stream_subprocess_output
+                stream_output
+                if stream_output is not None
+                else self._parallel.base.stream_output
             ),
             show_model=show_model if show_model is not None else False,
             command_prefix=self._parallel.command_prefix,
@@ -456,14 +460,14 @@ class BRConfig:
                 "stream_output": self._automation.stream_output,
             },
             "parallel": {
-                "max_workers": self._parallel.max_workers,
+                "max_workers": self._parallel.base.max_workers,
                 "p0_sequential": self._parallel.p0_sequential,
-                "worktree_base": self._parallel.worktree_base,
-                "state_file": self._parallel.state_file,
-                "timeout_per_issue": self._parallel.timeout_per_issue,
+                "worktree_base": self._parallel.base.worktree_base,
+                "state_file": self._parallel.base.state_file,
+                "timeout_seconds": self._parallel.base.timeout_seconds,
                 "max_merge_retries": self._parallel.max_merge_retries,
                 "include_p0": self._parallel.include_p0,
-                "stream_subprocess_output": self._parallel.stream_subprocess_output,
+                "stream_output": self._parallel.base.stream_output,
                 "command_prefix": self._parallel.command_prefix,
                 "ready_command": self._parallel.ready_command,
                 "manage_command": self._parallel.manage_command,

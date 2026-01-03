@@ -191,10 +191,10 @@ class TestParallelWorkflowIntegration:
                     "p0_sequential": True,
                     "worktree_base": ".worktrees",
                     "state_file": ".test-parallel-state.json",
-                    "timeout_per_issue": 60,
+                    "timeout_seconds": 60,
                     "max_merge_retries": 2,
                     "include_p0": False,
-                    "stream_subprocess_output": False,
+                    "stream_output": False,
                 },
             }
             (claude_dir / "ll-config.json").write_text(json.dumps(config, indent=2))

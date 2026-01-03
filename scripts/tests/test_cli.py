@@ -387,7 +387,7 @@ class TestMainParallelIntegration:
                 "parallel": {
                     "max_workers": 2,
                     "state_file": ".parallel-state.json",
-                    "timeout_per_issue": 1800,
+                    "timeout_seconds": 1800,
                 },
             }
             (claude_dir / "ll-config.json").write_text(json.dumps(config))

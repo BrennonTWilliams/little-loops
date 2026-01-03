@@ -165,24 +165,26 @@ class TestParallelAutomationConfig:
             "p0_sequential": False,
             "worktree_base": "parallel-wt/",
             "state_file": "parallel.json",
-            "timeout_per_issue": 900,
+            "timeout_seconds": 900,
             "max_merge_retries": 5,
             "include_p0": True,
-            "stream_subprocess_output": True,
+            "stream_output": True,
             "command_prefix": "/custom:",
             "ready_command": "check {{issue_id}}",
             "manage_command": "process {{issue_type}} {{action}} {{issue_id}}",
         }
         config = ParallelAutomationConfig.from_dict(data)
 
-        assert config.max_workers == 5
+        # Base config fields (shared via composition)
+        assert config.base.max_workers == 5
+        assert config.base.worktree_base == "parallel-wt/"
+        assert config.base.state_file == "parallel.json"
+        assert config.base.timeout_seconds == 900
+        assert config.base.stream_output is True
+        # Parallel-specific fields
         assert config.p0_sequential is False
-        assert config.worktree_base == "parallel-wt/"
-        assert config.state_file == "parallel.json"
-        assert config.timeout_per_issue == 900
         assert config.max_merge_retries == 5
         assert config.include_p0 is True
-        assert config.stream_subprocess_output is True
         assert config.command_prefix == "/custom:"
         assert config.ready_command == "check {{issue_id}}"
 
@@ -190,10 +192,13 @@ class TestParallelAutomationConfig:
         """Test creating ParallelAutomationConfig with default values."""
         config = ParallelAutomationConfig.from_dict({})
 
-        assert config.max_workers == 2
+        # Base config defaults (parallel-specific defaults differ from AutomationConfig)
+        assert config.base.max_workers == 2
+        assert config.base.state_file == ".parallel-manage-state.json"
+        assert config.base.stream_output is False  # Different from AutomationConfig default
+        # Parallel-specific defaults
         assert config.p0_sequential is True
         assert config.include_p0 is False
-        assert config.stream_subprocess_output is False
         assert config.command_prefix == "/ll:"
 
 
@@ -264,7 +269,7 @@ class TestBRConfig:
         assert config.project.src_dir == "src/"
         assert config.issues.base_dir == ".issues"
         assert config.automation.timeout_seconds == 1800
-        assert config.parallel.max_workers == 3
+        assert config.parallel.base.max_workers == 3
 
     def test_load_config_without_file(self, temp_project_dir: Path) -> None:
         """Test loading configuration when no file exists (uses defaults)."""
