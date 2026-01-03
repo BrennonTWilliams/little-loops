@@ -84,8 +84,18 @@ little-loops/
         ├── state.py      # State persistence
         ├── issue_manager.py
         ├── issue_parser.py
+        ├── issue_lifecycle.py
+        ├── git_operations.py
+        ├── work_verification.py
+        ├── subprocess_utils.py
         ├── logger.py
         └── parallel/     # Parallel processing module
+            ├── orchestrator.py
+            ├── worker_pool.py
+            ├── merge_coordinator.py
+            ├── priority_queue.py
+            ├── output_parsing.py
+            └── types.py
 ```
 
 For architecture details and system design, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
