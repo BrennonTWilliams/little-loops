@@ -361,16 +361,16 @@ class WorkerPool:
                     capture_output=True,
                 )
 
-        # Copy .claude settings from main repo to worktree (for auth tokens, etc.)
-        main_claude_dir = self.repo_path / ".claude"
-        worktree_claude_dir = worktree_path / ".claude"
-
-        if main_claude_dir.exists():
-            settings_file = main_claude_dir / "settings.local.json"
-            if settings_file.exists():
-                worktree_claude_dir.mkdir(parents=True, exist_ok=True)
-                shutil.copy2(settings_file, worktree_claude_dir / "settings.local.json")
-                self.logger.info("Copied .claude/settings.local.json to worktree")
+        # Copy configured files from main repo to worktree
+        for file_path in self.parallel_config.worktree_copy_files:
+            src = self.repo_path / file_path
+            if src.exists():
+                dest = worktree_path / file_path
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                shutil.copy2(src, dest)
+                self.logger.info(f"Copied {file_path} to worktree")
+            else:
+                self.logger.debug(f"Skipped {file_path} (not found in main repo)")
 
         self.logger.info(f"Created worktree at {worktree_path} on branch {branch_name}")
 

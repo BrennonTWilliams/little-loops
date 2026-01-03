@@ -203,6 +203,14 @@
           "type": "string",
           "description": "Template for manage_issue command (supports {{issue_type}}, {{action}}, {{issue_id}})",
           "default": "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+        },
+        "worktree_copy_files": {
+          "type": "array",
+          "description": "Files to copy from main repo to worktrees (relative paths)",
+          "items": {
+            "type": "string"
+          },
+          "default": [".claude/settings.local.json", ".env"]
         }
       },
       "additionalProperties": false

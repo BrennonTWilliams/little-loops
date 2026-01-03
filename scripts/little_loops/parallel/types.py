@@ -272,6 +272,10 @@ class ParallelConfig:
         "changelog",
         "license",
     )  # Issue IDs containing these keywords can have doc-only changes
+    # Files to copy from main repo to worktrees
+    worktree_copy_files: list[str] = field(
+        default_factory=lambda: [".claude/settings.local.json", ".env"]
+    )
 
     def get_ready_command(self, issue_id: str) -> str:
         """Build the ready_issue command string.

@@ -130,6 +130,9 @@ class ParallelAutomationConfig:
     command_prefix: str = "/ll:"
     ready_command: str = "ready_issue {{issue_id}}"
     manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+    worktree_copy_files: list[str] = field(
+        default_factory=lambda: [".claude/settings.local.json", ".env"]
+    )
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ParallelAutomationConfig:
@@ -147,6 +150,9 @@ class ParallelAutomationConfig:
             ready_command=data.get("ready_command", "ready_issue {{issue_id}}"),
             manage_command=data.get(
                 "manage_command", "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+            ),
+            worktree_copy_files=data.get(
+                "worktree_copy_files", [".claude/settings.local.json", ".env"]
             ),
         )
 
@@ -388,6 +394,7 @@ class BRConfig:
             manage_command=self._parallel.manage_command,
             only_ids=only_ids,
             skip_ids=skip_ids,
+            worktree_copy_files=self._parallel.worktree_copy_files,
         )
 
     @property
