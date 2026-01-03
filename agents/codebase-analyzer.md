@@ -12,6 +12,13 @@ description: |
   User: "Explain the data flow in the webhook handler"
   → Spawn codebase-analyzer to analyze webhook processing logic
   </example>
+
+  <example>
+  User: "Walk me through the error handling in the payment processor"
+  → Spawn codebase-analyzer to trace error handling logic with specific code locations and flow documentation
+  </example>
+
+  Trigger keywords: "how does", "explain the", "trace the", "walk through", "implementation of", "detailed analysis of", "understand the", "deep dive into"
 allowed_tools:
   - Read
   - Grep

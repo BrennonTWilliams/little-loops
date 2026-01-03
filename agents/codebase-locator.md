@@ -1,7 +1,11 @@
 ---
 name: codebase-locator
 description: |
-  Locates files, directories, and components relevant to a feature or task. Call `codebase-locator` with human language prompt describing what you're looking for. Basically a "Super Grep/Glob/LS tool" - Use it if you find yourself desiring to use one of these tools more than once.
+  Locates files, directories, and components relevant to a feature or task. Call `codebase-locator` with human language prompt describing what you're looking for.
+
+  Use this agent when you need comprehensive file location searches across the codebase. Essentially a "super Grep/Glob/LS tool" that combines multiple searches in a single logical request - perfect for understanding code organization and finding related files scattered across the project.
+
+  Trigger keywords: "where are", "find all", "locate files", "which files", "show me all", "list all", "directory structure", "files containing", "where is"
 
   <example>
   User: "Where are all the API routes defined?"
@@ -11,6 +15,11 @@ description: |
   <example>
   User: "Find all files related to user authentication"
   → Spawn codebase-locator to locate auth-related files and directories
+  </example>
+
+  <example>
+  User: "Where is the database configuration defined?"
+  → Spawn codebase-locator to find all database configuration files and their locations
   </example>
 allowed_tools:
   - Grep
