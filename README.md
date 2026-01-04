@@ -125,7 +125,8 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
       "enhancements": { "prefix": "ENH", "dir": "enhancements", "action": "improve" }
     },
     "completed_dir": "completed",
-    "priorities": ["P0", "P1", "P2", "P3", "P4", "P5"]
+    "priorities": ["P0", "P1", "P2", "P3", "P4", "P5"],
+    "templates_dir": null
   },
 
   "automation": {
@@ -147,7 +148,8 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     "stream_subprocess_output": false,
     "command_prefix": "/ll:",
     "ready_command": "ready_issue {{issue_id}}",
-    "manage_command": "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+    "manage_command": "manage_issue {{issue_type}} {{action}} {{issue_id}}",
+    "worktree_copy_files": [".claude/settings.local.json", ".env"]
   },
 
   "commands": {
@@ -190,6 +192,7 @@ Issue management settings:
 | `categories` | See above | Issue category definitions |
 | `completed_dir` | `completed` | Where completed issues go |
 | `priorities` | `[P0-P5]` | Valid priority prefixes |
+| `templates_dir` | `null` | Directory for issue templates |
 
 #### `automation`
 
@@ -220,6 +223,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `command_prefix` | `/ll:` | Prefix for slash commands |
 | `ready_command` | `ready_issue {{issue_id}}` | Ready command template |
 | `manage_command` | `manage_issue {{issue_type}} {{action}} {{issue_id}}` | Manage command template |
+| `worktree_copy_files` | `[".claude/settings.local.json", ".env"]` | Files to copy to worktrees |
 
 ## Commands
 
@@ -294,11 +298,14 @@ pip install ~/code/little-loops/scripts
 Sequential issue processing:
 
 ```bash
-ll-auto                    # Process all issues
-ll-auto --max-issues 5     # Limit to 5 issues
-ll-auto --resume           # Resume from state
-ll-auto --dry-run          # Preview only
-ll-auto --category bugs    # Only process bugs
+ll-auto                          # Process all issues
+ll-auto --max-issues 5           # Limit to 5 issues
+ll-auto --resume                 # Resume from state
+ll-auto --dry-run                # Preview only
+ll-auto --category bugs          # Only process bugs
+ll-auto --only BUG-001,BUG-002   # Process specific issues only
+ll-auto --skip BUG-003           # Skip specific issues
+ll-auto --config /path/to/repo   # Specify project root
 ```
 
 ### ll-parallel
@@ -306,10 +313,20 @@ ll-auto --category bugs    # Only process bugs
 Parallel issue processing with git worktrees:
 
 ```bash
-ll-parallel                 # Process with 2 workers
-ll-parallel --workers 3     # Use 3 workers
-ll-parallel --show-model    # Display model info on worktree setup
-ll-parallel --cleanup       # Clean up worktrees
+ll-parallel                          # Process with default workers
+ll-parallel --workers 3              # Use 3 parallel workers
+ll-parallel --dry-run                # Preview what would be processed
+ll-parallel --resume                 # Resume from previous state
+ll-parallel --priority P1,P2         # Only process P1 and P2 issues
+ll-parallel --include-p0             # Include P0 in parallel processing
+ll-parallel --max-issues 10          # Limit total issues to process
+ll-parallel --timeout 7200           # Timeout per issue in seconds
+ll-parallel --stream-output          # Stream Claude CLI output in real-time
+ll-parallel --show-model             # Display model info on worktree setup
+ll-parallel --cleanup                # Clean up worktrees and exit
+ll-parallel --only BUG-001,BUG-002   # Process specific issues only
+ll-parallel --skip BUG-003           # Skip specific issues
+ll-parallel --quiet                  # Suppress progress output
 ```
 
 ## Command Override
