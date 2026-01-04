@@ -248,30 +248,31 @@ class TestStashLocalChanges:
         # Verify file was reverted
         assert test_file.read_text() == "initial content"
 
-    def test_stashes_untracked_files(
+    def test_ignores_untracked_files(
         self,
         default_config: ParallelConfig,
         mock_logger: MagicMock,
         temp_git_repo: Path,
     ) -> None:
-        """Should stash untracked files with -u flag."""
+        """Should not stash untracked files (only tracked changes are stashed).
+
+        Untracked files are intentionally not stashed because git stash -u with
+        pathspec exclusions doesn't work reliably. Untracked file conflicts
+        during merge are handled by _handle_untracked_conflict instead.
+        """
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
 
-        # Create untracked file
+        # Create untracked file only (no tracked changes)
         new_file = temp_git_repo / "new_file.txt"
         new_file.write_text("new content")
 
         result = coordinator._stash_local_changes()
 
-        # Untracked files should now be stashed with -u flag
-        assert result is True
-        assert coordinator._stash_active is True
+        # Should return False since only untracked files exist
+        assert result is False
+        assert coordinator._stash_active is False
 
-        # Verify file was removed (stashed)
-        assert not new_file.exists()
-
-        # Pop stash and verify file is restored
-        coordinator._pop_stash()
+        # Verify file still exists (not stashed)
         assert new_file.exists()
         assert new_file.read_text() == "new content"
 

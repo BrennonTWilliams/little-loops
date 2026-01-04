@@ -111,57 +111,50 @@ class MergeCoordinator:
         )
 
     def _stash_local_changes(self) -> bool:
-        """Stash any uncommitted local changes in the main repo.
+        """Stash any uncommitted tracked changes in the main repo.
 
-        Includes untracked files (except the state file and worktrees) to prevent
-        merge conflicts with newly created files from other workers.
+        Only stashes tracked file modifications. Untracked files are not stashed
+        because git stash pathspec exclusions don't work reliably with -u flag.
+        Untracked file conflicts during merge are handled by _handle_untracked_conflict.
 
         Returns:
             True if changes were stashed, False if working tree was clean
         """
-        # Check if there are any changes to stash, excluding:
-        # - The state file (constantly updated during execution)
-        # - The .worktrees directory (contains git worktrees that appear as
-        #   "embedded repositories" and cause stash failures)
-        state_file_path = str(self.config.state_file)
-        worktrees_dir = str(self.config.worktree_base)
+        # Check if there are any tracked changes to stash.
+        # We only look at tracked files (exclude untracked with grep -v '??')
+        # since we can only reliably stash tracked changes.
         status_result = subprocess.run(
-            [
-                "git",
-                "status",
-                "--porcelain",
-                "--",
-                ".",
-                f":(exclude){state_file_path}",
-                f":(exclude){worktrees_dir}",
-            ],
+            ["git", "status", "--porcelain"],
             cwd=self.repo_path,
             capture_output=True,
             text=True,
             timeout=30,
         )
 
-        if not status_result.stdout.strip():
-            return False  # Working tree is clean (ignoring exclusions)
+        # Filter to only tracked changes (lines not starting with ??)
+        tracked_changes = [
+            line for line in status_result.stdout.strip().splitlines()
+            if line and not line.startswith("??")
+        ]
+
+        if not tracked_changes:
+            return False  # No tracked changes to stash
 
         # Log files to be stashed for debugging
-        self.logger.debug(f"Files to stash: {status_result.stdout.strip()[:500]}")
+        self.logger.debug(f"Tracked files to stash: {tracked_changes[:10]}")
 
-        # Stash the changes including untracked files (-u) to prevent
-        # "untracked working tree files would be overwritten" errors.
-        # Use pathspec to exclude the state file and worktrees from stash.
+        # Stash tracked changes only. We don't use -u (untracked) because:
+        # 1. Pathspec exclusions like :(exclude) don't work reliably with -u
+        # 2. Git misinterprets exclusion patterns as paths, causing "ignored file" errors
+        # Untracked file conflicts during merge are handled by _handle_untracked_conflict.
+        # Note: gitignored files (state file, worktrees) are never stashed anyway.
         stash_result = subprocess.run(
             [
                 "git",
                 "stash",
                 "push",
-                "-u",  # Include untracked files
                 "-m",
                 "ll-parallel: auto-stash before merge",
-                "--",
-                ".",
-                f":(exclude){state_file_path}",
-                f":(exclude){worktrees_dir}",
             ],
             cwd=self.repo_path,
             capture_output=True,
