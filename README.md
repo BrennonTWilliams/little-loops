@@ -283,6 +283,8 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 
 ## CLI Tools
 
+**Requires Python 3.11+**
+
 After installing the Python package:
 
 ```bash
@@ -327,6 +329,8 @@ ll-parallel --cleanup                # Clean up worktrees and exit
 ll-parallel --only BUG-001,BUG-002   # Process specific issues only
 ll-parallel --skip BUG-003           # Skip specific issues
 ll-parallel --quiet                  # Suppress progress output
+ll-parallel --worktree-base /tmp/wt  # Custom worktree directory
+ll-parallel --config /path/to/repo   # Specify project root
 ```
 
 ## Command Override
@@ -459,7 +463,8 @@ little-loops/
             ├── priority_queue.py
             ├── merge_coordinator.py
             ├── output_parsing.py
-            └── types.py
+            ├── types.py
+            └── tasks/          # Task templates for Claude CLI
 ```
 
 ### Contributing
