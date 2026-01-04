@@ -570,6 +570,26 @@ This issue needs more work before implementation can proceed.
         assert result["verdict"] == "NOT_READY"
         assert result["is_ready"] is False
 
+    def test_phrasing_not_ready(self) -> None:
+        """Test extracting verdict from 'not ready' phrasing without 'for'."""
+        output = """
+The issue is not ready for various reasons.
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "NOT_READY"
+        assert result["is_ready"] is False
+
+    def test_phrasing_issue_not_ready(self) -> None:
+        """Test extracting verdict from 'issue not ready' phrasing."""
+        output = """
+After review, this issue not ready due to missing details.
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "NOT_READY"
+        assert result["is_ready"] is False
+
     def test_phrasing_corrections_made(self) -> None:
         """Test extracting verdict from 'corrections made' phrasing."""
         output = """

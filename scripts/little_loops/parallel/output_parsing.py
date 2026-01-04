@@ -96,7 +96,7 @@ def _extract_verdict_from_text(text: str) -> str | None:
         (r"\balready\s+fixed\b", "CLOSE"),
         (r"\binvalid\s+reference\b", "CLOSE"),
         # Patterns for NOT_READY
-        (r"\bnot\s+ready\s+for\b", "NOT_READY"),
+        (r"\bnot\s+ready\b", "NOT_READY"),  # General "not ready" pattern
         (r"\bneeds?\s+more\s+work\b", "NOT_READY"),
         (r"\brequires?\s+clarification\b", "NOT_READY"),
         (r"\bmissing\s+information\b", "NOT_READY"),
