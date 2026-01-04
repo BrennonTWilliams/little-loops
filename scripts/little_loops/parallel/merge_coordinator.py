@@ -328,6 +328,10 @@ class MergeCoordinator:
                 self.logger.error(f"Failed to abort rebase: {abort_result.stderr}")
                 return False
             self.logger.info("Aborted incomplete rebase")
+            # Force reset after rebase abort - the abort can leave index in dirty state
+            # This is defensive since unmerged file detection below may not trigger
+            if not self._attempt_hard_reset():
+                return False
 
         # Check for unmerged files in the index (UU, AA, DD, AU, UA, DU, UD prefixes)
         # These can persist even after merge --abort in some edge cases
@@ -342,6 +346,10 @@ class MergeCoordinator:
         if status_result.returncode != 0:
             self.logger.error(f"git status failed: {status_result.stderr}")
             return self._attempt_hard_reset()
+
+        # Debug logging to diagnose unmerged detection issues
+        if status_result.stdout.strip():
+            self.logger.debug(f"Git status output: {status_result.stdout[:500]}")
 
         # Check for unmerged entries (first two chars indicate index/worktree status)
         # Unmerged states: UU (both modified), AA (both added), DD (both deleted),
@@ -358,6 +366,13 @@ class MergeCoordinator:
             if not self._attempt_hard_reset():
                 return False
             self.logger.info("Cleared unmerged files from index")
+
+        # Final safety check - if MERGE_HEAD still exists, force reset
+        # This catches edge cases where abort succeeded but state is still dirty
+        if merge_head.exists():
+            self.logger.warning("MERGE_HEAD persists after recovery attempts, forcing reset")
+            if not self._attempt_hard_reset():
+                return False
 
         return True
 
