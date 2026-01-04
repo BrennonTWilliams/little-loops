@@ -290,6 +290,59 @@ class MergeCoordinator:
         ]
         return any(indicator in error_output for indicator in indicators)
 
+    def _is_rebase_in_progress(self) -> bool:
+        """Check if a rebase is currently in progress.
+
+        Returns:
+            True if rebase is in progress (rebase-merge or rebase-apply exists)
+        """
+        rebase_merge = self.repo_path / ".git" / "rebase-merge"
+        rebase_apply = self.repo_path / ".git" / "rebase-apply"
+        return rebase_merge.exists() or rebase_apply.exists()
+
+    def _abort_rebase_if_in_progress(self) -> bool:
+        """Abort any in-progress rebase operation.
+
+        Returns:
+            True if rebase was aborted or none was in progress,
+            False if abort failed
+        """
+        if not self._is_rebase_in_progress():
+            return True
+
+        self.logger.warning("Detected rebase in progress, aborting...")
+        abort_result = subprocess.run(
+            ["git", "rebase", "--abort"],
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if abort_result.returncode != 0:
+            self.logger.error(f"Failed to abort rebase: {abort_result.stderr}")
+            # Force hard reset as last resort
+            return self._attempt_hard_reset()
+
+        self.logger.info("Aborted incomplete rebase from pull")
+        return True
+
+    def _is_unmerged_files_error(self, error_output: str) -> bool:
+        """Check if the error is due to pre-existing unmerged files.
+
+        Args:
+            error_output: The stderr/stdout from the failed git command
+
+        Returns:
+            True if the error indicates unmerged files blocking the operation
+        """
+        indicators = [
+            "you have unmerged files",
+            "Merging is not possible because you have unmerged files",
+            "fix conflicts and then commit the result",
+        ]
+        return any(indicator in error_output for indicator in indicators)
+
     def _check_and_recover_index(self) -> bool:
         """Check git index health and attempt recovery if needed.
 
@@ -497,10 +550,24 @@ class MergeCoordinator:
                 timeout=60,
             )
 
-            # Check if pull failed due to local changes (edge case)
+            # Handle pull failures
             if pull_result.returncode != 0:
                 error_output = pull_result.stderr + pull_result.stdout
-                if self._is_local_changes_error(error_output):
+
+                # Check if rebase conflicted - must abort before continuing
+                if self._is_rebase_in_progress():
+                    self.logger.warning(
+                        f"Pull --rebase failed with conflicts: {error_output[:200]}"
+                    )
+                    if not self._abort_rebase_if_in_progress():
+                        raise RuntimeError(
+                            "Failed to recover from rebase conflict during pull"
+                        )
+                    # After aborting rebase, we're back to pre-pull state
+                    # Continue without the pull - merge may still work or conflict
+                    self.logger.info("Continuing without pull after rebase abort")
+
+                elif self._is_local_changes_error(error_output):
                     self.logger.warning(
                         f"Pull failed due to local changes, attempting re-stash: {error_output[:200]}"
                     )
@@ -508,7 +575,14 @@ class MergeCoordinator:
                     if self._stash_local_changes():
                         self.logger.info("Re-stashed local changes after pull conflict")
                         had_local_changes = True
-                # Continue - merge will fail if there's still an issue
+                # For other pull failures, continue - merge will handle or fail
+
+            # Safety check: ensure no unmerged files before merge attempt
+            # This catches edge cases where previous operations left dirty state
+            if not self._check_and_recover_index():
+                raise RuntimeError(
+                    "Git index has unresolved conflicts before merge - recovery failed"
+                )
 
             # Attempt merge with no-ff
             merge_result = subprocess.run(
@@ -543,6 +617,21 @@ class MergeCoordinator:
                 if self._is_untracked_files_error(error_output):
                     self._handle_untracked_conflict(request, error_output)
                     return
+
+                # Check for pre-existing unmerged files (dirty index)
+                if self._is_unmerged_files_error(error_output):
+                    self.logger.warning(
+                        f"Merge blocked by unmerged files in index: {error_output[:200]}"
+                    )
+                    # Attempt recovery and retry once
+                    if request.retry_count < 1 and self._check_and_recover_index():
+                        request.retry_count += 1
+                        self.logger.info("Recovered from unmerged files, retrying merge")
+                        self._queue.put(request)
+                        return
+                    raise RuntimeError(
+                        f"Merge failed due to unmerged files: {error_output[:200]}"
+                    )
 
                 # Check for merge conflict
                 if "CONFLICT" in error_output:
