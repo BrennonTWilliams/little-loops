@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import re
+import shutil
 import signal
 import subprocess
 import time
@@ -95,6 +96,8 @@ class ParallelOrchestrator:
         """
         try:
             self._setup_signal_handlers()
+            self._ensure_gitignore_entries()
+            self._cleanup_orphaned_worktrees()
             self._load_state()
 
             if self.parallel_config.dry_run:
@@ -123,6 +126,104 @@ class ParallelOrchestrator:
             signal.signal(signal.SIGINT, self._original_sigint)
         if self._original_sigterm is not None:
             signal.signal(signal.SIGTERM, self._original_sigterm)
+
+    def _ensure_gitignore_entries(self) -> None:
+        """Ensure .gitignore has entries for parallel processing artifacts.
+
+        Adds entries for:
+        - .parallel-manage-state.json (state file)
+        - .worktrees/ (git worktree directory)
+
+        This prevents these files from being tracked by git, which would cause
+        conflicts during merge operations (state file is continuously updated).
+        """
+        gitignore_path = self.repo_path / ".gitignore"
+        required_entries = [
+            ".parallel-manage-state.json",
+            ".worktrees/",
+        ]
+
+        existing_content = ""
+        if gitignore_path.exists():
+            existing_content = gitignore_path.read_text()
+
+        # Check which entries are missing
+        missing_entries = []
+        for entry in required_entries:
+            # Check for exact match or pattern that would cover it
+            if entry not in existing_content:
+                missing_entries.append(entry)
+
+        if not missing_entries:
+            return
+
+        # Append missing entries
+        addition = "\n# ll-parallel artifacts\n"
+        for entry in missing_entries:
+            addition += f"{entry}\n"
+
+        # Ensure file ends with newline before adding
+        if existing_content and not existing_content.endswith("\n"):
+            addition = "\n" + addition
+
+        gitignore_path.write_text(existing_content + addition)
+        self.logger.info(f"Added {len(missing_entries)} entries to .gitignore")
+
+    def _cleanup_orphaned_worktrees(self) -> None:
+        """Clean up worktrees from previous interrupted runs.
+
+        Scans the worktree base directory and removes any worktrees that are
+        not from the current session. This handles cases where a previous run
+        was interrupted (Ctrl+C) and worktrees were not cleaned up.
+        """
+        worktree_base = self.repo_path / self.parallel_config.worktree_base
+        if not worktree_base.exists():
+            return
+
+        # Get list of worktree directories
+        orphaned = []
+        for item in worktree_base.iterdir():
+            if item.is_dir() and item.name.startswith("worker-"):
+                orphaned.append(item)
+
+        if not orphaned:
+            return
+
+        self.logger.info(f"Cleaning up {len(orphaned)} orphaned worktree(s) from previous run")
+
+        for worktree_path in orphaned:
+            try:
+                # Try git worktree remove first
+                result = subprocess.run(
+                    ["git", "worktree", "remove", "--force", str(worktree_path)],
+                    cwd=self.repo_path,
+                    capture_output=True,
+                    timeout=30,
+                )
+
+                # If git worktree remove failed, force delete the directory
+                if worktree_path.exists():
+                    shutil.rmtree(worktree_path, ignore_errors=True)
+
+                # Try to delete the associated branch
+                # Branch name format: parallel/<issue-id>-<timestamp>
+                branch_name = worktree_path.name.replace("worker-", "parallel/")
+                subprocess.run(
+                    ["git", "branch", "-D", branch_name],
+                    cwd=self.repo_path,
+                    capture_output=True,
+                    timeout=10,
+                )
+            except Exception as e:
+                self.logger.warning(f"Failed to clean up {worktree_path.name}: {e}")
+
+        # Also prune git worktree references
+        subprocess.run(
+            ["git", "worktree", "prune"],
+            cwd=self.repo_path,
+            capture_output=True,
+            timeout=30,
+        )
 
     def _signal_handler(self, signum: int, frame: object) -> None:
         """Handle shutdown signals gracefully."""

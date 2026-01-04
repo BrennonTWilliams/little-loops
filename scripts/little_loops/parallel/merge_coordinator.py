@@ -65,6 +65,7 @@ class MergeCoordinator:
         self._stash_active = False  # Track if we have an active stash
         self._consecutive_failures = 0  # Circuit breaker counter
         self._paused = False  # Set when circuit breaker trips
+        self._assume_unchanged_active = False  # Track if state file is marked assume-unchanged
 
     def start(self) -> None:
         """Start the merge coordinator background thread."""
@@ -262,6 +263,76 @@ class MergeCoordinator:
 
         self._stash_active = False
         self.logger.info("Restored stashed local changes")
+        return True
+
+    def _mark_state_file_assume_unchanged(self) -> bool:
+        """Mark the state file as assume-unchanged to prevent git from seeing modifications.
+
+        This allows git pull --rebase to proceed even when the state file is modified,
+        since the orchestrator continuously updates it during processing.
+
+        Returns:
+            True if successfully marked, False otherwise
+        """
+        state_file = str(self.config.state_file)
+
+        # Check if file exists and is tracked
+        ls_files = subprocess.run(
+            ["git", "ls-files", state_file],
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if not ls_files.stdout.strip():
+            # File not tracked, nothing to do
+            return True
+
+        result = subprocess.run(
+            ["git", "update-index", "--assume-unchanged", state_file],
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        if result.returncode == 0:
+            self._assume_unchanged_active = True
+            self.logger.debug(f"Marked {state_file} as assume-unchanged")
+            return True
+
+        self.logger.warning(f"Failed to mark state file assume-unchanged: {result.stderr}")
+        return False
+
+    def _restore_state_file_tracking(self) -> bool:
+        """Restore normal tracking for the state file.
+
+        Returns:
+            True if successfully restored, False otherwise
+        """
+        if not self._assume_unchanged_active:
+            return True
+
+        state_file = str(self.config.state_file)
+
+        result = subprocess.run(
+            ["git", "update-index", "--no-assume-unchanged", state_file],
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+
+        self._assume_unchanged_active = False
+
+        if result.returncode != 0:
+            self.logger.warning(
+                f"Failed to restore state file tracking: {result.stderr}"
+            )
+            return False
+
+        self.logger.debug(f"Restored tracking for {state_file}")
         return True
 
     def _is_local_changes_error(self, error_output: str) -> bool:
@@ -522,6 +593,10 @@ class MergeCoordinator:
             self._handle_failure(request, "Git index recovery failed")
             return
 
+        # Mark state file as assume-unchanged to prevent pull --rebase conflicts
+        # The orchestrator continuously updates the state file during processing
+        self._mark_state_file_assume_unchanged()
+
         # Stash any local changes before merge operations
         had_local_changes = self._stash_local_changes()
 
@@ -671,6 +746,8 @@ class MergeCoordinator:
             # Always restore stashed changes
             if had_local_changes:
                 self._pop_stash()
+            # Always restore state file tracking
+            self._restore_state_file_tracking()
 
     def _handle_conflict(self, request: MergeRequest) -> None:
         """Handle a merge conflict with retry logic.
