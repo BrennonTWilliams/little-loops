@@ -113,15 +113,18 @@ class MergeCoordinator:
     def _stash_local_changes(self) -> bool:
         """Stash any uncommitted local changes in the main repo.
 
-        Includes untracked files (except the state file) to prevent merge
-        conflicts with newly created files from other workers.
+        Includes untracked files (except the state file and worktrees) to prevent
+        merge conflicts with newly created files from other workers.
 
         Returns:
             True if changes were stashed, False if working tree was clean
         """
-        # Check if there are any changes to stash, excluding the state file
-        # which is constantly updated during execution
+        # Check if there are any changes to stash, excluding:
+        # - The state file (constantly updated during execution)
+        # - The .worktrees directory (contains git worktrees that appear as
+        #   "embedded repositories" and cause stash failures)
         state_file_path = str(self.config.state_file)
+        worktrees_dir = str(self.config.worktree_base)
         status_result = subprocess.run(
             [
                 "git",
@@ -130,6 +133,7 @@ class MergeCoordinator:
                 "--",
                 ".",
                 f":(exclude){state_file_path}",
+                f":(exclude){worktrees_dir}",
             ],
             cwd=self.repo_path,
             capture_output=True,
@@ -138,14 +142,14 @@ class MergeCoordinator:
         )
 
         if not status_result.stdout.strip():
-            return False  # Working tree is clean (ignoring state file)
+            return False  # Working tree is clean (ignoring exclusions)
 
         # Log files to be stashed for debugging
         self.logger.debug(f"Files to stash: {status_result.stdout.strip()[:500]}")
 
         # Stash the changes including untracked files (-u) to prevent
         # "untracked working tree files would be overwritten" errors.
-        # Use pathspec to exclude the state file from the stash.
+        # Use pathspec to exclude the state file and worktrees from stash.
         stash_result = subprocess.run(
             [
                 "git",
@@ -157,6 +161,7 @@ class MergeCoordinator:
                 "--",
                 ".",
                 f":(exclude){state_file_path}",
+                f":(exclude){worktrees_dir}",
             ],
             cwd=self.repo_path,
             capture_output=True,
