@@ -125,15 +125,9 @@ class MergeCoordinator:
         Returns:
             True if changes were stashed, False if working tree was clean
         """
-        # Reset state file before stash - orchestrator manages this file independently
-        # and stashing it causes conflicts when popping after merge
-        state_file = str(self.config.state_file)
-        subprocess.run(
-            ["git", "checkout", "--", state_file],
-            cwd=self.repo_path,
-            capture_output=True,
-            timeout=10,
-        )
+        state_file_path = Path(self.config.state_file)
+        state_file_str = str(state_file_path)
+        state_file_name = state_file_path.name
 
         # Check if there are any tracked changes to stash.
         # We only look at tracked files (exclude untracked with grep -v '??')
@@ -147,22 +141,32 @@ class MergeCoordinator:
         )
 
         # Filter to only tracked changes (lines not starting with ??)
-        tracked_changes = [
-            line for line in status_result.stdout.strip().splitlines()
-            if line and not line.startswith("??")
-        ]
+        # and exclude the state file to prevent stash pop conflicts
+        tracked_changes = []
+        files_to_stash = []
+        # Note: Don't use .strip() on the full output - it removes leading spaces
+        # from the first line which are significant in git status porcelain format
+        for line in status_result.stdout.splitlines():
+            if not line or line.startswith("??"):
+                continue
+            # Extract file path from porcelain format (XY filename or XY -> filename for renames)
+            # Format: XY filename  or  XY old -> new (XY is exactly 2 chars + 1 space)
+            file_path = line[3:].split(" -> ")[-1].strip()
+            if file_path == state_file_str or file_path.endswith(state_file_name):
+                continue  # Skip state file - orchestrator manages it independently
+            tracked_changes.append(line)
+            files_to_stash.append(file_path)
 
-        if not tracked_changes:
-            return False  # No tracked changes to stash
+        if not files_to_stash:
+            return False  # No tracked changes to stash (excluding state file)
 
         # Log files to be stashed for debugging
         self.logger.debug(f"Tracked files to stash: {tracked_changes[:10]}")
 
-        # Stash tracked changes only. We don't use -u (untracked) because:
-        # 1. Pathspec exclusions like :(exclude) don't work reliably with -u
-        # 2. Git misinterprets exclusion patterns as paths, causing "ignored file" errors
-        # Untracked file conflicts during merge are handled by _handle_untracked_conflict.
-        # Note: gitignored files (state file, worktrees) are never stashed anyway.
+        # Stash only specific files, explicitly excluding the state file.
+        # Using explicit file list avoids race conditions where the orchestrator
+        # modifies the state file between a checkout and stash-all operation.
+        # Note: gitignored files are never stashed anyway.
         stash_result = subprocess.run(
             [
                 "git",
@@ -170,6 +174,8 @@ class MergeCoordinator:
                 "push",
                 "-m",
                 "ll-parallel: auto-stash before merge",
+                "--",
+                *files_to_stash,
             ],
             cwd=self.repo_path,
             capture_output=True,

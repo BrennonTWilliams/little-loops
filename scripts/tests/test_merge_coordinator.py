@@ -276,6 +276,46 @@ class TestStashLocalChanges:
         assert new_file.exists()
         assert new_file.read_text() == "new content"
 
+    def test_excludes_state_file_from_stash(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should exclude state file from stash to prevent pop conflicts.
+
+        The state file is managed by the orchestrator and can change during
+        merge operations. Stashing it causes conflicts when popping after merge.
+        """
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create the state file as a tracked file
+        state_file = temp_git_repo / default_config.state_file
+        state_file.write_text('{"initial": true}')
+        subprocess.run(["git", "add", str(state_file)], cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add state file"],
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        # Modify both the state file and another tracked file
+        state_file.write_text('{"modified": true}')
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("modified content")
+
+        result = coordinator._stash_local_changes()
+
+        # Should stash the test.txt but NOT the state file
+        assert result is True
+        assert coordinator._stash_active is True
+
+        # test.txt should be reverted (stashed)
+        assert test_file.read_text() == "initial content"
+
+        # State file should NOT be reverted (excluded from stash)
+        assert state_file.read_text() == '{"modified": true}'
+
 
 class TestPopStash:
     """Tests for _pop_stash functionality."""
