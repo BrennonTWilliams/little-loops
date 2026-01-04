@@ -117,9 +117,24 @@ class MergeCoordinator:
         because git stash pathspec exclusions don't work reliably with -u flag.
         Untracked file conflicts during merge are handled by _handle_untracked_conflict.
 
+        The state file is explicitly excluded from stashing because:
+        1. It's managed by the orchestrator and continuously updated
+        2. Stashing it causes pop conflicts after merge (the merge changes HEAD)
+        3. The orchestrator will regenerate/update it after merge anyway
+
         Returns:
             True if changes were stashed, False if working tree was clean
         """
+        # Reset state file before stash - orchestrator manages this file independently
+        # and stashing it causes conflicts when popping after merge
+        state_file = str(self.config.state_file)
+        subprocess.run(
+            ["git", "checkout", "--", state_file],
+            cwd=self.repo_path,
+            capture_output=True,
+            timeout=10,
+        )
+
         # Check if there are any tracked changes to stash.
         # We only look at tracked files (exclude untracked with grep -v '??')
         # since we can only reliably stash tracked changes.
