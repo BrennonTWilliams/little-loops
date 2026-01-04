@@ -573,6 +573,32 @@ class MergeCoordinator:
 
             request.status = MergeStatus.RETRYING
 
+            # Check for and stash any unstaged changes in the worktree before rebase
+            worktree_status = subprocess.run(
+                ["git", "status", "--porcelain"],
+                cwd=result.worktree_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            worktree_has_changes = bool(worktree_status.stdout.strip())
+
+            if worktree_has_changes:
+                self.logger.debug(
+                    f"Stashing worktree changes before rebase: {worktree_status.stdout[:200]}"
+                )
+                stash_result = subprocess.run(
+                    ["git", "stash", "push", "-m", "ll-parallel: auto-stash before rebase"],
+                    cwd=result.worktree_path,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                )
+                if stash_result.returncode != 0:
+                    self.logger.warning(
+                        f"Failed to stash worktree changes: {stash_result.stderr}"
+                    )
+
             # Rebase the branch onto current main
             rebase_result = subprocess.run(
                 ["git", "rebase", "main"],
@@ -583,16 +609,30 @@ class MergeCoordinator:
             )
 
             if rebase_result.returncode == 0:
-                # Rebase succeeded, retry merge
+                # Rebase succeeded, restore stash if we made one, then retry merge
+                if worktree_has_changes:
+                    subprocess.run(
+                        ["git", "stash", "pop"],
+                        cwd=result.worktree_path,
+                        capture_output=True,
+                        timeout=30,
+                    )
                 self._queue.put(request)
             else:
-                # Rebase also failed
+                # Rebase also failed - abort and restore stash
                 subprocess.run(
                     ["git", "rebase", "--abort"],
                     cwd=result.worktree_path,
                     capture_output=True,
                     timeout=10,
                 )
+                if worktree_has_changes:
+                    subprocess.run(
+                        ["git", "stash", "pop"],
+                        cwd=result.worktree_path,
+                        capture_output=True,
+                        timeout=30,
+                    )
                 self._handle_failure(
                     request,
                     f"Rebase failed after merge conflict: {rebase_result.stderr}",
