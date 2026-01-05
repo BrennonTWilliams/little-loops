@@ -3,8 +3,8 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Generator
 from pathlib import Path
-from typing import Generator
 from unittest.mock import MagicMock
 
 import pytest
@@ -156,9 +156,7 @@ class TestStateManager:
         assert state.phase == "idle"
         assert state.timestamp != ""  # Should have a timestamp
 
-    def test_load_nonexistent_file(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_load_nonexistent_file(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test loading from non-existent file returns None."""
         manager = StateManager(temp_state_file, mock_logger)
 
@@ -166,9 +164,7 @@ class TestStateManager:
 
         assert result is None
 
-    def test_load_existing_file(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_load_existing_file(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test loading from existing state file."""
         state_data = {
             "current_issue": "/test.md",
@@ -190,9 +186,7 @@ class TestStateManager:
         assert result.completed_issues == ["BUG-001"]
         mock_logger.info.assert_called()
 
-    def test_load_invalid_json(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_load_invalid_json(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test loading from corrupted JSON file."""
         temp_state_file.write_text("{ invalid json }")
 
@@ -229,18 +223,14 @@ class TestStateManager:
         assert not temp_state_file.exists()
         mock_logger.info.assert_called()
 
-    def test_cleanup_nonexistent_file(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_cleanup_nonexistent_file(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test cleanup with non-existent file does nothing."""
         manager = StateManager(temp_state_file, mock_logger)
 
         # Should not raise
         manager.cleanup()
 
-    def test_update_current(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_update_current(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test update_current updates state and saves."""
         manager = StateManager(temp_state_file, mock_logger)
 
@@ -250,9 +240,7 @@ class TestStateManager:
         assert manager.state.phase == "implementing"
         assert temp_state_file.exists()  # Should have saved
 
-    def test_mark_attempted(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_mark_attempted(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test mark_attempted adds to attempted set."""
         manager = StateManager(temp_state_file, mock_logger)
 
@@ -261,9 +249,7 @@ class TestStateManager:
         assert "BUG-001" in manager.state.attempted_issues
         assert temp_state_file.exists()  # Should have saved
 
-    def test_mark_attempted_no_save(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_mark_attempted_no_save(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test mark_attempted with save=False doesn't save."""
         manager = StateManager(temp_state_file, mock_logger)
 
@@ -272,9 +258,7 @@ class TestStateManager:
         assert "BUG-001" in manager.state.attempted_issues
         assert not temp_state_file.exists()  # Should NOT have saved
 
-    def test_mark_completed(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_mark_completed(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test mark_completed updates state."""
         manager = StateManager(temp_state_file, mock_logger)
         manager.state.current_issue = "/current.md"
@@ -297,9 +281,7 @@ class TestStateManager:
 
         assert manager.state.timing["BUG-002"] == timing
 
-    def test_mark_failed(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_mark_failed(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test mark_failed stores failure reason."""
         manager = StateManager(temp_state_file, mock_logger)
 
@@ -308,26 +290,20 @@ class TestStateManager:
         assert manager.state.failed_issues["BUG-003"] == "Timeout after 3600s"
         assert temp_state_file.exists()  # Should have saved
 
-    def test_is_attempted_true(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_is_attempted_true(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test is_attempted returns True for attempted issues."""
         manager = StateManager(temp_state_file, mock_logger)
         manager.state.attempted_issues.add("BUG-001")
 
         assert manager.is_attempted("BUG-001") is True
 
-    def test_is_attempted_false(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_is_attempted_false(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test is_attempted returns False for non-attempted issues."""
         manager = StateManager(temp_state_file, mock_logger)
 
         assert manager.is_attempted("BUG-999") is False
 
-    def test_resume_workflow(
-        self, temp_state_file: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_resume_workflow(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test typical resume workflow: save, reload, continue."""
         # Initial processing
         manager1 = StateManager(temp_state_file, mock_logger)

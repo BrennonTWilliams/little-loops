@@ -9,7 +9,7 @@ from __future__ import annotations
 import io
 import subprocess
 from typing import TYPE_CHECKING
-from unittest.mock import MagicMock, Mock, patch, call
+from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
@@ -47,6 +47,7 @@ class TestRunClaudeCommand:
                 mock_selector.select.return_value = []
 
                 from little_loops.issue_manager import run_claude_command
+
                 result = run_claude_command(
                     "/ll:test_command",
                     mock_logger,
@@ -78,6 +79,7 @@ class TestRunClaudeCommand:
                 mock_selector.get_map.side_effect = [False]
 
                 from little_loops.issue_manager import run_claude_command
+
                 run_claude_command(
                     "/ll:ready_issue BUG-001",
                     mock_logger,
@@ -138,6 +140,7 @@ class TestRunClaudeCommand:
                 mock_selector.get_map.side_effect = [False]
 
                 from little_loops.issue_manager import run_claude_command
+
                 result = run_claude_command(
                     "/ll:test",
                     mock_logger,
@@ -165,6 +168,7 @@ class TestCheckGitStatus:
             )
 
             from little_loops.git_operations import check_git_status
+
             result = check_git_status(mock_logger)
 
         assert result is False
@@ -179,6 +183,7 @@ class TestCheckGitStatus:
             )
 
             from little_loops.git_operations import check_git_status
+
             result = check_git_status(mock_logger)
 
         assert result is True
@@ -195,6 +200,7 @@ class TestCheckGitStatus:
             ]
 
             from little_loops.git_operations import check_git_status
+
             result = check_git_status(mock_logger)
 
         assert result is True
@@ -207,6 +213,7 @@ class TestCheckGitStatus:
             )
 
             from little_loops.git_operations import check_git_status
+
             check_git_status(mock_logger)
 
         assert mock_run.call_count == 2
@@ -234,6 +241,7 @@ class TestVerifyWorkWasDone:
             )
 
             from little_loops.git_operations import verify_work_was_done
+
             result = verify_work_was_done(mock_logger)
 
         assert result is True
@@ -250,6 +258,7 @@ class TestVerifyWorkWasDone:
             )
 
             from little_loops.git_operations import verify_work_was_done
+
             result = verify_work_was_done(mock_logger)
 
         assert result is False
@@ -262,6 +271,7 @@ class TestVerifyWorkWasDone:
             )
 
             from little_loops.git_operations import verify_work_was_done
+
             result = verify_work_was_done(mock_logger)
 
         assert result is False
@@ -279,6 +289,7 @@ class TestVerifyWorkWasDone:
             ]
 
             from little_loops.git_operations import verify_work_was_done
+
             result = verify_work_was_done(mock_logger)
 
         assert result is True
@@ -294,6 +305,7 @@ class TestVerifyWorkWasDone:
             )
 
             from little_loops.git_operations import verify_work_was_done
+
             result = verify_work_was_done(mock_logger)
 
         # Markdown files are now considered valid work
@@ -310,6 +322,7 @@ class TestVerifyWorkWasDone:
             )
 
             from little_loops.git_operations import verify_work_was_done
+
             result = verify_work_was_done(mock_logger)
 
         assert result is False
@@ -320,6 +333,7 @@ class TestVerifyWorkWasDone:
             mock_run.side_effect = OSError("Git not found")
 
             from little_loops.git_operations import verify_work_was_done
+
             result = verify_work_was_done(mock_logger)
 
         assert result is False
@@ -338,9 +352,10 @@ class TestWorkerPoolSetupWorktree:
         """Worktree setup calls git worktree add with correct branch name."""
         import tempfile
         from pathlib import Path
-        from little_loops.parallel.worker_pool import WorkerPool
-        from little_loops.parallel.types import ParallelConfig
+
         from little_loops.config import BRConfig
+        from little_loops.parallel.types import ParallelConfig
+        from little_loops.parallel.worker_pool import WorkerPool
 
         captured_commands: list[list[str]] = []
 
@@ -352,9 +367,7 @@ class TestWorkerPoolSetupWorktree:
                         cmd, 0, stdout="test@example.com\n", stderr=""
                     )
                 if "user.name" in cmd:
-                    return subprocess.CompletedProcess(
-                        cmd, 0, stdout="Test User\n", stderr=""
-                    )
+                    return subprocess.CompletedProcess(cmd, 0, stdout="Test User\n", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -393,9 +406,10 @@ class TestWorkerPoolSetupWorktree:
         """Worktree cleanup calls git worktree remove."""
         import tempfile
         from pathlib import Path
-        from little_loops.parallel.worker_pool import WorkerPool
-        from little_loops.parallel.types import ParallelConfig
+
         from little_loops.config import BRConfig
+        from little_loops.parallel.types import ParallelConfig
+        from little_loops.parallel.worker_pool import WorkerPool
 
         captured_commands: list[list[str]] = []
 
@@ -446,6 +460,7 @@ class TestMergeCoordinatorGitOperations:
         """Stash local changes executes correct git commands."""
         import tempfile
         from pathlib import Path
+
         from little_loops.parallel.merge_coordinator import MergeCoordinator
         from little_loops.parallel.types import ParallelConfig
 
@@ -454,9 +469,7 @@ class TestMergeCoordinatorGitOperations:
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             captured_commands.append(cmd)
             if cmd[:3] == ["git", "status", "--porcelain"]:
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout="M src/file.py\n", stderr=""
-                )
+                return subprocess.CompletedProcess(cmd, 0, stdout="M src/file.py\n", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -478,6 +491,7 @@ class TestMergeCoordinatorGitOperations:
         """Pop stash executes correct git command when stash was applied."""
         import tempfile
         from pathlib import Path
+
         from little_loops.parallel.merge_coordinator import MergeCoordinator
         from little_loops.parallel.types import ParallelConfig
 
@@ -503,6 +517,7 @@ class TestMergeCoordinatorGitOperations:
         """Pop stash does nothing when no stash was applied."""
         import tempfile
         from pathlib import Path
+
         from little_loops.parallel.merge_coordinator import MergeCoordinator
         from little_loops.parallel.types import ParallelConfig
 
@@ -527,8 +542,9 @@ class TestMergeCoordinatorGitOperations:
         """Process merge correctly uses MergeRequest wrapper."""
         import tempfile
         from pathlib import Path
+
         from little_loops.parallel.merge_coordinator import MergeCoordinator
-        from little_loops.parallel.types import ParallelConfig, WorkerResult, MergeRequest
+        from little_loops.parallel.types import MergeRequest, ParallelConfig, WorkerResult
 
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_path = Path(tmpdir)
@@ -569,8 +585,9 @@ class TestMergeCoordinatorGitOperations:
         """Test that local changes appearing after pull are re-stashed."""
         import tempfile
         from pathlib import Path
+
         from little_loops.parallel.merge_coordinator import MergeCoordinator
-        from little_loops.parallel.types import ParallelConfig, WorkerResult, MergeRequest
+        from little_loops.parallel.types import MergeRequest, ParallelConfig, WorkerResult
 
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_path = Path(tmpdir)

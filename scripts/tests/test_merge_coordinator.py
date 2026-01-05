@@ -5,7 +5,7 @@ from __future__ import annotations
 import subprocess
 import tempfile
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -103,9 +103,7 @@ Merge with strategy ort failed."""
         """Should detect error suggesting to stash changes."""
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
 
-        error_message = (
-            "Please commit your changes or stash them before you merge."
-        )
+        error_message = "Please commit your changes or stash them before you merge."
 
         assert coordinator._is_local_changes_error(error_message) is True
 
@@ -491,7 +489,9 @@ Aborting"""
         assert not conflicting_file.exists()
 
         # Backup should exist
-        backup_file = temp_git_repo / ".ll-backup" / "TEST-001" / "tests" / "unit" / "test_example.py"
+        backup_file = (
+            temp_git_repo / ".ll-backup" / "TEST-001" / "tests" / "unit" / "test_example.py"
+        )
         assert backup_file.exists()
         assert backup_file.read_text() == "# untracked test file"
 

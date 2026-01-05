@@ -6,8 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from little_loops.config import (
     AutomationConfig,
     BRConfig,
@@ -278,9 +276,7 @@ class TestBRConfig:
         assert config.issues.base_dir == ".issues"
         assert len(config.issues.categories) == 3
 
-    def test_project_name_defaults_to_directory_name(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_project_name_defaults_to_directory_name(self, temp_project_dir: Path) -> None:
         """Test that project name defaults to directory name."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps({"project": {}}))
@@ -289,9 +285,7 @@ class TestBRConfig:
 
         assert config.project.name == temp_project_dir.name
 
-    def test_get_issue_dir(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
-    ) -> None:
+    def test_get_issue_dir(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test get_issue_dir returns correct path."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
@@ -317,9 +311,7 @@ class TestBRConfig:
         unknown_dir = config.get_issue_dir("unknown")
         assert unknown_dir.resolve() == (temp_project_dir / ".issues" / "unknown").resolve()
 
-    def test_get_completed_dir(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
-    ) -> None:
+    def test_get_completed_dir(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test get_completed_dir returns correct path."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
@@ -329,9 +321,7 @@ class TestBRConfig:
         completed = config.get_completed_dir()
         assert completed.resolve() == (temp_project_dir / ".issues" / "completed").resolve()
 
-    def test_get_issue_prefix(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
-    ) -> None:
+    def test_get_issue_prefix(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test get_issue_prefix returns correct prefix."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
@@ -355,9 +345,7 @@ class TestBRConfig:
         assert config.get_category_action("features") == "implement"
         assert config.get_category_action("unknown") == "fix"  # Default
 
-    def test_get_src_path(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
-    ) -> None:
+    def test_get_src_path(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test get_src_path returns correct path."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
@@ -392,9 +380,7 @@ class TestBRConfig:
         priorities = config.issue_priorities
         assert priorities == ["P0", "P1", "P2", "P3"]
 
-    def test_to_dict(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
-    ) -> None:
+    def test_to_dict(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test to_dict returns serializable dictionary."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
@@ -410,9 +396,7 @@ class TestBRConfig:
         # Should be JSON serializable
         json.dumps(result)
 
-    def test_resolve_variable(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
-    ) -> None:
+    def test_resolve_variable(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test resolve_variable resolves config paths."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))

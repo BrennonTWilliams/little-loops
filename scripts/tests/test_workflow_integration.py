@@ -7,11 +7,11 @@ for Claude CLI and git operations.
 from __future__ import annotations
 
 import json
-import subprocess
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Generator
-from unittest.mock import MagicMock, patch
+from typing import TYPE_CHECKING, Any
+from unittest.mock import patch
 
 import pytest
 
@@ -98,7 +98,7 @@ class TestSequentialWorkflowIntegration:
         # Run should complete without calling any subprocess
         with patch("subprocess.Popen") as mock_popen:
             with patch("subprocess.run") as mock_run:
-                result = manager.run()
+                _ = manager.run()
 
         # Verify no subprocess calls were made
         mock_popen.assert_not_called()
@@ -241,7 +241,7 @@ class TestParallelWorkflowIntegration:
         # Dry run should complete without subprocess calls
         with patch("subprocess.Popen") as mock_popen:
             with patch("subprocess.run") as mock_run:
-                result = orchestrator.run()
+                _ = orchestrator.run()
 
         # No actual processing should have occurred
         mock_popen.assert_not_called()
@@ -251,8 +251,8 @@ class TestParallelWorkflowIntegration:
         """Priority queue should order issues by priority."""
         project_root, _ = project_setup
 
-        from little_loops.parallel.priority_queue import IssuePriorityQueue
         from little_loops.issue_parser import IssueInfo
+        from little_loops.parallel.priority_queue import IssuePriorityQueue
 
         queue = IssuePriorityQueue()
 
@@ -297,8 +297,8 @@ class TestStateManagement:
 
     def test_state_roundtrip(self, state_setup: Path) -> None:
         """State can be saved and loaded correctly."""
-        from little_loops.state import StateManager, ProcessingState
         from little_loops.logger import Logger
+        from little_loops.state import StateManager
 
         state_file = state_setup / ".test-state.json"
         logger = Logger(verbose=False)
@@ -321,8 +321,8 @@ class TestStateManagement:
 
     def test_state_persistence(self, state_setup: Path) -> None:
         """State is correctly persisted to disk."""
-        from little_loops.state import StateManager
         from little_loops.logger import Logger
+        from little_loops.state import StateManager
 
         state_file = state_setup / ".test-state.json"
         logger = Logger(verbose=False)
@@ -427,8 +427,9 @@ class TestIssueDiscovery:
     def test_find_issues_by_category(self, issues_setup: Path) -> None:
         """find_issues filters by category correctly."""
         import json
-        from little_loops.issue_parser import find_issues
+
         from little_loops.config import BRConfig
+        from little_loops.issue_parser import find_issues
 
         # Create a config for the test
         claude_dir = issues_setup.parent / ".claude"
@@ -462,8 +463,9 @@ class TestIssueDiscovery:
     def test_find_highest_priority_issue(self, issues_setup: Path) -> None:
         """find_highest_priority_issue returns the highest priority issue."""
         import json
-        from little_loops.issue_parser import find_highest_priority_issue
+
         from little_loops.config import BRConfig
+        from little_loops.issue_parser import find_highest_priority_issue
 
         # Create a config for the test
         claude_dir = issues_setup.parent / ".claude"
@@ -493,8 +495,9 @@ class TestIssueDiscovery:
     def test_issue_parser_extracts_metadata(self, issues_setup: Path) -> None:
         """IssueParser correctly extracts issue metadata from files."""
         import json
-        from little_loops.issue_parser import IssueParser
+
         from little_loops.config import BRConfig
+        from little_loops.issue_parser import IssueParser
 
         # Create a config for the test
         claude_dir = issues_setup.parent / ".claude"

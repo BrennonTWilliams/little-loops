@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import pytest
-
 from little_loops.parallel.output_parsing import (
     parse_manage_issue_output,
     parse_ready_issue_output,

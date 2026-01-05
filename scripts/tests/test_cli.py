@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 if TYPE_CHECKING:
-    from typing import Any, Generator
+    from collections.abc import Generator
 
 
 class TestAutoArgumentParsing:
@@ -88,13 +88,18 @@ class TestAutoArgumentParsing:
 
     def test_combined_args(self) -> None:
         """Multiple arguments work together correctly."""
-        args = self._parse_auto_args([
-            "--resume",
-            "--dry-run",
-            "--max-issues", "3",
-            "--category", "bugs",
-            "--config", "/my/project",
-        ])
+        args = self._parse_auto_args(
+            [
+                "--resume",
+                "--dry-run",
+                "--max-issues",
+                "3",
+                "--category",
+                "bugs",
+                "--config",
+                "/my/project",
+            ]
+        )
         assert args.resume is True
         assert args.dry_run is True
         assert args.max_issues == 3
@@ -248,18 +253,25 @@ class TestParallelArgumentParsing:
 
     def test_combined_args(self) -> None:
         """Multiple arguments work together correctly."""
-        args = self._parse_parallel_args([
-            "--workers", "4",
-            "--priority", "P1,P2,P3",
-            "--max-issues", "20",
-            "--dry-run",
-            "--resume",
-            "--timeout", "2400",
-            "--quiet",
-            "--stream-output",
-            "--show-model",
-            "--config", "/my/project",
-        ])
+        args = self._parse_parallel_args(
+            [
+                "--workers",
+                "4",
+                "--priority",
+                "P1,P2,P3",
+                "--max-issues",
+                "20",
+                "--dry-run",
+                "--resume",
+                "--timeout",
+                "2400",
+                "--quiet",
+                "--stream-output",
+                "--show-model",
+                "--config",
+                "/my/project",
+            ]
+        )
         assert args.workers == 4
         assert args.priority == "P1,P2,P3"
         assert args.max_issues == 20
@@ -307,6 +319,7 @@ class TestMainAutoIntegration:
     def temp_project(self) -> Generator[Path, None, None]:
         """Create a temporary project with config."""
         import json
+
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir)
             claude_dir = project / ".claude"
@@ -326,24 +339,30 @@ class TestMainAutoIntegration:
             issues_dir.mkdir(parents=True)
             yield project
 
-    def test_main_auto_creates_manager_with_correct_args(
-        self, temp_project: Path
-    ) -> None:
+    def test_main_auto_creates_manager_with_correct_args(self, temp_project: Path) -> None:
         """main_auto creates AutoManager with parsed arguments."""
         with patch("little_loops.cli.AutoManager") as mock_manager_cls:
             mock_manager = MagicMock()
             mock_manager.run.return_value = 0
             mock_manager_cls.return_value = mock_manager
 
-            with patch.object(sys, "argv", [
-                "ll-auto",
-                "--dry-run",
-                "--max-issues", "5",
-                "--resume",
-                "--category", "bugs",
-                "--config", str(temp_project),
-            ]):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-auto",
+                    "--dry-run",
+                    "--max-issues",
+                    "5",
+                    "--resume",
+                    "--category",
+                    "bugs",
+                    "--config",
+                    str(temp_project),
+                ],
+            ):
                 from little_loops.cli import main_auto
+
                 result = main_auto()
 
             assert result == 0
@@ -362,6 +381,7 @@ class TestMainParallelIntegration:
     def temp_project(self) -> Generator[Path, None, None]:
         """Create a temporary project with config."""
         import json
+
         with tempfile.TemporaryDirectory() as tmpdir:
             project = Path(tmpdir)
             claude_dir = project / ".claude"
@@ -392,35 +412,48 @@ class TestMainParallelIntegration:
             mock_pool = MagicMock()
             mock_pool_cls.return_value = mock_pool
 
-            with patch.object(sys, "argv", [
-                "ll-parallel",
-                "--cleanup",
-                "--config", str(temp_project),
-            ]):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-parallel",
+                    "--cleanup",
+                    "--config",
+                    str(temp_project),
+                ],
+            ):
                 from little_loops.cli import main_parallel
+
                 result = main_parallel()
 
             assert result == 0
             mock_pool.cleanup_all_worktrees.assert_called_once()
 
-    def test_main_parallel_creates_orchestrator_with_correct_args(
-        self, temp_project: Path
-    ) -> None:
+    def test_main_parallel_creates_orchestrator_with_correct_args(self, temp_project: Path) -> None:
         """main_parallel creates ParallelOrchestrator with parsed arguments."""
         with patch("little_loops.parallel.ParallelOrchestrator") as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.run.return_value = 0
             mock_orch_cls.return_value = mock_orch
 
-            with patch.object(sys, "argv", [
-                "ll-parallel",
-                "--workers", "3",
-                "--dry-run",
-                "--priority", "P1,P2",
-                "--max-issues", "10",
-                "--config", str(temp_project),
-            ]):
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-parallel",
+                    "--workers",
+                    "3",
+                    "--dry-run",
+                    "--priority",
+                    "P1,P2",
+                    "--max-issues",
+                    "10",
+                    "--config",
+                    str(temp_project),
+                ],
+            ):
                 from little_loops.cli import main_parallel
+
                 result = main_parallel()
 
             assert result == 0

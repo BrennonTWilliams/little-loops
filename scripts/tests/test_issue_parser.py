@@ -6,8 +6,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-import pytest
-
 from little_loops.config import BRConfig
 from little_loops.issue_parser import (
     IssueInfo,
@@ -328,9 +326,7 @@ class TestIssueParser:
 class TestGetNextIssueNumber:
     """Tests for get_next_issue_number function."""
 
-    def test_empty_directories(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
-    ) -> None:
+    def test_empty_directories(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test with empty issue directories."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
@@ -473,7 +469,9 @@ class TestFindIssues:
         (completed_dir / duplicate_file).write_text("# BUG-100: Duplicate Test\n\nContent.")
 
         # Create a non-duplicate issue
-        (bugs_dir / "P1-BUG-101-not-duplicate.md").write_text("# BUG-101: Not Duplicate\n\nContent.")
+        (bugs_dir / "P1-BUG-101-not-duplicate.md").write_text(
+            "# BUG-101: Not Duplicate\n\nContent."
+        )
 
         issues = find_issues(config, category="bugs")
 
