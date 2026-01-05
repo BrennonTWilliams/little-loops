@@ -204,6 +204,10 @@ def _commit_issue_completion(
 def verify_issue_completed(info: IssueInfo, config: BRConfig, logger: Logger) -> bool:
     """Verify that an issue was moved to completed directory.
 
+    Checks multiple possible locations:
+    1. Primary: .issues/completed/ (configured completed_dir)
+    2. Fallback: .issues/{category}/completed/ (category-specific)
+
     Args:
         info: Issue info
         config: Project configuration
@@ -212,6 +216,7 @@ def verify_issue_completed(info: IssueInfo, config: BRConfig, logger: Logger) ->
     Returns:
         True if issue is in completed directory
     """
+    # Primary expected location: .issues/completed/
     completed_path = config.get_completed_dir() / info.path.name
     original_path = info.path
 
@@ -221,13 +226,44 @@ def verify_issue_completed(info: IssueInfo, config: BRConfig, logger: Logger) ->
 
     if completed_path.exists() and original_path.exists():
         logger.warning(f"Warning: {info.issue_id} exists in BOTH locations")
+        return True
 
+    # Fallback: check category-specific completed directories
+    # (handles case where agent moves to .issues/{category}/completed/ instead)
     if not original_path.exists():
-        logger.warning(f"Warning: {info.issue_id} was deleted but not moved to completed")
+        category_completed = _find_in_category_completed(info, config)
+        if category_completed:
+            logger.warning(
+                f"Warning: {info.issue_id} moved to {category_completed.parent.name}/ "
+                f"instead of {config.issues.completed_dir}/ (non-standard but acceptable)"
+            )
+            return True
+        logger.warning(f"Warning: {info.issue_id} was deleted but not found in any completed dir")
         return True
 
     logger.warning(f"Warning: {info.issue_id} was NOT moved to completed")
     return False
+
+
+def _find_in_category_completed(info: IssueInfo, config: BRConfig) -> Path | None:
+    """Search for issue file in category-specific completed directories.
+
+    Checks locations like .issues/bugs/completed/, .issues/enhancements/completed/, etc.
+
+    Args:
+        info: Issue info with filename
+        config: Project configuration
+
+    Returns:
+        Path to file if found, None otherwise
+    """
+    base_dir = config.project_root / config.issues.base_dir
+    for category in config.issue_categories:
+        category_dir = config.get_issue_dir(category)
+        category_completed = category_dir / "completed" / info.path.name
+        if category_completed.exists():
+            return category_completed
+    return None
 
 
 def create_issue_from_failure(
