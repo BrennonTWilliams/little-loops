@@ -17,6 +17,7 @@ You are tasked with running the test suite based on the specified scope and opti
 
 This command uses project configuration from `.claude/ll-config.json`:
 - **Test command**: `{{config.project.test_cmd}}`
+- **Test directory**: `{{config.project.test_dir}}`
 - **Source directory**: `{{config.project.src_dir}}`
 
 ## Test Scopes
@@ -49,9 +50,9 @@ if [ "$SCOPE" = "unit" ]; then
     echo "Running unit tests..."
 
     if [ -n "$PATTERN" ]; then
-        {{config.project.test_cmd}} tests/unit/ -v -k "$PATTERN" --tb=short
+        {{config.project.test_cmd}} {{config.project.test_dir}}/unit/ -v -k "$PATTERN" --tb=short
     else
-        {{config.project.test_cmd}} tests/unit/ -v --tb=short
+        {{config.project.test_cmd}} {{config.project.test_dir}}/unit/ -v --tb=short
     fi
 fi
 ```
@@ -63,9 +64,9 @@ if [ "$SCOPE" = "integration" ]; then
     echo "Running integration tests..."
 
     if [ -n "$PATTERN" ]; then
-        {{config.project.test_cmd}} tests/integration/ -v -k "$PATTERN" --tb=short
+        {{config.project.test_cmd}} {{config.project.test_dir}}/integration/ -v -k "$PATTERN" --tb=short
     else
-        {{config.project.test_cmd}} tests/integration/ -v --tb=short
+        {{config.project.test_cmd}} {{config.project.test_dir}}/integration/ -v --tb=short
     fi
 fi
 ```
@@ -77,9 +78,9 @@ if [ "$SCOPE" = "all" ]; then
     echo "Running complete test suite..."
 
     if [ -n "$PATTERN" ]; then
-        {{config.project.test_cmd}} tests/ -v -k "$PATTERN" --tb=short
+        {{config.project.test_cmd}} {{config.project.test_dir}}/ -v -k "$PATTERN" --tb=short
     else
-        {{config.project.test_cmd}} tests/ -v --tb=short
+        {{config.project.test_cmd}} {{config.project.test_dir}}/ -v --tb=short
     fi
 fi
 ```
@@ -91,7 +92,7 @@ if [ "$SCOPE" = "affected" ]; then
     echo "Finding tests for changed files..."
 
     # Get changed Python files
-    CHANGED_FILES=$(git diff --name-only HEAD~1 -- '*.py' | grep -E '^{{config.project.src_dir}}|^tests/' || true)
+    CHANGED_FILES=$(git diff --name-only HEAD~1 -- '*.py' | grep -E '^{{config.project.src_dir}}|^{{config.project.test_dir}}/' || true)
 
     if [ -z "$CHANGED_FILES" ]; then
         echo "No Python files changed since last commit"
@@ -103,7 +104,7 @@ if [ "$SCOPE" = "affected" ]; then
     echo ""
 
     # Run tests for changed files
-    {{config.project.test_cmd}} tests/ -v --tb=short
+    {{config.project.test_cmd}} {{config.project.test_dir}}/ -v --tb=short
 fi
 ```
 
@@ -113,7 +114,7 @@ If the user requests coverage, add coverage flags:
 
 ```bash
 # To run with coverage:
-{{config.project.test_cmd}} tests/ --cov={{config.project.src_dir}} --cov-report=term-missing --cov-report=html
+{{config.project.test_cmd}} {{config.project.test_dir}}/ --cov={{config.project.src_dir}} --cov-report=term-missing --cov-report=html
 
 echo "Coverage report generated at htmlcov/index.html"
 ```

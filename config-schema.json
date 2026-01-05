@@ -22,6 +22,11 @@
           "description": "Source code directory",
           "default": "src/"
         },
+        "test_dir": {
+          "type": "string",
+          "description": "Test directory",
+          "default": "tests"
+        },
         "test_cmd": {
           "type": "string",
           "description": "Command to run tests",
