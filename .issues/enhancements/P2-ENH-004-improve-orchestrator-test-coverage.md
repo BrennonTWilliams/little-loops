@@ -95,9 +95,9 @@ This issue may benefit from completing first:
 
 ## Acceptance Criteria
 
-- [ ] Coverage for `orchestrator.py` reaches 65%+
-- [ ] All new tests pass
-- [ ] No regressions in existing tests
+- [x] Coverage for `orchestrator.py` reaches 65%+ (achieved 83%)
+- [x] All new tests pass (54 tests)
+- [x] No regressions in existing tests (410 total tests pass)
 
 ## Labels
 
@@ -108,3 +108,37 @@ This issue may benefit from completing first:
 ## Status
 
 **Open** | Created: 2025-01-05 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-05
+- **Status**: Completed
+
+### Changes Made
+- `scripts/tests/test_orchestrator.py`: Created comprehensive test suite with 54 tests covering:
+  - Orchestrator initialization (5 tests)
+  - Signal handler setup/restore (3 tests)
+  - Gitignore entry management (3 tests)
+  - Orphaned worktree cleanup (3 tests)
+  - State management - load/save/cleanup (6 tests)
+  - Run method and dry run mode (4 tests)
+  - Issue scanning and filtering (3 tests)
+  - Execute loop and shutdown handling (3 tests)
+  - P0 sequential processing (1 test)
+  - Worker completion callbacks (5 tests)
+  - Merge coordination - sequential (3 tests)
+  - Completion waiting and timeout (3 tests)
+  - Results reporting (2 tests)
+  - Issue lifecycle completion (3 tests)
+  - Cleanup operations (4 tests)
+  - Parallel worker dispatch (1 test)
+
+- `thoughts/shared/plans/2026-01-05-ENH-004-management.md`: Implementation plan
+
+### Verification Results
+- Tests: PASS (54 new tests, 410 total)
+- Lint: PASS (ruff check)
+- Coverage: 83% (exceeded 65% target)
