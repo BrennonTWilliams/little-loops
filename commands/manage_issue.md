@@ -46,8 +46,10 @@ case "$ISSUE_TYPE" in
 esac
 
 # Find issue file
+# Use strict matching: ID must be bounded by delimiters (-, _, .) to avoid
+# matching BUG-1 against BUG-10 or ENH-1 against issue-enh-01-...
 if [ -n "$ISSUE_ID" ]; then
-    ISSUE_FILE=$(find "$SEARCH_DIR" -name "*$ISSUE_ID*.md" | head -1)
+    ISSUE_FILE=$(find "$SEARCH_DIR" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${ISSUE_ID}[-_.]" | head -1)
 else
     # Find highest priority (P0 > P1 > P2 > ...)
     for P in P0 P1 P2 P3 P4 P5; do

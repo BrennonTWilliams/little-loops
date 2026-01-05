@@ -27,9 +27,11 @@ This command uses project configuration from `.claude/ll-config.json`:
 ISSUE_ID="${issue_id}"
 
 # Search for issue file across categories
+# Use strict matching: ID must be bounded by delimiters (-, _, .) to avoid
+# matching BUG-1 against BUG-10 or ENH-1 against issue-enh-01-...
 for dir in {{config.issues.base_dir}}/*/; do
     if [ -d "$dir" ]; then
-        FILE=$(ls "$dir"*"$ISSUE_ID"*.md 2>/dev/null | head -1)
+        FILE=$(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${ISSUE_ID}[-_.]" | head -1)
         if [ -n "$FILE" ]; then
             echo "Found: $FILE"
             break
