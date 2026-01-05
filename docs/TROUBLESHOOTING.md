@@ -501,7 +501,11 @@ grep state_file .claude/ll-config.json
 
 ## Diagnostic Commands
 
+These commands use the Python API directly. See [API Reference](API.md) for full documentation.
+
 ### Check configuration
+
+Uses [`BRConfig`](API.md#brconfig) to load and display resolved configuration:
 
 ```bash
 # View resolved config
@@ -515,6 +519,8 @@ print(json.dumps(c.to_dict(), indent=2))
 ```
 
 ### Check issue discovery
+
+Uses [`find_issues()`](API.md#find_issues) to list all discovered issues:
 
 ```bash
 # List all discovered issues

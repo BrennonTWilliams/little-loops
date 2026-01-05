@@ -2,6 +2,11 @@
 
 little-loops is a Claude Code plugin providing development workflow automation with issue management, code quality commands, and parallel processing capabilities.
 
+> **Related Documentation:**
+> - [API Reference](API.md) - Detailed class and method documentation
+> - [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
+> - [README](../README.md) - Installation and quick start
+
 ## System Components
 
 The system consists of three main layers:

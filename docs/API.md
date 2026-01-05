@@ -2,6 +2,11 @@
 
 This document provides the public API for the little-loops Python package.
 
+> **Related Documentation:**
+> - [Architecture Overview](ARCHITECTURE.md) - System design and diagrams
+> - [Troubleshooting](TROUBLESHOOTING.md) - Common issues and diagnostic commands
+> - [README](../README.md) - Installation and quick start
+
 ## Installation
 
 ```bash
@@ -244,6 +249,7 @@ class AutomationConfig:
     worktree_base: str = ".worktrees"
     max_workers: int = 2
     stream_output: bool = True
+    max_continuations: int = 3  # Max session restarts on context handoff
 ```
 
 ### ParallelAutomationConfig

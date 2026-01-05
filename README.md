@@ -134,7 +134,8 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     "state_file": ".auto-manage-state.json",
     "worktree_base": ".worktrees",
     "max_workers": 2,
-    "stream_output": true
+    "stream_output": true,
+    "max_continuations": 3
   },
 
   "parallel": {
@@ -204,6 +205,7 @@ Sequential automation settings (ll-auto):
 | `worktree_base` | `.worktrees` | Git worktree directory |
 | `max_workers` | `2` | Parallel workers |
 | `stream_output` | `true` | Stream subprocess output |
+| `max_continuations` | `3` | Max session restarts on context handoff |
 
 #### `parallel`
 
@@ -409,6 +411,19 @@ If you have existing `.claude/commands/br/` files:
 2. Create `.claude/ll-config.json` with your project settings
 3. Keep project-specific commands as overrides
 4. Generic commands will now come from the plugin
+
+## Quick Troubleshooting
+
+| Issue | Solution |
+|-------|----------|
+| Config not loading | Run `/ll:init` or check `.claude/ll-config.json` exists |
+| Command not found | Verify plugin is enabled in `.claude/settings.local.json` |
+| `ll-auto`/`ll-parallel` not found | Run `pip install /path/to/little-loops/scripts` |
+| Worktree errors | Run `ll-parallel --cleanup` then `git worktree prune` |
+| Issues not discovered | Check `issues.base_dir` config matches your `.issues/` path |
+| Resume not working | Delete state file (`.auto-manage-state.json` or `.parallel-manage-state.json`) |
+
+For detailed solutions, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
 ## Documentation
 
