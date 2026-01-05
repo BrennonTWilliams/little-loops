@@ -248,9 +248,7 @@ class TestVerifyWorkWasDoneWithGitDetection:
         assert result is False
         mock_logger.warning.assert_called()
 
-    def test_only_excluded_files_in_git_returns_false(
-        self, mock_logger: MagicMock
-    ) -> None:
+    def test_only_excluded_files_in_git_returns_false(self, mock_logger: MagicMock) -> None:
         """Returns False when git only shows excluded files changed."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
@@ -302,9 +300,7 @@ class TestVerifyWorkWasDoneWithGitDetection:
         assert result is False
         mock_logger.error.assert_called()
 
-    def test_file_not_found_exception_returns_false(
-        self, mock_logger: MagicMock
-    ) -> None:
+    def test_file_not_found_exception_returns_false(self, mock_logger: MagicMock) -> None:
         """Returns False when git binary is not found."""
         with patch("subprocess.run") as mock_run:
             mock_run.side_effect = FileNotFoundError("git not found")
@@ -387,9 +383,7 @@ class TestVerifyWorkWasDoneIntegration:
         """Create a mock logger."""
         return MagicMock()
 
-    def test_none_changed_files_triggers_git_detection(
-        self, mock_logger: MagicMock
-    ) -> None:
+    def test_none_changed_files_triggers_git_detection(self, mock_logger: MagicMock) -> None:
         """When changed_files is None, git-based detection is used."""
         with patch("subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(
@@ -401,9 +395,7 @@ class TestVerifyWorkWasDoneIntegration:
         assert result is True
         mock_run.assert_called()
 
-    def test_explicit_empty_list_does_not_trigger_git(
-        self, mock_logger: MagicMock
-    ) -> None:
+    def test_explicit_empty_list_does_not_trigger_git(self, mock_logger: MagicMock) -> None:
         """When changed_files is empty list, git is not called."""
         with patch("subprocess.run") as mock_run:
             result = verify_work_was_done(mock_logger, changed_files=[])

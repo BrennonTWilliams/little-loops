@@ -223,9 +223,7 @@ class TestWorkerPoolStartShutdown:
         assert first_executor is second_executor
         worker_pool.shutdown()
 
-    def test_start_logs_info(
-        self, worker_pool: WorkerPool, mock_logger: MagicMock
-    ) -> None:
+    def test_start_logs_info(self, worker_pool: WorkerPool, mock_logger: MagicMock) -> None:
         """start() logs worker count."""
         worker_pool.start()
 
@@ -244,15 +242,11 @@ class TestWorkerPoolStartShutdown:
 
         assert worker_pool._executor is None
 
-    def test_shutdown_does_nothing_if_not_started(
-        self, worker_pool: WorkerPool
-    ) -> None:
+    def test_shutdown_does_nothing_if_not_started(self, worker_pool: WorkerPool) -> None:
         """shutdown() is safe when pool was never started."""
         worker_pool.shutdown()  # Should not raise
 
-    def test_shutdown_without_wait_terminates_processes(
-        self, worker_pool: WorkerPool
-    ) -> None:
+    def test_shutdown_without_wait_terminates_processes(self, worker_pool: WorkerPool) -> None:
         """shutdown(wait=False) calls terminate_all_processes()."""
         worker_pool.start()
 
@@ -336,9 +330,7 @@ class TestWorkerPoolTaskSubmission:
         with pytest.raises(RuntimeError, match="not started"):
             worker_pool.submit(mock_issue)
 
-    def test_submit_returns_future(
-        self, worker_pool: WorkerPool, mock_issue: MagicMock
-    ) -> None:
+    def test_submit_returns_future(self, worker_pool: WorkerPool, mock_issue: MagicMock) -> None:
         """submit() returns a Future."""
         worker_pool.start()
 
@@ -409,9 +401,7 @@ class TestWorkerPoolTaskSubmission:
 
         worker_pool.shutdown()
 
-    def test_handle_completion_tracks_pending_callbacks(
-        self, worker_pool: WorkerPool
-    ) -> None:
+    def test_handle_completion_tracks_pending_callbacks(self, worker_pool: WorkerPool) -> None:
         """_handle_completion() tracks callbacks in _pending_callbacks."""
         callback_started = threading.Event()
         callback_done = threading.Event()
@@ -447,9 +437,7 @@ class TestWorkerPoolTaskSubmission:
         # After callback completes, should be removed
         assert "BUG-001" not in worker_pool._pending_callbacks
 
-    def test_active_count_includes_futures_and_callbacks(
-        self, worker_pool: WorkerPool
-    ) -> None:
+    def test_active_count_includes_futures_and_callbacks(self, worker_pool: WorkerPool) -> None:
         """active_count includes running futures and pending callbacks."""
         # Add a pending callback
         worker_pool._pending_callbacks.add("BUG-001")
@@ -500,9 +488,7 @@ class TestWorkerPoolWorktreeManagement:
 
         with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
             with patch("subprocess.run") as mock_subprocess:
-                mock_subprocess.return_value = subprocess.CompletedProcess(
-                    [], 0, "", ""
-                )
+                mock_subprocess.return_value = subprocess.CompletedProcess([], 0, "", "")
                 with patch("shutil.copy2"):
                     worker_pool._setup_worktree(worktree_path, branch_name)
 
@@ -533,9 +519,7 @@ class TestWorkerPoolWorktreeManagement:
 
         with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
             with patch("subprocess.run") as mock_subprocess:
-                mock_subprocess.return_value = subprocess.CompletedProcess(
-                    [], 0, "", ""
-                )
+                mock_subprocess.return_value = subprocess.CompletedProcess([], 0, "", "")
                 with patch("shutil.copy2", side_effect=mock_copy2):
                     worker_pool._setup_worktree(worktree_path, branch_name)
 
@@ -565,9 +549,7 @@ class TestWorkerPoolWorktreeManagement:
 
         with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
             with patch("subprocess.run") as mock_subprocess:
-                mock_subprocess.return_value = subprocess.CompletedProcess(
-                    [], 0, "main\n", ""
-                )
+                mock_subprocess.return_value = subprocess.CompletedProcess([], 0, "main\n", "")
                 with patch("shutil.copy2"):
                     with patch("shutil.rmtree"):
                         worker_pool._setup_worktree(worktree_path, branch_name)
@@ -615,9 +597,7 @@ class TestWorkerPoolWorktreeManagement:
 
         with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
             with patch("subprocess.run") as mock_subprocess:
-                mock_subprocess.return_value = subprocess.CompletedProcess(
-                    [], 0, "main\n", ""
-                )
+                mock_subprocess.return_value = subprocess.CompletedProcess([], 0, "main\n", "")
                 with patch("shutil.rmtree"):
                     worker_pool._cleanup_worktree(worktree_path)
 
@@ -728,9 +708,7 @@ class TestWorkerPoolHelpers:
 
         assert files == []
 
-    def test_verify_work_was_done_accepts_code_changes(
-        self, worker_pool: WorkerPool
-    ) -> None:
+    def test_verify_work_was_done_accepts_code_changes(self, worker_pool: WorkerPool) -> None:
         """_verify_work_was_done() returns True for code changes."""
         changed_files = ["src/main.py", "tests/test_main.py"]
 
@@ -739,9 +717,7 @@ class TestWorkerPoolHelpers:
         assert success is True
         assert error == ""
 
-    def test_verify_work_was_done_rejects_no_changes(
-        self, worker_pool: WorkerPool
-    ) -> None:
+    def test_verify_work_was_done_rejects_no_changes(self, worker_pool: WorkerPool) -> None:
         """_verify_work_was_done() returns False for no changes."""
         changed_files: list[str] = []
 
@@ -750,9 +726,7 @@ class TestWorkerPoolHelpers:
         assert success is False
         assert "No files" in error
 
-    def test_verify_work_was_done_rejects_excluded_only(
-        self, worker_pool: WorkerPool
-    ) -> None:
+    def test_verify_work_was_done_rejects_excluded_only(self, worker_pool: WorkerPool) -> None:
         """_verify_work_was_done() returns False for excluded-only changes."""
         changed_files = [".issues/bugs/BUG-001.md", "thoughts/notes.md"]
 
@@ -761,9 +735,7 @@ class TestWorkerPoolHelpers:
         assert success is False
         assert "excluded" in error.lower()
 
-    def test_verify_work_was_done_respects_config(
-        self, worker_pool: WorkerPool
-    ) -> None:
+    def test_verify_work_was_done_respects_config(self, worker_pool: WorkerPool) -> None:
         """_verify_work_was_done() skips check if require_code_changes=False."""
         worker_pool.parallel_config.require_code_changes = False
         changed_files = [".issues/bugs/BUG-001.md"]
@@ -787,9 +759,7 @@ class TestWorkerPoolHelpers:
                 # Note: The code uses stdout.strip().split("\n") which can
                 # cause issues with leading space status codes on the first line.
                 # Using "M " (staged) and "??" (untracked) which parse correctly.
-                return subprocess.CompletedProcess(
-                    args, 0, "M  staged.py\n?? untracked.py\n", ""
-                )
+                return subprocess.CompletedProcess(args, 0, "M  staged.py\n?? untracked.py\n", "")
             return subprocess.CompletedProcess(args, 0, "", "")
 
         with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
@@ -830,9 +800,7 @@ class TestWorkerPoolHelpers:
             args: list[str], cwd: Path, **kwargs: Any
         ) -> subprocess.CompletedProcess[str]:
             if args[:2] == ["status", "--porcelain"]:
-                return subprocess.CompletedProcess(
-                    args, 0, "?? .parallel-manage-state.json\n", ""
-                )
+                return subprocess.CompletedProcess(args, 0, "?? .parallel-manage-state.json\n", "")
             return subprocess.CompletedProcess(args, 0, "", "")
 
         with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
@@ -884,9 +852,7 @@ class TestWorkerPoolHelpers:
         assert count == 1
         assert not leaked_file.exists()
 
-    def test_cleanup_leaked_files_empty_list(
-        self, worker_pool: WorkerPool
-    ) -> None:
+    def test_cleanup_leaked_files_empty_list(self, worker_pool: WorkerPool) -> None:
         """_cleanup_leaked_files() handles empty list."""
         count = worker_pool._cleanup_leaked_files([])
         assert count == 0
@@ -908,9 +874,7 @@ class TestWorkerPoolModelDetection:
         )
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(
-                [], 0, json_response, ""
-            )
+            mock_run.return_value = subprocess.CompletedProcess([], 0, json_response, "")
 
             model = worker_pool._detect_worktree_model_via_api(worktree_path)
 
@@ -940,9 +904,7 @@ class TestWorkerPoolModelDetection:
         worktree_path = temp_repo_with_config / ".worktrees" / "worker"
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(
-                [], 0, "not valid json", ""
-            )
+            mock_run.return_value = subprocess.CompletedProcess([], 0, "not valid json", "")
 
             model = worker_pool._detect_worktree_model_via_api(worktree_path)
 
@@ -974,9 +936,7 @@ class TestWorkerPoolModelDetection:
         json_response = json.dumps({"result": "ok", "modelUsage": {}})
 
         with patch("subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(
-                [], 0, json_response, ""
-            )
+            mock_run.return_value = subprocess.CompletedProcess([], 0, json_response, "")
 
             model = worker_pool._detect_worktree_model_via_api(worktree_path)
 
@@ -1025,9 +985,7 @@ Closed - Already Fixed"""
         with patch.object(worker_pool, "_setup_worktree"):
             with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
                 with patch.object(worker_pool, "_run_claude_command") as mock_run:
-                    mock_run.return_value = subprocess.CompletedProcess(
-                        [], 0, ready_output, ""
-                    )
+                    mock_run.return_value = subprocess.CompletedProcess([], 0, ready_output, "")
 
                     result = worker_pool._process_issue(mock_issue)
 
@@ -1049,9 +1007,7 @@ Closed - Already Fixed"""
         with patch.object(worker_pool, "_setup_worktree"):
             with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
                 with patch.object(worker_pool, "_run_claude_command") as mock_run:
-                    mock_run.return_value = subprocess.CompletedProcess(
-                        [], 0, ready_output, ""
-                    )
+                    mock_run.return_value = subprocess.CompletedProcess([], 0, ready_output, "")
 
                     result = worker_pool._process_issue(mock_issue)
 
@@ -1080,9 +1036,7 @@ Closed - Already Fixed"""
 
         with patch.object(worker_pool, "_setup_worktree"):
             with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
-                with patch.object(
-                    worker_pool, "_run_claude_command", side_effect=mock_run_command
-                ):
+                with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_command):
                     with patch.object(
                         worker_pool,
                         "_get_changed_files",
@@ -1141,9 +1095,7 @@ Closed - Already Fixed"""
 
         with patch.object(worker_pool, "_setup_worktree"):
             with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
-                with patch.object(
-                    worker_pool, "_run_claude_command", side_effect=mock_run_command
-                ):
+                with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_command):
                     with patch.object(
                         worker_pool,
                         "_get_changed_files",

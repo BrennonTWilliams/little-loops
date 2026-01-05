@@ -230,9 +230,7 @@ class TestPrepareIssueContent:
 class TestCleanupStaleSource:
     """Tests for _cleanup_stale_source function."""
 
-    def test_removes_file_and_commits(
-        self, tmp_path: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_removes_file_and_commits(self, tmp_path: Path, mock_logger: MagicMock) -> None:
         """Test that file is removed and git commands are called."""
         # Create a file to remove
         issue_file = tmp_path / "stale-issue.md"
@@ -318,9 +316,7 @@ class TestMoveIssueToCompleted:
 class TestCommitIssueCompletion:
     """Tests for _commit_issue_completion function."""
 
-    def test_successful_commit(
-        self, sample_issue_info: IssueInfo, mock_logger: MagicMock
-    ) -> None:
+    def test_successful_commit(self, sample_issue_info: IssueInfo, mock_logger: MagicMock) -> None:
         """Test successful commit with hash extraction."""
         captured_commands: list[list[str]] = []
 
@@ -349,9 +345,7 @@ class TestCommitIssueCompletion:
         assert len(commit_cmds) == 1
         assert "fix(bugs)" in commit_cmds[0][3]
 
-    def test_nothing_to_commit(
-        self, sample_issue_info: IssueInfo, mock_logger: MagicMock
-    ) -> None:
+    def test_nothing_to_commit(self, sample_issue_info: IssueInfo, mock_logger: MagicMock) -> None:
         """Test handling when there's nothing to commit."""
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
@@ -362,16 +356,12 @@ class TestCommitIssueCompletion:
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
-            result = _commit_issue_completion(
-                sample_issue_info, "fix", "test", mock_logger
-            )
+            result = _commit_issue_completion(sample_issue_info, "fix", "test", mock_logger)
 
         assert result is True
         mock_logger.info.assert_called()
 
-    def test_commit_failure(
-        self, sample_issue_info: IssueInfo, mock_logger: MagicMock
-    ) -> None:
+    def test_commit_failure(self, sample_issue_info: IssueInfo, mock_logger: MagicMock) -> None:
         """Test handling commit failure."""
 
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
@@ -382,9 +372,7 @@ class TestCommitIssueCompletion:
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
-            result = _commit_issue_completion(
-                sample_issue_info, "fix", "test", mock_logger
-            )
+            result = _commit_issue_completion(sample_issue_info, "fix", "test", mock_logger)
 
         assert result is True  # Still returns True to continue flow
         mock_logger.warning.assert_called()
@@ -501,7 +489,9 @@ class TestCreateIssueFromFailure:
         mock_logger: MagicMock,
     ) -> None:
         """Test that valid markdown issue is created."""
-        error_output = "Traceback (most recent call last):\n  File 'test.py'\nValueError: test error"
+        error_output = (
+            "Traceback (most recent call last):\n  File 'test.py'\nValueError: test error"
+        )
 
         result = create_issue_from_failure(
             error_output, sample_issue_info, sample_config, mock_logger
@@ -558,9 +548,7 @@ class TestCreateIssueFromFailure:
         (claude_dir / "ll-config.json").write_text(json.dumps(config_data))
         config = BRConfig(tmp_path)
 
-        result = create_issue_from_failure(
-            "Error occurred", sample_issue_info, config, mock_logger
-        )
+        result = create_issue_from_failure("Error occurred", sample_issue_info, config, mock_logger)
 
         assert result is not None
         assert (tmp_path / ".issues" / "bugs").exists()
@@ -589,9 +577,7 @@ class TestCreateIssueFromFailure:
         mock_logger: MagicMock,
     ) -> None:
         """Test that created issue has P1 priority."""
-        result = create_issue_from_failure(
-            "Error", sample_issue_info, sample_config, mock_logger
-        )
+        result = create_issue_from_failure("Error", sample_issue_info, sample_config, mock_logger)
 
         assert result is not None
         assert "P1-BUG-" in result.name
@@ -626,9 +612,7 @@ class TestCloseIssue:
                     src.rename(dst)
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             if "commit" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout="[main abc123] commit", stderr=""
-                )
+                return subprocess.CompletedProcess(cmd, 0, stdout="[main abc123] commit", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -706,9 +690,7 @@ class TestCloseIssue:
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
-            result = close_issue(
-                sample_issue_info, sample_config, mock_logger, None, None
-            )
+            result = close_issue(sample_issue_info, sample_config, mock_logger, None, None)
 
         assert result is True
         completed = sample_config.get_completed_dir() / sample_issue_info.path.name
@@ -765,15 +747,11 @@ class TestCompleteIssueLifecycle:
                     src.rename(dst)
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             if "commit" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout="[main def456] commit", stderr=""
-                )
+                return subprocess.CompletedProcess(cmd, 0, stdout="[main def456] commit", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
-            result = complete_issue_lifecycle(
-                sample_issue_info, sample_config, mock_logger
-            )
+            result = complete_issue_lifecycle(sample_issue_info, sample_config, mock_logger)
 
         assert result is True
         mock_logger.success.assert_called()
@@ -856,9 +834,7 @@ class TestCompleteIssueLifecycle:
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
-            result = complete_issue_lifecycle(
-                sample_issue_info, sample_config, mock_logger
-            )
+            result = complete_issue_lifecycle(sample_issue_info, sample_config, mock_logger)
 
         assert result is False
         mock_logger.error.assert_called()
