@@ -12,6 +12,12 @@
       "command": ["bash", "-c", "if [ ! -f \".claude/ll-config.json\" ] && [ ! -f \"ll-config.json\" ]; then echo '[little-loops] No config found. Run /ll:init to set up little-loops for this project.'; fi"]
     },
     {
+      "event": "PreToolUse",
+      "type": "command",
+      "command": ["bash", "${CLAUDE_PLUGIN_ROOT}/hooks/check-duplicate-issue-id.sh"],
+      "timeout": 5000
+    },
+    {
       "event": "PostToolUse",
       "type": "prompt",
       "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/post-tool-state-tracking.md"
