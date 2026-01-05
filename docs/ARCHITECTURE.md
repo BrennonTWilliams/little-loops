@@ -102,6 +102,7 @@ little-loops/
             ├── merge_coordinator.py
             ├── priority_queue.py
             ├── output_parsing.py
+            ├── git_lock.py
             ├── types.py
             └── tasks/
                 ├── README.md

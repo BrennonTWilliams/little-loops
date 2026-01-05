@@ -105,7 +105,7 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
 
 ```json
 {
-  "$schema": "https://raw.githubusercontent.com/little-loops/little-loops/main/config-schema.json",
+  "$schema": "./config-schema.json",
 
   "project": {
     "name": "my-project",

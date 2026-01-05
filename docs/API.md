@@ -261,9 +261,13 @@ class ParallelAutomationConfig:
     command_prefix: str = "/ll:"
     ready_command: str = "ready_issue {{issue_id}}"
     manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
-    worktree_copy_files: list[str] = [".claude/settings.local.json", ".env"]
+    worktree_copy_files: list[str] = field(default_factory=lambda: [".claude/settings.local.json", ".env"])
     require_code_changes: bool = True
 ```
+
+**Fields:**
+- `worktree_copy_files` - Files copied from main repo to each worktree
+- `require_code_changes` - Fail issues that don't produce code changes
 
 **Note:** Shared fields from `AutomationConfig` are accessed via `base.*`:
 - `base.max_workers` - Maximum parallel workers (default: 2)
