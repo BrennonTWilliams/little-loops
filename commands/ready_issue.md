@@ -30,6 +30,10 @@ ISSUE_ID="${issue_id}"
 # Use strict matching: ID must be bounded by delimiters (-, _, .) to avoid
 # matching BUG-1 against BUG-10 or ENH-1 against issue-enh-01-...
 for dir in {{config.issues.base_dir}}/*/; do
+    # Skip completed directory - only search active issue categories
+    if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ]; then
+        continue
+    fi
     if [ -d "$dir" ]; then
         FILE=$(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${ISSUE_ID}[-_.]" | head -1)
         if [ -n "$FILE" ]; then
