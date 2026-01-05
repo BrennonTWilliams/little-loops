@@ -260,6 +260,70 @@
         }
       },
       "additionalProperties": false
+    },
+    "workflow": {
+      "type": "object",
+      "description": "Workflow behavior settings for manage_issue and ready_issue commands",
+      "properties": {
+        "phase_gates": {
+          "type": "object",
+          "description": "Phase gate settings for human verification between implementation phases",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable phase gates for manual verification",
+              "default": true
+            },
+            "auto_mode_skip": {
+              "type": "boolean",
+              "description": "Skip phase gates when --auto flag is used",
+              "default": true
+            }
+          },
+          "additionalProperties": false
+        },
+        "deep_research": {
+          "type": "object",
+          "description": "Deep research settings using sub-agents before planning",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable deep research by default",
+              "default": true
+            },
+            "quick_flag_skips": {
+              "type": "boolean",
+              "description": "Allow --quick flag to skip research",
+              "default": true
+            },
+            "agents": {
+              "type": "array",
+              "description": "Sub-agents to spawn for research",
+              "items": {"type": "string"},
+              "default": ["codebase-locator", "codebase-analyzer", "codebase-pattern-finder"]
+            }
+          },
+          "additionalProperties": false
+        },
+        "plan_template": {
+          "type": "object",
+          "description": "Plan template settings",
+          "properties": {
+            "sections_recommended": {
+              "type": "boolean",
+              "description": "Show all template sections as recommended",
+              "default": true
+            },
+            "sections_mandatory": {
+              "type": "boolean",
+              "description": "Require all template sections (if false, sections can be skipped)",
+              "default": false
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

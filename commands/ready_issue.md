@@ -4,6 +4,9 @@ arguments:
   - name: issue_id
     description: Issue ID to validate (e.g., BUG-004, FEAT-001)
     required: false
+  - name: flags
+    description: "Optional flags: --deep (use sub-agents for comprehensive validation)"
+    required: false
 ---
 
 # Ready Issue
@@ -43,6 +46,46 @@ for dir in {{config.issues.base_dir}}/*/; do
     fi
 done
 ```
+
+### 1.5 Deep Validation (--deep flag)
+
+When `--deep` flag is specified, use sub-agents for comprehensive validation:
+
+#### Spawn Validation Agents
+
+1. **codebase-locator** - Verify file paths exist
+   ```
+   Verify the following file paths from issue [ISSUE-ID] exist in the codebase:
+   - [List files mentioned in issue]
+
+   Return: EXISTS or NOT_FOUND for each path, with suggested alternatives if not found.
+   ```
+
+2. **codebase-analyzer** - Verify code claims
+   ```
+   Verify the code claims in issue [ISSUE-ID]:
+   - Line numbers are accurate
+   - Code snippets match current code
+   - Described behavior still exists
+
+   Return: MATCH or MISMATCH for each claim, with current state if different.
+   ```
+
+#### Compare Issue Claims vs Reality
+
+| Claim in Issue | Verified | Notes |
+|----------------|----------|-------|
+| File X exists at path | YES/NO | [Current location or "deleted"] |
+| Line N contains Y | YES/NO | [Actual content at line N] |
+| Bug behavior occurs | YES/NO | [Current behavior observed] |
+| Function Z exists | YES/NO | [Renamed to / Removed in commit] |
+
+#### Deep Validation Outcome
+
+If deep validation reveals significant discrepancies:
+- Auto-correct where possible (update paths, line numbers)
+- Use CLOSE verdict if issue is obsolete (already fixed, invalid refs)
+- Include detailed evidence in VALIDATION table
 
 ### 2. Validate Issue Content
 
@@ -165,16 +208,25 @@ $ARGUMENTS
   - If provided, validates that specific issue
   - If omitted, finds and validates highest priority issue
 
+- **flags** (optional): Modify validation behavior
+  - `--deep` - Use sub-agents for comprehensive validation (verifies file paths, line numbers, code snippets against actual codebase)
+
 ---
 
 ## Examples
 
 ```bash
-# Validate specific issue
+# Validate specific issue (standard validation)
 /ll:ready_issue BUG-042
+
+# Validate with deep research (comprehensive verification)
+/ll:ready_issue BUG-042 --deep
 
 # Validate highest priority issue
 /ll:ready_issue
+
+# Deep validation on highest priority
+/ll:ready_issue --deep
 
 # After validation, implement
 /ll:manage_issue bug fix BUG-042

@@ -5,10 +5,13 @@ arguments:
     description: Type of issue (bug|feature|enhancement)
     required: true
   - name: action
-    description: Action to perform (fix|implement|improve|verify)
+    description: Action to perform (fix|implement|improve|verify|plan)
     required: true
   - name: issue_id
     description: Specific issue ID (e.g., BUG-004). If empty, finds highest priority.
+    required: false
+  - name: flags
+    description: "Optional flags: --plan-only (stop after planning), --resume (continue from checkpoint), --quick (skip research), --auto (skip research + phase gates)"
     required: false
 ---
 
@@ -26,6 +29,11 @@ This command uses project configuration from `.claude/ll-config.json`:
 - **Test command**: `{{config.project.test_cmd}}`
 - **Lint command**: `{{config.project.lint_cmd}}`
 - **Custom verification**: `{{config.commands.custom_verification}}`
+
+### Workflow Settings
+- **Phase gates**: `{{config.workflow.phase_gates.enabled}}` (skip with --auto)
+- **Deep research**: `{{config.workflow.deep_research.enabled}}` (skip with --quick or --auto)
+- **Research agents**: `{{config.workflow.deep_research.agents}}`
 
 ---
 
@@ -63,19 +71,116 @@ fi
 
 ---
 
+## Phase 1.5: Deep Research (unless --quick or --auto)
+
+Before creating an implementation plan, spawn parallel sub-agents to gather comprehensive context about the issue.
+
+**Skip this phase if**:
+- `--quick` flag is specified (fast mode, skip research)
+- `--auto` flag is specified (automation mode, skip research + phase gates)
+- Action is `verify` (verification doesn't need deep research)
+
+### 1. Spawn Research Tasks in Parallel
+
+Use the Task tool to spawn these agents concurrently:
+
+1. **codebase-locator** - Find all files related to the issue
+   ```
+   Find all files related to [ISSUE-ID]: [issue title]
+
+   Search for:
+   - Files mentioned in the issue description
+   - Related components and dependencies
+   - Test files that cover affected code
+
+   Return file paths with brief descriptions of relevance.
+   ```
+
+2. **codebase-analyzer** - Understand the current implementation
+   ```
+   Analyze the code paths related to [ISSUE-ID]: [issue title]
+
+   For the files found, explain:
+   - Current behavior with file:line references
+   - Data flow and integration points
+   - Any existing patterns being used
+
+   Return detailed analysis with specific file:line references.
+   ```
+
+3. **codebase-pattern-finder** - Find similar patterns to follow
+   ```
+   Find similar implementations for [ISSUE-ID]: [issue title]
+
+   Search for:
+   - Similar fixes/features in the codebase
+   - Established conventions for this type of change
+   - Test patterns to model after
+
+   Return examples with file:line references.
+   ```
+
+### 2. Wait for All Tasks
+
+**CRITICAL**: Wait for ALL sub-agent tasks to complete before proceeding to planning.
+
+### 3. Synthesize Research Findings
+
+Compile research into structured findings:
+
+```markdown
+## Research Findings
+
+### Key Discoveries
+- [Discovery 1 with file:line reference]
+- [Discovery 2 with file:line reference]
+
+### Current State
+- [How the affected code currently works]
+- [Integration points identified]
+
+### Patterns to Follow
+- [Convention 1 found in codebase]
+- [Similar implementation at file:line]
+
+### Potential Concerns
+- [Any complexity or risk identified]
+```
+
+---
+
 ## Phase 2: Create Implementation Plan
 
-After reading the issue, create a plan:
+After reading the issue and completing research, create a comprehensive plan.
+
+**If `--plan-only` flag is set**: Stop after writing the plan (do not implement).
+
+### No Open Questions Rule
+
+**CRITICAL**: Before writing the plan, resolve ALL open questions:
+
+1. **Unclear Requirements** → Ask for clarification or research further
+2. **Technical Uncertainty** → Spawn additional research tasks
+3. **Design Decisions** → Present options to user, get explicit approval
+
+**The plan must be complete and actionable with no unresolved questions.**
+
+In `--auto` mode: If questions arise that cannot be resolved, mark the issue as `NOT_READY` rather than proceeding with assumptions.
+
+### Plan Creation Steps
 
 1. **Read the issue file** completely
-2. **Extract referenced files** and line numbers
-3. **Research the codebase** to understand affected components
+2. **Incorporate research findings** from Phase 1.5
+3. **Resolve any remaining questions** before proceeding
 4. **Design the solution** with specific changes
 5. **Write plan** to `thoughts/shared/plans/YYYY-MM-DD-[ISSUE-ID]-management.md`
 
-Plan template:
-```markdown
-# [ISSUE-ID]: [Title] - Management Plan
+### Enhanced Plan Template
+
+Write the plan using this structure (sections are recommended, skip if not applicable):
+
+````markdown
+# [ISSUE-ID]: [Title] - Implementation Plan
 
 ## Issue Reference
 - **File**: [path to issue]
@@ -83,33 +188,122 @@ Plan template:
 - **Priority**: [P0-P5]
 - **Action**: [action]
 
+## Current State Analysis
+
+[What exists now based on research findings]
+
+### Key Discoveries
+- [Finding 1 with file:line reference]
+- [Finding 2 with file:line reference]
+- [Pattern discovered in codebase]
+
+## Desired End State
+
+[Specification of what should exist after implementation]
+
+### How to Verify
+- [Specific verification method]
+- [Expected behavior after change]
+
+## What We're NOT Doing
+
+[Explicitly list out-of-scope items to prevent scope creep]
+- Not changing [X] - reason
+- Not refactoring [Y] - deferred to separate issue
+- Deferring [Z] to future enhancement
+
 ## Problem Analysis
-[Root cause for bugs, or requirements for features]
+
+[Root cause for bugs, or requirements analysis for features]
 
 ## Solution Approach
-[High-level strategy]
+
+[High-level strategy based on research findings and patterns discovered]
 
 ## Implementation Phases
 
-### Phase 1: [Name]
-**Files**: [list]
-**Changes**: [summary]
+### Phase 1: [Descriptive Name]
 
-### Phase 2: [Name]
-...
+#### Overview
+[What this phase accomplishes]
 
-## Verification Plan
-[How to verify the fix/feature works]
+#### Changes Required
+
+**File**: `path/to/file.ext`
+**Changes**: [Summary of changes]
+
+```[language]
+// Specific code to add/modify
 ```
+
+#### Success Criteria
+
+##### Automated Verification
+- [ ] Tests pass: `{{config.project.test_cmd}}`
+- [ ] Lint passes: `{{config.project.lint_cmd}}`
+- [ ] Types pass: `{{config.project.type_cmd}}`
+
+##### Manual Verification
+- [ ] [Manual check 1 - describe what to test]
+- [ ] [Manual check 2 - describe expected behavior]
+
+**Phase Gate**: After automated verification passes, pause for manual verification (unless --auto flag).
+
+---
+
+### Phase 2: [Descriptive Name]
+
+[Continue with same structure...]
+
+## Testing Strategy
+
+### Unit Tests
+- [What to test]
+- [Key edge cases]
+
+### Integration Tests
+- [End-to-end scenarios]
+
+## References
+
+- Original issue: `{{config.issues.base_dir}}/[type]/[filename].md`
+- Related patterns: `[file:line]`
+- Similar implementation: `[file:line]`
+````
 
 ---
 
 ## Phase 3: Implement
 
+### Resuming Work (--resume flag)
+
+If `--resume` flag is specified:
+
+1. **Locate existing plan** matching the issue ID pattern
+2. **Scan for progress** - look for `[x]` checkmarks in success criteria
+3. **Present resume status**:
+   ```
+   Resuming [ISSUE-ID] from Phase [N]
+
+   Previously completed:
+   - [x] Phase 1: [Name]
+   - [x] Phase 2: [Name]
+
+   Starting from:
+   - [ ] Phase 3: [Name]
+
+   Verifying previous work is still valid...
+   ```
+4. **Verify previous work** (only if something seems off)
+5. **Continue from first unchecked item**
+
+### Implementation Process
+
 1. **Create todo list** with TodoWrite
 2. **Follow the plan** phase by phase
 3. **Make atomic changes** - focused and minimal
 4. **Mark todos complete** as you finish
+5. **Update checkboxes in plan** as you complete each section
 
 ### Implementation Guidelines
 - Follow existing code patterns
@@ -117,6 +311,77 @@ Plan template:
 - Keep changes focused on the issue
 - Include type hints for new code
 - Add docstrings for public interfaces
+
+### Phase Gate Protocol (unless --auto)
+
+After completing each implementation phase:
+
+1. **Run automated verification**
+   - Execute all automated success criteria from the plan
+   - Fix any failures before proceeding
+
+2. **Present pause message**:
+   ```
+   Phase [N] Complete - Ready for Manual Verification
+
+   Automated verification passed:
+   - [x] Tests pass: {{config.project.test_cmd}}
+   - [x] Lint passes: {{config.project.lint_cmd}}
+   - [x] Types pass: {{config.project.type_cmd}}
+
+   Please perform the manual verification steps from the plan:
+   - [ ] [Manual check 1]
+   - [ ] [Manual check 2]
+
+   Reply "continue" to proceed to Phase [N+1], or describe any issues found.
+   ```
+
+3. **Wait for human confirmation**
+   - Do NOT proceed until confirmation received
+   - If issues found, address them before continuing
+
+### Auto Mode Behavior
+
+When `--auto` flag is set:
+- Skip all phase gate pauses
+- Execute all phases sequentially
+- Report all results in final output
+- If critical errors occur, mark as INCOMPLETE
+
+### Mismatch Handling Protocol
+
+When reality diverges from the plan during implementation:
+
+1. **Detect mismatch**
+   - File doesn't exist where expected
+   - Code structure differs from plan
+   - Dependencies changed since planning
+
+2. **Present issue clearly**:
+   ```
+   MISMATCH DETECTED in Phase [N]
+
+   Expected: [What the plan says]
+   Found: [Actual situation]
+   Impact: [Why this matters for implementation]
+
+   Options:
+   A) Adapt implementation to actual code structure
+   B) Update plan to reflect reality, then continue
+   C) Stop and re-research before proceeding
+
+   How should I proceed?
+   ```
+
+3. **In auto mode**:
+   - Attempt Option A if the mismatch is minor
+   - If significant mismatch, mark as `INCOMPLETE` and report:
+     ```
+     INCOMPLETE: Mismatch in Phase [N]
+     Expected: [plan details]
+     Found: [actual situation]
+     Reason: Cannot safely proceed without human guidance
+     ```
 
 ---
 
@@ -244,24 +509,40 @@ $ARGUMENTS
   - `implement` - Implement a feature
   - `improve` - Improve/enhance
   - `verify` - Verify issue status only
+  - `plan` - Create plan only (equivalent to --plan-only flag)
 
 - **issue_id** (optional): Specific issue ID
   - If provided, work on that issue
   - If omitted, find highest priority
+
+- **flags** (optional): Modify command behavior
+  - `--plan-only` - Stop after creating the implementation plan
+  - `--resume` - Resume from existing plan checkpoint
+  - `--quick` - Skip deep research phase (faster, less thorough)
+  - `--auto` - Skip research + phase gates (for automation scripts)
 
 ---
 
 ## Examples
 
 ```bash
-# Fix highest priority bug
+# Fix highest priority bug (with deep research + phase gates)
 /ll:manage_issue bug fix
 
 # Implement specific feature
 /ll:manage_issue feature implement FEAT-042
 
-# Improve highest priority enhancement
-/ll:manage_issue enhancement improve
+# Quick fix without deep research
+/ll:manage_issue bug fix BUG-123 --quick
+
+# Create plan only, don't implement
+/ll:manage_issue feature implement FEAT-042 --plan-only
+
+# Resume interrupted work from checkpoint
+/ll:manage_issue bug fix BUG-123 --resume
+
+# Full automation mode (for ll-auto/ll-parallel scripts)
+/ll:manage_issue enhancement improve ENH-001 --auto
 
 # Just verify an issue (no implementation)
 /ll:manage_issue bug verify BUG-123

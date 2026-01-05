@@ -31,5 +31,20 @@
   "scan": {
     "focus_dirs": ["scripts/", "commands/", "agents/"],
     "exclude_patterns": ["**/__pycache__/**", "**/.git/**", "**/*.log"]
+  },
+  "workflow": {
+    "phase_gates": {
+      "enabled": true,
+      "auto_mode_skip": true
+    },
+    "deep_research": {
+      "enabled": true,
+      "quick_flag_skips": true,
+      "agents": ["codebase-locator", "codebase-analyzer", "codebase-pattern-finder"]
+    },
+    "plan_template": {
+      "sections_recommended": true,
+      "sections_mandatory": false
+    }
   }
 }
