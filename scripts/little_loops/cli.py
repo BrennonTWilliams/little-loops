@@ -40,23 +40,27 @@ Examples:
     )
 
     parser.add_argument(
-        "--resume", "-r",
+        "--resume",
+        "-r",
         action="store_true",
         help="Resume from previous checkpoint",
     )
     parser.add_argument(
-        "--dry-run", "-n",
+        "--dry-run",
+        "-n",
         action="store_true",
         help="Show what would be done without making changes",
     )
     parser.add_argument(
-        "--max-issues", "-m",
+        "--max-issues",
+        "-m",
         type=int,
         default=0,
         help="Limit number of issues to process (0 = unlimited)",
     )
     parser.add_argument(
-        "--category", "-c",
+        "--category",
+        "-c",
         type=str,
         default=None,
         help="Filter to specific category (bugs, features, enhancements)",
@@ -86,16 +90,8 @@ Examples:
     config = BRConfig(project_root)
 
     # Parse issue ID filters
-    only_ids = (
-        {i.strip().upper() for i in args.only.split(",")}
-        if args.only
-        else None
-    )
-    skip_ids = (
-        {i.strip().upper() for i in args.skip.split(",")}
-        if args.skip
-        else None
-    )
+    only_ids = {i.strip().upper() for i in args.only.split(",")} if args.only else None
+    skip_ids = {i.strip().upper() for i in args.skip.split(",")} if args.skip else None
 
     manager = AutoManager(
         config=config,
@@ -135,19 +131,22 @@ Examples:
     )
 
     parser.add_argument(
-        "--workers", "-w",
+        "--workers",
+        "-w",
         type=int,
         default=None,
         help="Number of parallel workers (default: from config or 2)",
     )
     parser.add_argument(
-        "--priority", "-p",
+        "--priority",
+        "-p",
         type=str,
         default=None,
         help="Comma-separated priorities to process (default: all)",
     )
     parser.add_argument(
-        "--max-issues", "-m",
+        "--max-issues",
+        "-m",
         type=int,
         default=0,
         help="Maximum issues to process (0 = unlimited)",
@@ -159,28 +158,33 @@ Examples:
         help="Base directory for git worktrees",
     )
     parser.add_argument(
-        "--dry-run", "-n",
+        "--dry-run",
+        "-n",
         action="store_true",
         help="Preview without making changes",
     )
     parser.add_argument(
-        "--resume", "-r",
+        "--resume",
+        "-r",
         action="store_true",
         help="Resume from previous state",
     )
     parser.add_argument(
-        "--timeout", "-t",
+        "--timeout",
+        "-t",
         type=int,
         default=None,
         help="Timeout per issue in seconds",
     )
     parser.add_argument(
-        "--quiet", "-q",
+        "--quiet",
+        "-q",
         action="store_true",
         help="Suppress progress output",
     )
     parser.add_argument(
-        "--cleanup", "-c",
+        "--cleanup",
+        "-c",
         action="store_true",
         help="Clean up all worktrees and exit",
     )
@@ -232,22 +236,12 @@ Examples:
 
     # Build priority filter
     priority_filter = (
-        [p.strip().upper() for p in args.priority.split(",")]
-        if args.priority
-        else None
+        [p.strip().upper() for p in args.priority.split(",")] if args.priority else None
     )
 
     # Parse issue ID filters
-    only_ids = (
-        {i.strip().upper() for i in args.only.split(",")}
-        if args.only
-        else None
-    )
-    skip_ids = (
-        {i.strip().upper() for i in args.skip.split(",")}
-        if args.skip
-        else None
-    )
+    only_ids = {i.strip().upper() for i in args.only.split(",")} if args.only else None
+    skip_ids = {i.strip().upper() for i in args.skip.split(",")} if args.skip else None
 
     # Create parallel config with CLI overrides
     parallel_config = config.create_parallel_config(

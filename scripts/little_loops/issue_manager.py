@@ -165,9 +165,7 @@ class AutoManager:
                 self.processed_count = len(state.completed_issues)
         else:
             # Fresh start
-            self.state_manager._state = ProcessingState(
-                timestamp=datetime.now().isoformat()
-            )
+            self.state_manager._state = ProcessingState(timestamp=datetime.now().isoformat())
 
         try:
             while not self._shutdown_requested:
@@ -251,7 +249,9 @@ class AutoManager:
                     stream_output=self.config.automation.stream_output,
                 )
                 if result.returncode != 0:
-                    self.logger.warning("ready_issue command failed to execute, continuing anyway...")
+                    self.logger.warning(
+                        "ready_issue command failed to execute, continuing anyway..."
+                    )
                 else:
                     # Parse the verdict from the output
                     parsed = parse_ready_issue_output(result.stdout)
@@ -287,7 +287,7 @@ class AutoManager:
                         else:
                             self.state_manager.mark_failed(
                                 info.issue_id,
-                                f"CLOSE failed: {parsed.get('close_status', 'unknown')}"
+                                f"CLOSE failed: {parsed.get('close_status', 'unknown')}",
                             )
                             return False
 
@@ -300,7 +300,7 @@ class AutoManager:
                         # Record in failed_issues with reason
                         self.state_manager.mark_failed(
                             info.issue_id,
-                            f"NOT READY: {parsed['verdict']} - {len(parsed['concerns'])} concern(s)"
+                            f"NOT READY: {parsed['verdict']} - {len(parsed['concerns'])} concern(s)",
                         )
                         return False
 
@@ -328,7 +328,9 @@ class AutoManager:
                     stream_output=self.config.automation.stream_output,
                 )
             else:
-                self.logger.info(f"Would run: /ll:manage_issue {info.issue_type} {action} {info.issue_id}")
+                self.logger.info(
+                    f"Would run: /ll:manage_issue {info.issue_type} {action} {info.issue_id}"
+                )
                 result = subprocess.CompletedProcess(args=[], returncode=0)
         issue_timing["implement"] = phase2_timing.get("elapsed", 0.0)
 
@@ -348,8 +350,7 @@ class AutoManager:
                     self.state_manager.mark_failed(info.issue_id, str(new_issue))
                 else:
                     self.state_manager.mark_failed(
-                        info.issue_id,
-                        result.stderr or result.stdout or "Unknown error"
+                        info.issue_id, result.stderr or result.stdout or "Unknown error"
                     )
             else:
                 self.logger.info("Would create new bug issue for this failure")
@@ -378,7 +379,9 @@ class AutoManager:
                         self.logger.info("Evidence of code changes found - completing lifecycle...")
                         verified = complete_issue_lifecycle(info, self.config, self.logger)
                         if verified:
-                            self.logger.success(f"Fallback completion succeeded for {info.issue_id}")
+                            self.logger.success(
+                                f"Fallback completion succeeded for {info.issue_id}"
+                            )
                         else:
                             self.logger.warning(f"Fallback completion failed for {info.issue_id}")
                     else:

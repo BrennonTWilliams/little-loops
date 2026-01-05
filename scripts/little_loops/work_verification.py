@@ -40,9 +40,7 @@ def filter_excluded_files(files: list[str]) -> list[str]:
     ]
 
 
-def verify_work_was_done(
-    logger: Logger, changed_files: list[str] | None = None
-) -> bool:
+def verify_work_was_done(logger: Logger, changed_files: list[str] | None = None) -> bool:
     """Verify that actual work was done (not just issue file moves).
 
     Returns True if there's evidence of implementation work - changes to files
@@ -63,8 +61,7 @@ def verify_work_was_done(
         meaningful_changes = filter_excluded_files(changed_files)
         if meaningful_changes:
             logger.info(
-                f"Found {len(meaningful_changes)} file(s) changed: "
-                f"{meaningful_changes[:5]}"
+                f"Found {len(meaningful_changes)} file(s) changed: {meaningful_changes[:5]}"
             )
             return True
         logger.warning("No meaningful changes detected - only excluded files modified")
@@ -83,8 +80,7 @@ def verify_work_was_done(
             meaningful_changes = filter_excluded_files(files)
             if meaningful_changes:
                 logger.info(
-                    f"Found {len(meaningful_changes)} file(s) changed: "
-                    f"{meaningful_changes[:5]}"
+                    f"Found {len(meaningful_changes)} file(s) changed: {meaningful_changes[:5]}"
                 )
                 return True
 
@@ -99,8 +95,7 @@ def verify_work_was_done(
             meaningful_staged = filter_excluded_files(staged)
             if meaningful_staged:
                 logger.info(
-                    f"Found {len(meaningful_staged)} staged file(s): "
-                    f"{meaningful_staged[:5]}"
+                    f"Found {len(meaningful_staged)} staged file(s): {meaningful_staged[:5]}"
                 )
                 return True
 

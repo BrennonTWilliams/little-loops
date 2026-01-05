@@ -10,7 +10,6 @@ import json
 import re
 import shutil
 import signal
-import subprocess
 import time
 from datetime import datetime
 from pathlib import Path
@@ -464,9 +463,7 @@ class ParallelOrchestrator:
             # Lazy import to avoid circular dependency
             from little_loops.issue_lifecycle import close_issue
 
-            self.logger.info(
-                f"{result.issue_id} should be closed: {result.close_status}"
-            )
+            self.logger.info(f"{result.issue_id} should be closed: {result.close_status}")
             info = self._issue_info_by_id.get(result.issue_id)
             if info:
                 if close_issue(

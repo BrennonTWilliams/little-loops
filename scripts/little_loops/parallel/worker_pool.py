@@ -20,9 +20,9 @@ from typing import TYPE_CHECKING, Any, cast
 
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.output_parsing import parse_ready_issue_output
-from little_loops.work_verification import verify_work_was_done
 from little_loops.parallel.types import ParallelConfig, WorkerResult
 from little_loops.subprocess_utils import run_claude_command as _run_claude_base
+from little_loops.work_verification import verify_work_was_done
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -120,7 +120,9 @@ class WorkerPool:
         with self._process_lock:
             for issue_id, process in list(self._active_processes.items()):
                 if process.poll() is None:  # Still running
-                    self.logger.warning(f"Terminating subprocess for {issue_id} (PID {process.pid})")
+                    self.logger.warning(
+                        f"Terminating subprocess for {issue_id} (PID {process.pid})"
+                    )
                     try:
                         # Send SIGTERM first for graceful termination
                         process.terminate()
@@ -297,9 +299,7 @@ class WorkerPool:
             )
 
             # Step 8: Detect files leaked to main repo instead of worktree
-            leaked_files = self._detect_main_repo_leaks(
-                issue.issue_id, baseline_status
-            )
+            leaked_files = self._detect_main_repo_leaks(issue.issue_id, baseline_status)
             if leaked_files:
                 self.logger.warning(
                     f"{issue.issue_id} leaked {len(leaked_files)} file(s) to main repo: "
@@ -586,9 +586,7 @@ class WorkerPool:
 
         return False, "Only excluded files modified (e.g., .issues/, thoughts/)"
 
-    def _detect_main_repo_leaks(
-        self, issue_id: str, baseline_status: set[str]
-    ) -> list[str]:
+    def _detect_main_repo_leaks(self, issue_id: str, baseline_status: set[str]) -> list[str]:
         """Detect files incorrectly written to main repo instead of worktree.
 
         Claude Code may write files to the main repository instead of the
@@ -719,9 +717,7 @@ class WorkerPool:
                 self.logger.warning(f"Failed to delete leaked file {file_path}: {e}")
 
         if cleaned > 0:
-            self.logger.info(
-                f"Cleaned up {cleaned} leaked file(s) from main repo"
-            )
+            self.logger.info(f"Cleaned up {cleaned} leaked file(s) from main repo")
 
         return cleaned
 

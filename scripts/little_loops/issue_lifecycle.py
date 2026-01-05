@@ -15,7 +15,6 @@ from little_loops.config import BRConfig
 from little_loops.issue_parser import IssueInfo, get_next_issue_number, slugify
 from little_loops.logger import Logger
 
-
 # =============================================================================
 # Content Manipulation Helpers
 # =============================================================================
@@ -100,9 +99,7 @@ def _prepare_issue_content(original_path: Path, resolution: str) -> str:
 # =============================================================================
 
 
-def _cleanup_stale_source(
-    original_path: Path, issue_id: str, logger: Logger
-) -> None:
+def _cleanup_stale_source(original_path: Path, issue_id: str, logger: Logger) -> None:
     """Remove orphaned source file and commit cleanup.
 
     Args:

@@ -211,9 +211,7 @@ class MergeCoordinator:
         )
 
         if pop_result.returncode != 0:
-            self.logger.warning(
-                f"Failed to pop stash: {pop_result.stderr.strip()}"
-            )
+            self.logger.warning(f"Failed to pop stash: {pop_result.stderr.strip()}")
 
             # Check if it's a conflict issue - in that case, stash pop may have
             # partially applied. We need to clean up the index but preserve the merge.
@@ -314,9 +312,7 @@ class MergeCoordinator:
         self._assume_unchanged_active = False
 
         if result.returncode != 0:
-            self.logger.warning(
-                f"Failed to restore state file tracking: {result.stderr}"
-            )
+            self.logger.warning(f"Failed to restore state file tracking: {result.stderr}")
             return False
 
         self.logger.debug(f"Restored tracking for {state_file}")
@@ -604,7 +600,9 @@ class MergeCoordinator:
                         if checkout_result.returncode == 0:
                             self.logger.info("Recovered from index error, checkout succeeded")
                         else:
-                            raise RuntimeError(f"Failed to checkout main after recovery: {checkout_result.stderr}")
+                            raise RuntimeError(
+                                f"Failed to checkout main after recovery: {checkout_result.stderr}"
+                            )
                     else:
                         raise RuntimeError(f"Failed to checkout main: {checkout_result.stderr}")
                 else:
@@ -627,9 +625,7 @@ class MergeCoordinator:
                         f"Pull --rebase failed with conflicts: {error_output[:200]}"
                     )
                     if not self._abort_rebase_if_in_progress():
-                        raise RuntimeError(
-                            "Failed to recover from rebase conflict during pull"
-                        )
+                        raise RuntimeError("Failed to recover from rebase conflict during pull")
                     # After aborting rebase, we're back to pre-pull state
                     # Continue without the pull - merge may still work or conflict
                     self.logger.info("Continuing without pull after rebase abort")
@@ -673,9 +669,7 @@ class MergeCoordinator:
                     self.logger.warning(
                         f"Merge blocked by local changes despite stash: {error_output[:200]}"
                     )
-                    raise RuntimeError(
-                        f"Merge failed due to local changes: {error_output[:200]}"
-                    )
+                    raise RuntimeError(f"Merge failed due to local changes: {error_output[:200]}")
 
                 # Check for untracked files blocking merge
                 if self._is_untracked_files_error(error_output):
@@ -693,9 +687,7 @@ class MergeCoordinator:
                         self.logger.info("Recovered from unmerged files, retrying merge")
                         self._queue.put(request)
                         return
-                    raise RuntimeError(
-                        f"Merge failed due to unmerged files: {error_output[:200]}"
-                    )
+                    raise RuntimeError(f"Merge failed due to unmerged files: {error_output[:200]}")
 
                 # Check for merge conflict
                 if "CONFLICT" in error_output:
@@ -764,9 +756,7 @@ class MergeCoordinator:
                     timeout=30,
                 )
                 if stash_result.returncode != 0:
-                    self.logger.warning(
-                        f"Failed to stash worktree changes: {stash_result.stderr}"
-                    )
+                    self.logger.warning(f"Failed to stash worktree changes: {stash_result.stderr}")
 
             # Rebase the branch onto current main
             rebase_result = subprocess.run(
@@ -812,9 +802,7 @@ class MergeCoordinator:
                 f"Merge conflict after {request.retry_count} retries",
             )
 
-    def _handle_untracked_conflict(
-        self, request: MergeRequest, error_output: str
-    ) -> None:
+    def _handle_untracked_conflict(self, request: MergeRequest, error_output: str) -> None:
         """Handle untracked files that would be overwritten by merge.
 
         Backs up conflicting untracked files and retries the merge.

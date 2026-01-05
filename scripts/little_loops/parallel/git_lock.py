@@ -142,9 +142,7 @@ class GitLock:
                 )
 
                 # Check for index.lock error
-                if result.returncode != 0 and self._is_index_lock_error(
-                    result.stderr or ""
-                ):
+                if result.returncode != 0 and self._is_index_lock_error(result.stderr or ""):
                     last_result = result
                     if attempt < self.max_retries:
                         if self._logger:

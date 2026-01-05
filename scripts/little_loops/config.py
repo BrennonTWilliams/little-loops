@@ -84,14 +84,16 @@ class IssuesConfig:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> IssuesConfig:
         """Create IssuesConfig from dictionary."""
-        categories_data = data.get("categories", {
-            "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
-            "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
-            "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
-        })
+        categories_data = data.get(
+            "categories",
+            {
+                "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
+            },
+        )
         categories = {
-            key: CategoryConfig.from_dict(key, value)
-            for key, value in categories_data.items()
+            key: CategoryConfig.from_dict(key, value) for key, value in categories_data.items()
         }
         return cls(
             base_dir=data.get("base_dir", ".issues"),
@@ -257,9 +259,7 @@ class BRConfig:
 
         self._issues = IssuesConfig.from_dict(self._raw_config.get("issues", {}))
         self._automation = AutomationConfig.from_dict(self._raw_config.get("automation", {}))
-        self._parallel = ParallelAutomationConfig.from_dict(
-            self._raw_config.get("parallel", {})
-        )
+        self._parallel = ParallelAutomationConfig.from_dict(self._raw_config.get("parallel", {}))
         self._commands = CommandsConfig.from_dict(self._raw_config.get("commands", {}))
         self._scan = ScanConfig.from_dict(self._raw_config.get("scan", {}))
 
@@ -398,9 +398,7 @@ class BRConfig:
             dry_run=dry_run,
             timeout_per_issue=timeout_seconds or self._parallel.base.timeout_seconds,
             stream_subprocess_output=(
-                stream_output
-                if stream_output is not None
-                else self._parallel.base.stream_output
+                stream_output if stream_output is not None else self._parallel.base.stream_output
             ),
             show_model=show_model if show_model is not None else False,
             command_prefix=self._parallel.command_prefix,

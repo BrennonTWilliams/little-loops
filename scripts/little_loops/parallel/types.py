@@ -248,9 +248,7 @@ class ParallelConfig:
     worktree_base: Path = field(default_factory=lambda: Path(".worktrees"))
     state_file: Path = field(default_factory=lambda: Path(".parallel-manage-state.json"))
     max_merge_retries: int = 2
-    priority_filter: list[str] = field(
-        default_factory=lambda: ["P0", "P1", "P2", "P3", "P4", "P5"]
-    )
+    priority_filter: list[str] = field(default_factory=lambda: ["P0", "P1", "P2", "P3", "P4", "P5"])
     max_issues: int = 0
     dry_run: bool = False
     timeout_per_issue: int = 3600
@@ -337,9 +335,7 @@ class ParallelConfig:
             worktree_base=Path(data.get("worktree_base", ".worktrees")),
             state_file=Path(data.get("state_file", ".parallel-manage-state.json")),
             max_merge_retries=data.get("max_merge_retries", 2),
-            priority_filter=data.get(
-                "priority_filter", ["P0", "P1", "P2", "P3", "P4", "P5"]
-            ),
+            priority_filter=data.get("priority_filter", ["P0", "P1", "P2", "P3", "P4", "P5"]),
             max_issues=data.get("max_issues", 0),
             dry_run=data.get("dry_run", False),
             timeout_per_issue=data.get("timeout_per_issue", 3600),
