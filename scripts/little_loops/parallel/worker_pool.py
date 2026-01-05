@@ -194,6 +194,10 @@ class WorkerPool:
             / f"worker-{issue.issue_id.lower()}-{timestamp}"
         )
 
+        # Capture baseline of main repo status before worker starts
+        # Used to detect files incorrectly written to main repo
+        baseline_status = self._get_main_repo_baseline()
+
         try:
             # Step 1: Create worktree with new branch
             self._setup_worktree(worktree_path, branch_name)
@@ -277,6 +281,16 @@ class WorkerPool:
                 changed_files, issue.issue_id, issue_filename
             )
 
+            # Step 8: Detect files leaked to main repo instead of worktree
+            leaked_files = self._detect_main_repo_leaks(
+                issue.issue_id, baseline_status
+            )
+            if leaked_files:
+                self.logger.warning(
+                    f"{issue.issue_id} leaked {len(leaked_files)} file(s) to main repo: "
+                    f"{leaked_files}"
+                )
+
             if manage_result.returncode != 0:
                 return WorkerResult(
                     issue_id=issue.issue_id,
@@ -284,6 +298,7 @@ class WorkerPool:
                     branch_name=branch_name,
                     worktree_path=worktree_path,
                     changed_files=changed_files,
+                    leaked_files=leaked_files,
                     duration=time.time() - start_time,
                     error=f"manage_issue failed: {manage_result.stderr}",
                     stdout=manage_result.stdout,
@@ -297,6 +312,7 @@ class WorkerPool:
                     branch_name=branch_name,
                     worktree_path=worktree_path,
                     changed_files=changed_files,
+                    leaked_files=leaked_files,
                     duration=time.time() - start_time,
                     error=verification_error,
                     stdout=manage_result.stdout,
@@ -309,6 +325,7 @@ class WorkerPool:
                 branch_name=branch_name,
                 worktree_path=worktree_path,
                 changed_files=changed_files,
+                leaked_files=leaked_files,
                 duration=time.time() - start_time,
                 error=None,
                 stdout=manage_result.stdout,
@@ -555,6 +572,102 @@ class WorkerPool:
             return True, ""
 
         return False, "Only excluded files modified (e.g., .issues/, thoughts/)"
+
+    def _detect_main_repo_leaks(
+        self, issue_id: str, baseline_status: set[str]
+    ) -> list[str]:
+        """Detect files incorrectly written to main repo instead of worktree.
+
+        Claude Code may write files to the main repository instead of the
+        worktree due to project root detection issues (see GitHub #8771).
+        This method detects such leaks by comparing main repo status before
+        and after worker execution.
+
+        Args:
+            issue_id: ID of the issue being processed (for pattern matching)
+            baseline_status: Set of file paths from git status before worker started
+
+        Returns:
+            List of file paths that were leaked to main repo
+        """
+        # Get current status of main repo
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if result.returncode != 0:
+            return []
+
+        current_files: set[str] = set()
+        for line in result.stdout.strip().split("\n"):
+            if not line or len(line) < 3:
+                continue
+            # Extract file path (after status codes and space)
+            file_path = line[3:].strip()
+            # Handle renamed files (old -> new)
+            if " -> " in file_path:
+                file_path = file_path.split(" -> ")[-1]
+            current_files.add(file_path)
+
+        # Find new files that appeared during worker execution
+        new_files = current_files - baseline_status
+
+        # Filter to files likely related to this issue
+        issue_id_lower = issue_id.lower()
+        leaked_files: list[str] = []
+
+        for file_path in new_files:
+            # Skip state file (managed by orchestrator)
+            if file_path.endswith(".parallel-manage-state.json"):
+                continue
+            # Skip .gitignore (may be modified by ll-parallel)
+            if file_path == ".gitignore":
+                continue
+
+            # Check if file is related to this issue
+            file_lower = file_path.lower()
+            if issue_id_lower in file_lower:
+                leaked_files.append(file_path)
+            # Also catch source files that shouldn't be modified in main
+            elif file_path.startswith(("backend/", "src/", "lib/", "tests/")):
+                leaked_files.append(file_path)
+            # Catch thoughts/plans files
+            elif file_path.startswith("thoughts/"):
+                leaked_files.append(file_path)
+
+        return leaked_files
+
+    def _get_main_repo_baseline(self) -> set[str]:
+        """Get baseline of modified/untracked files in main repo.
+
+        Returns:
+            Set of file paths currently showing in git status
+        """
+        result = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        if result.returncode != 0:
+            return set()
+
+        files: set[str] = set()
+        for line in result.stdout.strip().split("\n"):
+            if not line or len(line) < 3:
+                continue
+            file_path = line[3:].strip()
+            if " -> " in file_path:
+                file_path = file_path.split(" -> ")[-1]
+            files.add(file_path)
+
+        return files
 
     @property
     def active_count(self) -> int:

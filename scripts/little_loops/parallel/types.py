@@ -58,6 +58,7 @@ class WorkerResult:
         branch_name: Git branch created for this issue
         worktree_path: Path to the worker's git worktree
         changed_files: List of files modified during processing
+        leaked_files: Files incorrectly written to main repo instead of worktree
         duration: Processing time in seconds
         error: Error message if processing failed
         stdout: Captured standard output
@@ -73,6 +74,7 @@ class WorkerResult:
     branch_name: str
     worktree_path: Path
     changed_files: list[str] = field(default_factory=list)
+    leaked_files: list[str] = field(default_factory=list)
     duration: float = 0.0
     error: str | None = None
     stdout: str = ""
@@ -90,6 +92,7 @@ class WorkerResult:
             "branch_name": self.branch_name,
             "worktree_path": str(self.worktree_path),
             "changed_files": self.changed_files,
+            "leaked_files": self.leaked_files,
             "duration": self.duration,
             "error": self.error,
             "stdout": self.stdout,
@@ -109,6 +112,7 @@ class WorkerResult:
             branch_name=data["branch_name"],
             worktree_path=Path(data["worktree_path"]),
             changed_files=data.get("changed_files", []),
+            leaked_files=data.get("leaked_files", []),
             duration=data.get("duration", 0.0),
             error=data.get("error"),
             stdout=data.get("stdout", ""),
