@@ -179,11 +179,6 @@
           "minimum": 0,
           "maximum": 5
         },
-        "include_p0": {
-          "type": "boolean",
-          "description": "Include P0 issues in parallel processing",
-          "default": false
-        },
         "stream_subprocess_output": {
           "type": "boolean",
           "description": "Stream Claude CLI output to console",

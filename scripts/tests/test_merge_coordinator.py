@@ -67,7 +67,6 @@ def default_config() -> ParallelConfig:
         state_file=".parallel-state.json",
         timeout_per_issue=1800,
         max_merge_retries=2,
-        include_p0=False,
         stream_subprocess_output=False,
         command_prefix="/ll:",
         ready_command="ready_issue {{issue_id}}",

@@ -141,11 +141,6 @@ Examples:
         help="Number of parallel workers (default: from config or 2)",
     )
     parser.add_argument(
-        "--include-p0",
-        action="store_true",
-        help="Include P0 issues in parallel processing",
-    )
-    parser.add_argument(
         "--priority", "-p",
         type=str,
         default=None,
@@ -260,7 +255,6 @@ Examples:
         priority_filter=priority_filter,
         max_issues=args.max_issues,
         dry_run=args.dry_run,
-        include_p0=args.include_p0 if args.include_p0 else None,
         timeout_seconds=args.timeout,
         stream_output=args.stream_output if args.stream_output else None,
         show_model=args.show_model if args.show_model else None,

@@ -193,7 +193,6 @@ class TestParallelWorkflowIntegration:
                     "state_file": ".test-parallel-state.json",
                     "timeout_seconds": 60,
                     "max_merge_retries": 2,
-                    "include_p0": False,
                     "stream_output": False,
                 },
             }

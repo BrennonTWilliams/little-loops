@@ -117,7 +117,6 @@ class TestParallelArgumentParsing:
         """Parse arguments using the same parser as main_parallel."""
         parser = argparse.ArgumentParser()
         parser.add_argument("--workers", "-w", type=int, default=None)
-        parser.add_argument("--include-p0", action="store_true")
         parser.add_argument("--priority", "-p", type=str, default=None)
         parser.add_argument("--max-issues", "-m", type=int, default=0)
         parser.add_argument("--worktree-base", type=Path, default=None)
@@ -135,7 +134,6 @@ class TestParallelArgumentParsing:
         """Default values when no arguments provided."""
         args = self._parse_parallel_args([])
         assert args.workers is None
-        assert args.include_p0 is False
         assert args.priority is None
         assert args.max_issues == 0
         assert args.worktree_base is None
@@ -157,11 +155,6 @@ class TestParallelArgumentParsing:
         """-w sets the number of parallel workers."""
         args = self._parse_parallel_args(["-w", "4"])
         assert args.workers == 4
-
-    def test_include_p0_flag(self) -> None:
-        """--include-p0 enables P0 issue processing."""
-        args = self._parse_parallel_args(["--include-p0"])
-        assert args.include_p0 is True
 
     def test_priority_filter_long(self) -> None:
         """--priority sets the priority filter string."""
@@ -257,7 +250,6 @@ class TestParallelArgumentParsing:
         """Multiple arguments work together correctly."""
         args = self._parse_parallel_args([
             "--workers", "4",
-            "--include-p0",
             "--priority", "P1,P2,P3",
             "--max-issues", "20",
             "--dry-run",
@@ -269,7 +261,6 @@ class TestParallelArgumentParsing:
             "--config", "/my/project",
         ])
         assert args.workers == 4
-        assert args.include_p0 is True
         assert args.priority == "P1,P2,P3"
         assert args.max_issues == 20
         assert args.dry_run is True

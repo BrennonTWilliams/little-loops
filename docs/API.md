@@ -137,7 +137,6 @@ def create_parallel_config(
     priority_filter: list[str] | None = None,
     max_issues: int = 0,
     dry_run: bool = False,
-    include_p0: bool | None = None,
     timeout_seconds: int | None = None,
     stream_output: bool | None = None,
     show_model: bool | None = None,
@@ -151,7 +150,6 @@ Create a `ParallelConfig` from BRConfig settings with optional overrides.
 - `priority_filter` - Override priority filter
 - `max_issues` - Maximum issues to process (0 = unlimited)
 - `dry_run` - Preview mode without processing
-- `include_p0` - Include P0 in parallel queue
 - `timeout_seconds` - Per-issue timeout in seconds
 - `stream_output` - Stream Claude output
 - `show_model` - Display model info on setup
@@ -260,7 +258,6 @@ class ParallelAutomationConfig:
     base: AutomationConfig  # Shared automation settings
     p0_sequential: bool = True
     max_merge_retries: int = 2
-    include_p0: bool = False
     command_prefix: str = "/ll:"
     ready_command: str = "ready_issue {{issue_id}}"
     manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
@@ -867,7 +864,6 @@ class ParallelConfig:
     max_issues: int = 0
     dry_run: bool = False
     timeout_per_issue: int = 3600
-    include_p0: bool = False
     stream_subprocess_output: bool = False
     show_model: bool = False
     command_prefix: str = "/ll:"

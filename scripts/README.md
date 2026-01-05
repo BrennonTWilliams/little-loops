@@ -107,7 +107,6 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     "state_file": ".parallel-manage-state.json",
     "timeout_per_issue": 3600,
     "max_merge_retries": 2,
-    "include_p0": false,
     "stream_subprocess_output": false,
     "command_prefix": "/ll:",
     "ready_command": "ready_issue {{issue_id}}",
@@ -178,7 +177,6 @@ Parallel automation settings with git worktree isolation (`ll-parallel`):
 | `state_file` | `.parallel-manage-state.json` | State persistence file |
 | `timeout_per_issue` | `3600` | Per-issue timeout in seconds |
 | `max_merge_retries` | `2` | Maximum rebase attempts on conflicts |
-| `include_p0` | `false` | Include P0 issues in processing |
 | `stream_subprocess_output` | `false` | Stream Claude CLI output |
 | `command_prefix` | `/ll:` | Prefix for slash commands |
 | `ready_command` | `ready_issue {{issue_id}}` | Command template for validation |

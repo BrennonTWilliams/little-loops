@@ -167,7 +167,6 @@ class TestParallelAutomationConfig:
             "state_file": "parallel.json",
             "timeout_seconds": 900,
             "max_merge_retries": 5,
-            "include_p0": True,
             "stream_output": True,
             "command_prefix": "/custom:",
             "ready_command": "check {{issue_id}}",
@@ -184,7 +183,6 @@ class TestParallelAutomationConfig:
         # Parallel-specific fields
         assert config.p0_sequential is False
         assert config.max_merge_retries == 5
-        assert config.include_p0 is True
         assert config.command_prefix == "/custom:"
         assert config.ready_command == "check {{issue_id}}"
 
@@ -198,7 +196,6 @@ class TestParallelAutomationConfig:
         assert config.base.stream_output is False  # Different from AutomationConfig default
         # Parallel-specific defaults
         assert config.p0_sequential is True
-        assert config.include_p0 is False
         assert config.command_prefix == "/ll:"
 
 
@@ -463,7 +460,6 @@ class TestBRConfig:
 
         assert parallel_config.max_workers == 3
         assert parallel_config.p0_sequential is True
-        assert parallel_config.include_p0 is False
 
     def test_create_parallel_config_with_overrides(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
@@ -475,13 +471,11 @@ class TestBRConfig:
         config = BRConfig(temp_project_dir)
         parallel_config = config.create_parallel_config(
             max_workers=8,
-            include_p0=True,
             dry_run=True,
             max_issues=10,
         )
 
         assert parallel_config.max_workers == 8
-        assert parallel_config.include_p0 is True
         assert parallel_config.dry_run is True
         assert parallel_config.max_issues == 10
 

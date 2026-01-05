@@ -341,24 +341,6 @@ grep state_file .claude/ll-config.json
    print(BRConfig(Path.cwd()).issue_categories)
    ```
 
-### P0 issues not processing
-
-**Symptom**: P0 issues skipped in ll-parallel
-
-**Cause**: Default `include_p0: false` setting
-
-**Solution**:
-1. Use CLI flag: `ll-parallel --include-p0`
-2. Or set in config:
-   ```json
-   {
-     "parallel": {
-       "include_p0": true
-     }
-   }
-   ```
-3. Note: P0 issues are always processed sequentially for safety
-
 ### No issues found
 
 **Symptom**: "No issues to process" but issues exist

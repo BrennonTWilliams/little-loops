@@ -232,7 +232,6 @@ class ParallelConfig:
         max_issues: Maximum issues to process (0 = unlimited)
         dry_run: Preview mode without actual processing
         timeout_per_issue: Timeout in seconds for each issue (default: 3600)
-        include_p0: Include P0 issues in parallel processing
         orchestrator_timeout: Timeout for waiting on workers (default: 0 = auto)
         stream_subprocess_output: Whether to stream subprocess output
         show_model: Make API call to verify and display model on worktree setup
@@ -255,7 +254,6 @@ class ParallelConfig:
     max_issues: int = 0
     dry_run: bool = False
     timeout_per_issue: int = 3600
-    include_p0: bool = False
     orchestrator_timeout: int = 0  # 0 = use timeout_per_issue * max_workers
     stream_subprocess_output: bool = False
     show_model: bool = False  # Make API call to verify model on worktree setup
@@ -316,7 +314,6 @@ class ParallelConfig:
             "max_issues": self.max_issues,
             "dry_run": self.dry_run,
             "timeout_per_issue": self.timeout_per_issue,
-            "include_p0": self.include_p0,
             "orchestrator_timeout": self.orchestrator_timeout,
             "stream_subprocess_output": self.stream_subprocess_output,
             "show_model": self.show_model,
@@ -346,7 +343,6 @@ class ParallelConfig:
             max_issues=data.get("max_issues", 0),
             dry_run=data.get("dry_run", False),
             timeout_per_issue=data.get("timeout_per_issue", 3600),
-            include_p0=data.get("include_p0", False),
             orchestrator_timeout=data.get("orchestrator_timeout", 0),
             stream_subprocess_output=data.get("stream_subprocess_output", False),
             show_model=data.get("show_model", False),

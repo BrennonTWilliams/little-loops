@@ -135,7 +135,6 @@ class ParallelAutomationConfig:
     base: AutomationConfig
     p0_sequential: bool = True
     max_merge_retries: int = 2
-    include_p0: bool = False
     command_prefix: str = "/ll:"
     ready_command: str = "ready_issue {{issue_id}}"
     manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
@@ -163,7 +162,6 @@ class ParallelAutomationConfig:
             base=base,
             p0_sequential=data.get("p0_sequential", True),
             max_merge_retries=data.get("max_merge_retries", 2),
-            include_p0=data.get("include_p0", False),
             command_prefix=data.get("command_prefix", "/ll:"),
             ready_command=data.get("ready_command", "ready_issue {{issue_id}}"),
             manage_command=data.get(
@@ -365,7 +363,6 @@ class BRConfig:
         priority_filter: list[str] | None = None,
         max_issues: int = 0,
         dry_run: bool = False,
-        include_p0: bool | None = None,
         timeout_seconds: int | None = None,
         stream_output: bool | None = None,
         show_model: bool | None = None,
@@ -379,7 +376,6 @@ class BRConfig:
             priority_filter: Override priority filter (default: from issues config)
             max_issues: Maximum issues to process (default: 0 = unlimited)
             dry_run: Preview mode (default: False)
-            include_p0: Include P0 in parallel (default: from config)
             timeout_seconds: Per-issue timeout (default: from config)
             stream_output: Stream output (default: from config)
             show_model: Make API call to verify model (default: False)
@@ -401,7 +397,6 @@ class BRConfig:
             max_issues=max_issues,
             dry_run=dry_run,
             timeout_per_issue=timeout_seconds or self._parallel.base.timeout_seconds,
-            include_p0=include_p0 if include_p0 is not None else self._parallel.include_p0,
             stream_subprocess_output=(
                 stream_output
                 if stream_output is not None
@@ -466,7 +461,6 @@ class BRConfig:
                 "state_file": self._parallel.base.state_file,
                 "timeout_seconds": self._parallel.base.timeout_seconds,
                 "max_merge_retries": self._parallel.max_merge_retries,
-                "include_p0": self._parallel.include_p0,
                 "stream_output": self._parallel.base.stream_output,
                 "command_prefix": self._parallel.command_prefix,
                 "ready_command": self._parallel.ready_command,

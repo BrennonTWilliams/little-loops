@@ -402,14 +402,9 @@ class ParallelOrchestrator:
         if self.parallel_config.skip_ids:
             skip_ids |= self.parallel_config.skip_ids
 
-        # Adjust priority filter based on include_p0
-        priority_filter = list(self.parallel_config.priority_filter)
-        if not self.parallel_config.include_p0 and "P0" in priority_filter:
-            priority_filter.remove("P0")
-
         issues = IssuePriorityQueue.scan_issues(
             self.br_config,
-            priority_filter=priority_filter,
+            priority_filter=list(self.parallel_config.priority_filter),
             skip_ids=skip_ids,
             only_ids=self.parallel_config.only_ids,
         )
