@@ -213,6 +213,7 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
         - close_reason: str|None (e.g., "already_fixed", "invalid_ref")
         - close_status: str|None (e.g., "Closed - Already Fixed")
         - corrections: list[str] of corrections made
+        - validated_file_path: str|None path to the file that was validated
         - sections: dict of parsed sections (if standardized format)
         - validation: dict of validation results (if standardized format)
     """
@@ -224,6 +225,7 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
     validation: dict[str, dict[str, str]] = {}
     close_reason: str | None = None
     close_status: str | None = None
+    validated_file_path: str | None = None
 
     # Strategy 1: Check for VERDICT section (new format with # or ## header)
     if "VERDICT" in sections:
@@ -335,6 +337,17 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
                 close_status = line
                 break
 
+    # Parse VALIDATED_FILE section if present (for path validation)
+    if "VALIDATED_FILE" in sections:
+        validated_file_content = sections["VALIDATED_FILE"].strip()
+        # Take first non-empty line as the file path
+        for line in validated_file_content.split("\n"):
+            line = line.strip()
+            # Skip empty lines, comments, and template placeholders
+            if line and not line.startswith("#") and not line.startswith("["):
+                validated_file_path = line
+                break
+
     # Parse VALIDATION section if present
     if "VALIDATION" in sections:
         validation = parse_validation_table(sections["VALIDATION"])
@@ -353,6 +366,7 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
         "close_reason": close_reason,
         "close_status": close_status,
         "corrections": corrections,
+        "validated_file_path": validated_file_path,
         "sections": sections,
         "validation": validation,
     }

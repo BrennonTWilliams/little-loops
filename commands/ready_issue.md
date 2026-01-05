@@ -109,6 +109,9 @@ After making corrections, use verdict CORRECTED (not READY or NOT_READY).
 ## VERDICT
 [READY|CORRECTED|NOT_READY|CLOSE]
 
+## VALIDATED_FILE
+[Absolute path to the issue file that was validated, e.g., /path/to/.issues/bugs/P1-BUG-002-description.md]
+
 ## CLOSE_REASON
 [Only include this section if verdict is CLOSE]
 - Reason: already_fixed|invalid_ref|stale|too_vague|duplicate|wont_do

@@ -13,6 +13,7 @@ import time
 from collections.abc import Generator
 from contextlib import contextmanager
 from datetime import datetime
+from pathlib import Path
 from types import FrameType
 
 from little_loops.config import BRConfig
@@ -256,6 +257,24 @@ class AutoManager:
                     # Parse the verdict from the output
                     parsed = parse_ready_issue_output(result.stdout)
                     self.logger.info(f"ready_issue verdict: {parsed['verdict']}")
+
+                    # Validate that ready_issue analyzed the expected file
+                    validated_path = parsed.get("validated_file_path")
+                    if validated_path:
+                        # Normalize paths for comparison (resolve to absolute)
+                        expected_path = str(info.path.resolve())
+                        # Handle both absolute and relative paths from ready_issue
+                        validated_resolved = str(Path(validated_path).resolve())
+                        if validated_resolved != expected_path:
+                            self.logger.error(
+                                f"Path mismatch detected: ready_issue validated "
+                                f"'{validated_path}' but expected '{info.path}'"
+                            )
+                            self.state_manager.mark_failed(
+                                info.issue_id,
+                                f"Path mismatch: validated {validated_path}, expected {info.path}",
+                            )
+                            return False
 
                     # Log any corrections made
                     if parsed.get("was_corrected"):
