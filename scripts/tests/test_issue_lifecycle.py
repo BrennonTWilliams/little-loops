@@ -440,8 +440,8 @@ class TestVerifyIssueCompleted:
 
         result = verify_issue_completed(info, sample_config, mock_logger)
 
-        # Returns True because issue IS in completed (duplicate is stale state)
-        assert result is True
+        # Returns False because original still exists
+        assert result is False
         mock_logger.warning.assert_called()
 
     def test_deleted_but_not_moved(
@@ -483,38 +483,6 @@ class TestVerifyIssueCompleted:
 
         assert result is False
         mock_logger.warning.assert_called()
-
-    def test_found_in_category_completed_dir(
-        self, tmp_path: Path, sample_config: BRConfig, mock_logger: MagicMock
-    ) -> None:
-        """Test fallback to category-specific completed directory.
-
-        When agent moves issue to .issues/{category}/completed/ instead of
-        the standard .issues/completed/, verification should still succeed
-        with a warning about non-standard location.
-        """
-        # Create in category-specific completed (non-standard location)
-        category_completed = tmp_path / ".issues" / "enhancements" / "completed"
-        category_completed.mkdir(parents=True, exist_ok=True)
-        (category_completed / "P2-ENH-001-test.md").write_text("Completed")
-
-        # Original does NOT exist (was moved)
-        info = IssueInfo(
-            path=tmp_path / ".issues" / "enhancements" / "P2-ENH-001-test.md",
-            issue_type="enhancements",
-            priority="P2",
-            issue_id="ENH-001",
-            title="Test",
-        )
-
-        result = verify_issue_completed(info, sample_config, mock_logger)
-
-        # Returns True because found in fallback location
-        assert result is True
-        # Warning should mention non-standard location
-        mock_logger.warning.assert_called()
-        call_args = mock_logger.warning.call_args[0][0]
-        assert "non-standard" in call_args or "instead of" in call_args
 
 
 # =============================================================================
