@@ -692,6 +692,7 @@ Logger(verbose: bool = True, use_color: bool = True)
 | Method | Color | Description |
 |--------|-------|-------------|
 | `info(msg)` | Cyan | General information |
+| `debug(msg)` | Gray | Debug messages |
 | `success(msg)` | Green | Success messages |
 | `warning(msg)` | Yellow | Warnings |
 | `error(msg)` | Red | Errors (to stderr) |
@@ -868,11 +869,16 @@ class ParallelConfig:
     max_issues: int = 0
     dry_run: bool = False
     timeout_per_issue: int = 3600
+    orchestrator_timeout: int = 0
     stream_subprocess_output: bool = False
     show_model: bool = False
     command_prefix: str = "/ll:"
     ready_command: str = "ready_issue {{issue_id}}"
     manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+    only_ids: set[str] | None = None
+    skip_ids: set[str] | None = None
+    require_code_changes: bool = True
+    worktree_copy_files: list[str]
 ```
 
 #### Methods

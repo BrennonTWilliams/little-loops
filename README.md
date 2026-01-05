@@ -175,7 +175,6 @@ Project-level settings for commands:
 |-----|---------|-------------|
 | `name` | Directory name | Project name |
 | `src_dir` | `src/` | Source code directory |
-| `test_dir` | `tests` | Test directory |
 | `test_cmd` | `pytest` | Command to run tests |
 | `lint_cmd` | `ruff check .` | Command to run linter |
 | `type_cmd` | `mypy` | Command for type checking |
