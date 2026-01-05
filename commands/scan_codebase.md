@@ -17,43 +17,142 @@ This command uses project configuration from `.claude/ll-config.json`:
 
 ## Process
 
-### 1. Scan for Issues
+### 0. Initialize Progress Tracking
 
-Analyze the codebase looking for:
+Create a todo list to track scan progress:
 
-#### Bugs
+```
+Use TodoWrite to create:
+- Gathering git metadata and repo info
+- Scanning for bugs (via sub-agent)
+- Scanning for enhancements (via sub-agent)
+- Scanning for features (via sub-agent)
+- Synthesizing and deduplicating findings
+- Creating issue files
+- Generating summary report
+```
+
+Update todos as each phase completes to give the user visibility into progress.
+
+### 1. Gather Metadata
+
+Collect git and repository information for traceability and GitHub permalinks:
+
+```bash
+# Git metadata
+git rev-parse HEAD                    # Current commit hash
+git branch --show-current             # Current branch name
+date -u +"%Y-%m-%dT%H:%M:%SZ"         # ISO timestamp
+
+# Repository info for permalinks
+gh repo view --json owner,name        # Get owner and repo name
+
+# Check if permalinks are possible (on main or pushed)
+git status                            # Check if ahead of remote
+```
+
+Store these values for use in issue files:
+- `COMMIT_HASH`: Current commit
+- `BRANCH_NAME`: Current branch
+- `SCAN_DATE`: ISO 8601 timestamp
+- `REPO_OWNER`: GitHub owner
+- `REPO_NAME`: Repository name
+- `PERMALINKS_AVAILABLE`: true if on main/master or commit is pushed
+
+### 2. Spawn Parallel Scan Agents
+
+Launch 3 sub-agents in parallel to scan different categories concurrently:
+
+**IMPORTANT**: Spawn all 3 agents in a SINGLE message with multiple Task tool calls.
+
+#### Agent 1: Bug Scanner
+```
+Use Task tool with subagent_type="codebase-analyzer"
+
+Prompt: Scan the codebase in {{config.scan.focus_dirs}} for potential bugs:
 - TODO/FIXME/BUG/HACK comments
 - Error handling gaps (bare except, swallowed exceptions)
 - Type mismatches and potential runtime errors
 - Resource leaks (unclosed files, connections)
 - Race conditions or thread safety issues
 
-#### Enhancements
+Exclude: {{config.scan.exclude_patterns}}
+
+Return structured findings with:
+- Title (brief description)
+- File path and line number(s)
+- Code snippet showing the issue
+- Severity assessment (High/Medium/Low)
+- Brief explanation of the problem
+```
+
+#### Agent 2: Enhancement Scanner
+```
+Use Task tool with subagent_type="codebase-analyzer"
+
+Prompt: Scan the codebase in {{config.scan.focus_dirs}} for enhancement opportunities:
 - Performance bottlenecks (N+1 queries, unnecessary loops)
 - Code duplication that could be refactored
 - Missing abstractions or patterns
 - Outdated dependencies or deprecated APIs
 - Test coverage gaps
 
-#### Features
+Exclude: {{config.scan.exclude_patterns}}
+
+Return structured findings with:
+- Title (brief description)
+- File path and line number(s)
+- Code snippet showing the area
+- Effort estimate (Small/Medium/Large)
+- Brief explanation of the improvement
+```
+
+#### Agent 3: Feature Scanner
+```
+Use Task tool with subagent_type="codebase-analyzer"
+
+Prompt: Scan the codebase in {{config.scan.focus_dirs}} for feature opportunities:
 - TODO comments describing new functionality
 - Missing API endpoints or CLI commands
 - Incomplete implementations
 - User-facing improvements suggested in code
 
-### 2. Categorize Findings
+Exclude: {{config.scan.exclude_patterns}}
 
-For each finding, determine:
-- **Type**: Bug, Enhancement, or Feature
-- **Priority**: P0-P5 based on impact
-- **Location**: File path and line numbers
-- **Description**: Clear explanation of the issue
+Return structured findings with:
+- Title (brief description)
+- File path and line number(s)
+- Code snippet or context
+- Scope estimate (Small/Medium/Large)
+- Brief explanation of the feature
+```
 
-### 3. Create Issue Files
+### 3. Synthesize Findings
 
-For each finding, create an issue file:
+After ALL sub-agents complete:
+
+1. **Collect results** from all 3 agents
+2. **Deduplicate** against existing issues in `{{config.issues.base_dir}}/`
+3. **Assign priorities** (P0-P5) based on:
+   - P0: Critical bugs, security issues, data loss risk
+   - P1: High-impact bugs, blocking issues
+   - P2: Medium bugs, important enhancements
+   - P3: Low-priority bugs, nice-to-have enhancements
+   - P4: Minor improvements, code cleanup
+   - P5: Future considerations, low-priority features
+4. **Assign sequential numbers** per category (check existing issues for next number)
+
+### 4. Create Issue Files
+
+For each finding, create an issue file with YAML frontmatter:
 
 ```markdown
+---
+discovered_commit: [COMMIT_HASH]
+discovered_branch: [BRANCH_NAME]
+discovered_date: [SCAN_DATE]
+---
+
 # [PREFIX]-[NUMBER]: [Title]
 
 ## Summary
@@ -64,6 +163,7 @@ For each finding, create an issue file:
 
 - **File**: `path/to/file.py`
 - **Line(s)**: 42-45
+- **Permalink**: [View on GitHub](https://github.com/[REPO_OWNER]/[REPO_NAME]/blob/[COMMIT_HASH]/path/to/file.py#L42-L45)
 - **Code**:
 ```python
 # Relevant code snippet
@@ -94,10 +194,12 @@ For each finding, create an issue file:
 ---
 
 ## Status
-**Open** | Created: [DATE] | Priority: [P0-P5]
+**Open** | Created: [SCAN_DATE] | Priority: [P0-P5]
 ```
 
-### 4. Save Issue Files
+**Note**: Only include Permalink if `PERMALINKS_AVAILABLE` is true.
+
+### 5. Save Issue Files
 
 ```bash
 # Create issue file with proper naming
@@ -109,10 +211,16 @@ EOF
 git add "{{config.issues.base_dir}}/"
 ```
 
-### 5. Output Report
+### 6. Output Report
 
 ```markdown
 # Codebase Scan Report
+
+## Scan Metadata
+- **Commit**: [COMMIT_HASH]
+- **Branch**: [BRANCH_NAME]
+- **Date**: [SCAN_DATE]
+- **Repository**: [REPO_OWNER]/[REPO_NAME]
 
 ## Summary
 - **Files scanned**: X
@@ -120,23 +228,24 @@ git add "{{config.issues.base_dir}}/"
   - Bugs: N
   - Enhancements: N
   - Features: N
+- **Duplicates skipped**: Z
 
 ## New Issues Created
 
 ### Bugs ({{config.issues.base_dir}}/bugs/)
-| File | Priority | Title |
-|------|----------|-------|
-| P1-BUG-001-... | P1 | Description |
+| File | Priority | Title | Permalink |
+|------|----------|-------|-----------|
+| P1-BUG-001-... | P1 | Description | [Link](...) |
 
 ### Enhancements ({{config.issues.base_dir}}/enhancements/)
-| File | Priority | Title |
-|------|----------|-------|
-| P2-ENH-001-... | P2 | Description |
+| File | Priority | Title | Permalink |
+|------|----------|-------|-----------|
+| P2-ENH-001-... | P2 | Description | [Link](...) |
 
 ### Features ({{config.issues.base_dir}}/features/)
-| File | Priority | Title |
-|------|----------|-------|
-| P3-FEAT-001-... | P3 | Description |
+| File | Priority | Title | Permalink |
+|------|----------|-------|-----------|
+| P3-FEAT-001-... | P3 | Description | [Link](...) |
 
 ## Next Steps
 1. Review created issues for accuracy
