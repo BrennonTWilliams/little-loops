@@ -44,7 +44,18 @@ find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" | sort
 | INVALID | Issue description is incorrect |
 | NEEDS_UPDATE | Valid but needs clarification |
 
-### 3. Update Issue Files
+### 3. Request User Approval
+
+Before making any changes, present the verification results to the user:
+
+1. Show the summary table with all verdicts
+2. List specific changes that will be made:
+   - Issues to update with verification notes
+   - Issues to move to completed/
+3. Ask: "Proceed with these changes? (y/n)"
+4. Wait for user confirmation before modifying any files
+
+### 4. Update Issue Files
 
 For issues needing updates:
 - Add a `## Verification Notes` section
@@ -55,7 +66,7 @@ For resolved issues:
 - Add resolution note
 - Consider moving to `{{config.issues.base_dir}}/completed/`
 
-### 4. Output Report
+### 5. Output Report
 
 ```markdown
 # Issue Verification Report
