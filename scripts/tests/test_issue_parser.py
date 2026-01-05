@@ -263,6 +263,67 @@ class TestIssueParser:
         assert info.issue_type == "features"
         assert info.title == "Add Dark Mode"
 
+    def test_get_category_for_prefix(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test _get_category_for_prefix returns correct category."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        parser = IssueParser(config)
+
+        assert parser._get_category_for_prefix("BUG") == "bugs"
+        assert parser._get_category_for_prefix("FEAT") == "features"
+        assert parser._get_category_for_prefix("UNKNOWN") == "bugs"  # Default
+
+    def test_generate_id_uses_sequential_not_hash(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test that ID generation uses sequential numbers, not hash-based IDs."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        # Create bugs directory with existing issues
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P0-BUG-001-first.md").write_text("# BUG-001: First\n")
+        (bugs_dir / "P1-BUG-005-fifth.md").write_text("# BUG-005: Fifth\n")
+
+        parser = IssueParser(config)
+
+        # Generate ID for a file without numeric ID in filename
+        generated_id = parser._generate_id_from_filename("no-numbers-here.md", "BUG")
+
+        # Should be BUG-006 (next after max 5), not a hash-based ID like BUG-1234
+        assert generated_id == "BUG-006"
+
+    def test_parse_file_without_explicit_id_gets_sequential(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing file without ID in filename generates sequential ID."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        # Create bugs directory with one existing issue
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P0-BUG-010-existing.md").write_text("# BUG-010: Existing\n")
+
+        # Create a file without any numbers at all (not even priority)
+        # This tests the sequential fallback path
+        issue_file = bugs_dir / "some-descriptive-name.md"
+        issue_file.write_text("# Some Issue Title\n\nDescription here.")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        # Should get sequential ID BUG-011, not a random hash-based ID
+        assert info.issue_id == "BUG-011"
+        assert info.issue_type == "bugs"
+
 
 class TestGetNextIssueNumber:
     """Tests for get_next_issue_number function."""

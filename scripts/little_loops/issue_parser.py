@@ -176,6 +176,17 @@ class IssueParser:
         # Default to lowest priority if not found
         return self.config.issue_priorities[-1] if self.config.issue_priorities else "P3"
 
+    def _get_category_for_prefix(self, prefix: str) -> str:
+        """Get category name from issue prefix.
+
+        Args:
+            prefix: Issue prefix (e.g., "BUG", "FEAT")
+
+        Returns:
+            Category name (e.g., "bugs", "features"), defaults to "bugs"
+        """
+        return self._prefix_to_category.get(prefix, "bugs")
+
     def _parse_type_and_id(self, filename: str, issue_path: Path) -> tuple[str, str]:
         """Extract issue type and ID from filename.
 
@@ -219,8 +230,11 @@ class IssueParser:
         numbers = re.findall(r"\d+", filename)
         if numbers:
             return f"{prefix}-{numbers[0]}"
-        # Use hash of filename as fallback
-        return f"{prefix}-{abs(hash(filename)) % 10000:04d}"
+        # Use next sequential number instead of hash-based fallback
+        # This ensures IDs are deterministic and don't collide with existing issues
+        category = self._get_category_for_prefix(prefix)
+        next_num = get_next_issue_number(self.config, category)
+        return f"{prefix}-{next_num:03d}"
 
     def _parse_title(self, issue_path: Path) -> str:
         """Extract title from issue file content.
