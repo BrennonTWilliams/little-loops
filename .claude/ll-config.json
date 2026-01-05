@@ -1,0 +1,34 @@
+{
+  "$schema": "../config-schema.json",
+  "project": {
+    "name": "little-loops",
+    "src_dir": "scripts/",
+    "test_cmd": "python -m pytest scripts/tests/",
+    "lint_cmd": "ruff check scripts/",
+    "type_cmd": "python -m mypy scripts/little_loops/",
+    "format_cmd": "ruff format scripts/"
+  },
+  "issues": {
+    "base_dir": ".issues",
+    "categories": {
+      "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+      "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+      "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
+    },
+    "completed_dir": "completed",
+    "priorities": ["P0", "P1", "P2", "P3", "P4", "P5"]
+  },
+  "automation": {
+    "timeout_seconds": 1800,
+    "stream_output": true
+  },
+  "parallel": {
+    "max_workers": 2,
+    "p0_sequential": true,
+    "timeout_per_issue": 1800
+  },
+  "scan": {
+    "focus_dirs": ["scripts/", "commands/", "agents/"],
+    "exclude_patterns": ["**/__pycache__/**", "**/.git/**", "**/*.log"]
+  }
+}
