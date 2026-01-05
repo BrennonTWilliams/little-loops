@@ -15,7 +15,7 @@ Thank you for your interest in contributing to little-loops! This document provi
 1. Clone the repository:
 
 ```bash
-git clone https://github.com/little-loops/little-loops.git
+git clone https://github.com/BrennonTWilliams/little-loops.git
 cd little-loops
 ```
 

@@ -21,7 +21,7 @@ little-loops is a Claude Code plugin that provides a complete development workfl
 
 ```bash
 # Add the GitHub repository as a marketplace
-/plugin marketplace add little-loops/little-loops
+/plugin marketplace add github:BrennonTWilliams/little-loops
 
 # Install the plugin
 /plugin install ll@little-loops
@@ -175,6 +175,7 @@ Project-level settings for commands:
 |-----|---------|-------------|
 | `name` | Directory name | Project name |
 | `src_dir` | `src/` | Source code directory |
+| `test_dir` | `tests` | Test directory |
 | `test_cmd` | `pytest` | Command to run tests |
 | `lint_cmd` | `ruff check .` | Command to run linter |
 | `type_cmd` | `mypy` | Command for type checking |
@@ -456,12 +457,13 @@ little-loops/
         ├── subprocess_utils.py # Subprocess handling
         └── parallel/           # Parallel processing
             ├── __init__.py
-            ├── orchestrator.py
-            ├── worker_pool.py
-            ├── priority_queue.py
+            ├── git_lock.py
             ├── merge_coordinator.py
+            ├── orchestrator.py
             ├── output_parsing.py
+            ├── priority_queue.py
             ├── types.py
+            ├── worker_pool.py
             └── tasks/          # Task templates for Claude CLI
 ```
 

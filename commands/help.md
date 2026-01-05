@@ -81,7 +81,7 @@ GIT & WORKFLOW
 Usage: /ll:<command> [arguments]
 
 Configuration: .claude/ll-config.json
-Documentation: https://github.com/little-loops/little-loops
+Documentation: https://github.com/BrennonTWilliams/little-loops
 ================================================================================
 ```
 

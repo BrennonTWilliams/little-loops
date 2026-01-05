@@ -917,6 +917,7 @@ class WorkerResult:
     branch_name: str
     worktree_path: Path
     changed_files: list[str] = field(default_factory=list)
+    leaked_files: list[str] = field(default_factory=list)
     duration: float = 0.0
     error: str | None = None
     stdout: str = ""

@@ -5,7 +5,7 @@
   "description": "Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing",
   "author": "little-loops",
   "license": "MIT",
-  "homepage": "https://github.com/little-loops/little-loops",
+  "homepage": "https://github.com/BrennonTWilliams/little-loops",
   "keywords": [
     "development",
     "workflow",

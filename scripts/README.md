@@ -15,8 +15,8 @@ little-loops is a Claude Code plugin that provides a complete development workfl
 
 ```bash
 # Add the marketplace and install
-claude plugin marketplace add github:little-loops/little-loops
-claude plugin install ll@ll
+/plugin marketplace add github:BrennonTWilliams/little-loops
+/plugin install ll@little-loops
 ```
 
 ## Quick Start
@@ -27,7 +27,7 @@ claude plugin install ll@ll
 mkdir -p .claude
 cat > .claude/ll-config.json << 'EOF'
 {
-  "$schema": "little-loops://config-schema.json",
+  "$schema": "./config-schema.json",
   "project": {
     "name": "my-project",
     "src_dir": "src/",
@@ -69,7 +69,7 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
 
 ```json
 {
-  "$schema": "little-loops://config-schema.json",
+  "$schema": "./config-schema.json",
 
   "project": {
     "name": "my-project",

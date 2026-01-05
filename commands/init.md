@@ -331,7 +331,7 @@ If `--yes` flag IS set:
 2. Write the configuration file with the `$schema` reference:
    ```json
    {
-     "$schema": "https://raw.githubusercontent.com/little-loops/little-loops/main/config-schema.json",
+     "$schema": "https://raw.githubusercontent.com/BrennonTWilliams/little-loops/main/config-schema.json",
      "project": { ... },
      "issues": { ... },
      "scan": { ... },
@@ -380,7 +380,7 @@ Next steps:
   3. Set up issue tracking: mkdir -p .issues/{bugs,features,enhancements}
   4. Run parallel processing: ll-parallel      # Only show if parallel configured
 
-Documentation: https://github.com/little-loops/little-loops
+Documentation: https://github.com/BrennonTWilliams/little-loops
 
 ================================================================================
 ```
