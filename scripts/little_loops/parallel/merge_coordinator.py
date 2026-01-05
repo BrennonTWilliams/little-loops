@@ -14,6 +14,7 @@ from pathlib import Path
 from queue import Queue
 from typing import TYPE_CHECKING
 
+from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import (
     MergeRequest,
     MergeStatus,
@@ -45,6 +46,7 @@ class MergeCoordinator:
         config: ParallelConfig,
         logger: Logger,
         repo_path: Path | None = None,
+        git_lock: GitLock | None = None,
     ) -> None:
         """Initialize the merge coordinator.
 
@@ -52,10 +54,12 @@ class MergeCoordinator:
             config: Parallel processing configuration
             logger: Logger for merge output
             repo_path: Path to the git repository (default: current directory)
+            git_lock: Shared lock for git operations (created if not provided)
         """
         self.config = config
         self.logger = logger
         self.repo_path = repo_path or Path.cwd()
+        self._git_lock = git_lock or GitLock(logger)
         self._queue: Queue[MergeRequest] = Queue()
         self._thread: threading.Thread | None = None
         self._shutdown_event = threading.Event()
@@ -133,11 +137,9 @@ class MergeCoordinator:
         # Check if there are any tracked changes to stash.
         # We only look at tracked files (exclude untracked with grep -v '??')
         # since we can only reliably stash tracked changes.
-        status_result = subprocess.run(
-            ["git", "status", "--porcelain"],
+        status_result = self._git_lock.run(
+            ["status", "--porcelain"],
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=30,
         )
 
@@ -168,9 +170,8 @@ class MergeCoordinator:
         # Using explicit file list avoids race conditions where the orchestrator
         # modifies the state file between a checkout and stash-all operation.
         # Note: gitignored files are never stashed anyway.
-        stash_result = subprocess.run(
+        stash_result = self._git_lock.run(
             [
-                "git",
                 "stash",
                 "push",
                 "-m",
@@ -179,8 +180,6 @@ class MergeCoordinator:
                 *files_to_stash,
             ],
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=30,
         )
 
@@ -205,11 +204,9 @@ class MergeCoordinator:
         if not self._stash_active:
             return True
 
-        pop_result = subprocess.run(
-            ["git", "stash", "pop"],
+        pop_result = self._git_lock.run(
+            ["stash", "pop"],
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=30,
         )
 
@@ -220,11 +217,9 @@ class MergeCoordinator:
 
             # Check if it's a conflict issue - in that case, stash pop may have
             # partially applied. We need to clean up the index but preserve the merge.
-            status_result = subprocess.run(
-                ["git", "status", "--porcelain"],
+            status_result = self._git_lock.run(
+                ["status", "--porcelain"],
                 cwd=self.repo_path,
-                capture_output=True,
-                text=True,
                 timeout=30,
             )
 
@@ -239,16 +234,14 @@ class MergeCoordinator:
             if has_unmerged:
                 # Clean up the conflicted stash pop without affecting the merge
                 # Use checkout to restore conflicted files to their post-merge state
-                subprocess.run(
-                    ["git", "checkout", "--theirs", "."],
+                self._git_lock.run(
+                    ["checkout", "--theirs", "."],
                     cwd=self.repo_path,
-                    capture_output=True,
                     timeout=30,
                 )
-                subprocess.run(
-                    ["git", "reset", "HEAD"],
+                self._git_lock.run(
+                    ["reset", "HEAD"],
                     cwd=self.repo_path,
-                    capture_output=True,
                     timeout=30,
                 )
                 self.logger.info("Cleaned up conflicted stash pop, merge preserved")
@@ -277,11 +270,9 @@ class MergeCoordinator:
         state_file = str(self.config.state_file)
 
         # Check if file exists and is tracked
-        ls_files = subprocess.run(
-            ["git", "ls-files", state_file],
+        ls_files = self._git_lock.run(
+            ["ls-files", state_file],
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=10,
         )
 
@@ -289,11 +280,9 @@ class MergeCoordinator:
             # File not tracked, nothing to do
             return True
 
-        result = subprocess.run(
-            ["git", "update-index", "--assume-unchanged", state_file],
+        result = self._git_lock.run(
+            ["update-index", "--assume-unchanged", state_file],
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=10,
         )
 
@@ -316,11 +305,9 @@ class MergeCoordinator:
 
         state_file = str(self.config.state_file)
 
-        result = subprocess.run(
-            ["git", "update-index", "--no-assume-unchanged", state_file],
+        result = self._git_lock.run(
+            ["update-index", "--no-assume-unchanged", state_file],
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=10,
         )
 
@@ -403,11 +390,9 @@ class MergeCoordinator:
             return True
 
         self.logger.warning("Detected rebase in progress, aborting...")
-        abort_result = subprocess.run(
-            ["git", "rebase", "--abort"],
+        abort_result = self._git_lock.run(
+            ["rebase", "--abort"],
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=30,
         )
 
@@ -445,11 +430,9 @@ class MergeCoordinator:
         merge_head = self.repo_path / ".git" / "MERGE_HEAD"
         if merge_head.exists():
             self.logger.warning("Detected incomplete merge, aborting...")
-            abort_result = subprocess.run(
-                ["git", "merge", "--abort"],
+            abort_result = self._git_lock.run(
+                ["merge", "--abort"],
                 cwd=self.repo_path,
-                capture_output=True,
-                text=True,
                 timeout=30,
             )
             if abort_result.returncode != 0:
@@ -462,11 +445,9 @@ class MergeCoordinator:
         rebase_apply = self.repo_path / ".git" / "rebase-apply"
         if rebase_dir.exists() or rebase_apply.exists():
             self.logger.warning("Detected incomplete rebase, aborting...")
-            abort_result = subprocess.run(
-                ["git", "rebase", "--abort"],
+            abort_result = self._git_lock.run(
+                ["rebase", "--abort"],
                 cwd=self.repo_path,
-                capture_output=True,
-                text=True,
                 timeout=30,
             )
             if abort_result.returncode != 0:
@@ -480,11 +461,9 @@ class MergeCoordinator:
 
         # Check for unmerged files in the index (UU, AA, DD, AU, UA, DU, UD prefixes)
         # These can persist even after merge --abort in some edge cases
-        status_result = subprocess.run(
-            ["git", "status", "--porcelain"],
+        status_result = self._git_lock.run(
+            ["status", "--porcelain"],
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=30,
         )
 
@@ -528,11 +507,9 @@ class MergeCoordinator:
             True if reset succeeded, False otherwise
         """
         self.logger.warning("Attempting hard reset to recover...")
-        reset_result = subprocess.run(
-            ["git", "reset", "--hard", "HEAD"],
+        reset_result = self._git_lock.run(
+            ["reset", "--hard", "HEAD"],
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=30,
         )
         if reset_result.returncode != 0:
@@ -602,11 +579,9 @@ class MergeCoordinator:
 
         try:
             # Ensure we're on main branch in the main repo
-            checkout_result = subprocess.run(
-                ["git", "checkout", "main"],
+            checkout_result = self._git_lock.run(
+                ["checkout", "main"],
                 cwd=self.repo_path,
-                capture_output=True,
-                text=True,
                 timeout=30,
             )
 
@@ -621,11 +596,9 @@ class MergeCoordinator:
                     # Try recovery
                     if self._check_and_recover_index():
                         # Retry checkout
-                        checkout_result = subprocess.run(
-                            ["git", "checkout", "main"],
+                        checkout_result = self._git_lock.run(
+                            ["checkout", "main"],
                             cwd=self.repo_path,
-                            capture_output=True,
-                            text=True,
                             timeout=30,
                         )
                         if checkout_result.returncode == 0:
@@ -638,11 +611,9 @@ class MergeCoordinator:
                     raise RuntimeError(f"Failed to checkout main: {checkout_result.stderr}")
 
             # Pull latest changes
-            pull_result = subprocess.run(
-                ["git", "pull", "--rebase", "origin", "main"],
+            pull_result = self._git_lock.run(
+                ["pull", "--rebase", "origin", "main"],
                 cwd=self.repo_path,
-                capture_output=True,
-                text=True,
                 timeout=60,
             )
 
@@ -681,9 +652,8 @@ class MergeCoordinator:
                 )
 
             # Attempt merge with no-ff
-            merge_result = subprocess.run(
+            merge_result = self._git_lock.run(
                 [
-                    "git",
                     "merge",
                     result.branch_name,
                     "--no-ff",
@@ -692,8 +662,6 @@ class MergeCoordinator:
                     f"Automated merge from parallel issue processing.",
                 ],
                 cwd=self.repo_path,
-                capture_output=True,
-                text=True,
                 timeout=60,
             )
 
@@ -759,10 +727,9 @@ class MergeCoordinator:
         request.retry_count += 1
 
         # Abort the failed merge
-        subprocess.run(
-            ["git", "merge", "--abort"],
+        self._git_lock.run(
+            ["merge", "--abort"],
             cwd=self.repo_path,
-            capture_output=True,
             timeout=10,
         )
 
@@ -963,10 +930,9 @@ class MergeCoordinator:
             return
 
         # Remove worktree
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", str(worktree_path)],
+        self._git_lock.run(
+            ["worktree", "remove", "--force", str(worktree_path)],
             cwd=self.repo_path,
-            capture_output=True,
             timeout=30,
         )
 
@@ -976,10 +942,9 @@ class MergeCoordinator:
 
         # Delete the branch
         if branch_name.startswith("parallel/"):
-            subprocess.run(
-                ["git", "branch", "-D", branch_name],
+            self._git_lock.run(
+                ["branch", "-D", branch_name],
                 cwd=self.repo_path,
-                capture_output=True,
                 timeout=10,
             )
 

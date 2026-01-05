@@ -18,6 +18,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.output_parsing import parse_ready_issue_output
 from little_loops.work_verification import verify_work_was_done
 from little_loops.parallel.types import ParallelConfig, WorkerResult
@@ -52,6 +53,7 @@ class WorkerPool:
         br_config: BRConfig,
         logger: Logger,
         repo_path: Path | None = None,
+        git_lock: GitLock | None = None,
     ) -> None:
         """Initialize the worker pool.
 
@@ -60,11 +62,13 @@ class WorkerPool:
             br_config: Project configuration (for category actions)
             logger: Logger for worker output
             repo_path: Path to the git repository (default: current directory)
+            git_lock: Shared lock for git operations (created if not provided)
         """
         self.parallel_config = parallel_config
         self.br_config = br_config
         self.logger = logger
         self.repo_path = repo_path or Path.cwd()
+        self._git_lock = git_lock or GitLock(logger)
         self._executor: ThreadPoolExecutor | None = None
         self._active_workers: dict[str, Future[WorkerResult]] = {}
         # Track active subprocesses for forceful termination on shutdown
@@ -369,11 +373,9 @@ class WorkerPool:
             self._cleanup_worktree(worktree_path)
 
         # Create new worktree with branch
-        result = subprocess.run(
-            ["git", "worktree", "add", "-b", branch_name, str(worktree_path)],
+        result = self._git_lock.run(
+            ["worktree", "add", "-b", branch_name, str(worktree_path)],
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=60,
         )
 
@@ -382,13 +384,12 @@ class WorkerPool:
 
         # Copy git identity from main repo
         for config_key in ["user.email", "user.name"]:
-            value_result = subprocess.run(
-                ["git", "config", config_key],
+            value_result = self._git_lock.run(
+                ["config", config_key],
                 cwd=self.repo_path,
-                capture_output=True,
-                text=True,
             )
             if value_result.returncode == 0 and value_result.stdout.strip():
+                # Worktree config operations don't need the main repo lock
                 subprocess.run(
                     ["git", "config", config_key, value_result.stdout.strip()],
                     cwd=worktree_path,
@@ -462,7 +463,7 @@ class WorkerPool:
         if not worktree_path.exists():
             return
 
-        # Get branch name before removing worktree
+        # Get branch name before removing worktree (worktree operation, no lock needed)
         branch_result = subprocess.run(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
             cwd=worktree_path,
@@ -471,11 +472,10 @@ class WorkerPool:
         )
         branch_name = branch_result.stdout.strip() if branch_result.returncode == 0 else None
 
-        # Remove worktree
-        subprocess.run(
-            ["git", "worktree", "remove", "--force", str(worktree_path)],
+        # Remove worktree (main repo operation)
+        self._git_lock.run(
+            ["worktree", "remove", "--force", str(worktree_path)],
             cwd=self.repo_path,
-            capture_output=True,
             timeout=30,
         )
 
@@ -483,12 +483,11 @@ class WorkerPool:
         if worktree_path.exists():
             shutil.rmtree(worktree_path, ignore_errors=True)
 
-        # Delete the branch if it was a parallel branch
+        # Delete the branch if it was a parallel branch (main repo operation)
         if branch_name and branch_name.startswith("parallel/"):
-            subprocess.run(
-                ["git", "branch", "-D", branch_name],
+            self._git_lock.run(
+                ["branch", "-D", branch_name],
                 cwd=self.repo_path,
-                capture_output=True,
                 timeout=10,
             )
 
@@ -605,11 +604,9 @@ class WorkerPool:
             List of file paths that were leaked to main repo
         """
         # Get current status of main repo
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
+        result = self._git_lock.run(
+            ["status", "--porcelain"],
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=30,
         )
 
@@ -675,11 +672,9 @@ class WorkerPool:
         cleaned = 0
 
         # Get status to determine which files are tracked vs untracked
-        status_result = subprocess.run(
-            ["git", "status", "--porcelain", "--"] + leaked_files,
+        status_result = self._git_lock.run(
+            ["status", "--porcelain", "--"] + leaked_files,
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=30,
         )
 
@@ -701,11 +696,9 @@ class WorkerPool:
 
         # Discard changes to tracked files
         if tracked_files:
-            checkout_result = subprocess.run(
-                ["git", "checkout", "--"] + tracked_files,
+            checkout_result = self._git_lock.run(
+                ["checkout", "--"] + tracked_files,
                 cwd=self.repo_path,
-                capture_output=True,
-                text=True,
                 timeout=30,
             )
             if checkout_result.returncode == 0:
@@ -738,11 +731,9 @@ class WorkerPool:
         Returns:
             Set of file paths currently showing in git status
         """
-        result = subprocess.run(
-            ["git", "status", "--porcelain"],
+        result = self._git_lock.run(
+            ["status", "--porcelain"],
             cwd=self.repo_path,
-            capture_output=True,
-            text=True,
             timeout=30,
         )
 

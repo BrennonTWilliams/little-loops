@@ -18,6 +18,7 @@ from typing import TYPE_CHECKING, Any
 
 from little_loops.issue_parser import IssueInfo
 from little_loops.logger import Logger, format_duration
+from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.merge_coordinator import MergeCoordinator
 from little_loops.parallel.priority_queue import IssuePriorityQueue
 from little_loops.parallel.types import (
@@ -70,13 +71,17 @@ class ParallelOrchestrator:
         self.repo_path = repo_path or Path.cwd()
         self.logger = Logger(verbose=verbose)
 
-        # Initialize components
+        # Create shared git lock for serializing main repo operations
+        # This prevents index.lock race conditions between workers and merge coordinator
+        self._git_lock = GitLock(self.logger)
+
+        # Initialize components with shared git lock
         self.queue = IssuePriorityQueue()
         self.worker_pool = WorkerPool(
-            parallel_config, br_config, self.logger, self.repo_path
+            parallel_config, br_config, self.logger, self.repo_path, self._git_lock
         )
         self.merge_coordinator = MergeCoordinator(
-            parallel_config, self.logger, self.repo_path
+            parallel_config, self.logger, self.repo_path, self._git_lock
         )
 
         # State management
@@ -194,10 +199,9 @@ class ParallelOrchestrator:
         for worktree_path in orphaned:
             try:
                 # Try git worktree remove first
-                result = subprocess.run(
-                    ["git", "worktree", "remove", "--force", str(worktree_path)],
+                self._git_lock.run(
+                    ["worktree", "remove", "--force", str(worktree_path)],
                     cwd=self.repo_path,
-                    capture_output=True,
                     timeout=30,
                 )
 
@@ -208,20 +212,18 @@ class ParallelOrchestrator:
                 # Try to delete the associated branch
                 # Branch name format: parallel/<issue-id>-<timestamp>
                 branch_name = worktree_path.name.replace("worker-", "parallel/")
-                subprocess.run(
-                    ["git", "branch", "-D", branch_name],
+                self._git_lock.run(
+                    ["branch", "-D", branch_name],
                     cwd=self.repo_path,
-                    capture_output=True,
                     timeout=10,
                 )
             except Exception as e:
                 self.logger.warning(f"Failed to clean up {worktree_path.name}: {e}")
 
         # Also prune git worktree references
-        subprocess.run(
-            ["git", "worktree", "prune"],
+        self._git_lock.run(
+            ["worktree", "prune"],
             cwd=self.repo_path,
-            capture_output=True,
             timeout=30,
         )
 
@@ -653,11 +655,9 @@ class ParallelOrchestrator:
             completed_path.write_text(content)
 
             # Use git mv if possible
-            result = subprocess.run(
-                ["git", "mv", str(original_path), str(completed_path)],
+            result = self._git_lock.run(
+                ["mv", str(original_path), str(completed_path)],
                 cwd=self.repo_path,
-                capture_output=True,
-                text=True,
             )
 
             if result.returncode != 0:
@@ -665,10 +665,9 @@ class ParallelOrchestrator:
                 original_path.unlink()
 
             # Stage and commit
-            subprocess.run(
-                ["git", "add", "-A"],
+            self._git_lock.run(
+                ["add", "-A"],
                 cwd=self.repo_path,
-                capture_output=True,
             )
 
             action = self.br_config.get_category_action(info.issue_type)
@@ -680,11 +679,9 @@ Issue: {issue_id}
 Type: {info.issue_type}
 Title: {info.title}
 """
-            commit_result = subprocess.run(
-                ["git", "commit", "-m", commit_msg],
+            commit_result = self._git_lock.run(
+                ["commit", "-m", commit_msg],
                 cwd=self.repo_path,
-                capture_output=True,
-                text=True,
             )
 
             if commit_result.returncode != 0:
