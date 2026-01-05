@@ -238,16 +238,24 @@ Write the plan using this structure (sections are recommended, skip if not appli
 
 #### Success Criteria
 
-##### Automated Verification
+**Automated Verification** (commands that can be run):
 - [ ] Tests pass: `{{config.project.test_cmd}}`
 - [ ] Lint passes: `{{config.project.lint_cmd}}`
 - [ ] Types pass: `{{config.project.type_cmd}}`
+- [ ] [Add specific test commands, e.g., `pytest tests/test_feature.py -k test_specific`]
 
-##### Manual Verification
-- [ ] [Manual check 1 - describe what to test]
-- [ ] [Manual check 2 - describe expected behavior]
+**Manual Verification** (requires human judgment):
+- [ ] [Describe specific behavior to verify in UI/CLI]
+- [ ] [Describe edge case to test manually]
+- [ ] [Describe expected user experience outcome]
 
-**Phase Gate**: After automated verification passes, pause for manual verification (unless --auto flag).
+> **Phase Gate**: After automated verification passes, pause for manual verification confirmation (skipped with `--auto` flag).
+
+**Success Criteria Guidelines**:
+- **Automated**: Any verification that can be executed by running a command (tests, linting, type checking, build, specific test cases)
+- **Manual**: Verification requiring human judgment (UI/UX behavior, performance perception, edge case handling, user acceptance)
+- Each phase MUST have at least one automated criterion
+- Manual criteria should be specific and testable, not vague ("works correctly" → "clicking Save button persists data and shows confirmation toast")
 
 ---
 

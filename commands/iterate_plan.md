@@ -111,6 +111,21 @@ Modify the plan file with:
    - Performance under real conditions
    - Edge cases that are hard to automate
 
+**Success Criteria Format Example**:
+```markdown
+#### Success Criteria
+
+**Automated Verification** (commands that can be run):
+- [ ] `pytest tests/` passes
+- [ ] `ruff check .` passes
+- [ ] `mypy src/` passes
+
+**Manual Verification** (requires human judgment):
+- [ ] Feature behaves correctly when tested via CLI
+- [ ] Error messages are clear and actionable
+- [ ] No regressions in related functionality
+```
+
 Add an iteration section:
 ```markdown
 ---
