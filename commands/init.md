@@ -343,7 +343,28 @@ If `--yes` flag IS set:
    - Omit `parallel` section entirely if not configured in interactive mode
    - Omit `parallel.worktree_copy_files` if user selected exactly the defaults
 
-### 9. Display Completion Message
+### 9. Update .gitignore
+
+Add little-loops state files to `.gitignore` to prevent committing runtime state:
+
+1. Check if `.gitignore` exists at project root
+2. If it doesn't exist, create it with the entries below
+3. If it exists, check if entries are already present (to avoid duplicates)
+4. Append the following if not already present:
+
+```
+# little-loops state files
+.auto-manage-state.json
+.parallel-manage-state.json
+```
+
+**Logic:**
+- Read existing `.gitignore` content (if file exists)
+- Only add entries that aren't already present (exact line match)
+- Add a blank line before the comment header if appending to existing content
+- Track whether the file was created or updated for the completion message
+
+### 10. Display Completion Message
 
 ```
 ================================================================================
@@ -351,6 +372,7 @@ INITIALIZATION COMPLETE
 ================================================================================
 
 Created: .claude/ll-config.json
+Updated: .gitignore (added state file exclusions)
 
 Next steps:
   1. Review and customize: .claude/ll-config.json
