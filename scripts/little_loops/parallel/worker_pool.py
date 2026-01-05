@@ -301,6 +301,9 @@ class WorkerPool:
                     f"{issue.issue_id} leaked {len(leaked_files)} file(s) to main repo: "
                     f"{leaked_files}"
                 )
+                # Clean up leaked files to prevent stash conflicts during merge.
+                # The actual work is preserved in the worktree branch.
+                self._cleanup_leaked_files(leaked_files)
 
             if manage_result.returncode != 0:
                 return WorkerResult(
@@ -651,6 +654,83 @@ class WorkerPool:
                 leaked_files.append(file_path)
 
         return leaked_files
+
+    def _cleanup_leaked_files(self, leaked_files: list[str]) -> int:
+        """Discard leaked files from main repo working directory.
+
+        Claude Code sometimes writes files to the main repo instead of the
+        worktree. These files cause stash conflicts during merge operations.
+        Since the actual work is preserved in the worktree branch, we can
+        safely discard these leaked changes from the main repo.
+
+        Args:
+            leaked_files: List of file paths leaked to main repo
+
+        Returns:
+            Number of files successfully cleaned up
+        """
+        if not leaked_files:
+            return 0
+
+        cleaned = 0
+
+        # Get status to determine which files are tracked vs untracked
+        status_result = subprocess.run(
+            ["git", "status", "--porcelain", "--"] + leaked_files,
+            cwd=self.repo_path,
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+
+        tracked_files: list[str] = []
+        untracked_files: list[str] = []
+
+        for line in status_result.stdout.splitlines():
+            if not line or len(line) < 3:
+                continue
+            status_code = line[:2]
+            file_path = line[3:].split(" -> ")[-1].strip()
+
+            if status_code.startswith("?"):
+                # Untracked file - need to delete
+                untracked_files.append(file_path)
+            else:
+                # Tracked file - can use git checkout to discard
+                tracked_files.append(file_path)
+
+        # Discard changes to tracked files
+        if tracked_files:
+            checkout_result = subprocess.run(
+                ["git", "checkout", "--"] + tracked_files,
+                cwd=self.repo_path,
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+            if checkout_result.returncode == 0:
+                cleaned += len(tracked_files)
+            else:
+                self.logger.warning(
+                    f"Failed to discard tracked leaked files: {checkout_result.stderr}"
+                )
+
+        # Delete untracked files
+        for file_path in untracked_files:
+            full_path = self.repo_path / file_path
+            try:
+                if full_path.exists():
+                    full_path.unlink()
+                    cleaned += 1
+            except OSError as e:
+                self.logger.warning(f"Failed to delete leaked file {file_path}: {e}")
+
+        if cleaned > 0:
+            self.logger.info(
+                f"Cleaned up {cleaned} leaked file(s) from main repo"
+            )
+
+        return cleaned
 
     def _get_main_repo_baseline(self) -> set[str]:
         """Get baseline of modified/untracked files in main repo.
