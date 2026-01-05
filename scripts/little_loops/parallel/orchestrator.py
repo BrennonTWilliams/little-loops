@@ -428,7 +428,9 @@ class ParallelOrchestrator:
             time.sleep(0.5)
 
         # Process in main repo (no worktree isolation needed)
-        future = self.worker_pool.submit(issue, self._on_worker_complete)
+        # Note: No callback here - _merge_sequential handles the result explicitly
+        # to avoid double-processing (callback would also queue merge/close)
+        future = self.worker_pool.submit(issue)
 
         # Wait for completion
         try:
