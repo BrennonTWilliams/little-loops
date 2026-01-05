@@ -243,7 +243,18 @@ class WorkerPool:
             # Handle NOT_READY verdict
             if not ready_parsed["is_ready"]:
                 concerns = ready_parsed.get("concerns", [])
-                concern_msg = "; ".join(concerns) if concerns else "Issue not ready"
+                if concerns:
+                    concern_msg = "; ".join(concerns)
+                elif ready_parsed["verdict"] == "UNKNOWN":
+                    # For UNKNOWN verdicts, show a snippet of output for debugging
+                    raw_out = (ready_result.stdout or "")[:200].strip()
+                    concern_msg = (
+                        f"Could not parse verdict. Output: {raw_out}..."
+                        if raw_out
+                        else "No output from ready_issue"
+                    )
+                else:
+                    concern_msg = "Issue not ready"
                 return WorkerResult(
                     issue_id=issue.issue_id,
                     success=False,
