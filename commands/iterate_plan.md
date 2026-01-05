@@ -40,19 +40,76 @@ Read the existing plan and identify:
 
 ### 3. Research Updates
 
-For pending phases:
+**Only spawn research tasks if the changes require new technical understanding.**
+
+For pending phases, first assess what research is needed:
 1. **Re-read affected files** - Has code changed since plan was created?
 2. **Validate approach** - Is the planned approach still best?
 3. **Check dependencies** - Are required changes still needed?
 4. **Test assumptions** - Were any assumptions incorrect?
 
-### 4. Update Plan
+If the user's feedback requires understanding new code patterns or validating assumptions, **spawn parallel sub-tasks for research**:
+
+Use the right agent for each type of research:
+- **codebase-locator** - To find relevant files and directories
+- **codebase-analyzer** - To understand implementation details
+- **codebase-pattern-finder** - To find similar patterns to model after
+
+**Sub-task Guidelines:**
+- Only spawn if truly needed - don't research for simple changes
+- Spawn multiple tasks in parallel for efficiency
+- Each task should be focused on a specific area
+- Provide detailed instructions including directories to focus on
+- Request specific file:line references in responses
+- Wait for all tasks to complete before synthesizing
+- Verify sub-task results - if something seems off, spawn follow-up tasks
+
+### 4. Present Understanding and Approach
+
+Before making changes, confirm your understanding with the user:
+
+```markdown
+Based on your feedback, I understand you want to:
+- [Change 1 with specific detail]
+- [Change 2 with specific detail]
+
+My research found:
+- [Relevant code pattern or constraint]
+- [Important discovery that affects the change]
+
+I plan to update the plan by:
+1. [Specific modification to make]
+2. [Another modification]
+
+Does this align with your intent?
+```
+
+**Get user confirmation before proceeding to edits.**
+
+### 5. Update Plan
+
+**Make focused, precise edits** to the existing plan:
+- Use the Edit tool for surgical changes
+- Maintain existing structure unless explicitly changing it
+- Keep all file:line references accurate
 
 Modify the plan file with:
 - Status updates for completed phases
 - Revised approach for problematic areas
 - New discoveries or considerations
 - Updated file references if code moved
+
+**When updating success criteria**, maintain two categories:
+
+1. **Automated Verification** (can be run by execution agents):
+   - Commands that can be run: `make test`, `npm run lint`, etc.
+   - Specific files that should exist
+   - Code compilation/type checking
+
+2. **Manual Verification** (requires human testing):
+   - UI/UX functionality
+   - Performance under real conditions
+   - Edge cases that are hard to automate
 
 Add an iteration section:
 ```markdown
@@ -69,7 +126,7 @@ Add an iteration section:
 - **Blockers Resolved**: [What was blocking and how resolved]
 ```
 
-### 5. Validate Updated Plan
+### 6. Validate Updated Plan
 
 Check that the updated plan:
 - [ ] References files that exist
@@ -78,7 +135,7 @@ Check that the updated plan:
 - [ ] Includes verification steps
 - [ ] Addresses any discovered blockers
 
-### 6. Output Summary
+### 7. Output Summary
 
 ```markdown
 # Plan Iteration Summary
@@ -139,3 +196,31 @@ Use this when:
 After iterating:
 - Continue with implementation
 - Or create new issue if scope changed significantly
+
+---
+
+## Important Guidelines
+
+1. **Be Skeptical**:
+   - Don't blindly accept change requests that seem problematic
+   - Question vague feedback - ask for clarification
+   - Verify technical feasibility with code research
+   - Point out potential conflicts with existing plan phases
+
+2. **Be Surgical**:
+   - Make precise edits, not wholesale rewrites
+   - Preserve good content that doesn't need changing
+   - Only research what's necessary for the specific changes
+   - Don't over-engineer the updates
+
+3. **Be Thorough**:
+   - Read the entire existing plan before making changes
+   - Research code patterns if changes require new technical understanding
+   - Ensure updated sections maintain quality standards
+   - Verify success criteria are still measurable
+
+4. **No Open Questions**:
+   - If the requested change raises questions, ASK
+   - Research or get clarification immediately
+   - Do NOT update the plan with unresolved questions
+   - Every change must be complete and actionable
