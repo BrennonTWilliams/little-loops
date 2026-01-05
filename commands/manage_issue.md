@@ -313,6 +313,54 @@ If `--resume` flag is specified:
 4. **Mark todos complete** as you finish
 5. **Update checkboxes in plan** as you complete each section
 
+### Context Monitoring & Proactive Handoff
+
+**IMPORTANT**: Monitor context usage throughout implementation. When context is running low:
+
+1. **Detect low context** - If you notice context approaching limits (conversation getting long, many files read), find a natural stopping point at a phase boundary.
+
+2. **Generate handoff** - Before context exhaustion, write a continuation prompt to `.claude/ll-continue-prompt.md`:
+
+```markdown
+# Session Continuation: [ISSUE-ID]
+
+## Context
+Implementing [issue title]. Reached end of context during [phase].
+
+## Completed Work
+- [x] Phase 1: [Name] - completed at [file:line]
+- [x] Phase 2: [Name] - completed at [file:line]
+
+## Current State
+- Working on: Phase [N]: [Name]
+- Last action: [What was just completed]
+- Next action: [Immediate next step]
+
+## Key File References
+- Plan: `thoughts/shared/plans/[plan-file].md`
+- Modified: `[file:line]`, `[file:line]`
+- Tests: `[test-file]`
+
+## Resume Command
+/ll:manage_issue [type] [action] [ISSUE-ID] --resume
+
+## Critical Context
+- [Decision 1 made during implementation]
+- [Gotcha discovered]
+- [Pattern being followed from file:line]
+```
+
+3. **Signal handoff** - Output a clear message:
+```
+CONTEXT_HANDOFF: Ready for fresh session
+Continuation prompt written to: .claude/ll-continue-prompt.md
+To continue: Start new session with content from that file
+```
+
+4. **Stop cleanly** - Do not attempt further work after signaling handoff.
+
+This ensures work can continue with fresh context quality rather than degraded post-compaction context.
+
 ### Implementation Guidelines
 - Follow existing code patterns
 - Add/update tests for changed behavior

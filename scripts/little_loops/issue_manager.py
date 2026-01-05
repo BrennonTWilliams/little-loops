@@ -6,6 +6,7 @@ Claude CLI integration and state persistence for resume capability.
 
 from __future__ import annotations
 
+import re
 import signal
 import subprocess
 import sys
@@ -29,6 +30,10 @@ from little_loops.logger import Logger, format_duration
 from little_loops.parallel.output_parsing import parse_ready_issue_output
 from little_loops.state import ProcessingState, StateManager
 from little_loops.subprocess_utils import run_claude_command as _run_claude_base
+
+# Context handoff detection pattern
+CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")
+CONTINUATION_PROMPT_PATH = Path(".claude/ll-continue-prompt.md")
 
 
 @contextmanager
@@ -87,6 +92,108 @@ def run_claude_command(
         command=command,
         timeout=timeout,
         stream_callback=stream_callback if stream_output else None,
+    )
+
+
+def detect_context_handoff(output: str) -> bool:
+    """Check if output contains a context handoff signal.
+
+    Args:
+        output: Command output to check
+
+    Returns:
+        True if context handoff was signaled
+    """
+    return bool(CONTEXT_HANDOFF_PATTERN.search(output))
+
+
+def read_continuation_prompt(repo_path: Path | None = None) -> str | None:
+    """Read the continuation prompt file if it exists.
+
+    Args:
+        repo_path: Optional repository root path
+
+    Returns:
+        Contents of continuation prompt, or None if not found
+    """
+    prompt_path = (repo_path or Path.cwd()) / CONTINUATION_PROMPT_PATH
+    if prompt_path.exists():
+        return prompt_path.read_text()
+    return None
+
+
+def run_with_continuation(
+    initial_command: str,
+    logger: Logger,
+    timeout: int = 3600,
+    stream_output: bool = True,
+    max_continuations: int = 3,
+    repo_path: Path | None = None,
+) -> subprocess.CompletedProcess[str]:
+    """Run a Claude command with automatic continuation on context handoff.
+
+    If the command signals CONTEXT_HANDOFF, reads the continuation prompt
+    and spawns a fresh Claude session to continue the work.
+
+    Args:
+        initial_command: Initial command to run
+        logger: Logger for output
+        timeout: Timeout per session in seconds
+        stream_output: Whether to stream output
+        max_continuations: Maximum number of continuation attempts
+        repo_path: Repository root path
+
+    Returns:
+        Final CompletedProcess result
+    """
+    all_stdout: list[str] = []
+    all_stderr: list[str] = []
+    current_command = initial_command
+    continuation_count = 0
+
+    while continuation_count <= max_continuations:
+        result = run_claude_command(
+            current_command,
+            logger,
+            timeout=timeout,
+            stream_output=stream_output,
+        )
+
+        all_stdout.append(result.stdout)
+        all_stderr.append(result.stderr)
+
+        # Check for context handoff signal
+        if detect_context_handoff(result.stdout):
+            logger.info("Detected CONTEXT_HANDOFF signal")
+
+            # Read continuation prompt
+            prompt_content = read_continuation_prompt(repo_path)
+            if not prompt_content:
+                logger.warning("Context handoff signaled but no continuation prompt found")
+                break
+
+            if continuation_count >= max_continuations:
+                logger.warning(
+                    f"Reached max continuations ({max_continuations}), stopping"
+                )
+                break
+
+            continuation_count += 1
+            logger.info(f"Starting continuation session #{continuation_count}")
+
+            # Use continuation prompt as the new command
+            # Escape the prompt content for CLI
+            current_command = prompt_content.replace('"', '\\"')
+            continue
+
+        # No handoff signal, we're done
+        break
+
+    return subprocess.CompletedProcess(
+        args=result.args,
+        returncode=result.returncode,
+        stdout="\n---CONTINUATION---\n".join(all_stdout),
+        stderr="\n---CONTINUATION---\n".join(all_stderr),
     )
 
 
@@ -332,7 +439,7 @@ class AutoManager:
                 self.logger.info(f"Would run: /ll:ready_issue {info.issue_id}")
         issue_timing["ready"] = phase1_timing.get("elapsed", 0.0)
 
-        # Phase 2: Implement the issue
+        # Phase 2: Implement the issue (with automatic continuation on context handoff)
         action = self.config.get_category_action(info.issue_type)
         self.logger.info(f"Phase 2: Implementing {info.issue_id}...")
         with timed_phase(self.logger, "Phase 2 (implement)") as phase2_timing:
@@ -340,11 +447,14 @@ class AutoManager:
                 # Build manage_issue command
                 # Use category name that matches the directory (bugs -> bug, features -> feature)
                 type_name = info.issue_type.rstrip("s")  # bugs -> bug
-                result = run_claude_command(
+                # Use run_with_continuation to handle context exhaustion
+                result = run_with_continuation(
                     f"/ll:manage_issue {type_name} {action} {info.issue_id}",
                     self.logger,
                     timeout=self.config.automation.timeout_seconds,
                     stream_output=self.config.automation.stream_output,
+                    max_continuations=self.config.automation.max_continuations,
+                    repo_path=self.config.repo_path,
                 )
             else:
                 self.logger.info(

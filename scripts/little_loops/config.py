@@ -113,6 +113,7 @@ class AutomationConfig:
     worktree_base: str = ".worktrees"
     max_workers: int = 2
     stream_output: bool = True
+    max_continuations: int = 3  # Max session restarts on context handoff
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> AutomationConfig:
@@ -123,6 +124,7 @@ class AutomationConfig:
             worktree_base=data.get("worktree_base", ".worktrees"),
             max_workers=data.get("max_workers", 2),
             stream_output=data.get("stream_output", True),
+            max_continuations=data.get("max_continuations", 3),
         )
 
 
@@ -293,6 +295,11 @@ class BRConfig:
         """Get scan configuration."""
         return self._scan
 
+    @property
+    def repo_path(self) -> Path:
+        """Get the repository root path."""
+        return self.project_root
+
     # Convenience methods for common operations
 
     def get_issue_dir(self, category: str) -> Path:
@@ -451,6 +458,7 @@ class BRConfig:
                 "worktree_base": self._automation.worktree_base,
                 "max_workers": self._automation.max_workers,
                 "stream_output": self._automation.stream_output,
+                "max_continuations": self._automation.max_continuations,
             },
             "parallel": {
                 "max_workers": self._parallel.base.max_workers,
