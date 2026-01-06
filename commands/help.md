@@ -24,6 +24,12 @@ SETUP & CONFIGURATION
 /ll:help
     List all available little-loops commands with descriptions
 
+PROMPT OPTIMIZATION
+-------------------
+/ll:toggle_autoprompt [setting]
+    Toggle automatic prompt optimization settings
+    Settings: enabled, mode, confirm, status
+
 CODE QUALITY
 ------------
 /ll:check_code [mode]
@@ -96,6 +102,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 |---------|-------------|
 | `init` | Initialize project configuration |
 | `help` | Show this help message |
+| `toggle_autoprompt` | Toggle automatic prompt optimization |
 | `check_code` | Run lint, format, type checks |
 | `run_tests` | Execute test suites |
 | `find_dead_code` | Identify unused code |

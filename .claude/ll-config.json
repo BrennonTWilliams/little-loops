@@ -46,5 +46,12 @@
       "sections_recommended": true,
       "sections_mandatory": false
     }
+  },
+  "prompt_optimization": {
+    "enabled": true,
+    "mode": "quick",
+    "confirm": true,
+    "bypass_prefix": "*",
+    "clarity_threshold": 6
   }
 }

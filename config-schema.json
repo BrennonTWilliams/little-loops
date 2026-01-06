@@ -324,6 +324,41 @@
         }
       },
       "additionalProperties": false
+    },
+    "prompt_optimization": {
+      "type": "object",
+      "description": "Automatic prompt optimization settings (toggle with /ll:toggle_autoprompt)",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable automatic prompt optimization",
+          "default": true
+        },
+        "mode": {
+          "type": "string",
+          "enum": ["quick", "thorough"],
+          "description": "Optimization mode (quick uses config only, thorough spawns agent)",
+          "default": "quick"
+        },
+        "confirm": {
+          "type": "boolean",
+          "description": "Show diff and ask for confirmation before applying",
+          "default": true
+        },
+        "bypass_prefix": {
+          "type": "string",
+          "description": "Prefix to bypass optimization (e.g., * to skip)",
+          "default": "*"
+        },
+        "clarity_threshold": {
+          "type": "integer",
+          "description": "Minimum clarity score (1-10) to pass through unchanged",
+          "default": 6,
+          "minimum": 1,
+          "maximum": 10
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
