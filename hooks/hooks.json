@@ -4,7 +4,7 @@
     {
       "event": "SessionStart",
       "type": "command",
-      "command": ["bash", "-c", "CONFIG_FILE=\"ll-config.json\"; if [ -f \"$CONFIG_FILE\" ]; then echo \"[little-loops] Config loaded: $CONFIG_FILE\"; cat \"$CONFIG_FILE\" | head -50; else echo \"[little-loops] Warning: $CONFIG_FILE not found. Run /ll:init to create one.\"; fi"]
+      "command": ["bash", "-c", "CONFIG_FILE=\".claude/ll-config.json\"; if [ ! -f \"$CONFIG_FILE\" ]; then CONFIG_FILE=\"ll-config.json\"; fi; if [ -f \"$CONFIG_FILE\" ]; then echo \"[little-loops] Config loaded: $CONFIG_FILE\"; cat \"$CONFIG_FILE\" | head -50; else echo \"[little-loops] Warning: No config found. Run /ll:init to create one.\"; fi"]
     },
     {
       "event": "UserPromptSubmit",

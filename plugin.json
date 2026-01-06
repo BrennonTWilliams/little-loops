@@ -26,6 +26,9 @@
   "agents": {
     "directory": "agents"
   },
+  "skills": {
+    "directory": "skills"
+  },
   "hooks": {
     "file": "hooks/hooks.json"
   },

@@ -28,7 +28,7 @@ PROMPT OPTIMIZATION
 -------------------
 /ll:toggle_autoprompt [setting]
     Toggle automatic prompt optimization settings
-    Settings: enabled, mode, confirm, status
+    Settings: enabled, mode, confirm, status (default: status)
 
 CODE QUALITY
 ------------
@@ -39,6 +39,7 @@ CODE QUALITY
 /ll:run_tests [scope] [pattern]
     Run test suites with common patterns
     Scopes: unit, integration, all, affected
+    Pattern: optional pytest -k filter
 
 /ll:find_dead_code
     Analyze codebase for deprecated, unused, or dead code
@@ -78,6 +79,10 @@ AUDITING & ANALYSIS
     Audit documentation for accuracy and completeness
     Scope: full, readme, file:<path>
 
+/ll:audit_claude_config [scope]
+    Audit CLAUDE.md and related configuration files
+    Scope: all, global, project, hooks, mcp
+
 GIT & WORKFLOW
 --------------
 /ll:commit
@@ -115,6 +120,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 | `iterate_plan` | Update implementation plans |
 | `audit_architecture` | Analyze code structure |
 | `audit_docs` | Check documentation accuracy |
+| `audit_claude_config` | Audit CLAUDE.md and config files |
 | `commit` | Create git commits |
 | `describe_pr` | Generate PR descriptions |
 

@@ -75,7 +75,7 @@ First, think deeply about the most effective search patterns for the requested f
 - **JavaScript/TypeScript**: Look in src/, lib/, components/, pages/, api/
 - **Python**: Look in src/, lib/, pkg/, module names matching feature
 - **Go**: Look in pkg/, internal/, cmd/
-- **General**: Check for feature-specific directories - I believe in you, you are a smart cookie :)
+- **General**: Check for feature-specific directories based on the project structure
 
 ### Common Patterns to Find
 - `*service*`, `*handler*`, `*controller*` - Business logic
