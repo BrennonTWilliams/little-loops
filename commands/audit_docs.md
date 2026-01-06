@@ -139,6 +139,202 @@ The following can be automatically corrected:
 Run with `--fix` to apply automatic corrections.
 ```
 
+### 5. Issue Management
+
+After generating the report, offer to create, update, or reopen issues for documentation problems.
+
+#### Finding-to-Issue Mapping
+
+| Finding Severity | Finding Type | Issue Type | Priority |
+|-----------------|--------------|------------|----------|
+| CRITICAL | Wrong/outdated command | BUG | P1 |
+| CRITICAL | Incorrect API reference | BUG | P1 |
+| CRITICAL | Broken installation steps | BUG | P1 |
+| WARNING | Broken link | BUG | P2 |
+| WARNING | Outdated version number | BUG | P2 |
+| WARNING | Missing error handling docs | ENH | P3 |
+| INFO | Missing example output | ENH | P4 |
+| INFO | Could add troubleshooting | ENH | P4 |
+
+**Rule of thumb**:
+- **BUG**: Information is *wrong* or *broken* - needs fixing to be accurate
+- **ENH**: Information is *missing* or *incomplete* - needs addition to be complete
+
+#### Deduplication
+
+Before creating issues, search for existing issues that cover the same problem:
+
+1. **Search active issues** by file path:
+   ```bash
+   # Search for issues mentioning the doc file
+   grep -r "README.md" .issues/bugs/ .issues/enhancements/
+   ```
+
+2. **Search completed issues** for potential reopen:
+   ```bash
+   # Check if this was previously fixed and regressed
+   grep -r "README.md" .issues/completed/
+   ```
+
+3. **Match criteria**:
+   - Same documentation file
+   - Same type of issue (accuracy vs completeness)
+   - Similar line numbers or sections
+
+#### Deduplication Actions
+
+| Match Found | Location | Action |
+|-------------|----------|--------|
+| High confidence match | Active issue | **Update** existing issue with new context |
+| High confidence match | Completed | **Reopen** if problem recurred |
+| Low/no match | - | **Create** new issue |
+
+#### Issue File Format
+
+```markdown
+---
+discovered_commit: [GIT_HASH]
+discovered_branch: [BRANCH_NAME]
+discovered_date: [ISO_TIMESTAMP]
+discovered_by: audit_docs
+doc_file: [path/to/doc.md]
+---
+
+# [BUG|ENH]-XXX: [Title describing doc issue]
+
+## Summary
+
+Documentation issue found by `/ll:audit_docs`.
+
+## Location
+
+- **File**: `README.md`
+- **Line(s)**: 45
+- **Section**: Installation
+
+## Current Content
+
+```markdown
+pip install old-package --deprecated-flag
+```
+
+## Problem
+
+The install command uses a deprecated flag that no longer works.
+
+## Expected Content
+
+```markdown
+pip install new-package
+```
+
+## Impact
+
+- **Severity**: High (blocks new user setup)
+- **Effort**: Small
+- **Risk**: Low
+
+## Labels
+
+`bug|enhancement`, `documentation`, `auto-generated`
+
+---
+
+## Status
+
+**Open** | Created: [DATE] | Priority: P1
+```
+
+### 6. Reopen Logic
+
+If a completed issue matches a new finding:
+
+1. **Verify it's the same problem**:
+   - Same doc file
+   - Same section or similar content
+   - Problem has actually recurred (not just similar wording)
+
+2. **Move from completed to active**:
+   ```bash
+   git mv .issues/completed/P2-BUG-XXX-broken-link.md .issues/bugs/
+   ```
+
+3. **Append Reopened section**:
+   ```markdown
+   ---
+
+   ## Reopened
+
+   - **Date**: [TODAY]
+   - **By**: audit_docs
+   - **Reason**: Documentation issue recurred
+
+   ### New Findings
+
+   The same broken link issue was found again at README.md:72.
+   This may indicate the fix was incomplete or regressed.
+   ```
+
+### 7. User Approval
+
+Present a summary before making any changes:
+
+```markdown
+## Proposed Issue Changes
+
+Based on documentation audit findings:
+
+### New Issues to Create (N)
+
+| Type | Priority | Title | File:Line |
+|------|----------|-------|-----------|
+| BUG | P1 | Outdated install command | README.md:45 |
+| BUG | P2 | Broken link to guide.md | README.md:72 |
+| ENH | P4 | Add example output for CLI | README.md:100 |
+
+### Existing Issues to Update (N)
+
+| Issue | Update Reason |
+|-------|---------------|
+| BUG-023 | Found additional broken link in same file |
+
+### Completed Issues to Reopen (N)
+
+| Issue | Reopen Reason |
+|-------|---------------|
+| BUG-015 | Link broken again after previous fix |
+
+---
+
+**Proceed with issue changes?**
+- [y] Create/update/reopen all listed issues
+- [n] Skip issue management, keep report only
+- [s] Select specific items
+```
+
+Wait for user confirmation before modifying any files.
+
+### 8. Execute Issue Changes
+
+After approval:
+
+1. **Create new issues** in appropriate directories
+2. **Update existing issues** by appending audit results section
+3. **Reopen completed issues** by moving and appending Reopened section
+4. **Stage changes**:
+   ```bash
+   git add .issues/
+   ```
+5. **Output summary**:
+   ```
+   Issue changes complete:
+   - Created: 3 issues (2 BUG, 1 ENH)
+   - Updated: 1 issue
+   - Reopened: 1 issue
+
+   Run `/ll:commit` to commit these changes.
+   ```
+
 ---
 
 ## Arguments
@@ -170,6 +366,12 @@ $ARGUMENTS
 ## Integration
 
 After auditing:
-- Fix critical issues immediately
-- Create enhancement issues for major updates
-- Use `/ll:commit` to save documentation fixes
+1. Review the audit report
+2. **Manage issues** (create/update/reopen) with user approval
+3. Fix critical issues immediately (or defer to issue tracking)
+4. Use `/ll:commit` to save documentation fixes
+
+Works well with:
+- `/ll:scan_codebase` - May find related code issues
+- `/ll:verify_issues` - Validate existing doc-related issues
+- `/ll:manage_issue` - Process created documentation issues
