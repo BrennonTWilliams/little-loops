@@ -345,7 +345,8 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
             line = line.strip()
             # Skip empty lines, comments, and template placeholders
             if line and not line.startswith("#") and not line.startswith("["):
-                validated_file_path = line
+                # Strip markdown backticks that Claude sometimes wraps paths in
+                validated_file_path = line.strip("`")
                 break
 
     # Parse VALIDATION section if present

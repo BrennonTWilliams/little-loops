@@ -395,15 +395,45 @@ class AutoManager:
 
                     # Handle CLOSE verdict - issue should not be implemented
                     if parsed.get("should_close"):
+                        close_reason = parsed.get("close_reason", "unknown")
                         self.logger.info(
-                            f"Issue {info.issue_id} should be closed "
-                            f"(reason: {parsed.get('close_reason', 'unknown')})"
+                            f"Issue {info.issue_id} should be closed (reason: {close_reason})"
                         )
+
+                        # CRITICAL: Skip file operations for invalid references
+                        # When close_reason is "invalid_ref", the issue ID doesn't map to
+                        # any real file, so we must NOT attempt to close the file from
+                        # the queue mapping (which could be an unrelated valid issue)
+                        if close_reason == "invalid_ref":
+                            self.logger.warning(
+                                f"Skipping {info.issue_id}: invalid reference - "
+                                "no matching issue file exists"
+                            )
+                            self.state_manager.mark_failed(
+                                info.issue_id,
+                                f"Invalid reference: {close_reason}",
+                            )
+                            return False
+
+                        # Also require validated_file_path to match before closing
+                        # This prevents closing wrong files when queue mapping is stale
+                        close_validated_path = parsed.get("validated_file_path")
+                        if not close_validated_path:
+                            self.logger.warning(
+                                f"Skipping close for {info.issue_id}: "
+                                "ready_issue did not return validated file path"
+                            )
+                            self.state_manager.mark_failed(
+                                info.issue_id,
+                                "CLOSE without validated file path",
+                            )
+                            return False
+
                         if close_issue(
                             info,
                             self.config,
                             self.logger,
-                            parsed.get("close_reason"),
+                            close_reason,
                             parsed.get("close_status"),
                         ):
                             self.state_manager.mark_completed(info.issue_id)

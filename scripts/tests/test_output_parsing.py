@@ -609,6 +609,86 @@ READY
         assert result["verdict"] == "READY"
         assert result["is_ready"] is True
 
+    def test_validated_file_path_parsing(self) -> None:
+        """Test parsing VALIDATED_FILE section."""
+        output = """
+## VERDICT
+READY
+
+## VALIDATED_FILE
+.issues/bugs/P0-test-issue.md
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["validated_file_path"] == ".issues/bugs/P0-test-issue.md"
+
+    def test_validated_file_path_with_backticks(self) -> None:
+        """Test parsing VALIDATED_FILE section when path is wrapped in backticks."""
+        output = """
+## VERDICT
+READY
+
+## VALIDATED_FILE
+`.issues/bugs/P0-test-issue.md`
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["validated_file_path"] == ".issues/bugs/P0-test-issue.md"
+
+    def test_validated_file_path_with_triple_backticks(self) -> None:
+        """Test parsing VALIDATED_FILE when path has multiple backticks."""
+        output = """
+## VERDICT
+READY
+
+## VALIDATED_FILE
+```.issues/bugs/P0-test-issue.md```
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["validated_file_path"] == ".issues/bugs/P0-test-issue.md"
+
+    def test_close_verdict_with_validated_file(self) -> None:
+        """Test parsing CLOSE verdict with validated file path."""
+        output = """
+## VERDICT
+CLOSE
+
+## CLOSE_REASON
+- Reason: already_fixed
+
+## CLOSE_STATUS
+Closed - Already Fixed
+
+## VALIDATED_FILE
+.issues/bugs/P0-BUG-001-test.md
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "CLOSE"
+        assert result["should_close"] is True
+        assert result["close_reason"] == "already_fixed"
+        assert result["validated_file_path"] == ".issues/bugs/P0-BUG-001-test.md"
+
+    def test_close_invalid_ref_no_validated_file(self) -> None:
+        """Test parsing CLOSE verdict with invalid_ref has no validated file."""
+        output = """
+## VERDICT
+CLOSE
+
+## CLOSE_REASON
+- Reason: invalid_ref
+
+## CLOSE_STATUS
+Closed - Invalid Reference
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "CLOSE"
+        assert result["should_close"] is True
+        assert result["close_reason"] == "invalid_ref"
+        assert result["validated_file_path"] is None
+
 
 class TestParseManageIssueOutput:
     """Tests for parse_manage_issue_output function."""
