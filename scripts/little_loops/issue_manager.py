@@ -173,9 +173,7 @@ def run_with_continuation(
                 break
 
             if continuation_count >= max_continuations:
-                logger.warning(
-                    f"Reached max continuations ({max_continuations}), stopping"
-                )
+                logger.warning(f"Reached max continuations ({max_continuations}), stopping")
                 break
 
             continuation_count += 1
