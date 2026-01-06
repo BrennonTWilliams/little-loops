@@ -102,6 +102,7 @@ little-loops/
         ├── logger.py            # Logging utilities
         ├── issue_manager.py     # Sequential automation
         ├── issue_parser.py      # Issue file parsing
+        ├── issue_discovery.py   # Issue discovery and deduplication
         ├── issue_lifecycle.py   # Issue lifecycle operations
         ├── git_operations.py    # Git utilities
         ├── work_verification.py # Verification helpers

@@ -400,6 +400,7 @@ little-loops/
         ├── issue_lifecycle.py    # Issue lifecycle management
         ├── issue_manager.py      # Issue management
         ├── issue_parser.py       # Issue discovery and parsing
+        ├── issue_discovery.py    # Issue discovery and deduplication
         ├── logger.py             # Logging utilities
         ├── state.py              # State management
         ├── subprocess_utils.py   # Subprocess execution utilities
@@ -411,6 +412,7 @@ little-loops/
             ├── worker_pool.py        # Worker pool management
             ├── merge_coordinator.py  # Git merge coordination
             ├── orchestrator.py       # Main orchestrator
+            ├── git_lock.py           # Thread-safe git operations
             └── output_parsing.py     # Claude output parsing
 ```
 

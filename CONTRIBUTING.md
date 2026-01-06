@@ -89,6 +89,7 @@ little-loops/
         ├── state.py      # State persistence
         ├── issue_manager.py
         ├── issue_parser.py
+        ├── issue_discovery.py  # Issue discovery and deduplication
         ├── issue_lifecycle.py
         ├── git_operations.py
         ├── work_verification.py
@@ -100,6 +101,7 @@ little-loops/
             ├── merge_coordinator.py
             ├── priority_queue.py
             ├── output_parsing.py
+            ├── git_lock.py
             └── types.py
 ```
 

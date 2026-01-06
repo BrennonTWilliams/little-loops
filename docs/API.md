@@ -19,6 +19,7 @@ pip install /path/to/little-loops/scripts
 |--------|---------|
 | `little_loops.config` | Configuration management |
 | `little_loops.issue_parser` | Issue file parsing |
+| `little_loops.issue_discovery` | Issue discovery and deduplication |
 | `little_loops.issue_manager` | Sequential automation |
 | `little_loops.issue_lifecycle` | Issue lifecycle operations |
 | `little_loops.git_operations` | Git utilities |
