@@ -217,9 +217,61 @@ multiSelect: false
 
 #### Step 5b: Issue Management
 
-Use AskUserQuestion:
-1. **Enable issues**: Yes/No for issue management features
-2. **Issues directory**: Only if enabled - offer .issues or custom
+**First, detect existing issues directory:**
+```bash
+# Check for existing .issues/ folder
+if [ -d ".issues" ]; then
+  EXISTING_ISSUES_DIR=".issues"
+elif [ -d "issues" ]; then
+  EXISTING_ISSUES_DIR="issues"
+else
+  EXISTING_ISSUES_DIR=""
+fi
+```
+
+**Then use AskUserQuestion based on detection:**
+
+**If existing directory found** - ask whether to use it:
+```
+header: "Issues Dir"
+question: "Found existing '[EXISTING_ISSUES_DIR]/' directory. Use it for issue tracking?"
+options:
+  - label: "Yes, use [EXISTING_ISSUES_DIR]/"
+    description: "Keep existing directory and configure little-loops to use it"
+  - label: "No, use different directory"
+    description: "Specify a different directory for issues"
+  - label: "Disable issue tracking"
+    description: "Don't configure issue management"
+multiSelect: false
+```
+
+**If no existing directory found** - ask whether to enable:
+```
+header: "Issues"
+question: "Enable issue management features?"
+options:
+  - label: "Yes, use .issues/"
+    description: "Create .issues/ directory for tracking bugs, features, enhancements"
+  - label: "Yes, custom directory"
+    description: "Specify a custom directory name"
+  - label: "No"
+    description: "Skip issue management configuration"
+multiSelect: false
+```
+
+**If user chose custom directory** - ask for the name:
+```
+header: "Issues Path"
+question: "What directory name should be used for issues?"
+options:
+  - label: ".issues"
+    description: "Hidden directory (recommended)"
+  - label: "issues"
+    description: "Visible directory"
+  - label: ".tasks"
+    description: "Alternative naming"
+multiSelect: false
+```
 
 #### Step 5c: Scan Settings
 
