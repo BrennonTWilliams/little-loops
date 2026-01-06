@@ -27,24 +27,44 @@ This command uses project configuration from `.claude/ll-config.json`:
 ### 1. Find Issue File
 
 ```bash
-ISSUE_ID="${issue_id}"
+ISSUE_INPUT="${issue_id}"
 
-# Search for issue file across categories
-# Use strict matching: ID must be bounded by delimiters (-, _, .) to avoid
-# matching BUG-1 against BUG-10 or ENH-1 against issue-enh-01-...
-for dir in {{config.issues.base_dir}}/*/; do
-    # Skip completed directory - only search active issue categories
-    if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ]; then
-        continue
+# Detect if input is a file path (contains "/" or ends with ".md")
+# This allows ll-auto to retry with explicit paths on ID mismatch
+if [[ "$ISSUE_INPUT" == *"/"* ]] || [[ "$ISSUE_INPUT" == *.md ]]; then
+    # Input is an explicit file path
+    if [ -f "$ISSUE_INPUT" ]; then
+        FILE="$ISSUE_INPUT"
+        echo "Found: $FILE"
+    else
+        echo "WARNING: File not found at specified path: $ISSUE_INPUT"
+        echo "Falling back to ID search..."
+        ISSUE_ID="$ISSUE_INPUT"
     fi
-    if [ -d "$dir" ]; then
-        FILE=$(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${ISSUE_ID}[-_.]" | head -1)
-        if [ -n "$FILE" ]; then
-            echo "Found: $FILE"
-            break
+else
+    # Input is an issue ID
+    ISSUE_ID="$ISSUE_INPUT"
+fi
+
+# Only search if FILE not already set (path detection didn't find it)
+if [ -z "$FILE" ]; then
+    # Search for issue file across categories
+    # Use strict matching: ID must be bounded by delimiters (-, _, .) to avoid
+    # matching BUG-1 against BUG-10 or ENH-1 against issue-enh-01-...
+    for dir in {{config.issues.base_dir}}/*/; do
+        # Skip completed directory - only search active issue categories
+        if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ]; then
+            continue
         fi
-    fi
-done
+        if [ -d "$dir" ]; then
+            FILE=$(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${ISSUE_ID}[-_.]" | head -1)
+            if [ -n "$FILE" ]; then
+                echo "Found: $FILE"
+                break
+            fi
+        fi
+    done
+fi
 ```
 
 ### 1.5 Deep Validation (--deep flag)

@@ -36,6 +36,27 @@ CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh sessio
 CONTINUATION_PROMPT_PATH = Path(".claude/ll-continue-prompt.md")
 
 
+def _compute_relative_path(abs_path: Path, base_dir: Path | None = None) -> str:
+    """Compute relative path from base directory for command input.
+
+    Used for fallback retry when ready_issue resolves to wrong file -
+    allows retrying with explicit file path instead of ambiguous ID.
+
+    Args:
+        abs_path: Absolute path to the file
+        base_dir: Base directory (defaults to cwd)
+
+    Returns:
+        Relative path string suitable for ready_issue command
+    """
+    base = base_dir or Path.cwd()
+    try:
+        return str(abs_path.relative_to(base))
+    except ValueError:
+        # Path not relative to base, use absolute
+        return str(abs_path)
+
+
 @contextmanager
 def timed_phase(
     logger: Logger,
@@ -388,17 +409,64 @@ class AutoManager:
                                     str(validated_resolved), "processing"
                                 )
                             else:
-                                # Genuine mismatch - fail the issue
-                                self.logger.error(
-                                    f"Path mismatch detected: ready_issue validated "
+                                # Genuine mismatch - attempt fallback with explicit path
+                                self.logger.warning(
+                                    f"Path mismatch: ready_issue validated "
                                     f"'{validated_path}' but expected '{info.path}'"
                                 )
-                                self.state_manager.mark_failed(
-                                    info.issue_id,
-                                    f"Path mismatch: validated {validated_path}, "
-                                    f"expected {info.path}",
+                                self.logger.info(
+                                    "Attempting fallback: retrying ready_issue "
+                                    "with explicit file path..."
                                 )
-                                return False
+
+                                # Compute relative path for the command
+                                relative_path = _compute_relative_path(info.path)
+
+                                # Retry with explicit path
+                                retry_result = run_claude_command(
+                                    f"/ll:ready_issue {relative_path}",
+                                    self.logger,
+                                    timeout=self.config.automation.timeout_seconds,
+                                    stream_output=self.config.automation.stream_output,
+                                )
+
+                                if retry_result.returncode != 0:
+                                    self.logger.error(
+                                        f"Fallback ready_issue failed for {info.issue_id}"
+                                    )
+                                    self.state_manager.mark_failed(
+                                        info.issue_id,
+                                        "Fallback failed after path mismatch",
+                                    )
+                                    return False
+
+                                # Re-parse and validate retry output
+                                retry_parsed = parse_ready_issue_output(
+                                    retry_result.stdout
+                                )
+                                retry_validated_path = retry_parsed.get(
+                                    "validated_file_path"
+                                )
+
+                                if retry_validated_path:
+                                    retry_resolved = Path(retry_validated_path).resolve()
+                                    if str(retry_resolved) != str(info.path.resolve()):
+                                        self.logger.error(
+                                            f"Fallback still mismatched: "
+                                            f"got '{retry_validated_path}', "
+                                            f"expected '{info.path}'"
+                                        )
+                                        self.state_manager.mark_failed(
+                                            info.issue_id,
+                                            "Path mismatch persisted after fallback",
+                                        )
+                                        return False
+
+                                # Fallback succeeded - use retry result
+                                self.logger.info(
+                                    "Fallback succeeded: validated correct file"
+                                )
+                                parsed = retry_parsed
 
                     # Log any corrections made
                     if parsed.get("was_corrected"):
