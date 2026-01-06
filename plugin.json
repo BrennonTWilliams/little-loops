@@ -17,7 +17,7 @@
     "claude-code": ">=1.0.0"
   },
   "config": {
-    "file": "ll-config.json",
+    "file": ".claude/ll-config.json",
     "schema": "config-schema.json"
   },
   "commands": {
