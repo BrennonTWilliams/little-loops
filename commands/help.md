@@ -79,9 +79,10 @@ AUDITING & ANALYSIS
     Audit documentation for accuracy and completeness
     Scope: full, readme, file:<path>
 
-/ll:audit_claude_config [scope]
-    Audit CLAUDE.md and related configuration files
-    Scope: all, global, project, hooks, mcp
+/ll:audit_claude_config [scope] [flags]
+    Comprehensive audit of Claude Code plugin configuration with parallel sub-agents
+    Scope: all, global, project, hooks, mcp, agents, commands, skills
+    Flags: --non-interactive, --fix
 
 GIT & WORKFLOW
 --------------
@@ -120,7 +121,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 | `iterate_plan` | Update implementation plans |
 | `audit_architecture` | Analyze code structure |
 | `audit_docs` | Check documentation accuracy |
-| `audit_claude_config` | Audit CLAUDE.md and config files |
+| `audit_claude_config` | Comprehensive config audit with parallel agents |
 | `commit` | Create git commits |
 | `describe_pr` | Generate PR descriptions |
 
