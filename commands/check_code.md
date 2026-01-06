@@ -37,6 +37,8 @@ echo "Running code checks in mode: $MODE"
 
 ### 2. Execute Checks by Mode
 
+**IMPORTANT**: When running `lint`, `format`, or `all` modes, if any issues are detected, you MUST automatically proceed to fix them using the fix commands below. Do NOT just report the issues and suggest running fix - actually run the fixes immediately.
+
 #### Mode: lint
 
 ```bash
@@ -50,12 +52,13 @@ if [ "$MODE" = "lint" ] || [ "$MODE" = "all" ]; then
 
     if [ $? -eq 0 ]; then
         echo "[PASS] No linting errors found"
-    else
-        echo "[FAIL] Linting errors detected"
-        echo ""
-        echo "To auto-fix: /ll:check_code fix"
     fi
 fi
+```
+
+If lint errors are detected, immediately run the lint fix command:
+```bash
+{{config.project.lint_cmd}} --fix {{config.project.src_dir}}
 ```
 
 #### Mode: format
@@ -71,12 +74,13 @@ if [ "$MODE" = "format" ] || [ "$MODE" = "all" ]; then
 
     if [ $? -eq 0 ]; then
         echo "[PASS] All files properly formatted"
-    else
-        echo "[FAIL] Formatting issues detected"
-        echo ""
-        echo "To auto-fix: /ll:check_code fix"
     fi
 fi
+```
+
+If formatting issues are detected, immediately run the format fix command:
+```bash
+{{config.project.format_cmd}} {{config.project.src_dir}}
 ```
 
 #### Mode: types
@@ -126,7 +130,7 @@ fi
 
 ### 3. Summary Report
 
-After running all checks, provide a summary:
+After running all checks (and auto-fixes if needed), provide a summary:
 
 ```
 ================================================================================
@@ -136,13 +140,14 @@ CODE QUALITY CHECK COMPLETE
 Mode: $MODE
 
 Results:
-  Linting:    [PASS/FAIL]
-  Formatting: [PASS/FAIL]
+  Linting:    [PASS/FIXED/FAIL]
+  Formatting: [PASS/FIXED/FAIL]
   Types:      [PASS/FAIL]
 
-Next steps:
-- If FAIL: Fix issues manually or run '/ll:check_code fix' for auto-fixable issues
-- If PASS: Code is ready for commit
+Status:
+- PASS: No issues found
+- FIXED: Issues were found and automatically fixed
+- FAIL: Issues remain (type errors cannot be auto-fixed)
 
 ================================================================================
 ```
