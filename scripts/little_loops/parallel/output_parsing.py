@@ -283,6 +283,24 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
         if extracted:
             verdict = extracted
 
+    # Parse CORRECTIONS_MADE section if present (moved before Strategy 6)
+    if "CORRECTIONS_MADE" in sections:
+        corrections_content = sections["CORRECTIONS_MADE"]
+        for line in corrections_content.split("\n"):
+            line = line.strip()
+            if line.startswith("- ") and line != "- None":
+                corrections.append(line[2:])
+
+    # Strategy 6: Infer from READY_FOR section
+    # If "READY_FOR" section exists with "Implementation: Yes", infer verdict
+    if verdict == "UNKNOWN" and "READY_FOR" in sections:
+        ready_for_content = sections["READY_FOR"]
+        # Check for "implementation" + "yes" pattern (handles bold markers, colons, etc.)
+        # Handles: "Implementation: Yes", "**Implementation:** Yes", etc.
+        if re.search(r"implementation[\s:\*]*yes", ready_for_content, re.IGNORECASE):
+            # If corrections were made, verdict is CORRECTED; otherwise READY
+            verdict = "CORRECTED" if corrections else "READY"
+
     # Parse CONCERNS section (new format)
     if "CONCERNS" in sections:
         concern_content = sections["CONCERNS"]
@@ -300,14 +318,6 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
                 for indicator in ["WARNING", "Concern:", "Issue:", "Missing:"]
             ):
                 concerns.append(line_stripped)
-
-    # Parse CORRECTIONS_MADE section if present
-    if "CORRECTIONS_MADE" in sections:
-        corrections_content = sections["CORRECTIONS_MADE"]
-        for line in corrections_content.split("\n"):
-            line = line.strip()
-            if line.startswith("- ") and line != "- None":
-                corrections.append(line[2:])
 
     # Parse CLOSE_REASON section if present (for CLOSE verdict)
     if "CLOSE_REASON" in sections:

@@ -689,6 +689,46 @@ Closed - Invalid Reference
         assert result["close_reason"] == "invalid_ref"
         assert result["validated_file_path"] is None
 
+    def test_verdict_inferred_from_ready_for_section(self) -> None:
+        """Test inferring READY verdict from READY_FOR section."""
+        output = """
+## READY_FOR
+- Implementation: Yes
+- Automated processing: Yes
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+        assert result["is_ready"] is True
+
+    def test_verdict_inferred_corrected_from_ready_for_with_corrections(self) -> None:
+        """Test inferring CORRECTED verdict when corrections exist."""
+        output = """
+## CORRECTIONS_MADE
+- Updated line numbers
+
+## READY_FOR
+- **Implementation:** Yes ✅
+- **Automated processing:** Yes ✅
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "CORRECTED"
+        assert result["is_ready"] is True
+        assert result["was_corrected"] is True
+
+    def test_ready_for_with_no_does_not_infer_ready(self) -> None:
+        """Test that READY_FOR with No does not infer READY."""
+        output = """
+## READY_FOR
+- Implementation: No
+- Automated processing: No
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "UNKNOWN"
+        assert result["is_ready"] is False
+
 
 class TestParseManageIssueOutput:
     """Tests for parse_manage_issue_output function."""
