@@ -817,6 +817,88 @@ WorkerPool(
 | `shutdown(wait=True)` | Shutdown the worker pool |
 | `cleanup_all_worktrees()` | Remove all worktree directories |
 
+### Output Parsing
+
+Utilities for parsing Claude's output from `/ll:ready_issue` commands. Located at `little_loops.parallel.output_parsing`.
+
+#### parse_ready_issue_output
+
+```python
+def parse_ready_issue_output(output: str) -> dict[str, Any]
+```
+
+Parse the output from a `/ll:ready_issue` command to extract verdict and metadata.
+
+**Parameters:**
+- `output` - Raw stdout from Claude CLI
+
+**Returns:** Dictionary with parsed results:
+
+```python
+{
+    "verdict": str,              # READY, CORRECTED, NOT_READY, NEEDS_REVIEW, CLOSE, or UNKNOWN
+    "concerns": list[str],       # List of concerns from ## CONCERNS section
+    "is_ready": bool,            # True if verdict is READY or CORRECTED
+    "was_corrected": bool,       # True if verdict is CORRECTED
+    "should_close": bool,        # True if verdict is CLOSE
+    "close_reason": str | None,  # Reason code (e.g., "already_fixed", "invalid_ref")
+    "close_status": str | None,  # Status text (e.g., "Closed - Already Fixed")
+    "corrections": list[str],    # List of corrections made
+    "validated_file_path": str | None,  # File path from validation
+    "sections": dict,            # Raw parsed sections
+    "validation": dict           # Validation details
+}
+```
+
+**Example:**
+```python
+from little_loops.parallel.output_parsing import parse_ready_issue_output
+
+result = subprocess.run(["claude", "-p", "/ll:ready_issue BUG-001"], capture_output=True, text=True)
+parsed = parse_ready_issue_output(result.stdout)
+
+if parsed["is_ready"]:
+    print(f"Issue ready! Was corrected: {parsed['was_corrected']}")
+elif parsed["should_close"]:
+    print(f"Issue should be closed: {parsed['close_reason']}")
+else:
+    print(f"Not ready: {len(parsed['concerns'])} concern(s)")
+```
+
+#### Valid Verdicts
+
+| Verdict | Description | `is_ready` | `should_close` |
+|---------|-------------|------------|----------------|
+| `READY` | Issue is prepared for implementation | `True` | `False` |
+| `CORRECTED` | Issue had problems that were auto-fixed | `True` | `False` |
+| `NOT_READY` | Issue has concerns preventing implementation | `False` | `False` |
+| `NEEDS_REVIEW` | Requires manual review | `False` | `False` |
+| `CLOSE` | Issue should be closed (already fixed, invalid, etc.) | `False` | `True` |
+| `UNKNOWN` | Verdict could not be parsed (error state) | `False` | `False` |
+
+#### Parsing Strategy
+
+The parser uses a 6-step fallback strategy to extract verdicts:
+
+1. **New format**: Look for `## VERDICT` section header
+2. **Old format**: Match `VERDICT: <keyword>` pattern via regex
+3. **Keyword scan**: Search lines containing "verdict" for keywords
+4. **Full scan**: Search entire output for verdict keywords
+5. **Clean retry**: Remove markdown formatting and retry extraction
+6. **Infer from READY_FOR**: If still unknown, check `## READY_FOR` section for "Implementation: Yes"
+
+This multi-step approach handles variations in Claude's output formatting (bold, backticks, headers) and different response styles.
+
+#### Tool-Specific Verdict Handling
+
+Both `ll-auto` and `ll-parallel` use `parse_ready_issue_output()` but handle results differently:
+
+| Aspect | ll-auto | ll-parallel |
+|--------|---------|-------------|
+| **UNKNOWN verdict** | Logs and proceeds | Returns error with output snippet for debugging |
+| **CLOSE handling** | Validates "invalid_ref" reason, checks file path | Generic handling via WorkerResult flags |
+| **File validation** | Validates path with fallback retry | None (relies on worktree isolation) |
+
 ### MergeCoordinator
 
 Sequential merge queue with conflict handling.
@@ -1066,6 +1148,7 @@ from little_loops.parallel import (
 )
 from little_loops.parallel.priority_queue import IssuePriorityQueue
 from little_loops.parallel.types import QueuedIssue, MergeRequest, MergeStatus
+from little_loops.parallel.output_parsing import parse_ready_issue_output
 ```
 
 ---
