@@ -225,7 +225,7 @@ After all Wave 1 agents complete:
    - Plugin components health: X/10
    - Config files health: X/10
 
-**If --non-interactive is NOT set**, present Wave 1 summary:
+Present Wave 1 summary:
 
 ```
 Wave 1 Analysis Complete
@@ -245,11 +245,7 @@ Info: N
 
 ```
 
-Use the AskUserQuestion tool with single-select:
-- Question: "Run cross-component consistency checks?"
-- Options:
-  - "Continue" - Proceed with consistency checks
-  - "Skip" - Go directly to fix suggestions
+Proceed directly to Wave 2 consistency checks.
 
 ### Phase 3: Wave 2 - Cross-Component Consistency (Parallel)
 
