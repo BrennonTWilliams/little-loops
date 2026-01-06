@@ -89,7 +89,9 @@ def issues_with_content(temp_project_dir: Path, sample_config_with_enh: dict[str
     completed_dir.mkdir(parents=True)
 
     # Bug with file path reference
-    (bugs_dir / "P1-BUG-001-circular-dependency.md").write_text("""# BUG-001: Circular dependency in auth module
+    (
+        bugs_dir / "P1-BUG-001-circular-dependency.md"
+    ).write_text("""# BUG-001: Circular dependency in auth module
 
 ## Summary
 There is a circular import between auth.py and users.py.
@@ -352,9 +354,7 @@ class TestSearchIssuesByContent:
 class TestFindExistingIssue:
     """Tests for find_existing_issue function."""
 
-    def test_exact_path_match(
-        self, temp_project_dir: Path, issues_with_content: Path
-    ) -> None:
+    def test_exact_path_match(self, temp_project_dir: Path, issues_with_content: Path) -> None:
         """Test finding issue with exact file path match."""
         config = BRConfig(temp_project_dir)
 
@@ -434,9 +434,7 @@ class TestReopenIssue:
         assert "enhancements" in str(new_path)
         assert not completed_path.exists()
 
-    def test_reopen_adds_section(
-        self, temp_project_dir: Path, issues_with_content: Path
-    ) -> None:
+    def test_reopen_adds_section(self, temp_project_dir: Path, issues_with_content: Path) -> None:
         """Test that reopening adds a Reopened section."""
         config = BRConfig(temp_project_dir)
         logger = Logger()
@@ -482,9 +480,7 @@ class TestReopenIssue:
 class TestUpdateExistingIssue:
     """Tests for update_existing_issue function."""
 
-    def test_update_adds_section(
-        self, temp_project_dir: Path, issues_with_content: Path
-    ) -> None:
+    def test_update_adds_section(self, temp_project_dir: Path, issues_with_content: Path) -> None:
         """Test that updating adds a new section."""
         config = BRConfig(temp_project_dir)
         logger = Logger()
