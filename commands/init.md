@@ -191,31 +191,70 @@ Based on detected project type, use these presets:
 
 ### 5. Interactive Mode (if --interactive)
 
-If `--interactive` flag is set, you MUST use the `AskUserQuestion` tool to gather user preferences step by step. Do NOT just display prompts as text - actually prompt the user interactively.
+If `--interactive` flag is set, you MUST use the `AskUserQuestion` tool to gather user preferences. Do NOT just display prompts as text - actually prompt the user interactively.
 
-**IMPORTANT**: Use AskUserQuestion for each section to get real user input:
+**IMPORTANT**: Group related questions together using AskUserQuestion's multi-question capability (up to 4 questions per call) to reduce interaction rounds.
 
-#### Step 5a: Project Settings
+#### Step 5a: Core Project Settings (Group 1)
 
-Use AskUserQuestion with these questions:
-1. **Project name**: Ask if detected name is correct or provide custom name
-2. **Source directory**: Offer detected dir or common alternatives (src/, lib/, app/, .)
-3. **Test command**: Offer detected default or "Other" for custom command
-4. **Lint command**: Offer detected default or common alternatives
-5. **Format command**: Offer detected default or common alternatives
+Use a SINGLE AskUserQuestion call with 4 questions:
 
-Example AskUserQuestion call for test command:
+```yaml
+questions:
+  - header: "Name"
+    question: "Is '[DETECTED_NAME]' the correct project name?"
+    options:
+      - label: "Yes, use [DETECTED_NAME]"
+        description: "Keep the detected project name"
+      - label: "No, different name"
+        description: "Specify a custom project name"
+    multiSelect: false
+
+  - header: "Source Dir"
+    question: "Which source directory contains your code?"
+    options:
+      - label: "[DETECTED_DIR]"
+        description: "Detected from project structure"
+      - label: "src/"
+        description: "Standard source directory"
+      - label: "lib/"
+        description: "Library source directory"
+      - label: "."
+        description: "Project root"
+    multiSelect: false
+
+  - header: "Test Cmd"
+    question: "Which test command should be used?"
+    options:
+      - label: "[DETECTED_TEST_CMD]"
+        description: "Detected from project type"
+      - label: "[ALT_TEST_CMD_1]"
+        description: "Alternative test command"
+      - label: "[ALT_TEST_CMD_2]"
+        description: "Alternative test command"
+    multiSelect: false
+
+  - header: "Lint Cmd"
+    question: "Which lint command should be used?"
+    options:
+      - label: "[DETECTED_LINT_CMD]"
+        description: "Detected from project type"
+      - label: "[ALT_LINT_CMD_1]"
+        description: "Alternative lint command"
+      - label: "[ALT_LINT_CMD_2]"
+        description: "Alternative lint command"
+    multiSelect: false
 ```
-header: "Test Command"
-question: "Which test command should be used?"
-options:
-  - label: "pytest" (detected default)
-  - label: "pytest -v"
-  - label: "python -m pytest"
-multiSelect: false
-```
 
-#### Step 5b: Issue Management
+**Populate options based on detected project type:**
+- Python: pytest, pytest -v, python -m pytest | ruff check ., flake8, pylint
+- Node.js: npm test, yarn test, jest | npm run lint, eslint .
+- Go: go test ./..., go test -v ./... | golangci-lint run, go vet ./...
+- Rust: cargo test, cargo test --verbose | cargo clippy, cargo check
+- Java: mvn test, gradle test | (no common lint)
+- .NET: dotnet test | dotnet format --verify-no-changes
+
+#### Step 5b: Additional Configuration (Group 2)
 
 **First, detect existing issues directory:**
 ```bash
@@ -229,88 +268,118 @@ else
 fi
 ```
 
-**Then use AskUserQuestion based on detection:**
+Use a SINGLE AskUserQuestion call with 4 questions:
 
-**If existing directory found** - ask whether to use it:
-```
-header: "Issues Dir"
-question: "Found existing '[EXISTING_ISSUES_DIR]/' directory. Use it for issue tracking?"
-options:
-  - label: "Yes, use [EXISTING_ISSUES_DIR]/"
-    description: "Keep existing directory and configure little-loops to use it"
-  - label: "No, use different directory"
-    description: "Specify a different directory for issues"
-  - label: "Disable issue tracking"
-    description: "Don't configure issue management"
-multiSelect: false
-```
+```yaml
+questions:
+  - header: "Format Cmd"
+    question: "Which format command should be used?"
+    options:
+      - label: "[DETECTED_FORMAT_CMD]"
+        description: "Detected from project type"
+      - label: "[ALT_FORMAT_CMD_1]"
+        description: "Alternative format command"
+      - label: "None"
+        description: "No formatting command"
+    multiSelect: false
 
-**If no existing directory found** - ask whether to enable:
-```
-header: "Issues"
-question: "Enable issue management features?"
-options:
-  - label: "Yes, use .issues/"
-    description: "Create .issues/ directory for tracking bugs, features, enhancements"
-  - label: "Yes, custom directory"
-    description: "Specify a custom directory name"
-  - label: "No"
-    description: "Skip issue management configuration"
-multiSelect: false
-```
+  - header: "Issues"
+    # If EXISTING_ISSUES_DIR is found:
+    question: "Found existing '[EXISTING_ISSUES_DIR]/' directory. Use it for issue tracking?"
+    # OR if no existing directory:
+    # question: "Enable issue management features?"
+    options:
+      # If existing dir found:
+      - label: "Yes, use [EXISTING_ISSUES_DIR]/"
+        description: "Keep existing directory for issue tracking"
+      # OR if no existing dir:
+      # - label: "Yes, use .issues/"
+      #   description: "Create .issues/ for tracking bugs, features, enhancements"
+      - label: "Yes, custom directory"
+        description: "Specify a custom directory name"
+      - label: "Disable"
+        description: "Skip issue management configuration"
+    multiSelect: false
 
-**If user chose custom directory** - ask for the name:
-```
-header: "Issues Path"
-question: "What directory name should be used for issues?"
-options:
-  - label: ".issues"
-    description: "Hidden directory (recommended)"
-  - label: "issues"
-    description: "Visible directory"
-  - label: ".tasks"
-    description: "Alternative naming"
-multiSelect: false
-```
+  - header: "Scan Dirs"
+    question: "Which directories should be scanned for code issues?"
+    options:
+      - label: "[DETECTED_FOCUS_DIRS]"
+        description: "Detected from project structure"
+      - label: "src/, tests/"
+        description: "Standard source and test directories"
+      - label: "Custom selection"
+        description: "Specify custom directories"
+    multiSelect: false
 
-#### Step 5c: Scan Settings
-
-Use AskUserQuestion:
-1. **Focus directories**: Offer detected dirs or custom selection
-2. **Exclude patterns**: Offer adding custom patterns beyond defaults
-
-#### Step 5d: Parallel Processing (ll-parallel)
-
-Use AskUserQuestion to ask about parallel issue processing:
-
-1. **Enable parallel processing**: Ask if user wants to configure `ll-parallel` for processing multiple issues concurrently using git worktrees.
-
-```
-header: "Parallel"
-question: "Enable parallel issue processing with git worktrees (ll-parallel)?"
-options:
-  - label: "Yes"
-    description: "Configure ll-parallel for concurrent issue processing"
-  - label: "No"
-    description: "Skip parallel config (can add later)"
-multiSelect: false
+  - header: "Excludes"
+    question: "Add custom exclude patterns beyond defaults?"
+    options:
+      - label: "Use defaults only"
+        description: "Standard excludes for project type (node_modules, __pycache__, etc.)"
+      - label: "Add custom patterns"
+        description: "Specify additional patterns to exclude"
+    multiSelect: false
 ```
 
-2. **Worktree file copying** (only if parallel enabled): Ask which files should be copied from the main repo to each worktree. Use multi-select since users often need multiple files.
+**Populate format options based on detected project type:**
+- Python: ruff format ., black ., autopep8
+- Node.js: npm run format, prettier --write ., eslint --fix
+- Go: gofmt -w ., go fmt ./...
+- Rust: cargo fmt
+- Java: (none common)
+- .NET: dotnet format
 
+#### Step 5c: Advanced Settings (Conditional Group 3)
+
+Build this AskUserQuestion dynamically based on Group 2 responses. Include 1-2 questions:
+
+**If user selected "custom directory" for issues in Group 2**, include custom dir question.
+**Always include** parallel processing question.
+
+```yaml
+questions:
+  # ONLY include if user selected "Yes, custom directory" in Group 2:
+  - header: "Issues Path"
+    question: "What directory name should be used for issues?"
+    options:
+      - label: ".issues"
+        description: "Hidden directory (recommended)"
+      - label: "issues"
+        description: "Visible directory"
+      - label: ".tasks"
+        description: "Alternative naming"
+    multiSelect: false
+
+  # ALWAYS include:
+  - header: "Parallel"
+    question: "Enable parallel issue processing with git worktrees (ll-parallel)?"
+    options:
+      - label: "Yes"
+        description: "Configure ll-parallel for concurrent issue processing"
+      - label: "No"
+        description: "Skip parallel config (can add later)"
+    multiSelect: false
 ```
-header: "Worktree Files"
-question: "Which files should be copied to each git worktree?"
-options:
-  - label: ".env"
-    description: "Environment variables (API keys, secrets)"
-  - label: ".claude/settings.local.json"
-    description: "Local Claude Code settings"
-  - label: ".env.local"
-    description: "Local environment overrides"
-  - label: ".secrets"
-    description: "Secrets file"
-multiSelect: true
+
+#### Step 5d: Worktree Files (Conditional Group 4)
+
+**Only ask if user enabled parallel processing in Group 3.**
+
+```yaml
+questions:
+  - header: "Worktree Files"
+    question: "Which files should be copied to each git worktree?"
+    options:
+      - label: ".env"
+        description: "Environment variables (API keys, secrets)"
+      - label: ".claude/settings.local.json"
+        description: "Local Claude Code settings"
+      - label: ".env.local"
+        description: "Local environment overrides"
+      - label: ".secrets"
+        description: "Secrets file"
+    multiSelect: true
 ```
 
 If parallel is enabled, add to configuration:
@@ -324,8 +393,21 @@ If parallel is enabled, add to configuration:
 
 Only include non-default values. If user selects exactly `[".env", ".claude/settings.local.json"]` (the defaults), the `worktree_copy_files` key can be omitted.
 
+---
+
+### Interactive Mode Summary
+
+**Total interaction rounds: 3-4** (reduced from 9-11)
+
+| Round | Group | Questions |
+|-------|-------|-----------|
+| 1 | Core Settings | name, src_dir, test_cmd, lint_cmd |
+| 2 | Additional Config | format_cmd, issues, scan_dirs, excludes |
+| 3 | Advanced (conditional) | custom_issue_dir?, parallel |
+| 4 | Parallel Files (conditional) | worktree_files (only if parallel enabled) |
+
 **Key behavior**:
-- Wait for each AskUserQuestion response before proceeding
+- Wait for each group's AskUserQuestion response before proceeding to the next
 - Use the responses to build the final configuration
 - Show detected defaults as the first/recommended option
 - Allow "Other" for custom values (built-in to AskUserQuestion)
