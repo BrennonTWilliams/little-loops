@@ -26,6 +26,23 @@ If actively processing an issue via `/ll:manage_issue`:
   - `committing` - Preparing commits
   - `completing` - Moving to completed/
 
+### 2b. General Session Context (No Active Issue)
+
+If NOT actively processing an issue via `/ll:manage_issue`:
+- Set `active_issue` to null
+- Set `phase` to null
+- Still capture all other state:
+  - Todo list items (pending, in_progress, completed)
+  - Any plan files in `thoughts/shared/plans/` referenced this session
+  - Modified files from `git status --short`
+  - Brief context description of current work
+
+The continuation prompt should be useful for ANY session, not just issue management.
+Derive context from:
+- Current todo items (what is in progress?)
+- Recently discussed files in conversation
+- User's original request if identifiable
+
 ### 3. Plan File Reference
 
 If working on a plan in `thoughts/shared/plans/`:
@@ -55,43 +72,55 @@ Write to `.claude/ll-session-state.json`:
 
 ## Continuation Prompt Generation
 
-**CRITICAL**: Also generate a self-contained continuation prompt for fresh-context handoff.
+**CRITICAL**: Generate a self-contained continuation prompt for fresh-context handoff.
+
+This prompt must work for ANY session - issue management OR general tasks.
 
 Write to `.claude/ll-continue-prompt.md`:
 
 ```markdown
-# Session Continuation: [ISSUE-ID or Task Description]
+# Session Continuation: [ISSUE-ID if working on issue, otherwise Task/Context Description]
 
 ## Context
 [2-3 sentence summary of what was being worked on]
+[If issue: "Working on ISSUE-ID - issue title. Currently in [phase] phase."]
+[If general: "Working on [task description derived from todos or conversation]."]
 
 ## Completed Work
-- [x] [Phase/step that was completed]
-- [x] [Another completed item with file:line reference]
+- [x] [Completed item with file:line reference where applicable]
+- [x] [Another completed item]
+[From todo list if available, or summarize key accomplishments from session]
 
 ## Current State
-- Working on: [Current phase/step]
-- Last action: [What was just done before handoff]
-- Next action: [Immediate next step to take]
+- **Working on**: [Current phase/step from in-progress todos]
+- **Modified files**: [From git status if available]
+- **Last action**: [What was just done before handoff]
+- **Next action**: [Immediate next step to take]
 
 ## Key File References
-- Plan: `[path to plan file]`
-- Main files: `[key file:line references]`
-- Tests: `[test file references]`
+- Plan: `[path to plan file if applicable]`
+- Modified: `[file:line references for key changes]`
+- Tests: `[test file references if applicable]`
 
-## Resume Command
-To continue this work, run:
+## Resume
+
+[If working on issue]:
 ```
 /ll:manage_issue [type] [action] [ISSUE-ID] --resume
 ```
 
-Or continue manually from the plan at `[plan path]`.
+[If general session]:
+```
+/ll:resume
+```
+
+Or continue manually from the context above.
 
 ## Important Context
-[Any critical information that would be lost without this prompt:
-- Decisions made during implementation
-- Gotchas discovered
-- Patterns being followed]
+[Critical information that would be lost without this prompt:
+- Decisions made during the session
+- Gotchas or edge cases discovered
+- Patterns being followed (with file:line references)]
 ```
 
 ### Prompt Generation Guidelines

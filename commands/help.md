@@ -84,6 +84,16 @@ AUDITING & ANALYSIS
     Scope: all, global, project, hooks, mcp, agents, commands, skills
     Flags: --non-interactive, --fix
 
+SESSION MANAGEMENT
+------------------
+/ll:handoff [context]
+    Generate continuation prompt for session handoff
+    Context: optional description of current work
+
+/ll:resume [prompt_file]
+    Resume from a previous session's continuation prompt
+    File: optional path (default: .claude/ll-continue-prompt.md)
+
 GIT & WORKFLOW
 --------------
 /ll:commit
@@ -122,6 +132,8 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 | `audit_architecture` | Analyze code structure |
 | `audit_docs` | Check documentation accuracy |
 | `audit_claude_config` | Comprehensive config audit with parallel agents |
+| `handoff` | Generate continuation prompt for session handoff |
+| `resume` | Resume from previous session's continuation prompt |
 | `commit` | Create git commits |
 | `describe_pr` | Generate PR descriptions |
 

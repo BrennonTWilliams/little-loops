@@ -359,6 +359,52 @@
         }
       },
       "additionalProperties": false
+    },
+    "continuation": {
+      "type": "object",
+      "description": "Session continuation and handoff settings (commands: /ll:handoff, /ll:resume)",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable continuation prompt features",
+          "default": true
+        },
+        "auto_detect_on_session_start": {
+          "type": "boolean",
+          "description": "Check for continuation prompt when session starts",
+          "default": true
+        },
+        "include_todos": {
+          "type": "boolean",
+          "description": "Include todo list state in continuation prompt",
+          "default": true
+        },
+        "include_git_status": {
+          "type": "boolean",
+          "description": "Include git status in continuation prompt",
+          "default": true
+        },
+        "include_recent_files": {
+          "type": "boolean",
+          "description": "Include recently modified files in continuation prompt",
+          "default": true
+        },
+        "max_continuations": {
+          "type": "integer",
+          "description": "Maximum automatic session continuations for CLI tools",
+          "default": 3,
+          "minimum": 1,
+          "maximum": 10
+        },
+        "prompt_expiry_hours": {
+          "type": "integer",
+          "description": "Hours before continuation prompt is considered stale",
+          "default": 24,
+          "minimum": 1,
+          "maximum": 168
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
