@@ -369,17 +369,36 @@ class AutoManager:
                         # Normalize paths for comparison (resolve to absolute)
                         expected_path = str(info.path.resolve())
                         # Handle both absolute and relative paths from ready_issue
-                        validated_resolved = str(Path(validated_path).resolve())
-                        if validated_resolved != expected_path:
-                            self.logger.error(
-                                f"Path mismatch detected: ready_issue validated "
-                                f"'{validated_path}' but expected '{info.path}'"
-                            )
-                            self.state_manager.mark_failed(
-                                info.issue_id,
-                                f"Path mismatch: validated {validated_path}, expected {info.path}",
-                            )
-                            return False
+                        validated_resolved = Path(validated_path).resolve()
+                        if str(validated_resolved) != expected_path:
+                            # Check if this is a legitimate rename (new file exists,
+                            # old file doesn't) vs a mismatch error
+                            old_file_exists = info.path.exists()
+                            new_file_exists = validated_resolved.exists()
+
+                            if new_file_exists and not old_file_exists:
+                                # ready_issue renamed the file - update tracking
+                                self.logger.info(
+                                    f"Issue file renamed: '{info.path.name}' -> "
+                                    f"'{validated_resolved.name}'"
+                                )
+                                info.path = validated_resolved
+                                # Update state manager with new path
+                                self.state_manager.update_current(
+                                    str(validated_resolved), "processing"
+                                )
+                            else:
+                                # Genuine mismatch - fail the issue
+                                self.logger.error(
+                                    f"Path mismatch detected: ready_issue validated "
+                                    f"'{validated_path}' but expected '{info.path}'"
+                                )
+                                self.state_manager.mark_failed(
+                                    info.issue_id,
+                                    f"Path mismatch: validated {validated_path}, "
+                                    f"expected {info.path}",
+                                )
+                                return False
 
                     # Log any corrections made
                     if parsed.get("was_corrected"):
