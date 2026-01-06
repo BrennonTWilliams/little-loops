@@ -20,8 +20,8 @@ The system consists of three main layers:
 ```mermaid
 flowchart TB
     subgraph "Claude Code Plugin"
-        CMD[Commands<br/>16 slash commands]
-        AGT[Agents<br/>4 specialized agents]
+        CMD[Commands<br/>18 slash commands]
+        AGT[Agents<br/>7 specialized agents]
     end
 
     subgraph "Configuration"
@@ -60,7 +60,7 @@ flowchart TB
 little-loops/
 ├── plugin.json              # Plugin manifest
 ├── config-schema.json       # JSON Schema for validation
-├── commands/                # 16 slash command templates
+├── commands/                # 18 slash command templates
 │   ├── init.md
 │   ├── help.md
 │   ├── check_code.md
@@ -68,10 +68,13 @@ little-loops/
 │   ├── manage_issue.md
 │   ├── normalize_issues.md
 │   └── ...
-├── agents/                  # 4 specialized agents
+├── agents/                  # 7 specialized agents
 │   ├── codebase-analyzer.md
 │   ├── codebase-locator.md
 │   ├── codebase-pattern-finder.md
+│   ├── consistency-checker.md
+│   ├── plugin-config-auditor.md
+│   ├── prompt-optimizer.md
 │   └── web-search-researcher.md
 ├── hooks/                   # Lifecycle hooks and validation scripts
 │   ├── hooks.json           # Hook configuration

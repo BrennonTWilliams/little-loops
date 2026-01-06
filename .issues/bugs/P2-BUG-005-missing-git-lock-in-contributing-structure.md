@@ -6,18 +6,25 @@ discovered_by: audit_docs
 doc_file: CONTRIBUTING.md
 ---
 
-# BUG-005: Missing git_lock.py in CONTRIBUTING.md structure diagram
+# BUG-005: Missing files in documentation structure diagrams
 
 ## Summary
 
-The project structure diagram in CONTRIBUTING.md is missing `git_lock.py` from the parallel directory listing.
+Multiple project structure diagrams are missing files from the parallel directory and Python package listings.
 
 ## Location
 
-- **File**: CONTRIBUTING.md
-- **Lines**: 97-103
+- **Files**: CONTRIBUTING.md, scripts/README.md, docs/ARCHITECTURE.md
+- **Lines**: CONTRIBUTING.md:97-103, scripts/README.md:380-412, docs/ARCHITECTURE.md:59-121
 
-## Current Content
+## Missing Files
+
+Two files exist but are not listed in structure diagrams:
+
+1. `scripts/little_loops/parallel/git_lock.py` - Git locking utilities
+2. `scripts/little_loops/issue_discovery.py` - Issue discovery module
+
+## Current Content (CONTRIBUTING.md example)
 
 ```markdown
 └── parallel/     # Parallel processing module
@@ -28,10 +35,6 @@ The project structure diagram in CONTRIBUTING.md is missing `git_lock.py` from t
     ├── output_parsing.py
     └── types.py
 ```
-
-## Problem
-
-The file `scripts/little_loops/parallel/git_lock.py` exists but is not listed in the structure diagram.
 
 ## Expected Content
 
@@ -46,10 +49,12 @@ The file `scripts/little_loops/parallel/git_lock.py` exists but is not listed in
     └── types.py
 ```
 
+And add `issue_discovery.py` to the main package listing in all affected files.
+
 ## Impact
 
 - **Severity**: Low (incomplete documentation)
-- **Effort**: Trivial (add one line)
+- **Effort**: Small (update 3 files)
 - **Risk**: Low
 
 ## Labels

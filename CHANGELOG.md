@@ -9,9 +9,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **15 slash commands** for development workflows:
+- **18 slash commands** for development workflows:
   - `/ll:init` - Project initialization with auto-detection for 7 project types
   - `/ll:help` - Command reference and usage guide
+  - `/ll:toggle_autoprompt` - Toggle automatic prompt optimization
   - `/ll:check_code` - Code quality checks (lint, format, types)
   - `/ll:run_tests` - Test execution with scope filtering
   - `/ll:find_dead_code` - Unused code detection
@@ -19,17 +20,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `/ll:ready_issue` - Issue validation with auto-correction
   - `/ll:prioritize_issues` - Priority assignment (P0-P5)
   - `/ll:verify_issues` - Issue verification against codebase
+  - `/ll:normalize_issues` - Fix invalid issue filenames
   - `/ll:scan_codebase` - Issue discovery
   - `/ll:audit_docs` - Documentation auditing
   - `/ll:audit_architecture` - Architecture analysis
+  - `/ll:audit_claude_config` - Comprehensive config audit
   - `/ll:describe_pr` - PR description generation
   - `/ll:commit` - Git commit creation with approval
   - `/ll:iterate_plan` - Plan iteration and updates
 
-- **4 specialized agents**:
+- **7 specialized agents**:
   - `codebase-analyzer` - Implementation details analysis
   - `codebase-locator` - File and feature discovery
   - `codebase-pattern-finder` - Code pattern identification
+  - `consistency-checker` - Cross-component consistency validation
+  - `plugin-config-auditor` - Plugin configuration auditing
+  - `prompt-optimizer` - Codebase context for prompt enhancement
   - `web-search-researcher` - Web research capability
 
 - **Sequential automation** (`ll-auto`):
