@@ -441,12 +441,8 @@ class AutoManager:
                                     return False
 
                                 # Re-parse and validate retry output
-                                retry_parsed = parse_ready_issue_output(
-                                    retry_result.stdout
-                                )
-                                retry_validated_path = retry_parsed.get(
-                                    "validated_file_path"
-                                )
+                                retry_parsed = parse_ready_issue_output(retry_result.stdout)
+                                retry_validated_path = retry_parsed.get("validated_file_path")
 
                                 if retry_validated_path:
                                     retry_resolved = Path(retry_validated_path).resolve()
@@ -463,9 +459,7 @@ class AutoManager:
                                         return False
 
                                 # Fallback succeeded - use retry result
-                                self.logger.info(
-                                    "Fallback succeeded: validated correct file"
-                                )
+                                self.logger.info("Fallback succeeded: validated correct file")
                                 parsed = retry_parsed
 
                     # Log any corrections made

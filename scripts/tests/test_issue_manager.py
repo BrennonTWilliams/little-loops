@@ -226,9 +226,7 @@ class TestPathMismatchFallback:
         relative = _compute_relative_path(issue_file, temp_project_dir)
         assert relative == ".issues/enhancements/P1-ENH-341-test-issue.md"
 
-    def test_compute_relative_path_falls_back_to_absolute(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_compute_relative_path_falls_back_to_absolute(self, temp_project_dir: Path) -> None:
         """Test _compute_relative_path returns absolute if not relative to base."""
         from little_loops.issue_manager import _compute_relative_path
 
@@ -282,9 +280,7 @@ READY
         assert retry_parsed["validated_file_path"] == str(correct_file)
         assert Path(retry_parsed["validated_file_path"]).resolve() == correct_file.resolve()
 
-    def test_fallback_fails_when_retry_still_mismatched(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_fallback_fails_when_retry_still_mismatched(self, temp_project_dir: Path) -> None:
         """Test that persistent mismatch after fallback properly fails."""
         from little_loops.parallel.output_parsing import parse_ready_issue_output
 
