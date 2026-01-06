@@ -51,15 +51,6 @@ Add new `product` section:
         "type": "boolean",
         "default": true,
         "description": "Include business value scoring in issues"
-      },
-      "issue_category": {
-        "type": "object",
-        "description": "Product issue category configuration",
-        "properties": {
-          "prefix": { "type": "string", "default": "PROD" },
-          "dir": { "type": "string", "default": "product" },
-          "action": { "type": "string", "default": "deliver" }
-        }
       }
     }
   }
@@ -78,7 +69,7 @@ Would you like to enable product-focused issue analysis?
 This feature allows little-loops to:
 - Identify issues based on product goals and user needs
 - Score issues by business impact and user value
-- Create product-focused issues (PROD-XXX) alongside technical issues
+- Enrich technical issues with product context (goal alignment, persona impact)
 - Connect technical work to product strategy
 
 **Note**: Requires creating a goals document at `.claude/ll-goals.md`
@@ -167,7 +158,6 @@ None
 - FEAT-003: Product Analyzer Agent
 - FEAT-004: Product Scanning Integration
 - ENH-005: Product Impact Fields in Issue Templates
-- FEAT-005: Product Issue Category
 
 ## Labels
 

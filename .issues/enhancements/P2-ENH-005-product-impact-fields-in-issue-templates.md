@@ -8,42 +8,45 @@ discovered_date: 2026-01-06T20:47:28Z
 
 ## Summary
 
-Enhance existing issue file templates (BUG, FEAT, ENH) to optionally include product impact fields when product analysis is enabled. This allows technical issues to carry business context without requiring a separate product-specific issue type.
+Enhance existing issue file templates (BUG, FEAT, ENH) to optionally include product impact fields. These fields are populated by product workflows (`/ll:scan_product`) and provide business context without requiring a separate issue type.
 
 ## Motivation
 
-Even technical issues (bugs, enhancements) have product implications:
-- A bug might block a critical user workflow
-- An enhancement might significantly improve a success metric
-- A technical debt item might be blocking a strategic priority
+When product analysis is enabled, issues can carry business context:
+- Goal alignment - which strategic priority this supports
+- Persona impact - which users are affected
+- Business value - relative importance from a product perspective
 
-By adding optional product impact fields to all issue templates:
-1. Technical issues gain business context for prioritization
+By adding optional product impact fields to issue templates:
+1. Product-discovered issues gain business context for prioritization
 2. Stakeholders can understand "why this matters"
 3. Issues can be filtered/sorted by business impact
-4. The gap between technical and product perspectives narrows
+4. Technical and product perspectives coexist in a single issue format
+
+**Separation of Concerns**: Product impact fields are populated by product workflows (`/ll:scan_product`), not technical workflows (`/ll:scan_codebase`). This maintains clean separation while allowing both to produce compatible issue files.
 
 ## Proposed Implementation
 
 ### 1. Extended Issue Template Structure
 
-When `product.enabled: true`, issue templates include additional section:
+When product analysis is enabled and issues are created by `/ll:scan_product`, include product context:
 
 ```markdown
 ---
 discovered_commit: [COMMIT_HASH]
 discovered_branch: [BRANCH_NAME]
 discovered_date: [SCAN_DATE]
-# New product-related frontmatter (optional)
+discovered_by: scan_product
+# Product-related frontmatter (populated by product workflows)
 goal_alignment: [priority-id or null]
-affected_personas: [list of persona-ids or empty]
+persona_impact: [persona-id or null]
 business_value: [high|medium|low|null]
 ---
 
 # [PREFIX]-[NUMBER]: [Title]
 
 ## Summary
-[Technical description]
+[Description]
 
 ## Location
 [File:line references]
@@ -64,15 +67,14 @@ business_value: [high|medium|low|null]
 - **Effort**: [Small/Medium/Large]
 - **Risk**: [Low/Medium/High]
 
-### Product Impact (if product analysis enabled)
-- **Goal Alignment**: [Which strategic priority this supports, or "None"]
-- **Affected Personas**: [Which user types are impacted]
-- **Business Value**: [High/Medium/Low/None]
-- **Success Metrics**:
-  - [Metric name]: [Expected effect, e.g., "Reduces resolution time by ~20%"]
+### Product Impact (present when discovered by product workflows)
+- **Goal Alignment**: [Which strategic priority this supports]
+- **Persona**: [Which user type is impacted]
+- **Business Value**: [High/Medium/Low]
+- **User Benefit**: [How this helps the target user]
 
 ## Labels
-`bug|enhancement|feature`, `priority-label`, `[goal-id]`, `[persona-id]`
+`bug|enhancement|feature`, `priority-label`, `product-scan`
 
 ---
 
@@ -80,72 +82,27 @@ business_value: [high|medium|low|null]
 **Open** | Created: [DATE] | Priority: P[X]
 ```
 
-### 2. Conditional Template Rendering
+### 2. Workflow-Based Population
 
-Update issue creation logic in commands to conditionally include product fields:
+Product impact fields are populated based on which workflow created the issue:
 
-```markdown
-# In commands/scan_codebase.md and commands/audit_architecture.md
+| Workflow | Command | Product Impact Fields |
+|----------|---------|----------------------|
+| Technical | `/ll:scan_codebase` | Not included |
+| Technical | `/ll:audit_architecture` | Not included |
+| Product | `/ll:scan_product` | Populated |
+| Manual | User creates issue | Optional, user decides |
 
-### Create Issue File
+This maintains separation of concerns:
+- Technical commands remain fast and focused on technical issues
+- Product commands add business context to their findings
+- Both produce issues in the same format for downstream compatibility
 
-```python
-# Pseudo-logic for issue creation
-
-product_enabled = config.get("product", {}).get("enabled", False)
-
-issue_content = f"""
-## Impact
-
-### Technical Impact
-- **Severity**: {finding.severity}
-- **Effort**: {finding.effort}
-- **Risk**: {finding.risk}
-"""
-
-if product_enabled:
-    issue_content += f"""
-### Product Impact
-- **Goal Alignment**: {finding.goal_alignment or "Not assessed"}
-- **Affected Personas**: {", ".join(finding.personas) or "Not assessed"}
-- **Business Value**: {finding.business_value or "Not assessed"}
-- **Success Metrics**: {format_metrics(finding.metric_impacts) or "None identified"}
-"""
-```
-```
-
-### 3. Product Impact Assessment Agent Call
-
-When creating technical issues with product enabled, optionally assess product impact:
-
-```markdown
-# Optional: Enrich technical finding with product context
-
-If product analysis is enabled and the issue lacks product context:
-
-Use Task tool with subagent_type="product-analyzer"
-
-Prompt: Assess the product impact of this technical issue:
-
-Issue: {issue_title}
-Type: {issue_type}
-Location: {file_path}:{line_number}
-Technical Summary: {technical_description}
-
-Given the goals in {{config.product.goals_file}}, determine:
-1. Which strategic priority (if any) this issue affects
-2. Which personas are impacted by this issue
-3. Business value of fixing this issue (High/Medium/Low/None)
-4. Which success metrics would improve if this is fixed
-
-Return structured assessment or "No product impact" if purely technical.
-```
-
-### 4. Backwards Compatibility
+### 3. Backwards Compatibility
 
 Product impact fields must be:
 - **Optional**: Issues without product fields remain valid
-- **Graceful**: Commands handle missing product context
+- **Graceful**: All commands handle missing product context
 - **Non-breaking**: Existing issues don't need migration
 
 ```python
@@ -159,61 +116,89 @@ def parse_product_impact(content: str) -> Optional[ProductImpact]:
     return ProductImpact(...)
 ```
 
-### 5. Issue Filtering by Product Impact
+### 4. Issue Filtering by Product Impact
 
-Enable filtering issues by product criteria:
+Enable filtering issues by product criteria (future enhancement):
 
 ```bash
-# Future: Filter issues by goal alignment
+# Filter issues by goal alignment
 ll-auto --goal automation
 
-# Future: Filter by business value
+# Filter by business value
 ll-auto --business-value high
 
-# Future: Filter by persona impact
-ll-auto --persona developer
+# Filter by discovery source
+ll-auto --discovered-by scan_product
 ```
 
-### 6. Updated Commands
+### 5. Commands That Read Product Impact
 
-Commands that create issues need updates:
+Commands that process issues should recognize product impact when present:
 
-| Command | Change |
-|---------|--------|
-| `/ll:scan_codebase` | Add product impact to findings |
-| `/ll:audit_architecture` | Add product context to architectural issues |
-| `/ll:manage_issue` | Display product impact in issue review |
-| `/ll:prioritize_issues` | Consider business value in priority |
+| Command | Behavior |
+|---------|----------|
+| `/ll:manage_issue` | Display product impact in issue review if present |
+| `/ll:prioritize_issues` | Consider business value for issues that have it |
 
-### 7. Issue Discovery Module Update
+Note: Commands that CREATE issues are NOT modified except for `/ll:scan_product` (covered in FEAT-004).
 
-Update `scripts/little_loops/issue_discovery.py` to handle product fields:
+### 6. Issue Parser Module Update
+
+Update `scripts/little_loops/issue_parser.py` to handle product fields:
 
 ```python
 @dataclass
 class ProductImpact:
     """Product impact assessment for an issue."""
     goal_alignment: Optional[str] = None
-    affected_personas: list[str] = field(default_factory=list)
+    persona_impact: Optional[str] = None
     business_value: Optional[str] = None  # high|medium|low
-    metric_impacts: dict[str, str] = field(default_factory=dict)
+    user_benefit: Optional[str] = None
 
 
 @dataclass
-class DiscoveredIssue:
-    """Extended to include product impact."""
+class ParsedIssue:
+    """Extended to include optional product impact."""
     # ... existing fields ...
     product_impact: Optional[ProductImpact] = None
+    discovered_by: Optional[str] = None  # scan_codebase|scan_product|manual
+```
+
+### 7. Frontmatter Schema
+
+Add optional product fields to issue frontmatter schema:
+
+```yaml
+# Optional product fields (present when discovered_by: scan_product)
+goal_alignment:
+  type: string
+  description: ID of the strategic priority this supports
+  optional: true
+
+persona_impact:
+  type: string
+  description: ID of the persona affected
+  optional: true
+
+business_value:
+  type: string
+  enum: [high, medium, low]
+  description: Business value assessment
+  optional: true
+
+discovered_by:
+  type: string
+  enum: [scan_codebase, scan_product, audit_architecture, manual]
+  description: Which workflow discovered this issue
+  optional: true
 ```
 
 ## Location
 
-- **Modified**: `commands/scan_codebase.md`
-- **Modified**: `commands/audit_architecture.md`
-- **Modified**: `commands/manage_issue.md`
-- **Modified**: `commands/prioritize_issues.md`
-- **Modified**: `scripts/little_loops/issue_discovery.py`
-- **Modified**: `scripts/little_loops/issue_parser.py`
+- **Modified**: `commands/manage_issue.md` (display product impact)
+- **Modified**: `commands/prioritize_issues.md` (consider business value)
+- **Modified**: `scripts/little_loops/issue_parser.py` (parse product fields)
+- **Used By**: `commands/scan_product.md` (populates product fields)
 
 ## Current Behavior
 
@@ -227,26 +212,28 @@ No connection to product goals, personas, or business value.
 ## Expected Behavior
 
 When product analysis is enabled:
-- Issue templates include Product Impact section
-- Technical findings optionally enriched with product context
-- Issues carry goal alignment and persona impact data
-- Prioritization can consider business value
+- Issues from `/ll:scan_product` include Product Impact section
+- Issues from technical commands remain unchanged (no product fields)
+- Parser recognizes and extracts product fields when present
+- Commands that read issues display/use product context if available
 
 ## Impact
 
-- **Severity**: Medium - Enhances existing functionality
-- **Effort**: Medium - Multiple command and module updates
+- **Severity**: Medium - Enhances issue format for product workflows
+- **Effort**: Medium - Parser updates and command display changes
 - **Risk**: Low - Optional fields, backwards compatible
 
 ## Dependencies
 
 - FEAT-001: Product Analysis Opt-In Configuration
 - FEAT-002: Goals/Vision Ingestion Mechanism (for goal/persona IDs)
+- FEAT-003: Product Analyzer Agent (populates product fields)
 
 ## Blocked By
 
 - FEAT-001
 - FEAT-002
+- FEAT-003
 
 ## Blocks
 

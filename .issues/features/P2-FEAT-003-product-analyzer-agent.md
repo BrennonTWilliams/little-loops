@@ -50,7 +50,11 @@ tools:
 model: sonnet
 trigger:
   when_to_use: |
-    Use this agent when product analysis is enabled and you need to:
+    Use this agent via /ll:scan_product when product analysis is enabled.
+    This agent is specifically for product-focused analysis, separate from
+    technical scanning done by /ll:scan_codebase.
+
+    Use cases:
     - Identify features needed to meet product goals
     - Assess user experience from code structure
     - Find opportunities for business value
@@ -110,12 +114,10 @@ Return findings as structured data:
 ```yaml
 findings:
   - type: feature_gap
+    issue_type: FEAT  # Will become FEAT-XXX with product context
     title: "Missing batch processing for large codebases"
     goal_alignment: "Maximize automation"
-    persona_impact: ["Developer Dan"]
-    metric_impact:
-      - metric: "Issue resolution time"
-        effect: "Would reduce by ~30%"
+    persona_impact: "Developer"
     business_value: High
     effort: Medium
     evidence:
@@ -125,9 +127,10 @@ findings:
         observation: "Goal states 'maximize automation'"
 
   - type: ux_improvement
+    issue_type: ENH  # Will become ENH-XXX with product context
     title: "Progress feedback during long scans"
     goal_alignment: "Improve issue accuracy"
-    persona_impact: ["Developer Dan", "Ops Olivia"]
+    persona_impact: "Developer"
     user_pain: "Users don't know if scan is progressing or stuck"
     business_value: Medium
     effort: Small
@@ -135,6 +138,8 @@ findings:
       - file: "commands/scan_codebase.md"
         observation: "No progress indicators for multi-file scans"
 ```
+
+**Note**: All findings become standard FEAT-XXX or ENH-XXX issues with product context fields populated. There is no separate PROD issue type.
 
 ## Constraints
 
@@ -167,15 +172,15 @@ The agent should:
 
 ### 3. Integration with Existing Agents
 
-The `product-analyzer` complements technical agents:
+The `product-analyzer` complements technical agents but runs separately:
 
-| Agent | Focus | Finds |
-|-------|-------|-------|
-| `codebase-analyzer` | Implementation | Bugs, tech debt |
-| `codebase-pattern-finder` | Architecture | Patterns, anti-patterns |
-| `product-analyzer` | Product | Feature gaps, UX issues |
+| Agent | Focus | Finds | Used By |
+|-------|-------|-------|---------|
+| `codebase-analyzer` | Implementation | Bugs, tech debt | `/ll:scan_codebase` |
+| `codebase-pattern-finder` | Architecture | Patterns, anti-patterns | `/ll:scan_codebase` |
+| `product-analyzer` | Product | Feature gaps, UX issues | `/ll:scan_product` |
 
-During `/ll:scan_codebase` (when product enabled), all three run in parallel.
+**Separation of Concerns**: Technical and product scanning are kept separate. `/ll:scan_codebase` remains focused on technical issues. `/ll:scan_product` is the dedicated command for product-focused analysis.
 
 ### 4. Guardrails
 
@@ -188,7 +193,7 @@ Prevent misuse:
 ## Location
 
 - **New File**: `agents/product-analyzer.md`
-- **Integration**: `commands/scan_codebase.md` (conditional 4th agent)
+- **Used By**: `commands/scan_product.md` (dedicated product scanning command)
 
 ## Current Behavior
 
@@ -200,7 +205,7 @@ When product analysis is enabled:
 1. Agent reads goals document
 2. Analyzes codebase against goals
 3. Returns structured findings with business context
-4. Findings can become PROD-XXX or FEAT-XXX issues
+4. Findings become FEAT-XXX or ENH-XXX issues with product impact fields
 
 ## Impact
 
@@ -221,6 +226,7 @@ When product analysis is enabled:
 ## Blocks
 
 - FEAT-004: Product Scanning Integration
+- ENH-005: Product Impact Fields in Issue Templates
 
 ## Labels
 

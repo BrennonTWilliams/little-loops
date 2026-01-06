@@ -8,127 +8,173 @@ discovered_date: 2026-01-06T20:47:28Z
 
 ## Summary
 
-Create a structured mechanism for users to define their product goals, target users, success metrics, and strategic priorities in a format that little-loops agents can parse and use for product-focused issue identification.
+Create a lightweight mechanism for users to define their product goals in a format that little-loops agents can parse and use for product-focused issue identification. Goals are auto-discovered from existing project documentation during `/ll:init` and can be refined interactively or manually.
 
 ## Motivation
 
 Product-focused analysis requires understanding:
-- What the project is trying to achieve (vision)
-- Who benefits from the project (users)
-- How success is measured (metrics)
-- What's prioritized vs. deprioritized (strategy)
+- What the project is trying to achieve (priorities)
+- Who benefits from the project (primary persona)
 
 Without structured goals, product analysis agents cannot make meaningful recommendations. This feature provides the "ground truth" that enables goal-driven issue synthesis.
 
+**Design Principle**: Start simple. A minimal goals file that users actually fill out is better than an elaborate template left mostly empty.
+
 ## Proposed Implementation
 
-### 1. Goals Document Schema
+### 1. Simplified Goals Document Schema
 
-Create `.claude/ll-goals.md` with YAML frontmatter + markdown body:
+Create `.claude/ll-goals.md` with minimal YAML frontmatter + markdown body:
 
 ```markdown
 ---
-# Structured metadata for programmatic access
+# Minimal structured metadata for programmatic access
 version: "1.0"
-last_updated: 2026-01-06
-review_cadence: quarterly
 
-personas:
-  - id: developer
-    name: "Developer Dan"
-    role: "Full-stack developer"
-    priority: primary
-  - id: devops
-    name: "Ops Olivia"
-    role: "DevOps engineer"
-    priority: secondary
+# Primary user persona (who benefits most from this project)
+persona:
+  id: developer
+  name: "Developer"
+  role: "Software developer using this project"
 
-metrics:
-  - name: "Issue resolution time"
-    current: "4 hours"
-    target: "< 1 hour"
-    priority: high
-  - name: "Codebase scan coverage"
-    current: "60%"
-    target: "> 90%"
-    priority: medium
-
+# Strategic priorities (ordered by importance)
 priorities:
-  - id: automation
-    name: "Maximize automation"
-    rank: 1
-  - id: accuracy
-    name: "Improve issue accuracy"
-    rank: 2
-  - id: extensibility
-    name: "Plugin extensibility"
-    rank: 3
+  - id: priority-1
+    name: "Primary goal description"
+  - id: priority-2
+    name: "Secondary goal description"
 ---
 
 # Product Vision
 
-## Mission Statement
+## About This Project
 
-[One-paragraph mission statement describing the project's purpose]
+[One-paragraph description of what this project does and why it exists]
 
-## Target Users
+## Target User
 
-### Developer Dan (Primary)
+**[Persona Name]** - [Role description]
 
-**Context**: Full-stack developers working on medium-to-large codebases who need to manage technical debt while shipping features.
+**Needs**: [What they need from this project]
 
-**Needs**:
-- Automated identification of bugs and code quality issues
-- Prioritized backlog that balances tech debt with features
-- Confidence that issues are valid before investing time
-
-**Pain Points**:
-- Manual issue triage is time-consuming
-- Hard to justify tech debt work to stakeholders
-- Issues often lack context needed for quick resolution
-
-### Ops Olivia (Secondary)
-
-[Similar structure for secondary persona]
-
-## Success Metrics
-
-| Metric | Current | Target | Rationale |
-|--------|---------|--------|-----------|
-| Issue resolution time | 4 hours | < 1 hour | Faster feedback loops |
-| False positive rate | 15% | < 5% | Trust in automated scanning |
-| Codebase coverage | 60% | > 90% | Comprehensive analysis |
+**Pain Points**: [Problems they currently face that this project addresses]
 
 ## Strategic Priorities
 
-### 1. Maximize Automation
-Reduce manual intervention in the issue lifecycle. Users should be able to run `ll-auto` and trust the output.
+### 1. [Priority 1 Name]
+[Brief description of this priority and why it matters]
 
-### 2. Improve Issue Accuracy
-Every created issue should be valid, actionable, and correctly prioritized. False positives erode trust.
-
-### 3. Plugin Extensibility
-Enable customization for diverse project types without forking the plugin.
+### 2. [Priority 2 Name]
+[Brief description of this priority and why it matters]
 
 ## Out of Scope
 
-- **Project management**: Not replacing Jira, Linear, GitHub Issues
-- **Team coordination**: No multi-user workflows or assignments
-- **Deployment**: Not involved in CI/CD or release management
-
-## Competitive Context
-
-[Optional: How this project compares to alternatives]
+- [What this project intentionally does NOT do]
 ```
 
-### 2. Goals Parser Utility
+### 2. Auto-Discovery During `/ll:init`
+
+When product analysis is enabled during init, automatically discover goals from existing documentation:
+
+#### Non-Interactive Mode (`--yes`)
+
+```markdown
+### Goal Discovery Process
+
+1. **Scan documentation files** (up to 5 by default):
+   - README.md (required, fail if missing)
+   - CLAUDE.md or .claude/CLAUDE.md
+   - docs/README.md
+   - CONTRIBUTING.md
+   - Any additional .md files in root
+
+2. **Extract product context using LLM analysis**:
+   - Project purpose and vision
+   - Target users/audience
+   - Key goals or priorities mentioned
+   - Explicit non-goals or scope limitations
+
+3. **Generate ll-goals.md**:
+   - Populate frontmatter with extracted persona and priorities
+   - Fill markdown sections with discovered content
+   - Mark uncertain fields with [NEEDS REVIEW] placeholder
+
+4. **Warn if incomplete**:
+   ```
+   ⚠ Product goals auto-generated from documentation.
+   Review and update: .claude/ll-goals.md
+
+   Extracted:
+   ✓ Primary persona: Developer
+   ✓ Priorities: 2 identified
+   ⚠ Pain points: Not found in docs (please add manually)
+   ```
+
+5. **Do not fail** - Always create the file, even if sparse
+```
+
+#### Interactive Mode (`--interactive`)
+
+```markdown
+### Interactive Goal Discovery
+
+1. **Analyze documentation** (same as non-interactive)
+
+2. **Present findings for confirmation**:
+   ```
+   I analyzed your project documentation and extracted these product goals:
+
+   Primary User: Developer working with Claude Code plugins
+
+   Priorities I identified:
+   1. Streamline issue management workflow
+   2. Enable automation of repetitive tasks
+
+   Does this look correct?
+   [y] Yes, continue
+   [n] No, let me provide corrections
+   [s] Skip product analysis for now
+   ```
+
+3. **Allow refinement via AskUserQuestion**:
+   - Confirm or correct persona
+   - Add/remove/reorder priorities
+   - Clarify any uncertain extractions
+
+4. **Generate final ll-goals.md** with user-confirmed content
+```
+
+### 3. Configuration for Discovery
+
+Add to config schema:
+
+```json
+{
+  "product": {
+    "goals_discovery": {
+      "max_files": {
+        "type": "integer",
+        "default": 5,
+        "description": "Maximum markdown files to analyze for goal discovery"
+      },
+      "required_files": {
+        "type": "array",
+        "default": ["README.md"],
+        "description": "Files that must exist for discovery (warning if missing)"
+      }
+    }
+  }
+}
+```
+
+### 4. Goals Parser Utility
 
 Create `scripts/little_loops/goals_parser.py`:
 
 ```python
 """Parser for ll-goals.md product goals document."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 import yaml
@@ -136,32 +182,24 @@ import yaml
 
 @dataclass
 class Persona:
+    """Primary user persona."""
     id: str
     name: str
     role: str
-    priority: str  # "primary" | "secondary"
-
-
-@dataclass
-class Metric:
-    name: str
-    current: str
-    target: str
-    priority: str  # "high" | "medium" | "low"
 
 
 @dataclass
 class Priority:
+    """Strategic priority."""
     id: str
     name: str
-    rank: int
 
 
 @dataclass
 class ProductGoals:
+    """Parsed product goals from ll-goals.md."""
     version: str
-    personas: list[Persona]
-    metrics: list[Metric]
+    persona: Optional[Persona]
     priorities: list[Priority]
     raw_content: str  # Full markdown for LLM context
 
@@ -172,47 +210,79 @@ class ProductGoals:
             return None
 
         content = path.read_text()
-        # Split frontmatter from body
-        if content.startswith("---"):
-            parts = content.split("---", 2)
-            if len(parts) >= 3:
-                frontmatter = yaml.safe_load(parts[1])
-                # Parse structured data from frontmatter
-                # Return ProductGoals instance
-        return None
+        if not content.startswith("---"):
+            return None
+
+        parts = content.split("---", 2)
+        if len(parts) < 3:
+            return None
+
+        try:
+            frontmatter = yaml.safe_load(parts[1])
+        except yaml.YAMLError:
+            return None
+
+        persona_data = frontmatter.get("persona")
+        persona = None
+        if persona_data:
+            persona = Persona(
+                id=persona_data.get("id", "user"),
+                name=persona_data.get("name", "User"),
+                role=persona_data.get("role", ""),
+            )
+
+        priorities = [
+            Priority(id=p.get("id", f"priority-{i}"), name=p.get("name", ""))
+            for i, p in enumerate(frontmatter.get("priorities", []), 1)
+        ]
+
+        return cls(
+            version=frontmatter.get("version", "1.0"),
+            persona=persona,
+            priorities=priorities,
+            raw_content=content,
+        )
+
+    def is_valid(self) -> bool:
+        """Check if goals have minimum required content."""
+        return self.persona is not None and len(self.priorities) > 0
 ```
 
-### 3. Goals Validation Command
+### 5. Goals Validation
 
-Add `/ll:validate_goals` command to check goals document:
+Add validation to `/ll:init` and as standalone check:
 
-```markdown
-# Validate Goals
+```python
+def validate_goals(goals: ProductGoals) -> list[str]:
+    """Return list of validation warnings."""
+    warnings = []
 
-Validates the `.claude/ll-goals.md` document for:
-- YAML frontmatter syntax
-- Required sections present
-- Personas defined with required fields
-- At least one metric with target
-- Priorities ranked without gaps
+    if not goals.persona:
+        warnings.append("No persona defined - product analysis may be less effective")
 
-Output:
-- Valid: "Goals document is valid and ready for product analysis"
-- Invalid: Specific errors with line numbers and fix suggestions
+    if not goals.priorities:
+        warnings.append("No priorities defined - cannot assess goal alignment")
+    elif len(goals.priorities) > 5:
+        warnings.append("More than 5 priorities - consider focusing on top priorities")
+
+    if "[NEEDS REVIEW]" in goals.raw_content:
+        warnings.append("File contains [NEEDS REVIEW] placeholders - please update")
+
+    return warnings
 ```
 
-### 4. Integration Points
+### 6. Integration Points
 
 Goals are consumed by:
 - **Product analyzer agent** (FEAT-003): Uses goals for feature gap analysis
-- **Product scanning** (FEAT-004): Scores findings against strategic priorities
-- **Issue templates** (ENH-005): Populates business impact fields
+- **Product scanning** (FEAT-004): Creates issues aligned with priorities
+- **Issue templates** (ENH-005): Populates product impact fields
 
 ## Location
 
-- **New File**: `.claude/ll-goals.md` (user-created, template provided)
+- **New File**: `.claude/ll-goals.md` (user project, auto-generated)
 - **New Module**: `scripts/little_loops/goals_parser.py`
-- **New Command**: `commands/validate_goals.md`
+- **Modified**: `commands/init.md` (goal discovery integration)
 - **Template**: `templates/ll-goals-template.md`
 
 ## Current Behavior
@@ -221,17 +291,19 @@ No mechanism exists for capturing product goals. All analysis is purely technica
 
 ## Expected Behavior
 
-Users can define product goals in a structured format that enables:
-1. Product-focused issue identification
-2. Business impact scoring
-3. Goal-gap analysis
-4. Strategic alignment validation
+When product analysis is enabled during `/ll:init`:
+
+1. **Non-interactive**: Analyze README.md and other docs, generate `ll-goals.md` with extracted content, warn about missing/uncertain sections
+
+2. **Interactive**: Analyze docs, present findings for confirmation, refine via questions, generate confirmed `ll-goals.md`
+
+3. **Validation**: Warn if goals file is incomplete but don't block initialization
 
 ## Impact
 
 - **Severity**: High - Core data structure for Product dimension
-- **Effort**: Medium - Parser, validator, templates
-- **Risk**: Low - Purely additive feature
+- **Effort**: Medium - Parser, discovery logic, init integration
+- **Risk**: Low - Purely additive feature, graceful degradation if docs sparse
 
 ## Dependencies
 
@@ -245,10 +317,11 @@ Users can define product goals in a structured format that enables:
 
 - FEAT-003: Product Analyzer Agent
 - FEAT-004: Product Scanning Integration
+- ENH-005: Product Impact Fields in Issue Templates
 
 ## Labels
 
-`feature`, `product-dimension`, `configuration`, `parser`
+`feature`, `product-dimension`, `configuration`, `parser`, `init`
 
 ---
 
