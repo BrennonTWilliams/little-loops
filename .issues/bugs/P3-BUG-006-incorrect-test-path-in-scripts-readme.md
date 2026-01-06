@@ -48,3 +48,18 @@ The path `little-loops/scripts/tests/` is incorrect. When working from the repos
 ## Status
 
 **Open** | Created: 2026-01-06 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/README.md`: Fixed test path from `pytest little-loops/scripts/tests/` to `pytest scripts/tests/`
+
+### Verification Results
+- Tests: PASS (466 passed)
+- Lint: PASS
