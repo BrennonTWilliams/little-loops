@@ -243,9 +243,13 @@ Critical issues: N
 Warnings: N
 Info: N
 
-Reply "continue" to proceed with cross-component consistency checks,
-or "skip" to go directly to fix suggestions.
 ```
+
+Use the AskUserQuestion tool with single-select:
+- Question: "Run cross-component consistency checks?"
+- Options:
+  - "Continue" - Proceed with consistency checks
+  - "Skip" - Go directly to fix suggestions
 
 ### Phase 3: Wave 2 - Cross-Component Consistency (Parallel)
 

@@ -121,13 +121,14 @@ OPTIMIZED:
   > - [ ] Login works correctly
   > - [ ] `{{config.project.test_cmd}}` passes
 
-Apply this optimized prompt? [Y/n/edit]:
 ```
 
-Options:
-- **Y** (default): Apply optimized prompt
-- **n**: Use original prompt as-is
-- **edit**: Let user modify the optimized prompt
+Use the AskUserQuestion tool with single-select:
+- Question: "Apply this optimized prompt?"
+- Options:
+  - "Apply" - Use the optimized version
+  - "Keep original" - Use original prompt as-is
+  - "Edit" - Modify the optimized prompt
 
 ### If confirm: OFF
 

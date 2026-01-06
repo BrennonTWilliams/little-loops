@@ -23,7 +23,7 @@ You are tasked with creating git commits for the changes made during this sessio
 3. **Present your plan to the user:**
    - List the files you plan to add for each commit
    - Show the commit message(s) you'll use
-   - Ask: "I plan to create [N] commit(s) with these changes. Shall I proceed?"
+   - Ask: "I plan to create [N] commit(s) with these changes. Shall I proceed? (y/n)"
 
 4. **Execute upon confirmation:**
    - Use `git add` with specific files (never use `-A` or `.`)

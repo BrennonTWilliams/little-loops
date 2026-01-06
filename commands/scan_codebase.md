@@ -199,6 +199,26 @@ discovered_date: [SCAN_DATE]
 
 **Note**: Only include Permalink if `PERMALINKS_AVAILABLE` is true.
 
+### 4.5. Confirm Issue Creation
+
+Before creating any files, present a summary to the user:
+
+```markdown
+## Issues to Create
+
+| Category | Count | Priority Range |
+|----------|-------|----------------|
+| Bugs | N | P0-P3 |
+| Enhancements | N | P2-P4 |
+| Features | N | P3-P5 |
+
+[List each issue briefly: priority, type, title]
+```
+
+Ask: "Create these [N] issue files? (y/n)"
+
+Only proceed to save files if user confirms.
+
 ### 5. Save Issue Files
 
 ```bash

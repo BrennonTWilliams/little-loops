@@ -81,7 +81,7 @@ I plan to update the plan by:
 1. [Specific modification to make]
 2. [Another modification]
 
-Does this align with your intent?
+Does this align with your intent? (y/n)
 ```
 
 **Get user confirmation before proceeding to edits.**

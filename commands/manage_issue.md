@@ -421,13 +421,14 @@ When reality diverges from the plan during implementation:
    Found: [Actual situation]
    Impact: [Why this matters for implementation]
 
-   Options:
-   A) Adapt implementation to actual code structure
-   B) Update plan to reflect reality, then continue
-   C) Stop and re-research before proceeding
-
-   How should I proceed?
    ```
+
+   Use the AskUserQuestion tool with single-select:
+   - Question: "How should I handle this mismatch?"
+   - Options:
+     - "Adapt" - Adapt implementation to actual code structure
+     - "Update plan" - Update plan to reflect reality, then continue
+     - "Stop" - Stop and re-research before proceeding
 
 3. **In auto mode**:
    - Attempt Option A if the mismatch is minor

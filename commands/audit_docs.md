@@ -306,13 +306,16 @@ Based on documentation audit findings:
 
 ---
 
-**Proceed with issue changes?**
-- [y] Create/update/reopen all listed issues
-- [n] Skip issue management, keep report only
-- [s] Select specific items
 ```
 
-Wait for user confirmation before modifying any files.
+Use the AskUserQuestion tool with single-select:
+- Question: "Proceed with issue changes?"
+- Options:
+  - "Create all" - Create/update/reopen all listed issues
+  - "Skip" - Keep report only, no issue changes
+  - "Select items" - Choose specific items to process
+
+Wait for user selection before modifying any files.
 
 ### 8. Execute Issue Changes
 
