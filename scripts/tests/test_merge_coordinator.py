@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import subprocess
 import tempfile
+from collections.abc import Generator
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -14,7 +15,7 @@ from little_loops.parallel.types import MergeRequest, ParallelConfig, WorkerResu
 
 
 @pytest.fixture
-def temp_git_repo() -> Path:
+def temp_git_repo() -> Generator[Path, None, None]:
     """Create a temporary git repository for testing."""
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_path = Path(tmpdir)
@@ -63,8 +64,8 @@ def default_config() -> ParallelConfig:
     return ParallelConfig(
         max_workers=2,
         p0_sequential=True,
-        worktree_base=".worktrees",
-        state_file=".parallel-state.json",
+        worktree_base=Path(".worktrees"),
+        state_file=Path(".parallel-state.json"),
         timeout_per_issue=1800,
         max_merge_retries=2,
         stream_subprocess_output=False,

@@ -46,9 +46,7 @@ class TestPathRenameHandling:
     ) -> None:
         """Test that legitimate file renames update tracking instead of failing."""
         # Setup: Create the new file path (simulating ready_issue renaming)
-        new_path = (
-            mock_issue_info.path.parent / "P3-ENH-341-refactor-metrics-module.md"
-        )
+        new_path = mock_issue_info.path.parent / "P3-ENH-341-refactor-metrics-module.md"
         new_path.write_text("# ENH-341: Refactor Metrics Module\n")
         # Remove the old file to simulate a rename
         mock_issue_info.path.unlink()
@@ -69,12 +67,10 @@ CORRECTED
         mock_result.stdout = mock_output
 
         with (
-            patch(
-                "little_loops.issue_manager.run_claude_command", return_value=mock_result
-            ),
+            patch("little_loops.issue_manager.run_claude_command", return_value=mock_result),
             patch("little_loops.issue_manager.check_git_status", return_value=([], [])),
         ):
-            manager = AutoManager(mock_config, dry_run=False)
+            _manager = AutoManager(mock_config, dry_run=False)
             # Access the internal method for testing path handling
             # We need to mock the subprocess call and check if path is updated
 
@@ -109,9 +105,7 @@ CORRECTED
     ) -> None:
         """Test that genuine path mismatches fail when both files exist."""
         # Setup: Create a different file that ready_issue claims to validate
-        different_path = (
-            mock_issue_info.path.parent / "P3-ENH-999-different-issue.md"
-        )
+        different_path = mock_issue_info.path.parent / "P3-ENH-999-different-issue.md"
         different_path.write_text("# ENH-999: Different Issue\n")
 
         # Both old and new paths exist - this is a genuine mismatch
@@ -147,9 +141,7 @@ CORRECTED
     ) -> None:
         """Test that path comparison works with mixed absolute/relative paths."""
         # Setup: Create the new file
-        new_path = (
-            mock_issue_info.path.parent / "P3-ENH-341-refactor-metrics-module.md"
-        )
+        new_path = mock_issue_info.path.parent / "P3-ENH-341-refactor-metrics-module.md"
         new_path.write_text("# ENH-341: Refactor Metrics Module\n")
         mock_issue_info.path.unlink()
 
@@ -167,12 +159,14 @@ CORRECTED
 
         parsed = parse_ready_issue_output(mock_output)
         validated_path = parsed.get("validated_file_path")
+        assert validated_path is not None, "validated_file_path should be present"
 
         # Path.resolve() should handle relative paths correctly
         validated_resolved = Path(validated_path).resolve()
 
         # The resolved path should match when we're in the right directory
         # This verifies Path.resolve() works for comparison
+        assert validated_resolved.name == new_path.name
 
 
 class TestAutoManagerIntegration:

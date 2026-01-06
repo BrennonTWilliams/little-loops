@@ -21,6 +21,7 @@ import json
 import signal
 import tempfile
 import time
+from collections.abc import Generator
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
@@ -42,7 +43,7 @@ def mock_logger() -> MagicMock:
 
 
 @pytest.fixture
-def temp_repo_with_config() -> Path:
+def temp_repo_with_config() -> Generator[Path, None, None]:
     """Create a temporary directory with .claude config and issues."""
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_path = Path(tmpdir)
@@ -143,11 +144,11 @@ def orchestrator(
             verbose=False,
         )
         # Set up mock queue default values for state saving
-        orch.queue.completed_ids = []
-        orch.queue.failed_ids = []
-        orch.queue.in_progress_ids = []
-        orch.queue.completed_count = 0
-        orch.queue.failed_count = 0
+        orch.queue.completed_ids = []  # type: ignore[misc]
+        orch.queue.failed_ids = []  # type: ignore[misc]
+        orch.queue.in_progress_ids = []  # type: ignore[misc]
+        orch.queue.completed_count = 0  # type: ignore[misc]
+        orch.queue.failed_count = 0  # type: ignore[misc]
         return orch
 
 
@@ -365,7 +366,7 @@ class TestOrphanedWorktreeCleanup:
             result.returncode = 0
             return result
 
-        orchestrator._git_lock.run = mock_git_run
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
 
         orchestrator._cleanup_orphaned_worktrees()
 
@@ -450,9 +451,9 @@ class TestStateManagement:
         state_file = temp_repo_with_config / ".parallel-manage-state.json"
 
         # Mock queue to return completed/failed IDs
-        orchestrator.queue.completed_ids = ["BUG-001"]
-        orchestrator.queue.failed_ids = ["BUG-002"]
-        orchestrator.queue.in_progress_ids = []
+        orchestrator.queue.completed_ids = ["BUG-001"]  # type: ignore[misc]
+        orchestrator.queue.failed_ids = ["BUG-002"]  # type: ignore[misc]
+        orchestrator.queue.in_progress_ids = []  # type: ignore[misc]
 
         orchestrator._save_state()
 
@@ -658,10 +659,10 @@ class TestExecute:
         mock_issue: MagicMock,
     ) -> None:
         """_execute starts worker pool and merge coordinator."""
-        orchestrator.queue.empty.return_value = True
-        orchestrator.queue.add_many.return_value = 0
-        orchestrator.worker_pool.active_count = 0
-        orchestrator.merge_coordinator.pending_count = 0
+        orchestrator.queue.empty.return_value = True  # type: ignore[attr-defined]
+        orchestrator.queue.add_many.return_value = 0  # type: ignore[attr-defined]
+        orchestrator.worker_pool.active_count = 0  # type: ignore[misc]
+        orchestrator.merge_coordinator.pending_count = 0  # type: ignore[misc]
 
         with patch.object(orchestrator, "_scan_issues", return_value=[]):
             orchestrator._execute()
@@ -676,9 +677,9 @@ class TestExecute:
     ) -> None:
         """_execute exits loop when shutdown requested."""
         orchestrator._shutdown_requested = True
-        orchestrator.queue.empty.return_value = False
-        orchestrator.queue.add_many.return_value = 1
-        orchestrator.queue.failed_count = 0
+        orchestrator.queue.empty.return_value = False  # type: ignore[attr-defined]
+        orchestrator.queue.add_many.return_value = 1  # type: ignore[attr-defined]
+        orchestrator.queue.failed_count = 0  # type: ignore[misc]
 
         with patch.object(orchestrator, "_scan_issues", return_value=[mock_issue]):
             with patch.object(orchestrator, "_wait_for_completion"):
@@ -708,7 +709,7 @@ class TestProcessSequential:
             call_idx[0] += 1
             return active_count_sequence[idx]
 
-        type(orchestrator.worker_pool).active_count = property(lambda self: get_active_count())
+        type(orchestrator.worker_pool).active_count = property(lambda self: get_active_count())  # type: ignore[method-assign,assignment]
 
         # Mock the submit and result
         mock_future: Future[WorkerResult] = Future()
@@ -719,13 +720,13 @@ class TestProcessSequential:
             worktree_path=Path("/tmp/worktree"),
         )
         mock_future.set_result(mock_result)
-        orchestrator.worker_pool.submit.return_value = mock_future
+        orchestrator.worker_pool.submit.return_value = mock_future  # type: ignore[attr-defined]
 
         with patch.object(orchestrator, "_merge_sequential"):
             with patch("time.sleep"):
                 orchestrator._process_sequential(mock_issue)
 
-        orchestrator.worker_pool.submit.assert_called_once()
+        orchestrator.worker_pool.submit.assert_called_once()  # type: ignore[attr-defined]
 
 
 class TestOnWorkerComplete:
@@ -746,7 +747,7 @@ class TestOnWorkerComplete:
 
         orchestrator._on_worker_complete(result)
 
-        orchestrator.merge_coordinator.queue_merge.assert_called_once_with(result)
+        orchestrator.merge_coordinator.queue_merge.assert_called_once_with(result)  # type: ignore[attr-defined]
 
     def test_on_worker_complete_failure(
         self,
@@ -763,7 +764,7 @@ class TestOnWorkerComplete:
 
         orchestrator._on_worker_complete(result)
 
-        orchestrator.queue.mark_failed.assert_called_once_with("BUG-001")
+        orchestrator.queue.mark_failed.assert_called_once_with("BUG-001")  # type: ignore[attr-defined]
 
     def test_on_worker_complete_close_verdict(
         self,
@@ -787,7 +788,7 @@ class TestOnWorkerComplete:
         with patch("little_loops.issue_lifecycle.close_issue", return_value=True):
             orchestrator._on_worker_complete(result)
 
-        orchestrator.queue.mark_completed.assert_called_once_with("BUG-001")
+        orchestrator.queue.mark_completed.assert_called_once_with("BUG-001")  # type: ignore[attr-defined]
 
     def test_on_worker_complete_corrected(
         self,
@@ -804,7 +805,7 @@ class TestOnWorkerComplete:
 
         orchestrator._on_worker_complete(result)
 
-        orchestrator.merge_coordinator.queue_merge.assert_called_once()
+        orchestrator.merge_coordinator.queue_merge.assert_called_once()  # type: ignore[attr-defined]
 
     def test_on_worker_complete_updates_timing(
         self,
@@ -840,12 +841,12 @@ class TestMergeSequential:
             worktree_path=Path("/tmp/worktree"),
         )
 
-        orchestrator.merge_coordinator.merged_ids = ["BUG-001"]
+        orchestrator.merge_coordinator.merged_ids = ["BUG-001"]  # type: ignore[misc]
 
         with patch.object(orchestrator, "_complete_issue_lifecycle_if_needed"):
             orchestrator._merge_sequential(result)
 
-        orchestrator.queue.mark_completed.assert_called_once_with("BUG-001")
+        orchestrator.queue.mark_completed.assert_called_once_with("BUG-001")  # type: ignore[attr-defined]
 
     def test_merge_sequential_failure(
         self,
@@ -859,11 +860,11 @@ class TestMergeSequential:
             worktree_path=Path("/tmp/worktree"),
         )
 
-        orchestrator.merge_coordinator.merged_ids = []  # Not in merged list
+        orchestrator.merge_coordinator.merged_ids = []  # type: ignore[misc]  # Not in merged list
 
         orchestrator._merge_sequential(result)
 
-        orchestrator.queue.mark_failed.assert_called_once_with("BUG-001")
+        orchestrator.queue.mark_failed.assert_called_once_with("BUG-001")  # type: ignore[attr-defined]
 
     def test_merge_sequential_close(
         self,
@@ -885,7 +886,7 @@ class TestMergeSequential:
         with patch("little_loops.issue_lifecycle.close_issue", return_value=True):
             orchestrator._merge_sequential(result)
 
-        orchestrator.queue.mark_completed.assert_called_once_with("BUG-001")
+        orchestrator.queue.mark_completed.assert_called_once_with("BUG-001")  # type: ignore[attr-defined]
 
 
 class TestWaitForCompletion:
@@ -904,9 +905,9 @@ class TestWaitForCompletion:
             call_idx[0] += 1
             return active_count_sequence[idx]
 
-        type(orchestrator.worker_pool).active_count = property(lambda self: get_active_count())
-        orchestrator.merge_coordinator.merged_ids = []
-        orchestrator.merge_coordinator.failed_merges = []
+        type(orchestrator.worker_pool).active_count = property(lambda self: get_active_count())  # type: ignore[method-assign,assignment]
+        orchestrator.merge_coordinator.merged_ids = []  # type: ignore[misc]
+        orchestrator.merge_coordinator.failed_merges = []  # type: ignore[misc,assignment]
 
         with patch("time.sleep"):
             orchestrator._wait_for_completion()
@@ -918,30 +919,30 @@ class TestWaitForCompletion:
         """_wait_for_completion handles worker timeout."""
         orchestrator.parallel_config.orchestrator_timeout = 1
 
-        type(orchestrator.worker_pool).active_count = property(lambda self: 1)
-        orchestrator.merge_coordinator.merged_ids = []
-        orchestrator.merge_coordinator.failed_merges = []
+        type(orchestrator.worker_pool).active_count = property(lambda self: 1)  # type: ignore[method-assign,assignment]
+        orchestrator.merge_coordinator.merged_ids = []  # type: ignore[misc]
+        orchestrator.merge_coordinator.failed_merges = []  # type: ignore[misc,assignment]
 
         with patch("time.time") as mock_time:
             mock_time.side_effect = [0, 0, 2, 2, 2]  # Exceed timeout
             with patch("time.sleep"):
                 orchestrator._wait_for_completion()
 
-        orchestrator.worker_pool.terminate_all_processes.assert_called()
+        orchestrator.worker_pool.terminate_all_processes.assert_called()  # type: ignore[attr-defined]
 
     def test_wait_for_completion_processes_merged_ids(
         self,
         orchestrator: ParallelOrchestrator,
     ) -> None:
         """_wait_for_completion marks merged issues as completed."""
-        type(orchestrator.worker_pool).active_count = property(lambda self: 0)
-        orchestrator.merge_coordinator.merged_ids = ["BUG-001", "BUG-002"]
-        orchestrator.merge_coordinator.failed_merges = []
+        type(orchestrator.worker_pool).active_count = property(lambda self: 0)  # type: ignore[method-assign,assignment]
+        orchestrator.merge_coordinator.merged_ids = ["BUG-001", "BUG-002"]  # type: ignore[misc]
+        orchestrator.merge_coordinator.failed_merges = []  # type: ignore[misc,assignment]
 
         with patch.object(orchestrator, "_complete_issue_lifecycle_if_needed"):
             orchestrator._wait_for_completion()
 
-        assert orchestrator.queue.mark_completed.call_count == 2
+        assert orchestrator.queue.mark_completed.call_count == 2  # type: ignore[attr-defined]
 
 
 class TestReportResults:
@@ -952,9 +953,9 @@ class TestReportResults:
         orchestrator: ParallelOrchestrator,
     ) -> None:
         """_report_results logs summary information."""
-        orchestrator.queue.completed_count = 5
-        orchestrator.queue.failed_count = 1
-        orchestrator.queue.failed_ids = ["BUG-003"]
+        orchestrator.queue.completed_count = 5  # type: ignore[misc]
+        orchestrator.queue.failed_count = 1  # type: ignore[misc]
+        orchestrator.queue.failed_ids = ["BUG-003"]  # type: ignore[misc]
         orchestrator.state.timing = {"BUG-001": {"total": 10.0}}
 
         # Replace logger with a mock to verify it's called
@@ -971,9 +972,9 @@ class TestReportResults:
         orchestrator: ParallelOrchestrator,
     ) -> None:
         """_report_results calculates estimated speedup."""
-        orchestrator.queue.completed_count = 3
-        orchestrator.queue.failed_count = 0
-        orchestrator.queue.failed_ids = []
+        orchestrator.queue.completed_count = 3  # type: ignore[misc]
+        orchestrator.queue.failed_count = 0  # type: ignore[misc]
+        orchestrator.queue.failed_ids = []  # type: ignore[misc]
         orchestrator.state.timing = {
             "BUG-001": {"total": 30.0},
             "BUG-002": {"total": 30.0},
@@ -1040,9 +1041,9 @@ class TestCleanup:
         orchestrator: ParallelOrchestrator,
     ) -> None:
         """_cleanup saves state before shutdown."""
-        orchestrator.queue.completed_ids = []
-        orchestrator.queue.failed_ids = []
-        orchestrator.queue.in_progress_ids = []
+        orchestrator.queue.completed_ids = []  # type: ignore[misc]
+        orchestrator.queue.failed_ids = []  # type: ignore[misc]
+        orchestrator.queue.in_progress_ids = []  # type: ignore[misc]
 
         orchestrator._cleanup()
 
@@ -1053,14 +1054,14 @@ class TestCleanup:
         orchestrator: ParallelOrchestrator,
     ) -> None:
         """_cleanup shuts down worker pool and merge coordinator."""
-        orchestrator.queue.completed_ids = []
-        orchestrator.queue.failed_ids = []
-        orchestrator.queue.in_progress_ids = []
+        orchestrator.queue.completed_ids = []  # type: ignore[misc]
+        orchestrator.queue.failed_ids = []  # type: ignore[misc]
+        orchestrator.queue.in_progress_ids = []  # type: ignore[misc]
 
         orchestrator._cleanup()
 
-        orchestrator.worker_pool.shutdown.assert_called_once()
-        orchestrator.merge_coordinator.shutdown.assert_called_once()
+        orchestrator.worker_pool.shutdown.assert_called_once()  # type: ignore[attr-defined]
+        orchestrator.merge_coordinator.shutdown.assert_called_once()  # type: ignore[attr-defined]
 
     def test_cleanup_cleans_worktrees_when_not_shutdown(
         self,
@@ -1068,13 +1069,13 @@ class TestCleanup:
     ) -> None:
         """_cleanup cleans worktrees when not interrupted."""
         orchestrator._shutdown_requested = False
-        orchestrator.queue.completed_ids = []
-        orchestrator.queue.failed_ids = []
-        orchestrator.queue.in_progress_ids = []
+        orchestrator.queue.completed_ids = []  # type: ignore[misc]
+        orchestrator.queue.failed_ids = []  # type: ignore[misc]
+        orchestrator.queue.in_progress_ids = []  # type: ignore[misc]
 
         orchestrator._cleanup()
 
-        orchestrator.worker_pool.cleanup_all_worktrees.assert_called_once()
+        orchestrator.worker_pool.cleanup_all_worktrees.assert_called_once()  # type: ignore[attr-defined]
 
     def test_cleanup_skips_worktrees_on_shutdown(
         self,
@@ -1082,13 +1083,13 @@ class TestCleanup:
     ) -> None:
         """_cleanup skips worktree cleanup when shutdown requested."""
         orchestrator._shutdown_requested = True
-        orchestrator.queue.completed_ids = []
-        orchestrator.queue.failed_ids = []
-        orchestrator.queue.in_progress_ids = []
+        orchestrator.queue.completed_ids = []  # type: ignore[misc]
+        orchestrator.queue.failed_ids = []  # type: ignore[misc]
+        orchestrator.queue.in_progress_ids = []  # type: ignore[misc]
 
         orchestrator._cleanup()
 
-        orchestrator.worker_pool.cleanup_all_worktrees.assert_not_called()
+        orchestrator.worker_pool.cleanup_all_worktrees.assert_not_called()  # type: ignore[attr-defined]
 
 
 class TestProcessParallel:
@@ -1102,7 +1103,7 @@ class TestProcessParallel:
         """_process_parallel submits issue to worker pool with callback."""
         orchestrator._process_parallel(mock_issue)
 
-        orchestrator.worker_pool.submit.assert_called_once()
-        call_args = orchestrator.worker_pool.submit.call_args
+        orchestrator.worker_pool.submit.assert_called_once()  # type: ignore[attr-defined]
+        call_args = orchestrator.worker_pool.submit.call_args  # type: ignore[attr-defined]
         assert call_args[0][0] == mock_issue
         assert call_args[0][1] == orchestrator._on_worker_complete

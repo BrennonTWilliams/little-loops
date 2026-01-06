@@ -17,6 +17,7 @@ import subprocess
 import tempfile
 import threading
 import time
+from collections.abc import Generator
 from concurrent.futures import Future
 from pathlib import Path
 from typing import Any
@@ -37,7 +38,7 @@ def mock_logger() -> MagicMock:
 
 
 @pytest.fixture
-def temp_repo_with_config() -> Path:
+def temp_repo_with_config() -> Generator[Path, None, None]:
     """Create a temporary directory with .claude config."""
     with tempfile.TemporaryDirectory() as tmpdir:
         repo_path = Path(tmpdir)
