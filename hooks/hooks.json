@@ -1,44 +1,74 @@
 {
   "$schema": "https://claude.ai/schemas/hooks/v1",
-  "hooks": [
-    {
-      "event": "SessionStart",
-      "type": "command",
-      "command": ["bash", "-c", "CONFIG_FILE=\".claude/ll-config.json\"; if [ ! -f \"$CONFIG_FILE\" ]; then CONFIG_FILE=\"ll-config.json\"; fi; if [ -f \"$CONFIG_FILE\" ]; then echo \"[little-loops] Config loaded: $CONFIG_FILE\"; cat \"$CONFIG_FILE\" | head -50; else echo \"[little-loops] Warning: No config found. Run /ll:init to create one.\"; fi"]
-    },
-    {
-      "event": "UserPromptSubmit",
-      "type": "command",
-      "command": ["bash", "-c", "if [ ! -f \".claude/ll-config.json\" ] && [ ! -f \"ll-config.json\" ]; then echo '[little-loops] No config found. Run /ll:init to set up little-loops for this project.'; fi"]
-    },
-    {
-      "event": "UserPromptSubmit",
-      "type": "prompt",
-      "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/optimize-prompt-hook.md",
-      "timeout": 3000
-    },
-    {
-      "event": "PreToolUse",
-      "type": "command",
-      "command": ["bash", "${CLAUDE_PLUGIN_ROOT}/hooks/check-duplicate-issue-id.sh"],
-      "timeout": 5000
-    },
-    {
-      "event": "PostToolUse",
-      "type": "prompt",
-      "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/post-tool-state-tracking.md"
-    },
-    {
-      "event": "PreCompact",
-      "type": "prompt",
-      "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/pre-compact-state.md",
-      "timeout": 10000
-    },
-    {
-      "event": "Stop",
-      "type": "command",
-      "command": ["bash", "-c", "rm -f .claude/.ll-lock 2>/dev/null; if [ -d .worktrees ] && command -v git >/dev/null 2>&1; then git worktree list 2>/dev/null | grep '.worktrees' | awk '{print $1}' | while read w; do git worktree remove --force \"$w\" 2>/dev/null || true; done; fi; echo '[little-loops] Session cleanup complete'"],
-      "timeout": 15000
-    }
-  ]
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ["bash", "-c", "CONFIG_FILE=\".claude/ll-config.json\"; if [ ! -f \"$CONFIG_FILE\" ]; then CONFIG_FILE=\"ll-config.json\"; fi; if [ -f \"$CONFIG_FILE\" ]; then echo \"[little-loops] Config loaded: $CONFIG_FILE\"; cat \"$CONFIG_FILE\" | head -50; else echo \"[little-loops] Warning: No config found. Run /ll:init to create one.\"; fi"]
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ["bash", "-c", "if [ ! -f \".claude/ll-config.json\" ] && [ ! -f \"ll-config.json\" ]; then echo '[little-loops] No config found. Run /ll:init to set up little-loops for this project.'; fi"]
+          },
+          {
+            "type": "prompt",
+            "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/optimize-prompt-hook.md",
+            "timeout": 3000
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "Write",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ["bash", "${CLAUDE_PLUGIN_ROOT}/hooks/check-duplicate-issue-id.sh"],
+            "timeout": 5000
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/post-tool-state-tracking.md"
+          }
+        ]
+      }
+    ],
+    "PreCompact": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/pre-compact-state.md",
+            "timeout": 10000
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": ["bash", "-c", "rm -f .claude/.ll-lock 2>/dev/null; if [ -d .worktrees ] && command -v git >/dev/null 2>&1; then git worktree list 2>/dev/null | grep '.worktrees' | awk '{print $1}' | while read w; do git worktree remove --force \"$w\" 2>/dev/null || true; done; fi; echo '[little-loops] Session cleanup complete'"],
+            "timeout": 15000
+          }
+        ]
+      }
+    ]
+  }
 }
