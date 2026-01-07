@@ -29,11 +29,13 @@ from little_loops.issue_parser import IssueInfo, IssueParser, find_highest_prior
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.output_parsing import parse_ready_issue_output
 from little_loops.state import ProcessingState, StateManager
-from little_loops.subprocess_utils import run_claude_command as _run_claude_base
-
-# Context handoff detection pattern
-CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")
-CONTINUATION_PROMPT_PATH = Path(".claude/ll-continue-prompt.md")
+from little_loops.subprocess_utils import (
+    CONTEXT_HANDOFF_PATTERN,
+    CONTINUATION_PROMPT_PATH,
+    detect_context_handoff,
+    read_continuation_prompt,
+    run_claude_command as _run_claude_base,
+)
 
 
 def _compute_relative_path(abs_path: Path, base_dir: Path | None = None) -> str:
@@ -114,33 +116,6 @@ def run_claude_command(
         timeout=timeout,
         stream_callback=stream_callback if stream_output else None,
     )
-
-
-def detect_context_handoff(output: str) -> bool:
-    """Check if output contains a context handoff signal.
-
-    Args:
-        output: Command output to check
-
-    Returns:
-        True if context handoff was signaled
-    """
-    return bool(CONTEXT_HANDOFF_PATTERN.search(output))
-
-
-def read_continuation_prompt(repo_path: Path | None = None) -> str | None:
-    """Read the continuation prompt file if it exists.
-
-    Args:
-        repo_path: Optional repository root path
-
-    Returns:
-        Contents of continuation prompt, or None if not found
-    """
-    prompt_path = (repo_path or Path.cwd()) / CONTINUATION_PROMPT_PATH
-    if prompt_path.exists():
-        return prompt_path.read_text()
-    return None
 
 
 def run_with_continuation(

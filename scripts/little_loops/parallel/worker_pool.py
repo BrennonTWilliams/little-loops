@@ -21,7 +21,11 @@ from typing import TYPE_CHECKING, Any, cast
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.output_parsing import parse_ready_issue_output
 from little_loops.parallel.types import ParallelConfig, WorkerResult
-from little_loops.subprocess_utils import run_claude_command as _run_claude_base
+from little_loops.subprocess_utils import (
+    detect_context_handoff,
+    read_continuation_prompt,
+    run_claude_command as _run_claude_base,
+)
 from little_loops.work_verification import verify_work_was_done
 
 if TYPE_CHECKING:
@@ -278,11 +282,11 @@ class WorkerPool:
             # Step 4: Get action from BRConfig
             action = self.br_config.get_category_action(issue.issue_type)
 
-            # Step 5: Run manage_issue implementation
+            # Step 5: Run manage_issue implementation (with continuation support)
             manage_cmd = self.parallel_config.get_manage_command(
                 issue.issue_type, action, issue.issue_id
             )
-            manage_result = self._run_claude_command(
+            manage_result = self._run_with_continuation(
                 manage_cmd,
                 worktree_path,
                 issue_id=issue.issue_id,
@@ -533,6 +537,79 @@ class WorkerPool:
             stream_callback=stream_callback if stream_output else None,
             on_process_start=on_start if issue_id else None,
             on_process_end=on_end if issue_id else None,
+        )
+
+    def _run_with_continuation(
+        self,
+        command: str,
+        working_dir: Path,
+        issue_id: str | None = None,
+        max_continuations: int = 3,
+    ) -> subprocess.CompletedProcess[str]:
+        """Run a Claude command with automatic continuation on context handoff.
+
+        If the command signals CONTEXT_HANDOFF, reads the continuation prompt
+        from the worktree and spawns a fresh Claude session to continue.
+
+        Args:
+            command: The command to run
+            working_dir: Directory (worktree) to run the command in
+            issue_id: Optional issue ID for subprocess tracking
+            max_continuations: Maximum number of continuation attempts
+
+        Returns:
+            Combined CompletedProcess with all session outputs
+        """
+        all_stdout: list[str] = []
+        all_stderr: list[str] = []
+        current_command = command
+        continuation_count = 0
+
+        while continuation_count <= max_continuations:
+            result = self._run_claude_command(
+                current_command,
+                working_dir,
+                issue_id=issue_id,
+            )
+
+            all_stdout.append(result.stdout)
+            all_stderr.append(result.stderr)
+
+            # Check for context handoff signal
+            if detect_context_handoff(result.stdout):
+                self.logger.info(f"[{issue_id}] Detected CONTEXT_HANDOFF signal")
+
+                # Read continuation prompt from worktree
+                prompt_content = read_continuation_prompt(working_dir)
+                if not prompt_content:
+                    self.logger.warning(
+                        f"[{issue_id}] Context handoff signaled but no continuation prompt found"
+                    )
+                    break
+
+                if continuation_count >= max_continuations:
+                    self.logger.warning(
+                        f"[{issue_id}] Reached max continuations ({max_continuations}), stopping"
+                    )
+                    break
+
+                continuation_count += 1
+                self.logger.info(
+                    f"[{issue_id}] Starting continuation session #{continuation_count}"
+                )
+
+                # Use continuation prompt as the new command
+                current_command = prompt_content.replace('"', '\\"')
+                continue
+
+            # No handoff signal, we're done
+            break
+
+        return subprocess.CompletedProcess(
+            args=result.args,
+            returncode=result.returncode,
+            stdout="\n---CONTINUATION---\n".join(all_stdout),
+            stderr="\n---CONTINUATION---\n".join(all_stderr),
         )
 
     def _get_changed_files(self, worktree_path: Path) -> list[str]:

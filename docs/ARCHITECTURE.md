@@ -81,8 +81,10 @@ little-loops/
 │   ├── hooks.json           # Hook configuration
 │   ├── check-duplicate-issue-id.sh  # Validation script
 │   └── prompts/
+│       ├── context-monitor.md       # Context usage estimation
 │       ├── post-tool-state-tracking.md
 │       ├── pre-compact-state.md
+│       ├── session-start-resume.md  # Session state reset
 │       └── continuation-prompt-template.md
 ├── templates/               # Project type configs
 │   ├── python-generic.json
@@ -536,6 +538,75 @@ The merge coordinator uses:
 2. Rebase worker branch on conflict
 3. Retry up to `max_merge_retries` times
 4. Auto-stash local changes before merge
+
+### Context Monitor and Session Continuation
+
+When context window limits approach, the system can automatically preserve work and spawn fresh sessions.
+
+```mermaid
+flowchart TB
+    subgraph Hook["PostToolUse Hook"]
+        ESTIMATE[Estimate context usage]
+        CHECK[Check threshold]
+    end
+
+    subgraph Handoff["Automatic Handoff"]
+        TRIGGER[Trigger /ll:handoff]
+        WRITE[Write continuation prompt]
+        SIGNAL[Output CONTEXT_HANDOFF signal]
+    end
+
+    subgraph CLI["CLI Detection"]
+        DETECT[Detect handoff signal]
+        READ[Read continuation prompt]
+        SPAWN[Spawn fresh session]
+    end
+
+    ESTIMATE --> CHECK
+    CHECK -->|>= 80%| TRIGGER
+    TRIGGER --> WRITE
+    WRITE --> SIGNAL
+    SIGNAL --> DETECT
+    DETECT --> READ
+    READ --> SPAWN
+    SPAWN --> |Resume work| ESTIMATE
+```
+
+**Context Estimation**: The hook estimates tokens based on tool usage:
+
+| Tool | Estimation |
+|------|------------|
+| Read | `lines × 10 tokens` |
+| Grep | `output_lines × 5 tokens` |
+| Bash | `chars × 0.3 tokens` |
+| Task | `2000 tokens` (summarized) |
+| WebFetch | `1500 tokens` |
+| Other | `100 tokens` base |
+
+**Continuation Flow**:
+
+1. **Hook triggers** at 80% estimated context usage (configurable)
+2. **Handoff command** generates `.claude/ll-continue-prompt.md` with session state
+3. **CLI tools** (`ll-auto`, `ll-parallel`) detect `CONTEXT_HANDOFF` signal in output
+4. **Fresh session** spawned with continuation prompt
+5. **Work continues** seamlessly from saved state
+
+**Configuration** (disabled by default):
+```json
+{
+  "context_monitor": {
+    "enabled": true,
+    "auto_handoff_threshold": 80,
+    "context_limit_estimate": 150000
+  }
+}
+```
+
+**Files**:
+- `hooks/prompts/context-monitor.md` - PostToolUse hook for estimation
+- `.claude/ll-context-state.json` - Running context usage state
+- `.claude/ll-continue-prompt.md` - Generated continuation prompt
+- `subprocess_utils.py` - Handoff detection and continuation reading
 
 ---
 

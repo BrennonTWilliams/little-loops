@@ -1,11 +1,12 @@
 """Subprocess utilities for Claude CLI invocation.
 
 Provides shared functionality for running Claude CLI commands with
-real-time output streaming and timeout handling.
+real-time output streaming, timeout handling, and context handoff detection.
 """
 
 from __future__ import annotations
 
+import re
 import selectors
 import subprocess
 import time
@@ -17,6 +18,37 @@ OutputCallback = Callable[[str, bool], None]
 
 # Process lifecycle callback: (process: Popen) -> None
 ProcessCallback = Callable[[subprocess.Popen[str]], None]
+
+# Context handoff detection pattern
+CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")
+CONTINUATION_PROMPT_PATH = Path(".claude/ll-continue-prompt.md")
+
+
+def detect_context_handoff(output: str) -> bool:
+    """Check if output contains a context handoff signal.
+
+    Args:
+        output: Command output to check
+
+    Returns:
+        True if context handoff was signaled
+    """
+    return bool(CONTEXT_HANDOFF_PATTERN.search(output))
+
+
+def read_continuation_prompt(repo_path: Path | None = None) -> str | None:
+    """Read the continuation prompt file if it exists.
+
+    Args:
+        repo_path: Optional repository root path
+
+    Returns:
+        Contents of continuation prompt, or None if not found
+    """
+    prompt_path = (repo_path or Path.cwd()) / CONTINUATION_PROMPT_PATH
+    if prompt_path.exists():
+        return prompt_path.read_text()
+    return None
 
 
 def run_claude_command(

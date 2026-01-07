@@ -332,10 +332,10 @@ questions:
 
 #### Step 5c: Advanced Settings (Conditional Group 3)
 
-Build this AskUserQuestion dynamically based on Group 2 responses. Include 1-2 questions:
+Build this AskUserQuestion dynamically based on Group 2 responses. Include 1-3 questions:
 
 **If user selected "custom directory" for issues in Group 2**, include custom dir question.
-**Always include** parallel processing question.
+**Always include** parallel processing and context monitoring questions.
 
 ```yaml
 questions:
@@ -359,6 +359,16 @@ questions:
         description: "Configure ll-parallel for concurrent issue processing"
       - label: "No"
         description: "Skip parallel config (can add later)"
+    multiSelect: false
+
+  # ALWAYS include:
+  - header: "Context Mon"
+    question: "Enable context monitoring for automatic session handoff?"
+    options:
+      - label: "No"
+        description: "Disabled (recommended for interactive use)"
+      - label: "Yes"
+        description: "Auto-handoff at 80% context usage (for ll-auto/ll-parallel)"
     multiSelect: false
 ```
 
@@ -391,20 +401,51 @@ If parallel is enabled, add to configuration:
 }
 ```
 
+#### Step 5e: Context Monitor Settings (Conditional Group 5)
+
+**Only ask if user enabled context monitoring in Group 3.**
+
+```yaml
+questions:
+  - header: "Threshold"
+    question: "At what context usage percentage should auto-handoff trigger?"
+    options:
+      - label: "80%"
+        description: "Default - balanced for most workloads"
+      - label: "70%"
+        description: "Conservative - earlier handoff, more headroom"
+      - label: "90%"
+        description: "Aggressive - maximize context before handoff"
+    multiSelect: false
+```
+
+If context monitoring is enabled, add to configuration:
+```json
+{
+  "context_monitor": {
+    "enabled": true,
+    "auto_handoff_threshold": 80
+  }
+}
+```
+
+Only include `auto_handoff_threshold` if user selected a non-default value (not 80%).
+
 Only include non-default values. If user selects exactly `[".env", ".claude/settings.local.json"]` (the defaults), the `worktree_copy_files` key can be omitted.
 
 ---
 
 ### Interactive Mode Summary
 
-**Total interaction rounds: 3-4** (reduced from 9-11)
+**Total interaction rounds: 3-5** (reduced from 9-11)
 
 | Round | Group | Questions |
 |-------|-------|-----------|
 | 1 | Core Settings | name, src_dir, test_cmd, lint_cmd |
 | 2 | Additional Config | format_cmd, issues, scan_dirs, excludes |
-| 3 | Advanced (conditional) | custom_issue_dir?, parallel |
+| 3 | Advanced (conditional) | custom_issue_dir?, parallel, context_monitor |
 | 4 | Parallel Files (conditional) | worktree_files (only if parallel enabled) |
+| 5 | Context Settings (conditional) | threshold (only if context_monitor enabled) |
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next
@@ -442,6 +483,10 @@ Configuration Summary:
   [PARALLEL]                              # Only show if configured
   parallel.worktree_copy_files: [files]
 
+  [CONTEXT MONITOR]                       # Only show if enabled
+  context_monitor.enabled: true
+  context_monitor.auto_handoff_threshold: [threshold]  # Only if non-default
+
 ================================================================================
 ```
 
@@ -469,13 +514,15 @@ If `--yes` flag IS set:
      "project": { ... },
      "issues": { ... },
      "scan": { ... },
-     "parallel": { ... }
+     "parallel": { ... },
+     "context_monitor": { ... }
    }
    ```
 
 3. Only include sections with non-default values to keep the file minimal
    - Omit `parallel` section entirely if not configured in interactive mode
    - Omit `parallel.worktree_copy_files` if user selected exactly the defaults
+   - Omit `context_monitor` section if user selected "No" (disabled is the default)
 
 ### 9. Update .gitignore
 
