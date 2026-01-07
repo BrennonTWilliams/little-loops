@@ -56,17 +56,20 @@ Map directories to category prefixes based on configuration:
 | `features/` | FEAT | `P[X]-FEAT-[NNN]-[slug].md` |
 | `enhancements/` | ENH | `P[X]-ENH-[NNN]-[slug].md` |
 
-### 3. Find Next Available ID
+### 3. Find Next Available ID (Global)
 
-For each category, find the highest existing ID number:
+Find the highest existing ID number **across ALL issue types** (BUG, FEAT, ENH):
 
 ```bash
-# Example for bugs
-find {{config.issues.base_dir}} -name "*BUG-*.md" -type f | \
-    grep -oE 'BUG-[0-9]{3}' | \
-    sort -t'-' -k2 -n | \
+# Find global maximum across all types and directories (including completed/)
+find {{config.issues.base_dir}} -name "*.md" -type f | \
+    grep -oE '(BUG|FEAT|ENH)-[0-9]{3}' | \
+    grep -oE '[0-9]{3}' | \
+    sort -n | \
     tail -1
 ```
+
+**Important**: Issue IDs are globally unique across all types. If BUG-005, FEAT-007, and ENH-003 exist, the next ID for ANY type should be 008.
 
 ### 4. Generate New Filenames
 
@@ -79,7 +82,7 @@ For each invalid file:
    - `features/` → `FEAT`
    - `enhancements/` → `ENH`
 
-3. **Assign next ID** - Use the next sequential number for that category.
+3. **Assign next ID** - Use the next globally unique sequential number (not per-category).
 
 4. **Generate slug** from existing filename:
    - Remove any existing `P[0-5]-` prefix

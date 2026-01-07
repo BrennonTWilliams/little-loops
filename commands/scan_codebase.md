@@ -140,7 +140,11 @@ After ALL sub-agents complete:
    - P3: Low-priority bugs, nice-to-have enhancements
    - P4: Minor improvements, code cleanup
    - P5: Future considerations, low-priority features
-4. **Assign sequential numbers** per category (check existing issues for next number)
+4. **Assign globally unique sequential numbers**:
+   - Scan ALL `.issues/` subdirectories INCLUDING `{{config.issues.base_dir}}/completed/`
+   - Find the highest existing number across ALL issue types (BUG, FEAT, ENH)
+   - Use `global_max + 1` for each new issue regardless of type
+   - Example: If BUG-003, FEAT-005, and ENH-010 exist, next issue is 011 (e.g., BUG-011 or FEAT-011)
 
 ### 4. Create Issue Files
 

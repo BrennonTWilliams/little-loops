@@ -324,7 +324,10 @@ class TestIssueParser:
 
 
 class TestGetNextIssueNumber:
-    """Tests for get_next_issue_number function."""
+    """Tests for get_next_issue_number function.
+
+    Issue numbers are globally unique across ALL issue types (BUG, FEAT, ENH).
+    """
 
     def test_empty_directories(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test with empty issue directories."""
@@ -373,6 +376,56 @@ class TestGetNextIssueNumber:
 
         next_num = get_next_issue_number(config, "bugs")
         assert next_num == 11  # Max in completed is 10
+
+    def test_global_uniqueness_across_types(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test that issue numbers are globally unique across all types."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        features_dir = temp_project_dir / ".issues" / "features"
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        bugs_dir.mkdir(parents=True)
+        features_dir.mkdir(parents=True)
+        completed_dir.mkdir(parents=True)
+
+        # Create issues of different types with various numbers
+        (bugs_dir / "P0-BUG-003-bug.md").write_text("# BUG-003")
+        (features_dir / "P2-FEAT-007-feature.md").write_text("# FEAT-007")
+        (completed_dir / "P1-ENH-005-enhancement.md").write_text("# ENH-005")
+
+        # Next number should be 8 (max across all types is 7 from FEAT-007)
+        next_num = get_next_issue_number(config, "bugs")
+        assert next_num == 8
+
+        # Same result regardless of category parameter
+        next_num = get_next_issue_number(config, "features")
+        assert next_num == 8
+
+    def test_global_uniqueness_with_higher_in_completed(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test global uniqueness when highest number is in completed with different type."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        bugs_dir.mkdir(parents=True)
+        completed_dir.mkdir(parents=True)
+
+        # Active bug has number 3
+        (bugs_dir / "P0-BUG-003-current.md").write_text("# BUG-003")
+        # Completed FEATURE has number 015 (highest)
+        (completed_dir / "P2-FEAT-015-done.md").write_text("# FEAT-015")
+
+        # Next number should be 16, even when asking for bugs
+        next_num = get_next_issue_number(config, "bugs")
+        assert next_num == 16
 
 
 class TestFindIssues:

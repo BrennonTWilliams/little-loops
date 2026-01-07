@@ -28,37 +28,43 @@ def slugify(text: str) -> str:
     return text.strip("-").lower()
 
 
-def get_next_issue_number(config: BRConfig, category: str) -> int:
-    """Determine the next issue number for a category.
+def get_next_issue_number(config: BRConfig, category: str | None = None) -> int:
+    """Determine the next globally unique issue number.
 
-    Scans both active and completed issue directories to find the highest
-    existing number for the category's prefix.
+    Scans ALL issue directories (active and completed) to find the highest
+    existing number across ALL issue types (BUG, FEAT, ENH). Issue numbers
+    are globally unique regardless of type.
 
     Args:
         config: Project configuration
-        category: Category key (e.g., "bugs", "features")
+        category: Unused, kept for backwards compatibility
 
     Returns:
-        Next available issue number
+        Next available issue number (globally unique across all types)
     """
-    prefix = config.get_issue_prefix(category)
     max_num = 0
 
-    # Directories to scan
-    dirs_to_scan = [
-        config.get_issue_dir(category),
-        config.get_completed_dir(),
+    # Get all known prefixes from configuration
+    all_prefixes = [
+        cat_config.prefix for cat_config in config.issues.categories.values()
     ]
+
+    # Directories to scan: ALL category directories + completed
+    dirs_to_scan = [config.get_completed_dir()]
+    for cat_name in config.issues.categories:
+        dirs_to_scan.append(config.get_issue_dir(cat_name))
 
     for dir_path in dirs_to_scan:
         if not dir_path.exists():
             continue
         for file in dir_path.glob("*.md"):
-            match = re.search(rf"{prefix}-(\d+)", file.name)
-            if match:
-                num = int(match.group(1))
-                if num > max_num:
-                    max_num = num
+            # Check all prefixes to find global maximum
+            for prefix in all_prefixes:
+                match = re.search(rf"{prefix}-(\d+)", file.name)
+                if match:
+                    num = int(match.group(1))
+                    if num > max_num:
+                        max_num = num
 
     return max_num + 1
 
