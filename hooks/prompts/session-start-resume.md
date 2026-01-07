@@ -66,6 +66,13 @@ If no continuation prompt exists:
 - Output nothing
 - Let session start normally
 
+### 6. Reset Context Monitor State
+
+If `context_monitor.enabled` is `true` in config:
+- Delete `.claude/ll-context-state.json` if it exists
+- This resets context tracking for the fresh session
+- Silent operation (no output needed)
+
 ## Performance
 
 - This hook must complete quickly (< 2 seconds)
@@ -78,3 +85,4 @@ If no continuation prompt exists:
 - Only outputs 1-2 lines to avoid cluttering session start
 - Respects `enabled` and `auto_detect_on_session_start` config settings
 - Works with prompts from `/ll:handoff` or PreCompact hook
+- Context monitor state is reset on every session start (fresh context = fresh tracking)

@@ -51,6 +51,14 @@
             "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/post-tool-state-tracking.md"
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/context-monitor.md"
+          }
+        ]
       }
     ],
     "PreCompact": [

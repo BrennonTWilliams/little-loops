@@ -405,6 +405,59 @@
         }
       },
       "additionalProperties": false
+    },
+    "context_monitor": {
+      "type": "object",
+      "description": "Proactive context monitoring with automatic handoff before hitting limits (disabled by default)",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable proactive context monitoring with auto-handoff",
+          "default": false
+        },
+        "auto_handoff_threshold": {
+          "type": "integer",
+          "description": "Estimated context usage percentage to trigger automatic handoff (0-100)",
+          "default": 80,
+          "minimum": 50,
+          "maximum": 95
+        },
+        "estimate_weights": {
+          "type": "object",
+          "description": "Weight factors for context estimation heuristics",
+          "properties": {
+            "read_per_line": {
+              "type": "number",
+              "description": "Estimated tokens per line read",
+              "default": 10
+            },
+            "tool_call_base": {
+              "type": "integer",
+              "description": "Base tokens per tool call overhead",
+              "default": 100
+            },
+            "bash_output_per_char": {
+              "type": "number",
+              "description": "Estimated tokens per character of bash output",
+              "default": 0.3
+            }
+          },
+          "additionalProperties": false
+        },
+        "context_limit_estimate": {
+          "type": "integer",
+          "description": "Estimated total context window tokens (conservative)",
+          "default": 150000,
+          "minimum": 50000,
+          "maximum": 500000
+        },
+        "state_file": {
+          "type": "string",
+          "description": "File to track context usage state",
+          "default": ".claude/ll-context-state.json"
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false
