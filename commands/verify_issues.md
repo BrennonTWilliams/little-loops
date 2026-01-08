@@ -51,7 +51,7 @@ Before making any changes, present the verification results to the user:
 1. Show the summary table with all verdicts
 2. List specific changes that will be made:
    - Issues to update with verification notes
-   - Issues to move to completed/
+   - Issues to move to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`
 3. Ask: "Proceed with these changes? (y/n)"
 4. Wait for user confirmation before modifying any files
 
@@ -107,7 +107,7 @@ For resolved issues:
 | ENH-005 | Title | Update line numbers |
 
 ## Recommended Actions
-1. Move resolved issues to completed/
+1. Move resolved issues to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` (sibling to category dirs)
 2. Update outdated issues with current info
 3. Remove or archive invalid issues
 4. Re-prioritize if needed

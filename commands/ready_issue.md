@@ -270,4 +270,6 @@ The automation scripts (`ll-auto`, `ll-parallel`) run this automatically before 
 | READY | Proceed to implementation |
 | CORRECTED | Proceed to implementation (corrections saved) |
 | NOT_READY | Mark as failed, skip issue |
-| CLOSE | Move to completed directory with closure status |
+| CLOSE | Move to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` with closure status |
+
+**Note**: The completed directory is a SIBLING to category directories (bugs/, features/, enhancements/), not a subdirectory within them.

@@ -35,6 +35,18 @@ This command uses project configuration from `.claude/ll-config.json`:
 - **Deep research**: `{{config.workflow.deep_research.enabled}}` (skip with --quick or --auto)
 - **Research agents**: `{{config.workflow.deep_research.agents}}`
 
+### Directory Structure
+
+**IMPORTANT**: The `completed/` directory is a SIBLING to category directories, NOT a child:
+
+```
+{{config.issues.base_dir}}/
+├── bugs/           # Active bugs (NEVER create completed/ here)
+├── features/       # Active features (NEVER create completed/ here)
+├── enhancements/   # Active enhancements (NEVER create completed/ here)
+└── completed/      # ALL completed issues go here (sibling to categories)
+```
+
 ---
 
 ## Phase 1: Find Issue
@@ -502,10 +514,16 @@ git commit -m "[action]([component]): [description]
 
 ### 3. Move to Completed
 
+**CRITICAL**: Move to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` - this is a SIBLING directory to bugs/features/enhancements, NOT a subdirectory within them.
+
 ```bash
+# ✅ CORRECT: Move to sibling completed/ directory
 git mv "{{config.issues.base_dir}}/[type]/[file].md" \
        "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/"
 git commit -m "chore(issues): mark [ISSUE-ID] as completed"
+
+# ❌ WRONG - NEVER do this (creates nested directory):
+# git mv "{{config.issues.base_dir}}/bugs/P1-BUG-001.md" "{{config.issues.base_dir}}/bugs/completed/"
 ```
 
 ---
