@@ -24,6 +24,8 @@ from little_loops.parallel.types import ParallelConfig, WorkerResult
 from little_loops.subprocess_utils import (
     detect_context_handoff,
     read_continuation_prompt,
+)
+from little_loops.subprocess_utils import (
     run_claude_command as _run_claude_base,
 )
 from little_loops.work_verification import verify_work_was_done

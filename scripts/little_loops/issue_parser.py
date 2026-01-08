@@ -45,9 +45,7 @@ def get_next_issue_number(config: BRConfig, category: str | None = None) -> int:
     max_num = 0
 
     # Get all known prefixes from configuration
-    all_prefixes = [
-        cat_config.prefix for cat_config in config.issues.categories.values()
-    ]
+    all_prefixes = [cat_config.prefix for cat_config in config.issues.categories.values()]
 
     # Directories to scan: ALL category directories + completed
     dirs_to_scan = [config.get_completed_dir()]

@@ -6,7 +6,6 @@ Claude CLI integration and state persistence for resume capability.
 
 from __future__ import annotations
 
-import re
 import signal
 import subprocess
 import sys
@@ -30,10 +29,10 @@ from little_loops.logger import Logger, format_duration
 from little_loops.parallel.output_parsing import parse_ready_issue_output
 from little_loops.state import ProcessingState, StateManager
 from little_loops.subprocess_utils import (
-    CONTEXT_HANDOFF_PATTERN,
-    CONTINUATION_PROMPT_PATH,
     detect_context_handoff,
     read_continuation_prompt,
+)
+from little_loops.subprocess_utils import (
     run_claude_command as _run_claude_base,
 )
 
