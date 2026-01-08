@@ -11,7 +11,7 @@ arguments:
     description: Specific issue ID (e.g., BUG-004). If empty, finds highest priority.
     required: false
   - name: flags
-    description: "Optional flags: --plan-only (stop after planning), --resume (continue from checkpoint), --quick (skip research), --auto (skip research + phase gates)"
+    description: "Optional flags: --plan-only (stop after planning), --resume (continue from checkpoint), --gates (enable phase gates for manual verification)"
     required: false
 ---
 
@@ -31,8 +31,8 @@ This command uses project configuration from `.claude/ll-config.json`:
 - **Custom verification**: `{{config.commands.custom_verification}}`
 
 ### Workflow Settings
-- **Phase gates**: `{{config.workflow.phase_gates.enabled}}` (skip with --auto)
-- **Deep research**: `{{config.workflow.deep_research.enabled}}` (skip with --quick or --auto)
+- **Phase gates**: Disabled by default (enable with --gates)
+- **Deep research**: `{{config.workflow.deep_research.enabled}}`
 - **Research agents**: `{{config.workflow.deep_research.agents}}`
 
 ### Directory Structure
@@ -83,13 +83,11 @@ fi
 
 ---
 
-## Phase 1.5: Deep Research (unless --quick or --auto)
+## Phase 1.5: Deep Research
 
 Before creating an implementation plan, spawn parallel sub-agents to gather comprehensive context about the issue.
 
 **Skip this phase if**:
-- `--quick` flag is specified (fast mode, skip research)
-- `--auto` flag is specified (automation mode, skip research + phase gates)
 - Action is `verify` (verification doesn't need deep research)
 
 ### 1. Spawn Research Tasks in Parallel
@@ -177,7 +175,7 @@ After reading the issue and completing research, create a comprehensive plan.
 
 **The plan must be complete and actionable with no unresolved questions.**
 
-In `--auto` mode: If questions arise that cannot be resolved, mark the issue as `NOT_READY` rather than proceeding with assumptions.
+If questions arise that cannot be resolved, mark the issue as `NOT_READY` rather than proceeding with assumptions.
 
 ### Plan Creation Steps
 
@@ -261,7 +259,7 @@ Write the plan using this structure (sections are recommended, skip if not appli
 - [ ] [Describe edge case to test manually]
 - [ ] [Describe expected user experience outcome]
 
-> **Phase Gate**: After automated verification passes, pause for manual verification confirmation (skipped with `--auto` flag).
+> **Phase Gate**: After automated verification passes, pause for manual verification confirmation (requires `--gates` flag).
 
 **Success Criteria Guidelines**:
 - **Automated**: Any verification that can be executed by running a command (tests, linting, type checking, build, specific test cases)
@@ -380,7 +378,7 @@ This ensures work can continue with fresh context quality rather than degraded p
 - Include type hints for new code
 - Add docstrings for public interfaces
 
-### Phase Gate Protocol (unless --auto)
+### Phase Gate Protocol (requires --gates)
 
 After completing each implementation phase:
 
@@ -408,9 +406,9 @@ After completing each implementation phase:
    - Do NOT proceed until confirmation received
    - If issues found, address them before continuing
 
-### Auto Mode Behavior
+### Default Behavior
 
-When `--auto` flag is set:
+By default (no `--gates` flag):
 - Skip all phase gate pauses
 - Execute all phases sequentially
 - Report all results in final output
@@ -442,7 +440,7 @@ When reality diverges from the plan during implementation:
      - "Update plan" - Update plan to reflect reality, then continue
      - "Stop" - Stop and re-research before proceeding
 
-3. **In auto mode**:
+3. **Without --gates flag**:
    - Attempt Option A if the mismatch is minor
    - If significant mismatch, mark as `INCOMPLETE` and report:
      ```
@@ -593,22 +591,18 @@ $ARGUMENTS
 - **flags** (optional): Modify command behavior
   - `--plan-only` - Stop after creating the implementation plan
   - `--resume` - Resume from existing plan checkpoint
-  - `--quick` - Skip deep research phase (faster, less thorough)
-  - `--auto` - Skip research + phase gates (for automation scripts)
+  - `--gates` - Enable phase gates for manual verification between phases
 
 ---
 
 ## Examples
 
 ```bash
-# Fix highest priority bug (with deep research + phase gates)
+# Fix highest priority bug
 /ll:manage_issue bug fix
 
 # Implement specific feature
 /ll:manage_issue feature implement FEAT-042
-
-# Quick fix without deep research
-/ll:manage_issue bug fix BUG-123 --quick
 
 # Create plan only, don't implement
 /ll:manage_issue feature implement FEAT-042 --plan-only
@@ -616,8 +610,8 @@ $ARGUMENTS
 # Resume interrupted work from checkpoint
 /ll:manage_issue bug fix BUG-123 --resume
 
-# Full automation mode (for ll-auto/ll-parallel scripts)
-/ll:manage_issue enhancement improve ENH-001 --auto
+# Enable phase gates for careful manual verification
+/ll:manage_issue feature implement FEAT-042 --gates
 
 # Just verify an issue (no implementation)
 /ll:manage_issue bug verify BUG-123
