@@ -75,5 +75,32 @@ The `??` status suggests the destination file exists as an untracked file. This 
 
 ---
 
-## Status
-**Open** | Created: 2026-01-09 | Priority: P1
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-09
+- **Status**: Completed
+
+### Root Cause
+
+Two code paths had issues:
+1. `orchestrator.py:651-662` - Wrote content to destination BEFORE attempting `git mv`, guaranteeing failure
+2. `issue_lifecycle.py:136-152` - `_move_issue_to_completed()` didn't check if destination already exists
+
+### Changes Made
+
+1. **`scripts/little_loops/parallel/orchestrator.py`**: Reordered operations to attempt `git mv` before writing content. If `git mv` fails, now writes content and cleans up source safely.
+
+2. **`scripts/little_loops/issue_lifecycle.py`**: Added pre-check in `_move_issue_to_completed()` to detect if destination already exists. If so, updates content and removes source without attempting `git mv`.
+
+3. **`scripts/tests/test_issue_lifecycle.py`**: Added two test cases:
+   - `test_destination_already_exists`: Both source and destination exist
+   - `test_destination_exists_source_already_gone`: Only destination exists
+
+### Verification Results
+- Tests: PASS (91 tests pass)
+- Lint: PASS
+- Types: PASS
+
+### Implementation Plan
+- `thoughts/shared/plans/2026-01-09-BUG-009-management.md`
