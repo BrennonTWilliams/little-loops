@@ -84,6 +84,10 @@ AUDITING & ANALYSIS
     Scope: all, global, project, hooks, mcp, agents, commands, skills
     Flags: --non-interactive, --fix
 
+/ll:analyze_log <log_file>
+    Analyze ll-parallel/ll-auto log files to identify tool bugs
+    Creates/reopens issues in this plugin's .issues/ directory
+
 SESSION MANAGEMENT
 ------------------
 /ll:handoff [context]
@@ -132,6 +136,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 | `audit_architecture` | Analyze code structure |
 | `audit_docs` | Check documentation accuracy |
 | `audit_claude_config` | Comprehensive config audit with parallel agents |
+| `analyze_log` | Analyze ll-parallel/ll-auto logs for tool bugs |
 | `handoff` | Generate continuation prompt for session handoff |
 | `resume` | Resume from previous session's continuation prompt |
 | `commit` | Create git commits |
@@ -159,4 +164,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 /ll:check_code
 /ll:commit
 /ll:describe_pr
+
+# Analyze ll-parallel/ll-auto logs for tool bugs
+/ll:analyze_log ll-parallel-debug.log
 ```
