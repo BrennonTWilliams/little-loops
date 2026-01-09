@@ -588,6 +588,19 @@ class ParallelOrchestrator:
             for issue_id in self.queue.failed_ids:
                 self.logger.warning(f"  - {issue_id}")
 
+        # Report stash pop warnings (local changes need manual recovery)
+        stash_warnings = self.merge_coordinator.stash_pop_failures
+        if stash_warnings:
+            self.logger.info("")
+            self.logger.warning("Stash recovery warnings (local changes need manual restoration):")
+            for issue_id, message in stash_warnings.items():
+                self.logger.warning(f"  - {issue_id}: {message}")
+            self.logger.warning("")
+            self.logger.warning(
+                "To recover: Run 'git stash list' to find your changes, "
+                "then 'git stash pop' or 'git stash apply stash@{N}'"
+            )
+
     def _complete_issue_lifecycle_if_needed(self, issue_id: str) -> bool:
         """Complete issue lifecycle if the issue file wasn't moved during merge.
 

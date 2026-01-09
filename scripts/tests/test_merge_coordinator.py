@@ -315,6 +315,87 @@ class TestStashLocalChanges:
         assert state_file.read_text() == '{"modified": true}'
 
 
+class TestStashPopFailureTracking:
+    """Tests for stash pop failure tracking."""
+
+    def test_tracks_stash_pop_failure(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should track stash pop failure with issue ID."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create a stash
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("modified content")
+        coordinator._stash_local_changes()
+
+        # Simulate stash pop failure by creating a conflicting change
+        # First, modify the same file differently
+        test_file.write_text("conflicting content")
+
+        # Set the current issue ID (normally set by _process_merge)
+        coordinator._current_issue_id = "TEST-001"
+
+        # Attempt pop (will fail due to conflict)
+        result = coordinator._pop_stash()
+
+        # Should return False and track the failure
+        assert result is False
+        assert "TEST-001" in coordinator.stash_pop_failures
+        assert "manually" in coordinator.stash_pop_failures["TEST-001"].lower()
+
+    def test_stash_pop_failures_property_is_thread_safe(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Property should return a copy to prevent external modification."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Manually add a failure
+        coordinator._stash_pop_failures["TEST-001"] = "test message"
+
+        # Get the property
+        failures = coordinator.stash_pop_failures
+
+        # Modify the returned dict
+        failures["TEST-002"] = "should not appear"
+
+        # Original should be unchanged
+        assert "TEST-002" not in coordinator.stash_pop_failures
+
+    def test_no_tracking_without_current_issue_id(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should not track failure if no current issue ID is set."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create a stash
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("modified content")
+        coordinator._stash_local_changes()
+
+        # Create conflict
+        test_file.write_text("conflicting content")
+
+        # Do NOT set current issue ID
+        coordinator._current_issue_id = None
+
+        # Attempt pop (will fail but shouldn't track)
+        result = coordinator._pop_stash()
+
+        # Should return False but no tracking
+        assert result is False
+        assert len(coordinator.stash_pop_failures) == 0
+
+
 class TestPopStash:
     """Tests for _pop_stash functionality."""
 

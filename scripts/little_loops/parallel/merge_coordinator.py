@@ -70,6 +70,8 @@ class MergeCoordinator:
         self._consecutive_failures = 0  # Circuit breaker counter
         self._paused = False  # Set when circuit breaker trips
         self._assume_unchanged_active = False  # Track if state file is marked assume-unchanged
+        self._stash_pop_failures: dict[str, str] = {}  # issue_id -> failure message
+        self._current_issue_id: str | None = None  # Track current issue for stash failure attribution
 
     def start(self) -> None:
         """Start the merge coordinator background thread."""
@@ -246,6 +248,15 @@ class MergeCoordinator:
 
             # Leave the stash intact for manual recovery
             self._stash_active = False
+
+            # Record this failure for reporting in final summary
+            if self._current_issue_id:
+                with self._lock:
+                    self._stash_pop_failures[self._current_issue_id] = (
+                        "Local changes could not be restored after merge. "
+                        "Run 'git stash list' and 'git stash pop' to recover manually."
+                    )
+
             self.logger.warning(
                 "Stash could not be restored - your changes are saved in 'git stash list'. "
                 "Run 'git stash show' to view and 'git stash pop' to retry manually."
@@ -541,6 +552,7 @@ class MergeCoordinator:
             request: Merge request to process
         """
         result = request.worker_result
+        self._current_issue_id = result.issue_id
         self.logger.info(f"Processing merge for {result.issue_id}")
 
         # Circuit breaker check
@@ -708,6 +720,8 @@ class MergeCoordinator:
                 self._pop_stash()
             # Always restore state file tracking
             self._restore_state_file_tracking()
+            # Clear current issue tracking
+            self._current_issue_id = None
 
     def _handle_conflict(self, request: MergeRequest) -> None:
         """Handle a merge conflict with retry logic.
@@ -952,6 +966,17 @@ class MergeCoordinator:
     def pending_count(self) -> int:
         """Number of pending merge requests."""
         return self._queue.qsize()
+
+    @property
+    def stash_pop_failures(self) -> dict[str, str]:
+        """Mapping of issue IDs to stash pop failure messages.
+
+        These represent issues where the merge succeeded but the user's
+        local changes could not be automatically restored and need manual
+        recovery via 'git stash pop'.
+        """
+        with self._lock:
+            return dict(self._stash_pop_failures)
 
     def wait_for_completion(self, timeout: float | None = None) -> bool:
         """Wait for all pending merges to complete.

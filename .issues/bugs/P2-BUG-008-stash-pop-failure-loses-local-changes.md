@@ -63,5 +63,44 @@ When stash pop fails:
 
 ---
 
-## Status
-**Open** | Created: 2026-01-09 | Priority: P2
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-09
+- **Status**: Completed
+
+### Changes Made
+
+1. **`scripts/little_loops/parallel/merge_coordinator.py`**: Added stash pop failure tracking
+   - Added `_stash_pop_failures` dict to track issue IDs with stash recovery failures
+   - Added `_current_issue_id` to attribute failures to the correct issue
+   - Updated `_pop_stash()` to record failures when they occur
+   - Added `stash_pop_failures` property to expose failures for reporting
+
+2. **`scripts/little_loops/parallel/orchestrator.py`**: Added warnings section to final report
+   - Modified `_report_results()` to include stash recovery warnings
+   - Shows affected issue IDs with recovery guidance
+   - Provides explicit instructions for manual recovery via `git stash`
+
+3. **`scripts/tests/test_merge_coordinator.py`**: Added test coverage
+   - `TestStashPopFailureTracking` class with 3 tests:
+     - `test_tracks_stash_pop_failure`: Verifies failures are tracked with issue ID
+     - `test_stash_pop_failures_property_is_thread_safe`: Verifies property returns a copy
+     - `test_no_tracking_without_current_issue_id`: Verifies no tracking when issue ID not set
+
+### Verification Results
+- Tests: PASS (473 tests, including 3 new tests)
+- Lint: PASS (ruff check)
+- Types: PASS (mypy)
+
+### How the Fix Works
+
+1. When `_process_merge()` starts, it sets `_current_issue_id` to track which issue is being processed
+2. If `_pop_stash()` fails due to conflicts, it now records the failure in `_stash_pop_failures` dict
+3. At the end of a run, `_report_results()` checks `merge_coordinator.stash_pop_failures`
+4. If any failures exist, a prominent "Stash recovery warnings" section is displayed with:
+   - List of affected issue IDs
+   - Recovery guidance for each failure
+   - Explicit `git stash` commands to recover manually
+
+This ensures users cannot miss the warning about their local changes needing manual recovery.
