@@ -332,10 +332,10 @@ questions:
 
 #### Step 5c: Advanced Settings (Conditional Group 3)
 
-Build this AskUserQuestion dynamically based on Group 2 responses. Include 1-3 questions:
+Build this AskUserQuestion dynamically based on Group 2 responses. Include 1-2 questions:
 
 **If user selected "custom directory" for issues in Group 2**, include custom dir question.
-**Always include** parallel processing and context monitoring questions.
+**Always include** the advanced features multi-select question.
 
 ```yaml
 questions:
@@ -352,29 +352,19 @@ questions:
     multiSelect: false
 
   # ALWAYS include:
-  - header: "Parallel"
-    question: "Enable parallel issue processing with git worktrees (ll-parallel)?"
+  - header: "Features"
+    question: "Which advanced features do you want to enable?"
     options:
-      - label: "Yes"
-        description: "Configure ll-parallel for concurrent issue processing"
-      - label: "No"
-        description: "Skip parallel config (can add later)"
-    multiSelect: false
-
-  # ALWAYS include:
-  - header: "Context Mon"
-    question: "Enable context monitoring for automatic session handoff?"
-    options:
-      - label: "No"
-        description: "Disabled (recommended for interactive use)"
-      - label: "Yes"
+      - label: "Parallel processing"
+        description: "Configure ll-parallel for concurrent issue processing with git worktrees"
+      - label: "Context monitoring"
         description: "Auto-handoff at 80% context usage (for ll-auto/ll-parallel)"
-    multiSelect: false
+    multiSelect: true
 ```
 
 #### Step 5d: Worktree Files (Conditional Group 4)
 
-**Only ask if user enabled parallel processing in Group 3.**
+**Only ask if user selected "Parallel processing" in the Features question (Group 3).**
 
 ```yaml
 questions:
@@ -403,7 +393,7 @@ If parallel is enabled, add to configuration:
 
 #### Step 5e: Context Monitor Settings (Conditional Group 5)
 
-**Only ask if user enabled context monitoring in Group 3.**
+**Only ask if user selected "Context monitoring" in the Features question (Group 3).**
 
 ```yaml
 questions:
@@ -443,9 +433,9 @@ Only include non-default values. If user selects exactly `[".env", ".claude/sett
 |-------|-------|-----------|
 | 1 | Core Settings | name, src_dir, test_cmd, lint_cmd |
 | 2 | Additional Config | format_cmd, issues, scan_dirs, excludes |
-| 3 | Advanced (conditional) | custom_issue_dir?, parallel, context_monitor |
-| 4 | Parallel Files (conditional) | worktree_files (only if parallel enabled) |
-| 5 | Context Settings (conditional) | threshold (only if context_monitor enabled) |
+| 3 | Advanced (conditional) | custom_issue_dir?, features (multi-select: parallel, context_monitor) |
+| 4 | Parallel Files (conditional) | worktree_files (only if "Parallel processing" selected) |
+| 5 | Context Settings (conditional) | threshold (only if "Context monitoring" selected) |
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next
