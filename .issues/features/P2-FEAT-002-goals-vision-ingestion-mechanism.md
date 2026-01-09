@@ -299,6 +299,20 @@ When product analysis is enabled during `/ll:init`:
 
 3. **Validation**: Warn if goals file is incomplete but don't block initialization
 
+## Acceptance Criteria
+
+- [ ] `goals_parser.py` module created with `ProductGoals.from_file()` method
+- [ ] Unit tests for `goals_parser.py`:
+  - [ ] Parse valid ll-goals.md with all fields
+  - [ ] Parse minimal ll-goals.md (only required fields)
+  - [ ] Handle missing file gracefully (return None)
+  - [ ] Handle malformed YAML frontmatter
+  - [ ] Handle missing frontmatter
+- [ ] `validate_goals()` function returns appropriate warnings
+- [ ] Template file `templates/ll-goals-template.md` created
+- [ ] `/ll:init` creates goals file when product enabled (interactive mode)
+- [ ] Auto-discovery extracts persona and priorities from README.md
+
 ## Impact
 
 - **Severity**: High - Core data structure for Product dimension

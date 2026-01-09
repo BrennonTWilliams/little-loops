@@ -92,14 +92,7 @@ For each defined persona:
 - Identify friction points (complex APIs, missing features)
 - Suggest improvements from their perspective
 
-### 3. Metric Impact Analysis
-
-For each success metric:
-- Identify code that affects this metric
-- Suggest changes that would move the metric toward target
-- Estimate impact: High | Medium | Low
-
-### 4. Business Value Opportunities
+### 3. Business Value Opportunities
 
 Look for:
 - Features competitors likely have that are missing
@@ -146,7 +139,7 @@ findings:
 - Only analyze if `product.enabled: true` in config
 - Return empty result if `ll-goals.md` doesn't exist
 - Focus on product/business aspects, not technical debt
-- Each finding must tie back to a goal, persona, or metric
+- Each finding must tie back to a goal or persona
 ```
 
 ### 2. Agent Behavior Specification
@@ -161,12 +154,11 @@ The agent should:
 **Analyze**:
 1. Map strategic priorities to code areas
 2. Trace persona journeys through public APIs/commands
-3. Identify metric-affecting code paths
-4. Compare capabilities to stated goals
+3. Compare capabilities to stated goals
 
 **Return**:
 - Structured findings with evidence
-- Each finding linked to goals/personas/metrics
+- Each finding linked to goals/personas
 - Business value and effort estimates
 - File:line references for evidence
 
@@ -207,6 +199,16 @@ When product analysis is enabled:
 3. Returns structured findings with business context
 4. Findings become FEAT-XXX or ENH-XXX issues with product impact fields
 
+## Acceptance Criteria
+
+- [ ] Agent file `agents/product-analyzer.md` created with complete prompt
+- [ ] Agent returns empty result when `product.enabled: false`
+- [ ] Agent returns empty result when `ll-goals.md` doesn't exist
+- [ ] Agent output follows structured YAML format with required fields
+- [ ] Integration test: agent produces valid findings for sample goals file
+- [ ] Findings include file:line evidence references
+- [ ] Deduplication check against existing issues works
+
 ## Impact
 
 - **Severity**: High - Core capability for Product dimension
@@ -236,4 +238,4 @@ When product analysis is enabled:
 
 ## Status
 
-**Open** | Created: 2026-01-06 | Priority: P2
+**Open** | Created: 2026-01-06 | Priority: P1

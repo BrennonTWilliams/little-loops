@@ -170,6 +170,8 @@ Add optional product fields to issue frontmatter schema:
 
 ```yaml
 # Optional product fields (present when discovered_by: scan_product)
+# Note: discovered_by field is defined in ENH-006
+
 goal_alignment:
   type: string
   description: ID of the strategic priority this supports
@@ -184,12 +186,6 @@ business_value:
   type: string
   enum: [high, medium, low]
   description: Business value assessment
-  optional: true
-
-discovered_by:
-  type: string
-  enum: [scan_codebase, scan_product, audit_architecture, manual]
-  description: Which workflow discovered this issue
   optional: true
 ```
 
@@ -228,12 +224,14 @@ When product analysis is enabled:
 - FEAT-001: Product Analysis Opt-In Configuration
 - FEAT-002: Goals/Vision Ingestion Mechanism (for goal/persona IDs)
 - FEAT-003: Product Analyzer Agent (populates product fields)
+- ENH-006: Universal discovered_by Field (provides base tracking field)
 
 ## Blocked By
 
 - FEAT-001
 - FEAT-002
 - FEAT-003
+- ENH-006
 
 ## Blocks
 
