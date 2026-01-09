@@ -353,7 +353,7 @@ For each REOPEN finding:
 ## Reopened
 
 - **Date**: [TODAY]
-- **By**: /ll:analyze_log
+- **By**: /analyze_log
 - **Reason**: Issue recurred in log analysis
 
 ### New Evidence
@@ -423,13 +423,13 @@ git mv "{{config.issues.base_dir}}/completed/[filename]" "{{config.issues.base_d
 
 ```bash
 # Analyze a completed ll-parallel log
-/ll:analyze_log ll-parallel-blender-agents-debug.log
+/analyze_log ll-parallel-blender-agents-debug.log
 
 # Analyze an in-progress log (will show warning)
-/ll:analyze_log ~/logs/ll-parallel-current.log
+/analyze_log ~/logs/ll-parallel-current.log
 
 # Analyze an ll-auto log
-/ll:analyze_log ll-auto-lmc-voice-debug.log
+/analyze_log ll-auto-lmc-voice-debug.log
 ```
 
 ---
