@@ -133,6 +133,14 @@ def _move_issue_to_completed(
     Returns:
         True if move succeeded
     """
+    # Handle pre-existing destination (e.g., from parallel worker or worktree leak)
+    if completed_path.exists():
+        logger.info(f"Destination already exists: {completed_path.name}, updating content")
+        completed_path.write_text(content)
+        if original_path.exists():
+            original_path.unlink()
+        return True
+
     result = subprocess.run(
         ["git", "mv", str(original_path), str(completed_path)],
         capture_output=True,
@@ -143,7 +151,8 @@ def _move_issue_to_completed(
         # git mv failed, fall back to manual copy + delete
         logger.warning(f"git mv failed: {result.stderr}")
         completed_path.write_text(content)
-        original_path.unlink()
+        if original_path.exists():
+            original_path.unlink()
     else:
         logger.success(f"Used git mv to move {original_path.stem}")
         # Write updated content to the moved file

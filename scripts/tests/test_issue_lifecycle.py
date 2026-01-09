@@ -312,6 +312,50 @@ class TestMoveIssueToCompleted:
         assert not original.exists()
         mock_logger.warning.assert_called()
 
+    def test_destination_already_exists(self, tmp_path: Path, mock_logger: MagicMock) -> None:
+        """Test handling when destination file already exists (BUG-009 fix)."""
+        original = tmp_path / "bugs" / "issue.md"
+        completed = tmp_path / "completed" / "issue.md"
+        original.parent.mkdir(parents=True, exist_ok=True)
+        completed.parent.mkdir(parents=True, exist_ok=True)
+
+        # Both files exist - simulating the race condition or worktree leak
+        original.write_text("Original content")
+        completed.write_text("Older content already at destination")
+
+        new_content = "Updated content with resolution"
+
+        # No subprocess call should be made since we detect existing destination
+        result = _move_issue_to_completed(original, completed, new_content, mock_logger)
+
+        assert result is True
+        assert completed.exists()
+        assert completed.read_text() == new_content  # Content updated
+        assert not original.exists()  # Source removed
+        mock_logger.info.assert_called()  # Logged the skip
+
+    def test_destination_exists_source_already_gone(
+        self, tmp_path: Path, mock_logger: MagicMock
+    ) -> None:
+        """Test handling when destination exists but source is already gone."""
+        original = tmp_path / "bugs" / "issue.md"
+        completed = tmp_path / "completed" / "issue.md"
+        original.parent.mkdir(parents=True, exist_ok=True)
+        completed.parent.mkdir(parents=True, exist_ok=True)
+
+        # Only destination exists - source already moved/deleted
+        completed.write_text("Content at destination")
+
+        new_content = "Updated content with resolution"
+
+        result = _move_issue_to_completed(original, completed, new_content, mock_logger)
+
+        assert result is True
+        assert completed.exists()
+        assert completed.read_text() == new_content  # Content updated
+        assert not original.exists()  # Source still doesn't exist
+        mock_logger.info.assert_called()
+
 
 class TestCommitIssueCompletion:
     """Tests for _commit_issue_completion function."""

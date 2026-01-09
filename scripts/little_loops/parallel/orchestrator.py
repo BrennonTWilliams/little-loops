@@ -648,18 +648,23 @@ class ParallelOrchestrator:
 """
                 content += resolution
 
-            # Write to completed location
-            completed_path.write_text(content)
-
-            # Use git mv if possible
+            # Use git mv if possible (before writing content to avoid "destination exists")
             result = self._git_lock.run(
                 ["mv", str(original_path), str(completed_path)],
                 cwd=self.repo_path,
             )
 
             if result.returncode != 0:
+                # git mv failed (destination may exist or other error)
                 self.logger.warning(f"git mv failed for {issue_id}: {result.stderr}")
-                original_path.unlink()
+                # Write content to destination (may overwrite existing)
+                completed_path.write_text(content)
+                # Remove source if it still exists
+                if original_path.exists():
+                    original_path.unlink()
+            else:
+                # git mv succeeded, write updated content
+                completed_path.write_text(content)
 
             # Stage and commit
             self._git_lock.run(
