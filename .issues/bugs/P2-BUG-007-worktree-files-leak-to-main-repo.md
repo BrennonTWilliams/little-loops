@@ -40,14 +40,25 @@ Files created or modified in worker worktrees should remain isolated to those wo
 ## Affected Components
 
 - **Tool**: ll-parallel
-- **Likely Module**: `scripts/little_loops/parallel/worker.py` or `scripts/little_loops/parallel/merge_coordinator.py`
+- **Likely Module**: `scripts/little_loops/parallel/worker_pool.py` (contains workaround code)
+- **Related**: `scripts/little_loops/parallel/merge_coordinator.py` (handles merge conflicts from leaks)
 
-## Proposed Investigation
+## Root Cause
 
-1. Review how worktrees are created and whether they're properly isolated
-2. Check if any file operations (like `git add` or `shutil` operations) accidentally target the main repo path
-3. Examine if the leaked files have a pattern (e.g., test files, issue files)
-4. Check if this correlates with specific Claude operations or tool uses
+This is a known issue with Claude Code's project root detection when working in git worktrees (referenced in worker_pool.py as GitHub #8771). Claude Code may incorrectly identify the main repository as the project root instead of the worktree, causing file writes to go to the wrong location.
+
+## Current Workaround
+
+The codebase already has detection and cleanup logic in `worker_pool.py`:
+- `_get_main_repo_baseline()` (line 803): Captures git status before worker starts
+- `_detect_main_repo_leaks()` (line 668): Compares status after worker completes to detect new files
+- `_cleanup_leaked_files()` (line 732): Removes leaked files from main repo
+
+## Proposed Fix
+
+1. Investigate Claude Code's project root detection to understand why it fails in worktrees
+2. Consider setting explicit project root hints in the worktree environment
+3. Alternatively, improve the cleanup mechanism to be more robust
 
 ## Impact
 
@@ -57,5 +68,10 @@ Files created or modified in worker worktrees should remain isolated to those wo
 
 ---
 
+## Labels
+- component:parallel
+- type:bug
+- root-cause:external-dependency
+
 ## Status
-**Open** | Created: 2026-01-09 | Priority: P2
+**Open** | Created: 2026-01-09 | Priority: P2 | Validated: 2026-01-09

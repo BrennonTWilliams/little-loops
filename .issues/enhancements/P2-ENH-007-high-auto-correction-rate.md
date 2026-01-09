@@ -15,9 +15,15 @@ During parallel processing, 7 out of 17 completed issues (41%) required auto-cor
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**Target Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
 **Occurrences**: 7
 **Affected External Issues**: BUG-549, ENH-550, BUG-552, BUG-546, ENH-542, BUG-543, ENH-527
+
+**Log File Location** (check in order):
+1. Little-loops repo: `/Users/brennon/AIProjects/brenentech/little-loops/ll-parallel-blender-agents-debug.log`
+2. Target repo: `/Users/brennon/AIProjects/blender-ai/blender-agents/ll-parallel-blender-agents-debug.log`
+
+Note: ll-parallel logs are typically created in the directory where the command is run (usually little-loops), not in the target repository being processed.
 
 ### Sample Log Output
 
