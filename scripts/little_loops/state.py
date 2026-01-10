@@ -23,6 +23,7 @@ class ProcessingState:
     - Completed issues
     - Failed issues with reasons
     - Timing information
+    - Auto-corrections made during validation
 
     Attributes:
         current_issue: Path to currently processing issue file
@@ -32,6 +33,7 @@ class ProcessingState:
         failed_issues: Mapping of issue ID to failure reason
         attempted_issues: Set of issues already attempted
         timing: Per-issue timing breakdown
+        corrections: Mapping of issue ID to list of corrections made
     """
 
     current_issue: str = ""
@@ -41,6 +43,7 @@ class ProcessingState:
     failed_issues: dict[str, str] = field(default_factory=dict)
     attempted_issues: set[str] = field(default_factory=set)
     timing: dict[str, dict[str, float]] = field(default_factory=dict)
+    corrections: dict[str, list[str]] = field(default_factory=dict)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert state to dictionary for JSON serialization."""
@@ -52,6 +55,7 @@ class ProcessingState:
             "failed_issues": self.failed_issues,
             "attempted_issues": list(self.attempted_issues),
             "timing": self.timing,
+            "corrections": self.corrections,
         }
 
     @classmethod
@@ -65,6 +69,7 @@ class ProcessingState:
             failed_issues=data.get("failed_issues", {}),
             attempted_issues=set(data.get("attempted_issues", [])),
             timing=data.get("timing", {}),
+            corrections=data.get("corrections", {}),
         )
 
 
@@ -185,3 +190,14 @@ class StateManager:
             True if issue was already attempted
         """
         return issue_id in self.state.attempted_issues
+
+    def record_corrections(self, issue_id: str, corrections: list[str]) -> None:
+        """Record corrections made to an issue.
+
+        Args:
+            issue_id: Issue identifier
+            corrections: List of correction descriptions
+        """
+        if corrections:
+            self.state.corrections[issue_id] = corrections
+            self.save()

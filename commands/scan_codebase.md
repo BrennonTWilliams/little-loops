@@ -84,6 +84,7 @@ Return structured findings with:
 - Code snippet showing the issue
 - Severity assessment (High/Medium/Low)
 - Brief explanation of the problem
+- Reproduction steps (how to trigger the bug)
 ```
 
 #### Agent 2: Enhancement Scanner
@@ -180,6 +181,13 @@ discovered_date: [SCAN_DATE]
 ## Expected Behavior
 
 [What should happen]
+
+## Reproduction Steps
+
+[For bugs only - steps to reproduce the issue]
+1. [Step 1]
+2. [Step 2]
+3. [Observe: description of the bug]
 
 ## Proposed Fix
 

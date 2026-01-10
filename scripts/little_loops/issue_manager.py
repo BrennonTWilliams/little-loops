@@ -320,6 +320,29 @@ class AutoManager:
             for issue_id, reason in state.failed_issues.items():
                 self.logger.warning(f"  - {issue_id}: {reason[:50]}...")
 
+        # Log correction statistics for quality tracking
+        if state.corrections:
+            total_corrected = len(state.corrections)
+            total_issues = len(state.completed_issues) + len(state.failed_issues)
+            correction_rate = (total_corrected / total_issues * 100) if total_issues > 0 else 0
+            self.logger.info(
+                f"Auto-corrections: {total_corrected}/{total_issues} ({correction_rate:.1f}%)"
+            )
+
+            # Log most common correction types
+            from collections import Counter
+
+            all_corrections: list[str] = []
+            for corrections in state.corrections.values():
+                all_corrections.extend(corrections)
+            if all_corrections:
+                common = Counter(all_corrections).most_common(3)
+                self.logger.info("Most common corrections:")
+                for correction, count in common:
+                    # Truncate long correction descriptions
+                    display = correction[:60] + "..." if len(correction) > 60 else correction
+                    self.logger.info(f"  - {display}: {count}")
+
     def _process_issue(self, info: IssueInfo) -> bool:
         """Process a single issue through the workflow.
 
@@ -436,12 +459,15 @@ class AutoManager:
                                 self.logger.info("Fallback succeeded: validated correct file")
                                 parsed = retry_parsed
 
-                    # Log any corrections made
+                    # Log and store any corrections made
                     if parsed.get("was_corrected"):
                         self.logger.info(f"Issue {info.issue_id} was auto-corrected")
                         corrections = parsed.get("corrections", [])
                         for correction in corrections:
                             self.logger.info(f"  Correction: {correction}")
+                        # Store corrections in state for pattern analysis
+                        if corrections:
+                            self.state_manager.record_corrections(info.issue_id, corrections)
 
                     # Log any concerns found
                     if parsed["concerns"]:

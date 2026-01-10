@@ -79,5 +79,35 @@ Note: ll-parallel logs are typically created in the directory where the command 
 
 ---
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-09
+- **Status**: Completed
+
+### Changes Made
+
+1. **commands/scan_codebase.md**: Added "Reproduction Steps" section to issue template (lines 182-188) to align with ready_issue validation requirements. Also updated bug scanner prompt to request reproduction steps.
+
+2. **scripts/little_loops/state.py**: Extended ProcessingState dataclass with `corrections` field to persist auto-correction data for pattern analysis.
+
+3. **scripts/little_loops/issue_manager.py**: Updated to store corrections in state via `record_corrections()` method, and added correction statistics to processing summary output.
+
+4. **scripts/tests/test_state.py**: Added comprehensive tests for corrections persistence and `record_corrections()` method.
+
+### Verification Results
+- Tests: 477 PASS
+- Lint: PASS
+- Types: PASS
+
+### Root Cause
+The primary mismatch was between scan_codebase template (missing "Reproduction Steps") and ready_issue validation (requiring it for bugs). Every bug issue was auto-corrected to add the missing section.
+
+### Impact
+- Prevention: Future scanned bugs will include reproduction steps, reducing auto-correction rate
+- Tracking: Corrections are now persisted for pattern analysis to enable continuous improvement
+
+---
+
 ## Status
-**Open** | Created: 2026-01-09 | Priority: P2
+**Completed** | Created: 2026-01-09 | Completed: 2026-01-09 | Priority: P2

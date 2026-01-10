@@ -26,6 +26,7 @@ class TestProcessingState:
         assert state.failed_issues == {}
         assert state.attempted_issues == set()
         assert state.timing == {}
+        assert state.corrections == {}
 
     def test_to_dict(self) -> None:
         """Test serialization to dictionary."""
@@ -37,6 +38,7 @@ class TestProcessingState:
             failed_issues={"BUG-003": "Timeout"},
             attempted_issues={"BUG-001", "BUG-002", "BUG-003"},
             timing={"BUG-001": {"total": 120.5}},
+            corrections={"BUG-001": ["Added missing section"]},
         )
 
         result = state.to_dict()
@@ -48,6 +50,7 @@ class TestProcessingState:
         assert result["failed_issues"] == {"BUG-003": "Timeout"}
         assert set(result["attempted_issues"]) == {"BUG-001", "BUG-002", "BUG-003"}
         assert result["timing"] == {"BUG-001": {"total": 120.5}}
+        assert result["corrections"] == {"BUG-001": ["Added missing section"]}
 
     def test_to_dict_json_serializable(self) -> None:
         """Test that to_dict output is JSON serializable."""
@@ -71,6 +74,7 @@ class TestProcessingState:
             "failed_issues": {"FEAT-002": "Merge conflict"},
             "attempted_issues": ["FEAT-001", "FEAT-002"],
             "timing": {"FEAT-001": {"ready": 10.0, "implement": 100.0}},
+            "corrections": {"FEAT-001": ["Updated file path", "Fixed line numbers"]},
         }
 
         state = ProcessingState.from_dict(data)
@@ -82,6 +86,7 @@ class TestProcessingState:
         assert state.failed_issues == {"FEAT-002": "Merge conflict"}
         assert state.attempted_issues == {"FEAT-001", "FEAT-002"}
         assert state.timing == {"FEAT-001": {"ready": 10.0, "implement": 100.0}}
+        assert state.corrections == {"FEAT-001": ["Updated file path", "Fixed line numbers"]}
 
     def test_from_dict_with_defaults(self) -> None:
         """Test from_dict with missing keys uses defaults."""
@@ -96,6 +101,7 @@ class TestProcessingState:
         assert state.failed_issues == {}
         assert state.attempted_issues == set()
         assert state.timing == {}
+        assert state.corrections == {}
 
     def test_roundtrip_serialization(self) -> None:
         """Test roundtrip through to_dict and from_dict."""
@@ -107,6 +113,7 @@ class TestProcessingState:
             failed_issues={"C": "error"},
             attempted_issues={"A", "B", "C"},
             timing={"A": {"total": 50.0}},
+            corrections={"A": ["Fixed section"], "B": ["Updated path", "Fixed lines"]},
         )
 
         restored = ProcessingState.from_dict(original.to_dict())
@@ -118,6 +125,21 @@ class TestProcessingState:
         assert restored.failed_issues == original.failed_issues
         assert restored.attempted_issues == original.attempted_issues
         assert restored.timing == original.timing
+        assert restored.corrections == original.corrections
+
+    def test_corrections_persistence(self) -> None:
+        """Test that corrections are persisted and loaded correctly."""
+        state = ProcessingState()
+        state.corrections["BUG-001"] = ["Added missing section", "Updated line numbers"]
+        state.corrections["ENH-002"] = ["Fixed file path"]
+
+        data = state.to_dict()
+        assert "corrections" in data
+        assert data["corrections"]["BUG-001"] == ["Added missing section", "Updated line numbers"]
+        assert data["corrections"]["ENH-002"] == ["Fixed file path"]
+
+        loaded = ProcessingState.from_dict(data)
+        assert loaded.corrections == state.corrections
 
 
 @pytest.fixture
@@ -302,6 +324,40 @@ class TestStateManager:
         manager = StateManager(temp_state_file, mock_logger)
 
         assert manager.is_attempted("BUG-999") is False
+
+    def test_record_corrections(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
+        """Test record_corrections stores corrections and saves."""
+        manager = StateManager(temp_state_file, mock_logger)
+        corrections = ["Added missing section", "Updated line numbers"]
+
+        manager.record_corrections("BUG-001", corrections)
+
+        assert manager.state.corrections["BUG-001"] == corrections
+        assert temp_state_file.exists()  # Should have saved
+
+    def test_record_corrections_empty_list(
+        self, temp_state_file: Path, mock_logger: MagicMock
+    ) -> None:
+        """Test record_corrections with empty list does not save."""
+        manager = StateManager(temp_state_file, mock_logger)
+
+        manager.record_corrections("BUG-001", [])
+
+        assert "BUG-001" not in manager.state.corrections
+        # Note: save() might still be called via other methods, but empty
+        # corrections shouldn't be stored
+
+    def test_record_corrections_multiple_issues(
+        self, temp_state_file: Path, mock_logger: MagicMock
+    ) -> None:
+        """Test recording corrections for multiple issues."""
+        manager = StateManager(temp_state_file, mock_logger)
+
+        manager.record_corrections("BUG-001", ["Fixed section A"])
+        manager.record_corrections("ENH-002", ["Updated path", "Fixed snippet"])
+
+        assert manager.state.corrections["BUG-001"] == ["Fixed section A"]
+        assert manager.state.corrections["ENH-002"] == ["Updated path", "Fixed snippet"]
 
     def test_resume_workflow(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
         """Test typical resume workflow: save, reload, continue."""
