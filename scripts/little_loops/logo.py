@@ -26,4 +26,6 @@ def print_logo() -> None:
     Silent no-op if logo file is not found.
     """
     if logo := get_logo():
+        print()
         print(logo)
+        print()
