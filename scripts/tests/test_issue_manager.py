@@ -337,3 +337,124 @@ READY
         for issue_id in id_inputs:
             is_path = "/" in issue_id or issue_id.endswith(".md")
             assert not is_path, f"'{issue_id}' should be detected as ID"
+
+    def test_manage_issue_uses_path_after_fallback(self, temp_project_dir: Path) -> None:
+        """Test that manage_issue uses relative path after fallback, not stale issue_id.
+
+        This tests the BUG-010 fix: when ready_issue fallback succeeds with an explicit
+        path, the subsequent manage_issue command should use that path instead of the
+        original abstract issue_id which may not match the target repo's naming.
+        """
+        from unittest.mock import MagicMock
+
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager, _compute_relative_path
+        from little_loops.issue_parser import IssueInfo
+
+        # Setup project structure
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True)
+
+        # Create the actual issue file with external repo naming convention
+        actual_file = issues_dir / "P1-DOC-001-fix-layer-count.md"
+        actual_file.write_text("# DOC-001: Fix Layer Count\n\n## Summary\nTest issue\n")
+
+        # Create a different file that initial ready_issue might match
+        wrong_file = issues_dir / "P3-BUG-001-old-issue.md"
+        wrong_file.write_text("# BUG-001: Old Issue\n")
+
+        # Create IssueInfo with abstract ID that doesn't match filename
+        info = IssueInfo(
+            path=actual_file,
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-1",  # Abstract ID from queue
+            title="Fix Layer Count",
+        )
+
+        # Expected relative path for the fallback
+        expected_relative_path = _compute_relative_path(actual_file, temp_project_dir)
+
+        # Mock ready_issue outputs
+        first_output = f"""
+## VERDICT
+READY
+
+## VALIDATED_FILE
+{wrong_file}
+"""
+        retry_output = f"""
+## VERDICT
+READY
+
+## VALIDATED_FILE
+{actual_file}
+"""
+
+        # Track calls to run_claude_command and run_with_continuation
+        call_history: list[tuple[str, str]] = []
+
+        def mock_run_claude(command: str, *args, **kwargs) -> MagicMock:
+            call_history.append(("run_claude_command", command))
+            result = MagicMock()
+            result.returncode = 0
+            if "ready_issue" in command:
+                if expected_relative_path in command:
+                    result.stdout = retry_output
+                else:
+                    result.stdout = first_output
+            return result
+
+        def mock_run_with_continuation(command: str, *args, **kwargs) -> MagicMock:
+            call_history.append(("run_with_continuation", command))
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "## RESULT\n- Status: COMPLETED"
+            result.stderr = ""
+            return result
+
+        # Create mock config
+        mock_config = MagicMock(spec=BRConfig)
+        mock_config.repo_path = temp_project_dir
+        mock_config.automation = MagicMock()
+        mock_config.automation.timeout_seconds = 60
+        mock_config.automation.stream_output = False
+        mock_config.automation.max_continuations = 3
+        mock_config.get_category_action.return_value = "fix"
+        mock_config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
+
+        with (
+            patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run_claude),
+            patch(
+                "little_loops.issue_manager.run_with_continuation",
+                side_effect=mock_run_with_continuation,
+            ),
+            patch("little_loops.issue_manager.check_git_status", return_value=False),
+            patch("little_loops.issue_manager.verify_issue_completed", return_value=True),
+        ):
+            manager = AutoManager(mock_config, dry_run=False)
+            manager._process_issue(info)
+
+        # Verify the sequence of calls
+        assert len(call_history) >= 3, f"Expected at least 3 calls, got {len(call_history)}"
+
+        # First call: ready_issue with abstract ID
+        assert call_history[0][0] == "run_claude_command"
+        assert "/ll:ready_issue BUG-1" in call_history[0][1]
+
+        # Second call: ready_issue fallback with explicit path
+        assert call_history[1][0] == "run_claude_command"
+        assert expected_relative_path in call_history[1][1]
+
+        # Third call: manage_issue should use the path, NOT the stale BUG-1
+        assert call_history[2][0] == "run_with_continuation"
+        manage_cmd = call_history[2][1]
+        assert "manage_issue" in manage_cmd
+        # The key assertion: must use path, not stale ID
+        assert expected_relative_path in manage_cmd, (
+            f"Expected manage_issue to use '{expected_relative_path}', got: {manage_cmd}"
+        )
+        assert "BUG-1" not in manage_cmd, (
+            f"manage_issue should NOT use stale ID 'BUG-1', got: {manage_cmd}"
+        )

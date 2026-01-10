@@ -362,6 +362,10 @@ class AutoManager:
 
         issue_timing: dict[str, float] = {}
 
+        # Track whether we used fallback path resolution for ready_issue.
+        # If True, manage_issue should use the relative path instead of issue_id.
+        validated_via_fallback = False
+
         # Phase 1: Ready/verify the issue
         self.logger.info(f"Phase 1: Verifying issue {info.issue_id}...")
         with timed_phase(self.logger, "Phase 1 (ready_issue)") as phase1_timing:
@@ -458,6 +462,7 @@ class AutoManager:
                                 # Fallback succeeded - use retry result
                                 self.logger.info("Fallback succeeded: validated correct file")
                                 parsed = retry_parsed
+                                validated_via_fallback = True
 
                     # Log and store any corrections made
                     if parsed.get("was_corrected"):
@@ -556,9 +561,18 @@ class AutoManager:
                 # Build manage_issue command
                 # Use category name that matches the directory (bugs -> bug, features -> feature)
                 type_name = info.issue_type.rstrip("s")  # bugs -> bug
+
+                # Use relative path if fallback was used (BUG-010 fix), otherwise use issue_id.
+                # When ready_issue fallback succeeds with an explicit path, the original
+                # issue_id may not match the external repo's naming convention.
+                if validated_via_fallback:
+                    issue_arg = _compute_relative_path(info.path)
+                else:
+                    issue_arg = info.issue_id
+
                 # Use run_with_continuation to handle context exhaustion
                 result = run_with_continuation(
-                    f"/ll:manage_issue {type_name} {action} {info.issue_id}",
+                    f"/ll:manage_issue {type_name} {action} {issue_arg}",
                     self.logger,
                     timeout=self.config.automation.timeout_seconds,
                     stream_output=self.config.automation.stream_output,
