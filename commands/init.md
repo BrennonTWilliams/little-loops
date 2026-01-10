@@ -545,6 +545,10 @@ Add little-loops state files to `.gitignore` to prevent committing runtime state
 INITIALIZATION COMPLETE
 ================================================================================
 
+ ╭╮      ╭╮
+ ╰┼──────┼╯
+  little loops
+
 Created: .claude/ll-config.json
 Updated: .gitignore (added state file exclusions)
 

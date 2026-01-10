@@ -14,6 +14,7 @@ from pathlib import Path
 from little_loops.config import BRConfig
 from little_loops.issue_manager import AutoManager
 from little_loops.logger import Logger
+from little_loops.logo import print_logo
 
 
 def main_auto() -> int:
@@ -85,6 +86,8 @@ Examples:
     )
 
     args = parser.parse_args()
+
+    print_logo()
 
     project_root = args.config or Path.cwd()
     config = BRConfig(project_root)
@@ -223,6 +226,9 @@ Examples:
     config = BRConfig(project_root)
 
     logger = Logger(verbose=not args.quiet)
+
+    if not args.quiet:
+        print_logo()
 
     # Handle cleanup mode
     if args.cleanup:
