@@ -71,7 +71,9 @@ class MergeCoordinator:
         self._paused = False  # Set when circuit breaker trips
         self._assume_unchanged_active = False  # Track if state file is marked assume-unchanged
         self._stash_pop_failures: dict[str, str] = {}  # issue_id -> failure message
-        self._current_issue_id: str | None = None  # Track current issue for stash failure attribution
+        self._current_issue_id: str | None = (
+            None  # Track current issue for stash failure attribution
+        )
 
     def start(self) -> None:
         """Start the merge coordinator background thread."""
