@@ -366,15 +366,15 @@ questions:
 
 **Only ask if user selected "Parallel processing" in the Features question (Group 3).**
 
+**Note**: The `.claude/` directory is always copied automatically to worktrees (required for Claude Code project root detection). Only ask about additional files outside `.claude/`.
+
 ```yaml
 questions:
   - header: "Worktree Files"
-    question: "Which files should be copied to each git worktree?"
+    question: "Which additional files should be copied to each git worktree? (Note: .claude/ is always copied automatically)"
     options:
       - label: ".env"
         description: "Environment variables (API keys, secrets)"
-      - label: ".claude/settings.local.json"
-        description: "Local Claude Code settings"
       - label: ".env.local"
         description: "Local environment overrides"
       - label: ".secrets"
@@ -382,7 +382,7 @@ questions:
     multiSelect: true
 ```
 
-If parallel is enabled, add to configuration:
+If parallel is enabled and user selected files, add to configuration:
 ```json
 {
   "parallel": {
@@ -421,7 +421,7 @@ If context monitoring is enabled, add to configuration:
 
 Only include `auto_handoff_threshold` if user selected a non-default value (not 80%).
 
-Only include non-default values. If user selects exactly `[".env", ".claude/settings.local.json"]` (the defaults), the `worktree_copy_files` key can be omitted.
+Only include non-default values. If user selects exactly `[".env"]` (the default), the `worktree_copy_files` key can be omitted. Note: `.claude/` directory is always copied automatically regardless of this setting.
 
 ---
 
@@ -482,13 +482,16 @@ Configuration Summary:
 
 ### 7. Confirm and Create
 
-If `--yes` flag is NOT set:
-- Ask: "Create .claude/ll-config.json with these settings? (y/n)"
-- Wait for confirmation
-- If user declines, abort without changes
+If `--interactive` flag IS set:
+- Skip confirmation and proceed immediately (user has already approved settings through the interactive workflow)
 
 If `--yes` flag IS set:
 - Skip confirmation and proceed
+
+Otherwise (neither `--interactive` nor `--yes`):
+- Ask: "Create .claude/ll-config.json with these settings? (y/n)"
+- Wait for confirmation
+- If user declines, abort without changes
 
 ### 8. Write Configuration
 
