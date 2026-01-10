@@ -1,10 +1,10 @@
 ---
-description: Find and fix issue filenames that lack valid issue IDs (e.g., BUG-001, FEAT-002)
+description: Find and fix issue filenames with missing or duplicate IDs across types (e.g., BUG-007 and FEAT-007)
 ---
 
 # Normalize Issues
 
-You are tasked with finding issue files that lack valid issue IDs and renaming them to follow the standard naming convention.
+You are tasked with finding issue files that lack valid issue IDs OR have cross-type duplicate IDs, and renaming them to follow the standard naming convention with globally unique IDs.
 
 ## Configuration
 
@@ -18,13 +18,15 @@ This command uses project configuration from `.claude/ll-config.json`:
 Issue files must follow the naming pattern `P[0-5]-[PREFIX]-[NNN]-[slug].md` where:
 - `P[0-5]` is the priority prefix
 - `[PREFIX]` is the category prefix (BUG, FEAT, ENH)
-- `[NNN]` is a 3-digit sequential ID (e.g., 001, 042)
+- `[NNN]` is a 3-digit **globally unique** sequential ID (e.g., 001, 042)
 - `[slug]` is a descriptive slug
 
-Files without valid IDs (like `P0-split-base-builder-god-class.md`) cannot be:
+**Files without valid IDs** (like `P0-split-base-builder-god-class.md`) cannot be:
 - Referenced by ID in automation scripts (`ll-auto`, `ll-parallel`)
 - Tracked by the duplicate ID prevention hook
 - Properly associated with their category
+
+**Cross-type duplicate IDs** (like BUG-007, FEAT-007, ENH-007 all existing) violate the global uniqueness constraint. Issue IDs must be unique across ALL types—if BUG-005 exists, no FEAT-005 or ENH-005 should exist.
 
 ## Process
 
@@ -45,6 +47,30 @@ for dir in {{config.issues.base_dir}}/*/; do
     fi
 done
 ```
+
+### 1b. Detect Cross-Type Duplicate IDs
+
+Issue IDs must be **globally unique** across all types (BUG, FEAT, ENH). Scan for ID numbers used by multiple types:
+
+```bash
+# Build a map of ID numbers to files
+find {{config.issues.base_dir}} -name "*.md" -type f ! -path "*/completed/*" | while read file; do
+    basename=$(basename "$file")
+    # Extract the numeric ID (e.g., 007 from BUG-007 or FEAT-007)
+    id_num=$(echo "$basename" | grep -oE '(BUG|FEAT|ENH)-[0-9]{3}' | grep -oE '[0-9]{3}')
+    if [ -n "$id_num" ]; then
+        echo "$id_num:$file"
+    fi
+done | sort -t: -k1,1n > /tmp/issue_id_map.txt
+
+# Find duplicate ID numbers (same number, different prefixes)
+cut -d: -f1 /tmp/issue_id_map.txt | uniq -d | while read dup_id; do
+    echo "DUPLICATE ID $dup_id:"
+    grep "^$dup_id:" /tmp/issue_id_map.txt | cut -d: -f2
+done
+```
+
+**Cross-type duplicates** (e.g., BUG-007, FEAT-007, ENH-007 all existing) violate global uniqueness and must be renumbered.
 
 ### 2. Determine Category Mapping
 
@@ -73,7 +99,7 @@ find {{config.issues.base_dir}} -name "*.md" -type f | \
 
 ### 4. Generate New Filenames
 
-For each invalid file:
+For each file needing normalization (missing ID OR duplicate ID):
 
 1. **Extract priority** - If filename starts with `P[0-5]-`, preserve it. Otherwise, default to `P3-` (Medium).
 
@@ -83,9 +109,12 @@ For each invalid file:
    - `enhancements/` → `ENH`
 
 3. **Assign next ID** - Use the next globally unique sequential number (not per-category).
+   - For **missing IDs**: Assign the next available global ID
+   - For **duplicate IDs**: Keep ONE file with the original ID (oldest by git history or alphabetically first), reassign others to new global IDs
 
 4. **Generate slug** from existing filename:
    - Remove any existing `P[0-5]-` prefix
+   - Remove any existing `PREFIX-NNN-` pattern
    - Convert to lowercase
    - Keep alphanumeric and hyphens
 
@@ -96,15 +125,31 @@ Before making any changes, present the rename plan:
 ```markdown
 ## Normalization Plan
 
-### Issues to Rename
+### Issues Missing IDs
 
 | Current Filename | New Filename | Change |
 |------------------|--------------|--------|
 | `P0-split-base-builder-god-class.md` | `P0-ENH-004-split-base-builder-god-class.md` | Added ENH-004 |
 | `fix-login-bug.md` | `P3-BUG-012-fix-login-bug.md` | Added P3-BUG-012 |
 
+### Cross-Type Duplicate IDs
+
+| ID Number | Conflicting Files | Resolution |
+|-----------|-------------------|------------|
+| 007 | `P2-BUG-007-...md`, `P2-FEAT-007-...md`, `P2-ENH-007-...md` | Keep BUG-007, reassign FEAT→015, ENH→016 |
+| 006 | `P2-BUG-006-...md`, `P2-FEAT-006-...md` | Keep BUG-006, reassign FEAT→017 |
+
+### Duplicate ID Renames
+
+| Current Filename | New Filename | Change |
+|------------------|--------------|--------|
+| `P2-FEAT-007-user-message.md` | `P2-FEAT-015-user-message.md` | Reassigned 007→015 |
+| `P2-ENH-007-high-auto.md` | `P2-ENH-016-high-auto.md` | Reassigned 007→016 |
+
 ### Summary
-- Files to rename: N
+- Files missing IDs: N
+- Cross-type duplicate IDs found: M
+- Total files to rename: X
 - New IDs to assign: BUG: [list], FEAT: [list], ENH: [list]
 
 Proceed with renaming? (y/n)
@@ -138,19 +183,27 @@ grep -r "[old-filename]" {{config.issues.base_dir}}/ thoughts/shared/plans/
 
 ## Summary
 - **Files scanned**: X
-- **Invalid filenames found**: Y
-- **Files renamed**: Z
+- **Files missing IDs**: Y
+- **Cross-type duplicate IDs found**: Z
+- **Total files renamed**: W
 
-## Renames Completed
+## Missing ID Fixes
 
 | Original | New Filename | ID Assigned |
 |----------|--------------|-------------|
 | `P0-split-base-builder-god-class.md` | `P0-ENH-004-split-base-builder-god-class.md` | ENH-004 |
 
+## Duplicate ID Fixes
+
+| Original | New Filename | Change |
+|----------|--------------|--------|
+| `P2-FEAT-007-user-message.md` | `P2-FEAT-015-user-message.md` | 007→015 |
+| `P2-ENH-007-high-auto.md` | `P2-ENH-016-high-auto.md` | 007→016 |
+
 ## ID Ranges Used
 - BUG: 012-014
-- FEAT: (none)
-- ENH: 004-006
+- FEAT: 015, 017
+- ENH: 004-006, 016
 
 ## Next Steps
 1. Commit the renames: `/ll:commit`
@@ -167,10 +220,11 @@ A filename is considered **valid** if it matches:
 ^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3}-[a-z0-9-]+\.md$
 ```
 
-A filename is **invalid** if:
+A filename **needs normalization** if:
 - Missing category prefix (`BUG`, `FEAT`, `ENH`)
 - Missing 3-digit ID number
 - Has non-standard prefix format
+- **Uses an ID number that exists with a different prefix** (cross-type duplicate)
 
 ---
 
@@ -204,6 +258,8 @@ Works well with:
 - Respect `{{config.issues.categories}}` for prefix mappings
 - Support custom prefixes defined in config
 
-### Conflicting IDs
-- If an ID is already taken, use the next available
-- Never overwrite or duplicate IDs
+### Cross-Type Duplicate IDs
+- Detect when the same ID number (e.g., 007) is used across different types (BUG-007, FEAT-007, ENH-007)
+- Keep the oldest file (by git history) or alphabetically first with the original ID
+- Reassign all other duplicates to new globally unique IDs
+- When assigning new IDs, always use the next available global number
