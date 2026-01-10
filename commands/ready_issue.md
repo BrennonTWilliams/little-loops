@@ -170,6 +170,8 @@ If issues found, attempt to fix:
 
 After making corrections, use verdict CORRECTED (not READY or NOT_READY).
 
+**IMPORTANT**: The `## VALIDATED_FILE` section is REQUIRED for ALL verdicts (READY, CORRECTED, NOT_READY, and CLOSE). This enables automation to verify the correct file was processed. Never omit this section.
+
 ### 6. Output Format
 
 ```markdown
@@ -177,7 +179,7 @@ After making corrections, use verdict CORRECTED (not READY or NOT_READY).
 [READY|CORRECTED|NOT_READY|CLOSE]
 
 ## VALIDATED_FILE
-[Absolute path to the issue file that was validated, e.g., /path/to/.issues/bugs/P1-BUG-002-description.md]
+[REQUIRED for ALL verdicts - Absolute path to the issue file that was validated, e.g., /path/to/.issues/bugs/P1-BUG-002-description.md]
 
 ## CLOSE_REASON
 [Only include this section if verdict is CLOSE]
