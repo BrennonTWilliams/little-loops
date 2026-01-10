@@ -267,7 +267,7 @@ Given these constraints, the system must:
 
 **NEW issues to create:**
 - **FEAT-006: Product Context Wrapper Layer**
-- **ENH-007: Semantic Code Clustering for Feature Domains** (optional enhancement)
+- **ENH-XXX: Semantic Code Clustering for Feature Domains** (optional enhancement, ID TBD)
 
 ---
 
@@ -449,7 +449,7 @@ This issue supports the project's goal of [goal description].
 FEAT-002 (Context Discovery)
     └─> FEAT-006 (Wrapper Layer)
             └─> ENH-005 (Issue Enhancement)
-                    └─> ENH-007 (Semantic Clustering) [optional]
+                    └─> ENH-XXX (Semantic Clustering) [optional]
 ```
 
 ---

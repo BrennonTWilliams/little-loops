@@ -4,7 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-09T22:40:00Z
 ---
 
-# FEAT-007: User Message History Extraction
+# FEAT-011: User Message History Extraction
 
 ## Summary
 

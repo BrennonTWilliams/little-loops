@@ -5,7 +5,7 @@ discovered_source: ll-parallel-blender-agents-debug.log
 discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
 ---
 
-# ENH-007: Issue quality: high auto-correction rate indicates scan accuracy issues
+# ENH-010: Issue quality: high auto-correction rate indicates scan accuracy issues
 
 ## Summary
 
