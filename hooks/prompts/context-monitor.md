@@ -53,7 +53,8 @@ For each tool call, estimate tokens added to context:
      "session_start": "<ISO timestamp>",
      "estimated_tokens": 0,
      "tool_calls": 0,
-     "handoff_triggered": false
+     "threshold_crossed_at": null,
+     "handoff_complete": false
    }
    ```
 3. Add estimated tokens from current tool call
@@ -66,19 +67,22 @@ Calculate: `usage_percent = (estimated_tokens / context_limit_estimate) × 100`
 
 ### At Auto-Handoff Threshold (default 80%)
 
-If `usage_percent >= auto_handoff_threshold` AND `handoff_triggered != true`:
+If `usage_percent >= auto_handoff_threshold`:
 
-1. Update `handoff_triggered` to `true` in state file
-2. Output notification:
+1. Record `threshold_crossed_at` timestamp (first time only)
+2. Check if `.claude/ll-continue-prompt.md` exists AND was modified after `threshold_crossed_at`
+3. If handoff NOT complete: output reminder on EVERY tool call:
    ```
-   [ll] Context ~{usage_percent}% used - triggering automatic handoff
+   [ll] Context ~{usage_percent}% used ({tokens}/{limit} tokens estimated)
+
+   Run /ll:handoff to preserve your work before context exhaustion.
    ```
-3. **Execute `/ll:handoff` command** to generate continuation prompt and signal handoff
+4. If handoff complete (file modified after threshold): set `handoff_complete = true`, stop reminding
 
 This ensures:
 - Work is preserved before context exhaustion
-- Fresh session can continue seamlessly
-- No manual intervention required
+- Persistent reminders make handoff hard to ignore
+- Automatic detection when handoff is completed
 
 ## State File Format
 
@@ -88,11 +92,12 @@ This ensures:
   "session_start": "2026-01-06T10:30:00Z",
   "estimated_tokens": 120000,
   "tool_calls": 63,
-  "handoff_triggered": true,
+  "threshold_crossed_at": "2026-01-06T11:45:00Z",
+  "handoff_complete": false,
   "breakdown": {
-    "Read": 60000,
-    "Bash": 30000,
-    "Grep": 15000,
+    "read": 60000,
+    "bash": 30000,
+    "grep": 15000,
     "other": 15000
   }
 }
@@ -102,9 +107,10 @@ This ensures:
 
 - This is a **heuristic estimation** - actual token usage varies
 - Conservative estimates are better than optimistic ones
-- Handoff triggers **once** per session (won't spam)
+- Handoff reminder **repeats on every tool call** after threshold until `/ll:handoff` is run
 - Silent operation when disabled (default)
-- The `/ll:handoff` command preserves all state for fresh session resume
+- The `/ll:handoff` command creates `.claude/ll-continue-prompt.md` which signals completion
+- Cross-platform compatible (macOS and Linux)
 
 ## Reset Behavior
 

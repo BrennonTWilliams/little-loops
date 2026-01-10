@@ -152,3 +152,25 @@ None
 ## Status
 
 **Open** | Created: 2026-01-10 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-10
+- **Status**: Completed
+
+### Changes Made
+- `hooks/scripts/context-monitor.sh`: Replaced `handoff_triggered` boolean with `threshold_crossed_at` timestamp and `handoff_complete` flag. Added cross-platform helper functions `get_mtime()` and `parse_iso_date()` with TZ=UTC handling. Implemented persistent reminder logic that checks for `.claude/ll-continue-prompt.md` modification time.
+- `hooks/prompts/context-monitor.md`: Updated documentation to reflect new state schema and persistent reminder behavior.
+
+### Verification Results
+- Tests: PASS (478 passed)
+- Lint: PASS (ruff check)
+- Types: PASS (mypy)
+- ShellCheck: PASS
+- Manual Testing: Verified on macOS that:
+  - Reminder appears on every tool call after threshold
+  - Reminder stops after handoff file is created (with proper timestamp comparison)
+  - `handoff_complete` flag prevents future reminders

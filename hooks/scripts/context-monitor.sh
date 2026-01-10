@@ -112,6 +112,28 @@ estimate_tokens() {
     echo "${tokens%.*}"
 }
 
+# Get file modification time as epoch seconds (cross-platform)
+get_mtime() {
+    local file="$1"
+    # Try macOS syntax first
+    if stat -f %m "$file" 2>/dev/null; then
+        return 0
+    fi
+    # Fall back to Linux syntax
+    stat -c %Y "$file" 2>/dev/null
+}
+
+# Parse ISO 8601 date to epoch seconds (cross-platform)
+parse_iso_date() {
+    local iso_date="$1"
+    # Try macOS syntax first (use TZ=UTC since ISO dates are in UTC)
+    if TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$iso_date" +%s 2>/dev/null; then
+        return 0
+    fi
+    # Fall back to Linux syntax (handles Z suffix natively as UTC)
+    date -d "$iso_date" +%s 2>/dev/null
+}
+
 # Initialize or read state file
 read_state() {
     if [ -f "$STATE_FILE" ]; then
@@ -125,7 +147,8 @@ read_state() {
     "session_start": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
     "estimated_tokens": 0,
     "tool_calls": 0,
-    "handoff_triggered": false,
+    "threshold_crossed_at": null,
+    "handoff_complete": false,
     "breakdown": {}
 }
 EOF
@@ -157,7 +180,8 @@ main() {
     # Extract current values
     CURRENT_TOKENS=$(echo "$STATE" | jq -r '.estimated_tokens // 0')
     CURRENT_CALLS=$(echo "$STATE" | jq -r '.tool_calls // 0')
-    HANDOFF_TRIGGERED=$(echo "$STATE" | jq -r '.handoff_triggered // false')
+    THRESHOLD_CROSSED_AT=$(echo "$STATE" | jq -r '.threshold_crossed_at // ""')
+    HANDOFF_COMPLETE=$(echo "$STATE" | jq -r '.handoff_complete // false')
 
     # Calculate new totals
     NEW_TOKENS=$((CURRENT_TOKENS + TOKENS))
@@ -179,20 +203,41 @@ main() {
     # Calculate usage percentage
     USAGE_PERCENT=$((NEW_TOKENS * 100 / CONTEXT_LIMIT))
 
-    # Check if threshold reached and not already triggered
-    if [ "$USAGE_PERCENT" -ge "$THRESHOLD" ] && [ "$HANDOFF_TRIGGERED" != "true" ]; then
-        # Mark as triggered
-        NEW_STATE=$(echo "$NEW_STATE" | jq '.handoff_triggered = true')
+    # Check if threshold reached
+    if [ "$USAGE_PERCENT" -ge "$THRESHOLD" ]; then
+        # Record threshold crossing time if not already set
+        if [ -z "$THRESHOLD_CROSSED_AT" ] || [ "$THRESHOLD_CROSSED_AT" = "null" ]; then
+            THRESHOLD_CROSSED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+            NEW_STATE=$(echo "$NEW_STATE" | jq --arg t "$THRESHOLD_CROSSED_AT" '.threshold_crossed_at = $t')
+        fi
+
+        # Skip if handoff already complete
+        if [ "$HANDOFF_COMPLETE" = "true" ]; then
+            write_state "$NEW_STATE"
+            exit 0
+        fi
+
+        # Check if handoff was completed (file exists and modified after threshold)
+        HANDOFF_FILE=".claude/ll-continue-prompt.md"
+        if [ -f "$HANDOFF_FILE" ]; then
+            PROMPT_MTIME=$(get_mtime "$HANDOFF_FILE")
+            THRESHOLD_EPOCH=$(parse_iso_date "$THRESHOLD_CROSSED_AT")
+
+            if [ -n "$PROMPT_MTIME" ] && [ -n "$THRESHOLD_EPOCH" ] && \
+               [ "$PROMPT_MTIME" -gt "$THRESHOLD_EPOCH" ] 2>/dev/null; then
+                # Handoff complete - mark it and stop reminding
+                NEW_STATE=$(echo "$NEW_STATE" | jq '.handoff_complete = true')
+                write_state "$NEW_STATE"
+                exit 0
+            fi
+        fi
+
+        # Handoff not complete - output reminder
         write_state "$NEW_STATE"
-
-        # Output handoff trigger message
         cat <<EOF
-[ll] Context ~${USAGE_PERCENT}% used (${NEW_TOKENS}/${CONTEXT_LIMIT} tokens estimated) - threshold ${THRESHOLD}% reached
+[ll] Context ~${USAGE_PERCENT}% used (${NEW_TOKENS}/${CONTEXT_LIMIT} tokens estimated)
 
-IMPORTANT: Context usage threshold reached. To preserve your work, please run:
-  /ll:handoff
-
-This will generate a continuation prompt for a fresh session.
+Run /ll:handoff to preserve your work before context exhaustion.
 EOF
         exit 0
     fi
