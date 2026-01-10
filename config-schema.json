@@ -206,11 +206,11 @@
         },
         "worktree_copy_files": {
           "type": "array",
-          "description": "Files to copy from main repo to worktrees (relative paths)",
+          "description": "Additional files to copy from main repo to worktrees (relative paths). Note: .claude/ directory is always copied automatically.",
           "items": {
             "type": "string"
           },
-          "default": [".claude/settings.local.json", ".env"]
+          "default": [".env"]
         }
       },
       "additionalProperties": false

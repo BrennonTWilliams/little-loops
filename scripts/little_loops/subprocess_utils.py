@@ -6,6 +6,7 @@ real-time output streaming, timeout handling, and context handoff detection.
 
 from __future__ import annotations
 
+import os
 import re
 import selectors
 import subprocess
@@ -80,6 +81,11 @@ def run_claude_command(
     """
     cmd_args = ["claude", "--dangerously-skip-permissions", "-p", command]
 
+    # Set environment to keep Claude in the project working directory (BUG-007)
+    # This helps prevent file writes from leaking to the main repo in worktrees
+    env = os.environ.copy()
+    env["CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR"] = "1"
+
     process = subprocess.Popen(
         cmd_args,
         stdout=subprocess.PIPE,
@@ -87,6 +93,7 @@ def run_claude_command(
         text=True,
         bufsize=1,  # Line buffered
         cwd=working_dir,
+        env=env,
     )
 
     if on_process_start:

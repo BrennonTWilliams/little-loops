@@ -264,9 +264,10 @@ class ParallelConfig:
     skip_ids: set[str] | None = None
     # Validation settings
     require_code_changes: bool = True  # If False, allow changes to only excluded dirs
-    # Files to copy from main repo to worktrees
+    # Additional files to copy from main repo to worktrees
+    # Note: .claude/ directory is always copied automatically (see worker_pool.py)
     worktree_copy_files: list[str] = field(
-        default_factory=lambda: [".claude/settings.local.json", ".env"]
+        default_factory=lambda: [".env"]
     )
 
     def get_ready_command(self, issue_id: str) -> str:

@@ -402,8 +402,22 @@ class WorkerPool:
                     capture_output=True,
                 )
 
-        # Copy configured files from main repo to worktree
+        # Copy .claude/ directory to establish project root for Claude Code (BUG-007)
+        # Claude Code uses .claude/ directory as highest priority for project root detection.
+        # Without this, Claude may detect the main repo as project root in worktrees,
+        # causing file writes to leak to the main repository.
+        claude_dir = self.repo_path / ".claude"
+        if claude_dir.exists() and claude_dir.is_dir():
+            dest_claude_dir = worktree_path / ".claude"
+            if dest_claude_dir.exists():
+                shutil.rmtree(dest_claude_dir)
+            shutil.copytree(claude_dir, dest_claude_dir)
+            self.logger.info("Copied .claude/ directory to worktree")
+
+        # Copy additional configured files from main repo to worktree
         for file_path in self.parallel_config.worktree_copy_files:
+            if file_path.startswith(".claude/"):
+                continue  # Already copied with full .claude/ directory above
             src = self.repo_path / file_path
             if src.exists():
                 dest = worktree_path / file_path

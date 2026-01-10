@@ -504,14 +504,19 @@ class TestWorkerPoolWorktreeManagement:
         temp_repo_with_config: Path,
         mock_logger: MagicMock,
     ) -> None:
-        """_setup_worktree() copies configured files to worktree."""
+        """_setup_worktree() copies .claude/ directory and configured files to worktree."""
         worktree_path = temp_repo_with_config / ".worktrees" / "worker-bug-001"
         branch_name = "parallel/bug-001"
 
         copied_files: list[tuple[Path, Path]] = []
+        copytree_calls: list[tuple[Path, Path]] = []
 
         def mock_copy2(src: Path, dest: Path) -> None:
             copied_files.append((Path(src), Path(dest)))
+
+        def mock_copytree(src: Path, dest: Path) -> Path:
+            copytree_calls.append((Path(src), Path(dest)))
+            return Path(dest)
 
         def mock_git_run(
             args: list[str], cwd: Path, **kwargs: Any
@@ -522,11 +527,16 @@ class TestWorkerPoolWorktreeManagement:
             with patch("subprocess.run") as mock_subprocess:
                 mock_subprocess.return_value = subprocess.CompletedProcess([], 0, "", "")
                 with patch("shutil.copy2", side_effect=mock_copy2):
-                    worker_pool._setup_worktree(worktree_path, branch_name)
+                    with patch("shutil.copytree", side_effect=mock_copytree):
+                        worker_pool._setup_worktree(worktree_path, branch_name)
 
-        # Should have tried to copy settings.local.json
+        # Should have copied .claude/ directory via copytree (BUG-007 fix)
+        copytree_srcs = [str(src) for src, _ in copytree_calls]
+        assert any(".claude" in src for src in copytree_srcs)
+
+        # .claude/* files should be skipped in copy2 since .claude/ is copied via copytree
         copied_names = [src.name for src, _ in copied_files]
-        assert "settings.local.json" in copied_names
+        assert "settings.local.json" not in copied_names
 
     def test_setup_worktree_removes_existing(
         self,

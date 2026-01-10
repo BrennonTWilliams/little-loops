@@ -54,11 +54,22 @@ The codebase already has detection and cleanup logic in `worker_pool.py`:
 - `_detect_main_repo_leaks()` (line 668): Compares status after worker completes to detect new files
 - `_cleanup_leaked_files()` (line 732): Removes leaked files from main repo
 
-## Proposed Fix
+## Fix Implemented
 
-1. Investigate Claude Code's project root detection to understand why it fails in worktrees
-2. Consider setting explicit project root hints in the worktree environment
-3. Alternatively, improve the cleanup mechanism to be more robust
+**Root Cause Analysis**: Claude Code's project root detection prioritizes `.claude/` directory, then `.git/`, then cwd. In git worktrees, the `.git` is a file pointing to main repo. Without a `.claude/` directory in the worktree, Claude Code detects the main repo as project root.
+
+**Solution (2 changes)**:
+
+1. **Copy `.claude/` directory to worktrees** (`worker_pool.py:405-415`)
+   - Copies entire `.claude/` directory during worktree setup
+   - Establishes project root anchor for Claude Code
+   - Existing `worktree_copy_files` config entries for `.claude/*` are skipped (already copied)
+
+2. **Set environment variable** (`subprocess_utils.py:84-87`)
+   - Sets `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` when launching Claude CLI
+   - Keeps Claude in the project working directory after bash commands
+
+**Safety Net Retained**: Existing leak detection/cleanup logic (`_detect_main_repo_leaks`, `_cleanup_leaked_files`) is retained as defense-in-depth.
 
 ## Impact
 
@@ -74,4 +85,6 @@ The codebase already has detection and cleanup logic in `worker_pool.py`:
 - root-cause:external-dependency
 
 ## Status
-**Open** | Created: 2026-01-09 | Priority: P2 | Validated: 2026-01-09
+**Fixed** | Created: 2026-01-09 | Priority: P2 | Fixed: 2026-01-09
+
+Pending production validation before moving to completed/.
