@@ -10,7 +10,7 @@ Development workflow toolkit for Claude Code with issue management, code quality
 
 little-loops is a Claude Code plugin that provides a complete development workflow toolkit. It includes:
 
-- **18 slash commands** for development workflows
+- **20 slash commands** for development workflows
 - **7 specialized agents** for codebase analysis
 - **Automation scripts** for autonomous issue processing
 - **Configuration system** for project customization
@@ -273,6 +273,13 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `/ll:commit` | Create commits with approval |
 | `/ll:iterate_plan [path]` | Update existing plans |
 
+### Session Management
+
+| Command | Description |
+|---------|-------------|
+| `/ll:handoff [context]` | Generate continuation prompt for session handoff |
+| `/ll:resume [prompt_file]` | Resume from previous session's continuation prompt |
+
 ## Agents
 
 | Agent | Description |
@@ -446,7 +453,7 @@ little-loops/
 ├── plugin.json           # Plugin manifest
 ├── config-schema.json    # Configuration schema
 ├── README.md             # This file
-├── commands/             # Slash command templates (18 commands)
+├── commands/             # Slash command templates (20 commands)
 ├── agents/               # Agent definitions (7 agents)
 ├── hooks/                # Lifecycle hooks and validation scripts
 ├── templates/            # Project type config templates

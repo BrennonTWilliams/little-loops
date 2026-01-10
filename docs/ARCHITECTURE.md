@@ -21,7 +21,7 @@ The system consists of three main layers:
 ```mermaid
 flowchart TB
     subgraph "Claude Code Plugin"
-        CMD[Commands<br/>18 slash commands]
+        CMD[Commands<br/>20 slash commands]
         AGT[Agents<br/>7 specialized agents]
     end
 
@@ -61,7 +61,7 @@ flowchart TB
 little-loops/
 ├── plugin.json              # Plugin manifest
 ├── config-schema.json       # JSON Schema for validation
-├── commands/                # 18 slash command templates
+├── commands/                # 20 slash command templates
 │   ├── init.md
 │   ├── help.md
 │   ├── check_code.md
@@ -81,11 +81,7 @@ little-loops/
 │   ├── hooks.json           # Hook configuration
 │   ├── check-duplicate-issue-id.sh  # Validation script
 │   └── prompts/
-│       ├── context-monitor.md       # Context usage estimation
-│       ├── post-tool-state-tracking.md
-│       ├── pre-compact-state.md
-│       ├── session-start-resume.md  # Session state reset
-│       └── continuation-prompt-template.md
+│       └── continuation-prompt-template.md  # Handoff prompt template
 ├── templates/               # Project type configs
 │   ├── python-generic.json
 │   ├── javascript.json
@@ -603,7 +599,7 @@ flowchart TB
 ```
 
 **Files**:
-- `hooks/prompts/context-monitor.md` - PostToolUse hook for estimation
+- `hooks/prompts/continuation-prompt-template.md` - Template for handoff prompts
 - `.claude/ll-context-state.json` - Running context usage state
 - `.claude/ll-continue-prompt.md` - Generated continuation prompt
 - `subprocess_utils.py` - Handoff detection and continuation reading

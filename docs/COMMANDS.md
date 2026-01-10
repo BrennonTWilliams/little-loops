@@ -107,6 +107,22 @@ Generate comprehensive PR descriptions from branch changes.
 
 ---
 
+## Session Management
+
+### `/ll:handoff`
+Generate continuation prompt for session handoff.
+
+**Arguments:**
+- `context` (optional): Description of current work context
+
+### `/ll:resume`
+Resume from a previous session's continuation prompt.
+
+**Arguments:**
+- `prompt_file` (optional): Path to continuation prompt (default: `.claude/ll-continue-prompt.md`)
+
+---
+
 ## Quick Reference
 
 | Command | Description |
@@ -129,6 +145,8 @@ Generate comprehensive PR descriptions from branch changes.
 | `audit_claude_config` | Comprehensive config audit |
 | `commit` | Create git commits |
 | `describe_pr` | Generate PR descriptions |
+| `handoff` | Generate session handoff prompt |
+| `resume` | Resume from continuation prompt |
 
 ---
 

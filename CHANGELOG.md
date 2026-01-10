@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **18 slash commands** for development workflows:
+- **20 slash commands** for development workflows:
   - `/ll:init` - Project initialization with auto-detection for 7 project types
   - `/ll:help` - Command reference and usage guide
   - `/ll:toggle_autoprompt` - Toggle automatic prompt optimization
@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `/ll:describe_pr` - PR description generation
   - `/ll:commit` - Git commit creation with approval
   - `/ll:iterate_plan` - Plan iteration and updates
+  - `/ll:handoff` - Generate continuation prompt for session handoff
+  - `/ll:resume` - Resume from previous session's continuation prompt
 
 - **7 specialized agents**:
   - `codebase-analyzer` - Implementation details analysis
