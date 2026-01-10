@@ -72,8 +72,8 @@ Update `scripts/little_loops/issue_parser.py`:
 
 ```python
 @dataclass
-class ParsedIssue:
-    """Parsed issue with optional discovered_by field."""
+class IssueInfo:
+    """Parsed information from an issue file."""
     # ... existing fields ...
     discovered_by: Optional[str] = None
 ```
