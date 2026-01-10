@@ -7,11 +7,6 @@
           {
             "type": "command",
             "command": "bash -c 'rm -f .claude/ll-context-state.json 2>/dev/null; CONFIG_FILE=\".claude/ll-config.json\"; if [ ! -f \"$CONFIG_FILE\" ]; then CONFIG_FILE=\"ll-config.json\"; fi; if [ -f \"$CONFIG_FILE\" ]; then echo \"[little-loops] Config loaded: $CONFIG_FILE\"; cat \"$CONFIG_FILE\" | head -50; else echo \"[little-loops] Warning: No config found. Run /ll:init to create one.\"; fi'"
-          },
-          {
-            "type": "prompt",
-            "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/session-start-resume.md",
-            "timeout": 2000
           }
         ]
       }
@@ -22,11 +17,6 @@
           {
             "type": "command",
             "command": "bash -c 'if [ ! -f \".claude/ll-config.json\" ] && [ ! -f \"ll-config.json\" ]; then echo \"[little-loops] No config found. Run /ll:init to set up little-loops for this project.\"; fi'"
-          },
-          {
-            "type": "prompt",
-            "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/optimize-prompt-hook.md",
-            "timeout": 3000
           }
         ]
       }
@@ -47,28 +37,9 @@
       {
         "hooks": [
           {
-            "type": "prompt",
-            "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/post-tool-state-tracking.md"
-          }
-        ]
-      },
-      {
-        "hooks": [
-          {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/context-monitor.sh",
             "timeout": 5000
-          }
-        ]
-      }
-    ],
-    "PreCompact": [
-      {
-        "hooks": [
-          {
-            "type": "prompt",
-            "prompt": "${CLAUDE_PLUGIN_ROOT}/hooks/prompts/pre-compact-state.md",
-            "timeout": 10000
           }
         ]
       }
