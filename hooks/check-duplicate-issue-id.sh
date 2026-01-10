@@ -7,37 +7,44 @@
 # Returns JSON with permissionDecision: allow|deny
 #
 
-set -euo pipefail
+set -uo pipefail
+
+# Allow JSON response function
+allow_response() {
+    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
+    exit 0
+}
+
+# Check if jq is available (required for reliable JSON parsing)
+if ! command -v jq &> /dev/null; then
+    allow_response
+fi
 
 # Read JSON input from stdin
 INPUT=$(cat)
 
-# Extract tool name and file path
-TOOL_NAME=$(echo "$INPUT" | grep -o '"tool_name"[[:space:]]*:[[:space:]]*"[^"]*"' | sed 's/.*: *"\([^"]*\)"/\1/')
-FILE_PATH=$(echo "$INPUT" | grep -o '"file_path"[[:space:]]*:[[:space:]]*"[^"]*"' | head -1 | sed 's/.*: *"\([^"]*\)"/\1/')
+# Extract tool name and file path using jq for reliable parsing
+TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""' 2>/dev/null || echo "")
+FILE_PATH=$(echo "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null || echo "")
 
 # Only check Write and Edit tools
 if [[ "$TOOL_NAME" != "Write" && "$TOOL_NAME" != "Edit" ]]; then
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-    exit 0
+    allow_response
 fi
 
 # Check if file path is empty
 if [[ -z "$FILE_PATH" ]]; then
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-    exit 0
+    allow_response
 fi
 
 # Only check files in .issues directory
 if [[ "$FILE_PATH" != *".issues/"* ]]; then
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-    exit 0
+    allow_response
 fi
 
 # Only check .md files
 if [[ "$FILE_PATH" != *.md ]]; then
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-    exit 0
+    allow_response
 fi
 
 # Extract filename from path
@@ -45,12 +52,12 @@ FILENAME=$(basename "$FILE_PATH")
 
 # Extract issue ID (e.g., BUG-001, FEAT-002, ENH-003) from filename
 # Pattern: P[0-5]-(BUG|FEAT|ENH)-[0-9]{3}-
-ISSUE_ID=$(echo "$FILENAME" | grep -oE '(BUG|FEAT|ENH)-[0-9]{3}' | head -1)
+# Use || true to prevent exit on no match
+ISSUE_ID=$(echo "$FILENAME" | grep -oE '(BUG|FEAT|ENH)-[0-9]{3}' | head -1 || true)
 
 # If no issue ID found, allow (not a standard issue file)
 if [[ -z "$ISSUE_ID" ]]; then
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-    exit 0
+    allow_response
 fi
 
 # Find the .issues directory (search up from current dir or use path from file)
@@ -65,15 +72,13 @@ fi
 
 # Check if .issues directory exists
 if [[ ! -d "$ISSUES_DIR" ]]; then
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-    exit 0
+    allow_response
 fi
 
 # Check if this is a new file (doesn't exist yet) or existing file
 if [[ -f "$FILE_PATH" ]]; then
     # File exists - this is an edit, allow it
-    echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-    exit 0
+    allow_response
 fi
 
 # Search for existing files with the same issue ID
@@ -95,5 +100,4 @@ EOF
 fi
 
 # No duplicate found - allow
-echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
-exit 0
+allow_response
