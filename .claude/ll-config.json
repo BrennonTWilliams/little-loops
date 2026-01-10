@@ -17,5 +17,9 @@
   },
   "parallel": {
     "worktree_copy_files": [".claude/settings.local.json"]
+  },
+  "context_monitor": {
+    "enabled": true,
+    "auto_handoff_threshold": 80
   }
 }

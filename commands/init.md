@@ -358,7 +358,7 @@ questions:
       - label: "Parallel processing"
         description: "Configure ll-parallel for concurrent issue processing with git worktrees"
       - label: "Context monitoring"
-        description: "Auto-handoff at 80% context usage (for ll-auto/ll-parallel)"
+        description: "Auto-handoff reminders at 80% context usage (works in all modes)"
     multiSelect: true
 ```
 
