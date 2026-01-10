@@ -6,7 +6,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'rm -f .claude/ll-context-state.json 2>/dev/null; CONFIG_FILE=\".claude/ll-config.json\"; if [ ! -f \"$CONFIG_FILE\" ]; then CONFIG_FILE=\"ll-config.json\"; fi; if [ -f \"$CONFIG_FILE\" ]; then echo \"[little-loops] Config loaded: $CONFIG_FILE\"; cat \"$CONFIG_FILE\" | head -50; else echo \"[little-loops] Warning: No config found. Run /ll:init to create one.\"; fi'"
+            "command": "bash -c 'rm -f .claude/ll-context-state.json 2>/dev/null; CONFIG_FILE=\".claude/ll-config.json\"; if [ ! -f \"$CONFIG_FILE\" ]; then CONFIG_FILE=\"ll-config.json\"; fi; if [ -f \"$CONFIG_FILE\" ]; then echo \"[little-loops] Config loaded: $CONFIG_FILE\"; cat \"$CONFIG_FILE\" | head -50; else echo \"[little-loops] Warning: No config found. Run /ll:init to create one.\"; fi'",
+            "timeout": 5000
           }
         ]
       }
@@ -16,7 +17,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'if [ ! -f \".claude/ll-config.json\" ] && [ ! -f \"ll-config.json\" ]; then echo \"[little-loops] No config found. Run /ll:init to set up little-loops for this project.\"; fi'"
+            "command": "bash -c 'if [ ! -f \".claude/ll-config.json\" ] && [ ! -f \"ll-config.json\" ]; then echo \"[little-loops] No config found. Run /ll:init to set up little-loops for this project.\"; fi'",
+            "timeout": 3000
           }
         ]
       }
@@ -49,7 +51,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash -c 'rm -f .claude/.ll-lock 2>/dev/null; if [ -d .worktrees ] && command -v git >/dev/null 2>&1; then git worktree list 2>/dev/null | grep .worktrees | awk \"{print \\$1}\" | while read w; do git worktree remove --force \"$w\" 2>/dev/null || true; done; fi; echo \"[little-loops] Session cleanup complete\"'",
+            "command": "bash -c 'rm -f .claude/.ll-lock .claude/ll-context-state.json 2>/dev/null; if [ -d .worktrees ] && command -v git >/dev/null 2>&1; then git worktree list 2>/dev/null | grep .worktrees | awk \"{print \\$1}\" | while read w; do git worktree remove --force \"$w\" 2>/dev/null || true; done; fi; echo \"[little-loops] Session cleanup complete\"'",
             "timeout": 15000
           }
         ]
