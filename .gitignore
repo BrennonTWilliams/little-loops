@@ -57,3 +57,6 @@ __pycache__/
 scripts/.parallel-manage-state.json
 .auto-manage-state.json
 .parallel-manage-state.json
+
+# ll-parallel artifacts
+.worktrees/
