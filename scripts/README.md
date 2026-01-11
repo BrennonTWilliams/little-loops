@@ -97,7 +97,8 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     "state_file": ".auto-manage-state.json",
     "worktree_base": ".worktrees",
     "max_workers": 2,
-    "stream_output": true
+    "stream_output": true,
+    "max_continuations": 3
   },
 
   "parallel": {
@@ -110,7 +111,14 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     "stream_subprocess_output": false,
     "command_prefix": "/ll:",
     "ready_command": "ready_issue {{issue_id}}",
-    "manage_command": "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+    "manage_command": "manage_issue {{issue_type}} {{action}} {{issue_id}}",
+    "worktree_copy_files": [".claude/settings.local.json", ".env"]
+  },
+
+  "context_monitor": {
+    "enabled": true,
+    "auto_handoff_threshold": 80,
+    "context_limit_estimate": 150000
   },
 
   "commands": {
@@ -162,8 +170,10 @@ Sequential automation settings (`ll-auto`):
 |-----|---------|-------------|
 | `timeout_seconds` | `3600` | Per-issue timeout |
 | `state_file` | `.auto-manage-state.json` | State persistence |
+| `worktree_base` | `.worktrees` | Git worktree directory |
 | `max_workers` | `2` | Parallel workers |
 | `stream_output` | `true` | Stream subprocess output |
+| `max_continuations` | `3` | Max session restarts on context handoff |
 
 #### `parallel`
 
@@ -181,10 +191,33 @@ Parallel automation settings with git worktree isolation (`ll-parallel`):
 | `command_prefix` | `/ll:` | Prefix for slash commands |
 | `ready_command` | `ready_issue {{issue_id}}` | Command template for validation |
 | `manage_command` | See below | Command template for processing |
+| `worktree_copy_files` | `[".claude/settings.local.json", ".env"]` | Files to copy to worktrees |
 
 The `manage_command` default is: `manage_issue {{issue_type}} {{action}} {{issue_id}}`
 
+#### `context_monitor`
+
+Context monitoring for session handoff (disabled by default):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable automatic context monitoring |
+| `auto_handoff_threshold` | `80` | Percentage (50-95) to trigger warnings |
+| `context_limit_estimate` | `150000` | Conservative token limit estimate |
+
 ## Commands
+
+### Setup & Help
+
+| Command | Description |
+|---------|-------------|
+| `/ll:init [flags]` | Initialize config for a project (auto-detects type) |
+| `/ll:help` | Show available commands and usage |
+
+**Init flags:**
+- `--interactive` - Full guided wizard with prompts for each option
+- `--yes` - Accept all defaults without confirmation
+- `--force` - Overwrite existing configuration
 
 ### Code Quality
 
@@ -202,6 +235,7 @@ The `manage_command` default is: `manage_issue {{issue_type}} {{action}} {{issue
 | `/ll:ready_issue [id]` | Validate issue for implementation |
 | `/ll:prioritize_issues` | Assign priorities to issues |
 | `/ll:verify_issues` | Verify issues against codebase |
+| `/ll:normalize_issues` | Fix invalid issue filenames |
 | `/ll:scan_codebase` | Find new issues |
 
 ### Documentation & Analysis
@@ -218,6 +252,15 @@ The `manage_command` default is: `manage_issue {{issue_type}} {{action}} {{issue
 |---------|-------------|
 | `/ll:commit` | Create commits with approval |
 | `/ll:iterate_plan [path]` | Update existing plans |
+
+### Session Management
+
+| Command | Description |
+|---------|-------------|
+| `/ll:handoff [context]` | Generate continuation prompt for session handoff |
+| `/ll:resume [prompt_file]` | Resume from previous session's continuation prompt |
+
+**Automatic context monitoring**: Enable `context_monitor.enabled` to get warnings when context fills up (~80%). The system will remind you to run `/ll:handoff` before context exhaustion. See [Session Handoff Guide](../docs/SESSION_HANDOFF.md) for details.
 
 ## Agents
 
@@ -368,6 +411,16 @@ Commands use `{{config.*}}` for configuration values:
   }
 }
 ```
+
+## Documentation
+
+For detailed documentation, see:
+
+- [Session Handoff Guide](../docs/SESSION_HANDOFF.md) - Context management and session continuation
+- [Troubleshooting Guide](../docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [Architecture Overview](../docs/ARCHITECTURE.md) - System design and diagrams
+- [API Reference](../docs/API.md) - Python module documentation
+- [Command Reference](../docs/COMMANDS.md) - All slash commands with usage
 
 ## Migration from Existing Setup
 
