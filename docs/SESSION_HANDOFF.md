@@ -1,0 +1,339 @@
+# Session Handoff
+
+Automatic context management and session continuation for long-running tasks.
+
+## Overview
+
+Claude Code sessions have a context window limit. When working on complex tasks, context can fill up, potentially losing progress. Session handoff solves this by:
+
+1. **Monitoring** context usage in real-time
+2. **Warning** when approaching the limit (80% by default)
+3. **Preserving** session state to a continuation prompt
+4. **Resuming** seamlessly in a fresh session
+
+## Quick Start
+
+### Enable Context Monitoring
+
+Add to `.claude/ll-config.json`:
+
+```json
+{
+  "context_monitor": {
+    "enabled": true,
+    "auto_handoff_threshold": 80
+  }
+}
+```
+
+### Manual Handoff
+
+When you want to preserve your work:
+
+```bash
+/ll:handoff                           # Auto-detect context
+/ll:handoff "Working on auth module"  # With explicit description
+```
+
+### Resume in New Session
+
+```bash
+/ll:resume
+```
+
+## How It Works
+
+### Interactive Sessions
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Session starts                                                  │
+│     ↓                                                           │
+│ PostToolUse hook monitors each tool call                        │
+│     ↓                                                           │
+│ Estimates tokens: Read (10/line), Bash (0.3/char), etc.         │
+│     ↓                                                           │
+│ When usage >= 80%:                                              │
+│     "[ll] Context ~82% used. Run /ll:handoff..."                │
+│     ↓                                                           │
+│ Reminder repeats on every tool call until handoff executed      │
+│     ↓                                                           │
+│ /ll:handoff writes .claude/ll-continue-prompt.md                │
+│     ↓                                                           │
+│ Start new session → /ll:resume → Continue working               │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Automation Tools (ll-auto, ll-parallel)
+
+Automation tools handle handoff automatically:
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│ Worker processes issue                                          │
+│     ↓                                                           │
+│ Context threshold reached → /ll:handoff executed                │
+│     ↓                                                           │
+│ Outputs: "CONTEXT_HANDOFF: Ready for fresh session"             │
+│     ↓                                                           │
+│ CLI detects signal, reads .claude/ll-continue-prompt.md         │
+│     ↓                                                           │
+│ Spawns fresh Claude session with continuation prompt            │
+│     ↓                                                           │
+│ Work continues (up to 3 continuations per issue)                │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+## Commands
+
+### `/ll:handoff`
+
+Generates a continuation prompt capturing current session state.
+
+**Usage:**
+
+```bash
+/ll:handoff                              # Auto-detect context
+/ll:handoff "Refactoring auth module"    # With explicit description
+```
+
+**Output:** Writes to `.claude/ll-continue-prompt.md`:
+
+```markdown
+# Session Continuation: Refactoring auth module
+
+## Context
+Working on authentication module refactoring. Completed middleware updates.
+
+## Completed Work
+- Updated auth middleware (src/middleware/auth.ts:45)
+- Added token validation (src/utils/tokens.ts:12)
+
+## Current State
+- **Working on**: User session handling
+- **Modified files**: src/middleware/auth.ts, src/utils/tokens.ts
+- **Last action**: Implemented token refresh logic
+
+## Key File References
+- src/middleware/auth.ts - Main auth middleware
+- src/utils/tokens.ts - Token utilities
+
+## Resume
+Run `/ll:resume` in a new session, or copy this prompt content.
+
+## Important Context
+- Using JWT with 15-minute expiry
+- Refresh tokens stored in HTTP-only cookies
+```
+
+### `/ll:resume`
+
+Loads a continuation prompt and restores session context.
+
+**Usage:**
+
+```bash
+/ll:resume                              # From default location
+/ll:resume path/to/custom-prompt.md     # From custom location
+```
+
+**Output:**
+
+```
+Resuming from previous session
+─────────────────────────────────────────────────────────────────
+[Continuation prompt content displayed]
+─────────────────────────────────────────────────────────────────
+
+Ready to continue. What would you like to do next?
+```
+
+## Configuration
+
+### Full Configuration Options
+
+```json
+{
+  "context_monitor": {
+    "enabled": true,
+    "auto_handoff_threshold": 80,
+    "context_limit_estimate": 150000,
+    "estimate_weights": {
+      "read_per_line": 10,
+      "tool_call_base": 100,
+      "bash_output_per_char": 0.3
+    },
+    "state_file": ".claude/ll-context-state.json"
+  },
+  "continuation": {
+    "enabled": true,
+    "auto_detect_on_session_start": true,
+    "include_todos": true,
+    "include_git_status": true,
+    "include_recent_files": true,
+    "max_continuations": 3,
+    "prompt_expiry_hours": 24
+  }
+}
+```
+
+### Configuration Reference
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `context_monitor.enabled` | `false` | Enable automatic context monitoring |
+| `context_monitor.auto_handoff_threshold` | `80` | Percentage (50-95) to trigger warnings |
+| `context_monitor.context_limit_estimate` | `150000` | Conservative token limit estimate |
+| `continuation.max_continuations` | `3` | Max auto-continuations per issue (automation) |
+| `continuation.prompt_expiry_hours` | `24` | Hours before prompt marked stale |
+
+### Token Estimation Weights
+
+The context monitor estimates token usage based on tool activity:
+
+| Tool | Estimation | Rationale |
+|------|------------|-----------|
+| Read | `lines × 10` | File content is verbose |
+| Grep | `matches × 5` | Summarized search results |
+| Bash | `chars × 0.3` | Command output varies |
+| Glob | `files × 20` | File lists are compact |
+| Task | `2000` | Agent responses are summarized |
+| WebFetch | `1500` | Web content is processed |
+| Other | `100` | Base overhead per call |
+
+## Files
+
+| File | Purpose |
+|------|---------|
+| `.claude/ll-continue-prompt.md` | Generated continuation prompt |
+| `.claude/ll-context-state.json` | Running context usage state |
+| `.claude/ll-session-state.json` | Session metadata (fallback) |
+
+### State File Format
+
+`.claude/ll-context-state.json`:
+
+```json
+{
+  "session_start": "2024-01-15T10:30:00Z",
+  "estimated_tokens": 125000,
+  "tool_calls": 63,
+  "threshold_crossed_at": "2024-01-15T11:45:00Z",
+  "handoff_complete": false,
+  "breakdown": {
+    "read": 60000,
+    "bash": 30000,
+    "grep": 15000,
+    "glob": 5000,
+    "task": 15000
+  }
+}
+```
+
+## Troubleshooting
+
+### Context monitor not triggering
+
+1. **Check if enabled:**
+   ```bash
+   cat .claude/ll-config.json | jq '.context_monitor.enabled'
+   ```
+
+2. **Verify jq is installed** (required for the hook):
+   ```bash
+   which jq
+   ```
+
+3. **Check state file:**
+   ```bash
+   cat .claude/ll-context-state.json
+   ```
+
+### Reminders keep appearing after handoff
+
+The monitor checks if `.claude/ll-continue-prompt.md` was modified *after* the threshold was crossed. Ensure:
+
+1. `/ll:handoff` was run (not just manually creating the file)
+2. The file modification time is recent
+3. Check `handoff_complete` in state file
+
+### Resume shows stale prompt
+
+Prompts older than `prompt_expiry_hours` (default: 24) are marked stale. The content is still shown, but a warning appears. You can:
+
+1. Run `/ll:handoff` to generate a fresh prompt
+2. Increase `prompt_expiry_hours` in config
+
+### Automation not detecting handoff
+
+Ensure the handoff command outputs the signal:
+
+```
+CONTEXT_HANDOFF: Ready for fresh session
+```
+
+Check `subprocess_utils.py` detection pattern:
+
+```python
+CONTEXT_HANDOFF_PATTERN = re.compile(r"CONTEXT_HANDOFF:\s*Ready for fresh session")
+```
+
+### Max continuations reached
+
+If you see "Reached max continuations", the issue required more than 3 session restarts. Options:
+
+1. Increase `continuation.max_continuations` in config
+2. Break the issue into smaller tasks
+3. Run remaining work manually
+
+## Best Practices
+
+### When to Use Manual Handoff
+
+- Before taking a break on a long task
+- When you notice context filling up
+- Before switching to a different task
+- When the hook starts warning you
+
+### Writing Good Continuation Prompts
+
+The `/ll:handoff` command auto-generates prompts, but you can improve them:
+
+1. **Provide explicit context** when running handoff:
+   ```bash
+   /ll:handoff "Implementing OAuth2 flow - finished provider setup, starting callback handler"
+   ```
+
+2. **Keep todos updated** - they're included in the prompt
+
+3. **Commit frequently** - git status helps track progress
+
+### For Automation
+
+1. **Set appropriate thresholds** - Lower threshold (70%) for complex issues
+2. **Monitor logs** - Check for `CONTEXT_HANDOFF` signals
+3. **Review continuation count** - High counts may indicate issues that need splitting
+
+## Integration
+
+### With Other Hooks
+
+- **PreCompact hook**: Can also generate continuation prompts (complementary)
+- **SessionStart hook**: Notifies when continuation prompt is available
+
+### With Automation Tools
+
+Both `ll-auto` and `ll-parallel` support automatic continuation:
+
+```python
+# In issue_manager.py and worker_pool.py
+if detect_context_handoff(result.stdout):
+    prompt_content = read_continuation_prompt(working_dir)
+    # Spawn fresh session with prompt
+```
+
+## See Also
+
+- [ARCHITECTURE.md](./ARCHITECTURE.md#context-monitor-and-session-continuation) - Technical details
+- [commands/handoff.md](../commands/handoff.md) - Command reference
+- [commands/resume.md](../commands/resume.md) - Command reference

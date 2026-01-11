@@ -162,6 +162,12 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     "focus_dirs": ["src/", "tests/"],
     "exclude_patterns": ["**/node_modules/**", "**/__pycache__/**", "**/.git/**"],
     "custom_agents": []
+  },
+
+  "context_monitor": {
+    "enabled": true,
+    "auto_handoff_threshold": 80,
+    "context_limit_estimate": 150000
   }
 }
 ```
@@ -279,6 +285,8 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 |---------|-------------|
 | `/ll:handoff [context]` | Generate continuation prompt for session handoff |
 | `/ll:resume [prompt_file]` | Resume from previous session's continuation prompt |
+
+**Automatic context monitoring**: Enable `context_monitor.enabled` to get warnings when context fills up (~80%). The system will remind you to run `/ll:handoff` before context exhaustion. See [Session Handoff Guide](docs/SESSION_HANDOFF.md) for details.
 
 ## Agents
 
@@ -440,6 +448,7 @@ For detailed solutions, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
 For detailed documentation, see:
 
+- [Session Handoff Guide](docs/SESSION_HANDOFF.md) - Context management and session continuation
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
 - [Architecture Overview](docs/ARCHITECTURE.md) - System design and diagrams
 - [API Reference](docs/API.md) - Python module documentation

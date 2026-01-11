@@ -8,6 +8,7 @@ Common issues and solutions for little-loops.
 - [Git Worktree Problems](#git-worktree-problems)
 - [Claude CLI Issues](#claude-cli-issues)
 - [State Management](#state-management)
+- [Session Handoff](#session-handoff)
 - [Priority and Filtering](#priority-and-filtering)
 - [Merge Conflicts](#merge-conflicts)
 - [Slash Command Issues](#slash-command-issues)
@@ -302,6 +303,156 @@ Check your config for custom paths:
 ```bash
 grep state_file .claude/ll-config.json
 ```
+
+---
+
+## Session Handoff
+
+### Context monitor not triggering
+
+**Symptom**: No warnings appear when context fills up
+
+**Cause**: Context monitoring is disabled by default
+
+**Solution**:
+1. Enable in `.claude/ll-config.json`:
+   ```json
+   {
+     "context_monitor": {
+       "enabled": true,
+       "auto_handoff_threshold": 80
+     }
+   }
+   ```
+2. Verify `jq` is installed (required for the hook):
+   ```bash
+   which jq
+   ```
+3. Check state file is being updated:
+   ```bash
+   cat .claude/ll-context-state.json
+   ```
+
+### Reminders keep appearing after handoff
+
+**Symptom**: "[ll] Context ~X% used" keeps showing after running `/ll:handoff`
+
+**Cause**: Handoff file modification time not detected correctly
+
+**Solution**:
+1. Verify the file was created/modified:
+   ```bash
+   ls -la .claude/ll-continue-prompt.md
+   ```
+2. Check `handoff_complete` in state file:
+   ```bash
+   cat .claude/ll-context-state.json | jq '.handoff_complete'
+   ```
+3. Manually mark complete if needed:
+   ```bash
+   # Edit .claude/ll-context-state.json and set "handoff_complete": true
+   ```
+
+### Resume shows stale prompt
+
+**Symptom**: Warning about prompt being N hours old
+
+**Cause**: Continuation prompt older than `prompt_expiry_hours` (default: 24)
+
+**Solution**:
+1. Generate fresh prompt: `/ll:handoff`
+2. Increase expiry in config:
+   ```json
+   {
+     "continuation": {
+       "prompt_expiry_hours": 72
+     }
+   }
+   ```
+3. Stale prompts are still usable - the warning is informational
+
+### No continuation prompt found
+
+**Symptom**: `/ll:resume` says "No continuation state found"
+
+**Cause**: Handoff was never run or file deleted
+
+**Solution**:
+1. Run `/ll:handoff` to create the prompt
+2. Check file location:
+   ```bash
+   ls -la .claude/ll-continue-prompt.md
+   ```
+3. Check session state file:
+   ```bash
+   cat .claude/ll-session-state.json 2>/dev/null || echo "No session state"
+   ```
+
+### Automation not detecting handoff signal
+
+**Symptom**: `ll-auto` or `ll-parallel` not spawning continuation sessions
+
+**Cause**: Signal not in expected format or detection pattern mismatch
+
+**Solution**:
+1. Verify `/ll:handoff` outputs the signal:
+   ```
+   CONTEXT_HANDOFF: Ready for fresh session
+   ```
+2. Check logs for detection:
+   ```bash
+   # Look for "Detected CONTEXT_HANDOFF signal" in output
+   ```
+3. Verify continuation prompt exists in worktree:
+   ```bash
+   cat .worktrees/worker-1/.claude/ll-continue-prompt.md
+   ```
+
+### Max continuations reached
+
+**Symptom**: "Reached max continuations (3), stopping"
+
+**Cause**: Issue required more than 3 session restarts
+
+**Solution**:
+1. Increase limit in config:
+   ```json
+   {
+     "continuation": {
+       "max_continuations": 5
+     }
+   }
+   ```
+2. Consider splitting the issue into smaller tasks
+3. Check if issue is stuck in a loop (repeated handoffs without progress)
+
+### Token estimation seems wrong
+
+**Symptom**: Threshold triggers too early or too late
+
+**Cause**: Default weights may not match your usage patterns
+
+**Solution**:
+1. Adjust estimation weights:
+   ```json
+   {
+     "context_monitor": {
+       "estimate_weights": {
+         "read_per_line": 10,
+         "tool_call_base": 100,
+         "bash_output_per_char": 0.3
+       },
+       "context_limit_estimate": 150000
+     }
+   }
+   ```
+2. Increase threshold for later warnings: `"auto_handoff_threshold": 85`
+3. Check token breakdown in state file:
+   ```bash
+   cat .claude/ll-context-state.json | jq '.breakdown'
+   ```
+
+For comprehensive documentation, see [Session Handoff Guide](SESSION_HANDOFF.md).
 
 ---
 
