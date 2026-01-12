@@ -218,6 +218,112 @@ No compilation needed - this is the native format.
 
 ---
 
+## Paradigm Compilation
+
+All paradigms (except FSM Direct) compile to the universal FSM schema via **formal compilers**—deterministic Python functions that perform template expansion with variable substitution.
+
+### Why Formal Compilers (Not LLM Generation)
+
+1. **Paradigms are constrained** - Each paradigm maps to a fixed FSM template:
+   - **Convergence**: `measure → (on_target → done, on_progress → apply, on_stall → done), apply → measure`
+   - **Invariants**: `check_1 → (pass → check_2, fail → fix_1), fix_1 → check_1, ...`
+   - **Imperative**: `step_0 → step_1 → ... → evaluate → (met → done, unmet → step_0)`
+   - **Goal-oriented**: `evaluate → (pass → done, fail → fix), fix → evaluate`
+
+2. **Debuggability matters for automation** - When a loop misbehaves in CI, you can trace exactly why the FSM looks the way it does. Rules are documented, transformations are reproducible.
+
+3. **LLM generation suits the authoring layer** - The `/ll:create-loop` command uses Claude to understand natural language intent and produce paradigm YAML. Once you have valid YAML, compilation to FSM is deterministic.
+
+4. **Compilation logic is small enough to be correct** - Each paradigm compiler is ~50-100 lines of Python, small enough to write comprehensive tests and review by hand.
+
+### Architecture
+
+```
+Natural Language → [LLM: /ll:create-loop] → Paradigm YAML → [Compiler] → FSM YAML → [Executor]
+                                                    ↑
+                                           User reviews/edits
+```
+
+Human-in-the-loop review happens at the paradigm YAML level (readable, constrained). The FSM is an internal representation—users only see it when debugging.
+
+### Compiler Implementations
+
+```python
+# little_loops/fsm/compilers.py
+
+def compile_convergence(spec: dict) -> dict:
+    """Convergence paradigm → FSM"""
+    return {
+        "name": spec["name"],
+        "initial": "measure",
+        "context": {
+            "metric_cmd": spec["check"],
+            "target": spec["toward"],
+            "tolerance": spec.get("tolerance", 0),
+        },
+        "states": {
+            "measure": {
+                "action": "${context.metric_cmd}",
+                "capture": "current_value",
+                "on_target": "done",
+                "on_progress": "apply",
+                "on_stall": "done",
+            },
+            "apply": {
+                "action": spec["using"],
+                "next": "measure",
+            },
+            "done": {"terminal": True},
+        },
+    }
+
+def compile_invariants(spec: dict) -> dict:
+    """Invariants paradigm → FSM"""
+    states = {}
+    constraints = spec["constraints"]
+
+    for i, constraint in enumerate(constraints):
+        check_state = f"check_{constraint['name']}"
+        fix_state = f"fix_{constraint['name']}"
+        next_check = f"check_{constraints[i+1]['name']}" if i+1 < len(constraints) else "all_valid"
+
+        states[check_state] = {
+            "action": constraint["check"],
+            "on_pass": next_check,
+            "on_fail": fix_state,
+        }
+        states[fix_state] = {
+            "action": constraint["fix"],
+            "next": check_state,
+        }
+
+    states["all_valid"] = {
+        "terminal": True,
+        "on_maintain": f"check_{constraints[0]['name']}" if spec.get("maintain") else None,
+    }
+
+    return {
+        "name": spec["name"],
+        "initial": f"check_{constraints[0]['name']}",
+        "states": states,
+        "maintain": spec.get("maintain", False),
+    }
+```
+
+### When LLM Generation Would Make Sense
+
+If users later need paradigms that don't fit the four templates—or want to skip YAML entirely—an LLM-backed compiler could be added as a fifth paradigm type:
+
+```yaml
+paradigm: natural
+description: "Fix all type errors, prioritizing the API module first"
+tools:
+  - /ll:check_code types
+  - /ll:manage_issue bug fix
+```
+
+---
+
 ## Universal FSM Schema
 
 All loops compile to this schema. Compilation from paradigm syntax to FSM is handled by a Python module (`little_loops.fsm`).
@@ -1140,31 +1246,27 @@ Questions to resolve before implementation begins.
 
 ### Critical (Block Issue Breakdown)
 
-1. **Paradigm Compilation Algorithms** - The examples show input/output, but:
-   - Is a formal spec needed for the compiler (e.g., how does Goal → FSM work for edge cases)?
-   - Or is "Claude generates reasonable FSM" the implementation?
-
-2. **Slash Command Output Parsing** - The execution engine mentions "regex-based extraction of verdicts, sections, and tables":
+1. **Slash Command Output Parsing** - The execution engine mentions "regex-based extraction of verdicts, sections, and tables":
    - What are the actual patterns?
    - Should this use `--output-format json` instead for reliability?
 
-3. **MVP Scope** - The "Future Considerations" lists 6 items. Are any actually required?
+2. **MVP Scope** - The "Future Considerations" lists 6 items. Are any actually required?
    - Specifically: Is loop composition/nesting needed for v1?
    - Is the visual editor in scope?
 
-4. **Installation Model** - Is `ll-loop` a new CLI entry point in `scripts/`? Or a Claude Code command?
+3. **Installation Model** - Is `ll-loop` a new CLI entry point in `scripts/`? Or a Claude Code command?
 
 ### Important (Resolve During Implementation)
 
-5. **Context Handoff** - The document describes detecting `CONTEXT_HANDOFF:` and spawning fresh sessions:
+4. **Context Handoff** - The document describes detecting `CONTEXT_HANDOFF:` and spawning fresh sessions:
    - How does this interact with loop state persistence?
    - Is this mechanism already implemented in `ll-parallel`/`ll-auto` to reference?
 
-6. **Maintain Mode Timing** - For `maintain: true` loops:
+5. **Maintain Mode Timing** - For `maintain: true` loops:
    - Is there a configurable delay between complete cycles?
    - Or does it restart immediately?
 
-7. **Security Review** - Using `--dangerously-skip-permissions` for all slash commands:
+6. **Security Review** - Using `--dangerously-skip-permissions` for all slash commands:
    - Should there be a first-run consent mechanism?
    - Is this documented as a known trade-off?
 
