@@ -105,7 +105,9 @@ Return structured findings with:
 - File path and line number(s)
 - Code snippet showing the area
 - Effort estimate (Small/Medium/Large)
-- Brief explanation of the improvement
+- Current behavior (what the code does now)
+- Expected behavior (what the code should do after improvement)
+- Proposed solution (suggested approach to implement the enhancement)
 ```
 
 #### Agent 3: Feature Scanner
@@ -189,9 +191,9 @@ discovered_date: [SCAN_DATE]
 2. [Step 2]
 3. [Observe: description of the bug]
 
-## Proposed Fix
+## Proposed Solution
 
-[Suggested approach]
+[Suggested approach to implement the enhancement or fix]
 
 ## Impact
 

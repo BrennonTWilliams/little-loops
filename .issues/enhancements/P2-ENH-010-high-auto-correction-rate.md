@@ -151,5 +151,35 @@ The previous fix addressed BUG issues (adding "Reproduction Steps" to scan_codeb
 
 ---
 
+## Resolution (Second Fix)
+
+- **Action**: improve
+- **Completed**: 2026-01-12
+- **Status**: Completed
+
+### Changes Made
+
+1. **commands/scan_codebase.md** (lines 103-110): Updated Enhancement Scanner prompt to request complete information:
+   - Added "Current behavior (what the code does now)"
+   - Added "Expected behavior (what the code should do after improvement)"
+   - Added "Proposed solution (suggested approach to implement the enhancement)"
+   - Changed from only requesting "Brief explanation of the improvement"
+
+2. **commands/scan_codebase.md** (lines 194-196): Renamed template section from "Proposed Fix" to "Proposed Solution" to align with ready_issue validation terminology ("Proposed solution/approach").
+
+### Verification Results
+- Tests: 486 PASS
+- Lint: PASS
+- Types: PASS
+
+### Root Cause
+The Enhancement Scanner prompt only asked for "Brief explanation of the improvement", but the issue template and ready_issue validation expected detailed Current Behavior, Expected Behavior, and Proposed Solution sections. The mismatch caused ready_issue to auto-correct nearly every enhancement issue.
+
+### Impact
+- Prevention: Future scanned enhancements will include all required fields, reducing auto-correction rate
+- Consistency: Template section heading now matches ready_issue validation terminology
+
+---
+
 ## Status
-**Reopened** | Created: 2026-01-09 | Reopened: 2026-01-11 | Priority: P2
+**Completed** | Created: 2026-01-09 | Reopened: 2026-01-11 | Fixed: 2026-01-12 | Priority: P2
