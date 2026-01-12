@@ -104,3 +104,50 @@ When stash pop fails:
    - Explicit `git stash` commands to recover manually
 
 This ensures users cannot miss the warning about their local changes needing manual recovery.
+
+---
+
+## Reopened
+
+- **Date**: 2026-01-11
+- **By**: /analyze_log
+- **Reason**: Issue recurred in log analysis
+
+### New Evidence
+
+**Log File**: `ll-parallel-blender-agents-debug.log`
+**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**Occurrences**: 1 (stash pop) + 1 (pull conflict) + 1 (conflicted stash cleanup)
+**Affected External Issues**: ENH-624, ENH-618
+
+```
+[22:54:00] Completing lifecycle for ENH-618 (merged but file not moved)
+[22:54:00] Pull failed due to local changes, attempting re-stash: error: cannot pull with rebase: You have unstaged changes.
+error: additionally, your index contains uncommitted changes.
+error: Please commit or stash them.
+
+[22:54:00] Tracked files to stash: ['R  .issues/enhancements/P2-ENH-618-extract-error-enrichment-base.md -> .issues/completed/P2-ENH-618-extract-error-enrichment-base.md']
+[22:54:01] Stashed local changes before merge
+[22:54:01] Re-stashed local changes after pull conflict
+[22:54:01] Merged ENH-624 successfully
+[22:54:01] Failed to pop stash:
+[22:54:01] Cleaned up conflicted stash pop, merge preserved
+[22:54:01] Stash could not be restored - your changes are saved in 'git stash list'. Run 'git stash show' to view and 'git stash pop' to retry manually.
+```
+
+### Analysis
+
+The previous fix added **tracking and warnings** for stash pop failures, but the underlying issue persists. The stash/pop mechanism itself still fails when:
+1. Local changes include renamed/moved files (`.issues/...` move to `completed/`)
+2. Pull conflicts occur due to unstaged changes
+3. Re-stash after pull conflict leads to pop conflicts
+
+**Root cause**: The fix addressed visibility (users now see warnings), but didn't prevent the stash conflicts. A more robust solution is needed:
+- Consider committing local changes before merge instead of stashing
+- Or check for potential conflicts before attempting stash pop
+- Or provide automatic conflict resolution for known safe patterns (like issue file moves)
+
+---
+
+## Status
+**Reopened** | Created: 2026-01-09 | Reopened: 2026-01-11 | Priority: P2

@@ -109,5 +109,47 @@ The primary mismatch was between scan_codebase template (missing "Reproduction S
 
 ---
 
+## Reopened
+
+- **Date**: 2026-01-11
+- **By**: /analyze_log
+- **Reason**: Issue recurred with higher rate despite previous fix
+
+### New Evidence
+
+**Log File**: `ll-parallel-blender-agents-debug.log`
+**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**Occurrences**: 5 out of 9 completed issues (56%)
+**Affected External Issues**: ENH-617, ENH-618, ENH-620, ENH-629, ENH-630
+
+```
+[22:11:33] ENH-617 was auto-corrected during validation
+[22:24:24] ENH-618 was auto-corrected during validation
+[22:27:14] ENH-620 was auto-corrected during validation
+[22:38:53] ENH-629 was auto-corrected during validation
+[22:45:08] ENH-630 was auto-corrected during validation
+```
+
+### Analysis
+
+The previous fix addressed BUG issues (adding "Reproduction Steps" to scan_codebase template). However, this run processed only ENH (enhancement) issues, and the auto-correction rate increased to 56% (up from 41%).
+
+**Key observations**:
+1. All auto-corrected issues are enhancements (ENH), not bugs
+2. The previous fix targeted bug-specific fields ("Reproduction Steps")
+3. Enhancement issues may have different validation requirements not addressed
+
+**Possible root causes**:
+1. Enhancement template may be missing fields that ready_issue expects
+2. The corrections tracking was added but no action taken on the patterns
+3. Different validation rules for enhancements vs bugs
+
+**Next steps**:
+1. Analyze the logged corrections to identify what fields are being corrected for ENH issues
+2. Update scan_codebase template for enhancement-specific requirements
+3. Review ready_issue validation rules for enhancements
+
+---
+
 ## Status
-**Completed** | Created: 2026-01-09 | Completed: 2026-01-09 | Priority: P2
+**Reopened** | Created: 2026-01-09 | Reopened: 2026-01-11 | Priority: P2
