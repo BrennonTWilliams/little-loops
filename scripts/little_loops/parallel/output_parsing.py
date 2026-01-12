@@ -96,6 +96,8 @@ def _extract_verdict_from_text(text: str) -> str | None:
         (r"\bmark\s+as\s+closed\b", "CLOSE"),
         (r"\balready\s+fixed\b", "CLOSE"),
         (r"\binvalid\s+reference\b", "CLOSE"),
+        (r"\bmove.*to.*completed\b", "CLOSE"),  # "move this issue to the completed directory"
+        (r"\bclosure\s+status\b", "CLOSE"),  # "closure status"
         # Patterns for NOT_READY
         (r"\bnot\s+ready\b", "NOT_READY"),  # General "not ready" pattern
         (r"\bneeds?\s+more\s+work\b", "NOT_READY"),

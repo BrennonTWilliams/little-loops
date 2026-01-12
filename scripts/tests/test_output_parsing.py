@@ -619,6 +619,26 @@ The issue is well-structured. Proceed with implementation.
         assert result["verdict"] == "READY"
         assert result["is_ready"] is True
 
+    def test_phrasing_move_to_completed_directory(self) -> None:
+        """Test extracting verdict from 'move to completed directory' phrasing."""
+        output = """
+Would you like me to move this issue to the completed directory with the closure status, or would you prefer to review the evidence first?
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "CLOSE"
+        assert result["should_close"] is True
+
+    def test_phrasing_closure_status(self) -> None:
+        """Test extracting verdict from 'closure status' phrasing."""
+        output = """
+The issue should be moved with the closure status since it's already been resolved.
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "CLOSE"
+        assert result["should_close"] is True
+
     def test_double_space_after_hashes(self) -> None:
         """Test parsing when there are multiple spaces after hashes."""
         output = """
