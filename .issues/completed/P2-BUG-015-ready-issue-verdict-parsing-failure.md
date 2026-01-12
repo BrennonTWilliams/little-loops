@@ -163,3 +163,24 @@ This appears to be:
 
 3. **Parser enhancement**:
    - Add strategy to detect question patterns and treat them as UNKNOWN requiring human review
+
+---
+
+## Second Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-12
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/parallel/output_parsing.py`: Added two CLOSE patterns to `phrasing_map`:
+  - `(r"\bmove.*to.*completed\b", "CLOSE")` - matches "move this issue to the completed directory"
+  - `(r"\bclosure\s+status\b", "CLOSE")` - matches "closure status"
+- `scripts/tests/test_output_parsing.py`: Added two test cases:
+  - `test_phrasing_move_to_completed_directory` - verifies "move to completed" extracts CLOSE
+  - `test_phrasing_closure_status` - verifies "closure status" extracts CLOSE
+
+### Verification Results
+- Tests: PASS (493 tests)
+- Lint: PASS
+- Types: PASS
