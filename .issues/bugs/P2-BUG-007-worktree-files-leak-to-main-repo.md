@@ -50,9 +50,9 @@ This is a known issue with Claude Code's project root detection when working in 
 ## Current Workaround
 
 The codebase already has detection and cleanup logic in `worker_pool.py`:
-- `_get_main_repo_baseline()` (line 803): Captures git status before worker starts
-- `_detect_main_repo_leaks()` (line 668): Compares status after worker completes to detect new files
-- `_cleanup_leaked_files()` (line 732): Removes leaked files from main repo
+- `_get_main_repo_baseline()` (line 817): Captures git status before worker starts
+- `_detect_main_repo_leaks()` (line 682): Compares status after worker completes to detect new files
+- `_cleanup_leaked_files()` (line 746): Removes leaked files from main repo
 
 ## Fix Implemented
 
@@ -60,12 +60,12 @@ The codebase already has detection and cleanup logic in `worker_pool.py`:
 
 **Solution (2 changes)**:
 
-1. **Copy `.claude/` directory to worktrees** (`worker_pool.py:405-415`)
+1. **Copy `.claude/` directory to worktrees** (`worker_pool.py:405-416`)
    - Copies entire `.claude/` directory during worktree setup
    - Establishes project root anchor for Claude Code
    - Existing `worktree_copy_files` config entries for `.claude/*` are skipped (already copied)
 
-2. **Set environment variable** (`subprocess_utils.py:84-87`)
+2. **Set environment variable** (`subprocess_utils.py:84-88`)
    - Sets `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` when launching Claude CLI
    - Keeps Claude in the project working directory after bash commands
 
@@ -129,3 +129,35 @@ The previous fix copied `.claude/` directory to worktrees and set `CLAUDE_BASH_M
 2. Verify the environment variable is being passed correctly
 3. Check if issue file creation uses a special path resolution
 4. Consider additional anchoring strategies (symlinks, explicit project root config)
+
+---
+
+## Resolution (Second Fix)
+
+- **Action**: fix
+- **Completed**: 2026-01-12
+- **Status**: Completed
+
+### Root Cause Identified
+
+The `_detect_worktree_model_via_api()` function in `worker_pool.py` invoked Claude CLI without
+the `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` environment variable that was added to
+`subprocess_utils.py` as part of the original BUG-007 fix.
+
+**Key discovery**: This function uses `subprocess.run()` directly instead of the shared
+`run_claude_command()` function, bypassing the environment variable setup. When `--show-model`
+is enabled, this becomes the FIRST Claude CLI invocation in each worktree, potentially
+establishing a cached project root before subsequent invocations with the proper environment.
+
+### Changes Made
+
+**File**: `scripts/little_loops/parallel/worker_pool.py`
+- Added `os` import
+- Added environment variable setup to `_detect_worktree_model_via_api()` function (lines 453-457)
+- Environment variable `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` now set for model detection API call
+- Ensures first Claude CLI invocation has same project root behavior as subsequent calls
+
+### Verification Results
+- Tests: PASS (491 tests)
+- Lint: PASS
+- Types: PASS

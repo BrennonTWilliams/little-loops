@@ -7,6 +7,7 @@ processing without file conflicts.
 from __future__ import annotations
 
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -450,6 +451,12 @@ class WorkerPool:
             Model name (e.g., "claude-sonnet-4-20250514") or None if unable to detect
         """
         try:
+            # Set environment to keep Claude in the project working directory (BUG-007)
+            # This ensures the first Claude CLI invocation in the worktree has the same
+            # project root behavior as subsequent invocations via run_claude_command()
+            env = os.environ.copy()
+            env["CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR"] = "1"
+
             # Use a minimal prompt that requires an API call to get modelUsage
             result = subprocess.run(
                 [
@@ -463,6 +470,7 @@ class WorkerPool:
                 capture_output=True,
                 text=True,
                 timeout=30,
+                env=env,
             )
             if result.returncode == 0 and result.stdout.strip():
                 data: dict[str, Any] = json.loads(result.stdout.strip())
