@@ -85,6 +85,47 @@ The codebase already has detection and cleanup logic in `worker_pool.py`:
 - root-cause:external-dependency
 
 ## Status
-**Fixed** | Created: 2026-01-09 | Priority: P2 | Fixed: 2026-01-09
+**Reopened** | Created: 2026-01-09 | Priority: P2 | Fixed: 2026-01-09 | Reopened: 2026-01-12
 
-Pending production validation before moving to completed/.
+---
+
+## Reopened
+
+- **Date**: 2026-01-12
+- **By**: /analyze_log
+- **Reason**: Issue recurred despite `.claude/` copy fix and environment variable setting
+
+### New Evidence
+
+**Log File**: `ll-parallel-blender-agents-debug.log`
+**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**Occurrences**: 1
+**Affected External Issues**: BUG-636
+
+```
+[12:31:27] Found 2 file(s) changed: ['src/blender_agents/ai/ooda/executor/mixins/execution_mixin.py', 'tests/unit/test_ooda_prompt.py']
+[12:31:27] BUG-636 leaked 1 file(s) to main repo: ['issues/bugs/P1-BUG-636-generic-mesh-references-in-manifold-checks.md']
+[12:31:27] BUG-636 completed in 5.5 minutes
+```
+
+### Analysis
+
+The previous fix copied `.claude/` directory to worktrees and set `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1`. However, a leak still occurred:
+
+**Observations**:
+1. The leaked file is an issue file (`issues/bugs/P1-BUG-636-...`), not a source file
+2. This suggests Claude Code may have created/modified this issue file and written it to the wrong location
+3. The fix may not be effective for all file write scenarios, or there's a race condition
+
+**Possible causes**:
+1. Issue file creation uses a different path resolution than source files
+2. The `.claude/` copy may not be complete or may be overwritten
+3. Claude Code may cache the project root before `.claude/` is copied
+4. The environment variable may not be respected in all scenarios
+
+### Next Steps
+
+1. Investigate the timing of `.claude/` copy vs Claude Code launch
+2. Verify the environment variable is being passed correctly
+3. Check if issue file creation uses a special path resolution
+4. Consider additional anchoring strategies (symlinks, explicit project root config)

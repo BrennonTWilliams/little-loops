@@ -182,4 +182,47 @@ The Enhancement Scanner prompt only asked for "Brief explanation of the improvem
 ---
 
 ## Status
-**Completed** | Created: 2026-01-09 | Reopened: 2026-01-11 | Fixed: 2026-01-12 | Priority: P2
+**Reopened** | Created: 2026-01-09 | Reopened: 2026-01-11, 2026-01-12 | Fixed: 2026-01-12 | Priority: P2
+
+---
+
+## Reopened (Third Time)
+
+- **Date**: 2026-01-12
+- **By**: /analyze_log
+- **Reason**: Auto-correction rate still at 33% despite second fix
+
+### New Evidence
+
+**Log File**: `ll-parallel-blender-agents-debug.log`
+**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**Occurrences**: 3 out of 9 completed issues (33%)
+**Affected External Issues**: BUG-643, ENH-625, ENH-639
+
+```
+[12:38:39] BUG-643 was auto-corrected during validation
+[12:38:43] ENH-625 was auto-corrected during validation
+[12:53:17] ENH-639 was auto-corrected during validation
+```
+
+### Analysis
+
+The second fix added enhancement-specific fields to the scan template. The auto-correction rate has decreased from 56% (previous run) to 33% (this run), showing improvement but not reaching the target of under 10%.
+
+**Key observations**:
+1. Both BUG and ENH issues are still being auto-corrected
+2. The improvement shows the previous fix had partial effect
+3. Additional patterns are still causing corrections
+
+**Possible remaining causes**:
+1. Specific field content quality (not just presence)
+2. Priority mismatches between scan estimation and validation
+3. File location accuracy in scanned issues
+4. Other validation rules not yet addressed
+
+### Proposed Investigation
+
+1. Review the corrections tracking data to identify specific fields being corrected
+2. Compare the BUG-643, ENH-625, ENH-639 issues before/after correction
+3. Identify patterns in what specifically is being auto-corrected
+4. Consider adding validation-like checks during scan to catch issues earlier
