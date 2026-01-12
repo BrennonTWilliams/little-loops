@@ -259,6 +259,7 @@ states:                         # State definitions
 # Optional
 paradigm: string                # Source paradigm (for reference)
 context: object                 # Shared variables/config
+scope: array[string]            # Paths this loop operates on (for concurrency)
 max_iterations: integer         # Safety limit (default: 50)
 backoff: number                 # Seconds between iterations
 timeout: number                 # Max total runtime in seconds (loop-level)
@@ -624,6 +625,68 @@ states:
 
 ---
 
+## Concurrency and Locking
+
+Only one loop can run at a time per scope. This prevents file corruption and conflicting modifications.
+
+### Scope Declaration
+
+Loops can declare which paths they operate on:
+
+```yaml
+name: "fix-api-types"
+scope:
+  - "src/api/"
+  - "tests/api/"
+```
+
+| Scope Declaration | Behavior |
+|-------------------|----------|
+| Explicit paths | Loop claims those paths exclusively |
+| No scope declared | Treated as `scope: ["."]` (whole project) |
+
+### Concurrency Rules
+
+| Scenario | Behavior |
+|----------|----------|
+| No other loop running | Start immediately |
+| Another loop running, **non-overlapping** scopes | Start immediately (parallel execution) |
+| Another loop running, **overlapping** scopes | Queue (wait) or fail with error |
+
+### Implementation
+
+The executor uses a global mutex with optional queuing:
+
+1. **Check** `.loops/.running/*.pid` for active loops
+2. **Compare** scopes for overlap
+3. **If overlap detected**:
+   - `--queue` flag: Wait for conflicting loop to finish, then start
+   - Default: Fail with clear error message listing the conflicting loop
+4. **If no overlap**: Start immediately, write own `.pid` file
+
+```bash
+# Default: fail if conflicting loop is running
+ll-loop run .loops/fix-types.yaml
+# Error: Cannot start 'fix-types' - loop 'quality-guard' is running with overlapping scope
+
+# Queue mode: wait for conflicting loop to finish
+ll-loop run .loops/fix-types.yaml --queue
+# Waiting for 'quality-guard' to complete...
+```
+
+### Scope Overlap Detection
+
+Two scopes overlap if any path in one is a prefix of (or equal to) any path in the other:
+
+| Scope A | Scope B | Overlap? |
+|---------|---------|----------|
+| `src/` | `tests/` | No |
+| `src/api/` | `src/api/handlers/` | Yes |
+| `src/` | `src/api/` | Yes |
+| `.` | anything | Yes |
+
+---
+
 ## CLI Interface
 
 ### Command: `ll-loop`
@@ -679,11 +742,22 @@ ll-loop history <loop-name>
 | `stop` | Terminate a running loop |
 | `history` | View past executions |
 
+### Run Flags
+
+| Flag | Description |
+|------|-------------|
+| `--background` | Run as daemon process |
+| `--dry-run` | Show planned execution without running |
+| `--queue` | Wait for conflicting loops instead of failing |
+| `--max-iterations N` | Override max_iterations from definition |
+
 ### Loop Creation
 
 Loops are created by:
 1. **Manual authoring** - Edit YAML files directly in `.loops/`
 2. **Claude Code** - Use `/ll:create-loop` slash command (see Claude Code Integration)
+
+**Safety note**: When Claude generates loop definitions, the user reviews and approves before saving. This human-in-the-loop review is the primary safeguard against LLM mistakes or hallucinations in generated configs.
 
 ---
 
@@ -696,11 +770,15 @@ Loops are stored in the project's `.loops/` directory:
   fix-types.yaml          # User-defined loops
   lint-guard.yaml
   .running/               # Currently executing loops
-    fix-types.state.json  # Execution state for resume
+    fix-types.pid         # Process ID (for mutex/concurrency)
+    fix-types.state.json  # Execution state (for resume)
+    fix-types.events.jsonl # Event stream
   .history/               # Execution logs
     fix-types/
       2024-01-15T10-30-00.log
 ```
+
+The `.pid` files enable concurrency control—the executor checks these before starting to detect scope conflicts.
 
 ---
 
@@ -756,6 +834,7 @@ For resumability, the executor saves state to `.loops/.running/<name>.state.json
 {
   "current_state": "fix",
   "iteration": 3,
+  "scope": ["src/", "tests/"],
   "context": {},
   "captured": {"error_count": 4},
   "started_at": "2024-01-15T10:30:00Z",
@@ -842,6 +921,8 @@ Events enable integration with:
 # .loops/fix-types.yaml
 paradigm: convergence
 name: "fix-types"
+scope:
+  - "src/"
 check: "mypy src/ 2>&1 | grep -c 'error:' || echo 0"
 toward: 0
 using: "/ll:manage_issue bug fix"
