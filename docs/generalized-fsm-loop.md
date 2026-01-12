@@ -797,7 +797,7 @@ Two scopes overlap if any path in one is a prefix of (or equal to) any path in t
 
 ### Command: `ll-loop`
 
-Run and manage loops from the command line.
+Run and manage loops from the command line. This is the **sole entry point** for loop execution—Claude Code handles loop creation via `/ll:create-loop`, but all execution flows through this CLI.
 
 ```bash
 # Run a loop from file
@@ -1173,10 +1173,9 @@ Claude Code slash commands enable loop creation and management within conversati
 
 | Command | Description |
 |---------|-------------|
-| `/ll:create-loop` | Interactive loop creation wizard |
-| `/ll:run-loop <name>` | Execute a saved loop |
-| `/ll:loop-status` | Show status of running loops |
-| `/ll:stop-loop <id>` | Stop a running loop |
+| `/ll:create-loop` | Interactive loop creation wizard (use `--auto` to skip interactivity) |
+
+**Note**: Loop execution, status, and control are handled exclusively via the `ll-loop` CLI (see CLI Interface). This separation keeps Claude Code focused on authoring while the CLI handles autonomous execution.
 
 ### `/ll:create-loop`
 
@@ -1216,27 +1215,18 @@ User: Yes
 Claude: [Creates .loops/fix-types.yaml and offers to run it]
 ```
 
-### Execution Modes
-
-| Mode | Flag | Description |
-|------|------|-------------|
-| **Foreground** | (default) | Blocks conversation, shows live progress |
-| **Background** | `--background` | Daemon process, check with `/ll:loop-status` |
-| **Dry-run** | `--dry-run` | Show planned execution without running |
-
-```
-/ll:run-loop fix-types --background
-/ll:run-loop fix-types --dry-run
-```
-
 ### How It Works
 
-When Claude Code runs a loop:
-1. The loop executor spawns as a headless process
-2. Shell commands run via subprocess
-3. Slash commands invoke `claude --dangerously-skip-permissions -p "..."`
-4. Events stream to `.loops/.running/<name>.events.jsonl`
-5. Claude Code can tail events to show progress
+1. User describes desired loop behavior in conversation
+2. Claude generates paradigm YAML and presents for review
+3. User approves; Claude saves to `.loops/<name>.yaml`
+4. User runs loop via CLI: `ll-loop run .loops/<name>.yaml`
+
+The CLI executor then:
+1. Spawns as a headless process (or foreground with live output)
+2. Runs shell commands via subprocess
+3. Invokes slash commands via `claude --dangerously-skip-permissions -p "..."`
+4. Streams events to `.loops/.running/<name>.events.jsonl`
 
 ---
 
@@ -1254,7 +1244,9 @@ Questions to resolve before implementation begins.
    - Specifically: Is loop composition/nesting needed for v1?
    - Is the visual editor in scope?
 
-3. **Installation Model** - Is `ll-loop` a new CLI entry point in `scripts/`? Or a Claude Code command?
+### Resolved
+
+3. **Installation Model** - ✅ Resolved: `ll-loop` is a CLI entry point in `scripts/` (like `ll-auto` and `ll-parallel`). Loop execution is CLI-only. Claude Code provides `/ll:create-loop` for authoring loops (interactive by default, `--auto` flag to skip interactivity).
 
 ### Important (Resolve During Implementation)
 
