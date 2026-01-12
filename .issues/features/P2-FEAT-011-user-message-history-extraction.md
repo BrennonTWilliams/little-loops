@@ -44,6 +44,7 @@ class UserMessage:
     cwd: str | None = None
     git_branch: str | None = None
     is_sidechain: bool = False
+    entities: list[str] | None = None  # Extracted file paths, commands, concepts
 
 def get_project_folder(cwd: Path | None = None) -> Path | None:
     """Map current directory to Claude Code project folder.
@@ -99,10 +100,11 @@ Options:
   --since DATE       Only messages after this date (ISO 8601)
   --output PATH      Output file path (default: .claude/user-messages-{timestamp}.jsonl)
   --include-agents   Include messages from agent sessions (default: true)
-  --format FORMAT    Output format: jsonl, json, csv (default: jsonl)
+  --format FORMAT    Output format: jsonl, json, yaml, csv (default: jsonl)
+  --extract-entities Extract file paths, commands, concepts from messages (default: true)
 
-ll-messages suggest [OPTIONS]   # Future: analyze and suggest commands
-ll-messages stats [OPTIONS]     # Future: usage analytics
+ll-messages suggest [OPTIONS]   # Quick pattern-based command suggestions
+ll-messages stats [OPTIONS]     # Usage analytics
 ```
 
 ### 3. Output JSONL Schema
@@ -110,9 +112,20 @@ ll-messages stats [OPTIONS]     # Future: usage analytics
 Simplified format optimized for downstream analysis:
 
 ```json
-{"content": "Help me implement feature X", "timestamp": "2026-01-09T22:29:32.603Z", "session_id": "686d1cb9-...", "cwd": "/Users/brennon/project", "git_branch": "main"}
-{"content": "Fix the bug in checkout", "timestamp": "2026-01-09T21:15:00.000Z", "session_id": "abc123-...", "cwd": "/Users/brennon/project", "git_branch": "feature/checkout"}
+{"content": "Help me implement feature X", "timestamp": "2026-01-09T22:29:32.603Z", "session_id": "686d1cb9-...", "cwd": "/Users/brennon/project", "git_branch": "main", "entities": ["feature X"]}
+{"content": "Fix the bug in checkout.py", "timestamp": "2026-01-09T21:15:00.000Z", "session_id": "abc123-...", "cwd": "/Users/brennon/project", "git_branch": "feature/checkout", "entities": ["checkout.py"]}
 ```
+
+### 3.1 Entity Extraction
+
+Entities are automatically extracted from message content:
+
+| Entity Type | Pattern Examples | Extraction Method |
+|-------------|------------------|-------------------|
+| File paths | `checkout.py`, `README.md` | Regex: `[\w/-]+\.(md\|py\|json\|yaml\|js\|ts)` |
+| Directory refs | `phase-1-module-1`, `src/` | Regex: `phase-\d+`, path patterns |
+| Slash commands | `/ll:commit`, `/help` | Regex: `^/[\w:-]+` |
+| Concepts | quoted terms, capitalized phrases | Heuristic extraction |
 
 ### 4. Log Structure Reference
 
@@ -148,7 +161,7 @@ Simplified format optimized for downstream analysis:
 
 ### 5. Future: Command Suggestion (`ll-messages suggest`)
 
-Analyze extracted messages to suggest relevant commands:
+Quick pattern-based command suggestions:
 
 ```python
 def suggest_commands(messages: list[UserMessage]) -> list[CommandSuggestion]:
@@ -159,10 +172,15 @@ def suggest_commands(messages: list[UserMessage]) -> list[CommandSuggestion]:
     - "commit" / "create commit" → /ll:commit
     - "fix lint" / "format code" → /ll:check_code fix
     - "create issue" / "bug report" → /ll:scan_codebase
-    - Repeated manual workflows → suggest automation
     """
     ...
 ```
+
+For comprehensive workflow analysis and automation proposals, see:
+- **FEAT-012**: Workflow Pattern Analyzer Agent
+- **FEAT-013**: Workflow Sequence Analyzer Agent
+- **FEAT-014**: Workflow Automation Proposer Agent
+- **FEAT-015**: `/ll:analyze-workflows` Command
 
 ### 6. Integration with Existing Commands
 
@@ -231,9 +249,11 @@ None
 
 ## Blocks
 
-- Future: Personalized command recommendations
-- Future: Workflow automation suggestions
-- Future: Project onboarding summaries
+- FEAT-012: Workflow Pattern Analyzer Agent
+- FEAT-013: Workflow Sequence Analyzer Agent
+- FEAT-014: Workflow Automation Proposer Agent
+- FEAT-015: `/ll:analyze-workflows` Command
+- ENH-018: Response Context Capture
 
 ## Labels
 
