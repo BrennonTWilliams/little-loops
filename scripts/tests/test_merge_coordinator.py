@@ -799,3 +799,228 @@ class TestLifecycleFileMoveExclusion:
 
         assert result is False
         assert coordinator._stash_active is False
+
+
+class TestCommitPendingLifecycleMoves:
+    """Tests for _commit_pending_lifecycle_moves functionality (BUG-018 fix)."""
+
+    def test_returns_true_when_no_lifecycle_moves(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should return True when no lifecycle moves exist."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+        result = coordinator._commit_pending_lifecycle_moves()
+        assert result is True
+
+    def test_commits_staged_lifecycle_move(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should commit staged lifecycle file moves."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create and commit an issue file
+        issues_dir = temp_git_repo / ".issues" / "bugs"
+        completed_dir = temp_git_repo / ".issues" / "completed"
+        issues_dir.mkdir(parents=True)
+        completed_dir.mkdir(parents=True)
+
+        issue_file = issues_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("# Test issue")
+
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add issue"],
+            cwd=temp_git_repo,
+            check=True,
+        )
+
+        # Move file with git mv (stages the rename)
+        subprocess.run(
+            ["git", "mv", str(issue_file), str(completed_dir / issue_file.name)],
+            cwd=temp_git_repo,
+            check=True,
+        )
+
+        # Verify the rename is staged
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "R " in status.stdout or "-> .issues/completed" in status.stdout
+
+        # Run the method
+        result = coordinator._commit_pending_lifecycle_moves()
+
+        assert result is True
+
+        # Verify the rename is now committed (no uncommitted changes)
+        status_after = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert status_after.stdout.strip() == ""
+
+        # Verify commit message
+        log = subprocess.run(
+            ["git", "log", "-1", "--format=%s"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "lifecycle" in log.stdout.lower()
+
+    def test_ignores_non_lifecycle_moves(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should return True and not commit non-lifecycle file moves."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create and commit a file in docs
+        docs_dir = temp_git_repo / "docs"
+        docs_dir.mkdir(parents=True)
+        doc_file = docs_dir / "old.md"
+        doc_file.write_text("# Old doc")
+
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add doc"],
+            cwd=temp_git_repo,
+            check=True,
+        )
+
+        # Move file with git mv (stages a non-lifecycle rename)
+        subprocess.run(
+            ["git", "mv", str(doc_file), str(docs_dir / "new.md")],
+            cwd=temp_git_repo,
+            check=True,
+        )
+
+        # Run the method - should return True but not commit
+        result = coordinator._commit_pending_lifecycle_moves()
+
+        assert result is True
+
+        # The rename should still be staged (not committed)
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert "R " in status.stdout
+
+    def test_commits_multiple_lifecycle_moves(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should commit multiple lifecycle file moves in one commit."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create and commit multiple issue files
+        issues_dir = temp_git_repo / ".issues" / "bugs"
+        completed_dir = temp_git_repo / ".issues" / "completed"
+        issues_dir.mkdir(parents=True)
+        completed_dir.mkdir(parents=True)
+
+        issue1 = issues_dir / "P1-BUG-001.md"
+        issue2 = issues_dir / "P2-BUG-002.md"
+        issue1.write_text("# Test issue 1")
+        issue2.write_text("# Test issue 2")
+
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add issues"],
+            cwd=temp_git_repo,
+            check=True,
+        )
+
+        # Move both files with git mv
+        subprocess.run(
+            ["git", "mv", str(issue1), str(completed_dir / issue1.name)],
+            cwd=temp_git_repo,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "mv", str(issue2), str(completed_dir / issue2.name)],
+            cwd=temp_git_repo,
+            check=True,
+        )
+
+        # Run the method
+        result = coordinator._commit_pending_lifecycle_moves()
+
+        assert result is True
+
+        # Verify both are committed
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert status.stdout.strip() == ""
+
+    def test_handles_lifecycle_move_with_content_changes(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should commit lifecycle move even with content modifications."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create and commit an issue file
+        issues_dir = temp_git_repo / ".issues" / "bugs"
+        completed_dir = temp_git_repo / ".issues" / "completed"
+        issues_dir.mkdir(parents=True)
+        completed_dir.mkdir(parents=True)
+
+        issue_file = issues_dir / "P1-BUG-001.md"
+        issue_file.write_text("# Test issue")
+
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "Add issue"],
+            cwd=temp_git_repo,
+            check=True,
+        )
+
+        # Move file with git mv
+        new_path = completed_dir / issue_file.name
+        subprocess.run(
+            ["git", "mv", str(issue_file), str(new_path)],
+            cwd=temp_git_repo,
+            check=True,
+        )
+
+        # Also modify the content (simulating resolution section being added)
+        new_path.write_text("# Test issue\n\n## Resolution\nCompleted!")
+
+        # Run the method
+        result = coordinator._commit_pending_lifecycle_moves()
+
+        assert result is True
+
+        # Verify committed
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        assert status.stdout.strip() == ""

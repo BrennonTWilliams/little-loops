@@ -98,5 +98,33 @@ The timing issue:
 
 ---
 
-## Status
-**Open** | Created: 2026-01-12 | Priority: P1
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-12
+- **Status**: Completed
+- **Solution**: Option 3 (Force commit before merge)
+
+### Changes Made
+- `scripts/little_loops/parallel/merge_coordinator.py`: Added `_commit_pending_lifecycle_moves()` method that detects and commits any uncommitted lifecycle file moves before merge operations
+- `scripts/little_loops/parallel/merge_coordinator.py`: Call the new method in `_process_merge()` after `_mark_state_file_assume_unchanged()` and before `_stash_local_changes()`
+- `scripts/tests/test_merge_coordinator.py`: Added 5 unit tests for the new method
+
+### Verification Results
+- Tests: PASS (491 tests, 33 in test_merge_coordinator.py)
+- Lint: PASS (ruff check)
+- Types: PASS (mypy)
+
+### Technical Details
+The fix adds a new method `_commit_pending_lifecycle_moves()` that:
+1. Checks `git status --porcelain` for lifecycle file moves (renames to `.issues/completed/`)
+2. If found, stages all changes with `git add -A` and commits with a descriptive message
+3. Returns True on success (or if no moves exist), False on failure
+
+This method is called at the start of `_process_merge()` before stashing, ensuring any lifecycle file moves from the orchestrator are committed before the merge coordinator attempts to merge the next issue.
+
+### Root Cause
+The BUG-008 fix added stash exclusions for lifecycle file moves to prevent stash pop conflicts. However, when the orchestrator completes a lifecycle (moves issue file to completed/) and a commit fails with "nothing to commit", the staged rename persists. The stash exclusion logic then skips it, leaving it as an uncommitted change that blocks subsequent merges.
+
+### Commits
+- See git log for implementation commit
