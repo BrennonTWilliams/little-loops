@@ -149,5 +149,62 @@ The previous fix added **tracking and warnings** for stash pop failures, but the
 
 ---
 
+## Resolution (Second Fix)
+
+- **Action**: fix
+- **Completed**: 2026-01-11
+- **Status**: Completed
+
+### Root Cause Analysis
+
+The stash pop failures were caused by orchestrator-managed lifecycle file moves being stashed:
+1. When orchestrator completes an issue lifecycle, it moves the issue file to `completed/`
+2. This creates a rename entry (`R  old -> new`) in git status
+3. The merge coordinator stashes this rename, but the merge changes HEAD
+4. Stash pop conflicts because the stash was created against old HEAD
+
+### Solution
+
+Exclude orchestrator-managed lifecycle operations from stashing:
+1. **Lifecycle file moves** - issue files being moved to `.issues/completed/`
+2. **Files in completed directory** - already completed issue files
+
+These changes are orchestrator-managed and should not be stashed, preventing the stash pop conflicts.
+
+### Changes Made
+
+1. **`scripts/little_loops/parallel/merge_coordinator.py`**:
+   - Added `_is_lifecycle_file_move()` method to detect rename entries moving files to completed/
+   - Updated `_stash_local_changes()` to skip lifecycle file moves (lines 162-166)
+   - Added exclusion for files in `.issues/completed/` directory (lines 172-179)
+   - Updated docstring to document all exclusions
+
+2. **`scripts/tests/test_merge_coordinator.py`**:
+   - Added `TestLifecycleFileMoveExclusion` class with 6 tests:
+     - `test_is_lifecycle_file_move_detects_rename_to_completed`
+     - `test_is_lifecycle_file_move_ignores_other_renames`
+     - `test_is_lifecycle_file_move_ignores_non_renames`
+     - `test_stash_excludes_lifecycle_file_moves`
+     - `test_stash_excludes_completed_directory_files`
+     - `test_stash_with_only_lifecycle_changes_returns_false`
+
+### Verification Results
+- Tests: PASS (486 tests, including 6 new tests)
+- Lint: PASS (ruff check)
+- Types: PASS (mypy)
+
+### How the Fix Works
+
+1. When `_stash_local_changes()` processes git status output, it now:
+   - Calls `_is_lifecycle_file_move()` to detect issue file moves to completed/
+   - Skips these entries instead of adding them to the stash
+   - Also skips any files already in `.issues/completed/` directory
+
+2. This prevents the stash from containing orchestrator-managed files that would conflict with the merge
+
+3. User's actual local changes (non-orchestrator files) are still stashed and restored normally
+
+---
+
 ## Status
-**Reopened** | Created: 2026-01-09 | Reopened: 2026-01-11 | Priority: P2
+**Completed** | Created: 2026-01-09 | Reopened: 2026-01-11 | Fixed: 2026-01-11

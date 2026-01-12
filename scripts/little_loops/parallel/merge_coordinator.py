@@ -126,10 +126,13 @@ class MergeCoordinator:
         because git stash pathspec exclusions don't work reliably with -u flag.
         Untracked file conflicts during merge are handled by _handle_untracked_conflict.
 
-        The state file is explicitly excluded from stashing because:
-        1. It's managed by the orchestrator and continuously updated
-        2. Stashing it causes pop conflicts after merge (the merge changes HEAD)
-        3. The orchestrator will regenerate/update it after merge anyway
+        The following are explicitly excluded from stashing:
+        1. State file - managed by orchestrator and continuously updated
+        2. Lifecycle file moves - issue files being moved to completed/ directory
+        3. Files in completed directory - lifecycle-managed files
+
+        These exclusions prevent stash pop conflicts after merge, since the merge
+        may change HEAD and create conflicts with stashed rename operations.
 
         Returns:
             True if changes were stashed, False if working tree was clean
@@ -148,7 +151,7 @@ class MergeCoordinator:
         )
 
         # Filter to only tracked changes (lines not starting with ??)
-        # and exclude the state file to prevent stash pop conflicts
+        # and exclude orchestrator-managed files to prevent stash pop conflicts
         tracked_changes = []
         files_to_stash = []
         # Note: Don't use .strip() on the full output - it removes leading spaces
@@ -156,11 +159,24 @@ class MergeCoordinator:
         for line in status_result.stdout.splitlines():
             if not line or line.startswith("??"):
                 continue
+            # Skip lifecycle file moves (issue files moved to completed/)
+            # These are managed by orchestrator and cause stash pop conflicts
+            if self._is_lifecycle_file_move(line):
+                self.logger.debug(f"Skipping lifecycle file move from stash: {line}")
+                continue
             # Extract file path from porcelain format (XY filename or XY -> filename for renames)
             # Format: XY filename  or  XY old -> new (XY is exactly 2 chars + 1 space)
             file_path = line[3:].split(" -> ")[-1].strip()
             if file_path == state_file_str or file_path.endswith(state_file_name):
                 continue  # Skip state file - orchestrator manages it independently
+            # Skip files in completed directory - these are lifecycle-managed
+            if ".issues/completed/" in file_path or file_path.startswith(
+                ".issues/completed/"
+            ):
+                self.logger.debug(
+                    f"Skipping completed directory file from stash: {file_path}"
+                )
+                continue
             tracked_changes.append(line)
             files_to_stash.append(file_path)
 
@@ -330,6 +346,39 @@ class MergeCoordinator:
 
         self.logger.debug(f"Restored tracking for {state_file}")
         return True
+
+    def _is_lifecycle_file_move(self, porcelain_line: str) -> bool:
+        """Check if a porcelain status line represents a lifecycle file move.
+
+        Lifecycle file moves are issue files being moved to completed/ directory.
+        These are managed by the orchestrator and should not be stashed, as they
+        will conflict with the merge when popping.
+
+        Args:
+            porcelain_line: A line from `git status --porcelain` output
+
+        Returns:
+            True if this is a lifecycle file move that should be excluded from stash
+        """
+        # Rename entries have format: R  old_path -> new_path
+        if not porcelain_line.startswith("R"):
+            return False
+
+        # Check if it's a move to completed/ directory
+        if " -> " not in porcelain_line:
+            return False
+
+        # Extract destination path (after " -> ")
+        parts = porcelain_line[3:].split(" -> ")
+        if len(parts) != 2:
+            return False
+
+        dest_path = parts[1].strip()
+
+        # Check if destination is in .issues/completed/
+        return ".issues/completed/" in dest_path or dest_path.startswith(
+            ".issues/completed/"
+        )
 
     def _is_local_changes_error(self, error_output: str) -> bool:
         """Check if the error is due to uncommitted local changes.

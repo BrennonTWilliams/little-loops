@@ -612,3 +612,196 @@ Please move or remove them before you merge."""
         assert coordinator._queue.qsize() == 0
         # Should be marked as failed
         assert "TEST-001" in coordinator._failed
+
+
+class TestLifecycleFileMoveExclusion:
+    """Tests for excluding lifecycle file moves from stashing."""
+
+    def test_is_lifecycle_file_move_detects_rename_to_completed(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should detect rename entries moving files to completed directory."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Rename to completed should be detected
+        assert coordinator._is_lifecycle_file_move(
+            "R  .issues/bugs/P1-BUG-001.md -> .issues/completed/P1-BUG-001.md"
+        )
+        assert coordinator._is_lifecycle_file_move(
+            "R  .issues/enhancements/P2-ENH-123.md -> .issues/completed/P2-ENH-123.md"
+        )
+        assert coordinator._is_lifecycle_file_move(
+            "R  .issues/features/P3-FEAT-456.md -> .issues/completed/P3-FEAT-456.md"
+        )
+
+    def test_is_lifecycle_file_move_ignores_other_renames(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should not detect renames to other directories."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Rename to other directory should not be detected
+        assert not coordinator._is_lifecycle_file_move("R  src/old.py -> src/new.py")
+        assert not coordinator._is_lifecycle_file_move(
+            "R  .issues/bugs/P1-BUG-001.md -> .issues/bugs/P1-BUG-001-renamed.md"
+        )
+        assert not coordinator._is_lifecycle_file_move(
+            "R  docs/old.md -> docs/archive/old.md"
+        )
+
+    def test_is_lifecycle_file_move_ignores_non_renames(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should not detect non-rename entries."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Modified files should not be detected
+        assert not coordinator._is_lifecycle_file_move(
+            "M  .issues/completed/P1-BUG-001.md"
+        )
+        assert not coordinator._is_lifecycle_file_move(
+            "A  .issues/completed/P1-BUG-001.md"
+        )
+        assert not coordinator._is_lifecycle_file_move("D  .issues/bugs/P1-BUG-001.md")
+        assert not coordinator._is_lifecycle_file_move("?? .issues/completed/new.md")
+
+    def test_stash_excludes_lifecycle_file_moves(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Stash should exclude lifecycle file moves from being stashed."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create an issue file and commit it
+        issues_dir = temp_git_repo / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = issues_dir / "P1-BUG-TEST.md"
+        issue_file.write_text("# Test issue")
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add issue"],
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        # Create completed directory and move the file (simulating lifecycle completion)
+        completed_dir = temp_git_repo / ".issues" / "completed"
+        completed_dir.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "mv", str(issue_file), str(completed_dir / "P1-BUG-TEST.md")],
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        # Also create a regular change that should be stashed
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("modified content")
+
+        # Stash should succeed and stash test.txt but NOT the lifecycle move
+        result = coordinator._stash_local_changes()
+
+        # Since we have a regular change, result should be True
+        assert result is True
+
+        # After stash, test.txt should be reverted (stashed)
+        assert test_file.read_text() == "initial content"
+
+        # The git mv should still be staged (not stashed)
+        status = subprocess.run(
+            ["git", "status", "--porcelain"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            text=True,
+        )
+        # Should still have the rename entry (R means renamed)
+        assert "R  " in status.stdout or "-> .issues/completed" in status.stdout
+
+        # Pop the stash to restore test.txt
+        coordinator._pop_stash()
+        assert test_file.read_text() == "modified content"
+
+    def test_stash_excludes_completed_directory_files(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Stash should exclude files in completed directory."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create completed directory and a file in it, then commit
+        completed_dir = temp_git_repo / ".issues" / "completed"
+        completed_dir.mkdir(parents=True, exist_ok=True)
+        completed_file = completed_dir / "P1-BUG-OLD.md"
+        completed_file.write_text("# Old completed issue")
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add completed issue"],
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        # Modify the completed file (simulating an update)
+        completed_file.write_text("# Old completed issue\n\nUpdated content")
+
+        # Also modify test.txt which should be stashed
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("modified content")
+
+        # Stash should succeed and stash test.txt but NOT the completed file
+        result = coordinator._stash_local_changes()
+
+        assert result is True
+
+        # test.txt should be reverted (stashed)
+        assert test_file.read_text() == "initial content"
+
+        # completed file should NOT be reverted (not stashed)
+        assert "Updated content" in completed_file.read_text()
+
+    def test_stash_with_only_lifecycle_changes_returns_false(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Stash should return False when only lifecycle changes exist."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create an issue file and commit it
+        issues_dir = temp_git_repo / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True, exist_ok=True)
+        issue_file = issues_dir / "P1-BUG-TEST.md"
+        issue_file.write_text("# Test issue")
+        subprocess.run(["git", "add", "."], cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add issue"],
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        # Move the file to completed (lifecycle change only)
+        completed_dir = temp_git_repo / ".issues" / "completed"
+        completed_dir.mkdir(parents=True, exist_ok=True)
+        subprocess.run(
+            ["git", "mv", str(issue_file), str(completed_dir / "P1-BUG-TEST.md")],
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        # Stash should return False since only lifecycle changes exist
+        result = coordinator._stash_local_changes()
+
+        assert result is False
+        assert coordinator._stash_active is False
