@@ -1095,6 +1095,10 @@ class MergeCoordinator:
     def wait_for_completion(self, timeout: float | None = None) -> bool:
         """Wait for all pending merges to complete.
 
+        Waits until both:
+        1. The merge queue is empty (no pending requests)
+        2. No merge is actively being processed (_current_issue_id is None)
+
         Args:
             timeout: Maximum time to wait (None = forever)
 
@@ -1102,7 +1106,7 @@ class MergeCoordinator:
             True if all merges completed, False if timeout
         """
         start_time = time.time()
-        while not self._queue.empty():
+        while not self._queue.empty() or self._current_issue_id:
             if timeout and (time.time() - start_time) > timeout:
                 return False
             time.sleep(0.5)

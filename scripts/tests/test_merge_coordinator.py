@@ -1024,3 +1024,100 @@ class TestCommitPendingLifecycleMoves:
             text=True,
         )
         assert status.stdout.strip() == ""
+
+
+class TestWaitForCompletion:
+    """Tests for wait_for_completion method (BUG-019 fix)."""
+
+    def test_returns_true_when_queue_empty_and_no_active_processing(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should return True immediately when queue is empty and no processing."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Queue is empty by default, no active processing
+        assert coordinator._queue.empty()
+        assert coordinator._current_issue_id is None
+
+        result = coordinator.wait_for_completion(timeout=0.5)
+        assert result is True
+
+    def test_waits_for_active_processing_to_complete(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should wait until _current_issue_id is cleared (BUG-019 fix)."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Simulate active processing: queue is empty but merge is in progress
+        assert coordinator._queue.empty()
+        coordinator._current_issue_id = "BUG-001"
+
+        # wait_for_completion should timeout because processing is active
+        result = coordinator.wait_for_completion(timeout=0.3)
+
+        # Should return False (timeout) because _current_issue_id is still set
+        assert result is False
+
+    def test_returns_true_after_processing_completes(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should return True once _current_issue_id is cleared."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Queue empty, no active processing
+        coordinator._current_issue_id = None
+
+        result = coordinator.wait_for_completion(timeout=0.3)
+        assert result is True
+
+    def test_waits_for_both_queue_and_processing(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should wait for both queue to empty AND processing to complete."""
+        import threading
+        import time
+
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create a worker result to put in queue
+        worker_result = WorkerResult(
+            issue_id="BUG-001",
+            branch_name="parallel/bug-001",
+            worktree_path=temp_git_repo / ".worktrees" / "fake",
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+        coordinator._queue.put(request)
+
+        # Also set processing active
+        coordinator._current_issue_id = "BUG-002"
+
+        # In a separate thread, clear both after a short delay
+        def clear_state() -> None:
+            time.sleep(0.1)
+            coordinator._queue.get()  # Clear queue
+            time.sleep(0.1)
+            coordinator._current_issue_id = None  # Clear processing
+
+        thread = threading.Thread(target=clear_state)
+        thread.start()
+
+        # wait_for_completion should wait for both
+        result = coordinator.wait_for_completion(timeout=1.0)
+
+        thread.join()
+
+        # Should return True after both are cleared
+        assert result is True
