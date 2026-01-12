@@ -817,6 +817,64 @@ claude --dangerously-skip-permissions -p "/ll:manage_issue bug fix"
 
 The `--dangerously-skip-permissions` flag is required for autonomous execution without user confirmation prompts.
 
+### Claude CLI Integration Details
+
+#### CLI Flags Reference
+
+| Flag | Purpose | Required |
+|------|---------|----------|
+| `--dangerously-skip-permissions` | Skip interactive permission prompts for autonomous execution | Yes (for automation) |
+| `-p` / `--print` | Print mode - executes command and prints response without interactive session | Yes |
+| `--output-format json` | Return structured JSON output | Optional |
+| `--output-format stream-json` | Streaming NDJSON for real-time processing | Optional |
+| `--output-format text` | Plain text output (default) | Optional |
+
+#### Environment Configuration
+
+```python
+env["CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR"] = "1"
+```
+
+This prevents Claude from changing directories during execution, ensuring worktree isolation.
+
+#### Multi-Turn Interaction Handling
+
+Slash commands may trigger multi-turn interactions. The executor handles this through complementary strategies:
+
+| Strategy | Mechanism | Use Case |
+|----------|-----------|----------|
+| **Phase gates** | `--gates` flag pauses after each phase for user review | Supervised automation |
+| **Resume capability** | `--resume` flag continues from checkmarks in plan files | Long-running tasks across sessions |
+| **Context handoff** | Detects `CONTEXT_HANDOFF:` signal, spawns fresh session | Context limit recovery |
+| **State persistence** | JSON files maintain progress across sessions | Crash recovery, audit trails |
+
+For FSM loops, the executor monitors stdout for the `CONTEXT_HANDOFF: Ready for fresh session` signal. When detected, it:
+1. Reads the continuation prompt from `.claude/ll-continue-prompt.md`
+2. Spawns a new Claude session with the continuation context
+3. Resumes execution from the saved state
+
+#### Output Capture
+
+The executor uses a three-tier approach for capturing Claude session output:
+
+1. **Real-time streaming** - Line-buffered subprocess with `selectors.DefaultSelector()` for non-blocking I/O
+2. **Structured parsing** - Regex-based extraction of verdicts, sections, and tables from natural language output
+3. **JSON format** - `--output-format json` for deterministic structured output when needed
+
+```python
+process = subprocess.Popen(
+    cmd_args,
+    stdout=subprocess.PIPE,
+    stderr=subprocess.PIPE,
+    text=True,
+    bufsize=1,  # Line buffered for immediate output
+    cwd=working_dir,
+    env=env,
+)
+```
+
+Output is captured to `captured.<state_name>.output` for use in subsequent states via variable interpolation.
+
 ### Background Daemon
 
 For background/long-running loops, the executor runs as a daemon process:
@@ -1073,6 +1131,42 @@ When Claude Code runs a loop:
 3. Slash commands invoke `claude --dangerously-skip-permissions -p "..."`
 4. Events stream to `.loops/.running/<name>.events.jsonl`
 5. Claude Code can tail events to show progress
+
+---
+
+## Open Questions
+
+Questions to resolve before implementation begins.
+
+### Critical (Block Issue Breakdown)
+
+1. **Paradigm Compilation Algorithms** - The examples show input/output, but:
+   - Is a formal spec needed for the compiler (e.g., how does Goal → FSM work for edge cases)?
+   - Or is "Claude generates reasonable FSM" the implementation?
+
+2. **Slash Command Output Parsing** - The execution engine mentions "regex-based extraction of verdicts, sections, and tables":
+   - What are the actual patterns?
+   - Should this use `--output-format json` instead for reliability?
+
+3. **MVP Scope** - The "Future Considerations" lists 6 items. Are any actually required?
+   - Specifically: Is loop composition/nesting needed for v1?
+   - Is the visual editor in scope?
+
+4. **Installation Model** - Is `ll-loop` a new CLI entry point in `scripts/`? Or a Claude Code command?
+
+### Important (Resolve During Implementation)
+
+5. **Context Handoff** - The document describes detecting `CONTEXT_HANDOFF:` and spawning fresh sessions:
+   - How does this interact with loop state persistence?
+   - Is this mechanism already implemented in `ll-parallel`/`ll-auto` to reference?
+
+6. **Maintain Mode Timing** - For `maintain: true` loops:
+   - Is there a configurable delay between complete cycles?
+   - Or does it restart immediately?
+
+7. **Security Review** - Using `--dangerously-skip-permissions` for all slash commands:
+   - Should there be a first-run consent mechanism?
+   - Is this documented as a known trade-off?
 
 ---
 
