@@ -429,6 +429,33 @@ class TestStateManagement:
         assert "BUG-001" in orchestrator.state.completed_issues
         assert "BUG-003" in orchestrator.state.failed_issues
 
+    def test_load_state_resumes_corrections(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_load_state resumes corrections from existing state file (ENH-010)."""
+        state_file = temp_repo_with_config / ".parallel-manage-state.json"
+        saved_state = {
+            "completed_issues": ["BUG-001"],
+            "failed_issues": {},
+            "in_progress_issues": [],
+            "pending_merges": [],
+            "timing": {},
+            "corrections": {
+                "BUG-001": ["Updated line 42 -> 45", "Added missing section"],
+            },
+            "started_at": "2025-01-05T10:00:00",
+            "last_checkpoint": "2025-01-05T10:30:00",
+        }
+        state_file.write_text(json.dumps(saved_state))
+
+        orchestrator._load_state()
+
+        assert "BUG-001" in orchestrator.state.corrections
+        assert len(orchestrator.state.corrections["BUG-001"]) == 2
+        assert "Updated line 42 -> 45" in orchestrator.state.corrections["BUG-001"]
+
     def test_load_state_handles_corrupt_file(
         self,
         orchestrator: ParallelOrchestrator,
@@ -794,18 +821,26 @@ class TestOnWorkerComplete:
         self,
         orchestrator: ParallelOrchestrator,
     ) -> None:
-        """_on_worker_complete logs correction info."""
+        """_on_worker_complete logs correction info and stores in state (ENH-010)."""
+        corrections = [
+            "Updated line 42 -> 45 in src/module.py reference",
+            "Added missing ## Expected Behavior section",
+        ]
         result = WorkerResult(
             issue_id="BUG-001",
             success=True,
             branch_name="parallel/bug-001",
             worktree_path=Path("/tmp/worktree"),
             was_corrected=True,
+            corrections=corrections,
         )
 
         orchestrator._on_worker_complete(result)
 
         orchestrator.merge_coordinator.queue_merge.assert_called_once()  # type: ignore[attr-defined]
+        # Verify corrections are stored in state
+        assert "BUG-001" in orchestrator.state.corrections
+        assert orchestrator.state.corrections["BUG-001"] == corrections
 
     def test_on_worker_complete_updates_timing(
         self,

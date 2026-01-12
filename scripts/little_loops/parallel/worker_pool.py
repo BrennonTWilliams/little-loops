@@ -281,6 +281,7 @@ class WorkerPool:
 
             # Track if issue was corrected (corrections stay in worktree)
             was_corrected = ready_parsed.get("was_corrected", False)
+            corrections = ready_parsed.get("corrections", [])
 
             # Step 4: Get action from BRConfig
             action = self.br_config.get_category_action(issue.issue_type)
@@ -356,6 +357,7 @@ class WorkerPool:
                 stdout=manage_result.stdout,
                 stderr=manage_result.stderr,
                 was_corrected=was_corrected,
+                corrections=corrections,
             )
 
         except Exception as e:

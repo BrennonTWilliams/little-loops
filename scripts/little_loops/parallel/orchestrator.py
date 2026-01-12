@@ -485,6 +485,11 @@ class ParallelOrchestrator:
             )
             if result.was_corrected:
                 self.logger.info(f"{result.issue_id} was auto-corrected during validation")
+                # Log and store corrections for pattern analysis (ENH-010)
+                for correction in result.corrections:
+                    self.logger.info(f"  Correction: {correction}")
+                if result.corrections:
+                    self.state.corrections[result.issue_id] = result.corrections
             self.merge_coordinator.queue_merge(result)
         else:
             self.logger.error(f"{result.issue_id} failed: {result.error}")
@@ -587,6 +592,29 @@ class ParallelOrchestrator:
             self.logger.warning("Failed issues:")
             for issue_id in self.queue.failed_ids:
                 self.logger.warning(f"  - {issue_id}")
+
+        # Report correction statistics for quality tracking (ENH-010)
+        if self.state.corrections:
+            total_corrected = len(self.state.corrections)
+            total_issues = self.queue.completed_count + self.queue.failed_count
+            correction_rate = (total_corrected / total_issues * 100) if total_issues > 0 else 0
+            self.logger.info("")
+            self.logger.info(
+                f"Auto-corrections: {total_corrected}/{total_issues} ({correction_rate:.1f}%)"
+            )
+            # Log most common correction types
+            from collections import Counter
+
+            all_corrections: list[str] = []
+            for corrections in self.state.corrections.values():
+                all_corrections.extend(corrections)
+            if all_corrections:
+                common = Counter(all_corrections).most_common(3)
+                self.logger.info("Most common corrections:")
+                for correction, count in common:
+                    # Truncate long correction descriptions
+                    display = correction[:60] + "..." if len(correction) > 60 else correction
+                    self.logger.info(f"  - {display}: {count}")
 
         # Report stash pop warnings (local changes need manual recovery)
         stash_warnings = self.merge_coordinator.stash_pop_failures

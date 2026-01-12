@@ -1127,6 +1127,53 @@ Closed - Already Fixed"""
         assert cleanup_called[0] is True
         assert result.leaked_files == ["thoughts/notes.md"]
 
+    def test_process_issue_captures_corrections(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_process_issue() captures corrections from CORRECTED verdict (ENH-010)."""
+        ready_output = """## VERDICT
+CORRECTED
+
+## CORRECTIONS_MADE
+- Updated line 42 -> 45 in src/module.py reference
+- Added missing ## Expected Behavior section
+"""
+        manage_output = "Issue resolved"
+
+        call_count = [0]
+
+        def mock_run_command(
+            cmd: str, path: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return subprocess.CompletedProcess([], 0, ready_output, "")
+            return subprocess.CompletedProcess([], 0, manage_output, "")
+
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_run_claude_command", side_effect=mock_run_command):
+                    with patch.object(
+                        worker_pool,
+                        "_get_changed_files",
+                        return_value=["src/fix.py"],
+                    ):
+                        with patch.object(
+                            worker_pool,
+                            "_detect_main_repo_leaks",
+                            return_value=[],
+                        ):
+                            result = worker_pool._process_issue(mock_issue)
+
+        assert result.success is True
+        assert result.was_corrected is True
+        assert len(result.corrections) == 2
+        assert "Updated line 42 -> 45 in src/module.py reference" in result.corrections
+        assert "Added missing ## Expected Behavior section" in result.corrections
+
 
 class TestWorkerPoolRunClaudeCommand:
     """Tests for _run_claude_command()."""

@@ -226,3 +226,82 @@ The second fix added enhancement-specific fields to the scan template. The auto-
 2. Compare the BUG-643, ENH-625, ENH-639 issues before/after correction
 3. Identify patterns in what specifically is being auto-corrected
 4. Consider adding validation-like checks during scan to catch issues earlier
+
+---
+
+## Resolution (Third Fix)
+
+- **Action**: improve
+- **Completed**: 2026-01-12
+- **Status**: Completed
+
+### Root Cause Analysis
+
+Investigation of completed issues (BUG-643, ENH-625, ENH-639) revealed corrections were primarily about **code reference accuracy** - file paths, line numbers, and structural clarity. The scan sub-agents were finding issues but not verifying the accuracy of file paths and code references before reporting.
+
+Additionally, **parallel processing was not capturing correction details** to state, making pattern analysis impossible. Sequential processing logged corrections but parallel only logged "was auto-corrected" without specifics.
+
+### Changes Made
+
+**Phase 1: Add corrections tracking to parallel processing**
+
+1. **scripts/little_loops/parallel/types.py**:
+   - Added `corrections: list[str]` field to `WorkerResult` dataclass (line 84)
+   - Updated `to_dict()` and `from_dict()` to serialize/deserialize corrections (lines 103, 124)
+   - Added `corrections: dict[str, list[str]]` field to `OrchestratorState` (line 193)
+   - Updated state serialization/deserialization (lines 205, 219)
+
+2. **scripts/little_loops/parallel/worker_pool.py**:
+   - Extract corrections list from `ready_parsed` output (line 284)
+   - Pass corrections to `WorkerResult` (line 360)
+
+3. **scripts/little_loops/parallel/orchestrator.py**:
+   - Log correction details when issue is auto-corrected (lines 488-492)
+   - Store corrections in orchestrator state for pattern analysis (lines 489-492)
+   - Added correction statistics summary to final report (lines 596-617)
+
+**Phase 2: Add reference verification to scanner prompts**
+
+4. **commands/scan_codebase.md**:
+   - Added verification instructions to Bug Scanner (lines 89-93)
+   - Added verification instructions to Enhancement Scanner (lines 118-122)
+   - Added verification instructions to Feature Scanner (lines 144-148)
+
+   Each scanner now includes:
+   ```
+   IMPORTANT: Before reporting each finding, VERIFY:
+   - File paths exist (use Read tool to confirm)
+   - Line numbers are accurate (check the actual file)
+   - [Type-specific verifications]
+   Only report VERIFIED findings with accurate references.
+   ```
+
+**Phase 3: Tests**
+
+5. **scripts/tests/test_worker_pool.py**:
+   - Added `test_process_issue_captures_corrections` (lines 1130-1175)
+
+6. **scripts/tests/test_orchestrator.py**:
+   - Updated `test_on_worker_complete_corrected` to verify corrections storage (lines 793-816)
+   - Added `test_load_state_resumes_corrections` (lines 432-457)
+
+### Verification Results
+- Tests: 499 PASS
+- Lint: PASS
+- Types: PASS
+
+### Impact
+
+1. **Observability**: Parallel processing now captures and logs detailed corrections, enabling pattern analysis
+2. **Prevention**: Scanner prompts now instruct sub-agents to verify code references before reporting
+3. **Pattern Analysis**: Correction statistics are displayed in summary, with most common correction types shown
+4. **Data Persistence**: Corrections are persisted in state file, surviving session restarts
+
+### Expected Outcome
+
+Future scan runs should produce more accurate issues with verified code references, reducing the auto-correction rate. The correction tracking enables continuous improvement by revealing which types of corrections occur most frequently.
+
+---
+
+## Status
+**Completed** | Created: 2026-01-09 | Reopened: 2026-01-11, 2026-01-12 (twice) | Fixed: 2026-01-12 | Priority: P2

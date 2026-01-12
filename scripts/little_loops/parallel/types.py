@@ -64,6 +64,7 @@ class WorkerResult:
         stdout: Captured standard output
         stderr: Captured standard error
         was_corrected: Whether the issue file was auto-corrected
+        corrections: List of corrections made during validation (for pattern analysis)
         should_close: Whether the issue should be closed (not implemented)
         close_reason: Reason code for closure (e.g., "already_fixed")
         close_status: Status text for closure (e.g., "Closed - Already Fixed")
@@ -80,6 +81,7 @@ class WorkerResult:
     stdout: str = ""
     stderr: str = ""
     was_corrected: bool = False
+    corrections: list[str] = field(default_factory=list)
     should_close: bool = False
     close_reason: str | None = None
     close_status: str | None = None
@@ -98,6 +100,7 @@ class WorkerResult:
             "stdout": self.stdout,
             "stderr": self.stderr,
             "was_corrected": self.was_corrected,
+            "corrections": self.corrections,
             "should_close": self.should_close,
             "close_reason": self.close_reason,
             "close_status": self.close_status,
@@ -118,6 +121,7 @@ class WorkerResult:
             stdout=data.get("stdout", ""),
             stderr=data.get("stderr", ""),
             was_corrected=data.get("was_corrected", False),
+            corrections=data.get("corrections", []),
             should_close=data.get("should_close", False),
             close_reason=data.get("close_reason"),
             close_status=data.get("close_status"),
@@ -176,6 +180,7 @@ class OrchestratorState:
         failed_issues: Mapping of issue ID to failure reason
         pending_merges: Issues awaiting merge
         timing: Per-issue timing breakdown
+        corrections: Mapping of issue ID to list of corrections made (for pattern analysis)
         started_at: When orchestration started
         last_checkpoint: Last state save timestamp
     """
@@ -185,6 +190,7 @@ class OrchestratorState:
     failed_issues: dict[str, str] = field(default_factory=dict)
     pending_merges: list[str] = field(default_factory=list)
     timing: dict[str, dict[str, float]] = field(default_factory=dict)
+    corrections: dict[str, list[str]] = field(default_factory=dict)
     started_at: str = ""
     last_checkpoint: str = ""
 
@@ -196,6 +202,7 @@ class OrchestratorState:
             "failed_issues": self.failed_issues,
             "pending_merges": self.pending_merges,
             "timing": self.timing,
+            "corrections": self.corrections,
             "started_at": self.started_at,
             "last_checkpoint": self.last_checkpoint,
         }
@@ -209,6 +216,7 @@ class OrchestratorState:
             failed_issues=data.get("failed_issues", {}),
             pending_merges=data.get("pending_merges", []),
             timing=data.get("timing", {}),
+            corrections=data.get("corrections", {}),
             started_at=data.get("started_at", ""),
             last_checkpoint=data.get("last_checkpoint", ""),
         )

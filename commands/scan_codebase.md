@@ -85,6 +85,12 @@ Return structured findings with:
 - Severity assessment (High/Medium/Low)
 - Brief explanation of the problem
 - Reproduction steps (how to trigger the bug)
+
+IMPORTANT: Before reporting each finding, VERIFY:
+- File paths exist (use Read tool to confirm)
+- Line numbers are accurate (check the actual file)
+- Code snippets match current code
+Only report VERIFIED issues with accurate references.
 ```
 
 #### Agent 2: Enhancement Scanner
@@ -108,6 +114,12 @@ Return structured findings with:
 - Current behavior (what the code does now)
 - Expected behavior (what the code should do after improvement)
 - Proposed solution (suggested approach to implement the enhancement)
+
+IMPORTANT: Before reporting each finding, VERIFY:
+- File paths exist (use Read tool to confirm)
+- Line numbers are accurate (check the actual file)
+- Any referenced functions/classes exist
+Only report VERIFIED findings with accurate references.
 ```
 
 #### Agent 3: Feature Scanner
@@ -128,6 +140,12 @@ Return structured findings with:
 - Code snippet or context
 - Scope estimate (Small/Medium/Large)
 - Brief explanation of the feature
+
+IMPORTANT: Before reporting each finding, VERIFY:
+- File paths exist (use Read tool to confirm)
+- Any TODOs or comments you reference are still present
+- Line numbers are accurate
+Only report VERIFIED findings.
 ```
 
 ### 3. Synthesize Findings
