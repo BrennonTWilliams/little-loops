@@ -651,9 +651,7 @@ class TestLifecycleFileMoveExclusion:
         assert not coordinator._is_lifecycle_file_move(
             "R  .issues/bugs/P1-BUG-001.md -> .issues/bugs/P1-BUG-001-renamed.md"
         )
-        assert not coordinator._is_lifecycle_file_move(
-            "R  docs/old.md -> docs/archive/old.md"
-        )
+        assert not coordinator._is_lifecycle_file_move("R  docs/old.md -> docs/archive/old.md")
 
     def test_is_lifecycle_file_move_ignores_non_renames(
         self,
@@ -665,12 +663,8 @@ class TestLifecycleFileMoveExclusion:
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
 
         # Modified files should not be detected
-        assert not coordinator._is_lifecycle_file_move(
-            "M  .issues/completed/P1-BUG-001.md"
-        )
-        assert not coordinator._is_lifecycle_file_move(
-            "A  .issues/completed/P1-BUG-001.md"
-        )
+        assert not coordinator._is_lifecycle_file_move("M  .issues/completed/P1-BUG-001.md")
+        assert not coordinator._is_lifecycle_file_move("A  .issues/completed/P1-BUG-001.md")
         assert not coordinator._is_lifecycle_file_move("D  .issues/bugs/P1-BUG-001.md")
         assert not coordinator._is_lifecycle_file_move("?? .issues/completed/new.md")
 

@@ -170,12 +170,8 @@ class MergeCoordinator:
             if file_path == state_file_str or file_path.endswith(state_file_name):
                 continue  # Skip state file - orchestrator manages it independently
             # Skip files in completed directory - these are lifecycle-managed
-            if ".issues/completed/" in file_path or file_path.startswith(
-                ".issues/completed/"
-            ):
-                self.logger.debug(
-                    f"Skipping completed directory file from stash: {file_path}"
-                )
+            if ".issues/completed/" in file_path or file_path.startswith(".issues/completed/"):
+                self.logger.debug(f"Skipping completed directory file from stash: {file_path}")
                 continue
             tracked_changes.append(line)
             files_to_stash.append(file_path)
@@ -376,9 +372,7 @@ class MergeCoordinator:
         dest_path = parts[1].strip()
 
         # Check if destination is in .issues/completed/
-        return ".issues/completed/" in dest_path or dest_path.startswith(
-            ".issues/completed/"
-        )
+        return ".issues/completed/" in dest_path or dest_path.startswith(".issues/completed/")
 
     def _is_local_changes_error(self, error_output: str) -> bool:
         """Check if the error is due to uncommitted local changes.
