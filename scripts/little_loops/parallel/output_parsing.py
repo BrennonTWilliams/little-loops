@@ -89,6 +89,7 @@ def _extract_verdict_from_text(text: str) -> str | None:
         (r"\bready\s+for\s+implementation\b", "READY"),
         (r"\bimplementation[\s-]ready\b", "READY"),
         (r"\bapproved\s+for\s+implementation\b", "READY"),
+        (r"\bproceed\s+(to|with)\s+implementation\b", "READY"),
         # Patterns for CLOSE
         (r"\bshould\s+be\s+closed\b", "CLOSE"),
         (r"\bclose\s+this\s+issue\b", "CLOSE"),

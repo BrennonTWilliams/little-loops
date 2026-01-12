@@ -598,6 +598,27 @@ Corrections made to the issue file. Line numbers updated.
         assert result["verdict"] == "CORRECTED"
         assert result["is_ready"] is True
 
+    def test_phrasing_proceed_to_implementation(self) -> None:
+        """Test extracting verdict from 'proceed to implementation' phrasing."""
+        output = """
+## NEXT_STEPS
+Proceed to implementation with: `/ll:manage_issue enhancement ENH-616`
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+        assert result["is_ready"] is True
+
+    def test_phrasing_proceed_with_implementation(self) -> None:
+        """Test extracting verdict from 'proceed with implementation' phrasing."""
+        output = """
+The issue is well-structured. Proceed with implementation.
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "READY"
+        assert result["is_ready"] is True
+
     def test_double_space_after_hashes(self) -> None:
         """Test parsing when there are multiple spaces after hashes."""
         output = """
