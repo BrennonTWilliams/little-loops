@@ -109,7 +109,7 @@ Or copy the prompt content above to paste into a new session.
 
 ## Integration
 
-- Works with existing PreCompact hook (both can generate continuation prompts)
 - Complements `/ll:resume` for reading the prompt
 - Uses same file format as automation tools (`ll-auto`, `ll-parallel`)
 - Outputs `CONTEXT_HANDOFF` signal for automation detection
+- Works with PostToolUse context monitor hook for automatic reminders

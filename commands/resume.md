@@ -135,7 +135,6 @@ The `.claude/ll-session-state.json` file contains:
 
 ## Integration
 
-- Reads prompts created by `/ll:handoff` or PreCompact hook
+- Reads prompts created by `/ll:handoff`
 - Works with automation state files from `ll-auto` and `ll-parallel`
-- SessionStart hook notifies when continuation prompt is available
 - Prompts older than `prompt_expiry_hours` are marked as stale but still usable

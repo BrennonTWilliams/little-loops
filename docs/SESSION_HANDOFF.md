@@ -197,8 +197,10 @@ The context monitor estimates token usage based on tool activity:
 | Grep | `matches × 5` | Summarized search results |
 | Bash | `chars × 0.3` | Command output varies |
 | Glob | `files × 20` | File lists are compact |
+| Write/Edit | `300` | Base cost × 3 for edits |
 | Task | `2000` | Agent responses are summarized |
 | WebFetch | `1500` | Web content is processed |
+| WebSearch | `1000` | Search results summary |
 | Other | `100` | Base overhead per call |
 
 ## Files
@@ -318,8 +320,8 @@ The `/ll:handoff` command auto-generates prompts, but you can improve them:
 
 ### With Other Hooks
 
-- **PreCompact hook**: Can also generate continuation prompts (complementary)
-- **SessionStart hook**: Notifies when continuation prompt is available
+- **PostToolUse hook**: Monitors context usage and triggers handoff reminders
+- **Stop hook**: Cleans up context state file when session ends
 
 ### With Automation Tools
 
