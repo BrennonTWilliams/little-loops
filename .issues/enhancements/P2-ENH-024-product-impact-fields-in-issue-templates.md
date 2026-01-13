@@ -4,7 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-06T20:47:28Z
 ---
 
-# ENH-005: Product Impact Fields in Issue Templates
+# ENH-024: Product Impact Fields in Issue Templates
 
 ## Summary
 
@@ -221,17 +221,17 @@ When product analysis is enabled:
 
 ## Dependencies
 
-- FEAT-001: Product Analysis Opt-In Configuration
-- FEAT-002: Goals/Vision Ingestion Mechanism (for goal/persona IDs)
-- FEAT-003: Product Analyzer Agent (populates product fields)
-- ENH-006: Universal discovered_by Field (provides base tracking field)
+- FEAT-020: Product Analysis Opt-In Configuration
+- FEAT-021: Goals/Vision Ingestion Mechanism (for goal/persona IDs)
+- FEAT-022: Product Analyzer Agent (populates product fields)
+- ENH-025: Universal discovered_by Field (provides base tracking field)
 
 ## Blocked By
 
-- FEAT-001
-- FEAT-002
-- FEAT-003
-- ENH-006
+- FEAT-020
+- FEAT-021
+- FEAT-022
+- ENH-025
 
 ## Blocks
 

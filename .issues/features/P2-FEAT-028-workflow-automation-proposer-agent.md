@@ -4,7 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-12T12:00:00Z
 ---
 
-# FEAT-014: Workflow Automation Proposer Agent
+# FEAT-028: Workflow Automation Proposer Agent
 
 ## Summary
 
@@ -12,7 +12,7 @@ Create `workflow-automation-proposer` agent (Step 3 of the workflow analysis pip
 
 ## Motivation
 
-Pattern analysis (FEAT-012) and workflow detection (FEAT-013) identify what users do repeatedly, but don't propose solutions. This agent:
+Pattern analysis (FEAT-026) and workflow detection (FEAT-027) identify what users do repeatedly, but don't propose solutions. This agent:
 
 - Synthesizes patterns and workflows into actionable proposals
 - Proposes new slash commands for repeated multi-step workflows
@@ -420,12 +420,12 @@ None external. Uses YAML processing.
 
 ## Blocked By
 
-- FEAT-012: Workflow Pattern Analyzer Agent (provides pattern data)
-- FEAT-013: Workflow Sequence Analyzer Agent (provides workflow data)
+- FEAT-026: Workflow Pattern Analyzer Agent (provides pattern data)
+- FEAT-027: Workflow Sequence Analyzer Agent (provides workflow data)
 
 ## Blocks
 
-- FEAT-015: `/ll:analyze-workflows` Command (orchestrates this agent)
+- FEAT-029: `/ll:analyze-workflows` Command (orchestrates this agent)
 
 ## Labels
 

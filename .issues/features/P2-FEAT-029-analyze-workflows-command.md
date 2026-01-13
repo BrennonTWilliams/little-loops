@@ -4,7 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-12T12:00:00Z
 ---
 
-# FEAT-015: /ll:analyze-workflows Command
+# FEAT-029: /ll:analyze-workflows Command
 
 ## Summary
 
@@ -12,7 +12,7 @@ Create `/ll:analyze-workflows` command that orchestrates the 3-step workflow ana
 
 ## Motivation
 
-The workflow analysis pipeline consists of three agents (FEAT-012, FEAT-013, FEAT-014) that must run in sequence. Users need a single command to:
+The workflow analysis pipeline consists of three agents (FEAT-026, FEAT-027, FEAT-028) that must run in sequence. Users need a single command to:
 
 - Auto-detect the most recent user messages file
 - Run all three analysis steps in order
@@ -294,9 +294,9 @@ $ cat .claude/workflow-analysis/summary-*.md
 ## Blocked By
 
 - FEAT-011: User Message History Extraction (provides input data)
-- FEAT-012: Workflow Pattern Analyzer Agent (Step 1)
-- FEAT-013: Workflow Sequence Analyzer Agent (Step 2)
-- FEAT-014: Workflow Automation Proposer Agent (Step 3)
+- FEAT-026: Workflow Pattern Analyzer Agent (Step 1)
+- FEAT-027: Workflow Sequence Analyzer Agent (Step 2)
+- FEAT-028: Workflow Automation Proposer Agent (Step 3)
 
 ## Blocks
 

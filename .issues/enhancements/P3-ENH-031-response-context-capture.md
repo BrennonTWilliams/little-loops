@@ -4,7 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-12T12:00:00Z
 ---
 
-# ENH-018: Response Context Capture
+# ENH-031: Response Context Capture
 
 ## Summary
 
@@ -243,7 +243,7 @@ Requires access to Claude Code conversation logs that include assistant response
 ## Blocked By
 
 - FEAT-011: User Message History Extraction (base extraction)
-- FEAT-015: `/ll:analyze-workflows` Command (implement base pipeline first)
+- FEAT-029: `/ll:analyze-workflows` Command (implement base pipeline first)
 
 ## Blocks
 

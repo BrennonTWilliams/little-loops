@@ -4,7 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-12T12:00:00Z
 ---
 
-# FEAT-013: Workflow Sequence Analysis Agent
+# FEAT-027: Workflow Sequence Analysis Agent
 
 ## Summary
 
@@ -12,7 +12,7 @@ Create `workflow-sequence-analyzer` agent (Step 2 of the workflow analysis pipel
 
 ## Motivation
 
-Pattern analysis (FEAT-012) identifies individual message categories and repeated phrases, but doesn't reveal multi-step workflows like "explore → modify → verify" or workflows that span multiple sessions. This agent:
+Pattern analysis (FEAT-026) identifies individual message categories and repeated phrases, but doesn't reveal multi-step workflows like "explore → modify → verify" or workflows that span multiple sessions. This agent:
 
 - Links related sessions using git branch, handoff markers, and entity overlap
 - Clusters messages by shared entities (files, concepts) rather than just categories
@@ -402,12 +402,12 @@ None external. Uses standard text processing and datetime operations.
 ## Blocked By
 
 - FEAT-011: User Message History Extraction (provides raw message data)
-- FEAT-012: Workflow Pattern Analyzer Agent (provides category data)
+- FEAT-026: Workflow Pattern Analyzer Agent (provides category data)
 
 ## Blocks
 
-- FEAT-014: Workflow Automation Proposer Agent (consumes workflow data)
-- FEAT-015: `/ll:analyze-workflows` Command (orchestrates this agent)
+- FEAT-028: Workflow Automation Proposer Agent (consumes workflow data)
+- FEAT-029: `/ll:analyze-workflows` Command (orchestrates this agent)
 
 ## Labels
 

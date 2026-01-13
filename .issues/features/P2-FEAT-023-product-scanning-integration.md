@@ -4,7 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-06T20:47:28Z
 ---
 
-# FEAT-004: Product Scanning Integration
+# FEAT-023: Product Scanning Integration
 
 ## Summary
 
@@ -270,15 +270,15 @@ When product analysis is enabled:
 
 ## Dependencies
 
-- FEAT-001: Product Analysis Opt-In Configuration
-- FEAT-002: Goals/Vision Ingestion Mechanism
-- FEAT-003: Product Analyzer Agent
+- FEAT-020: Product Analysis Opt-In Configuration
+- FEAT-021: Goals/Vision Ingestion Mechanism
+- FEAT-022: Product Analyzer Agent
 
 ## Blocked By
 
-- FEAT-001
-- FEAT-002
-- FEAT-003
+- FEAT-020
+- FEAT-021
+- FEAT-022
 
 ## Blocks
 

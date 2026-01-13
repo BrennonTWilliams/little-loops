@@ -4,7 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-12T12:00:00Z
 ---
 
-# FEAT-012: Workflow Pattern Analysis Agent
+# FEAT-026: Workflow Pattern Analysis Agent
 
 ## Summary
 
@@ -17,7 +17,7 @@ User message extraction (FEAT-011) provides raw data, but identifying actionable
 - Categorize messages by action type (code modification, debugging, git operations, etc.)
 - Detect repeated patterns that indicate automation opportunities
 - Extract common phrases and tool references
-- Prepare structured data for sequence analysis (FEAT-013)
+- Prepare structured data for sequence analysis (FEAT-027)
 
 This enables the full workflow analysis pipeline: Pattern Analysis → Sequence Analysis → Automation Proposals.
 
@@ -277,8 +277,8 @@ None external. Uses standard text processing.
 
 ## Blocks
 
-- FEAT-013: Workflow Sequence Analyzer Agent (consumes step1-patterns.yaml)
-- FEAT-015: `/ll:analyze-workflows` Command (orchestrates this agent)
+- FEAT-027: Workflow Sequence Analyzer Agent (consumes step1-patterns.yaml)
+- FEAT-029: `/ll:analyze-workflows` Command (orchestrates this agent)
 
 ## Labels
 

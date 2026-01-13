@@ -4,7 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-06T20:47:28Z
 ---
 
-# FEAT-002: Goals/Vision Ingestion Mechanism
+# FEAT-021: Goals/Vision Ingestion Mechanism
 
 ## Summary
 
@@ -274,9 +274,9 @@ def validate_goals(goals: ProductGoals) -> list[str]:
 ### 6. Integration Points
 
 Goals are consumed by:
-- **Product analyzer agent** (FEAT-003): Uses goals for feature gap analysis
-- **Product scanning** (FEAT-004): Creates issues aligned with priorities
-- **Issue templates** (ENH-005): Populates product impact fields
+- **Product analyzer agent** (FEAT-022): Uses goals for feature gap analysis
+- **Product scanning** (FEAT-023): Creates issues aligned with priorities
+- **Issue templates** (ENH-024): Populates product impact fields
 
 ## Location
 
@@ -321,17 +321,17 @@ When product analysis is enabled during `/ll:init`:
 
 ## Dependencies
 
-- FEAT-001: Product Analysis Opt-In Configuration (must be enabled)
+- FEAT-020: Product Analysis Opt-In Configuration (must be enabled)
 
 ## Blocked By
 
-- FEAT-001
+- FEAT-020
 
 ## Blocks
 
-- FEAT-003: Product Analyzer Agent
-- FEAT-004: Product Scanning Integration
-- ENH-005: Product Impact Fields in Issue Templates
+- FEAT-022: Product Analyzer Agent
+- FEAT-023: Product Scanning Integration
+- ENH-024: Product Impact Fields in Issue Templates
 
 ## Labels
 

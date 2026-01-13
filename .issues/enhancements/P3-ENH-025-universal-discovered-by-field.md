@@ -4,7 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-09T00:00:00Z
 ---
 
-# ENH-006: Universal discovered_by Field for Issue Tracking
+# ENH-025: Universal discovered_by Field for Issue Tracking
 
 ## Summary
 
@@ -123,7 +123,7 @@ None
 
 ## Blocks
 
-- ENH-005: Product Impact Fields in Issue Templates (can use this field)
+- ENH-024: Product Impact Fields in Issue Templates (can use this field)
 
 ## Labels
 

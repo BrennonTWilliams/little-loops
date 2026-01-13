@@ -8,7 +8,7 @@ discovered_date: 2026-01-12T00:00:00Z
 
 ## Summary
 
-Integrate the dependency graph (FEAT-016) into `ll-auto` so that sequential issue processing respects `Blocked By` relationships. Issues with unsatisfied dependencies should be skipped until their blockers are completed.
+Integrate the dependency graph (FEAT-030) into `ll-auto` so that sequential issue processing respects `Blocked By` relationships. Issues with unsatisfied dependencies should be skipped until their blockers are completed.
 
 ## Motivation
 
@@ -135,7 +135,7 @@ def _log_dependency_status(self):
 ## Location
 
 - **Modified**: `scripts/little_loops/issue_manager.py` (AutoManager class)
-- **Uses**: `scripts/little_loops/dependency_graph.py` (from FEAT-016)
+- **Uses**: `scripts/little_loops/dependency_graph.py` (from FEAT-030)
 
 ## Current Behavior
 
@@ -171,11 +171,11 @@ def _log_dependency_status(self):
 
 ## Dependencies
 
-- FEAT-016: Issue Dependency Parsing and Graph Construction
+- FEAT-030: Issue Dependency Parsing and Graph Construction
 
 ## Blocked By
 
-- FEAT-016
+- FEAT-030
 
 ## Blocks
 

@@ -8,7 +8,7 @@ discovered_date: 2026-01-12T00:00:00Z
 
 ## Summary
 
-Integrate the dependency graph (FEAT-016) into `ll-parallel` so that parallel issue processing respects `Blocked By` relationships. Blocked issues should wait until their dependencies complete before being dispatched to workers.
+Integrate the dependency graph (FEAT-030) into `ll-parallel` so that parallel issue processing respects `Blocked By` relationships. Blocked issues should wait until their dependencies complete before being dispatched to workers.
 
 ## Motivation
 
@@ -176,7 +176,7 @@ class OrchestratorState:
 
 - **Modified**: `scripts/little_loops/parallel/orchestrator.py` (main orchestrator)
 - **Modified**: `scripts/little_loops/parallel/priority_queue.py` (optional: add wrapper)
-- **Uses**: `scripts/little_loops/dependency_graph.py` (from FEAT-016)
+- **Uses**: `scripts/little_loops/dependency_graph.py` (from FEAT-030)
 
 ## Current Behavior
 
@@ -214,11 +214,11 @@ class OrchestratorState:
 
 ## Dependencies
 
-- FEAT-016: Issue Dependency Parsing and Graph Construction
+- FEAT-030: Issue Dependency Parsing and Graph Construction
 
 ## Blocked By
 
-- FEAT-016
+- FEAT-030
 
 ## Blocks
 

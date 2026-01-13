@@ -4,7 +4,7 @@ discovered_branch: main
 discovered_date: 2026-01-06T20:47:28Z
 ---
 
-# FEAT-001: Product Analysis Opt-In Configuration
+# FEAT-020: Product Analysis Opt-In Configuration
 
 ## Summary
 
@@ -165,10 +165,10 @@ None
 
 ## Blocks
 
-- FEAT-002: Goals/Vision Ingestion Mechanism
-- FEAT-003: Product Analyzer Agent
-- FEAT-004: Product Scanning Integration
-- ENH-005: Product Impact Fields in Issue Templates
+- FEAT-021: Goals/Vision Ingestion Mechanism
+- FEAT-022: Product Analyzer Agent
+- FEAT-023: Product Scanning Integration
+- ENH-024: Product Impact Fields in Issue Templates
 
 ## Labels
 

@@ -177,10 +177,10 @@ def suggest_commands(messages: list[UserMessage]) -> list[CommandSuggestion]:
 ```
 
 For comprehensive workflow analysis and automation proposals, see:
-- **FEAT-012**: Workflow Pattern Analyzer Agent
-- **FEAT-013**: Workflow Sequence Analyzer Agent
-- **FEAT-014**: Workflow Automation Proposer Agent
-- **FEAT-015**: `/ll:analyze-workflows` Command
+- **FEAT-026**: Workflow Pattern Analyzer Agent
+- **FEAT-027**: Workflow Sequence Analyzer Agent
+- **FEAT-028**: Workflow Automation Proposer Agent
+- **FEAT-029**: `/ll:analyze-workflows` Command
 
 ### 6. Integration with Existing Commands
 
@@ -249,11 +249,11 @@ None
 
 ## Blocks
 
-- FEAT-012: Workflow Pattern Analyzer Agent
-- FEAT-013: Workflow Sequence Analyzer Agent
-- FEAT-014: Workflow Automation Proposer Agent
-- FEAT-015: `/ll:analyze-workflows` Command
-- ENH-018: Response Context Capture
+- FEAT-026: Workflow Pattern Analyzer Agent
+- FEAT-027: Workflow Sequence Analyzer Agent
+- FEAT-028: Workflow Automation Proposer Agent
+- FEAT-029: `/ll:analyze-workflows` Command
+- ENH-031: Response Context Capture
 
 ## Labels
 
