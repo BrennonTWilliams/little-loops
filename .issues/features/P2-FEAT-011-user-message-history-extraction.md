@@ -8,7 +8,33 @@ discovered_date: 2026-01-09T22:40:00Z
 
 ## Summary
 
-Create a Python CLI tool (`ll-messages`) that extracts user-sent messages and metadata from Claude Code's JSONL logs for the current project, outputting them to a timestamped JSONL file. This enables downstream analysis including command suggestions, workflow pattern detection, and personalized recommendations.
+~~Create a Python CLI tool (`ll-messages`) that extracts user-sent messages and metadata from Claude Code's JSONL logs for the current project, outputting them to a timestamped JSONL file.~~
+
+**Update (2026-01-12)**: Core extraction functionality is implemented. This issue now tracks **remaining enhancements**: entity extraction, additional output formats, slash command wrapper, and future analysis subcommands.
+
+## Implementation Status
+
+| Component | Status | Location |
+|-----------|--------|----------|
+| `UserMessage` dataclass | Implemented | `scripts/little_loops/user_messages.py` |
+| `get_project_folder()` | Implemented | `scripts/little_loops/user_messages.py` |
+| `extract_user_messages()` | Implemented | `scripts/little_loops/user_messages.py` |
+| `save_messages()` | Implemented | `scripts/little_loops/user_messages.py` |
+| `print_messages_to_stdout()` | Implemented | `scripts/little_loops/user_messages.py` |
+| CLI entry point (`ll-messages`) | Implemented | `scripts/little_loops/cli.py:main_messages` |
+| `-n/--limit` option | Implemented | Default: 100 |
+| `--since` option | Implemented | ISO date filter |
+| `-o/--output` option | Implemented | Custom output path |
+| `--cwd` option | Implemented | Override working directory |
+| `--exclude-agents` option | Implemented | Exclude agent sessions |
+| `--stdout` option | Implemented | Print to terminal |
+| `-v/--verbose` option | Implemented | Progress output |
+| **Entity extraction** | **Not implemented** | `entities` field in UserMessage |
+| **`--format` option** | **Not implemented** | json, yaml, csv formats |
+| **`--extract-entities` flag** | **Not implemented** | Toggle entity extraction |
+| **`/ll:messages` command** | **Not implemented** | `commands/messages.md` |
+| **`ll-messages suggest`** | **Not implemented** | Future subcommand |
+| **`ll-messages stats`** | **Not implemented** | Future subcommand |
 
 ## Motivation
 
@@ -201,36 +227,55 @@ Arguments: $ARGUMENTS
 
 ## Location
 
-- **New Module**: `scripts/little_loops/messages.py`
-- **New Module**: `scripts/little_loops/messages_cli.py`
-- **New Command**: `commands/messages.md`
-- **Modified**: `scripts/pyproject.toml` (add entry point)
+- **Existing Module**: `scripts/little_loops/user_messages.py` (core extraction logic)
+- **Existing CLI**: `scripts/little_loops/cli.py` (`main_messages` entry point)
+- **New Command**: `commands/messages.md` (not yet created)
 
 ## Current Behavior
 
-No mechanism exists to extract or analyze user message history. Claude Code logs are stored but not queryable.
-
-## Expected Behavior
+The `ll-messages` CLI tool is fully functional for basic extraction:
 
 ```bash
-# Extract last 50 messages to JSONL
-$ ll-messages extract --limit 50
-Extracted 50 messages to .claude/user-messages-2026-01-09T22-45-00.jsonl
+ll-messages                          # Last 100 messages to file
+ll-messages -n 50                    # Last 50 messages
+ll-messages --since 2026-01-01       # Messages since date
+ll-messages -o output.jsonl          # Custom output path
+ll-messages --stdout                 # Print to terminal
+ll-messages --exclude-agents         # Exclude agent sessions
+ll-messages --cwd /path/to/project   # Specify project directory
+ll-messages -v                       # Verbose progress output
+```
 
-# Extract messages from last week
-$ ll-messages extract --since 2026-01-02
+Output is JSONL with: `content`, `timestamp`, `session_id`, `uuid`, `cwd`, `git_branch`, `is_sidechain`.
 
-# Future: Get command suggestions
+## Expected Behavior (Remaining Enhancements)
+
+```bash
+# Entity extraction (adds file paths, commands, concepts to output)
+$ ll-messages --extract-entities
+{"content": "Fix checkout.py", ..., "entities": ["checkout.py"]}
+
+# Alternative output formats
+$ ll-messages --format json    # Pretty JSON array
+$ ll-messages --format csv     # CSV with headers
+$ ll-messages --format yaml    # YAML list
+
+# Future: Command suggestions
 $ ll-messages suggest
 Based on your recent messages, you might find these commands useful:
   /ll:run_tests - You frequently ask to "run tests" (12 times this week)
   /ll:commit - You often request commits manually (8 times)
+
+# Future: Usage statistics
+$ ll-messages stats
+Sessions: 47 | Messages: 312 | Most active: Mon-Wed
+Top topics: testing (23%), refactoring (18%), debugging (15%)
 ```
 
 ## Impact
 
-- **Severity**: Medium - Enables new analysis capabilities
-- **Effort**: Medium - Core extraction is straightforward, suggestion engine is more complex
+- **Severity**: Low - Core functionality complete, enhancements are nice-to-have
+- **Effort**: Low - Entity extraction is regex-based; formats are straightforward
 - **Risk**: Low - Read-only access to existing logs, no modification
 
 ## Privacy Considerations
@@ -257,7 +302,7 @@ None
 
 ## Labels
 
-`feature`, `cli-tool`, `analytics`, `user-experience`
+`feature`, `cli-tool`, `analytics`, `user-experience`, `partially-complete`
 
 ---
 
@@ -301,4 +346,11 @@ None
 
 ## Status
 
-**Open** | Created: 2026-01-09 | Priority: P2
+**Partially Complete** | Created: 2026-01-09 | Updated: 2026-01-12 | Priority: P2
+
+Core extraction implemented. Remaining:
+- [ ] Entity extraction (`--extract-entities`, `entities` field)
+- [ ] Output formats (`--format json|yaml|csv`)
+- [ ] `/ll:messages` slash command wrapper
+- [ ] `ll-messages suggest` subcommand (future)
+- [ ] `ll-messages stats` subcommand (future)
