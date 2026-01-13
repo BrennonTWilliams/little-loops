@@ -73,7 +73,7 @@ little-loops/
 ├── plugin.json           # Plugin manifest
 ├── config-schema.json    # Configuration JSON Schema
 ├── commands/             # Slash command templates (*.md)
-├── agents/               # Agent definitions (*.md)
+├── agents/               # 8 agent definitions (*.md)
 ├── hooks/                # Lifecycle hooks
 ├── templates/            # Project-type config templates
 ├── docs/                 # Documentation
@@ -95,6 +95,9 @@ little-loops/
         ├── work_verification.py
         ├── subprocess_utils.py
         ├── logger.py
+        ├── logo.py              # CLI logo display
+        ├── dependency_graph.py  # Dependency graph construction
+        ├── user_messages.py     # User message extraction
         └── parallel/     # Parallel processing module
             ├── orchestrator.py
             ├── worker_pool.py

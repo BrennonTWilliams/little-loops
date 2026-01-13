@@ -22,7 +22,7 @@ The system consists of three main layers:
 flowchart TB
     subgraph "Claude Code Plugin"
         CMD[Commands<br/>20 slash commands]
-        AGT[Agents<br/>7 specialized agents]
+        AGT[Agents<br/>8 specialized agents]
     end
 
     subgraph "Configuration"
@@ -69,14 +69,15 @@ little-loops/
 │   ├── manage_issue.md
 │   ├── normalize_issues.md
 │   └── ...
-├── agents/                  # 7 specialized agents
+├── agents/                  # 8 specialized agents
 │   ├── codebase-analyzer.md
 │   ├── codebase-locator.md
 │   ├── codebase-pattern-finder.md
 │   ├── consistency-checker.md
 │   ├── plugin-config-auditor.md
 │   ├── prompt-optimizer.md
-│   └── web-search-researcher.md
+│   ├── web-search-researcher.md
+│   └── workflow-pattern-analyzer.md
 ├── hooks/                   # Lifecycle hooks and validation scripts
 │   ├── hooks.json           # Hook configuration
 │   ├── check-duplicate-issue-id.sh  # Validation script
@@ -106,6 +107,9 @@ little-loops/
         ├── git_operations.py    # Git utilities
         ├── work_verification.py # Verification helpers
         ├── subprocess_utils.py  # Subprocess handling
+        ├── logo.py              # CLI logo display
+        ├── dependency_graph.py  # Dependency graph construction
+        ├── user_messages.py     # User message extraction
         └── parallel/
             ├── __init__.py
             ├── orchestrator.py
