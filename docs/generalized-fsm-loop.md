@@ -10,6 +10,26 @@ This design provides:
 - **Debuggability** - FSM state is always inspectable
 - **Composability** - All loops share the same underlying structure
 
+## Integration with Existing Tools
+
+The FSM loop system complements the existing `ll-auto` and `ll-parallel` CLI tools:
+
+| Tool | Purpose | Relationship to FSM Loops |
+|------|---------|---------------------------|
+| `ll-auto` | Sequential issue processing | Can be an action in FSM states |
+| `ll-parallel` | Parallel issue processing with worktrees | Can be an action in FSM states |
+| `ll-loop` | Execute FSM-based automation loops | Orchestrates any CLI tool as states |
+
+Example - using `ll-auto` as a step:
+
+```yaml
+states:
+  process_issues:
+    action: "ll-auto --max-issues 5"
+    on_success: "verify"
+    on_failure: "done"
+```
+
 ## Authoring Paradigms
 
 Users can create loops using any of these five paradigms:
@@ -1301,32 +1321,92 @@ ll-loop run .loops/fix-types.yaml --queue
 
 ---
 
+## Security Model
+
+### Execution Context
+
+Loops are executed **only** via the `ll-loop` CLI command—never via slash commands. The `/ll:create-loop` command helps author loops, but execution requires explicit CLI invocation.
+
+### Autonomous Execution
+
+All slash command actions use `--dangerously-skip-permissions`. This is **non-negotiable** for autonomous execution. Users accept this trade-off when they run a loop.
+
+| Aspect | Policy |
+|--------|--------|
+| User approval before loop | None required |
+| Permission prompts during loop | Disabled (`--dangerously-skip-permissions`) |
+| "Blessing" reviewed loops | Not supported—delete invalid loops |
+
+### Risk Mitigation
+
+- **Review before running**: Users should read loop definitions before execution
+- **Iteration limits**: `max_iterations` prevents runaway loops
+- **Timeouts**: Action and loop-level timeouts bound execution
+- **Scoped operations**: `scope` declaration limits file system impact
+
+---
+
+## File Structure
+
+### Canonical Location
+
+All loop definitions live in `.loops/`:
+
+```
+.loops/
+├── fix-types.yaml          # User-defined loop
+├── lint-cycle.yaml         # User-defined loop
+└── .running/               # Runtime state (auto-managed)
+    ├── fix-types.state.json
+    └── fix-types.events.jsonl
+```
+
+### Relationship to `.issues/`
+
+The `.issues/` directory is **separate** and serves a different purpose:
+
+| Directory | Purpose | Used By |
+|-----------|---------|---------|
+| `.loops/` | FSM loop definitions | `ll-loop` |
+| `.issues/` | Issue tracking files | `ll-auto`, `ll-parallel`, `/ll:manage_issue` |
+
+FSM loops can orchestrate tools that consume `.issues/`, but the directories remain independent.
+
+### Templates
+
+No loop templates are provided. All loops are user-defined. Future versions may add templates for common workflows.
+
+---
+
 ## CLI Interface
 
 ### Command: `ll-loop`
 
 ```bash
-# Run a loop
-ll-loop run .loops/fix-types.yaml
-ll-loop run .loops/fix-types.yaml --max-iterations 5
-ll-loop run .loops/fix-types.yaml --background
-ll-loop run .loops/fix-types.yaml --dry-run
+# Run a loop (primary usage - loop name resolves to .loops/<name>.yaml)
+ll-loop test-analyze-fix
+ll-loop fix-types --max-iterations 5
+ll-loop lint-cycle --background
+
+# Explicit run subcommand (alternative)
+ll-loop run fix-types --dry-run
+ll-loop run .loops/fix-types.yaml    # Full path also works
 
 # Compile paradigm to FSM (debugging)
-ll-loop compile .loops/convergence.yaml -o .loops/convergence.fsm.yaml
+ll-loop compile convergence -o .loops/convergence.fsm.yaml
 
 # Validate loop definition
-ll-loop validate .loops/fix-types.yaml
+ll-loop validate fix-types
 
 # Manage running loops
 ll-loop list
 ll-loop list --running
-ll-loop status <loop-id>
-ll-loop stop <loop-id>
-ll-loop resume <loop-id>
+ll-loop status fix-types
+ll-loop stop fix-types
+ll-loop resume fix-types
 
 # History
-ll-loop history <loop-name>
+ll-loop history fix-types
 ```
 
 ### Run Flags
@@ -1449,23 +1529,21 @@ Loop completed: done (1 iteration, 2m 34s)
 1. ✅ **Transition system design** - Two-layer (evaluate + route) with shortcuts for common cases
 2. ✅ **LLM usage scope** - Only in `llm_structured` evaluator
 3. ✅ **Confidence handling** - Optional `uncertain_suffix` for compound verdicts
+4. ✅ **Integration with existing tools** - `ll-auto` and `ll-parallel` are complementary; they become executable actions within FSM states
+5. ✅ **Security model** - No user approval; always use `--dangerously-skip-permissions`; no blessing mechanism
+6. ✅ **File structure** - `.loops/` is canonical; separate from `.issues/`; no templates for now
+7. ✅ **CLI UX** - Primary invocation is `ll-loop <loop-name>` (resolves to `.loops/<name>.yaml`)
 
 ### For Implementation
 
-4. **Context handoff integration** - How does `CONTEXT_HANDOFF:` detection interact with state persistence?
+8. **Context handoff integration** - How does `CONTEXT_HANDOFF:` detection interact with state persistence?
 
-5. **Maintain mode timing** - Configurable delay between cycles?
-
-6. **Security** - Document `--dangerously-skip-permissions` trade-off
+9. **Maintain mode timing** - Configurable delay between cycles?
 
 ---
 
 ## Future Considerations
 
-- **Visual editor** - Web UI for FSM authoring
-- **Loop templates** - Pre-built loops for common workflows
 - **Composition** - Nested loops, sub-FSMs
-- **Parallel states** - Execute multiple states concurrently
 - **Hooks** - Pre/post state execution
 - **Metrics** - Track success rates, durations
-- **Local LLM** - Reduce cost/latency for evaluation
