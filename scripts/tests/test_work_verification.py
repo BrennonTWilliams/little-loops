@@ -155,6 +155,27 @@ class TestVerifyWorkWasDoneWithProvidedFiles:
         assert result is False
         mock_logger.warning.assert_called()
 
+    def test_warning_includes_excluded_files(self, mock_logger: MagicMock) -> None:
+        """Warning message includes which excluded files were detected."""
+        changed_files = [".issues/bugs/BUG-001.md", "thoughts/notes.md"]
+        verify_work_was_done(mock_logger, changed_files)
+        mock_logger.warning.assert_called()
+        call_args = str(mock_logger.warning.call_args)
+        assert ".issues/bugs/BUG-001.md" in call_args
+        assert "thoughts/notes.md" in call_args
+
+    def test_warning_truncates_long_file_list(self, mock_logger: MagicMock) -> None:
+        """Warning truncates file list to first 10 when many excluded files."""
+        changed_files = [f".issues/bugs/BUG-{i:03d}.md" for i in range(15)]
+        verify_work_was_done(mock_logger, changed_files)
+        mock_logger.warning.assert_called()
+        call_args = str(mock_logger.warning.call_args)
+        # Should only show first 10
+        assert "BUG-000" in call_args
+        assert "BUG-009" in call_args
+        # Should NOT include files beyond the first 10
+        assert "BUG-014" not in call_args
+
     def test_empty_list_returns_false(self, mock_logger: MagicMock) -> None:
         """Returns False when empty list is provided."""
         result = verify_work_was_done(mock_logger, [])
@@ -247,6 +268,8 @@ class TestVerifyWorkWasDoneWithGitDetection:
 
         assert result is False
         mock_logger.warning.assert_called()
+        call_args = str(mock_logger.warning.call_args)
+        assert "no files modified" in call_args
 
     def test_only_excluded_files_in_git_returns_false(self, mock_logger: MagicMock) -> None:
         """Returns False when git only shows excluded files changed."""
@@ -261,6 +284,23 @@ class TestVerifyWorkWasDoneWithGitDetection:
             result = verify_work_was_done(mock_logger)
 
         assert result is False
+
+    def test_git_warning_includes_excluded_files(self, mock_logger: MagicMock) -> None:
+        """Warning message from git detection includes excluded file names."""
+        with patch("subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=[],
+                returncode=0,
+                stdout=".issues/bugs/BUG-123.md\nthoughts/plan.md\n",
+                stderr="",
+            )
+
+            verify_work_was_done(mock_logger)
+
+        mock_logger.warning.assert_called()
+        call_args = str(mock_logger.warning.call_args)
+        assert ".issues/bugs/BUG-123.md" in call_args
+        assert "thoughts/plan.md" in call_args
 
     def test_git_diff_command_is_called_correctly(self, mock_logger: MagicMock) -> None:
         """Verifies correct git diff commands are executed."""

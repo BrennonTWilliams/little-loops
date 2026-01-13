@@ -46,8 +46,8 @@ initial: "evaluate"
 states:
   evaluate:
     action: "/ll:check_code types"
-    on_pass: "done"
-    on_fail: "fix"
+    on_success: "done"
+    on_failure: "fix"
   fix:
     action: "/ll:manage_issue bug fix"
     next: "evaluate"
@@ -83,9 +83,15 @@ states:
   measure:
     action: "${context.metric_cmd}"
     capture: "current_value"
-    on_target: "done"      # current_value within tolerance of target
-    on_progress: "apply"   # value improved
-    on_stall: "done"       # no progress (fixed point reached)
+    evaluate:
+      type: convergence
+      target: "${context.target}"
+      tolerance: "${context.tolerance}"
+      previous: "${prev.output}"
+    route:
+      target: "done"
+      progress: "apply"
+      stall: "done"
   apply:
     action: "/ll:check_code fix"
     next: "measure"
@@ -122,22 +128,22 @@ initial: "check_tests"
 states:
   check_tests:
     action: "pytest"
-    on_pass: "check_lint"
-    on_fail: "fix_tests"
+    on_success: "check_lint"
+    on_failure: "fix_tests"
   fix_tests:
     action: "/ll:manage_issue bug fix"
     next: "check_tests"
   check_lint:
     action: "ruff check src/"
-    on_pass: "check_types"
-    on_fail: "fix_lint"
+    on_success: "check_types"
+    on_failure: "fix_lint"
   fix_lint:
     action: "/ll:check_code fix"
     next: "check_lint"
   check_types:
     action: "mypy src/"
-    on_pass: "all_valid"
-    on_fail: "fix_types"
+    on_success: "all_valid"
+    on_failure: "fix_types"
   fix_types:
     action: "/ll:manage_issue bug fix"
     next: "check_types"
@@ -159,9 +165,9 @@ name: "fix-all-types"
 steps:
   - /ll:check_code types
   - /ll:manage_issue bug fix
-condition:
-  type: "exit_code"
-  target: 0
+until:
+  check: "mypy src/"
+  passes: true
 max_iterations: 20
 backoff: 2  # seconds between iterations
 ```
@@ -174,17 +180,13 @@ states:
   step_0:
     action: "/ll:check_code types"
     next: "step_1"
-    capture_exit: true
   step_1:
     action: "/ll:manage_issue bug fix"
-    next: "evaluate"
-  evaluate:
-    check_condition:
-      type: "exit_code"
-      source: "step_0"
-      target: 0
-    on_met: "done"
-    on_unmet: "step_0"
+    next: "check_done"
+  check_done:
+    action: "mypy src/"
+    on_success: "done"
+    on_failure: "step_0"
   done:
     terminal: true
 max_iterations: 20
@@ -204,8 +206,8 @@ initial: "check"
 states:
   check:
     action: "/ll:check_code lint"
-    on_fail: "fix"
-    on_pass: "done"
+    on_success: "done"
+    on_failure: "fix"
   fix:
     action: "/ll:check_code fix"
     next: "check"
@@ -225,10 +227,10 @@ All paradigms (except FSM Direct) compile to the universal FSM schema via **form
 ### Why Formal Compilers (Not LLM Generation)
 
 1. **Paradigms are constrained** - Each paradigm maps to a fixed FSM template:
-   - **Convergence**: `measure → (on_target → done, on_progress → apply, on_stall → done), apply → measure`
-   - **Invariants**: `check_1 → (pass → check_2, fail → fix_1), fix_1 → check_1, ...`
-   - **Imperative**: `step_0 → step_1 → ... → evaluate → (met → done, unmet → step_0)`
-   - **Goal-oriented**: `evaluate → (pass → done, fail → fix), fix → evaluate`
+   - **Convergence**: `measure → (target → done, progress → apply, stall → done), apply → measure`
+   - **Invariants**: `check_1 → (success → check_2, failure → fix_1), fix_1 → check_1, ...`
+   - **Imperative**: `step_0 → step_1 → ... → check_done → (success → done, failure → step_0)`
+   - **Goal-oriented**: `evaluate → (success → done, failure → fix), fix → evaluate`
 
 2. **Debuggability matters for automation** - When a loop misbehaves in CI, you can trace exactly why the FSM looks the way it does. Rules are documented, transformations are reproducible.
 
@@ -265,9 +267,17 @@ def compile_convergence(spec: dict) -> dict:
             "measure": {
                 "action": "${context.metric_cmd}",
                 "capture": "current_value",
-                "on_target": "done",
-                "on_progress": "apply",
-                "on_stall": "done",
+                "evaluate": {
+                    "type": "convergence",
+                    "target": "${context.target}",
+                    "tolerance": "${context.tolerance}",
+                    "previous": "${prev.output}",
+                },
+                "route": {
+                    "target": "done",
+                    "progress": "apply",
+                    "stall": "done",
+                },
             },
             "apply": {
                 "action": spec["using"],
@@ -289,8 +299,8 @@ def compile_invariants(spec: dict) -> dict:
 
         states[check_state] = {
             "action": constraint["check"],
-            "on_pass": next_check,
-            "on_fail": fix_state,
+            "on_success": next_check,
+            "on_failure": fix_state,
         }
         states[fix_state] = {
             "action": constraint["fix"],
@@ -344,25 +354,33 @@ name: string                    # Unique loop identifier
 initial: string                 # Starting state name
 states:                         # State definitions
   <state_name>:
-    action: string              # Command/skill to execute (optional for decision states)
-    next: string                # Default next state (unconditional)
-    on_pass: string             # Next state if action succeeds
-    on_fail: string             # Next state if action fails
-    on_target: string           # Next state if metric hits target
-    on_progress: string         # Next state if metric improved
-    on_stall: string            # Next state if no progress
-    on_error: string            # Next state on execution error (default: terminate loop)
-    on_timeout: string          # Next state on action timeout
+    action: string              # Command to execute (optional for decision states)
+    
+    # --- Evaluation Layer ---
+    evaluate:                   # How to evaluate the action result
+      type: string              # exit_code, output_numeric, output_json, 
+                                # output_contains, llm_structured, convergence
+      # ... type-specific fields (see Evaluator Types)
+    
+    # --- Routing Layer ---
+    # Option 1: Shorthand for common cases
+    on_success: string          # Next state on success verdict
+    on_failure: string          # Next state on failure verdict
+    on_error: string            # Next state on error verdict
+    
+    # Option 2: Full routing table (overrides shorthand)
+    route:                      # Map verdict strings to next states
+      <verdict>: string         # e.g., success: "deploy", blocked: "escalate"
+      _: string                 # Default for unmatched verdicts
+      _error: string            # Evaluation/execution errors
+    
+    # --- Other State Properties ---
+    next: string                # Unconditional transition (no evaluation)
     terminal: boolean           # True if this is an end state
     capture: string             # Variable name to store output
-    capture_exit: boolean       # Store exit code
     timeout: number             # Action-level timeout in seconds
-    condition:                  # How to evaluate pass/fail (see Condition Types)
-      type: string              # exit_code, output_contains, output_json, output_numeric
-      source: string            # Value to evaluate (default: current action's stdout)
-      # ... type-specific fields
 
-# Optional
+# Optional Loop-Level Settings
 paradigm: string                # Source paradigm (for reference)
 context: object                 # Shared variables/config
 scope: array[string]            # Paths this loop operates on (for concurrency)
@@ -370,108 +388,453 @@ max_iterations: integer         # Safety limit (default: 50)
 backoff: number                 # Seconds between iterations
 timeout: number                 # Max total runtime in seconds (loop-level)
 maintain: boolean               # Restart after completion
-on_error: string                # Global error handling state
-on_timeout: string              # Global timeout handling state
+
+# LLM Evaluation Settings
+llm:
+  model: string                 # Model for LLM evaluation (default: claude-sonnet-4-20250514)
+  max_tokens: integer           # Max tokens for evaluation (default: 256)
+  timeout: number               # Timeout for LLM calls in seconds (default: 30)
 ```
 
 ---
 
-## Condition Types
+## Two-Layer Transition System
 
-By default, pass/fail is determined by exit code. For richer evaluation, use the `condition` field.
+The FSM executor uses a **two-layer system** that cleanly separates concerns:
 
-### Source Field (All Condition Types)
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     State Execution                          │
+├─────────────────────────────────────────────────────────────┤
+│                                                              │
+│  Layer 1: EVALUATE                                           │
+│  "Given the action output, what happened?"                   │
+│  → Produces a structured result with verdict string          │
+│                                                              │
+│  Layer 2: ROUTE                                              │
+│  "Given the verdict, where do I go next?"                    │
+│  → Maps verdict to next state                                │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
 
-By default, conditions evaluate the current action's output. Use the optional `source` field to evaluate a different value—such as a captured variable from a previous state:
+### Why Two Layers?
+
+**Single Responsibility**: Each layer does one job well.
+- Evaluators answer "what happened?" without knowing about states
+- Routing answers "where next?" without knowing how verdicts were produced
+
+**Testable**: Test each layer in isolation.
+- Test evaluator: "Given this output, does it produce the right verdict?"
+- Test routing: "Given this verdict, does it go to the right state?"
+
+**Extensible**: Add new evaluators without touching routing logic.
+
+### Layer 1: Evaluate
+
+The `evaluate` block defines how to interpret an action's output. Every evaluator produces a **result object**:
 
 ```yaml
-# Evaluate current action's stdout (default behavior)
-condition:
-  type: "output_numeric"
-  operator: "eq"
-  target: 0
+result:
+  verdict: string       # The routing key (e.g., "success", "failure", "target", "blocked")
+  details: object       # Evaluator-specific data (available as ${result.*})
+```
 
-# Evaluate a captured value instead
-condition:
-  type: "output_numeric"
-  source: "${captured.error_count.output}"
-  operator: "eq"
+#### Default Evaluation by Action Type
+
+| Action Type | Default Evaluator | Rationale |
+|-------------|-------------------|-----------|
+| Shell command | `exit_code` | Standard Unix semantics |
+| Slash command | `llm_structured` | Natural language output |
+
+#### Explicit Evaluation
+
+```yaml
+states:
+  check:
+    action: "pytest --tb=short"
+    evaluate:
+      type: exit_code
+    # Result: { verdict: "success" | "failure" | "error", details: { exit_code: 0 } }
+```
+
+### Layer 2: Route
+
+The `route` block maps verdicts to next states. It's just a dictionary lookup.
+
+#### Shorthand Syntax
+
+For simple success/failure routing, use the shorthand:
+
+```yaml
+states:
+  check:
+    action: "pytest"
+    on_success: "deploy"
+    on_failure: "fix"
+    on_error: "alert"
+```
+
+This is equivalent to:
+
+```yaml
+states:
+  check:
+    action: "pytest"
+    route:
+      success: "deploy"
+      failure: "fix"
+      error: "alert"
+```
+
+#### Full Route Table
+
+When you need more than three outcomes:
+
+```yaml
+states:
+  fix:
+    action: "/ll:manage_issue bug fix"
+    evaluate:
+      type: llm_structured
+    route:
+      success: "verify"
+      failure: "fix"
+      blocked: "escalate"
+      partial: "probe"
+      _: "fix"              # Default for any other verdict
+```
+
+#### Special Route Keys
+
+| Key | Meaning |
+|-----|---------|
+| `_` | Default route for unmatched verdicts |
+| `_error` | Route for evaluation/execution errors (overrides loop-level `on_error`) |
+
+### Resolution Order
+
+1. If `next` is present → unconditional transition (no evaluation)
+2. If `route` is present → use full routing table
+3. If `on_success`/`on_failure`/`on_error` → use shorthand routing
+4. If `terminal: true` → end loop
+5. Otherwise → error (no valid transition)
+
+---
+
+## Evaluator Types
+
+Evaluators produce verdicts from action output. The executor uses LLM structured output **only** for the `llm_structured` evaluator—all others are deterministic.
+
+### Tier 1: Deterministic Evaluators
+
+No API calls. Fast, free, reproducible.
+
+#### `exit_code` (Default for Shell Commands)
+
+```yaml
+evaluate:
+  type: exit_code
+```
+
+| Exit Code | Verdict |
+|-----------|---------|
+| 0 | `success` |
+| 1 | `failure` |
+| 2+ | `error` |
+
+Result details: `{ exit_code: <int> }`
+
+#### `output_numeric`
+
+Parse stdout as a number and compare.
+
+```yaml
+evaluate:
+  type: output_numeric
+  operator: le        # eq, ne, lt, le, gt, ge
+  target: 5
+```
+
+| Comparison Result | Verdict |
+|-------------------|---------|
+| Condition met | `success` |
+| Condition not met | `failure` |
+| Parse error | `error` |
+
+Result details: `{ value: <number>, target: <number>, operator: <string> }`
+
+#### `output_json`
+
+Parse JSON and extract a value.
+
+```yaml
+evaluate:
+  type: output_json
+  path: ".summary.failed"    # jq-style path
+  operator: eq
   target: 0
 ```
 
-This enables **decision states** that branch based on previously captured data without executing an action:
+Result details: `{ value: <any>, path: <string>, target: <any> }`
+
+#### `output_contains`
+
+Pattern matching on stdout.
+
+```yaml
+evaluate:
+  type: output_contains
+  pattern: "All tests passed"    # Substring or regex
+  negate: false                  # If true, success when NOT found
+```
+
+| Match Result | Verdict |
+|--------------|---------|
+| Pattern found (negate=false) | `success` |
+| Pattern not found (negate=false) | `failure` |
+| Pattern found (negate=true) | `failure` |
+| Pattern not found (negate=true) | `success` |
+
+Result details: `{ matched: <bool>, pattern: <string> }`
+
+#### `convergence`
+
+Compare current value to previous value and target. Used by the convergence paradigm.
+
+```yaml
+evaluate:
+  type: convergence
+  target: 0
+  tolerance: 0              # Optional: success when within tolerance
+  previous: "${prev.output}" # Previous measurement
+  direction: minimize       # minimize (default) or maximize
+```
+
+| Scenario | Verdict |
+|----------|---------|
+| Value within tolerance of target | `target` |
+| Value improved toward target | `progress` |
+| Value unchanged or worsened | `stall` |
+
+Result details: `{ current: <number>, previous: <number>, target: <number>, delta: <number> }`
+
+---
+
+### Tier 2: LLM Evaluator
+
+Uses a Claude API call with structured output. This is the **only** place in the FSM system that uses LLM structured output.
+
+#### `llm_structured` (Default for Slash Commands)
+
+```yaml
+evaluate:
+  type: llm_structured
+  prompt: "Did this fix attempt succeed?"   # Optional custom prompt
+  schema:                                    # Optional custom schema
+    type: object
+    properties:
+      verdict:
+        type: string
+        enum: ["success", "failure", "blocked", "partial"]
+      confidence:
+        type: number
+      reason:
+        type: string
+    required: ["verdict", "confidence", "reason"]
+  min_confidence: 0.7                        # Threshold for confident verdicts
+```
+
+#### Default Schema
+
+When no schema is provided:
+
+```yaml
+schema:
+  type: object
+  properties:
+    verdict:
+      type: string
+      enum: ["success", "failure", "blocked", "partial"]
+      description: |
+        - success: The action completed its goal
+        - failure: The action failed, should retry
+        - blocked: Cannot proceed without external help
+        - partial: Made progress but not complete
+    confidence:
+      type: number
+      minimum: 0
+      maximum: 1
+      description: "Confidence in this verdict (0-1)"
+    reason:
+      type: string
+      description: "Brief explanation"
+  required: ["verdict", "confidence", "reason"]
+```
+
+#### Confidence Handling
+
+The evaluator adds a `confident` flag to the result:
+
+```yaml
+result:
+  verdict: "success"           # From LLM response
+  details:
+    confidence: 0.85
+    confident: true            # confidence >= min_confidence
+    reason: "Fixed the type error in handlers.py"
+```
+
+You can route on confidence:
+
+```yaml
+states:
+  fix:
+    action: "/ll:manage_issue bug fix"
+    evaluate:
+      type: llm_structured
+      min_confidence: 0.7
+    route:
+      success: "verify"
+      failure: "fix"
+      blocked: "escalate"
+      partial: "probe"
+      _: "fix"
+```
+
+Or create compound routing with confidence:
+
+```yaml
+states:
+  fix:
+    action: "/ll:manage_issue bug fix"
+    evaluate:
+      type: llm_structured
+      min_confidence: 0.7
+      # When confidence < min_confidence, verdict becomes "<verdict>_uncertain"
+      # e.g., "success" → "success_uncertain"
+      uncertain_suffix: true
+    route:
+      success: "verify"
+      success_uncertain: "probe"    # High confidence success → verify, low → probe
+      failure: "fix"
+      failure_uncertain: "probe"
+      blocked: "escalate"
+      _: "fix"
+```
+
+#### Implementation
+
+```python
+# little_loops/fsm/evaluators.py
+
+import anthropic
+
+def evaluate_llm_structured(
+    output: str,
+    prompt: str | None,
+    schema: dict,
+    min_confidence: float = 0.5,
+    uncertain_suffix: bool = False,
+    model: str = "claude-sonnet-4-20250514",
+    max_tokens: int = 256,
+) -> dict:
+    """
+    Evaluate action output using LLM with structured output.
+    
+    This is the ONLY place in the FSM system that uses LLM structured output.
+    """
+    client = anthropic.Anthropic()
+    
+    default_prompt = "Evaluate whether this action succeeded based on its output."
+    eval_prompt = prompt or default_prompt
+    
+    # Truncate output to avoid context limits
+    truncated = output[-4000:] if len(output) > 4000 else output
+    
+    response = client.messages.create(
+        model=model,
+        max_tokens=max_tokens,
+        messages=[{
+            "role": "user",
+            "content": f"{eval_prompt}\n\n<action_output>\n{truncated}\n</action_output>"
+        }],
+        tools=[{
+            "name": "evaluate",
+            "description": "Provide your evaluation of the action result",
+            "input_schema": schema
+        }],
+        tool_choice={"type": "tool", "name": "evaluate"}
+    )
+    
+    # Extract structured result
+    for block in response.content:
+        if block.type == "tool_use" and block.name == "evaluate":
+            llm_result = block.input
+            break
+    else:
+        raise EvaluationError("No evaluation in response")
+    
+    # Build result with confidence flag
+    verdict = llm_result["verdict"]
+    confidence = llm_result.get("confidence", 1.0)
+    confident = confidence >= min_confidence
+    
+    # Optionally modify verdict for low confidence
+    if uncertain_suffix and not confident:
+        verdict = f"{verdict}_uncertain"
+    
+    return {
+        "verdict": verdict,
+        "details": {
+            "confidence": confidence,
+            "confident": confident,
+            "reason": llm_result.get("reason", ""),
+            "raw": llm_result,
+        }
+    }
+```
+
+#### Cost and Performance
+
+| Metric | Value |
+|--------|-------|
+| Cost per evaluation | ~$0.001 |
+| Latency | 300-800ms |
+| Context used | ~4000 tokens max |
+
+---
+
+## Evaluation Source
+
+By default, evaluators examine the current action's stdout. Use `source` to evaluate something else:
 
 ```yaml
 states:
   measure:
-    action: "wc -l < error.log"
-    capture: "error_count"
+    action: "mypy src/ | grep -c error || echo 0"
+    capture: "errors"
     next: "decide"
 
   decide:
-    # No action—just evaluates condition on captured value
-    condition:
+    # No action—evaluate captured value from previous state
+    evaluate:
       type: output_numeric
-      source: "${captured.error_count.output}"
-      operator: "le"
-      target: 5
-    on_pass: "minor_fix"
-    on_fail: "major_fix"
+      source: "${captured.errors.output}"
+      operator: eq
+      target: 0
+    route:
+      success: "done"
+      failure: "fix"
 ```
 
-The `source` field accepts any valid interpolation expression (see Variable Interpolation).
-
-### Exit Code (Default)
-
-```yaml
-condition:
-  type: "exit_code"    # This is the default, can be omitted
-# Exit 0 → on_pass
-# Exit 1 → on_fail
-# Exit 2+ → on_error
-```
-
-Standard Unix convention: exit 0 is success, exit 1 is failure, exit 2+ indicates errors.
-
-### Output Contains
-
-```yaml
-condition:
-  type: "output_contains"
-  pattern: "All tests passed"    # Substring or regex
-  negate: false                  # If true, pass when pattern NOT found
-```
-
-Useful when commands exit 0 but indicate failure in output.
-
-### Output JSON
-
-```yaml
-condition:
-  type: "output_json"
-  path: ".summary.failed"        # jq-style path
-  operator: "eq"                 # eq, ne, lt, le, gt, ge
-  target: 0
-```
-
-For commands that output structured JSON (test frameworks, API responses).
-
-### Output Numeric
-
-```yaml
-condition:
-  type: "output_numeric"
-  operator: "le"
-  target: 5
-```
-
-Parse stdout as a number and compare. Useful with `wc -l`, `grep -c`, etc.
+This enables **decision states** that branch without executing an action.
 
 ---
 
 ## Variable Interpolation
 
-Actions and conditions can reference dynamic values using `${namespace.path}` syntax. Variables are resolved at runtime, just before each action executes.
+Actions, evaluators, and routes can reference dynamic values using `${namespace.path}` syntax.
 
 ### Available Namespaces
 
@@ -480,6 +843,7 @@ Actions and conditions can reference dynamic values using `${namespace.path}` sy
 | `context` | User-defined variables from `context:` block | Entire loop |
 | `captured` | Values stored via `capture:` in previous states | Entire loop |
 | `prev` | Shorthand for previous state's result | Current state only |
+| `result` | Current evaluation result | Current state only |
 | `state` | Current execution metadata | Current state only |
 | `loop` | Loop-level metadata | Entire loop |
 | `env` | Environment variables | Entire loop |
@@ -488,13 +852,11 @@ Actions and conditions can reference dynamic values using `${namespace.path}` sy
 
 #### `context` - User-Defined Variables
 
-Defined in the loop's `context:` block:
-
 ```yaml
 context:
   target_dir: "src/"
   max_errors: 10
-  metric_cmd: "mypy ${context.target_dir}"  # Can self-reference
+  metric_cmd: "mypy ${context.target_dir}"
 
 states:
   check:
@@ -503,56 +865,63 @@ states:
 
 #### `captured` - Stored Action Results
 
-When a state uses `capture: "varname"`, the result is stored with this structure:
+When a state uses `capture: "varname"`:
 
 ```yaml
 captured:
   varname:
-    output: "..."       # stdout (string)
-    stderr: "..."       # stderr (string)
-    exit_code: 0        # exit code (integer)
-    duration_ms: 1234   # execution time (integer)
-```
-
-Access fields via dot notation:
-
-```yaml
-states:
-  count_errors:
-    action: "mypy src/ 2>&1 | grep -c 'error:' || echo 0"
-    capture: "error_count"
-    next: "report"
-
-  report:
-    action: "echo 'Found ${captured.error_count.output} errors'"
-    next: "fix"
-
-  fix:
-    action: "/ll:manage_issue bug fix"
-    # Captured values persist—can still access error_count here
-    next: "count_errors"
+    output: "..."       # stdout
+    stderr: "..."       # stderr
+    exit_code: 0        # exit code
+    duration_ms: 1234   # execution time
 ```
 
 #### `prev` - Previous State Shorthand
 
-Quick access to the immediately preceding state's result:
-
 ```yaml
 ${prev.output}      # stdout from previous state
-${prev.stderr}      # stderr from previous state
 ${prev.exit_code}   # exit code from previous state
-${prev.duration_ms} # execution time from previous state
 ${prev.state}       # name of previous state
 ```
 
-Equivalent to `${captured.<previous_state_name>.*}` but doesn't require knowing the state name.
+#### `result` - Current Evaluation Result
+
+After evaluation runs, access the result:
+
+```yaml
+${result.verdict}           # The verdict string
+${result.details.confidence} # For LLM evaluation
+${result.details.reason}     # For LLM evaluation
+${result.details.value}      # For numeric evaluation
+```
+
+Example - logging evaluation details:
+
+```yaml
+states:
+  fix:
+    action: "/ll:manage_issue bug fix"
+    evaluate:
+      type: llm_structured
+    route:
+      success: "log_success"
+      failure: "log_failure"
+      _: "fix"
+
+  log_success:
+    action: "echo 'Fixed: ${result.details.reason}' >> .loops/fix.log"
+    next: "verify"
+
+  log_failure:
+    action: "echo 'Failed (${result.details.confidence}): ${result.details.reason}' >> .loops/fix.log"
+    next: "fix"
+```
 
 #### `state` - Current Execution Context
 
 ```yaml
-${state.name}       # current state name (e.g., "check")
-${state.iteration}  # current loop iteration (1-indexed)
-${state.attempt}    # retry attempt within state (1-indexed, for $current retries)
+${state.name}       # current state name
+${state.iteration}  # loop iteration (1-indexed)
 ```
 
 #### `loop` - Loop Metadata
@@ -560,135 +929,259 @@ ${state.attempt}    # retry attempt within state (1-indexed, for $current retrie
 ```yaml
 ${loop.name}        # loop identifier
 ${loop.started_at}  # ISO 8601 timestamp
-${loop.elapsed_ms}  # milliseconds since loop started
-${loop.elapsed}     # human-readable duration (e.g., "2m 34s")
+${loop.elapsed_ms}  # milliseconds since start
+${loop.elapsed}     # human-readable (e.g., "2m 34s")
 ```
 
 #### `env` - Environment Variables
 
 ```yaml
-${env.HOME}         # user home directory
-${env.CI}           # CI environment flag
-${env.PATH}         # system PATH
+${env.HOME}
+${env.CI}
+${env.PATH}
 ```
 
 ### Resolution Rules
 
 | Rule | Behavior |
 |------|----------|
-| **Timing** | Resolved at runtime, just before action execution |
-| **Undefined variable** | Loop terminates with error (fail-fast) |
-| **Undefined namespace** | Loop terminates with error |
-| **Empty value** | Interpolates as empty string (not an error) |
-| **Escaping** | Use `$${` for literal `${` in output |
-| **Nesting** | Not supported—`${context.${key}}` is invalid |
-| **Type coercion** | All values interpolated as strings |
+| **Timing** | Resolved at runtime, just before use |
+| **Undefined variable** | Loop terminates with error |
+| **Empty value** | Interpolates as empty string |
+| **Escaping** | Use `$${` for literal `${` |
+| **Nesting** | Not supported |
 
-### Examples
+---
 
-#### Cross-State Data Flow
+## Complete Examples
+
+### Example 1: Simple Shell Command Loop
 
 ```yaml
-name: "analyze-and-fix"
-initial: "analyze"
-
+# Simplest case - all defaults
+name: "test-until-pass"
+initial: "test"
 states:
-  analyze:
-    action: "mypy src/ --json 2>/dev/null | jq '.error_count'"
-    capture: "analysis"
-    on_pass: "done"
-    on_fail: "fix"
-    condition:
+  test:
+    action: "pytest"
+    on_success: "done"
+    on_failure: "fix"
+  fix:
+    action: "git stash pop"    # Try a stashed fix
+    next: "test"
+  done:
+    terminal: true
+max_iterations: 5
+```
+
+### Example 2: Slash Command with LLM Evaluation
+
+```yaml
+name: "fix-types"
+initial: "check"
+states:
+  check:
+    action: "mypy src/"
+    on_success: "done"
+    on_failure: "fix"
+  
+  fix:
+    action: "/ll:manage_issue bug fix"
+    # Default: evaluate with llm_structured, route success/failure
+    on_success: "check"
+    on_failure: "check"    # Retry even on failure (up to max_iterations)
+  
+  done:
+    terminal: true
+max_iterations: 10
+```
+
+### Example 3: Custom Verdicts with Full Routing
+
+```yaml
+name: "smart-fix"
+initial: "fix"
+states:
+  fix:
+    action: "/ll:manage_issue bug fix"
+    evaluate:
+      type: llm_structured
+      min_confidence: 0.7
+    route:
+      success: "verify"
+      failure: "fix"
+      blocked: "escalate"
+      partial: "probe"
+      _: "fix"
+
+  probe:
+    # Deterministic fallback when LLM is uncertain
+    action: "mypy src/ 2>&1 | grep -c 'error:' || echo 0"
+    evaluate:
       type: output_numeric
       operator: eq
       target: 0
+    route:
+      success: "done"
+      failure: "fix"
+
+  verify:
+    action: "pytest tests/"
+    on_success: "done"
+    on_failure: "fix"
+
+  escalate:
+    action: "echo 'Blocked: ${result.details.reason}' | notify-team"
+    terminal: true
+
+  done:
+    terminal: true
+max_iterations: 15
+```
+
+### Example 4: Convergence Loop
+
+```yaml
+name: "reduce-errors"
+initial: "measure"
+context:
+  target: 0
+
+states:
+  measure:
+    action: "mypy src/ 2>&1 | grep -c 'error:' || echo 0"
+    capture: "errors"
+    evaluate:
+      type: convergence
+      target: "${context.target}"
+      previous: "${prev.output}"
+    route:
+      target: "done"
+      progress: "fix"
+      stall: "done"
 
   fix:
     action: "/ll:manage_issue bug fix"
-    context:
-      # Provide captured data as context for Claude
-      error_count: "${captured.analysis.output}"
-      iteration: "${state.iteration}"
-      elapsed: "${loop.elapsed}"
-    next: "analyze"
+    next: "measure"
 
   done:
-    action: "echo 'Fixed all errors in ${loop.elapsed}'"
+    action: "echo 'Finished with ${captured.errors.output} errors'"
     terminal: true
+max_iterations: 20
 ```
 
-#### Conditional Logic with Captured Values
+### Example 5: CI-Friendly (No LLM Evaluation)
 
 ```yaml
-name: "graduated-response"
-initial: "check"
-context:
-  threshold: 5
+name: "ci-checks"
+initial: "lint"
+
+# Disable LLM evaluation entirely
+llm:
+  enabled: false
 
 states:
-  check:
-    action: "ruff check src/ --output-format=json | jq '.count'"
-    capture: "lint_count"
-    next: "decide"
+  lint:
+    action: "ruff check src/"
+    on_success: "typecheck"
+    on_failure: "fix_lint"
 
-  decide:
-    # Use captured value in condition
-    condition:
-      type: output_numeric
-      source: "${captured.lint_count.output}"
-      operator: "le"
-      target: "${context.threshold}"
-    on_pass: "minor_fix"
-    on_fail: "major_fix"
-
-  minor_fix:
+  fix_lint:
     action: "ruff check src/ --fix"
-    next: "check"
+    next: "lint"
 
-  major_fix:
-    action: "/ll:manage_issue enhancement fix"
-    next: "check"
-```
+  typecheck:
+    action: "mypy src/"
+    on_success: "test"
+    on_failure: "done"    # Can't auto-fix types
 
-#### Using Environment Variables
-
-```yaml
-name: "ci-aware-loop"
-initial: "check"
-
-states:
-  check:
-    action: "pytest"
-    on_pass: "done"
-    on_fail: "fix"
-
-  fix:
-    # Different behavior in CI vs local
-    action: |
-      if [ "${env.CI}" = "true" ]; then
-        echo "CI mode: creating issue instead of fixing"
-        # Would transition to create_issue state
-      else
-        /ll:manage_issue bug fix
-      fi
-    next: "check"
+  test:
+    action: "pytest --tb=short"
+    on_success: "done"
+    on_failure: "done"
 
   done:
     terminal: true
+max_iterations: 3
+timeout: 600
+```
+
+### Example 6: Complex Workflow with Confidence Routing
+
+```yaml
+name: "safe-refactor"
+initial: "analyze"
+
+llm:
+  model: "claude-sonnet-4-20250514"
+
+states:
+  analyze:
+    action: "/ll:audit_architecture patterns"
+    evaluate:
+      type: llm_structured
+      schema:
+        type: object
+        properties:
+          verdict:
+            type: string
+            enum: ["found_opportunities", "no_opportunities"]
+          opportunities:
+            type: array
+            items: { type: string }
+          confidence:
+            type: number
+        required: ["verdict", "confidence"]
+    route:
+      found_opportunities: "refactor"
+      no_opportunities: "done"
+      _: "done"
+
+  refactor:
+    action: "/ll:manage_issue enhancement implement"
+    evaluate:
+      type: llm_structured
+      min_confidence: 0.8
+      uncertain_suffix: true
+    route:
+      success: "verify"
+      success_uncertain: "manual_check"
+      failure: "refactor"
+      blocked: "rollback"
+      _: "refactor"
+
+  verify:
+    action: "pytest && mypy src/"
+    timeout: 300
+    on_success: "done"
+    on_failure: "rollback"
+
+  manual_check:
+    action: "echo 'Low confidence refactor - needs review: ${result.details.reason}'"
+    terminal: true
+
+  rollback:
+    action: "git checkout -- src/"
+    next: "done"
+
+  done:
+    terminal: true
+
+max_iterations: 5
+timeout: 1800
 ```
 
 ---
 
 ## Error Handling
 
-Errors are distinct from failures:
+### Error vs Failure
 
 | Outcome | Trigger | Default Behavior |
 |---------|---------|------------------|
-| **Pass** | Exit 0 (or condition met) | Transition via `on_pass` |
-| **Fail** | Exit 1 (or condition unmet) | Transition via `on_fail` |
-| **Error** | Exit 2+, crash, exception | Terminate loop with error status |
-| **Timeout** | Action exceeds `timeout` | Terminate loop with error status |
+| **Success** | Evaluator returns success verdict | Route via `success` or `on_success` |
+| **Failure** | Evaluator returns failure verdict | Route via `failure` or `on_failure` |
+| **Error** | Execution crash, timeout, eval error | Route via `_error` or terminate loop |
 
 ### Customizing Error Handling
 
@@ -696,48 +1189,87 @@ Errors are distinct from failures:
 states:
   check:
     action: "pytest"
-    on_pass: "deploy"
-    on_fail: "fix"
+    on_success: "deploy"
+    on_failure: "fix"
     on_error: "alert"           # Go to recovery state
-    # OR
-    on_error: "$current"        # Retry this state (with backoff)
-    # OR omit for default (terminate loop)
+
+# Or with full routing
+  check:
+    action: "pytest"
+    route:
+      success: "deploy"
+      failure: "fix"
+      _error: "alert"
 ```
 
-The special token `$current` retries the current state, respecting `max_iterations`.
+### Retry Current State
 
-### Timeouts
+Use the special `$current` token:
+
+```yaml
+states:
+  flaky_test:
+    action: "pytest tests/integration/"
+    route:
+      success: "done"
+      failure: "$current"      # Retry this state
+      _error: "$current"       # Also retry on errors
+```
+
+Retries respect `max_iterations`.
+
+### LLM Evaluation Errors
+
+When LLM evaluation fails (API error, timeout, invalid response):
+
+1. If `_error` route exists → use it
+2. Otherwise → terminate loop with error
+
+```yaml
+states:
+  fix:
+    action: "/ll:manage_issue bug fix"
+    evaluate:
+      type: llm_structured
+    route:
+      success: "verify"
+      failure: "fix"
+      _error: "probe"          # Fall back to deterministic on LLM failure
+```
+
+---
+
+## Timeouts
 
 Two levels of timeout protection:
 
 ```yaml
-# Loop-level: total wall-clock time for entire execution
-timeout: 3600                   # 1 hour max for the whole loop
+# Loop-level: max wall-clock time for entire loop
+timeout: 3600                   # 1 hour
 
 states:
   build:
     action: "npm run build"
-    timeout: 300                # 5 min max for this action
-    on_timeout: "notify"        # Custom handling
-
-  quick_lint:
-    action: "ruff check ."
-    timeout: 30                 # 30 sec expected
-    # on_timeout omitted → terminates loop
+    timeout: 300                # 5 min for this action
 ```
 
-- **Action timeout**: Catches hung processes, enables per-action limits
-- **Loop timeout**: Catches infinite loops, bounds total execution time
+- **Action timeout**: Catches hung processes
+- **Loop timeout**: Bounds total execution time
+
+LLM evaluation has its own timeout (default 30s) configured at loop level:
+
+```yaml
+llm:
+  timeout: 45    # Seconds per LLM evaluation call
+```
 
 ---
 
 ## Concurrency and Locking
 
-Only one loop can run at a time per scope. This prevents file corruption and conflicting modifications.
+Only one loop can run at a time per scope.
 
 ### Scope Declaration
-
-Loops can declare which paths they operate on:
 
 ```yaml
 name: "fix-api-types"
@@ -746,50 +1278,26 @@ scope:
   - "tests/api/"
 ```
 
-| Scope Declaration | Behavior |
-|-------------------|----------|
-| Explicit paths | Loop claims those paths exclusively |
-| No scope declared | Treated as `scope: ["."]` (whole project) |
+| Declaration | Behavior |
+|-------------|----------|
+| Explicit paths | Loop claims those paths |
+| No scope | Treated as `["."]` (whole project) |
 
-### Concurrency Rules
+### Overlap Rules
 
 | Scenario | Behavior |
 |----------|----------|
 | No other loop running | Start immediately |
-| Another loop running, **non-overlapping** scopes | Start immediately (parallel execution) |
-| Another loop running, **overlapping** scopes | Queue (wait) or fail with error |
-
-### Implementation
-
-The executor uses a global mutex with optional queuing:
-
-1. **Check** `.loops/.running/*.pid` for active loops
-2. **Compare** scopes for overlap
-3. **If overlap detected**:
-   - `--queue` flag: Wait for conflicting loop to finish, then start
-   - Default: Fail with clear error message listing the conflicting loop
-4. **If no overlap**: Start immediately, write own `.pid` file
+| Non-overlapping scopes | Start immediately (parallel OK) |
+| Overlapping scopes | Queue or fail |
 
 ```bash
-# Default: fail if conflicting loop is running
+# Fail on conflict (default)
 ll-loop run .loops/fix-types.yaml
-# Error: Cannot start 'fix-types' - loop 'quality-guard' is running with overlapping scope
 
-# Queue mode: wait for conflicting loop to finish
+# Wait for conflicting loop
 ll-loop run .loops/fix-types.yaml --queue
-# Waiting for 'quality-guard' to complete...
 ```
-
-### Scope Overlap Detection
-
-Two scopes overlap if any path in one is a prefix of (or equal to) any path in the other:
-
-| Scope A | Scope B | Overlap? |
-|---------|---------|----------|
-| `src/` | `tests/` | No |
-| `src/api/` | `src/api/handlers/` | Yes |
-| `src/` | `src/api/` | Yes |
-| `.` | anything | Yes |
 
 ---
 
@@ -797,212 +1305,77 @@ Two scopes overlap if any path in one is a prefix of (or equal to) any path in t
 
 ### Command: `ll-loop`
 
-Run and manage loops from the command line. This is the **sole entry point** for loop execution—Claude Code handles loop creation via `/ll:create-loop`, but all execution flows through this CLI.
-
 ```bash
-# Run a loop from file
+# Run a loop
 ll-loop run .loops/fix-types.yaml
-
-# Run with overrides
 ll-loop run .loops/fix-types.yaml --max-iterations 5
-
-# Run in background (daemon mode)
 ll-loop run .loops/fix-types.yaml --background
-
-# Dry-run (show what would happen without executing)
 ll-loop run .loops/fix-types.yaml --dry-run
 
-# Compile paradigm to FSM (for debugging/inspection)
-ll-loop compile .loops/my-goal.yaml --output .loops/my-goal.fsm.yaml
+# Compile paradigm to FSM (debugging)
+ll-loop compile .loops/convergence.yaml -o .loops/convergence.fsm.yaml
 
 # Validate loop definition
 ll-loop validate .loops/fix-types.yaml
 
-# List running/saved loops
+# Manage running loops
 ll-loop list
 ll-loop list --running
-
-# Show live status of a running loop
 ll-loop status <loop-id>
-
-# Resume a paused/failed loop
+ll-loop stop <loop-id>
 ll-loop resume <loop-id>
 
-# Stop a running loop
-ll-loop stop <loop-id>
-
-# Show loop execution history
+# History
 ll-loop history <loop-name>
 ```
-
-### Subcommand Summary
-
-| Subcommand | Description |
-|------------|-------------|
-| `run` | Execute a loop from YAML definition |
-| `compile` | Convert paradigm syntax to FSM |
-| `validate` | Check loop definition for errors |
-| `list` | Show saved/running loops |
-| `status` | Show live progress of a running loop |
-| `resume` | Continue a paused loop |
-| `stop` | Terminate a running loop |
-| `history` | View past executions |
 
 ### Run Flags
 
 | Flag | Description |
 |------|-------------|
-| `--background` | Run as daemon process |
-| `--dry-run` | Show planned execution without running |
-| `--queue` | Wait for conflicting loops instead of failing |
-| `--max-iterations N` | Override max_iterations from definition |
-
-### Loop Creation
-
-Loops are created by:
-1. **Manual authoring** - Edit YAML files directly in `.loops/`
-2. **Claude Code** - Use `/ll:create-loop` slash command (see Claude Code Integration)
-
-**Safety note**: When Claude generates loop definitions, the user reviews and approves before saving. This human-in-the-loop review is the primary safeguard against LLM mistakes or hallucinations in generated configs.
-
----
-
-## Loop Storage
-
-Loops are stored in the project's `.loops/` directory:
-
-```
-.loops/
-  fix-types.yaml          # User-defined loops
-  lint-guard.yaml
-  .running/               # Currently executing loops
-    fix-types.pid         # Process ID (for mutex/concurrency)
-    fix-types.state.json  # Execution state (for resume)
-    fix-types.events.jsonl # Event stream
-  .history/               # Execution logs
-    fix-types/
-      2024-01-15T10-30-00.log
-```
-
-The `.pid` files enable concurrency control—the executor checks these before starting to detect scope conflicts.
+| `--background` | Run as daemon |
+| `--dry-run` | Show execution plan |
+| `--queue` | Wait for conflicting loops |
+| `--max-iterations N` | Override limit |
+| `--no-llm` | Disable LLM evaluation |
+| `--llm-model MODEL` | Override LLM model |
 
 ---
 
 ## Execution Engine
 
-The FSM executor is a headless Python process that runs loops independently of any Claude session.
+### Flow
 
-### Execution Flow
-
-1. **Loads** the FSM definition from YAML
-2. **Initializes** state to `initial`
-3. **Executes** the current state's action (see Action Execution below)
-4. **Evaluates** condition to determine outcome (pass/fail/error)
-5. **Emits** structured event (see Events below)
-6. **Transitions** based on outcome and transition rules
-7. **Repeats** until terminal state or limits reached
+1. Load FSM from YAML
+2. Set state to `initial`
+3. Execute action (shell or Claude CLI)
+4. Evaluate result (deterministic or LLM)
+5. Route to next state based on verdict
+6. Emit event
+7. Repeat until terminal or limits reached
 
 ### Action Execution
 
-Actions are executed differently based on type:
-
-| Action Type | Detection | Execution Method |
-|-------------|-----------|------------------|
-| **Shell command** | No leading `/` | Direct subprocess execution |
-| **Slash command** | Leading `/` | Invoke `claude` CLI programmatically |
-
-**Shell commands** run directly via subprocess:
-```python
-result = subprocess.run(action, shell=True, capture_output=True)
-```
-
-**Slash commands** invoke the Claude CLI:
-```bash
-claude --dangerously-skip-permissions -p "/ll:manage_issue bug fix"
-```
-
-The `--dangerously-skip-permissions` flag is required for autonomous execution without user confirmation prompts.
-
-### Claude CLI Integration Details
-
-#### CLI Flags Reference
-
-| Flag | Purpose | Required |
-|------|---------|----------|
-| `--dangerously-skip-permissions` | Skip interactive permission prompts for autonomous execution | Yes (for automation) |
-| `-p` / `--print` | Print mode - executes command and prints response without interactive session | Yes |
-| `--output-format json` | Return structured JSON output | Optional |
-| `--output-format stream-json` | Streaming NDJSON for real-time processing | Optional |
-| `--output-format text` | Plain text output (default) | Optional |
-
-#### Environment Configuration
-
-```python
-env["CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR"] = "1"
-```
-
-This prevents Claude from changing directories during execution, ensuring worktree isolation.
-
-#### Multi-Turn Interaction Handling
-
-Slash commands may trigger multi-turn interactions. The executor handles this through complementary strategies:
-
-| Strategy | Mechanism | Use Case |
-|----------|-----------|----------|
-| **Phase gates** | `--gates` flag pauses after each phase for user review | Supervised automation |
-| **Resume capability** | `--resume` flag continues from checkmarks in plan files | Long-running tasks across sessions |
-| **Context handoff** | Detects `CONTEXT_HANDOFF:` signal, spawns fresh session | Context limit recovery |
-| **State persistence** | JSON files maintain progress across sessions | Crash recovery, audit trails |
-
-For FSM loops, the executor monitors stdout for the `CONTEXT_HANDOFF: Ready for fresh session` signal. When detected, it:
-1. Reads the continuation prompt from `.claude/ll-continue-prompt.md`
-2. Spawns a new Claude session with the continuation context
-3. Resumes execution from the saved state
-
-#### Output Capture
-
-The executor uses a three-tier approach for capturing Claude session output:
-
-1. **Real-time streaming** - Line-buffered subprocess with `selectors.DefaultSelector()` for non-blocking I/O
-2. **Structured parsing** - Regex-based extraction of verdicts, sections, and tables from natural language output
-3. **JSON format** - `--output-format json` for deterministic structured output when needed
-
-```python
-process = subprocess.Popen(
-    cmd_args,
-    stdout=subprocess.PIPE,
-    stderr=subprocess.PIPE,
-    text=True,
-    bufsize=1,  # Line buffered for immediate output
-    cwd=working_dir,
-    env=env,
-)
-```
-
-Output is captured to `captured.<state_name>.output` for use in subsequent states via variable interpolation.
-
-### Background Daemon
-
-For background/long-running loops, the executor runs as a daemon process:
-
-- Spawned via `ll-loop run --background`
-- Writes PID to `.loops/.running/<name>.pid`
-- Continues execution independent of terminal/session
-- Calls Claude CLI when slash commands are needed
-- Can be monitored via `ll-loop status` or event stream
+| Type | Detection | Method |
+|------|-----------|--------|
+| Shell | No leading `/` | `subprocess.run()` |
+| Slash | Leading `/` | `claude --dangerously-skip-permissions -p "..."` |
 
 ### State Persistence
 
-For resumability, the executor saves state to `.loops/.running/<name>.state.json`:
 ```json
+// .loops/.running/<name>.state.json
 {
   "current_state": "fix",
   "iteration": 3,
-  "scope": ["src/", "tests/"],
-  "context": {},
-  "captured": {"error_count": 4},
-  "started_at": "2024-01-15T10:30:00Z",
-  "updated_at": "2024-01-15T10:32:15Z"
+  "captured": {
+    "errors": { "output": "4", "exit_code": 0 }
+  },
+  "last_result": {
+    "verdict": "failure",
+    "details": { "confidence": 0.65, "reason": "..." }
+  },
+  "started_at": "2024-01-15T10:30:00Z"
 }
 ```
 
@@ -1010,265 +1383,89 @@ For resumability, the executor saves state to `.loops/.running/<name>.state.json
 
 ## Structured Events
 
-Loops emit a stream of JSONL events for progress tracking, logging, and external tool integration.
-
-### Event Stream
-
-Events are written to `.loops/.running/<name>.events.jsonl`:
+Events stream to `.loops/.running/<name>.events.jsonl`:
 
 ```jsonl
-{"event": "loop_start", "loop": "fix-types", "ts": "2024-01-15T10:30:00Z"}
+{"event": "loop_start", "loop": "fix-types", "ts": "..."}
 {"event": "state_enter", "state": "check", "iteration": 1, "ts": "..."}
 {"event": "action_start", "action": "mypy src/", "ts": "..."}
 {"event": "action_complete", "exit_code": 1, "duration_ms": 2340, "ts": "..."}
-{"event": "transition", "from": "check", "to": "fix", "reason": "on_fail", "ts": "..."}
+{"event": "evaluate", "type": "exit_code", "verdict": "failure", "ts": "..."}
+{"event": "route", "from": "check", "to": "fix", "verdict": "failure", "ts": "..."}
 {"event": "state_enter", "state": "fix", "iteration": 1, "ts": "..."}
 {"event": "action_start", "action": "/ll:manage_issue bug fix", "ts": "..."}
-{"event": "action_complete", "exit_code": 0, "duration_ms": 45000, "ts": "..."}
-{"event": "transition", "from": "fix", "to": "check", "reason": "next", "ts": "..."}
-{"event": "loop_complete", "final_state": "done", "iterations": 3, "duration_ms": 154000, "ts": "..."}
+{"event": "action_complete", "duration_ms": 45000, "ts": "..."}
+{"event": "evaluate", "type": "llm_structured", "verdict": "success", "confidence": 0.92, "ts": "..."}
+{"event": "route", "from": "fix", "to": "verify", "verdict": "success", "ts": "..."}
+{"event": "loop_complete", "final_state": "done", "iterations": 3, "ts": "..."}
 ```
 
-### Event Types
-
-| Event | Fields | Description |
-|-------|--------|-------------|
-| `loop_start` | loop, ts | Loop execution begins |
-| `state_enter` | state, iteration, ts | Entering a state |
-| `action_start` | action, ts | Action execution begins |
-| `action_complete` | exit_code, duration_ms, output?, ts | Action finished |
-| `condition_eval` | type, result, ts | Condition evaluated |
-| `transition` | from, to, reason, ts | State transition |
-| `loop_complete` | final_state, iterations, duration_ms, ts | Loop finished successfully |
-| `loop_error` | state, error, ts | Loop terminated due to error |
-| `loop_timeout` | state, elapsed_ms, ts | Loop exceeded timeout |
-
-### CLI Progress Rendering
-
-The CLI renders events as a live progress display:
+### CLI Progress Display
 
 ```
 $ ll-loop run fix-types.yaml
-[1/20] check → running mypy src/...
-       ✗ 12 errors (exit 1)
-       → fix (on_fail)
-[1/20] fix → running /ll:manage_issue...
-       ✓ fixed 8 errors
-       → check
-[2/20] check → running mypy src/...
-       ✗ 4 errors (exit 1)
-       → fix (on_fail)
-[2/20] fix → running /ll:manage_issue...
-       ✓ fixed 4 errors
-       → check
-[3/20] check → running mypy src/...
-       ✓ 0 errors (exit 0)
-       → done (on_pass)
+[1/20] check → mypy src/
+       ✗ failure (exit 1)
+       → fix
+[1/20] fix → /ll:manage_issue bug fix
+       ✓ success (confidence: 0.92)
+       → verify
+[1/20] verify → pytest tests/
+       ✓ success (exit 0)
+       → done
 
-Loop completed: done (3 iterations, 2m 34s)
-```
-
-### External Consumption
-
-Events enable integration with:
-- **CI dashboards** - Stream events to build status
-- **Monitoring** - Alert on `loop_error` or `loop_timeout`
-- **Analytics** - Track loop success rates, durations
-
----
-
-## Examples
-
-### Example 1: Fix all type errors
-
-```yaml
-# .loops/fix-types.yaml
-paradigm: convergence
-name: "fix-types"
-scope:
-  - "src/"
-check: "mypy src/ 2>&1 | grep -c 'error:' || echo 0"
-toward: 0
-using: "/ll:manage_issue bug fix"
-```
-
-```bash
-ll-loop run .loops/fix-types.yaml
-```
-
-### Example 2: Maintain code quality
-
-```yaml
-# .loops/quality-guard.yaml
-paradigm: invariants
-name: "quality-guard"
-constraints:
-  - name: "tests"
-    check: "pytest"
-    fix: "/ll:manage_issue bug fix"
-  - name: "lint"
-    check: "ruff check ."
-    fix: "/ll:check_code fix"
-maintain: false  # run once, don't loop continuously
-```
-
-```bash
-ll-loop run .loops/quality-guard.yaml
-```
-
-### Example 3: Complex deployment workflow
-
-```yaml
-# .loops/deploy.yaml
-paradigm: fsm
-name: "safe-deploy"
-initial: "test"
-states:
-  test:
-    action: "pytest"
-    timeout: 300
-    on_pass: "build"
-    on_fail: "notify_fail"
-  build:
-    action: "npm run build"
-    timeout: 120
-    on_pass: "deploy_staging"
-    on_fail: "notify_fail"
-  deploy_staging:
-    action: "./scripts/deploy.sh staging"
-    on_pass: "smoke_test"
-    on_fail: "rollback"
-  smoke_test:
-    action: "./scripts/smoke-test.sh"
-    timeout: 60
-    on_pass: "deploy_prod"
-    on_fail: "rollback"
-  deploy_prod:
-    action: "./scripts/deploy.sh prod"
-    on_pass: "done"
-    on_fail: "rollback"
-  rollback:
-    action: "./scripts/rollback.sh"
-    next: "notify_fail"
-  notify_fail:
-    action: "echo 'Deployment failed' | slack-notify"
-    terminal: true
-  done:
-    action: "echo 'Deployment successful' | slack-notify"
-    terminal: true
-timeout: 1800  # 30 min max for entire deployment
-```
-
-```bash
-ll-loop run .loops/deploy.yaml
+Loop completed: done (1 iteration, 2m 34s)
 ```
 
 ---
 
-## Claude Code Integration
+## Design Decisions
 
-Claude Code slash commands enable loop creation and management within conversations.
+### Why Two Layers (Evaluate + Route)?
 
-### Commands
+1. **Single Responsibility** - Evaluators don't know about states; routing doesn't know about output parsing
+2. **Testability** - Test each layer in isolation
+3. **Extensibility** - Add evaluators without touching routing
+4. **Clarity** - When debugging, you can ask "what verdict?" and "where did it route?" separately
 
-| Command | Description |
-|---------|-------------|
-| `/ll:create-loop` | Interactive loop creation wizard (use `--auto` to skip interactivity) |
+### Why LLM Structured Output Only for Evaluation?
 
-**Note**: Loop execution, status, and control are handled exclusively via the `ll-loop` CLI (see CLI Interface). This separation keeps Claude Code focused on authoring while the CLI handles autonomous execution.
+1. **Single Point of LLM Usage** - Easy to understand cost model
+2. **Deterministic Compilation** - Paradigm → FSM is reproducible
+3. **Testable** - Mock one function to test everything else
 
-### `/ll:create-loop`
+### Alternatives Considered
 
-Guided loop creation within Claude Code:
+**Single-layer with escape hatch**: Simpler concept count, but the escape hatch creates a hidden mode switch. The two-layer model is honest about what's happening.
 
-```
-User: /ll:create-loop
-
-Claude: I'll help you create a loop. What would you like to accomplish?
-
-User: Fix all type errors in src/
-
-Claude: I'll create a convergence loop targeting zero type errors.
-
-[Generates .loops/fix-type-errors.yaml]
-
-paradigm: convergence
-name: "fix-type-errors"
-check: "mypy src/ 2>&1 | grep -c 'error:' || echo 0"
-toward: 0
-using: "/ll:manage_issue bug fix"
-
-Would you like to run this loop now?
-```
-
-### Natural Language Loop Creation
-
-Claude can recognize loop-like requests and offer to create loops:
-
-```
-User: "Keep fixing type errors until mypy passes"
-
-Claude: This sounds like a good candidate for a loop. Should I create one?
-
-User: Yes
-
-Claude: [Creates .loops/fix-types.yaml and offers to run it]
-```
-
-### How It Works
-
-1. User describes desired loop behavior in conversation
-2. Claude generates paradigm YAML and presents for review
-3. User approves; Claude saves to `.loops/<name>.yaml`
-4. User runs loop via CLI: `ll-loop run .loops/<name>.yaml`
-
-The CLI executor then:
-1. Spawns as a headless process (or foreground with live output)
-2. Runs shell commands via subprocess
-3. Invokes slash commands via `claude --dangerously-skip-permissions -p "..."`
-4. Streams events to `.loops/.running/<name>.events.jsonl`
+**Predicate-based routing**: More powerful but requires a predicate language. Verdict strings are simpler and sufficient.
 
 ---
 
 ## Open Questions
 
-Questions to resolve before implementation begins.
-
-### Critical (Block Issue Breakdown)
-
-1. **Slash Command Output Parsing** - The execution engine mentions "regex-based extraction of verdicts, sections, and tables":
-   - What are the actual patterns?
-   - Should this use `--output-format json` instead for reliability?
-
-2. **MVP Scope** - The "Future Considerations" lists 6 items. Are any actually required?
-   - Specifically: Is loop composition/nesting needed for v1?
-   - Is the visual editor in scope?
-
 ### Resolved
 
-3. **Installation Model** - ✅ Resolved: `ll-loop` is a CLI entry point in `scripts/` (like `ll-auto` and `ll-parallel`). Loop execution is CLI-only. Claude Code provides `/ll:create-loop` for authoring loops (interactive by default, `--auto` flag to skip interactivity).
+1. ✅ **Transition system design** - Two-layer (evaluate + route) with shortcuts for common cases
+2. ✅ **LLM usage scope** - Only in `llm_structured` evaluator
+3. ✅ **Confidence handling** - Optional `uncertain_suffix` for compound verdicts
 
-### Important (Resolve During Implementation)
+### For Implementation
 
-4. **Context Handoff** - The document describes detecting `CONTEXT_HANDOFF:` and spawning fresh sessions:
-   - How does this interact with loop state persistence?
-   - Is this mechanism already implemented in `ll-parallel`/`ll-auto` to reference?
+4. **Context handoff integration** - How does `CONTEXT_HANDOFF:` detection interact with state persistence?
 
-5. **Maintain Mode Timing** - For `maintain: true` loops:
-   - Is there a configurable delay between complete cycles?
-   - Or does it restart immediately?
+5. **Maintain mode timing** - Configurable delay between cycles?
 
-6. **Security Review** - Using `--dangerously-skip-permissions` for all slash commands:
-   - Should there be a first-run consent mechanism?
-   - Is this documented as a known trade-off?
+6. **Security** - Document `--dangerously-skip-permissions` trade-off
 
 ---
 
 ## Future Considerations
 
-- **Visual editor** - Web UI for FSM authoring with drag-and-drop states
+- **Visual editor** - Web UI for FSM authoring
 - **Loop templates** - Pre-built loops for common workflows
-- **Composition** - Nested loops, sub-FSMs as states
+- **Composition** - Nested loops, sub-FSMs
 - **Parallel states** - Execute multiple states concurrently
-- **Hooks** - Pre/post state execution hooks
-- **Metrics** - Track loop performance, success rates
+- **Hooks** - Pre/post state execution
+- **Metrics** - Track success rates, durations
+- **Local LLM** - Reduce cost/latency for evaluation

@@ -64,10 +64,16 @@ def verify_work_was_done(logger: Logger, changed_files: list[str] | None = None)
                 f"Found {len(meaningful_changes)} file(s) changed: {meaningful_changes[:5]}"
             )
             return True
-        logger.warning("No meaningful changes detected - only excluded files modified")
+        # Log which excluded files were modified for diagnostic purposes
+        excluded_files = [f for f in changed_files if f]
+        logger.warning(
+            f"No meaningful changes detected - only excluded files modified: "
+            f"{excluded_files[:10]}"
+        )
         return False
 
     # Otherwise detect via git (ll-auto case)
+    all_excluded_files: list[str] = []
     try:
         # Check for uncommitted changes
         result = subprocess.run(
@@ -83,6 +89,8 @@ def verify_work_was_done(logger: Logger, changed_files: list[str] | None = None)
                     f"Found {len(meaningful_changes)} file(s) changed: {meaningful_changes[:5]}"
                 )
                 return True
+            # Collect excluded files for diagnostic logging
+            all_excluded_files.extend([f for f in files if f])
 
         # Also check staged changes
         result = subprocess.run(
@@ -98,8 +106,17 @@ def verify_work_was_done(logger: Logger, changed_files: list[str] | None = None)
                     f"Found {len(meaningful_staged)} staged file(s): {meaningful_staged[:5]}"
                 )
                 return True
+            # Collect excluded files for diagnostic logging
+            all_excluded_files.extend([f for f in staged if f and f not in all_excluded_files])
 
-        logger.warning("No meaningful changes detected - only excluded files modified")
+        # Log which excluded files were modified for diagnostic purposes
+        if all_excluded_files:
+            logger.warning(
+                f"No meaningful changes detected - only excluded files modified: "
+                f"{all_excluded_files[:10]}"
+            )
+        else:
+            logger.warning("No meaningful changes detected - no files modified")
         return False
 
     except Exception as e:

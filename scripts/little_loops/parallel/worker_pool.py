@@ -29,7 +29,7 @@ from little_loops.subprocess_utils import (
 from little_loops.subprocess_utils import (
     run_claude_command as _run_claude_base,
 )
-from little_loops.work_verification import verify_work_was_done
+from little_loops.work_verification import EXCLUDED_DIRECTORIES, verify_work_was_done
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -687,6 +687,17 @@ class WorkerPool:
         if verify_work_was_done(self.logger, changed_files):
             return True, ""
 
+        # Generate descriptive error with actual excluded files
+        excluded_files = [
+            f
+            for f in changed_files
+            if f and any(f.startswith(excl) for excl in EXCLUDED_DIRECTORIES)
+        ]
+        if excluded_files:
+            files_preview = ", ".join(excluded_files[:5])
+            if len(excluded_files) > 5:
+                files_preview += f" (+{len(excluded_files) - 5} more)"
+            return False, f"Only excluded files modified: {files_preview}"
         return False, "Only excluded files modified (e.g., .issues/, thoughts/)"
 
     def _detect_main_repo_leaks(self, issue_id: str, baseline_status: set[str]) -> list[str]:
