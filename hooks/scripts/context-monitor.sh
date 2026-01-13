@@ -232,14 +232,12 @@ main() {
             fi
         fi
 
-        # Handoff not complete - output reminder
+        # Handoff not complete - output reminder to Claude
+        # Use exit 2 with stderr to ensure feedback reaches Claude in non-interactive mode
+        # Reference: https://github.com/anthropics/claude-code/issues/11224
         write_state "$NEW_STATE"
-        cat <<EOF
-[ll] Context ~${USAGE_PERCENT}% used (${NEW_TOKENS}/${CONTEXT_LIMIT} tokens estimated)
-
-Run /ll:handoff to preserve your work before context exhaustion.
-EOF
-        exit 0
+        echo "[ll] Context ~${USAGE_PERCENT}% used (${NEW_TOKENS}/${CONTEXT_LIMIT} tokens estimated). Run /ll:handoff to preserve your work before context exhaustion." >&2
+        exit 2
     fi
 
     # Write updated state (no output needed)

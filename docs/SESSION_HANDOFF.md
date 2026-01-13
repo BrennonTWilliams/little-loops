@@ -72,9 +72,14 @@ Automation tools handle handoff automatically:
 ┌─────────────────────────────────────────────────────────────────┐
 │ Worker processes issue                                          │
 │     ↓                                                           │
-│ Context threshold reached → /ll:handoff executed                │
+│ Context threshold reached                                       │
 │     ↓                                                           │
-│ Outputs: "CONTEXT_HANDOFF: Ready for fresh session"             │
+│ PostToolUse hook outputs to stderr (exit 2)                     │
+│ "[ll] Context ~82% used. Run /ll:handoff..."                    │
+│     ↓                                                           │
+│ Claude receives feedback, autonomously runs /ll:handoff         │
+│     ↓                                                           │
+│ /ll:handoff outputs: "CONTEXT_HANDOFF: Ready for fresh session" │
 │     ↓                                                           │
 │ CLI detects signal, reads .claude/ll-continue-prompt.md         │
 │     ↓                                                           │

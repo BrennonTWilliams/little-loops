@@ -426,6 +426,21 @@ grep state_file .claude/ll-config.json
 2. Consider splitting the issue into smaller tasks
 3. Check if issue is stuck in a loop (repeated handoffs without progress)
 
+### Claude not seeing context warnings in non-interactive mode
+
+**Symptom**: ll-auto or ll-parallel exhausts context without triggering handoff
+
+**Cause**: The context-monitor.sh hook must use exit code 2 with stderr to send feedback to Claude in non-interactive mode
+
+**Verification**:
+1. Check the hook uses `exit 2` and `>&2`:
+   ```bash
+   grep -A2 "exit 2" hooks/scripts/context-monitor.sh
+   ```
+2. Look for hook output in Claude logs showing the warning was received
+
+**Reference**: GitHub issue #11224 documents PostToolUse hook behavior - exit code 2 with stderr is required for feedback to reach Claude
+
 ### Token estimation seems wrong
 
 **Symptom**: Threshold triggers too early or too late

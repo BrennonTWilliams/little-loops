@@ -19,12 +19,12 @@ Claude should receive the context warning as feedback and autonomously run `/ll:
 
 ## Root Cause
 
-Per Claude Code hook documentation:
-- Exit code 0: stdout shown to user in verbose mode only
-- Exit code 2 with stderr: feedback sent to Claude
-- JSON output with `"decision": "block"` and `"reason"`: reason sent to Claude as feedback
+Per Claude Code hook documentation and GitHub issues #3983 and #11224:
+- Exit code 0 with stdout: shown to user in verbose mode only, NOT sent to Claude as feedback
+- Exit code 2 with stderr: feedback sent to Claude (recommended for PostToolUse)
+- JSON output with `"decision": "block"` and `"reason"`: works for Stop/SubagentStop hooks only, NOT PostToolUse (see issue #3983)
 
-The current implementation uses plain text with `exit 0`, which doesn't trigger Claude feedback.
+The current implementation uses plain text with `exit 0`, which doesn't trigger Claude feedback in non-interactive mode.
 
 ## Affected Components
 
@@ -41,18 +41,20 @@ The current implementation uses plain text with `exit 0`, which doesn't trigger 
 
 ## Proposed Fix
 
-Update `context-monitor.sh` to output JSON with decision when threshold reached:
+Update `context-monitor.sh` (lines 235-242) to output to stderr with exit code 2:
 
 ```bash
-# Instead of plain text output:
-echo '{
-  "decision": "block",
-  "reason": "[ll] Context ~'"${USAGE_PERCENT}"'% used. Run /ll:handoff to preserve your work before context exhaustion.",
-  "continue": true
-}'
+# Handoff not complete - output reminder to Claude
+# Use exit 2 with stderr to ensure feedback reaches Claude in non-interactive mode
+# Reference: https://github.com/anthropics/claude-code/issues/11224
+write_state "$NEW_STATE"
+echo "[ll] Context ~${USAGE_PERCENT}% used (${NEW_TOKENS}/${CONTEXT_LIMIT} tokens estimated). Run /ll:handoff to preserve your work before context exhaustion." >&2
+exit 2
 ```
 
-With `"continue": true`, processing continues but Claude receives the `reason` as feedback.
+**Why this works**: Per Claude Code hook documentation and GitHub issue #11224, PostToolUse hooks with exit code 2 send stderr to Claude as feedback. This is the documented and tested approach for PostToolUse hooks.
+
+**Note**: The JSON output format with `"decision": "block"` documented for hooks does NOT work for PostToolUse hooks (see GitHub issue #3983). That format is only for Stop/SubagentStop hooks.
 
 ## Files to Modify
 
