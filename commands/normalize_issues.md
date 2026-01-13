@@ -28,7 +28,77 @@ Issue files must follow the naming pattern `P[0-5]-[PREFIX]-[NNN]-[slug].md` whe
 
 **Cross-type duplicate IDs** (like BUG-007, FEAT-007, ENH-007 all existing) violate the global uniqueness constraint. Issue IDs must be unique across ALL types—if BUG-005 exists, no FEAT-005 or ENH-005 should exist.
 
+**Invalid directory structure** can occur when:
+- Issues are manually moved to `bugs/completed/` instead of `.issues/completed/`
+- Sub-folders are created in `completed/` (e.g., `completed/bugs/`)
+- This breaks automation tools that expect a flat completed/ sibling directory
+
 ## Process
+
+### 0. Validate Directory Structure
+
+Before normalizing filenames, verify the `.issues/` directory follows the correct structure.
+
+#### 0a. Check Type Folders for Invalid completed/ Sub-directories
+
+Type-specific folders should NEVER have their own `completed/` sub-directory. All completed issues go to the sibling `.issues/completed/` folder.
+
+```bash
+# Check for invalid nested completed/ directories
+for category_dir in bugs features enhancements; do
+    nested_completed="{{config.issues.base_dir}}/$category_dir/completed"
+    if [ -d "$nested_completed" ]; then
+        echo "VIOLATION: $nested_completed exists (should not)"
+        # List files that need to be moved
+        ls -la "$nested_completed"/*.md 2>/dev/null
+    fi
+done
+```
+
+**Auto-fix**: Move any files found to `.issues/completed/` and remove the invalid directory.
+
+#### 0b. Check completed/ is Flat (No Sub-folders)
+
+The completed directory should contain only `.md` files, no sub-directories.
+
+```bash
+# Check for sub-directories in completed/
+completed_dir="{{config.issues.base_dir}}/{{config.issues.completed_dir}}"
+if [ -d "$completed_dir" ]; then
+    subdirs=$(find "$completed_dir" -mindepth 1 -maxdepth 1 -type d)
+    if [ -n "$subdirs" ]; then
+        echo "VIOLATION: Sub-directories found in completed/:"
+        echo "$subdirs"
+    fi
+fi
+```
+
+**Auto-fix**: Move any `.md` files from sub-directories to completed/ root and remove empty sub-directories.
+
+#### 0c. Auto-Fix Directory Structure Violations
+
+For each violation found:
+
+**Nested completed/ in type folder:**
+```bash
+# Move files from .issues/bugs/completed/ to .issues/completed/
+for file in {{config.issues.base_dir}}/bugs/completed/*.md; do
+    git mv "$file" "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/"
+done
+# Remove empty invalid directory
+rmdir {{config.issues.base_dir}}/bugs/completed
+```
+
+**Sub-folders in completed/:**
+```bash
+# Move files from sub-folders to completed/ root
+for subdir in {{config.issues.base_dir}}/{{config.issues.completed_dir}}/*/; do
+    for file in "$subdir"*.md; do
+        git mv "$file" "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/"
+    done
+    rmdir "$subdir"
+done
+```
 
 ### 1. Scan for Invalid Filenames
 
@@ -185,7 +255,17 @@ grep -r "[old-filename]" {{config.issues.base_dir}}/ thoughts/shared/plans/
 - **Files scanned**: X
 - **Files missing IDs**: Y
 - **Cross-type duplicate IDs found**: Z
+- **Directory structure violations**: N
 - **Total files renamed**: W
+
+## Directory Structure
+
+| Check | Status | Action |
+|-------|--------|--------|
+| No completed/ in bugs/ | ✅ Pass / ❌ Found N files | Moved to completed/ |
+| No completed/ in features/ | ✅ Pass / ❌ Found N files | Moved to completed/ |
+| No completed/ in enhancements/ | ✅ Pass / ❌ Found N files | Moved to completed/ |
+| completed/ is flat | ✅ Pass / ❌ Found N sub-dirs | Flattened |
 
 ## Missing ID Fixes
 
@@ -225,6 +305,23 @@ A filename **needs normalization** if:
 - Missing 3-digit ID number
 - Has non-standard prefix format
 - **Uses an ID number that exists with a different prefix** (cross-type duplicate)
+
+---
+
+## Directory Structure Rules
+
+The `.issues/` directory must follow this structure:
+```
+.issues/
+├── bugs/           # Active bugs ONLY (no completed/ sub-dir)
+├── features/       # Active features ONLY (no completed/ sub-dir)
+├── enhancements/   # Active enhancements ONLY (no completed/ sub-dir)
+└── completed/      # ALL completed issues (flat, no sub-folders)
+```
+
+**Violations detected and auto-fixed:**
+- `bugs/completed/`, `features/completed/`, `enhancements/completed/` directories existing
+- Sub-directories within `completed/` (e.g., `completed/bugs/`, `completed/old/`)
 
 ---
 
