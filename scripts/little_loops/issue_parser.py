@@ -6,12 +6,17 @@ Parses issue markdown files to extract metadata like priority, ID, type, and tit
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+
+
+# Regex pattern for issue IDs in list items
+# Matches: "- FEAT-001", "- BUG-123", "* ENH-005", "- FEAT-001 (some note)"
+ISSUE_ID_PATTERN = re.compile(r"^[-*]\s+([A-Z]+-\d+)", re.MULTILINE)
 
 
 def slugify(text: str) -> str:
@@ -77,6 +82,8 @@ class IssueInfo:
         priority: Priority level (e.g., "P0", "P1")
         issue_id: Issue identifier (e.g., "BUG-123")
         title: Issue title from markdown header
+        blocked_by: List of issue IDs that block this issue
+        blocks: List of issue IDs that this issue blocks
     """
 
     path: Path
@@ -84,6 +91,8 @@ class IssueInfo:
     priority: str
     issue_id: str
     title: str
+    blocked_by: list[str] = field(default_factory=list)
+    blocks: list[str] = field(default_factory=list)
 
     @property
     def priority_int(self) -> int:
@@ -102,6 +111,8 @@ class IssueInfo:
             "priority": self.priority,
             "issue_id": self.issue_id,
             "title": self.title,
+            "blocked_by": self.blocked_by,
+            "blocks": self.blocks,
         }
 
     @classmethod
@@ -113,6 +124,8 @@ class IssueInfo:
             priority=data["priority"],
             issue_id=data["issue_id"],
             title=data["title"],
+            blocked_by=data.get("blocked_by", []),
+            blocks=data.get("blocks", []),
         )
 
 
@@ -154,8 +167,13 @@ class IssueParser:
         # Parse issue type and ID from filename
         issue_type, issue_id = self._parse_type_and_id(filename, issue_path)
 
-        # Parse title from file content
-        title = self._parse_title(issue_path)
+        # Read content once for all content-based parsing
+        content = self._read_content(issue_path)
+
+        # Parse title and dependencies from file content
+        title = self._parse_title_from_content(content, issue_path)
+        blocked_by = self._parse_blocked_by(content)
+        blocks = self._parse_blocks(content)
 
         return IssueInfo(
             path=issue_path,
@@ -163,6 +181,8 @@ class IssueParser:
             priority=priority,
             issue_id=issue_id,
             title=title,
+            blocked_by=blocked_by,
+            blocks=blocks,
         )
 
     def _parse_priority(self, filename: str) -> str:
@@ -240,17 +260,31 @@ class IssueParser:
         next_num = get_next_issue_number(self.config, category)
         return f"{prefix}-{next_num:03d}"
 
-    def _parse_title(self, issue_path: Path) -> str:
-        """Extract title from issue file content.
+    def _read_content(self, issue_path: Path) -> str:
+        """Read file content, returning empty string on error.
 
         Args:
             issue_path: Path to issue file
 
         Returns:
-            Issue title or filename stem as fallback
+            File content or empty string on error
         """
         try:
-            content = issue_path.read_text(encoding="utf-8")
+            return issue_path.read_text(encoding="utf-8")
+        except Exception:
+            return ""
+
+    def _parse_title_from_content(self, content: str, issue_path: Path) -> str:
+        """Extract title from issue file content.
+
+        Args:
+            content: Pre-read file content
+            issue_path: Path to issue file (for fallback)
+
+        Returns:
+            Issue title or filename stem as fallback
+        """
+        if content:
             # Look for markdown header: # ISSUE-ID: Title
             match = re.search(r"^#\s+[\w-]+:\s*(.+)$", content, re.MULTILINE)
             if match:
@@ -259,10 +293,93 @@ class IssueParser:
             match = re.search(r"^#\s+(.+)$", content, re.MULTILINE)
             if match:
                 return match.group(1).strip()
-        except Exception:
-            pass
         # Fall back to filename
         return issue_path.stem
+
+    def _parse_section_items(self, content: str, section_name: str) -> list[str]:
+        """Extract issue IDs from a markdown section.
+
+        Finds section header (## Section Name) and extracts issue IDs
+        from list items until the next section or end of file.
+        Skips content inside code fences.
+
+        Args:
+            content: File content to parse
+            section_name: Section name to find (e.g., "Blocked By")
+
+        Returns:
+            List of issue IDs found in the section
+        """
+        if not content:
+            return []
+
+        # Strip code fences to avoid matching sections in examples
+        content_without_code = self._strip_code_fences(content)
+
+        # Match section header case-insensitively
+        section_pattern = rf"^##\s+{re.escape(section_name)}\s*$"
+        match = re.search(section_pattern, content_without_code, re.MULTILINE | re.IGNORECASE)
+        if not match:
+            return []
+
+        # Get content after section header until next ## header or end
+        start = match.end()
+        next_section = re.search(r"^##\s+", content_without_code[start:], re.MULTILINE)
+        if next_section:
+            section_content = content_without_code[start : start + next_section.start()]
+        else:
+            section_content = content_without_code[start:]
+
+        # Extract issue IDs from list items
+        issue_ids = ISSUE_ID_PATTERN.findall(section_content)
+        return issue_ids
+
+    def _strip_code_fences(self, content: str) -> str:
+        """Remove code fence blocks from content.
+
+        Replaces content between ``` markers with empty lines to preserve
+        line numbers while removing code fence content from parsing.
+
+        Args:
+            content: File content
+
+        Returns:
+            Content with code fence blocks replaced by empty lines
+        """
+        # Match code fences: ``` or ```language through closing ```
+        result = []
+        in_fence = False
+        for line in content.split("\n"):
+            if line.startswith("```"):
+                in_fence = not in_fence
+                result.append("")  # Preserve line count
+            elif in_fence:
+                result.append("")  # Replace fenced content with empty line
+            else:
+                result.append(line)
+        return "\n".join(result)
+
+    def _parse_blocked_by(self, content: str) -> list[str]:
+        """Extract issue IDs from ## Blocked By section.
+
+        Args:
+            content: File content to parse
+
+        Returns:
+            List of issue IDs that block this issue
+        """
+        return self._parse_section_items(content, "Blocked By")
+
+    def _parse_blocks(self, content: str) -> list[str]:
+        """Extract issue IDs from ## Blocks section.
+
+        Args:
+            content: File content to parse
+
+        Returns:
+            List of issue IDs that this issue blocks
+        """
+        return self._parse_section_items(content, "Blocks")
 
 
 def find_issues(

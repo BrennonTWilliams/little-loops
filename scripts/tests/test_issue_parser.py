@@ -593,3 +593,275 @@ class TestFindHighestPriorityIssue:
         assert highest.issue_type == "features"
         assert highest.priority == "P1"
         assert highest.issue_id == "FEAT-001"
+
+
+class TestDependencyParsing:
+    """Tests for dependency parsing in IssueParser."""
+
+    def test_parse_blocked_by_single(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing single blocker."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("""# BUG-001: Test Issue
+
+## Summary
+Test description.
+
+## Blocked By
+- FEAT-001
+
+## Labels
+bug
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.blocked_by == ["FEAT-001"]
+        assert info.blocks == []
+
+    def test_parse_blocked_by_multiple(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing multiple blockers."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-002-test.md"
+        issue_file.write_text("""# BUG-002: Test Issue
+
+## Blocked By
+- FEAT-001
+- FEAT-002
+- ENH-003
+
+## Blocks
+- BUG-010
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.blocked_by == ["FEAT-001", "FEAT-002", "ENH-003"]
+        assert info.blocks == ["BUG-010"]
+
+    def test_parse_blocked_by_empty(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing when no Blocked By section exists."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-003-test.md"
+        issue_file.write_text("""# BUG-003: Test Issue
+
+## Summary
+No dependencies here.
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.blocked_by == []
+        assert info.blocks == []
+
+    def test_parse_blocked_by_with_none_text(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing section with 'None' text instead of list."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-004-test.md"
+        issue_file.write_text("""# BUG-004: Test Issue
+
+## Blocked By
+
+None
+
+## Blocks
+
+None - this is standalone
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.blocked_by == []
+        assert info.blocks == []
+
+    def test_parse_blocks_section(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing ## Blocks section."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        features_dir.mkdir(parents=True)
+        issue_file = features_dir / "P0-FEAT-001-test.md"
+        issue_file.write_text("""# FEAT-001: Foundation Feature
+
+## Summary
+This feature enables other work.
+
+## Blocks
+- FEAT-002
+- FEAT-003
+- ENH-001
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.blocked_by == []
+        assert info.blocks == ["FEAT-002", "FEAT-003", "ENH-001"]
+
+    def test_parse_skips_code_fenced_sections(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test that sections inside code fences are ignored."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        features_dir.mkdir(parents=True)
+        issue_file = features_dir / "P2-FEAT-005-test.md"
+        issue_file.write_text("""# FEAT-005: Test Feature
+
+## Summary
+
+Example format:
+
+```markdown
+## Blocked By
+- FAKE-001
+- FAKE-002
+```
+
+## Blocked By
+
+- REAL-001
+
+## Blocks
+
+- REAL-002
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        # Should only get the real dependencies, not the example ones
+        assert info.blocked_by == ["REAL-001"]
+        assert info.blocks == ["REAL-002"]
+
+    def test_parse_with_asterisk_bullets(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing with asterisk-style bullets."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-006-test.md"
+        issue_file.write_text("""# BUG-006: Test Issue
+
+## Blocked By
+* FEAT-001
+* FEAT-002
+
+## Blocks
+* BUG-010
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.blocked_by == ["FEAT-001", "FEAT-002"]
+        assert info.blocks == ["BUG-010"]
+
+    def test_parse_with_trailing_text(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing items with trailing descriptions."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-007-test.md"
+        issue_file.write_text("""# BUG-007: Test Issue
+
+## Blocked By
+- FEAT-001: Database migration feature
+- FEAT-002 (authentication update)
+
+## Blocks
+- ENH-005 - performance improvements
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.blocked_by == ["FEAT-001", "FEAT-002"]
+        assert info.blocks == ["ENH-005"]
+
+    def test_dependency_fields_in_serialization(self) -> None:
+        """Test that blocked_by and blocks survive to_dict/from_dict roundtrip."""
+        original = IssueInfo(
+            path=Path("/test/path.md"),
+            issue_type="bugs",
+            priority="P0",
+            issue_id="BUG-100",
+            title="Test Bug",
+            blocked_by=["FEAT-001", "FEAT-002"],
+            blocks=["BUG-101", "BUG-102"],
+        )
+
+        data = original.to_dict()
+
+        # Verify dict contains dependency fields
+        assert data["blocked_by"] == ["FEAT-001", "FEAT-002"]
+        assert data["blocks"] == ["BUG-101", "BUG-102"]
+
+        # Verify roundtrip
+        restored = IssueInfo.from_dict(data)
+        assert restored.blocked_by == original.blocked_by
+        assert restored.blocks == original.blocks
+
+    def test_from_dict_defaults_empty_dependencies(self) -> None:
+        """Test from_dict provides empty lists for missing dependency fields."""
+        # Simulate old serialized data without dependency fields
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "bugs",
+            "priority": "P1",
+            "issue_id": "BUG-200",
+            "title": "Legacy Issue",
+        }
+
+        info = IssueInfo.from_dict(data)
+
+        assert info.blocked_by == []
+        assert info.blocks == []

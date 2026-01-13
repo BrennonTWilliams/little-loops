@@ -1,0 +1,489 @@
+"""Tests for little_loops.dependency_graph module."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from little_loops.dependency_graph import DependencyGraph
+from little_loops.issue_parser import IssueInfo
+
+
+def make_issue(
+    issue_id: str,
+    priority: str = "P1",
+    blocked_by: list[str] | None = None,
+    blocks: list[str] | None = None,
+) -> IssueInfo:
+    """Helper to create test IssueInfo objects."""
+    return IssueInfo(
+        path=Path(f"{issue_id.lower()}.md"),
+        issue_type="features",
+        priority=priority,
+        issue_id=issue_id,
+        title=f"Test {issue_id}",
+        blocked_by=blocked_by or [],
+        blocks=blocks or [],
+    )
+
+
+class TestDependencyGraphConstruction:
+    """Tests for DependencyGraph.from_issues()."""
+
+    def test_empty_graph(self) -> None:
+        """Test constructing graph with no issues."""
+        graph = DependencyGraph.from_issues([])
+
+        assert len(graph) == 0
+        assert graph.issues == {}
+        assert graph.blocked_by == {}
+        assert graph.blocks == {}
+
+    def test_single_issue_no_deps(self) -> None:
+        """Test graph with single issue having no dependencies."""
+        issue = make_issue("FEAT-001")
+        graph = DependencyGraph.from_issues([issue])
+
+        assert len(graph) == 1
+        assert "FEAT-001" in graph
+        assert graph.blocked_by["FEAT-001"] == set()
+        assert graph.blocks["FEAT-001"] == set()
+
+    def test_linear_chain(self) -> None:
+        """Test graph with linear dependency chain A -> B -> C."""
+        issue_a = make_issue("FEAT-001", blocked_by=[], blocks=["FEAT-002"])
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"], blocks=["FEAT-003"])
+        issue_c = make_issue("FEAT-003", blocked_by=["FEAT-002"], blocks=[])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        assert len(graph) == 3
+        assert graph.blocked_by["FEAT-001"] == set()
+        assert graph.blocked_by["FEAT-002"] == {"FEAT-001"}
+        assert graph.blocked_by["FEAT-003"] == {"FEAT-002"}
+        assert graph.blocks["FEAT-001"] == {"FEAT-002"}
+        assert graph.blocks["FEAT-002"] == {"FEAT-003"}
+        assert graph.blocks["FEAT-003"] == set()
+
+    def test_multiple_blockers(self) -> None:
+        """Test issue blocked by multiple others."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002")
+        issue_c = make_issue("FEAT-003", blocked_by=["FEAT-001", "FEAT-002"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        assert graph.blocked_by["FEAT-003"] == {"FEAT-001", "FEAT-002"}
+        assert graph.blocks["FEAT-001"] == {"FEAT-003"}
+        assert graph.blocks["FEAT-002"] == {"FEAT-003"}
+
+    def test_missing_blocker_logged_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that missing blockers are logged as warnings."""
+        issue = make_issue("FEAT-001", blocked_by=["NONEXISTENT-999"])
+
+        graph = DependencyGraph.from_issues([issue])
+
+        assert "NONEXISTENT-999" not in graph.blocked_by["FEAT-001"]
+        assert "blocked by unknown issue NONEXISTENT-999" in caplog.text
+
+    def test_completed_blocker_not_added(self) -> None:
+        """Test that completed blockers are not added as edges."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001", "COMPLETED-999"])
+
+        # FEAT-001 is in graph, COMPLETED-999 is in completed set
+        graph = DependencyGraph.from_issues(
+            [issue_a, issue_b],
+            completed_ids={"COMPLETED-999"},
+        )
+
+        # FEAT-001 should still block FEAT-002, but COMPLETED-999 should not
+        assert graph.blocked_by["FEAT-002"] == {"FEAT-001"}
+
+    def test_completed_issue_in_graph(self) -> None:
+        """Test with blocker that exists in issues but is also completed."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"])
+
+        # FEAT-001 exists in issues AND is marked completed
+        graph = DependencyGraph.from_issues(
+            [issue_a, issue_b],
+            completed_ids={"FEAT-001"},
+        )
+
+        # FEAT-001 should not block FEAT-002 since it's completed
+        assert graph.blocked_by["FEAT-002"] == set()
+
+
+class TestGetReadyIssues:
+    """Tests for get_ready_issues()."""
+
+    def test_all_ready_no_deps(self) -> None:
+        """Test all issues ready when none have dependencies."""
+        issues = [
+            make_issue("FEAT-001", priority="P0"),
+            make_issue("FEAT-002", priority="P1"),
+            make_issue("FEAT-003", priority="P2"),
+        ]
+        graph = DependencyGraph.from_issues(issues)
+
+        ready = graph.get_ready_issues()
+
+        assert len(ready) == 3
+        # Should be sorted by priority
+        assert [i.issue_id for i in ready] == ["FEAT-001", "FEAT-002", "FEAT-003"]
+
+    def test_only_root_ready(self) -> None:
+        """Test only root issues (no blockers) are ready initially."""
+        issue_a = make_issue("FEAT-001", priority="P0")
+        issue_b = make_issue("FEAT-002", priority="P0", blocked_by=["FEAT-001"])
+        issue_c = make_issue("FEAT-003", priority="P0", blocked_by=["FEAT-002"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        ready = graph.get_ready_issues()
+
+        assert len(ready) == 1
+        assert ready[0].issue_id == "FEAT-001"
+
+    def test_ready_after_completion(self) -> None:
+        """Test issues become ready after blockers are completed."""
+        issue_a = make_issue("FEAT-001", priority="P0")
+        issue_b = make_issue("FEAT-002", priority="P1", blocked_by=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        # Initially only A is ready
+        ready = graph.get_ready_issues()
+        assert [i.issue_id for i in ready] == ["FEAT-001"]
+
+        # After A completed, B is ready
+        ready = graph.get_ready_issues(completed={"FEAT-001"})
+        assert [i.issue_id for i in ready] == ["FEAT-002"]
+
+    def test_completed_issues_excluded(self) -> None:
+        """Test completed issues are not included in ready list."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002")
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        ready = graph.get_ready_issues(completed={"FEAT-001"})
+
+        assert len(ready) == 1
+        assert ready[0].issue_id == "FEAT-002"
+
+    def test_multiple_blockers_all_must_complete(self) -> None:
+        """Test issue with multiple blockers needs all completed."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002")
+        issue_c = make_issue("FEAT-003", blocked_by=["FEAT-001", "FEAT-002"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        # Only A completed - C still blocked
+        ready = graph.get_ready_issues(completed={"FEAT-001"})
+        assert "FEAT-003" not in [i.issue_id for i in ready]
+
+        # Both A and B completed - C ready
+        ready = graph.get_ready_issues(completed={"FEAT-001", "FEAT-002"})
+        assert "FEAT-003" in [i.issue_id for i in ready]
+
+
+class TestIsBlocked:
+    """Tests for is_blocked()."""
+
+    def test_not_blocked_no_deps(self) -> None:
+        """Test issue with no dependencies is not blocked."""
+        issue = make_issue("FEAT-001")
+        graph = DependencyGraph.from_issues([issue])
+
+        assert not graph.is_blocked("FEAT-001")
+
+    def test_blocked_with_deps(self) -> None:
+        """Test issue with active dependencies is blocked."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        assert not graph.is_blocked("FEAT-001")
+        assert graph.is_blocked("FEAT-002")
+
+    def test_not_blocked_after_completion(self) -> None:
+        """Test issue becomes unblocked when blocker completes."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        assert graph.is_blocked("FEAT-002")
+        assert not graph.is_blocked("FEAT-002", completed={"FEAT-001"})
+
+
+class TestGetBlockingIssues:
+    """Tests for get_blocking_issues()."""
+
+    def test_no_blockers(self) -> None:
+        """Test issue with no blockers returns empty set."""
+        issue = make_issue("FEAT-001")
+        graph = DependencyGraph.from_issues([issue])
+
+        assert graph.get_blocking_issues("FEAT-001") == set()
+
+    def test_active_blockers(self) -> None:
+        """Test returns active blockers."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002")
+        issue_c = make_issue("FEAT-003", blocked_by=["FEAT-001", "FEAT-002"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        blockers = graph.get_blocking_issues("FEAT-003")
+        assert blockers == {"FEAT-001", "FEAT-002"}
+
+    def test_completed_blockers_excluded(self) -> None:
+        """Test completed blockers are excluded."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002")
+        issue_c = make_issue("FEAT-003", blocked_by=["FEAT-001", "FEAT-002"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        blockers = graph.get_blocking_issues("FEAT-003", completed={"FEAT-001"})
+        assert blockers == {"FEAT-002"}
+
+
+class TestGetBlockedByIssue:
+    """Tests for get_blocked_by_issue()."""
+
+    def test_blocks_nothing(self) -> None:
+        """Test issue that blocks nothing."""
+        issue = make_issue("FEAT-001")
+        graph = DependencyGraph.from_issues([issue])
+
+        assert graph.get_blocked_by_issue("FEAT-001") == set()
+
+    def test_blocks_multiple(self) -> None:
+        """Test issue that blocks multiple others."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"])
+        issue_c = make_issue("FEAT-003", blocked_by=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        blocked = graph.get_blocked_by_issue("FEAT-001")
+        assert blocked == {"FEAT-002", "FEAT-003"}
+
+
+class TestTopologicalSort:
+    """Tests for topological_sort()."""
+
+    def test_no_deps_sorted_by_priority(self) -> None:
+        """Test issues with no deps sorted by priority."""
+        issues = [
+            make_issue("FEAT-003", priority="P2"),
+            make_issue("FEAT-001", priority="P0"),
+            make_issue("FEAT-002", priority="P1"),
+        ]
+        graph = DependencyGraph.from_issues(issues)
+
+        sorted_issues = graph.topological_sort()
+
+        assert [i.issue_id for i in sorted_issues] == ["FEAT-001", "FEAT-002", "FEAT-003"]
+
+    def test_linear_chain_order(self) -> None:
+        """Test linear chain maintains dependency order."""
+        issue_a = make_issue("FEAT-001", priority="P2")  # Low priority but must come first
+        issue_b = make_issue("FEAT-002", priority="P0", blocked_by=["FEAT-001"])
+        issue_c = make_issue("FEAT-003", priority="P0", blocked_by=["FEAT-002"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        sorted_issues = graph.topological_sort()
+
+        assert [i.issue_id for i in sorted_issues] == ["FEAT-001", "FEAT-002", "FEAT-003"]
+
+    def test_diamond_dependency(self) -> None:
+        """Test diamond pattern: A -> B,C -> D."""
+        issue_a = make_issue("FEAT-001", priority="P0")
+        issue_b = make_issue("FEAT-002", priority="P1", blocked_by=["FEAT-001"])
+        issue_c = make_issue("FEAT-003", priority="P2", blocked_by=["FEAT-001"])
+        issue_d = make_issue("FEAT-004", priority="P0", blocked_by=["FEAT-002", "FEAT-003"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c, issue_d])
+
+        sorted_issues = graph.topological_sort()
+        ids = [i.issue_id for i in sorted_issues]
+
+        # A must come first, D must come last
+        assert ids[0] == "FEAT-001"
+        assert ids[-1] == "FEAT-004"
+        # B and C must come before D
+        assert ids.index("FEAT-002") < ids.index("FEAT-004")
+        assert ids.index("FEAT-003") < ids.index("FEAT-004")
+
+    def test_empty_graph(self) -> None:
+        """Test topological sort of empty graph."""
+        graph = DependencyGraph.from_issues([])
+
+        assert graph.topological_sort() == []
+
+    def test_cycle_raises_value_error(self) -> None:
+        """Test cycle detection raises ValueError."""
+        issue_a = make_issue("FEAT-001", blocked_by=["FEAT-002"])
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        with pytest.raises(ValueError, match="cycles"):
+            graph.topological_sort()
+
+
+class TestCycleDetection:
+    """Tests for detect_cycles()."""
+
+    def test_no_cycles(self) -> None:
+        """Test graph with no cycles."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        cycles = graph.detect_cycles()
+        assert cycles == []
+        assert not graph.has_cycles()
+
+    def test_simple_cycle(self) -> None:
+        """Test detection of simple A <-> B cycle."""
+        issue_a = make_issue("FEAT-001", blocked_by=["FEAT-002"])
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        cycles = graph.detect_cycles()
+        assert len(cycles) > 0
+        assert graph.has_cycles()
+
+    def test_longer_cycle(self) -> None:
+        """Test detection of A -> B -> C -> A cycle."""
+        issue_a = make_issue("FEAT-001", blocked_by=["FEAT-003"])
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"])
+        issue_c = make_issue("FEAT-003", blocked_by=["FEAT-002"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        cycles = graph.detect_cycles()
+        assert len(cycles) > 0
+        # Cycle should contain all three nodes
+        cycle_nodes = set(cycles[0])
+        assert "FEAT-001" in cycle_nodes
+        assert "FEAT-002" in cycle_nodes
+        assert "FEAT-003" in cycle_nodes
+
+    def test_multiple_independent_subgraphs(self) -> None:
+        """Test graph with multiple disconnected components."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"])
+        issue_c = make_issue("FEAT-003")  # Disconnected
+        issue_d = make_issue("FEAT-004", blocked_by=["FEAT-003"])  # Disconnected
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c, issue_d])
+
+        assert not graph.has_cycles()
+        sorted_issues = graph.topological_sort()
+        assert len(sorted_issues) == 4
+
+
+class TestContains:
+    """Tests for __contains__ method."""
+
+    def test_contains_existing(self) -> None:
+        """Test __contains__ for existing issue."""
+        issue = make_issue("FEAT-001")
+        graph = DependencyGraph.from_issues([issue])
+
+        assert "FEAT-001" in graph
+
+    def test_not_contains_missing(self) -> None:
+        """Test __contains__ for missing issue."""
+        issue = make_issue("FEAT-001")
+        graph = DependencyGraph.from_issues([issue])
+
+        assert "FEAT-999" not in graph
+
+
+class TestLen:
+    """Tests for __len__ method."""
+
+    def test_len_empty(self) -> None:
+        """Test len of empty graph."""
+        graph = DependencyGraph.from_issues([])
+        assert len(graph) == 0
+
+    def test_len_with_issues(self) -> None:
+        """Test len with multiple issues."""
+        issues = [make_issue(f"FEAT-{i:03d}") for i in range(5)]
+        graph = DependencyGraph.from_issues(issues)
+        assert len(graph) == 5
+
+
+class TestIntegration:
+    """Integration tests with real-world scenarios."""
+
+    def test_feature_branch_dependencies(self) -> None:
+        """Test realistic feature branch dependency scenario."""
+        # Authentication feature (foundation)
+        auth = make_issue("FEAT-001", priority="P0")
+
+        # User profile needs auth
+        profile = make_issue("FEAT-002", priority="P1", blocked_by=["FEAT-001"])
+
+        # Settings needs auth
+        settings = make_issue("FEAT-003", priority="P1", blocked_by=["FEAT-001"])
+
+        # Dashboard needs profile and settings
+        dashboard = make_issue(
+            "FEAT-004",
+            priority="P2",
+            blocked_by=["FEAT-002", "FEAT-003"],
+        )
+
+        # Bug fix (independent)
+        bugfix = make_issue("BUG-001", priority="P0")
+
+        graph = DependencyGraph.from_issues([auth, profile, settings, dashboard, bugfix])
+
+        # Initially ready: auth (no blockers) and bugfix (independent)
+        ready = graph.get_ready_issues()
+        ready_ids = [i.issue_id for i in ready]
+        assert "FEAT-001" in ready_ids
+        assert "BUG-001" in ready_ids
+        assert len(ready_ids) == 2
+
+        # After auth completed
+        ready = graph.get_ready_issues(completed={"FEAT-001"})
+        ready_ids = [i.issue_id for i in ready]
+        assert "FEAT-002" in ready_ids
+        assert "FEAT-003" in ready_ids
+        assert "FEAT-004" not in ready_ids  # Still blocked
+
+        # After auth, profile, settings completed
+        ready = graph.get_ready_issues(
+            completed={"FEAT-001", "FEAT-002", "FEAT-003"}
+        )
+        ready_ids = [i.issue_id for i in ready]
+        assert "FEAT-004" in ready_ids
+
+        # Topological sort should work
+        sorted_issues = graph.topological_sort()
+        ids = [i.issue_id for i in sorted_issues]
+
+        # Auth must come before profile, settings
+        assert ids.index("FEAT-001") < ids.index("FEAT-002")
+        assert ids.index("FEAT-001") < ids.index("FEAT-003")
+
+        # Profile and settings must come before dashboard
+        assert ids.index("FEAT-002") < ids.index("FEAT-004")
+        assert ids.index("FEAT-003") < ids.index("FEAT-004")

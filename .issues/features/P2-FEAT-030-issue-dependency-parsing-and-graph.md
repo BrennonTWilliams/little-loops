@@ -152,17 +152,17 @@ When cycles are detected:
 
 ## Acceptance Criteria
 
-- [ ] `IssueInfo` dataclass extended with `blocked_by` and `blocks` fields
-- [ ] `IssueParser._parse_blocked_by()` extracts issue IDs from markdown
-- [ ] `IssueParser._parse_blocks()` extracts issue IDs from markdown
-- [ ] `DependencyGraph.from_issues()` builds graph correctly
-- [ ] `DependencyGraph.topological_sort()` returns valid ordering
-- [ ] `DependencyGraph.get_ready_issues()` respects completed set
-- [ ] `DependencyGraph.detect_cycles()` finds cycles if present
-- [ ] Completed dependencies are correctly resolved
-- [ ] Missing dependencies logged as warnings
-- [ ] Unit tests cover all graph operations
-- [ ] Integration test with sample issues having dependencies
+- [x] `IssueInfo` dataclass extended with `blocked_by` and `blocks` fields
+- [x] `IssueParser._parse_blocked_by()` extracts issue IDs from markdown
+- [x] `IssueParser._parse_blocks()` extracts issue IDs from markdown
+- [x] `DependencyGraph.from_issues()` builds graph correctly
+- [x] `DependencyGraph.topological_sort()` returns valid ordering
+- [x] `DependencyGraph.get_ready_issues()` respects completed set
+- [x] `DependencyGraph.detect_cycles()` finds cycles if present
+- [x] Completed dependencies are correctly resolved
+- [x] Missing dependencies logged as warnings
+- [x] Unit tests cover all graph operations
+- [x] Integration test with sample issues having dependencies
 
 ## Impact
 
@@ -182,6 +182,7 @@ None
 
 - ENH-016: Dependency-Aware Sequencing in ll-auto
 - ENH-017: Dependency-Aware Scheduling in ll-parallel
+- FEAT-031: Issue Sequence Management System
 
 ## Labels
 
@@ -191,4 +192,24 @@ None
 
 ## Status
 
-**Open** | Created: 2026-01-12 | Priority: P2
+**Completed** | Created: 2026-01-12 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-12
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/issue_parser.py`: Extended `IssueInfo` dataclass with `blocked_by` and `blocks` fields, added `_parse_blocked_by()`, `_parse_blocks()`, `_parse_section_items()`, `_strip_code_fences()`, and `_read_content()` methods to parse dependency sections from issue markdown files
+- `scripts/little_loops/dependency_graph.py`: New module implementing `DependencyGraph` class with `from_issues()`, `topological_sort()` (Kahn's algorithm), `detect_cycles()` (DFS), `get_ready_issues()`, `is_blocked()`, `get_blocking_issues()`, and `get_blocked_by_issue()` methods
+- `scripts/tests/test_issue_parser.py`: Added `TestDependencyParsing` class with 10 tests for dependency parsing
+- `scripts/tests/test_dependency_graph.py`: New test file with 34 tests covering graph construction, topological sort, cycle detection, and ready issue queries
+
+### Verification Results
+- Tests: PASS (728 tests, including 44 new tests for this feature)
+- Lint: PASS
+- Types: PASS
