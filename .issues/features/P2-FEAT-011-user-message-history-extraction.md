@@ -261,6 +261,44 @@ None
 
 ---
 
+## Design Decisions
+
+### Project Folder Matching: Exact Match Only
+
+**Decision**: Do NOT implement `--include-related` / `--include-outside-directories` feature.
+
+**Context**: The Bash prototype (`get_recent_user_messages.sh`) included a `--include-outside-directories` flag that searched for related project folders (e.g., `myproject` and `myproject-history`). The question was whether to port this to the Python implementation.
+
+**Options Considered**:
+
+| Option | Description |
+|--------|-------------|
+| 1. Keep it | Port wildcard/related folder matching from Bash script |
+| 2. Exact match only | Only search the exact current directory's project folder |
+
+**Recommendation: Option 2 - Exact match only**
+
+**Rationale**:
+
+1. **Claude Code uses exact path mapping** - The `~/.claude/projects/` structure is deterministic. Each working directory maps to exactly one project folder (`/Users/foo/bar` → `-Users-foo-bar`). There's no official "related projects" concept in Claude Code.
+
+2. **False positive risk** - Wildcard matching (`*$search_term*`) could match unrelated projects. E.g., searching for `api` might match `api`, `api-v2`, `rapid-tools`, `company-api-client`.
+
+3. **Complexity reduction** - The Bash script is 711 lines vs 319 for Python. ~180 lines (25%) of the Bash script is related-folder logic.
+
+4. **Composable alternative** - Users needing messages from multiple projects can run the tool multiple times with different `--cwd` values and combine outputs:
+   ```bash
+   python extract_user_messages.py --cwd /path/to/project1 -o p1.jsonl
+   python extract_user_messages.py --cwd /path/to/project2 -o p2.jsonl
+   cat p1.jsonl p2.jsonl | sort -k2 > combined.jsonl
+   ```
+
+5. **YAGNI** - Feature can be added later if real demand emerges.
+
+**Date**: 2026-01-12
+
+---
+
 ## Status
 
 **Open** | Created: 2026-01-09 | Priority: P2

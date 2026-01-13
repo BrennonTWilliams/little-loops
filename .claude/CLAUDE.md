@@ -75,5 +75,6 @@ Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`
 The `scripts/` directory contains Python CLI tools:
 - `ll-auto` - Automated sequential issue processing
 - `ll-parallel` - Parallel issue processing with git worktrees
+- `ll-messages` - Extract user messages from Claude Code logs
 
 Install: `pip install -e "./scripts[dev]"`

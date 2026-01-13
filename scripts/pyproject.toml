@@ -35,6 +35,7 @@ classifiers = [
 [project.scripts]
 ll-auto = "little_loops.cli:main_auto"
 ll-parallel = "little_loops.cli:main_parallel"
+ll-messages = "little_loops.cli:main_messages"
 
 [project.optional-dependencies]
 dev = [

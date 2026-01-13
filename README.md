@@ -352,6 +352,23 @@ ll-parallel --worktree-base /tmp/wt  # Custom worktree directory
 ll-parallel --config /path/to/repo   # Specify project root
 ```
 
+### ll-messages
+
+Extract user messages from Claude Code session logs:
+
+```bash
+ll-messages                          # Last 100 messages to file
+ll-messages -n 50                    # Last 50 messages
+ll-messages --since 2026-01-01       # Messages since date
+ll-messages -o output.jsonl          # Custom output path
+ll-messages --stdout                 # Print to terminal instead
+ll-messages --exclude-agents         # Exclude agent session files
+ll-messages --cwd /path/to/project   # Specify project directory
+ll-messages -v                       # Verbose progress output
+```
+
+Output is JSONL format with message content and metadata (timestamp, session ID, working directory, git branch).
+
 ## Command Override
 
 Projects can override plugin commands by placing files in `.claude/commands/ll/`.

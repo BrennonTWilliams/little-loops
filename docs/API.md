@@ -27,6 +27,7 @@ pip install /path/to/little-loops/scripts
 | `little_loops.subprocess_utils` | Subprocess handling |
 | `little_loops.state` | State persistence |
 | `little_loops.logger` | Logging utilities |
+| `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.cli` | CLI entry points |
 | `little_loops.parallel` | Parallel processing subpackage |
 
@@ -729,6 +730,132 @@ format_duration(45.2)  # "45.2 seconds"
 
 ---
 
+## little_loops.user_messages
+
+Extract and analyze user messages from Claude Code session logs.
+
+### UserMessage
+
+Extracted user message with metadata.
+
+```python
+@dataclass
+class UserMessage:
+    content: str           # The text content of the message
+    timestamp: datetime    # When the message was sent
+    session_id: str        # Claude Code session identifier
+    uuid: str              # Unique message identifier
+    cwd: str | None        # Working directory when sent
+    git_branch: str | None # Git branch active when sent
+    is_sidechain: bool     # Whether this was a sidechain message
+```
+
+#### Methods
+
+```python
+def to_dict(self) -> dict
+```
+Convert to dictionary for JSON serialization.
+
+### get_project_folder
+
+```python
+def get_project_folder(cwd: Path | None = None) -> Path | None
+```
+
+Map a directory to its Claude Code project folder.
+
+**Parameters:**
+- `cwd` - Working directory to map (default: current directory)
+
+**Returns:** Path to Claude project folder (`~/.claude/projects/-path-to-dir`), or `None` if it doesn't exist.
+
+**Example:**
+```python
+from little_loops.user_messages import get_project_folder
+from pathlib import Path
+
+# Map current directory
+project_folder = get_project_folder()
+
+# Map specific directory
+project_folder = get_project_folder(Path("/Users/me/my-project"))
+# Returns: ~/.claude/projects/-Users-me-my-project
+```
+
+### extract_user_messages
+
+```python
+def extract_user_messages(
+    project_folder: Path,
+    limit: int | None = None,
+    since: datetime | None = None,
+    include_agent_sessions: bool = True,
+) -> list[UserMessage]
+```
+
+Extract user messages from all JSONL session files in a project folder.
+
+**Parameters:**
+- `project_folder` - Path to Claude project folder
+- `limit` - Maximum number of messages to return
+- `since` - Only include messages after this datetime
+- `include_agent_sessions` - Whether to include agent-*.jsonl files
+
+**Returns:** Messages sorted by timestamp, most recent first.
+
+**Filters:**
+- Only messages with `type == "user"`
+- Excludes tool results (array content with `tool_result` type)
+
+**Example:**
+```python
+from datetime import datetime
+from little_loops.user_messages import extract_user_messages, get_project_folder
+
+project_folder = get_project_folder()
+if project_folder:
+    # Get last 50 messages
+    messages = extract_user_messages(project_folder, limit=50)
+
+    # Get messages since a date
+    since = datetime(2026, 1, 1)
+    recent = extract_user_messages(project_folder, since=since)
+
+    for msg in messages:
+        print(f"[{msg.timestamp}] {msg.content[:50]}...")
+```
+
+### save_messages
+
+```python
+def save_messages(
+    messages: list[UserMessage],
+    output_path: Path | None = None,
+) -> Path
+```
+
+Save messages to a JSONL file.
+
+**Parameters:**
+- `messages` - List of UserMessage objects to save
+- `output_path` - Output file path. If None, uses `.claude/user-messages-{timestamp}.jsonl`
+
+**Returns:** Path to the saved file.
+
+### print_messages_to_stdout
+
+```python
+def print_messages_to_stdout(messages: list[UserMessage]) -> None
+```
+
+Print messages to stdout in JSONL format.
+
+**Parameters:**
+- `messages` - List of UserMessage objects to print
+
+---
+
 ## little_loops.parallel
 
 Parallel processing subpackage with git worktree isolation.
@@ -1127,6 +1254,25 @@ Entry point for `ll-parallel` command. Parallel issue management with git worktr
 
 **Returns:** Exit code
 
+### main_messages
+
+```python
+def main_messages() -> int
+```
+
+Entry point for `ll-messages` command. Extract user messages from Claude Code logs.
+
+**Returns:** Exit code
+
+**CLI Arguments:**
+- `-n, --limit` - Maximum messages to extract (default: 100)
+- `--since` - Only messages after date (YYYY-MM-DD or ISO format)
+- `-o, --output` - Output file path
+- `--cwd` - Working directory to use
+- `--exclude-agents` - Exclude agent session files
+- `--stdout` - Print to stdout instead of file
+- `-v, --verbose` - Verbose progress output
+
 ---
 
 ## Import Shortcuts
@@ -1138,6 +1284,12 @@ from little_loops.issue_parser import IssueParser, IssueInfo, find_issues
 from little_loops.issue_manager import AutoManager
 from little_loops.state import StateManager, ProcessingState
 from little_loops.logger import Logger, format_duration
+from little_loops.user_messages import (
+    UserMessage,
+    get_project_folder,
+    extract_user_messages,
+    save_messages,
+)
 
 # Parallel subpackage
 from little_loops.parallel import (
