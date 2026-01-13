@@ -217,7 +217,7 @@ Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't 
 
 ## NEXT_STEPS
 - [Recommended actions if not ready]
-- [Or "Proceed to implementation with: `/ll:manage_issue [ISSUE_ID]`" if ready/corrected]
+- [Or "Proceed to implementation with: `/ll:manage_issue [issue_type] [action] [ISSUE_ID]`" if ready/corrected]
 ```
 
 ---
