@@ -286,3 +286,27 @@ Manual testing with various paradigm selections:
 ## Reference
 
 - Design doc: `docs/generalized-fsm-loop.md` section "The /ll:create-loop Command"
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-13
+- **Status**: Completed
+
+### Changes Made
+- `skills/create-loop.md`: Created comprehensive interactive skill with:
+  - YAML frontmatter with name and trigger keywords
+  - Step-by-step workflow for paradigm selection
+  - Paradigm-specific question templates for goal, invariants, convergence, imperative
+  - YAML generation templates matching compiler input schemas
+  - Preview, confirmation, and validation workflow
+  - Quick reference section with common configurations
+- `.loops/`: Created directory for storing loop configurations
+
+### Verification Results
+- File exists: PASS
+- Tests: PASS (1068 tests)
+- Types: PASS
+- ll-loop CLI: PASS

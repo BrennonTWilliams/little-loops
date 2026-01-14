@@ -1,0 +1,516 @@
+---
+name: create-loop
+description: |
+  Create a new FSM loop configuration interactively. Guides users through paradigm selection, parameter gathering, YAML generation, and validation.
+
+  Trigger keywords: "create loop", "new loop", "make automation loop", "create-loop", "setup automation", "configure loop"
+---
+
+# /ll:create-loop
+
+Interactive skill for creating new automation loop configurations. This skill guides you through:
+1. Choosing a paradigm (type of automation)
+2. Gathering paradigm-specific parameters
+3. Naming the loop
+4. Generating and previewing YAML
+5. Saving and validating
+
+## Allowed Tools
+
+Use these tools during the workflow:
+- `AskUserQuestion` - For interactive prompts
+- `Write` - To save the loop configuration
+- `Bash` - To run validation and create directories
+- `Read` - To check for existing loops
+
+## Workflow
+
+### Step 1: Paradigm Selection
+
+Use AskUserQuestion with a single-select to determine the loop type:
+
+```yaml
+questions:
+  - question: "What kind of automation loop do you want to create?"
+    header: "Loop type"
+    multiSelect: false
+    options:
+      - label: "Fix errors until clean (Recommended)"
+        description: "Run checks and fix issues until all pass. Best for: type errors, lint issues, test failures"
+      - label: "Maintain code quality continuously"
+        description: "Keep multiple constraints true, restart after all pass. Best for: CI-like quality gates"
+      - label: "Drive a metric toward a target"
+        description: "Measure a value and apply fixes until it reaches goal. Best for: reducing error counts, coverage"
+      - label: "Run a sequence of steps"
+        description: "Execute steps in order, repeat until condition met. Best for: multi-stage builds"
+```
+
+**Paradigm Mapping:**
+- "Fix errors until clean" → `goal` paradigm
+- "Maintain code quality continuously" → `invariants` paradigm
+- "Drive a metric toward a target" → `convergence` paradigm
+- "Run a sequence of steps" → `imperative` paradigm
+
+### Step 2: Paradigm-Specific Questions
+
+Based on the selected paradigm, ask follow-up questions.
+
+---
+
+#### Goal Paradigm Questions
+
+If user selected "Fix errors until clean":
+
+**Question Set 1** (single AskUserQuestion call):
+
+```yaml
+questions:
+  - question: "What should the loop check and fix?"
+    header: "Check target"
+    multiSelect: true
+    options:
+      - label: "Type errors (mypy)"
+        description: "Check: mypy src/, Fix: auto-fix type issues"
+      - label: "Lint errors (ruff)"
+        description: "Check: ruff check src/, Fix: ruff check --fix"
+      - label: "Test failures (pytest)"
+        description: "Check: pytest, Fix: fix failing tests"
+      - label: "Custom check"
+        description: "Specify your own check and fix commands"
+
+  - question: "What's the maximum number of fix attempts?"
+    header: "Max iterations"
+    multiSelect: false
+    options:
+      - label: "10 (Recommended)"
+        description: "Good for most fixes"
+      - label: "20"
+        description: "For more complex issues"
+      - label: "50"
+        description: "For large codebases"
+```
+
+**If "Custom check" was selected**, ask for the commands:
+- "What command checks for errors?" (free text via Other)
+- "What command fixes the errors?" (free text via Other)
+
+**Generate Goal YAML:**
+
+```yaml
+paradigm: goal
+name: "<loop-name>"
+goal: "<description of what passes>"
+tools:
+  - "<check-command>"      # First tool is the check
+  - "<fix-command>"        # Second tool is the fix
+max_iterations: <selected-max>
+```
+
+**Example for "Type errors + Lint errors":**
+
+```yaml
+paradigm: goal
+name: "fix-types-and-lint"
+goal: "Type and lint checks pass"
+tools:
+  - "mypy src/ && ruff check src/"
+  - "/ll:check_code fix"
+max_iterations: 10
+```
+
+---
+
+#### Invariants Paradigm Questions
+
+If user selected "Maintain code quality continuously":
+
+**Question Set 1:**
+
+```yaml
+questions:
+  - question: "What constraints should always be true?"
+    header: "Constraints"
+    multiSelect: true
+    options:
+      - label: "Tests pass (pytest)"
+        description: "Check: pytest, Fix: /ll:manage_issue bug fix"
+      - label: "Types valid (mypy)"
+        description: "Check: mypy src/, Fix: /ll:manage_issue bug fix"
+      - label: "Lint clean (ruff)"
+        description: "Check: ruff check src/, Fix: ruff check --fix src/"
+      - label: "Build succeeds"
+        description: "Check: npm run build (or equivalent)"
+      - label: "Custom constraint"
+        description: "Define your own check/fix pair"
+
+  - question: "Should the loop restart after all constraints pass?"
+    header: "Maintain mode"
+    multiSelect: false
+    options:
+      - label: "No - stop when all pass"
+        description: "Loop terminates when all constraints are satisfied"
+      - label: "Yes - continuously maintain"
+        description: "Restart from first constraint after all pass (daemon mode)"
+```
+
+**For each selected constraint, gather check/fix if custom. Otherwise use defaults:**
+
+| Constraint | Check | Fix |
+|------------|-------|-----|
+| Tests pass | `pytest` | `/ll:manage_issue bug fix` |
+| Types valid | `mypy src/` | `/ll:manage_issue bug fix` |
+| Lint clean | `ruff check src/` | `ruff check --fix src/` |
+| Build succeeds | Ask for build command | Ask for fix command |
+
+**Generate Invariants YAML:**
+
+```yaml
+paradigm: invariants
+name: "<loop-name>"
+constraints:
+  - name: "<constraint-1-name>"
+    check: "<check-command>"
+    fix: "<fix-command>"
+  - name: "<constraint-2-name>"
+    check: "<check-command>"
+    fix: "<fix-command>"
+maintain: <true|false>
+max_iterations: 50
+```
+
+**Example for "Tests + Types + Lint":**
+
+```yaml
+paradigm: invariants
+name: "code-quality-guardian"
+constraints:
+  - name: "tests-pass"
+    check: "pytest"
+    fix: "/ll:manage_issue bug fix"
+  - name: "types-valid"
+    check: "mypy src/"
+    fix: "/ll:manage_issue bug fix"
+  - name: "lint-clean"
+    check: "ruff check src/"
+    fix: "ruff check --fix src/"
+maintain: false
+max_iterations: 50
+```
+
+---
+
+#### Convergence Paradigm Questions
+
+If user selected "Drive a metric toward a target":
+
+**Question Set 1:**
+
+```yaml
+questions:
+  - question: "What type of metric do you want to track?"
+    header: "Metric type"
+    multiSelect: false
+    options:
+      - label: "Error count"
+        description: "Count errors from a command (reduce toward 0)"
+      - label: "Test coverage"
+        description: "Coverage percentage (increase toward target)"
+      - label: "Custom metric"
+        description: "Any command that outputs a number"
+```
+
+**Based on metric type, gather details:**
+
+For "Error count":
+```yaml
+questions:
+  - question: "What errors should be counted?"
+    header: "Error source"
+    multiSelect: false
+    options:
+      - label: "Lint errors (ruff)"
+        description: "Count: ruff check src/ --output-format=json | jq '.length'"
+      - label: "Type errors (mypy)"
+        description: "Count: mypy src/ --output-format=json | jq '.error_count'"
+      - label: "Custom command"
+        description: "Specify command that outputs a number"
+```
+
+**Question for fix action:**
+```yaml
+questions:
+  - question: "What action should reduce the metric?"
+    header: "Fix action"
+    multiSelect: false
+    options:
+      - label: "/ll:check_code fix (Recommended)"
+        description: "Auto-fix code issues"
+      - label: "/ll:manage_issue bug fix"
+        description: "Use issue management to fix bugs"
+      - label: "Custom command"
+        description: "Specify your own fix command"
+```
+
+**Generate Convergence YAML:**
+
+```yaml
+paradigm: convergence
+name: "<loop-name>"
+check: "<metric-command>"
+toward: <target-value>
+using: "<fix-action>"
+tolerance: 0
+max_iterations: 50
+```
+
+**Example for "Reduce lint errors to 0":**
+
+```yaml
+paradigm: convergence
+name: "eliminate-lint-errors"
+check: "ruff check src/ 2>&1 | grep -c 'error' || echo 0"
+toward: 0
+using: "/ll:check_code fix"
+tolerance: 0
+max_iterations: 50
+```
+
+---
+
+#### Imperative Paradigm Questions
+
+If user selected "Run a sequence of steps":
+
+**Question Set 1:**
+
+```yaml
+questions:
+  - question: "What steps should run in sequence?"
+    header: "Steps"
+    multiSelect: true
+    options:
+      - label: "Check types (mypy)"
+        description: "Run type checking"
+      - label: "Check lint (ruff)"
+        description: "Run linting"
+      - label: "Run tests (pytest)"
+        description: "Execute test suite"
+      - label: "Fix issues"
+        description: "Apply automatic fixes"
+      - label: "Custom step"
+        description: "Add your own command"
+
+  - question: "When should the loop stop?"
+    header: "Exit condition"
+    multiSelect: false
+    options:
+      - label: "All checks pass"
+        description: "Stop when mypy && ruff && pytest all succeed"
+      - label: "Tests pass"
+        description: "Stop when pytest succeeds"
+      - label: "Custom condition"
+        description: "Specify your own exit check"
+```
+
+**Generate Imperative YAML:**
+
+```yaml
+paradigm: imperative
+name: "<loop-name>"
+steps:
+  - "<step-1>"
+  - "<step-2>"
+  - "<step-3>"
+until:
+  check: "<exit-condition-command>"
+  passes: true
+max_iterations: 20
+backoff: 2
+```
+
+**Example for "Fix → Test → Check until clean":**
+
+```yaml
+paradigm: imperative
+name: "fix-test-check"
+steps:
+  - "/ll:check_code fix"
+  - "pytest"
+  - "mypy src/"
+until:
+  check: "mypy src/ && ruff check src/ && pytest"
+  passes: true
+max_iterations: 20
+backoff: 2
+```
+
+---
+
+### Step 3: Loop Name
+
+After gathering paradigm-specific parameters, ask for the loop name:
+
+```yaml
+questions:
+  - question: "What should this loop be called?"
+    header: "Loop name"
+    multiSelect: false
+    options:
+      - label: "<auto-suggested-name>"
+        description: "Based on your selections"
+      - label: "Custom name"
+        description: "Enter your own name"
+```
+
+**Auto-suggest names based on paradigm:**
+- Goal: `fix-<targets>` (e.g., `fix-types-and-lint`)
+- Invariants: `<constraint-names>-guardian` (e.g., `tests-types-lint-guardian`)
+- Convergence: `reduce-<metric>` or `increase-<metric>` (e.g., `reduce-lint-errors`)
+- Imperative: `<step-summary>-loop` (e.g., `fix-test-check-loop`)
+
+### Step 4: Preview and Confirm
+
+Display the generated YAML and ask for confirmation:
+
+```
+Here's your loop configuration:
+
+```yaml
+<generated-yaml>
+```
+
+This will create: .loops/<name>.yaml
+```
+
+Use AskUserQuestion:
+```yaml
+questions:
+  - question: "Save this loop configuration?"
+    header: "Confirm"
+    multiSelect: false
+    options:
+      - label: "Yes, save and validate"
+        description: "Save to .loops/<name>.yaml and run validation"
+      - label: "No, start over"
+        description: "Discard and restart the wizard"
+```
+
+### Step 5: Save and Validate
+
+If confirmed:
+
+1. **Create directory if needed:**
+   ```bash
+   mkdir -p .loops
+   ```
+
+2. **Check for existing file:**
+   ```bash
+   test -f .loops/<name>.yaml && echo "EXISTS" || echo "OK"
+   ```
+
+   If exists, ask:
+   ```yaml
+   questions:
+     - question: "A loop with this name already exists. Overwrite?"
+       header: "Overwrite"
+       multiSelect: false
+       options:
+         - label: "Yes, overwrite"
+           description: "Replace the existing loop configuration"
+         - label: "No, choose different name"
+           description: "Go back and pick a new name"
+   ```
+
+3. **Write the file** using the Write tool:
+   - Path: `.loops/<name>.yaml`
+   - Content: The generated YAML
+
+4. **Validate** using ll-loop CLI:
+   ```bash
+   ll-loop validate <name>
+   ```
+
+5. **Report results:**
+
+   On success:
+   ```
+   Loop created successfully!
+
+   File: .loops/<name>.yaml
+   States: <list-of-states>
+   Initial: <initial-state>
+   Max iterations: <max>
+
+   Run now with: ll-loop <name>
+   ```
+
+   On validation failure:
+   ```
+   Loop saved but validation failed:
+   <error-message>
+
+   Please fix the configuration at .loops/<name>.yaml
+   ```
+
+## Quick Reference
+
+### Paradigm Decision Tree
+
+```
+What are you trying to do?
+│
+├─ Fix a specific problem → Goal paradigm
+│   "Run check, if fails run fix, repeat until passes"
+│
+├─ Maintain multiple standards → Invariants paradigm
+│   "Check A, fix A if needed, check B, fix B if needed, ..."
+│
+├─ Reduce/increase a metric → Convergence paradigm
+│   "Measure value, if not at target, apply fix, measure again"
+│
+└─ Run ordered steps → Imperative paradigm
+    "Do step 1, do step 2, check if done, repeat if not"
+```
+
+### Common Configurations
+
+**Quick lint fix:**
+```yaml
+paradigm: goal
+name: "quick-lint-fix"
+goal: "Lint passes"
+tools:
+  - "ruff check src/"
+  - "ruff check --fix src/"
+max_iterations: 5
+```
+
+**Full quality gate:**
+```yaml
+paradigm: invariants
+name: "full-quality-gate"
+constraints:
+  - name: "types"
+    check: "mypy src/"
+    fix: "/ll:manage_issue bug fix"
+  - name: "lint"
+    check: "ruff check src/"
+    fix: "ruff check --fix src/"
+  - name: "tests"
+    check: "pytest"
+    fix: "/ll:manage_issue bug fix"
+maintain: false
+max_iterations: 30
+```
+
+**Coverage improvement:**
+```yaml
+paradigm: convergence
+name: "improve-coverage"
+check: "pytest --cov=src --cov-report=term | grep TOTAL | awk '{print $4}' | tr -d '%'"
+toward: 80
+using: "/ll:manage_issue feature implement"
+tolerance: 1
+max_iterations: 20
+```
