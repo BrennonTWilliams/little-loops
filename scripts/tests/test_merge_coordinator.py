@@ -208,6 +208,180 @@ Merge with strategy ort failed."""
         assert coordinator._is_untracked_files_error(error_message) is False
 
 
+class TestDetectConflictCommit:
+    """Tests for _detect_conflict_commit extraction."""
+
+    def test_extracts_commit_hash_from_dropping_message(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should extract 40-char hash from 'dropping' message."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        error_message = """From https://github.com/example/repo
+ * branch              main       -> FETCH_HEAD
+Rebasing (54/218)
+dropping ae3b85ec1cac501058f6e5da362be37be1c99801 feat(ai): add stall detection
+"""
+
+        commit_hash = coordinator._detect_conflict_commit(error_message)
+        assert commit_hash == "ae3b85ec1cac501058f6e5da362be37be1c99801"
+
+    def test_returns_none_when_no_dropping_message(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should return None when 'dropping' pattern not found."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        error_message = "error: could not apply ae3b85ec1cac501058f6e5da362be37be1c99801"
+
+        commit_hash = coordinator._detect_conflict_commit(error_message)
+        assert commit_hash is None
+
+    def test_returns_none_for_short_hash(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should return None for short 7-char hashes (only match 40-char)."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        error_message = "dropping ae3b85ec some commit message"
+
+        commit_hash = coordinator._detect_conflict_commit(error_message)
+        assert commit_hash is None
+
+    def test_case_insensitive_hash_detection(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should match uppercase hex characters."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        error_message = "dropping AE3B85EC1CAC501058F6E5DA362BE37BE1C99801 feat: add feature"
+
+        commit_hash = coordinator._detect_conflict_commit(error_message)
+        assert commit_hash == "AE3B85EC1CAC501058F6E5DA362BE37BE1C99801"
+
+    def test_returns_none_for_empty_output(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should return None for empty error output."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        commit_hash = coordinator._detect_conflict_commit("")
+        assert commit_hash is None
+
+    def test_handles_multiline_error_output(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should extract hash from full realistic error output."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        error_message = """From https://github.com/BrennonTWilliams/blender-agents
+ * branch              main       -> FETCH_HEAD
+Rebasing (54/141)
+dropping ae3b85ec1cac501058f6e5da362be37be1c99801 feat(ai): add stall detectio
+error: could not apply ae3b85ec1cac501058f6e5da362be37be1c99801
+"""
+
+        commit_hash = coordinator._detect_conflict_commit(error_message)
+        assert commit_hash == "ae3b85ec1cac501058f6e5da362be37be1c99801"
+
+
+class TestProblematicCommitTracking:
+    """Tests for tracking problematic commits across merge operations."""
+
+    def test_first_conflict_adds_commit_to_tracking(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """First rebase conflict should track the problematic commit."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Simulate detecting a conflict commit
+        conflict_output = (
+            "Rebasing (1/2)\n"
+            "dropping abcdef1234567890abcdef1234567890abcdef12 test message\n"
+        )
+
+        conflict_commit = coordinator._detect_conflict_commit(conflict_output)
+        assert conflict_commit == "abcdef1234567890abcdef1234567890abcdef12"
+
+        # Add to problematic commits
+        coordinator._problematic_commits.add(conflict_commit)
+        assert conflict_commit in coordinator._problematic_commits
+
+    def test_repeated_conflict_detected_as_known(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should detect when same commit causes conflict again."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        problematic = "abc123def456789012345678901234567890abc1"
+        coordinator._problematic_commits.add(problematic)
+
+        # Simulate conflict output with same commit
+        error_output = f"dropping {problematic} conflict message"
+        detected = coordinator._detect_conflict_commit(error_output)
+
+        assert detected == problematic
+        assert detected in coordinator._problematic_commits
+
+    def test_multiple_commits_tracked_independently(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should track multiple problematic commits separately."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        commit1 = "1111111111111111111111111111111111111111"
+        commit2 = "2222222222222222222222222222222222222222"
+        commit3 = "3333333333333333333333333333333333333333"
+
+        coordinator._problematic_commits.add(commit1)
+        coordinator._problematic_commits.add(commit2)
+        coordinator._problematic_commits.add(commit3)
+
+        assert len(coordinator._problematic_commits) == 3
+        assert commit1 in coordinator._problematic_commits
+        assert commit2 in coordinator._problematic_commits
+        assert commit3 in coordinator._problematic_commits
+
+    def test_empty_tracking_set_initially(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Problematic commits set should be empty initially."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        assert len(coordinator._problematic_commits) == 0
+        assert isinstance(coordinator._problematic_commits, set)
+
+
 class TestStashLocalChanges:
     """Tests for _stash_local_changes functionality."""
 

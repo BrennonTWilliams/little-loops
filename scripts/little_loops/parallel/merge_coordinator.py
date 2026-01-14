@@ -74,6 +74,7 @@ class MergeCoordinator:
         self._current_issue_id: str | None = (
             None  # Track current issue for stash failure attribution
         )
+        self._problematic_commits: set[str] = set()  # Track commits causing repeated rebase conflicts
 
     def start(self) -> None:
         """Start the merge coordinator background thread."""
@@ -545,6 +546,25 @@ class MergeCoordinator:
         ]
         return any(indicator in error_output for indicator in indicators)
 
+    def _detect_conflict_commit(self, error_output: str) -> str | None:
+        """Extract commit hash from rebase conflict output.
+
+        Looks for patterns like:
+        - "dropping ae3b85ec1cac501058f6e5da362be37be1c99801 feat(ai): add stall detectio"
+
+        Args:
+            error_output: The stderr/stdout from the failed git pull --rebase
+
+        Returns:
+            The 40-character commit hash if found, None otherwise
+        """
+        import re
+
+        # Pattern: "dropping <40-char-hash>" followed by space and message
+        # Match only full 40-char hashes to avoid false positives
+        match = re.search(r"dropping\s+([a-f0-9]{40})\s+", error_output, re.IGNORECASE)
+        return match.group(1) if match else None
+
     def _check_and_recover_index(self) -> bool:
         """Check git index health and attempt recovery if needed.
 
@@ -758,14 +778,55 @@ class MergeCoordinator:
 
                 # Check if rebase conflicted - must abort before continuing
                 if self._is_rebase_in_progress():
-                    self.logger.warning(
-                        f"Pull --rebase failed with conflicts: {error_output[:200]}"
-                    )
-                    if not self._abort_rebase_if_in_progress():
-                        raise RuntimeError("Failed to recover from rebase conflict during pull")
-                    # After aborting rebase, we're back to pre-pull state
-                    # Continue without the pull - merge may still work or conflict
-                    self.logger.info("Continuing without pull after rebase abort")
+                    conflict_commit = self._detect_conflict_commit(error_output)
+
+                    if conflict_commit and conflict_commit in self._problematic_commits:
+                        # Known problematic commit - use merge strategy instead
+                        self.logger.info(
+                            f"Repeated rebase conflict with {conflict_commit[:8]}, "
+                            f"using merge strategy (git pull --no-rebase)"
+                        )
+                        if not self._abort_rebase_if_in_progress():
+                            raise RuntimeError("Failed to recover from rebase conflict during pull")
+
+                        # Attempt merge strategy pull
+                        merge_pull_result = self._git_lock.run(
+                            ["pull", "--no-rebase", "origin", "main"],
+                            cwd=self.repo_path,
+                            timeout=60,
+                        )
+
+                        if merge_pull_result.returncode != 0:
+                            self.logger.warning(
+                                f"Merge strategy pull also failed: {merge_pull_result.stderr[:200]}"
+                            )
+                            # Continue anyway - merge may still work or fail appropriately
+                        else:
+                            self.logger.info(f"Merge strategy pull succeeded for {conflict_commit[:8]}")
+
+                    else:
+                        # First time seeing this conflict or couldn't extract commit
+                        if conflict_commit:
+                            self._problematic_commits.add(conflict_commit)
+                            self.logger.warning(
+                                f"New rebase conflict with {conflict_commit[:8]}, "
+                                f"tracking for future merges (will use merge strategy on repeat)"
+                            )
+                        else:
+                            self.logger.warning(
+                                "Rebase conflict detected (could not extract commit hash), "
+                                "tracking for future merges"
+                            )
+
+                        self.logger.warning(
+                            f"Pull --rebase failed with conflicts: {error_output[:200]}"
+                        )
+
+                        if not self._abort_rebase_if_in_progress():
+                            raise RuntimeError("Failed to recover from rebase conflict during pull")
+                        # After aborting rebase, we're back to pre-pull state
+                        # Continue without the pull - merge may still work or conflict
+                        self.logger.info("Continuing without pull after rebase abort")
 
                 elif self._is_local_changes_error(error_output):
                     self.logger.warning(

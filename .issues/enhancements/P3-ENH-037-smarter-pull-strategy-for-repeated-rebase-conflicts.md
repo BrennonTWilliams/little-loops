@@ -183,7 +183,7 @@ Allow users to configure the default strategy:
 ## Affected Components
 
 - **Tool**: ll-parallel
-- **Module**: `scripts/little_loops/parallel/merge_coordinator.py` (lines 737-757)
+- **Module**: `scripts/little_loops/parallel/merge_coordinator.py` (lines 748-768)
 
 ## Acceptance Criteria
 
@@ -223,3 +223,35 @@ None
 ## Status
 
 **Open** | Created: 2026-01-13 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-14
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/parallel/merge_coordinator.py`:
+  - Added `_problematic_commits: set[str]` instance variable to track commits causing repeated rebase conflicts (line 77)
+  - Added `_detect_conflict_commit()` method to extract 40-char commit hash from rebase conflict output (lines 549-566)
+  - Modified pull failure handling (lines 775-838) to:
+    - Extract conflict commit from rebase error output
+    - On first conflict: track commit, abort rebase, continue without pull (existing behavior)
+    - On repeated conflict: use `git pull --no-rebase` (merge strategy) instead of aborting
+    - Log clear messages distinguishing new vs. known conflicts
+- `scripts/tests/test_merge_coordinator.py`:
+  - Added `TestDetectConflictCommit` class with 6 tests for commit hash extraction (lines 211-303)
+  - Added `TestProblematicCommitTracking` class with 4 tests for state tracking (lines 306-382)
+
+### Verification Results
+- Tests: PASS (1080 tests passed, including 10 new tests)
+- Lint: PASS (ruff check on modified files)
+- Types: PASS (mypy on merge_coordinator.py)
+
+### Implementation Notes
+- Implemented Option 1 from the issue proposal (track problematic commits, use merge strategy fallback)
+- Skipped persistent state storage - per-process tracking is sufficient for ll-parallel runs
+- Skipped config options - kept simple with automatic adaptive behavior
+- The merge strategy (`git pull --no-rebase`) creates merge commits, which is acceptable for the coordination repository
