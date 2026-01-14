@@ -116,7 +116,12 @@ def _validate_evaluator(
                     path=f"{path}.direction",
                 )
             )
-        if evaluate.tolerance is not None and evaluate.tolerance < 0:
+        # Only validate tolerance if it's a numeric value (not an interpolation string)
+        if (
+            evaluate.tolerance is not None
+            and isinstance(evaluate.tolerance, (int, float))
+            and evaluate.tolerance < 0
+        ):
             errors.append(
                 ValidationError(
                     message="Tolerance cannot be negative",

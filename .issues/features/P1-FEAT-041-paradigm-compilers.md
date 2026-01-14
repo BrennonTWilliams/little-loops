@@ -297,3 +297,31 @@ class TestImperativeCompiler:
 ## Reference
 
 - Design doc: `docs/generalized-fsm-loop.md` sections "Paradigm Definitions" and "Paradigm Compilation"
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-13
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/compilers.py`: Created new module with:
+  - `compile_paradigm()` dispatcher function
+  - `compile_goal()` - goal paradigm compiler (evaluate/fix/done)
+  - `compile_convergence()` - convergence paradigm compiler (measure/apply/done with context)
+  - `compile_invariants()` - invariants paradigm compiler (chained constraints with maintain)
+  - `compile_imperative()` - imperative paradigm compiler (step sequence with until check)
+  - `_slugify()` helper for generating FSM names
+  - `_passthrough_fsm()` for direct FSM specs
+- `scripts/little_loops/fsm/__init__.py`: Added `compile_paradigm` to public exports
+- `scripts/little_loops/fsm/schema.py`: Updated `EvaluateConfig.tolerance` to accept strings for interpolation
+- `scripts/little_loops/fsm/validation.py`: Updated tolerance validation to handle interpolation strings
+- `scripts/tests/test_fsm_compilers.py`: Created comprehensive test suite with 54 tests
+
+### Verification Results
+- Tests: PASS (848 total, 54 new compiler tests)
+- Lint: PASS
+- Types: PASS
+- All acceptance criteria met

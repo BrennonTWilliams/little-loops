@@ -58,7 +58,7 @@ class EvaluateConfig:
     ]
     operator: str | None = None
     target: int | float | str | None = None
-    tolerance: float | None = None
+    tolerance: float | str | None = None  # str for interpolation (e.g., "${context.tolerance}")
     pattern: str | None = None
     negate: bool = False
     path: str | None = None

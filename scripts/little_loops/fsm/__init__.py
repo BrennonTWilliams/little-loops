@@ -1,7 +1,7 @@
-"""FSM loop schema and validation.
+"""FSM loop schema, validation, and paradigm compilation.
 
-This module provides the type-safe representation of FSM loop definitions
-and validation logic for the little-loops FSM system.
+This module provides the type-safe representation of FSM loop definitions,
+validation logic, and paradigm compilers for the little-loops FSM system.
 
 Public exports:
     FSMLoop: Main dataclass representing a complete loop definition
@@ -12,8 +12,10 @@ Public exports:
     ValidationError: Structured validation error
     validate_fsm: Validate FSM structure
     load_and_validate: Load YAML and validate
+    compile_paradigm: Compile high-level paradigm spec to FSMLoop
 """
 
+from little_loops.fsm.compilers import compile_paradigm
 from little_loops.fsm.schema import (
     EvaluateConfig,
     FSMLoop,
@@ -34,6 +36,7 @@ __all__ = [
     "RouteConfig",
     "StateConfig",
     "ValidationError",
+    "compile_paradigm",
     "load_and_validate",
     "validate_fsm",
 ]
