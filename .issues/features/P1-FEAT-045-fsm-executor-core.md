@@ -503,3 +503,29 @@ class TestFSMExecutor:
 ## Reference
 
 - Design doc: `docs/generalized-fsm-loop.md` sections "Execution Engine", "Two-Layer Transition System", "Security Model"
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-13
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/executor.py`: Created FSM Executor with FSMExecutor class, ExecutionResult, ActionResult dataclasses, DefaultActionRunner, and ActionRunner protocol
+- `scripts/little_loops/fsm/__init__.py`: Added exports for FSMExecutor, ExecutionResult, ActionResult, ActionRunner
+- `scripts/tests/test_fsm_executor.py`: Created comprehensive test suite with 24 tests covering all acceptance criteria
+
+### Implementation Highlights
+- Two-layer transition system (evaluate → route) as per design doc
+- Maintain mode restarts from terminal states with on_maintain target
+- Variable interpolation for actions using ${context.*}, ${state.*}, ${loop.*}
+- Event emission for full observability
+- $current special token for self-routing
+- DefaultActionRunner executes shell via subprocess, slash commands via Claude CLI
+
+### Verification Results
+- Tests: PASS (24/24 tests pass)
+- Lint: PASS
+- Types: PASS
