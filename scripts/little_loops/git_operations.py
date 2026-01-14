@@ -14,6 +14,7 @@ from little_loops.logger import Logger
 # Changes to files in these directories don't count as "real work".
 EXCLUDED_DIRECTORIES = (
     ".issues/",
+    "issues/",  # Support non-dotted variant (issues.base_dir = "issues")
     ".speckit/",
     "thoughts/",
     ".worktrees/",

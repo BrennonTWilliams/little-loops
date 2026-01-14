@@ -17,6 +17,7 @@ if TYPE_CHECKING:
 # Changes to files in these directories don't count as "real work".
 EXCLUDED_DIRECTORIES = (
     ".issues/",
+    "issues/",  # Support non-dotted variant (issues.base_dir = "issues")
     ".speckit/",
     "thoughts/",
     ".worktrees/",

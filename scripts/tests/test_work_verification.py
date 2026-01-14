@@ -28,6 +28,10 @@ class TestExcludedDirectories:
         """EXCLUDED_DIRECTORIES includes .issues/ directory."""
         assert ".issues/" in EXCLUDED_DIRECTORIES
 
+    def test_excluded_directories_contains_issues_no_dot(self) -> None:
+        """EXCLUDED_DIRECTORIES includes issues/ directory (without dot prefix)."""
+        assert "issues/" in EXCLUDED_DIRECTORIES
+
     def test_excluded_directories_contains_thoughts(self) -> None:
         """EXCLUDED_DIRECTORIES includes thoughts/ directory."""
         assert "thoughts/" in EXCLUDED_DIRECTORIES
@@ -51,6 +55,12 @@ class TestFilterExcludedFiles:
     def test_filters_issues_directory(self) -> None:
         """Files in .issues/ directory are filtered out."""
         files = [".issues/bugs/BUG-001.md", "src/main.py"]
+        result = filter_excluded_files(files)
+        assert result == ["src/main.py"]
+
+    def test_filters_issues_directory_no_dot(self) -> None:
+        """Files in issues/ directory (without dot) are filtered out."""
+        files = ["issues/bugs/BUG-001.md", "src/main.py"]
         result = filter_excluded_files(files)
         assert result == ["src/main.py"]
 
