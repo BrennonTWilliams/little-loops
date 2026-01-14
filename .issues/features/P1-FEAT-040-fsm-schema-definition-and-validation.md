@@ -180,3 +180,23 @@ class TestFSMSchema:
 ## Reference
 
 - Design doc: `docs/generalized-fsm-loop.md` sections "Universal FSM Schema" and "Two-Layer Transition System"
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-13
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/__init__.py`: Package exports for FSM module
+- `scripts/little_loops/fsm/schema.py`: Core dataclasses (FSMLoop, StateConfig, EvaluateConfig, RouteConfig, LLMConfig) with full type hints, to_dict(), and from_dict() methods
+- `scripts/little_loops/fsm/validation.py`: ValidationError dataclass, validate_fsm() function, load_and_validate() for YAML loading
+- `scripts/little_loops/fsm/fsm-loop-schema.json`: JSON Schema for YAML IDE validation
+- `scripts/tests/test_fsm_schema.py`: 48 unit tests covering all acceptance criteria
+
+### Verification Results
+- Tests: PASS (48 tests for FSM schema, 794 total)
+- Lint: PASS (ruff check)
+- Types: PASS (mypy)

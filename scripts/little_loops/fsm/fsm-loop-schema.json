@@ -1,0 +1,273 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "little-loops://fsm-loop-schema.json",
+  "title": "FSM Loop Definition",
+  "description": "Schema for little-loops FSM loop definitions (.loops/*.yaml)",
+  "type": "object",
+  "required": ["name", "initial", "states"],
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Unique loop identifier"
+    },
+    "initial": {
+      "type": "string",
+      "description": "Starting state name (must exist in states)"
+    },
+    "states": {
+      "type": "object",
+      "description": "State definitions",
+      "additionalProperties": {
+        "$ref": "#/definitions/stateConfig"
+      },
+      "minProperties": 1
+    },
+    "paradigm": {
+      "type": "string",
+      "description": "Source paradigm (for reference)",
+      "enum": ["goal", "convergence", "invariants", "imperative", "fsm"]
+    },
+    "context": {
+      "type": "object",
+      "description": "User-defined shared variables",
+      "additionalProperties": true
+    },
+    "scope": {
+      "type": "array",
+      "description": "Paths this loop operates on (for concurrency control)",
+      "items": {
+        "type": "string"
+      }
+    },
+    "max_iterations": {
+      "type": "integer",
+      "description": "Safety limit for loop iterations",
+      "default": 50,
+      "minimum": 1
+    },
+    "backoff": {
+      "type": "number",
+      "description": "Seconds between iterations",
+      "minimum": 0
+    },
+    "timeout": {
+      "type": "integer",
+      "description": "Max total runtime in seconds (loop-level)",
+      "minimum": 1
+    },
+    "maintain": {
+      "type": "boolean",
+      "description": "If true, restart after completion",
+      "default": false
+    },
+    "llm": {
+      "$ref": "#/definitions/llmConfig"
+    }
+  },
+  "additionalProperties": false,
+  "definitions": {
+    "stateConfig": {
+      "type": "object",
+      "description": "Configuration for a single FSM state",
+      "properties": {
+        "action": {
+          "type": "string",
+          "description": "Command to execute (shell or slash command)"
+        },
+        "evaluate": {
+          "$ref": "#/definitions/evaluateConfig"
+        },
+        "route": {
+          "type": "object",
+          "description": "Full routing table (verdict -> state mapping)",
+          "additionalProperties": {
+            "type": "string"
+          }
+        },
+        "on_success": {
+          "type": "string",
+          "description": "Shorthand for success verdict routing"
+        },
+        "on_failure": {
+          "type": "string",
+          "description": "Shorthand for failure verdict routing"
+        },
+        "on_error": {
+          "type": "string",
+          "description": "Shorthand for error verdict routing"
+        },
+        "next": {
+          "type": "string",
+          "description": "Unconditional transition (no evaluation)"
+        },
+        "terminal": {
+          "type": "boolean",
+          "description": "If true, this is an end state",
+          "default": false
+        },
+        "capture": {
+          "type": "string",
+          "description": "Variable name to store action output"
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Action-level timeout in seconds",
+          "minimum": 1
+        },
+        "on_maintain": {
+          "type": "string",
+          "description": "State to transition to when maintain=true and loop completes"
+        }
+      },
+      "additionalProperties": false
+    },
+    "evaluateConfig": {
+      "type": "object",
+      "description": "Evaluator configuration for action result interpretation",
+      "required": ["type"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Evaluator type",
+          "enum": [
+            "exit_code",
+            "output_numeric",
+            "output_json",
+            "output_contains",
+            "convergence",
+            "llm_structured"
+          ]
+        },
+        "operator": {
+          "type": "string",
+          "description": "Comparison operator",
+          "enum": ["eq", "ne", "lt", "le", "gt", "ge"]
+        },
+        "target": {
+          "description": "Target value for comparison",
+          "oneOf": [
+            { "type": "integer" },
+            { "type": "number" },
+            { "type": "string" }
+          ]
+        },
+        "tolerance": {
+          "type": "number",
+          "description": "Acceptable distance from target (for convergence)",
+          "minimum": 0
+        },
+        "pattern": {
+          "type": "string",
+          "description": "Pattern string for output_contains"
+        },
+        "negate": {
+          "type": "boolean",
+          "description": "If true, invert the match result (output_contains)",
+          "default": false
+        },
+        "path": {
+          "type": "string",
+          "description": "JSON path for output_json (jq-style)"
+        },
+        "prompt": {
+          "type": "string",
+          "description": "Custom prompt for llm_structured"
+        },
+        "schema": {
+          "type": "object",
+          "description": "Custom JSON schema for llm_structured response"
+        },
+        "min_confidence": {
+          "type": "number",
+          "description": "Minimum confidence threshold for llm_structured",
+          "default": 0.5,
+          "minimum": 0,
+          "maximum": 1
+        },
+        "uncertain_suffix": {
+          "type": "boolean",
+          "description": "If true, append _uncertain to low-confidence verdicts",
+          "default": false
+        },
+        "source": {
+          "type": "string",
+          "description": "Override default source (current action output)"
+        },
+        "previous": {
+          "type": "string",
+          "description": "Previous value reference for convergence"
+        },
+        "direction": {
+          "type": "string",
+          "description": "Optimization direction for convergence",
+          "enum": ["minimize", "maximize"],
+          "default": "minimize"
+        }
+      },
+      "additionalProperties": false,
+      "allOf": [
+        {
+          "if": {
+            "properties": { "type": { "const": "output_numeric" } }
+          },
+          "then": {
+            "required": ["operator", "target"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "output_json" } }
+          },
+          "then": {
+            "required": ["path", "operator", "target"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "output_contains" } }
+          },
+          "then": {
+            "required": ["pattern"]
+          }
+        },
+        {
+          "if": {
+            "properties": { "type": { "const": "convergence" } }
+          },
+          "then": {
+            "required": ["target"]
+          }
+        }
+      ]
+    },
+    "llmConfig": {
+      "type": "object",
+      "description": "LLM evaluation configuration",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "If false, disable LLM evaluation entirely",
+          "default": true
+        },
+        "model": {
+          "type": "string",
+          "description": "Model identifier for LLM calls",
+          "default": "claude-sonnet-4-20250514"
+        },
+        "max_tokens": {
+          "type": "integer",
+          "description": "Maximum tokens for evaluation response",
+          "default": 256,
+          "minimum": 1
+        },
+        "timeout": {
+          "type": "integer",
+          "description": "Timeout for LLM calls in seconds",
+          "default": 30,
+          "minimum": 1
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}
