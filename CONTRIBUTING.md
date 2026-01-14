@@ -79,12 +79,14 @@ little-loops/
 ├── docs/                 # Documentation
 │   ├── TROUBLESHOOTING.md  # Common issues and solutions
 │   ├── ARCHITECTURE.md     # System design diagrams
+│   ├── SESSION_HANDOFF.md  # Context management guide
+│   ├── generalized-fsm-loop.md  # FSM loop system
 │   └── API.md              # Python API reference
 └── scripts/              # Python CLI tools
     ├── pyproject.toml    # Package configuration
     ├── tests/            # Test suite
     └── little_loops/     # Main package
-        ├── cli.py        # CLI entry points
+        ├── cli.py        # CLI entry points (ll-auto, ll-parallel, ll-messages, ll-loop)
         ├── config.py     # Configuration management
         ├── state.py      # State persistence
         ├── issue_manager.py

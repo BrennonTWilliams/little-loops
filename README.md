@@ -330,6 +330,27 @@ ll-auto --skip BUG-003           # Skip specific issues
 ll-auto --config /path/to/repo   # Specify project root
 ```
 
+### ll-loop
+
+FSM-based automation loop execution (create loops with `/ll:create-loop`):
+
+```bash
+ll-loop run <loop-name>          # Execute a loop by name
+ll-loop run .loops/fix-types.yaml # Execute with full path
+ll-loop test-analyze-fix         # Quick execution shortcut
+ll-loop fix-types --max-iterations 5  # Set iteration limit
+ll-loop lint-cycle --background   # Run in background
+ll-loop run .loops/fix-types.yaml --dry-run  # Preview mode
+ll-loop list                     # List all available loops
+ll-loop list --running           # List only running loops
+ll-loop status <loop-name>       # Check loop status
+ll-loop stop <loop-name>         # Stop a running loop
+ll-loop resume <loop-name>       # Resume a stopped loop
+ll-loop history <loop-name>      # View loop execution history
+```
+
+For loop authoring paradigms and examples, see [FSM Loop Guide](docs/generalized-fsm-loop.md).
+
 ### ll-parallel
 
 Parallel issue processing with git worktrees:
@@ -466,6 +487,7 @@ For detailed solutions, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
 For detailed documentation, see:
 
+- [FSM Loop Guide](docs/generalized-fsm-loop.md) - Automation loop system and authoring paradigms
 - [Session Handoff Guide](docs/SESSION_HANDOFF.md) - Context management and session continuation
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
 - [Architecture Overview](docs/ARCHITECTURE.md) - System design and diagrams
