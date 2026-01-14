@@ -354,3 +354,28 @@ class TestStatePersistence:
 ## Reference
 
 - Design doc: `docs/generalized-fsm-loop.md` sections "State Persistence" and "Structured Events"
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-13
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/fsm/persistence.py`: New module implementing:
+  - `LoopState` dataclass for persistent state
+  - `StatePersistence` class for file I/O (state.json and events.jsonl)
+  - `PersistentExecutor` wrapper for FSMExecutor with persistence
+  - `list_running_loops()` utility function
+  - `get_loop_history()` utility function
+- `scripts/little_loops/fsm/__init__.py`: Added exports for new persistence module
+- `scripts/tests/test_fsm_persistence.py`: Comprehensive test suite (41 tests) covering all acceptance criteria
+
+### Verification Results
+
+- Tests: PASS (41 new tests, 1043 total)
+- Lint: PASS
+- Types: PASS

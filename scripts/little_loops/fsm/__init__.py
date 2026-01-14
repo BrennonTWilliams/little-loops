@@ -43,6 +43,13 @@ Public exports:
     ExecutionResult: Result from FSM execution
     ActionResult: Result from action execution
     ActionRunner: Protocol for action execution (for testing/customization)
+
+    # Persistence
+    LoopState: Persistent state for loop execution
+    StatePersistence: File I/O for state and events
+    PersistentExecutor: Executor wrapper with persistence
+    list_running_loops: List all loops with saved state
+    get_loop_history: Get event history for a loop
 """
 
 from little_loops.fsm.compilers import compile_paradigm
@@ -77,6 +84,13 @@ from little_loops.fsm.schema import (
     RouteConfig,
     StateConfig,
 )
+from little_loops.fsm.persistence import (
+    LoopState,
+    PersistentExecutor,
+    StatePersistence,
+    get_loop_history,
+    list_running_loops,
+)
 from little_loops.fsm.validation import (
     ValidationError,
     load_and_validate,
@@ -96,8 +110,11 @@ __all__ = [
     "InterpolationContext",
     "InterpolationError",
     "LLMConfig",
+    "LoopState",
+    "PersistentExecutor",
     "RouteConfig",
     "StateConfig",
+    "StatePersistence",
     "ValidationError",
     "compile_paradigm",
     "evaluate",
@@ -107,8 +124,10 @@ __all__ = [
     "evaluate_output_contains",
     "evaluate_output_json",
     "evaluate_output_numeric",
+    "get_loop_history",
     "interpolate",
     "interpolate_dict",
+    "list_running_loops",
     "load_and_validate",
     "validate_fsm",
 ]
