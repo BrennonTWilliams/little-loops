@@ -813,21 +813,11 @@ class MergeCoordinator:
                     self._handle_untracked_conflict(request, error_output)
                     return
 
-                # Check for pre-existing unmerged files (dirty index)
-                if self._is_unmerged_files_error(error_output):
-                    self.logger.warning(
-                        f"Merge blocked by unmerged files in index: {error_output[:200]}"
-                    )
-                    # Attempt recovery and retry once
-                    if request.retry_count < 1 and self._check_and_recover_index():
-                        request.retry_count += 1
-                        self.logger.info("Recovered from unmerged files, retrying merge")
-                        self._queue.put(request)
-                        return
-                    raise RuntimeError(f"Merge failed due to unmerged files: {error_output[:200]}")
-
-                # Check for merge conflict
-                if "CONFLICT" in error_output:
+                # Check for merge conflict (including unmerged files from current merge)
+                # Unmerged files at this point are genuine conflicts from the current merge
+                # attempt, not leftover state from previous operations (those are cleaned up
+                # by _check_and_recover_index() at the start of _process_merge)
+                if self._is_unmerged_files_error(error_output) or "CONFLICT" in error_output:
                     self._handle_conflict(request)
                     return
                 else:

@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from little_loops.parallel.merge_coordinator import MergeCoordinator
-from little_loops.parallel.types import MergeRequest, ParallelConfig, WorkerResult
+from little_loops.parallel.types import MergeRequest, MergeStatus, ParallelConfig, WorkerResult
 
 
 @pytest.fixture
@@ -1149,3 +1149,170 @@ class TestWaitForCompletion:
 
         # Should return True after both are cleared
         assert result is True
+
+
+class TestUnmergedFilesHandling:
+    """Tests for handling unmerged files during merge operations."""
+
+    def test_unmerged_files_from_current_merge_routes_to_conflict_handler(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Unmerged files from current merge attempt should route to conflict handler.
+
+        This test verifies the BUG-018 reopened fix: genuine merge conflicts
+        should go through the conflict handler's rebase retry flow, not the
+        confusing retry-after-reset path.
+        """
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create a worktree
+        worktree_path = temp_git_repo / ".worktrees" / "test-branch"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        # Create a branch in the worktree
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "parallel/test-branch", str(worktree_path)],
+            cwd=temp_git_repo,
+            capture_output=True,
+            check=True,
+        )
+
+        # Create a conflicting change in the worktree
+        test_file = worktree_path / "test.txt"
+        test_file.write_text("conflicting content from branch")
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=worktree_path,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "conflicting change"],
+            cwd=worktree_path,
+            capture_output=True,
+            check=True,
+        )
+
+        # Create a conflicting change on main
+        main_test_file = temp_git_repo / "test.txt"
+        main_test_file.write_text("conflicting content from main")
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=temp_git_repo,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "conflicting change on main"],
+            cwd=temp_git_repo,
+            capture_output=True,
+            check=True,
+        )
+
+        # Create a merge request
+        worker_result = WorkerResult(
+            issue_id="ENH-724",
+            branch_name="parallel/test-branch",
+            worktree_path=worktree_path,
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        # Mock _handle_conflict to verify it's called instead of retry-after-reset
+        handle_conflict_called = []
+
+        def mock_handle_conflict(req: MergeRequest) -> None:
+            handle_conflict_called.append(req)
+            # Don't actually run rebase, just mark as failed to avoid infinite loop
+            coordinator._handle_failure(req, "Test: conflict handler was called")
+
+        coordinator._handle_conflict = mock_handle_conflict
+
+        # Mock _check_and_recover_index to verify it's called at start but not during conflict
+        index_recovery_count = []
+
+        original_check_and_recover_index = coordinator._check_and_recover_index
+
+        def mock_check_and_recover_index() -> bool:
+            index_recovery_count.append(len(index_recovery_count))
+            return original_check_and_recover_index()
+
+        coordinator._check_and_recover_index = mock_check_and_recover_index
+
+        # Process the merge (it should fail but call the right handlers)
+        coordinator._process_merge(request)
+
+        # Verify _check_and_recover_index was called at the start (before merge)
+        assert len(index_recovery_count) >= 1, "Index recovery should be called at start"
+
+        # Verify _handle_conflict was called (not retry-after-reset)
+        assert len(handle_conflict_called) == 1, "Conflict handler should be called once"
+        assert handle_conflict_called[0] is request
+
+        # Verify the issue was marked as failed
+        assert request.status == MergeStatus.FAILED
+        assert "conflict handler was called" in request.error
+
+    def test_pre_existing_unmerged_files_cleaned_before_merge(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Pre-existing unmerged files from previous operations should be cleaned up.
+
+        This verifies the fix doesn't break recovery for genuine index corruption.
+        """
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create a branch and worktree
+        worktree_path = temp_git_repo / ".worktrees" / "clean-branch"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "parallel/clean-branch", str(worktree_path)],
+            cwd=temp_git_repo,
+            capture_output=True,
+            check=True,
+        )
+
+        # Make a simple change in the worktree
+        test_file = worktree_path / "test.txt"
+        test_file.write_text("branch content")
+        subprocess.run(
+            ["git", "add", "."],
+            cwd=worktree_path,
+            capture_output=True,
+            check=True,
+        )
+        subprocess.run(
+            ["git", "commit", "-m", "branch change"],
+            cwd=worktree_path,
+            capture_output=True,
+            check=True,
+        )
+
+        # Simulate a previous incomplete merge by creating MERGE_HEAD
+        merge_head = temp_git_repo / ".git" / "MERGE_HEAD"
+        merge_head.write_text("abc123")
+
+        # Create a merge request
+        worker_result = WorkerResult(
+            issue_id="BUG-999",
+            branch_name="parallel/clean-branch",
+            worktree_path=worktree_path,
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        # Process the merge
+        coordinator._process_merge(request)
+
+        # Verify the incomplete merge was cleaned up (MERGE_HEAD should be gone)
+        assert not merge_head.exists(), "MERGE_HEAD should be cleaned up"
+
+        # Verify the merge succeeded (no conflict in this case)
+        assert request.status == MergeStatus.SUCCESS

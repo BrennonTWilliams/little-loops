@@ -128,3 +128,111 @@ The BUG-008 fix added stash exclusions for lifecycle file moves to prevent stash
 
 ### Commits
 - See git log for implementation commit
+
+---
+
+## Reopened
+
+- **Date**: 2026-01-14
+- **By**: /analyze_log
+- **Reason**: Issue recurred with merge conflicts in index
+
+### New Evidence
+
+**Log File**: `ll-parallel-blender-agents-debug.log`
+**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**Occurrences**: 2 merge attempts (both failed)
+**Affected External Issues**: ENH-724 (failed)
+
+```
+[14:42:42] Merge blocked by unmerged files in index: Auto-merging src/blender_agents/ai/ooda/executor/mixins/execution_mixin.py
+CONFLICT (content): Merge conflict in src/blender_agents/ai/ooda/executor/mixins/execution_mixin.py
+Auto-merging src/blender_
+[14:42:42] Detected incomplete merge, aborting...
+[14:42:42] Aborted incomplete merge
+[14:42:42] Recovered from unmerged files, retrying merge
+[14:42:42] Processing merge for ENH-724
+[14:42:43] Merge blocked by unmerged files in index: Auto-merging src/blender_agents/ai/ooda/executor/mixins/execution_mixin.py
+CONFLICT (content): Merge conflict in src/blender_agents/ai/ooda/executor/mixins/execution_mixin.py
+Auto-merging src/blender_
+[14:42:43] Merge failed for ENH-724: Merge failed due to unmerged files: Auto-merging src/blender_agents/ai/ooda/executor/mixins/execution_mixin.py
+CONFLICT (content): Merge conflict in src/blender_agents/ai/ooda/executor/mixins/execution_mixin.py
+Auto-merging src/blender_
+```
+
+### Analysis
+
+The original BUG-018 was about merge blocked by "local changes would be overwritten" due to lifecycle file moves. This occurrence is different:
+
+**Key differences from original BUG-018**:
+1. Original: "local changes would be overwritten" error (lifecycle file moves)
+2. This occurrence: "Merge blocked by unmerged files in index" (actual merge conflicts in source code)
+
+**Similarities**:
+1. Both involve merge coordinator failing to complete a merge
+2. Both involve aborting and retrying
+3. Both ultimately fail the issue
+
+**Root cause of this occurrence**:
+- ENH-724 modified `src/blender_agents/ai/ooda/executor/mixins/execution_mixin.py`
+- The same file had conflicts during merge
+- The merge coordinator detected incomplete merge, aborted, and retried
+- The retry also failed with the same conflict
+- This suggests the conflict resolution didn't properly clean the unmerged state
+
+**Possible causes**:
+1. Previous merge attempt left conflicted state in index
+2. The abort didn't fully clean the unmerged files
+3. The source file has genuine conflicts that need manual resolution
+4. The merge retry logic doesn't handle conflicted source files correctly
+
+### Proposed Investigation
+
+1. Check if the merge coordinator properly cleans unmerged state after abort
+2. Verify if source file conflicts are being detected before merge attempts
+3. Consider adding conflict detection/prevention before merge
+4. Evaluate if failed merges should trigger different recovery strategy
+
+---
+
+## Resolution (Reopened Issue)
+
+- **Action**: fix
+- **Completed**: 2026-01-14
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/parallel/merge_coordinator.py`: Removed confusing retry-after-reset logic for unmerged files errors (lines 816-827). Genuine merge conflicts now route directly to `_handle_conflict()` for rebase retry, instead of attempting a useless reset-and-retry.
+- `scripts/tests/test_merge_coordinator.py`: Added 2 new tests for `TestUnmergedFilesHandling` class to verify the fix works correctly.
+
+### Technical Details
+
+**The Problem (Reopened)**:
+The original BUG-018 fix (committing pending lifecycle moves) solved the "local changes would be overwritten" issue. However, a different problem was discovered: genuine source code merge conflicts (e.g., in `execution_mixin.py`) were being treated as "unmerged files in index" errors, triggering a confusing retry-after-reset flow that would never succeed.
+
+**The Root Cause**:
+The error handling at `merge_coordinator.py:817-827` assumed all "unmerged files" errors were index state corruption that could be fixed by resetting. However, when unmerged files are from **genuine merge conflicts** (the current merge attempt found conflicts), resetting and retrying doesn't help - the same conflicts occur again.
+
+**The Fix**:
+Removed the retry-after-reset logic for unmerged files errors. Now:
+1. `_check_and_recover_index()` is still called at the **start** of `_process_merge()` (line 688) to clean up any pre-existing index corruption
+2. When a merge fails with "unmerged files" error **during** the merge attempt, it's treated as a genuine conflict and routed to `_handle_conflict()` for rebase retry
+3. This prevents confusing "Recovered from unmerged files, retrying merge" logs when the conflict is genuine
+
+**Key Changes**:
+- Lines 816-827: Removed retry-after-reset block
+- Lines 816-822: New unified conflict detection that treats both "unmerged files" and "CONFLICT" as genuine merge conflicts
+
+### Verification Results
+- Tests: PASS (1070 tests, 40 in test_merge_coordinator.py)
+- Lint: PASS (ruff check)
+- Types: PASS (mypy)
+
+### Commits
+- See git log for implementation commit
+
+---
+
+## Status
+
+**Completed** | Created: 2026-01-12 | First Completed: 2026-01-12 | Reopened: 2026-01-14 | Final Completed: 2026-01-14 | Priority: P1
