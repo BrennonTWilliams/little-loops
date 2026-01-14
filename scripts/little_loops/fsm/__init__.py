@@ -1,8 +1,8 @@
-"""FSM loop schema, validation, paradigm compilation, and variable interpolation.
+"""FSM loop schema, validation, paradigm compilation, variable interpolation, and evaluators.
 
 This module provides the type-safe representation of FSM loop definitions,
-validation logic, paradigm compilers, and variable interpolation for the
-little-loops FSM system.
+validation logic, paradigm compilers, variable interpolation, and deterministic
+evaluators for the little-loops FSM system.
 
 Public exports:
     FSMLoop: Main dataclass representing a complete loop definition
@@ -18,9 +18,25 @@ Public exports:
     InterpolationError: Exception for interpolation failures
     interpolate: Resolve variables in a string
     interpolate_dict: Recursively resolve variables in a dict
+    EvaluationResult: Result from an evaluator
+    evaluate: Main dispatcher for evaluators
+    evaluate_exit_code: Exit code to verdict mapping
+    evaluate_output_numeric: Numeric comparison evaluator
+    evaluate_output_json: JSON path extraction evaluator
+    evaluate_output_contains: Pattern matching evaluator
+    evaluate_convergence: Progress tracking evaluator
 """
 
 from little_loops.fsm.compilers import compile_paradigm
+from little_loops.fsm.evaluators import (
+    EvaluationResult,
+    evaluate,
+    evaluate_convergence,
+    evaluate_exit_code,
+    evaluate_output_contains,
+    evaluate_output_json,
+    evaluate_output_numeric,
+)
 from little_loops.fsm.interpolation import (
     InterpolationContext,
     InterpolationError,
@@ -42,6 +58,7 @@ from little_loops.fsm.validation import (
 
 __all__ = [
     "EvaluateConfig",
+    "EvaluationResult",
     "FSMLoop",
     "InterpolationContext",
     "InterpolationError",
@@ -50,6 +67,12 @@ __all__ = [
     "StateConfig",
     "ValidationError",
     "compile_paradigm",
+    "evaluate",
+    "evaluate_convergence",
+    "evaluate_exit_code",
+    "evaluate_output_contains",
+    "evaluate_output_json",
+    "evaluate_output_numeric",
     "interpolate",
     "interpolate_dict",
     "load_and_validate",

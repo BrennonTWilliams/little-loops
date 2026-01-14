@@ -344,14 +344,14 @@ def evaluate(
 
 ## Acceptance Criteria
 
-- [ ] `evaluate_exit_code()` maps 0→success, 1→failure, 2+→error
-- [ ] `evaluate_output_numeric()` supports eq, ne, lt, le, gt, ge operators
-- [ ] `evaluate_output_json()` extracts values using jq-style paths
-- [ ] `evaluate_output_contains()` supports regex and substring matching with negate
-- [ ] `evaluate_convergence()` detects target/progress/stall with direction support
-- [ ] All evaluators return `EvaluationResult` with verdict and details
-- [ ] Parse errors produce `error` verdict with descriptive details
-- [ ] `evaluate()` dispatcher routes to correct evaluator
+- [x] `evaluate_exit_code()` maps 0→success, 1→failure, 2+→error
+- [x] `evaluate_output_numeric()` supports eq, ne, lt, le, gt, ge operators
+- [x] `evaluate_output_json()` extracts values using jq-style paths
+- [x] `evaluate_output_contains()` supports regex and substring matching with negate
+- [x] `evaluate_convergence()` detects target/progress/stall with direction support
+- [x] All evaluators return `EvaluationResult` with verdict and details
+- [x] Parse errors produce `error` verdict with descriptive details
+- [x] `evaluate()` dispatcher routes to correct evaluator
 
 ## Testing Requirements
 
@@ -413,3 +413,30 @@ class TestConvergenceEvaluator:
 ## Reference
 
 - Design doc: `docs/generalized-fsm-loop.md` section "Evaluator Types" - "Tier 1: Deterministic Evaluators"
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-13
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/evaluators.py`: Created new module with all five Tier 1 evaluators:
+  - `EvaluationResult` dataclass for standardized results
+  - `evaluate_exit_code()` - Unix exit code mapping
+  - `evaluate_output_numeric()` - Numeric comparison with six operators
+  - `evaluate_output_json()` - JSON path extraction and comparison
+  - `evaluate_output_contains()` - Pattern matching with regex/substring and negate
+  - `evaluate_convergence()` - Progress tracking with interpolation support
+  - `evaluate()` - Main dispatcher routing to appropriate evaluator
+  - `_extract_json_path()` - Helper for jq-style path extraction
+  - `_compare_values()` - Helper for numeric comparisons
+- `scripts/little_loops/fsm/__init__.py`: Added exports for all evaluator functions
+- `scripts/tests/test_fsm_evaluators.py`: Created comprehensive test suite (75 tests)
+
+### Verification Results
+- Tests: PASS (75 tests in test_fsm_evaluators.py, 216 total FSM tests)
+- Lint: PASS (ruff check)
+- Types: PASS (mypy)
