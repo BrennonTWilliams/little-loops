@@ -1522,6 +1522,318 @@ Loop completed: done (1 iteration, 2m 34s)
 
 ---
 
+## Testing Strategy
+
+The two-layer design (evaluate + route) enables isolated testing of each layer. The single LLM touchpoint means only one mock strategy is needed for all LLM-related tests.
+
+### 1. Unit Tests for Compilers
+
+Compilers are "~50-100 lines of Python, small enough to write comprehensive tests."
+
+```python
+# tests/unit/test_compilers.py
+
+class TestConvergenceCompiler:
+    def test_basic_convergence(self):
+        """Minimal convergence spec produces expected FSM."""
+        spec = {
+            "paradigm": "convergence",
+            "name": "reduce-errors",
+            "check": "mypy src/ | grep -c error",
+            "toward": 0,
+            "using": "/ll:check_code fix"
+        }
+        fsm = compile_convergence(spec)
+
+        assert fsm["initial"] == "measure"
+        assert "measure" in fsm["states"]
+        assert "apply" in fsm["states"]
+        assert "done" in fsm["states"]
+        assert fsm["states"]["apply"]["next"] == "measure"
+
+    def test_convergence_with_tolerance(self):
+        """Optional tolerance field propagates to context."""
+        # ...
+
+    def test_missing_required_field_raises(self):
+        """Validation catches missing 'toward' field."""
+        # ...
+```
+
+**Coverage target**: Each paradigm type with valid inputs, edge cases, and validation errors.
+
+### 2. Unit Tests for Evaluators
+
+Tier 1 evaluators are pure functions—deterministic and fast.
+
+```python
+# tests/unit/test_evaluators.py
+
+class TestExitCodeEvaluator:
+    @pytest.mark.parametrize("exit_code,expected_verdict", [
+        (0, "success"),
+        (1, "failure"),
+        (2, "error"),
+        (127, "error"),
+    ])
+    def test_exit_code_mapping(self, exit_code, expected_verdict):
+        result = evaluate_exit_code(exit_code)
+        assert result["verdict"] == expected_verdict
+        assert result["details"]["exit_code"] == exit_code
+
+
+class TestConvergenceEvaluator:
+    def test_target_reached(self):
+        result = evaluate_convergence(
+            current=0, previous=5, target=0, tolerance=0
+        )
+        assert result["verdict"] == "target"
+
+    def test_progress_made(self):
+        result = evaluate_convergence(
+            current=3, previous=5, target=0, tolerance=0
+        )
+        assert result["verdict"] == "progress"
+        assert result["details"]["delta"] == -2
+
+    def test_stall_detected(self):
+        result = evaluate_convergence(
+            current=5, previous=5, target=0, tolerance=0
+        )
+        assert result["verdict"] == "stall"
+```
+
+### 3. Mock Strategy for LLM Evaluation
+
+LLM structured output is used in only one place: `evaluate_llm_structured`. This makes mocking straightforward.
+
+```python
+# tests/conftest.py
+
+@pytest.fixture
+def mock_llm_evaluator():
+    """Factory for LLM evaluation mocks."""
+    def _make_mock(verdict: str, confidence: float = 0.9, reason: str = ""):
+        return {
+            "verdict": verdict,
+            "details": {
+                "confidence": confidence,
+                "confident": confidence >= 0.7,
+                "reason": reason,
+                "raw": {"verdict": verdict, "confidence": confidence}
+            }
+        }
+    return _make_mock
+
+
+# tests/unit/test_llm_evaluator.py
+
+class TestLLMEvaluator:
+    def test_uncertain_suffix_applied(self, mock_anthropic):
+        """Low confidence + uncertain_suffix=True → success_uncertain."""
+        mock_anthropic.return_value = {"verdict": "success", "confidence": 0.5}
+
+        result = evaluate_llm_structured(
+            output="Fixed the bug",
+            schema=DEFAULT_SCHEMA,
+            min_confidence=0.7,
+            uncertain_suffix=True
+        )
+
+        assert result["verdict"] == "success_uncertain"
+        assert result["details"]["confident"] is False
+```
+
+**Mock implementation**: Use `unittest.mock.patch` on the Anthropic client, or inject a client factory for dependency injection.
+
+### 4. Integration Tests for Executor
+
+Test the full state machine execution with mocked externals.
+
+```python
+# tests/integration/test_executor.py
+
+class TestExecutor:
+    @pytest.fixture
+    def mock_action_runner(self):
+        """Mock that captures actions and returns configured results."""
+        return MockActionRunner()
+
+    def test_simple_success_path(self, mock_action_runner, mock_llm_evaluator):
+        """check → done on first success."""
+        fsm = load_fsm("test-pass-first.yaml")
+        mock_action_runner.set_result("check", exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_action_runner)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert result.iterations == 1
+        assert mock_action_runner.calls == ["check"]
+
+    def test_fix_retry_loop(self, mock_action_runner, mock_llm_evaluator):
+        """check → fix → check → done with retry."""
+        mock_action_runner.set_results([
+            ("check", {"exit_code": 1}),  # First check fails
+            ("fix", {"stdout": "Fixed"}),
+            ("check", {"exit_code": 0}),  # Second check passes
+        ])
+        mock_llm_evaluator.set_verdict("fix", "success")
+
+        executor = FSMExecutor(fsm, ...)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert result.iterations == 2
+
+    def test_max_iterations_respected(self, mock_action_runner):
+        """Loop terminates at max_iterations even if not terminal."""
+        fsm = {"max_iterations": 3, ...}
+        mock_action_runner.always_fail()
+
+        result = FSMExecutor(fsm, ...).run()
+
+        assert result.iterations == 3
+        assert result.terminated_by == "max_iterations"
+
+    def test_variable_interpolation(self, mock_action_runner):
+        """${context.*} and ${captured.*} resolve correctly."""
+        fsm = {
+            "context": {"target_dir": "src/"},
+            "states": {
+                "check": {
+                    "action": "mypy ${context.target_dir}",
+                    "capture": "errors",
+                    ...
+                }
+            }
+        }
+
+        executor = FSMExecutor(fsm, action_runner=mock_action_runner)
+        executor.run()
+
+        assert mock_action_runner.last_action == "mypy src/"
+```
+
+### 5. Test File Organization
+
+```
+scripts/tests/
+├── unit/
+│   ├── test_compilers.py          # Paradigm → FSM compilation
+│   ├── test_evaluators.py         # All Tier 1 evaluators
+│   ├── test_llm_evaluator.py      # LLM evaluator with mocked API
+│   ├── test_routing.py            # Verdict → state resolution
+│   └── test_interpolation.py      # Variable substitution
+├── integration/
+│   ├── test_executor.py           # Full FSM execution
+│   └── test_state_persistence.py  # Resume from saved state
+├── fixtures/
+│   ├── loops/                     # Test FSM definitions
+│   └── outputs/                   # Sample action outputs
+└── conftest.py                    # Shared fixtures, mocks
+```
+
+### Summary
+
+| Layer | Test Type | Mock Strategy |
+|-------|-----------|---------------|
+| Compilers | Unit | None needed (pure functions) |
+| Tier 1 Evaluators | Unit | None needed (deterministic) |
+| LLM Evaluator | Unit | Mock Anthropic client |
+| Routing | Unit | Provide verdict directly |
+| Variable Interpolation | Unit | Provide context dict |
+| Executor | Integration | Mock action runner + LLM evaluator |
+
+---
+
+## The `/ll:create-loop` Command
+
+Interactive command for creating new loop configurations. Uses Claude to understand user intent and generate paradigm YAML.
+
+### Workflow
+
+```
+User invokes /ll:create-loop
+        ↓
+Claude asks clarifying questions (AskUserQuestion)
+        ↓
+User provides answers (single/multi-select, free text)
+        ↓
+Claude generates paradigm YAML
+        ↓
+User reviews/edits
+        ↓
+Loop saved to .loops/<name>.yaml
+```
+
+### Example Session
+
+```
+> /ll:create-loop
+
+What kind of automation loop do you want to create?
+  ○ Fix errors until clean (Recommended)
+  ○ Maintain code quality continuously
+  ○ Drive a metric toward a target
+  ○ Run a sequence of steps
+  ○ Other...
+
+> Fix errors until clean
+
+What should the loop fix?
+  ☑ Type errors (mypy)
+  ☑ Lint errors (ruff)
+  ☐ Test failures (pytest)
+  ☐ Other...
+
+> [Type errors, Lint errors selected]
+
+What's the maximum number of fix attempts?
+  ○ 10 (Recommended)
+  ○ 20
+  ○ 50
+  ○ Custom...
+
+> 10
+
+Here's the loop configuration:
+
+```yaml
+paradigm: invariants
+name: "fix-types-and-lint"
+constraints:
+  - name: "types-valid"
+    check: "mypy src/"
+    fix: "/ll:manage_issue bug fix"
+  - name: "lint-clean"
+    check: "ruff check src/"
+    fix: "/ll:check_code fix"
+max_iterations: 10
+```
+
+Save to .loops/fix-types-and-lint.yaml? [Y/n]
+```
+
+### Question Types
+
+The command uses `AskUserQuestion` with various patterns:
+
+| Pattern | Use Case |
+|---------|----------|
+| Single-select | Paradigm choice, iteration limits |
+| Multi-select | Which checks to include, which tools to use |
+| Free text | Custom loop names, custom commands |
+
+### Implementation Notes
+
+- Command is a skill in `skills/create-loop.md`
+- Uses Claude's natural language understanding to map user intent to paradigm
+- Validates generated YAML before saving
+- Offers to run `ll-loop validate <name>` after creation
+
+---
+
 ## Open Questions
 
 ### Resolved
@@ -1533,17 +1845,18 @@ Loop completed: done (1 iteration, 2m 34s)
 5. ✅ **Security model** - No user approval; always use `--dangerously-skip-permissions`; no blessing mechanism
 6. ✅ **File structure** - `.loops/` is canonical; separate from `.issues/`; no templates for now
 7. ✅ **CLI UX** - Primary invocation is `ll-loop <loop-name>` (resolves to `.loops/<name>.yaml`)
+8. ✅ **Context handoff integration** - Deferred to future; initial implementation terminates on handoff signal
+9. ✅ **`/ll:create-loop` command** - In scope for v1; interactive skill using `AskUserQuestion`
 
 ### For Implementation
 
-8. **Context handoff integration** - How does `CONTEXT_HANDOFF:` detection interact with state persistence?
-
-9. **Maintain mode timing** - Configurable delay between cycles?
+10. **Maintain mode timing** - Configurable delay between cycles? (Can add `maintain_delay` field)
 
 ---
 
 ## Future Considerations
 
+- **Context handoff integration** - Executor can detect `CONTEXT_HANDOFF:` signals from slash commands and spawn continuation sessions, preserving loop state transparently. Initial implementation may simply terminate.
 - **Composition** - Nested loops, sub-FSMs
 - **Hooks** - Pre/post state execution
 - **Metrics** - Track success rates, durations
