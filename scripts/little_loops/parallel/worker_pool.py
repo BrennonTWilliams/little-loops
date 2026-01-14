@@ -834,6 +834,26 @@ class WorkerPool:
             except OSError as e:
                 self.logger.warning(f"Failed to delete leaked file {file_path}: {e}")
 
+        # Fallback: directly delete files not reported by git status
+        # This handles gitignored files that git status --porcelain doesn't show
+        accounted_files = set(tracked_files + untracked_files)
+        for file_path in leaked_files:
+            if file_path not in accounted_files:
+                full_path = self.repo_path / file_path
+                if full_path.exists():
+                    try:
+                        full_path.unlink()
+                        cleaned += 1
+                        self.logger.info(f"Deleted gitignored leaked file: {file_path}")
+                    except OSError as e:
+                        self.logger.warning(
+                            f"Failed to delete gitignored leaked file {file_path}: {e}"
+                        )
+                else:
+                    self.logger.debug(
+                        f"Leaked file not found (may have been moved): {file_path}"
+                    )
+
         if cleaned > 0:
             self.logger.info(f"Cleaned up {cleaned} leaked file(s) from main repo")
 

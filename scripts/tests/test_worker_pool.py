@@ -896,6 +896,33 @@ class TestWorkerPoolHelpers:
         count = worker_pool._cleanup_leaked_files([])
         assert count == 0
 
+    def test_cleanup_leaked_files_gitignored(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_cleanup_leaked_files() deletes gitignored files not reported by git status."""
+        # Create a file that simulates a gitignored leaked file
+        gitignored_file = temp_repo_with_config / "issues" / "leaked.md"
+        gitignored_file.parent.mkdir(parents=True, exist_ok=True)
+        gitignored_file.write_text("leaked content")
+
+        leaked_files = ["issues/leaked.md"]
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["status", "--porcelain"]:
+                # Git returns empty for gitignored paths
+                return subprocess.CompletedProcess(args, 0, "", "")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            count = worker_pool._cleanup_leaked_files(leaked_files)
+
+        assert count == 1
+        assert not gitignored_file.exists()
+
 
 class TestWorkerPoolModelDetection:
     """Tests for _detect_worktree_model_via_api()."""
