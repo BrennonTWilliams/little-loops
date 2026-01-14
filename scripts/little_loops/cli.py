@@ -11,6 +11,7 @@ from __future__ import annotations
 import argparse
 import sys
 from pathlib import Path
+from typing import Any
 
 from little_loops.config import BRConfig
 from little_loops.issue_manager import AutoManager
@@ -406,6 +407,510 @@ Examples:
         logger.success(f"Saved {len(messages)} messages to: {output_path}")
 
     return 0
+
+
+def main_loop() -> int:
+    """Entry point for ll-loop command.
+
+    Execute FSM-based automation loops.
+
+    Returns:
+        Exit code (0 = success)
+    """
+    import yaml
+
+    from little_loops.fsm.compilers import compile_paradigm
+    from little_loops.fsm.persistence import (
+        PersistentExecutor,
+        StatePersistence,
+        get_loop_history,
+        list_running_loops,
+    )
+    from little_loops.fsm.schema import FSMLoop
+    from little_loops.fsm.validation import load_and_validate
+
+    # Check if first positional arg is a subcommand or a loop name
+    # This enables "ll-loop fix-types" shorthand for "ll-loop run fix-types"
+    known_subcommands = {
+        "run", "compile", "validate", "list", "status", "stop", "resume", "history"
+    }
+
+    # Pre-process args: if first positional arg is not a subcommand, insert "run"
+    import sys as _sys
+    argv = _sys.argv[1:]
+    if argv and not argv[0].startswith("-") and argv[0] not in known_subcommands:
+        # First arg is a loop name, not a subcommand - insert "run"
+        argv = ["run"] + argv
+
+    parser = argparse.ArgumentParser(
+        prog="ll-loop",
+        description="Execute FSM-based automation loops",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s fix-types              # Run loop from .loops/fix-types.yaml
+  %(prog)s run fix-types --dry-run  # Show execution plan
+  %(prog)s validate fix-types     # Validate loop definition
+  %(prog)s compile paradigm.yaml  # Compile paradigm to FSM
+  %(prog)s list                   # List available loops
+  %(prog)s list --running         # List running loops
+  %(prog)s status fix-types       # Show loop status
+  %(prog)s stop fix-types         # Stop a running loop
+  %(prog)s resume fix-types       # Resume interrupted loop
+  %(prog)s history fix-types      # Show execution history
+""",
+    )
+
+    subparsers = parser.add_subparsers(dest="command")
+
+    # Run subcommand
+    run_parser = subparsers.add_parser("run", help="Run a loop")
+    run_parser.add_argument("loop", help="Loop name or path")
+    run_parser.add_argument(
+        "--max-iterations", "-n", type=int, help="Override iteration limit"
+    )
+    run_parser.add_argument(
+        "--no-llm", action="store_true", help="Disable LLM evaluation"
+    )
+    run_parser.add_argument("--llm-model", type=str, help="Override LLM model")
+    run_parser.add_argument(
+        "--dry-run", action="store_true", help="Show execution plan without running"
+    )
+    run_parser.add_argument(
+        "--background", "-b", action="store_true", help="Run as daemon (not yet implemented)"
+    )
+    run_parser.add_argument(
+        "--quiet", "-q", action="store_true", help="Suppress progress output"
+    )
+
+    # Compile subcommand
+    compile_parser = subparsers.add_parser("compile", help="Compile paradigm to FSM")
+    compile_parser.add_argument("input", help="Input paradigm YAML file")
+    compile_parser.add_argument("-o", "--output", help="Output FSM YAML file")
+
+    # Validate subcommand
+    validate_parser = subparsers.add_parser("validate", help="Validate loop definition")
+    validate_parser.add_argument("loop", help="Loop name or path")
+
+    # List subcommand
+    list_parser = subparsers.add_parser("list", help="List loops")
+    list_parser.add_argument(
+        "--running", action="store_true", help="Only show running loops"
+    )
+
+    # Status subcommand
+    status_parser = subparsers.add_parser("status", help="Show loop status")
+    status_parser.add_argument("loop", help="Loop name")
+
+    # Stop subcommand
+    stop_parser = subparsers.add_parser("stop", help="Stop a running loop")
+    stop_parser.add_argument("loop", help="Loop name")
+
+    # Resume subcommand
+    resume_parser = subparsers.add_parser("resume", help="Resume an interrupted loop")
+    resume_parser.add_argument("loop", help="Loop name or path")
+
+    # History subcommand
+    history_parser = subparsers.add_parser("history", help="Show loop execution history")
+    history_parser.add_argument("loop", help="Loop name")
+    history_parser.add_argument(
+        "--tail", "-n", type=int, default=50, help="Last N events (default: 50)"
+    )
+
+    args = parser.parse_args(argv)
+
+    logger = Logger(verbose=not getattr(args, "quiet", False))
+
+    def resolve_loop_path(name_or_path: str) -> Path:
+        """Resolve loop name to path."""
+        path = Path(name_or_path)
+        if path.exists():
+            return path
+        # Try .loops/<name>.yaml
+        loops_path = Path(".loops") / f"{name_or_path}.yaml"
+        if loops_path.exists():
+            return loops_path
+        raise FileNotFoundError(f"Loop not found: {name_or_path}")
+
+    def print_execution_plan(fsm: FSMLoop) -> None:
+        """Print dry-run execution plan."""
+        print(f"Execution plan for: {fsm.name}")
+        print()
+        print("States:")
+        for name, state in fsm.states.items():
+            terminal_marker = " [TERMINAL]" if state.terminal else ""
+            print(f"  [{name}]{terminal_marker}")
+            if state.action:
+                if len(state.action) > 70:
+                    action_display = state.action[:70] + "..."
+                else:
+                    action_display = state.action
+                print(f"    action: {action_display}")
+            if state.evaluate:
+                print(f"    evaluate: {state.evaluate.type}")
+            if state.on_success:
+                print(f"    on_success -> {state.on_success}")
+            if state.on_failure:
+                print(f"    on_failure -> {state.on_failure}")
+            if state.on_error:
+                print(f"    on_error -> {state.on_error}")
+            if state.next:
+                print(f"    next -> {state.next}")
+            if state.route:
+                print("    route:")
+                for verdict, target in state.route.routes.items():
+                    print(f"      {verdict} -> {target}")
+                if state.route.default:
+                    print(f"      _ -> {state.route.default}")
+        print()
+        print(f"Initial state: {fsm.initial}")
+        print(f"Max iterations: {fsm.max_iterations}")
+        if fsm.timeout:
+            print(f"Timeout: {fsm.timeout}s")
+
+    def run_foreground(executor: PersistentExecutor, fsm: FSMLoop) -> int:
+        """Run loop with progress display."""
+        if not getattr(args, "quiet", False):
+            print_logo()
+            print(f"Running loop: {fsm.name}")
+            print(f"Max iterations: {fsm.max_iterations}")
+            print()
+
+        current_iteration = [0]  # Use list to allow mutation in closure
+
+        def display_progress(event: dict) -> None:
+            """Display progress for events."""
+            event_type = event.get("event")
+
+            if event_type == "state_enter":
+                current_iteration[0] = event.get("iteration", 0)
+                state = event.get("state", "")
+                print(f"[{current_iteration[0]}/{fsm.max_iterations}] {state}", end="")
+
+            elif event_type == "action_start":
+                action = event.get("action", "")
+                action_display = action[:60] + "..." if len(action) > 60 else action
+                print(f" -> {action_display}")
+
+            elif event_type == "evaluate":
+                verdict = event.get("verdict", "")
+                confidence = event.get("confidence")
+                if verdict in ("success", "target", "progress"):
+                    symbol = "\u2713"  # checkmark
+                else:
+                    symbol = "\u2717"  # x mark
+                if confidence is not None:
+                    print(f"       {symbol} {verdict} (confidence: {confidence:.2f})")
+                else:
+                    print(f"       {symbol} {verdict}")
+
+            elif event_type == "route":
+                to_state = event.get("to", "")
+                print(f"       -> {to_state}")
+
+        # Create wrapper to combine persistence callback with progress display
+        original_handle = executor._handle_event
+        quiet = getattr(args, "quiet", False)
+
+        def combined_handler(event: dict) -> None:
+            original_handle(event)
+            if not quiet:
+                display_progress(event)
+
+        # Use object.__setattr__ to bypass method assignment check
+        object.__setattr__(executor, "_handle_event", combined_handler)
+
+        result = executor.run()
+
+        if not quiet:
+            print()
+            duration_sec = result.duration_ms / 1000
+            if duration_sec < 60:
+                duration_str = f"{duration_sec:.1f}s"
+            else:
+                minutes = int(duration_sec // 60)
+                seconds = duration_sec % 60
+                duration_str = f"{minutes}m {seconds:.0f}s"
+            print(
+                f"Loop completed: {result.final_state} "
+                f"({result.iterations} iterations, {duration_str})"
+            )
+
+        return 0 if result.terminated_by == "terminal" else 1
+
+    def cmd_run(loop_name: str) -> int:
+        """Run a loop."""
+        try:
+            path = resolve_loop_path(loop_name)
+            fsm = load_and_validate(path)
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            return 1
+        except ValueError as e:
+            logger.error(f"Validation error: {e}")
+            return 1
+
+        # Apply overrides
+        if args.max_iterations:
+            fsm.max_iterations = args.max_iterations
+        if args.no_llm:
+            fsm.llm.enabled = False
+        if args.llm_model:
+            fsm.llm.model = args.llm_model
+
+        # Dry run
+        if args.dry_run:
+            print_execution_plan(fsm)
+            return 0
+
+        # Background mode not implemented
+        if getattr(args, "background", False):
+            logger.warning("Background mode not yet implemented, running in foreground")
+
+        # Execute
+        executor = PersistentExecutor(fsm)
+        return run_foreground(executor, fsm)
+
+    def cmd_compile() -> int:
+        """Compile paradigm YAML to FSM."""
+        input_path = Path(args.input)
+        if not input_path.exists():
+            logger.error(f"Input file not found: {input_path}")
+            return 1
+
+        try:
+            with open(input_path) as f:
+                spec = yaml.safe_load(f)
+            fsm = compile_paradigm(spec)
+        except ValueError as e:
+            logger.error(f"Compilation error: {e}")
+            return 1
+        except yaml.YAMLError as e:
+            logger.error(f"YAML parse error: {e}")
+            return 1
+
+        output_path = Path(args.output) if args.output else Path(
+            str(input_path).replace(".yaml", ".fsm.yaml")
+        )
+
+        # Convert FSMLoop to dict for YAML output
+        fsm_dict: dict[str, Any] = {
+            "name": fsm.name,
+            "paradigm": fsm.paradigm,
+            "initial": fsm.initial,
+            "states": {
+                name: _state_to_dict(state) for name, state in fsm.states.items()
+            },
+            "max_iterations": fsm.max_iterations,
+        }
+        if fsm.context:
+            fsm_dict["context"] = fsm.context
+        if fsm.maintain:
+            fsm_dict["maintain"] = fsm.maintain
+        if fsm.backoff:
+            fsm_dict["backoff"] = fsm.backoff
+        if fsm.timeout:
+            fsm_dict["timeout"] = fsm.timeout
+
+        with open(output_path, "w") as f:
+            yaml.dump(fsm_dict, f, default_flow_style=False, sort_keys=False)
+
+        logger.success(f"Compiled to: {output_path}")
+        return 0
+
+    def _state_to_dict(state) -> dict:
+        """Convert StateConfig to dict for YAML output."""
+        d: dict = {}
+        if state.action:
+            d["action"] = state.action
+        if state.evaluate:
+            d["evaluate"] = {"type": state.evaluate.type}
+            if state.evaluate.target is not None:
+                d["evaluate"]["target"] = state.evaluate.target
+            if state.evaluate.tolerance is not None:
+                d["evaluate"]["tolerance"] = state.evaluate.tolerance
+            if state.evaluate.previous is not None:
+                d["evaluate"]["previous"] = state.evaluate.previous
+            if state.evaluate.operator is not None:
+                d["evaluate"]["operator"] = state.evaluate.operator
+            if state.evaluate.pattern is not None:
+                d["evaluate"]["pattern"] = state.evaluate.pattern
+            if state.evaluate.path is not None:
+                d["evaluate"]["path"] = state.evaluate.path
+        if state.on_success:
+            d["on_success"] = state.on_success
+        if state.on_failure:
+            d["on_failure"] = state.on_failure
+        if state.on_error:
+            d["on_error"] = state.on_error
+        if state.next:
+            d["next"] = state.next
+        if state.route:
+            d["route"] = state.route.routes
+            if state.route.default:
+                d["route"]["_"] = state.route.default
+        if state.terminal:
+            d["terminal"] = True
+        if state.capture:
+            d["capture"] = state.capture
+        if state.timeout:
+            d["timeout"] = state.timeout
+        if state.on_maintain:
+            d["on_maintain"] = state.on_maintain
+        return d
+
+    def cmd_validate(loop_name: str) -> int:
+        """Validate a loop definition."""
+        try:
+            path = resolve_loop_path(loop_name)
+            fsm = load_and_validate(path)
+            logger.success(f"{loop_name} is valid")
+            print(f"  States: {', '.join(fsm.states.keys())}")
+            print(f"  Initial: {fsm.initial}")
+            print(f"  Max iterations: {fsm.max_iterations}")
+            return 0
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            return 1
+        except ValueError as e:
+            logger.error(f"{loop_name} is invalid: {e}")
+            return 1
+
+    def cmd_list() -> int:
+        """List loops."""
+        loops_dir = Path(".loops")
+
+        if getattr(args, "running", False):
+            states = list_running_loops(loops_dir)
+            if not states:
+                print("No running loops")
+                return 0
+            print("Running loops:")
+            for state in states:
+                print(f"  {state.loop_name}: {state.current_state} (iteration {state.iteration})")
+            return 0
+
+        # List all loop files
+        if not loops_dir.exists():
+            print("No .loops/ directory found")
+            return 0
+
+        yaml_files = list(loops_dir.glob("*.yaml"))
+        if not yaml_files:
+            print("No loops defined")
+            return 0
+
+        print("Available loops:")
+        for path in sorted(yaml_files):
+            print(f"  {path.stem}")
+        return 0
+
+    def cmd_status(loop_name: str) -> int:
+        """Show loop status."""
+        persistence = StatePersistence(loop_name)
+        state = persistence.load_state()
+
+        if state is None:
+            logger.error(f"No state found for: {loop_name}")
+            return 1
+
+        print(f"Loop: {state.loop_name}")
+        print(f"Status: {state.status}")
+        print(f"Current state: {state.current_state}")
+        print(f"Iteration: {state.iteration}")
+        print(f"Started: {state.started_at}")
+        print(f"Updated: {state.updated_at}")
+        return 0
+
+    def cmd_stop(loop_name: str) -> int:
+        """Stop a running loop."""
+        persistence = StatePersistence(loop_name)
+        state = persistence.load_state()
+
+        if state is None:
+            logger.error(f"No state found for: {loop_name}")
+            return 1
+
+        if state.status != "running":
+            logger.error(f"Loop not running: {loop_name} (status: {state.status})")
+            return 1
+
+        state.status = "interrupted"
+        persistence.save_state(state)
+        logger.success(f"Marked {loop_name} as interrupted")
+        return 0
+
+    def cmd_resume(loop_name: str) -> int:
+        """Resume an interrupted loop."""
+        try:
+            path = resolve_loop_path(loop_name)
+            fsm = load_and_validate(path)
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            return 1
+        except ValueError as e:
+            logger.error(f"Validation error: {e}")
+            return 1
+
+        executor = PersistentExecutor(fsm)
+        result = executor.resume()
+
+        if result is None:
+            logger.warning(f"Nothing to resume for: {loop_name}")
+            return 1
+
+        duration_sec = result.duration_ms / 1000
+        if duration_sec < 60:
+            duration_str = f"{duration_sec:.1f}s"
+        else:
+            minutes = int(duration_sec // 60)
+            seconds = duration_sec % 60
+            duration_str = f"{minutes}m {seconds:.0f}s"
+
+        logger.success(
+            f"Resumed and completed: {result.final_state} "
+            f"({result.iterations} iterations, {duration_str})"
+        )
+        return 0 if result.terminated_by == "terminal" else 1
+
+    def cmd_history(loop_name: str) -> int:
+        """Show loop history."""
+        events = get_loop_history(loop_name)
+
+        if not events:
+            print(f"No history for: {loop_name}")
+            return 0
+
+        # Show last N events
+        tail = getattr(args, "tail", 50)
+        for event in events[-tail:]:
+            ts = event.get("ts", "")[:19]  # Truncate to seconds
+            event_type = event.get("event", "")
+            details = {k: v for k, v in event.items() if k not in ("event", "ts")}
+            print(f"{ts} {event_type}: {details}")
+
+        return 0
+
+    # Dispatch commands
+    if args.command == "run":
+        return cmd_run(args.loop)
+    elif args.command == "compile":
+        return cmd_compile()
+    elif args.command == "validate":
+        return cmd_validate(args.loop)
+    elif args.command == "list":
+        return cmd_list()
+    elif args.command == "status":
+        return cmd_status(args.loop)
+    elif args.command == "stop":
+        return cmd_stop(args.loop)
+    elif args.command == "resume":
+        return cmd_resume(args.loop)
+    elif args.command == "history":
+        return cmd_history(args.loop)
+    else:
+        parser.print_help()
+        return 1
 
 
 if __name__ == "__main__":

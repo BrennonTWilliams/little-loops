@@ -75,7 +75,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from little_loops.fsm.schema import FSMLoop, load_and_validate
+from little_loops.fsm.validation import load_and_validate
 from little_loops.fsm.compilers import compile_paradigm
 from little_loops.fsm.executor import FSMExecutor
 from little_loops.fsm.persistence import (
@@ -189,7 +189,7 @@ def cmd_run(loop: str, args) -> int:
     except FileNotFoundError as e:
         print(f"Error: {e}", file=sys.stderr)
         return 1
-    except ValidationError as e:
+    except ValueError as e:  # load_and_validate raises ValueError for validation errors
         print(f"Validation error: {e}", file=sys.stderr)
         return 1
 
@@ -516,3 +516,31 @@ states:
 ## Reference
 
 - Design doc: `docs/generalized-fsm-loop.md` section "CLI Interface"
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-13
+- **Status**: Completed
+
+### Changes Made
+- `scripts/pyproject.toml`: Added `ll-loop` entry point
+- `scripts/little_loops/cli.py`: Added `main_loop()` function with all subcommands
+- `scripts/tests/test_ll_loop.py`: Created test file with 25 tests
+
+### Implementation Details
+- Added all subcommands: run, compile, validate, list, status, stop, resume, history
+- Shorthand `ll-loop <name>` works as alias for `ll-loop run <name>`
+- Progress display with checkmarks/x-marks and iteration tracking
+- Uses existing FSM modules: load_and_validate, compile_paradigm, PersistentExecutor
+
+### Verification Results
+- Tests: PASS (1068 tests including 25 new ll-loop tests)
+- Lint: PASS
+- Types: PASS
+
+### Deferred Features
+- `--background` daemon mode (flag recognized but runs foreground)
+- `--queue` mode for concurrent loop management
