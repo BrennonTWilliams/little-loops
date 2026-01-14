@@ -215,17 +215,17 @@ prev = {
 
 ## Acceptance Criteria
 
-- [ ] `${context.*}` resolves user-defined variables
-- [ ] `${captured.*}` resolves stored action results with nested paths
-- [ ] `${prev.*}` provides shorthand for previous state result
-- [ ] `${result.*}` provides access to current evaluation result
-- [ ] `${state.name}` and `${state.iteration}` resolve correctly
-- [ ] `${loop.name}`, `${loop.started_at}`, `${loop.elapsed_ms}`, `${loop.elapsed}` resolve
-- [ ] `${env.*}` resolves environment variables
-- [ ] `$${...}` escapes to literal `${...}`
-- [ ] Undefined variables raise `InterpolationError` with clear message
-- [ ] Empty values interpolate as empty string (not error)
-- [ ] Nested interpolation is explicitly not supported
+- [x] `${context.*}` resolves user-defined variables
+- [x] `${captured.*}` resolves stored action results with nested paths
+- [x] `${prev.*}` provides shorthand for previous state result
+- [x] `${result.*}` provides access to current evaluation result
+- [x] `${state.name}` and `${state.iteration}` resolve correctly
+- [x] `${loop.name}`, `${loop.started_at}`, `${loop.elapsed_ms}`, `${loop.elapsed}` resolve
+- [x] `${env.*}` resolves environment variables
+- [x] `$${...}` escapes to literal `${...}`
+- [x] Undefined variables raise `InterpolationError` with clear message
+- [x] Empty values interpolate as empty string (not error)
+- [x] Nested interpolation is explicitly not supported
 
 ## Testing Requirements
 
@@ -263,3 +263,21 @@ class TestInterpolation:
 ## Reference
 
 - Design doc: `docs/generalized-fsm-loop.md` section "Variable Interpolation"
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-13
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/interpolation.py`: Created variable interpolation module with `InterpolationContext` dataclass, `interpolate()` and `interpolate_dict()` functions, and `InterpolationError` exception
+- `scripts/little_loops/fsm/__init__.py`: Added exports for interpolation components
+- `scripts/tests/test_fsm_interpolation.py`: Created 39 unit tests covering all namespaces, error cases, and edge cases
+
+### Verification Results
+- Tests: PASS (887 tests, including 39 new interpolation tests)
+- Lint: PASS
+- Types: PASS

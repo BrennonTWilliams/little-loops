@@ -1,5 +1,14 @@
 # BUG-035: Context Monitor Hook Output Not Visible to Claude in Non-Interactive Mode
 
+## Status: Closed - Already Fixed
+
+**Closed**: 2026-01-13
+**Fix Commit**: `d35c41b` - fix(context-monitor): use stderr with exit 2 for non-interactive feedback
+
+The fix described in this issue was already implemented. The current `hooks/scripts/context-monitor.sh` (lines 235-240) uses `echo ... >&2` with `exit 2`, which is exactly the proposed solution.
+
+---
+
 ## Summary
 
 The `context-monitor.sh` PostToolUse hook outputs plain text warnings when context threshold is reached, but this output is not visible to Claude in non-interactive mode (`claude -p`). This breaks automatic session handoff for `ll-auto` and `ll-parallel`.
