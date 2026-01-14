@@ -842,6 +842,35 @@ class TestOnWorkerComplete:
         assert "BUG-001" in orchestrator.state.corrections
         assert orchestrator.state.corrections["BUG-001"] == corrections
 
+    def test_on_worker_complete_categorized_corrections(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_on_worker_complete stores categorized corrections (ENH-010 fourth fix)."""
+        corrections = [
+            "[line_drift] Updated line 42 -> 45 using anchor 'process_data'",
+            "[file_moved] Updated path from old/path.py to new/path.py",
+            "[content_fix] Added missing ## Expected Behavior section",
+        ]
+        result = WorkerResult(
+            issue_id="BUG-002",
+            success=True,
+            branch_name="parallel/bug-002",
+            worktree_path=Path("/tmp/worktree"),
+            was_corrected=True,
+            corrections=corrections,
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        # Verify categorized corrections are stored with categories intact
+        assert "BUG-002" in orchestrator.state.corrections
+        stored = orchestrator.state.corrections["BUG-002"]
+        assert len(stored) == 3
+        assert stored[0].startswith("[line_drift]")
+        assert stored[1].startswith("[file_moved]")
+        assert stored[2].startswith("[content_fix]")
+
     def test_on_worker_complete_updates_timing(
         self,
         orchestrator: ParallelOrchestrator,

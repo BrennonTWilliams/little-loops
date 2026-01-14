@@ -602,12 +602,29 @@ class ParallelOrchestrator:
             self.logger.info(
                 f"Auto-corrections: {total_corrected}/{total_issues} ({correction_rate:.1f}%)"
             )
-            # Log most common correction types
-            from collections import Counter
+
+            # Group corrections by category (ENH-010 fourth fix)
+            from collections import Counter, defaultdict
 
             all_corrections: list[str] = []
+            by_category: dict[str, int] = defaultdict(int)
             for corrections in self.state.corrections.values():
                 all_corrections.extend(corrections)
+                for correction in corrections:
+                    # Extract category from [category] prefix if present
+                    if correction.startswith("[") and "]" in correction:
+                        category = correction[1 : correction.index("]")]
+                        by_category[category] += 1
+                    else:
+                        by_category["uncategorized"] += 1
+
+            # Log corrections by type/category
+            if by_category:
+                self.logger.info("Corrections by type:")
+                for category, count in sorted(by_category.items(), key=lambda x: -x[1]):
+                    self.logger.info(f"  - {category}: {count}")
+
+            # Log most common individual corrections
             if all_corrections:
                 common = Counter(all_corrections).most_common(3)
                 self.logger.info("Most common corrections:")

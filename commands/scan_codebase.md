@@ -81,10 +81,14 @@ Exclude: {{config.scan.exclude_patterns}}
 Return structured findings with:
 - Title (brief description)
 - File path and line number(s)
+- Stable anchor (function name, class name, or unique nearby string that won't change)
 - Code snippet showing the issue
 - Severity assessment (High/Medium/Low)
 - Brief explanation of the problem
 - Reproduction steps (how to trigger the bug)
+
+IMPORTANT: Do NOT include related issue IDs or their status in findings.
+Related issues will be resolved dynamically during validation.
 
 IMPORTANT: Before reporting each finding, VERIFY:
 - File paths exist (use Read tool to confirm)
@@ -109,11 +113,15 @@ Exclude: {{config.scan.exclude_patterns}}
 Return structured findings with:
 - Title (brief description)
 - File path and line number(s)
+- Stable anchor (function name, class name, or unique nearby string that won't change)
 - Code snippet showing the area
 - Effort estimate (Small/Medium/Large)
 - Current behavior (what the code does now)
 - Expected behavior (what the code should do after improvement)
 - Proposed solution (suggested approach to implement the enhancement)
+
+IMPORTANT: Do NOT include related issue IDs or their status in findings.
+Related issues will be resolved dynamically during validation.
 
 IMPORTANT: Before reporting each finding, VERIFY:
 - File paths exist (use Read tool to confirm)
@@ -137,9 +145,13 @@ Exclude: {{config.scan.exclude_patterns}}
 Return structured findings with:
 - Title (brief description)
 - File path and line number(s)
+- Stable anchor (function name, class name, or unique nearby string that won't change)
 - Code snippet or context
 - Scope estimate (Small/Medium/Large)
 - Brief explanation of the feature
+
+IMPORTANT: Do NOT include related issue IDs or their status in findings.
+Related issues will be resolved dynamically during validation.
 
 IMPORTANT: Before reporting each finding, VERIFY:
 - File paths exist (use Read tool to confirm)
@@ -187,7 +199,8 @@ discovered_date: [SCAN_DATE]
 ## Location
 
 - **File**: `path/to/file.py`
-- **Line(s)**: 42-45
+- **Line(s)**: 42-45 (at scan commit: [COMMIT_HASH_SHORT])
+- **Anchor**: `in function process_issue()` or `in class IssueManager` or `near string "unique marker"`
 - **Permalink**: [View on GitHub](https://github.com/[REPO_OWNER]/[REPO_NAME]/blob/[COMMIT_HASH]/path/to/file.py#L42-L45)
 - **Code**:
 ```python

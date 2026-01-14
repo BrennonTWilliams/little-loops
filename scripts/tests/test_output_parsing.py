@@ -220,6 +220,30 @@ CORRECTED
         assert result["was_corrected"] is True
         assert len(result["corrections"]) == 2
 
+    def test_corrected_verdict_with_categories(self) -> None:
+        """Test parsing CORRECTED verdict with categorized corrections (ENH-010)."""
+        output = """
+## VERDICT
+CORRECTED
+
+## CORRECTIONS_MADE
+- [line_drift] Updated line 42 -> 45 in src/module.py using anchor 'process_data'
+- [file_moved] Updated path from old/path.py to new/path.py
+- [content_fix] Added missing ## Expected Behavior section
+- [issue_status] Related issue ENH-042 marked as completed
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "CORRECTED"
+        assert result["is_ready"] is True
+        assert result["was_corrected"] is True
+        assert len(result["corrections"]) == 4
+        # Verify categories are preserved in correction text
+        assert result["corrections"][0].startswith("[line_drift]")
+        assert result["corrections"][1].startswith("[file_moved]")
+        assert result["corrections"][2].startswith("[content_fix]")
+        assert result["corrections"][3].startswith("[issue_status]")
+
     def test_close_verdict(self) -> None:
         """Test parsing CLOSE verdict."""
         output = """

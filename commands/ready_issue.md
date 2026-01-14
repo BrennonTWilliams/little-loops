@@ -120,8 +120,16 @@ Check for completeness:
 
 #### Code References
 - [ ] File paths exist in codebase
-- [ ] Line numbers are accurate
+- [ ] Line numbers are accurate (or can be corrected using anchor)
 - [ ] Code snippets match current code
+- [ ] Anchor field present and valid (function/class name exists)
+
+**Using Stable Anchors for Validation**:
+If line numbers are outdated but an Anchor field exists:
+1. Search for the anchor (function/class name or unique string) in the referenced file
+2. Find the current line numbers for that anchor
+3. Update line references automatically
+4. Note in CORRECTIONS_MADE: `[line_drift] Updated line N -> M using anchor 'function_name'`
 
 #### Metadata
 - [ ] Priority prefix in filename
@@ -206,10 +214,18 @@ Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't 
 - [Or "None" if all checks pass]
 
 ## CORRECTIONS_MADE
-- Updated line 42 -> 45 in src/module.py reference
-- Added missing ## Expected Behavior section
-- Refreshed code snippet on line 20
+- [line_drift] Updated line 42 -> 45 in src/module.py reference using anchor 'process_data'
+- [file_moved] Updated path from old/path.py to new/path.py
+- [content_fix] Added missing ## Expected Behavior section
+- [content_fix] Refreshed code snippet on line 20
+- [issue_status] Related issue ENH-042 marked as completed
 - [Or "None" if no corrections needed]
+
+**Correction categories**: Use these prefixes for tracking patterns:
+- `[line_drift]` - Line numbers changed since scan
+- `[file_moved]` - File path changed since scan
+- `[content_fix]` - Content accuracy correction (missing sections, wrong info)
+- `[issue_status]` - Related issue status updated
 
 ## READY_FOR
 - Implementation: Yes/No

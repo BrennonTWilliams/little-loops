@@ -304,4 +304,165 @@ Future scan runs should produce more accurate issues with verified code referenc
 ---
 
 ## Status
-**Completed** | Created: 2026-01-09 | Reopened: 2026-01-11, 2026-01-12 (twice) | Fixed: 2026-01-12 | Priority: P2
+**Reopened** | Created: 2026-01-09 | Reopened: 2026-01-11, 2026-01-12 (twice), 2026-01-13 | Priority: P2
+
+---
+
+## Reopened (Fourth Time)
+
+- **Date**: 2026-01-13
+- **By**: /analyze_log
+- **Reason**: Auto-correction rate spiked to 73% despite third fix
+
+### New Evidence
+
+**Log File**: `ll-parallel-blender-agents-debug.log`
+**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**Occurrences**: 11 out of 15 completed issues (73%)
+**Affected External Issues**: ENH-691, ENH-706, BUG-699, ENH-692, ENH-693, ENH-698, ENH-697, ENH-702, ENH-703, ENH-704, ENH-705
+
+```
+[16:29:11] ENH-691 was auto-corrected during validation
+[16:42:17] ENH-706 was auto-corrected during validation
+[16:54:28] BUG-699 was auto-corrected during validation
+  Correction: Updated "Files to Modify" section to clarify that:
+  Correction: The issue affects generated specfiles from character workflow templates
+  Correction: The specific instance was found at `.blender-agents/585f7626-d9f1-46cd-ac1a-dfdc72e67929/specfile.yaml`
+  Correction: The verification expressions with typos are NOT in the template code
+  Correction: The typos appear to be introduced during specfile generation or manual editing
+[17:03:33] ENH-692 was auto-corrected during validation
+  Correction: All 3 prescriptive criteria still exist in CHARACTER_CREATION_TEMPLATE
+  Correction: Noted that CHARACTER_CREATION_SCULPT has corrected clothing offset
+  Correction: Clarified P1-ENH-701 only fixed metaball template, not main template
+  Correction: Changed `character_creation_v1.yaml` to `workflow_templates.py`
+  Correction: Updated line numbers: 110→479, 187→673, 55→349
+[17:08:02] ENH-693 was auto-corrected during validation
+[17:17:21] ENH-698 was auto-corrected during validation
+[17:19:49] ENH-697 was auto-corrected during validation
+[17:28:57] ENH-702 was auto-corrected during validation
+  Correction: Updated related issue references to reflect that P2-BUG-699 and P1-ENH-696 are in completed directory
+[17:31:54] ENH-703 was auto-corrected during validation
+  Correction: Updated **Verification Notes** section to:
+  Correction: Confirm both criteria still exist in the referenced workflow specfile (lines 150, 180)
+  Correction: Clarify that ENH-692 addressed **templates**, not individual workflow specfiles
+  Correction: Explain this issue provides a **general solution** for quality judgment detection across all workflows
+[17:37:05] ENH-704 was auto-corrected during validation
+  Correction: Line 206: `name: hair_creation` ✓
+  Correction: Line 225: `technique_family: box_modeling` ✓
+  Correction: Line 223: `create_sphere` is in operation_preferences ✓
+  Correction: Contains: `create_cube`, `create_cylinder`, `add_boolean_modifier`, etc.
+  Correction: Does NOT contain: `create_sphere` ✓
+[17:41:49] ENH-705 was auto-corrected during validation
+  Correction: Changed `src/blender_agents/capabilities/analysis_ops.py` → `src/blender_agents/capabilities/scene/scene_snapshot.py`
+  Correction: Changed `tests/unit/capabilities/test_analysis_ops.py` → `tests/unit/capabilities/test_scene_snapshot.py`
+  Correction: Noted that `SceneSnapshot.get_total_triangles()` already exists (lines 594-612)
+  Correction: Noted that `SceneSnapshot.triangle_count` property already exists (lines 647-649)
+  Correction: **P2-ENH-692**: Marked as (COMPLETED)
+```
+
+### Analysis
+
+The third fix added reference verification instructions to scanner prompts. However, the auto-correction rate increased dramatically from 33% to 73%, suggesting:
+
+1. **Corrections are now being logged in detail** (Phase 1 of third fix is working)
+2. **Reference verification may not be effective** or is creating new patterns
+3. **Correction types have shifted** from missing fields to content accuracy
+
+**Correction pattern analysis from this run**:
+- File path corrections (e.g., `analysis_ops.py` → `scene/scene_snapshot.py`)
+- Line number updates (e.g., `110→479, 187→673`)
+- Related issue status updates (marking issues as COMPLETED)
+- Clarifications about which code artifacts are affected (templates vs specfiles)
+
+**Key observations**:
+1. Most corrections are about **code reference accuracy** and **related issue status**
+2. The scanner creates issues that reference lines/files, but the codebase evolves during parallel processing
+3. **Cross-issue dependencies**: Issues reference other issues that get completed during the same run
+
+### Proposed Investigation
+
+1. **Temporal drift**: Issues created at scan time may reference code that changes during parallel processing
+2. **Related issue staleness**: Scanner snapshots related issue status at scan time, but status changes during run
+3. **Line number volatility**: Line numbers drift as files are modified by other workers
+4. **Scanner vs runtime mismatch**: Scanner prompts were updated but issues may have been created before the fix
+
+### Proposed Solutions
+
+1. **Lazy reference validation**: Validate code references just before implementation, not at scan time
+2. **Relative line references**: Use function/class names instead of line numbers where possible
+3. **Dynamic issue status**: Don't include related issue status in scanned issues; let validation resolve it
+4. **Scanner version tracking**: Include scanner version in issues to detect pre-fix issues
+
+---
+
+## Resolution (Fourth Fix)
+
+- **Action**: improve
+- **Completed**: 2026-01-13
+- **Status**: Completed
+
+### Root Cause Analysis
+
+The 73% correction rate analysis revealed that corrections were primarily about:
+1. **Line number drift** (high frequency) - Code modified by other workers during parallel processing
+2. **File path changes** (medium frequency) - Files renamed/moved during processing
+3. **Related issue status stale** (medium frequency) - Issues completed during same run appear as "open"
+4. **Content clarifications** (low frequency) - Scanner misunderstood code relationships
+
+The core problem is **temporal drift** - the scanner captures state at scan time (T0) that becomes stale by validation time (T1) during parallel processing.
+
+### Changes Made
+
+**Phase 1: Add Stable Anchors to Scanner Prompts and Template**
+
+1. **commands/scan_codebase.md** - Scanner Prompts (lines 84, 116, 148):
+   - Added "Stable anchor (function name, class name, or unique nearby string that won't change)" to each scanner's return fields
+   - Bug Scanner, Enhancement Scanner, and Feature Scanner now request stable anchors
+
+2. **commands/scan_codebase.md** - Issue Template (lines 202-203):
+   - Updated Location section to include commit hash with line numbers: `**Line(s)**: 42-45 (at scan commit: [COMMIT_HASH_SHORT])`
+   - Added `**Anchor**` field for function/class names or unique markers
+
+**Phase 2: Remove Related Issue Status from Scanned Issues**
+
+3. **commands/scan_codebase.md** - Scanner Prompts (lines 90-91, 123-124, 153-154):
+   - Added instruction to all scanners: "IMPORTANT: Do NOT include related issue IDs or their status in findings. Related issues will be resolved dynamically during validation."
+
+**Phase 3: Update ready_issue to Use Anchors for Validation**
+
+4. **commands/ready_issue.md** - Code References Section (lines 123-132):
+   - Added "Anchor field present and valid" to validation checklist
+   - Added "Using Stable Anchors for Validation" guidance for anchor-based line number correction
+
+**Phase 4: Add Correction Classification**
+
+5. **commands/ready_issue.md** - CORRECTIONS_MADE Section (lines 216-228):
+   - Updated correction format to include category prefixes: `[line_drift]`, `[file_moved]`, `[content_fix]`, `[issue_status]`
+   - Added documentation of correction categories
+
+6. **scripts/little_loops/parallel/orchestrator.py** (lines 606-625):
+   - Added category extraction from `[category]` prefix in corrections
+   - Added "Corrections by type:" summary to final report showing breakdown by category
+   - Preserved existing "Most common corrections:" report
+
+7. **scripts/tests/test_output_parsing.py** (lines 223-245):
+   - Added `test_corrected_verdict_with_categories` to verify categorized corrections are parsed correctly
+
+8. **scripts/tests/test_orchestrator.py** (lines 845-872):
+   - Added `test_on_worker_complete_categorized_corrections` to verify categorized corrections are stored properly
+
+### Verification Results
+- Tests: 736 PASS
+- Lint: PASS
+- Types: PASS
+
+### Impact
+
+1. **Stable Anchors**: Future scanned issues will include function/class names alongside line numbers, enabling ready_issue to correct line drift using anchor search
+2. **No Related Issue Status**: Scanned issues won't include stale related issue status; validation will resolve dynamically
+3. **Correction Categories**: Corrections are now categorized (`[line_drift]`, `[file_moved]`, `[content_fix]`, `[issue_status]`) enabling pattern analysis to identify remaining correction causes
+4. **Category Statistics**: Parallel processing summary now shows correction breakdown by type for continuous improvement
+
+### Expected Outcome
+
+The categorized corrections will reveal which types of drift are most common, guiding future targeted fixes. The stable anchors provide a fallback for ready_issue to correct line numbers even when they drift during parallel processing.
