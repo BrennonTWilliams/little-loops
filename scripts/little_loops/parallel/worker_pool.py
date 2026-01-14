@@ -761,6 +761,10 @@ class WorkerPool:
             # Catch thoughts/plans files
             elif file_path.startswith("thoughts/"):
                 leaked_files.append(file_path)
+            # Catch issue files in any issue directory variant
+            # Handles both .issues/ (with dot) and issues/ (without dot)
+            elif file_path.startswith((".issues/", "issues/")):
+                leaked_files.append(file_path)
 
         return leaked_files
 

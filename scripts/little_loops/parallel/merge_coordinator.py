@@ -170,7 +170,13 @@ class MergeCoordinator:
             if file_path == state_file_str or file_path.endswith(state_file_name):
                 continue  # Skip state file - orchestrator manages it independently
             # Skip files in completed directory - these are lifecycle-managed
-            if ".issues/completed/" in file_path or file_path.startswith(".issues/completed/"):
+            # Handle both .issues/completed/ (with dot) and issues/completed/ (without dot)
+            if (
+                ".issues/completed/" in file_path
+                or file_path.startswith(".issues/completed/")
+                or "issues/completed/" in file_path
+                or file_path.startswith("issues/completed/")
+            ):
                 self.logger.debug(f"Skipping completed directory file from stash: {file_path}")
                 continue
             tracked_changes.append(line)
@@ -371,8 +377,13 @@ class MergeCoordinator:
 
         dest_path = parts[1].strip()
 
-        # Check if destination is in .issues/completed/
-        return ".issues/completed/" in dest_path or dest_path.startswith(".issues/completed/")
+        # Check if destination is in completed directory (with or without dot prefix)
+        return (
+            ".issues/completed/" in dest_path
+            or dest_path.startswith(".issues/completed/")
+            or "issues/completed/" in dest_path
+            or dest_path.startswith("issues/completed/")
+        )
 
     def _commit_pending_lifecycle_moves(self) -> bool:
         """Commit any uncommitted lifecycle file moves.

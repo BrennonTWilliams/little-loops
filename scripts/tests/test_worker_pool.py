@@ -819,6 +819,34 @@ class TestWorkerPoolHelpers:
 
         assert len(leaks) == 0
 
+    def test_detect_main_repo_leaks_finds_issue_files(
+        self,
+        worker_pool: WorkerPool,
+    ) -> None:
+        """_detect_main_repo_leaks() identifies issue files in both directory variants."""
+        baseline_status: set[str] = set()
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["status", "--porcelain"]:
+                # Test both .issues/ (with dot) and issues/ (without dot) variants
+                return subprocess.CompletedProcess(
+                    args,
+                    0,
+                    "?? .issues/bugs/P1-OTHER-001.md\n?? issues/enhancements/P2-ANOTHER-002.md\n",
+                    "",
+                )
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            # Use unrelated issue ID to ensure detection is via directory prefix, not ID match
+            leaks = worker_pool._detect_main_repo_leaks("UNRELATED-999", baseline_status)
+
+        # Both should be detected even without matching issue ID (via directory prefix)
+        assert ".issues/bugs/P1-OTHER-001.md" in leaks
+        assert "issues/enhancements/P2-ANOTHER-002.md" in leaks
+
     def test_cleanup_leaked_files_tracked(
         self,
         worker_pool: WorkerPool,

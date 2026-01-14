@@ -626,7 +626,7 @@ class TestLifecycleFileMoveExclusion:
         """Should detect rename entries moving files to completed directory."""
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
 
-        # Rename to completed should be detected
+        # Rename to completed should be detected (with dot prefix)
         assert coordinator._is_lifecycle_file_move(
             "R  .issues/bugs/P1-BUG-001.md -> .issues/completed/P1-BUG-001.md"
         )
@@ -636,6 +636,34 @@ class TestLifecycleFileMoveExclusion:
         assert coordinator._is_lifecycle_file_move(
             "R  .issues/features/P3-FEAT-456.md -> .issues/completed/P3-FEAT-456.md"
         )
+
+    def test_is_lifecycle_file_move_handles_path_variants(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should detect renames to completed directory with or without dot prefix."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Without dot prefix (used by external repositories)
+        assert coordinator._is_lifecycle_file_move(
+            "R  issues/bugs/P1-BUG-001.md -> issues/completed/P1-BUG-001.md"
+        )
+        assert coordinator._is_lifecycle_file_move(
+            "R  issues/enhancements/P2-ENH-123.md -> issues/completed/P2-ENH-123.md"
+        )
+
+        # Cross-variant moves (from dotted to non-dotted or vice versa)
+        assert coordinator._is_lifecycle_file_move(
+            "R  .issues/bugs/P1-BUG-001.md -> issues/completed/P1-BUG-001.md"
+        )
+        assert coordinator._is_lifecycle_file_move(
+            "R  issues/bugs/P1-BUG-001.md -> .issues/completed/P1-BUG-001.md"
+        )
+
+        # Non-lifecycle moves should still return False
+        assert not coordinator._is_lifecycle_file_move("R  src/old.py -> src/new.py")
 
     def test_is_lifecycle_file_move_ignores_other_renames(
         self,

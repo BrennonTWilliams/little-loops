@@ -620,8 +620,10 @@ class TestMergeCoordinatorGitOperations:
                         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
                     else:
                         # After pull: local changes appeared
+                        # Note: Using src/test.py instead of .issues/completed/test.md
+                        # because completed directory files are skipped from stashing
                         return subprocess.CompletedProcess(
-                            cmd, 0, stdout="M .issues/completed/test.md\n", stderr=""
+                            cmd, 0, stdout="M src/test.py\n", stderr=""
                         )
 
                 # Checkout main: success
@@ -635,7 +637,7 @@ class TestMergeCoordinatorGitOperations:
                         1,
                         stdout="",
                         stderr="error: Your local changes to the following files would be overwritten by merge:\n"
-                        "  .issues/completed/test.md\n"
+                        "  src/test.py\n"
                         "Please commit your changes or stash them before you merge.",
                     )
 

@@ -85,7 +85,7 @@ The codebase already has detection and cleanup logic in `worker_pool.py`:
 - root-cause:external-dependency
 
 ## Status
-**Reopened** | Created: 2026-01-09 | Priority: P2 | Fixed: 2026-01-09 | Reopened: 2026-01-12
+**Reopened** | Created: 2026-01-09 | Priority: P2 | Fixed: 2026-01-09 | Reopened: 2026-01-12, 2026-01-13
 
 ---
 
@@ -159,5 +159,91 @@ establishing a cached project root before subsequent invocations with the proper
 
 ### Verification Results
 - Tests: PASS (491 tests)
+- Lint: PASS
+- Types: PASS
+
+---
+
+## Reopened (Third Time)
+
+- **Date**: 2026-01-13
+- **By**: /analyze_log
+- **Reason**: Issue recurred with 2 leaks despite second fix
+
+### New Evidence
+
+**Log File**: `ll-parallel-blender-agents-debug.log`
+**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**Occurrences**: 2
+**Affected External Issues**: ENH-706, ENH-692
+
+```
+[16:42:17] ENH-706 leaked 1 file(s) to main repo: ['issues/enhancements/P1-ENH-706-add-verification-pattern-for-guide-height-criterion.md']
+[17:03:33] ENH-692 leaked 1 file(s) to main repo: ['.issues/enhancements/P2-ENH-692-remove-prescriptive-numeric-tolerances-from-character-template.md']
+[17:03:33] Cleaned up 1 leaked file(s) from main repo
+```
+
+### Analysis
+
+Both previous fixes were in place:
+1. `.claude/` directory copied to worktrees (logs confirm: "Copied .claude/ directory to worktree")
+2. `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` environment variable set for all Claude CLI invocations
+
+**Key observations**:
+1. Both leaked files are issue files (in `.issues/` or `issues/` directories)
+2. ENH-692 leak was automatically cleaned up
+3. ENH-706 leak was NOT cleaned up (note: path starts with `issues/` not `.issues/`)
+   - This suggests the cleanup logic may not handle all path variations
+4. The uncleaned ENH-706 leak persisted throughout the run, causing cascading pull failures (see BUG-038)
+
+**Possible causes**:
+1. **Path variation**: The leaked file used `issues/` instead of `.issues/`, possibly bypassing cleanup logic
+2. **Timing issue**: The file may have been created after the baseline snapshot
+3. **Race condition**: Multiple workers may be writing to main repo simultaneously
+4. **Move to completed**: ENH-706 was moved to completed during processing, and the leaked file reflected the old path
+
+### Next Steps
+
+1. Investigate why `issues/` path wasn't cleaned up (only `.issues/` handled?)
+2. Check if the cleanup regex/glob patterns are comprehensive
+3. Verify baseline snapshot timing relative to Claude CLI invocation
+4. Consider more aggressive cleanup patterns for all issue-related directories
+
+---
+
+## Resolution (Third Fix)
+
+- **Action**: fix
+- **Completed**: 2026-01-13
+- **Status**: Completed
+
+### Root Cause Identified
+
+The leak detection and cleanup patterns in `worker_pool.py` and `merge_coordinator.py` only handled the `.issues/` directory variant (with dot prefix), but the external repository `blender-agents` uses `issues/` (without dot prefix). This caused:
+
+1. **Leak detection gap**: Files in `issues/` were not detected as potential leaks unless they contained the issue ID in the filename
+2. **Completed directory skip gap**: The merge coordinator's stash logic only skipped `.issues/completed/`, missing `issues/completed/`
+
+### Changes Made
+
+**File**: `scripts/little_loops/parallel/worker_pool.py`
+- Added explicit check for issue directory variants in `_detect_main_repo_leaks()` (lines 764-766)
+- Now detects leaks in both `.issues/` and `issues/` directories
+
+**File**: `scripts/little_loops/parallel/merge_coordinator.py`
+- Expanded completed directory skip in stash logic (lines 172-179) to handle both variants
+- Expanded `_is_lifecycle_file_move()` (lines 380-386) to handle both variants
+
+**File**: `scripts/tests/test_worker_pool.py`
+- Added `test_detect_main_repo_leaks_finds_issue_files()` test for path variants
+
+**File**: `scripts/tests/test_merge_coordinator.py`
+- Added `test_is_lifecycle_file_move_handles_path_variants()` test for path variants
+
+**File**: `scripts/tests/test_subprocess_mocks.py`
+- Updated `test_restash_after_pull_with_local_changes()` to use `src/test.py` instead of `.issues/completed/test.md` since completed files are intentionally skipped from stashing
+
+### Verification Results
+- Tests: PASS (733 tests)
 - Lint: PASS
 - Types: PASS
