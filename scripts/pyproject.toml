@@ -44,6 +44,9 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0",
 ]
+llm = [
+    "anthropic>=0.40.0",
+]
 
 [tool.hatch.build.targets.wheel]
 packages = ["little_loops"]

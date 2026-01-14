@@ -1,14 +1,19 @@
-"""Tier 1 Deterministic Evaluators for FSM loop execution.
+"""FSM Evaluators for loop execution.
 
-These evaluators interpret action output without any API calls.
-They are fast, free, and reproducible.
+This module provides evaluators that interpret action output and produce
+verdicts for state transitions.
 
 Supported evaluator types:
+
+Tier 1 (Deterministic - no API calls):
     exit_code: Map Unix exit codes to verdicts (0=success, 1=failure, 2+=error)
     output_numeric: Compare numeric output to target value
     output_json: Extract and compare JSON path values
     output_contains: Pattern matching on stdout
     convergence: Track progress toward a target value
+
+Tier 2 (LLM-based):
+    llm_structured: Use LLM with structured output for natural language evaluation
 """
 
 from __future__ import annotations
@@ -17,6 +22,15 @@ import json
 import re
 from dataclasses import dataclass
 from typing import Any
+
+# Optional import for LLM evaluator
+try:
+    import anthropic
+
+    ANTHROPIC_AVAILABLE = True
+except ImportError:
+    anthropic = None  # type: ignore[assignment]
+    ANTHROPIC_AVAILABLE = False
 
 from little_loops.fsm.interpolation import (
     InterpolationContext,
@@ -37,6 +51,37 @@ class EvaluationResult:
 
     verdict: str
     details: dict[str, Any]
+
+
+# Default schema for LLM structured evaluation
+DEFAULT_LLM_SCHEMA: dict[str, Any] = {
+    "type": "object",
+    "properties": {
+        "verdict": {
+            "type": "string",
+            "enum": ["success", "failure", "blocked", "partial"],
+            "description": (
+                "- success: The action completed its goal\n"
+                "- failure: The action failed, should retry\n"
+                "- blocked: Cannot proceed without external help\n"
+                "- partial: Made progress but not complete"
+            ),
+        },
+        "confidence": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1,
+            "description": "Confidence in this verdict (0-1)",
+        },
+        "reason": {
+            "type": "string",
+            "description": "Brief explanation",
+        },
+    },
+    "required": ["verdict", "confidence", "reason"],
+}
+
+DEFAULT_LLM_PROMPT = "Evaluate whether this action succeeded based on its output."
 
 
 def evaluate_exit_code(exit_code: int) -> EvaluationResult:
@@ -339,6 +384,121 @@ def evaluate_convergence(
     )
 
 
+def evaluate_llm_structured(
+    output: str,
+    prompt: str | None = None,
+    schema: dict[str, Any] | None = None,
+    min_confidence: float = 0.5,
+    uncertain_suffix: bool = False,
+    model: str = "claude-sonnet-4-20250514",
+    max_tokens: int = 256,
+    timeout: int = 30,
+) -> EvaluationResult:
+    """Evaluate action output using LLM with structured output.
+
+    This is the ONLY place in the FSM system that uses LLM structured output.
+    Requires the anthropic package to be installed (pip install little-loops[llm]).
+
+    Args:
+        output: Action stdout to evaluate
+        prompt: Custom evaluation prompt (defaults to basic success check)
+        schema: Custom JSON schema for structured response
+        min_confidence: Minimum confidence threshold (0-1)
+        uncertain_suffix: If True, append _uncertain to low-confidence verdicts
+        model: Model identifier for API calls
+        max_tokens: Maximum tokens for response
+        timeout: Timeout in seconds
+
+    Returns:
+        EvaluationResult with verdict from LLM and confidence/reason in details
+    """
+    if not ANTHROPIC_AVAILABLE or anthropic is None:
+        return EvaluationResult(
+            verdict="error",
+            details={
+                "error": "anthropic package not installed. Install with: pip install little-loops[llm]",
+                "missing_dependency": True,
+            },
+        )
+
+    try:
+        client = anthropic.Anthropic()
+    except anthropic.AuthenticationError as e:
+        return EvaluationResult(
+            verdict="error",
+            details={"error": f"Anthropic authentication error: {e}", "auth_error": True},
+        )
+
+    effective_schema = schema or DEFAULT_LLM_SCHEMA
+    effective_prompt = prompt or DEFAULT_LLM_PROMPT
+
+    # Truncate output to avoid context limits (keep last 4000 chars)
+    truncated = output[-4000:] if len(output) > 4000 else output
+
+    try:
+        response = client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            messages=[
+                {
+                    "role": "user",
+                    "content": f"{effective_prompt}\n\n<action_output>\n{truncated}\n</action_output>",
+                }
+            ],
+            tools=[
+                {
+                    "name": "evaluate",
+                    "description": "Provide your evaluation of the action result",
+                    "input_schema": effective_schema,
+                }
+            ],
+            tool_choice={"type": "tool", "name": "evaluate"},
+        )
+    except anthropic.APITimeoutError:
+        return EvaluationResult(
+            verdict="error",
+            details={"error": "LLM evaluation timeout", "timeout": True},
+        )
+    except anthropic.APIError as e:
+        return EvaluationResult(
+            verdict="error",
+            details={"error": f"LLM API error: {e}", "api_error": True},
+        )
+
+    # Extract structured result from tool use
+    llm_result: dict[str, Any] | None = None
+    for block in response.content:
+        if block.type == "tool_use" and block.name == "evaluate":
+            llm_result = block.input  # type: ignore[assignment]
+            break
+
+    if llm_result is None:
+        return EvaluationResult(
+            verdict="error",
+            details={"error": "No evaluation in LLM response"},
+        )
+
+    # Build result with confidence handling
+    verdict = str(llm_result.get("verdict", "error"))
+    confidence = float(llm_result.get("confidence", 1.0))
+    confident = confidence >= min_confidence
+
+    # Optionally modify verdict for low confidence
+    if uncertain_suffix and not confident:
+        verdict = f"{verdict}_uncertain"
+
+    return EvaluationResult(
+        verdict=verdict,
+        details={
+            "confidence": confidence,
+            "confident": confident,
+            "reason": llm_result.get("reason", ""),
+            "raw": llm_result,
+        },
+    )
+
+
 def evaluate(
     config: EvaluateConfig,
     output: str,
@@ -440,9 +600,12 @@ def evaluate(
         )
 
     elif eval_type == "llm_structured":
-        # Tier 2 evaluator - not implemented in FEAT-043
-        raise ValueError(
-            f"Evaluator type '{eval_type}' is a Tier 2 evaluator (see FEAT-044)"
+        return evaluate_llm_structured(
+            output=output,
+            prompt=config.prompt,
+            schema=config.schema,
+            min_confidence=config.min_confidence,
+            uncertain_suffix=config.uncertain_suffix,
         )
 
     else:

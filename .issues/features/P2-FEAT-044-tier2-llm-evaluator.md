@@ -335,3 +335,31 @@ class TestLLMEvaluator:
 ## Reference
 
 - Design doc: `docs/generalized-fsm-loop.md` section "Evaluator Types" - "Tier 2: LLM Evaluator"
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-13
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/pyproject.toml`: Added `anthropic>=0.40.0` as optional `[llm]` dependency
+- `scripts/little_loops/fsm/evaluators.py`:
+  - Added `DEFAULT_LLM_SCHEMA` and `DEFAULT_LLM_PROMPT` constants
+  - Implemented `evaluate_llm_structured()` function with full feature set
+  - Updated `evaluate()` dispatcher to route to LLM evaluator
+  - Added optional anthropic import with graceful fallback
+- `scripts/little_loops/fsm/__init__.py`: Added exports for new symbols
+- `scripts/tests/test_fsm_evaluators.py`:
+  - Added `TestLLMStructuredEvaluator` class with 15 unit tests
+  - Added `TestEvaluateDispatcherLLM` class with 2 dispatcher tests
+  - Removed obsolete ValueError test for llm_structured
+
+### Verification Results
+
+- Tests: PASS (978 tests, all passing)
+- Lint: PASS (ruff check on modified files)
+- Types: PASS (mypy with ignore_missing_imports for optional anthropic)
