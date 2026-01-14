@@ -111,6 +111,51 @@ def mock_issue() -> MagicMock:
     return issue
 
 
+class TestWorkerResult:
+    """Tests for WorkerResult dataclass (ENH-036)."""
+
+    def test_interrupted_defaults_to_false(self) -> None:
+        """WorkerResult.interrupted defaults to False."""
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+        )
+
+        assert result.interrupted is False
+
+    def test_interrupted_can_be_set_true(self) -> None:
+        """WorkerResult.interrupted can be set to True."""
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=False,
+            interrupted=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+            error="Interrupted during shutdown",
+        )
+
+        assert result.interrupted is True
+        assert result.success is False
+
+    def test_interrupted_serialization(self) -> None:
+        """WorkerResult.interrupted is serialized to/from dict."""
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=False,
+            interrupted=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+        )
+
+        data = result.to_dict()
+        assert data["interrupted"] is True
+
+        restored = WorkerResult.from_dict(data)
+        assert restored.interrupted is True
+
+
 class TestWorkerPoolInit:
     """Tests for WorkerPool initialization."""
 
@@ -319,6 +364,57 @@ class TestWorkerPoolTerminateProcesses:
         worker_pool.terminate_all_processes()  # Should not raise
 
         mock_logger.error.assert_called()
+
+    def test_terminate_tracks_issues_during_shutdown(
+        self, worker_pool: WorkerPool, mock_logger: MagicMock
+    ) -> None:
+        """terminate_all_processes() tracks terminated issues when shutdown requested."""
+        mock_process = Mock()
+        mock_process.poll.return_value = None
+        mock_process.pid = 12345
+        mock_process.wait.return_value = None
+
+        worker_pool._active_processes["BUG-001"] = mock_process
+        worker_pool.set_shutdown_requested(True)
+
+        worker_pool.terminate_all_processes()
+
+        assert "BUG-001" in worker_pool._terminated_during_shutdown
+
+    def test_terminate_does_not_track_without_shutdown_flag(
+        self, worker_pool: WorkerPool, mock_logger: MagicMock
+    ) -> None:
+        """terminate_all_processes() doesn't track issues when not in shutdown."""
+        mock_process = Mock()
+        mock_process.poll.return_value = None
+        mock_process.pid = 12345
+        mock_process.wait.return_value = None
+
+        worker_pool._active_processes["BUG-001"] = mock_process
+        # Not setting shutdown_requested
+
+        worker_pool.terminate_all_processes()
+
+        assert "BUG-001" not in worker_pool._terminated_during_shutdown
+
+
+class TestWorkerPoolShutdownFlag:
+    """Tests for shutdown flag management (ENH-036)."""
+
+    def test_set_shutdown_requested_sets_flag(self, worker_pool: WorkerPool) -> None:
+        """set_shutdown_requested() sets the shutdown flag."""
+        assert worker_pool._shutdown_requested is False
+
+        worker_pool.set_shutdown_requested(True)
+
+        assert worker_pool._shutdown_requested is True
+
+    def test_set_shutdown_requested_can_be_reset(self, worker_pool: WorkerPool) -> None:
+        """set_shutdown_requested() can reset the flag."""
+        worker_pool.set_shutdown_requested(True)
+        worker_pool.set_shutdown_requested(False)
+
+        assert worker_pool._shutdown_requested is False
 
 
 class TestWorkerPoolTaskSubmission:

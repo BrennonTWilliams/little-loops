@@ -49,15 +49,23 @@ Options for improvement:
 ## Affected Components
 
 - **Tool**: ll-parallel
-- **Likely Module**: `scripts/little_loops/parallel/orchestrator.py` (signal handling)
-- **Related**: `scripts/little_loops/parallel/worker.py` (worker shutdown behavior)
+- **Likely Module**: `scripts/little_loops/parallel/orchestrator.py` (signal handling, lines 122-132)
+- **Related**: `scripts/little_loops/parallel/worker_pool.py` (worker shutdown behavior, UNKNOWN verdict handling at lines 261-277)
+- **Related**: `scripts/little_loops/parallel/output_parsing.py` (verdict parsing, UNKNOWN fallback)
 
-## Proposed Investigation
+## Proposed Solution
 
-1. Review signal handling in `orchestrator.py` to understand shutdown sequence
-2. Check if workers receive shutdown signal or just stop when orchestrator stops
-3. Determine if workers can be allowed to finish current operation with a timeout
-4. Consider adding a dedicated "interrupted" state to distinguish from actual failures
+Based on code review, the implementation should:
+
+1. **Add INTERRUPTED verdict to output_parsing.py** - New verdict type alongside READY/CORRECTED/NOT_READY/CLOSE/UNKNOWN
+2. **Detect interruption in worker_pool.py** - When process is killed during ready_issue, detect via signal/exit code and return INTERRUPTED instead of UNKNOWN
+3. **Update orchestrator.py signal handler** - Set a shutdown flag that workers can check
+4. **Modify result reporting** - Don't count INTERRUPTED as failures in the final summary; show them separately as "Interrupted (can retry)"
+
+Key files to modify:
+- `scripts/little_loops/parallel/output_parsing.py` - Add INTERRUPTED verdict string alongside existing verdicts (READY/CORRECTED/NOT_READY/CLOSE/UNKNOWN)
+- `scripts/little_loops/parallel/worker_pool.py` - Detect interruption via exit code or shutdown flag, return INTERRUPTED instead of UNKNOWN
+- `scripts/little_loops/parallel/orchestrator.py` - Propagate shutdown flag to workers; update result summary to show INTERRUPTED separately from failures
 
 ## Impact
 
@@ -76,4 +84,52 @@ Options for improvement:
 ---
 
 ## Status
-**Open** | Created: 2026-01-13 | Priority: P3
+**Completed** | Created: 2026-01-13 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-13
+- **Status**: Completed
+
+### Changes Made
+
+1. **types.py**: Added `interrupted` boolean field to `WorkerResult` dataclass
+   - Defaults to `False`
+   - Serialized in `to_dict()` and deserialized in `from_dict()`
+
+2. **worker_pool.py**: Added shutdown state tracking and interrupted detection
+   - Added `_shutdown_requested` flag and `_terminated_during_shutdown` set
+   - Added `set_shutdown_requested()` method for orchestrator to call
+   - Updated `terminate_all_processes()` to track issues terminated during shutdown
+   - Added interrupted checks after both `ready_issue` and `manage_issue` commands
+   - Returns `WorkerResult(interrupted=True)` for workers killed during shutdown
+
+3. **orchestrator.py**: Propagated shutdown flag and updated result handling
+   - Signal handler now calls `worker_pool.set_shutdown_requested(True)`
+   - Added `_interrupted_issues` tracking list
+   - Updated `_on_worker_complete()` to handle interrupted workers specially (not counted as failed)
+   - Updated `_report_results()` to show interrupted count separately from failures
+
+4. **Tests added**:
+   - `TestWorkerResult`: Tests for `interrupted` field defaults and serialization
+   - `TestWorkerPoolShutdownFlag`: Tests for `set_shutdown_requested()`
+   - `TestWorkerPoolTerminateProcesses`: Tests for shutdown tracking during termination
+   - `TestSignalHandlers`: Test for shutdown propagation to worker pool
+
+### Verification Results
+- Tests: PASS (744 passed)
+- Lint: PASS (ruff check)
+- Types: PASS (mypy)
+
+### Implementation Notes
+
+The solution uses the `interrupted` flag on `WorkerResult` rather than adding a new verdict type to avoid changing the parsing layer. The key insight is that interruption is detected at the worker level (via the `_terminated_during_shutdown` set) rather than at the parsing level, since a killed subprocess produces no output to parse.
+
+Now when users press Ctrl+C:
+1. Workers mid-operation are tracked as "terminated during shutdown"
+2. When they complete (with empty/partial output), they return `WorkerResult(interrupted=True)`
+3. The orchestrator logs "BUG-001 was interrupted during shutdown (can retry)"
+4. The final report shows "Interrupted: N (can retry)" separately from "Failed: N"

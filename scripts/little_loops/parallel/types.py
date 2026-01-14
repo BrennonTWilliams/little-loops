@@ -68,6 +68,7 @@ class WorkerResult:
         should_close: Whether the issue should be closed (not implemented)
         close_reason: Reason code for closure (e.g., "already_fixed")
         close_status: Status text for closure (e.g., "Closed - Already Fixed")
+        interrupted: Whether the worker was interrupted during shutdown
     """
 
     issue_id: str
@@ -85,6 +86,7 @@ class WorkerResult:
     should_close: bool = False
     close_reason: str | None = None
     close_status: str | None = None
+    interrupted: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -104,6 +106,7 @@ class WorkerResult:
             "should_close": self.should_close,
             "close_reason": self.close_reason,
             "close_status": self.close_status,
+            "interrupted": self.interrupted,
         }
 
     @classmethod
@@ -125,6 +128,7 @@ class WorkerResult:
             should_close=data.get("should_close", False),
             close_reason=data.get("close_reason"),
             close_status=data.get("close_status"),
+            interrupted=data.get("interrupted", False),
         )
 
 

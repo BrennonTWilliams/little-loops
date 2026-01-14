@@ -279,6 +279,16 @@ class TestSignalHandlers:
 
         assert orchestrator._shutdown_requested is True
 
+    def test_signal_handler_propagates_to_worker_pool(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_signal_handler propagates shutdown to worker pool (ENH-036)."""
+        orchestrator._signal_handler(signal.SIGINT, None)
+
+        # Verify set_shutdown_requested was called on the mock worker pool
+        orchestrator.worker_pool.set_shutdown_requested.assert_called_once_with(True)
+
 
 class TestGitignoreEntries:
     """Tests for _ensure_gitignore_entries."""

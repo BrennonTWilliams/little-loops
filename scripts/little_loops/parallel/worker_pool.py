@@ -84,6 +84,9 @@ class WorkerPool:
         # Track callbacks currently executing
         self._pending_callbacks: set[str] = set()
         self._callback_lock = threading.Lock()
+        # Shutdown tracking for interrupted worker detection (ENH-036)
+        self._shutdown_requested = False
+        self._terminated_during_shutdown: set[str] = set()
 
     def start(self) -> None:
         """Start the worker pool."""
@@ -118,6 +121,14 @@ class WorkerPool:
         self._executor.shutdown(wait=wait)
         self._executor = None
 
+    def set_shutdown_requested(self, value: bool = True) -> None:
+        """Set the shutdown flag.
+
+        Called by orchestrator during shutdown to enable tracking of
+        workers that are terminated due to shutdown vs. actual failures.
+        """
+        self._shutdown_requested = value
+
     def terminate_all_processes(self) -> None:
         """Forcefully terminate all active subprocesses.
 
@@ -130,6 +141,9 @@ class WorkerPool:
                     self.logger.warning(
                         f"Terminating subprocess for {issue_id} (PID {process.pid})"
                     )
+                    # Track issues terminated during shutdown for interrupted detection (ENH-036)
+                    if self._shutdown_requested:
+                        self._terminated_during_shutdown.add(issue_id)
                     try:
                         # Send SIGTERM first for graceful termination
                         process.terminate()
@@ -223,6 +237,20 @@ class WorkerPool:
                 issue_id=issue.issue_id,
             )
 
+            # Check if worker was terminated during shutdown (ENH-036)
+            if issue.issue_id in self._terminated_during_shutdown:
+                return WorkerResult(
+                    issue_id=issue.issue_id,
+                    success=False,
+                    interrupted=True,
+                    branch_name=branch_name,
+                    worktree_path=worktree_path,
+                    duration=time.time() - start_time,
+                    error="Interrupted during shutdown",
+                    stdout=ready_result.stdout,
+                    stderr=ready_result.stderr,
+                )
+
             if ready_result.returncode != 0:
                 return WorkerResult(
                     issue_id=issue.issue_id,
@@ -295,6 +323,20 @@ class WorkerPool:
                 worktree_path,
                 issue_id=issue.issue_id,
             )
+
+            # Check if worker was terminated during shutdown (ENH-036)
+            if issue.issue_id in self._terminated_during_shutdown:
+                return WorkerResult(
+                    issue_id=issue.issue_id,
+                    success=False,
+                    interrupted=True,
+                    branch_name=branch_name,
+                    worktree_path=worktree_path,
+                    duration=time.time() - start_time,
+                    error="Interrupted during shutdown",
+                    stdout=manage_result.stdout,
+                    stderr=manage_result.stderr,
+                )
 
             # Step 6: Get list of changed files
             changed_files = self._get_changed_files(worktree_path)

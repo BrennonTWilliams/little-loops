@@ -91,6 +91,8 @@ class ParallelOrchestrator:
 
         # Track issue info for lifecycle completion after merge
         self._issue_info_by_id: dict[str, IssueInfo] = {}
+        # Track interrupted issues separately from failures (ENH-036)
+        self._interrupted_issues: list[str] = []
 
     def run(self) -> int:
         """Run the parallel issue processor.
@@ -229,6 +231,8 @@ class ParallelOrchestrator:
     def _signal_handler(self, signum: int, frame: object) -> None:
         """Handle shutdown signals gracefully."""
         self._shutdown_requested = True
+        # Propagate to worker pool for interrupted worker detection (ENH-036)
+        self.worker_pool.set_shutdown_requested(True)
         self.logger.warning(f"Received signal {signum}, shutting down gracefully...")
 
     def _load_state(self) -> None:
@@ -458,6 +462,13 @@ class ParallelOrchestrator:
         Args:
             result: Result from the worker
         """
+        # Handle interrupted workers (not counted as failed) - ENH-036
+        if result.interrupted:
+            self.logger.info(f"{result.issue_id} was interrupted during shutdown (can retry)")
+            self._interrupted_issues.append(result.issue_id)
+            # Don't mark as failed - they can be retried on next run
+            return
+
         # Handle issue closure (no merge needed)
         if result.should_close:
             # Lazy import to avoid circular dependency
@@ -580,6 +591,8 @@ class ParallelOrchestrator:
         self.logger.timing(f"Total time: {format_duration(total_time)}")
         self.logger.info(f"Completed: {self.queue.completed_count}")
         self.logger.info(f"Failed: {self.queue.failed_count}")
+        if self._interrupted_issues:
+            self.logger.info(f"Interrupted: {len(self._interrupted_issues)}")
 
         if self.queue.completed_count > 0:
             total_issue_time = sum(t.get("total", 0) for t in self.state.timing.values())
@@ -592,6 +605,13 @@ class ParallelOrchestrator:
             self.logger.warning("Failed issues:")
             for issue_id in self.queue.failed_ids:
                 self.logger.warning(f"  - {issue_id}")
+
+        # Report interrupted issues separately (ENH-036)
+        if self._interrupted_issues:
+            self.logger.info("")
+            self.logger.info(f"Interrupted: {len(self._interrupted_issues)} (can retry)")
+            for issue_id in self._interrupted_issues:
+                self.logger.info(f"  - {issue_id}")
 
         # Report correction statistics for quality tracking (ENH-010)
         if self.state.corrections:
