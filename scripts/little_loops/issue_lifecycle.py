@@ -99,6 +99,23 @@ def _prepare_issue_content(original_path: Path, resolution: str) -> str:
 # =============================================================================
 
 
+def _is_git_tracked(file_path: Path) -> bool:
+    """Check if a file is under git version control.
+
+    Args:
+        file_path: Path to the file to check
+
+    Returns:
+        True if file is tracked by git, False otherwise
+    """
+    result = subprocess.run(
+        ["git", "ls-files", str(file_path)],
+        capture_output=True,
+        text=True,
+    )
+    return bool(result.stdout.strip())
+
+
 def _cleanup_stale_source(original_path: Path, issue_id: str, logger: Logger) -> None:
     """Remove orphaned source file and commit cleanup.
 
@@ -124,6 +141,10 @@ def _move_issue_to_completed(
 ) -> bool:
     """Move issue file to completed dir, preferring git mv for history.
 
+    Checks if source is under git version control before attempting git mv.
+    If source is tracked, uses git mv for history preservation.
+    If source is not tracked, uses manual copy + delete directly.
+
     Args:
         original_path: Source path of issue file
         completed_path: Destination path in completed directory
@@ -141,22 +162,33 @@ def _move_issue_to_completed(
             original_path.unlink()
         return True
 
-    result = subprocess.run(
-        ["git", "mv", str(original_path), str(completed_path)],
-        capture_output=True,
-        text=True,
-    )
+    # Check if source is under git version control before attempting git mv
+    source_tracked = _is_git_tracked(original_path)
 
-    if result.returncode != 0:
-        # git mv failed, fall back to manual copy + delete
-        logger.warning(f"git mv failed: {result.stderr}")
+    if source_tracked:
+        # Source is tracked, use git mv for history preservation
+        result = subprocess.run(
+            ["git", "mv", str(original_path), str(completed_path)],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            # git mv failed, fall back to manual copy + delete
+            logger.warning(f"git mv failed: {result.stderr}")
+            completed_path.write_text(content)
+            if original_path.exists():
+                original_path.unlink()
+        else:
+            logger.success(f"Used git mv to move {original_path.stem}")
+            # Write updated content to the moved file
+            completed_path.write_text(content)
+    else:
+        # Source is not tracked, use manual copy + delete directly
+        logger.info(f"Source not tracked by git, using manual copy: {original_path.name}")
         completed_path.write_text(content)
         if original_path.exists():
             original_path.unlink()
-    else:
-        logger.success(f"Used git mv to move {original_path.stem}")
-        # Write updated content to the moved file
-        completed_path.write_text(content)
 
     return True
 

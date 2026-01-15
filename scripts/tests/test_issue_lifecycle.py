@@ -277,6 +277,9 @@ class TestMoveIssueToCompleted:
                 # Simulate git mv by actually moving
                 original.rename(completed)
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if "git" in cmd and "ls-files" in cmd:
+                # Simulate file being tracked
+                return subprocess.CompletedProcess(cmd, 0, stdout=str(original), stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -301,6 +304,9 @@ class TestMoveIssueToCompleted:
             if "git" in cmd and "mv" in cmd:
                 # Simulate git mv failure
                 return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="fatal: error")
+            if "git" in cmd and "ls-files" in cmd:
+                # Simulate file being tracked (so we attempt git mv)
+                return subprocess.CompletedProcess(cmd, 0, stdout=str(original), stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -355,6 +361,80 @@ class TestMoveIssueToCompleted:
         assert completed.read_text() == new_content  # Content updated
         assert not original.exists()  # Source still doesn't exist
         mock_logger.info.assert_called()
+
+    def test_untracked_source_skips_git_mv(
+        self, tmp_path: Path, mock_logger: MagicMock
+    ) -> None:
+        """Test that untracked source files use manual copy without attempting git mv."""
+        original = tmp_path / "bugs" / "issue.md"
+        completed = tmp_path / "completed" / "issue.md"
+        original.parent.mkdir(parents=True, exist_ok=True)
+        completed.parent.mkdir(parents=True, exist_ok=True)
+        original.write_text("Original content")
+
+        content = "Updated content with resolution"
+
+        git_mv_attempted = False
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            nonlocal git_mv_attempted
+            if "git" in cmd and "mv" in cmd:
+                git_mv_attempted = True
+                # Simulate git mv failure for untracked file
+                return subprocess.CompletedProcess(
+                    cmd, 1, stdout="", stderr="fatal: not under version control"
+                )
+            if "git" in cmd and "ls-files" in cmd:
+                # Simulate file not being tracked
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = _move_issue_to_completed(original, completed, content, mock_logger)
+
+        assert result is True
+        assert completed.exists()
+        assert completed.read_text() == content
+        assert not original.exists()
+        # With the fix, git mv should NOT be attempted when source is not tracked
+        assert not git_mv_attempted
+        mock_logger.info.assert_called()
+
+    def test_tracked_source_uses_git_mv(
+        self, tmp_path: Path, mock_logger: MagicMock
+    ) -> None:
+        """Test that tracked source files use git mv for history preservation."""
+        original = tmp_path / "bugs" / "issue.md"
+        completed = tmp_path / "completed" / "issue.md"
+        original.parent.mkdir(parents=True, exist_ok=True)
+        completed.parent.mkdir(parents=True, exist_ok=True)
+        original.write_text("Original content")
+
+        content = "Updated content with resolution"
+
+        git_mv_attempted = False
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            nonlocal git_mv_attempted
+            if "git" in cmd and "mv" in cmd:
+                git_mv_attempted = True
+                # Simulate successful git mv
+                original.rename(completed)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if "git" in cmd and "ls-files" in cmd:
+                # Simulate file being tracked
+                return subprocess.CompletedProcess(cmd, 0, stdout=str(original), stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = _move_issue_to_completed(original, completed, content, mock_logger)
+
+        assert result is True
+        assert completed.exists()
+        assert completed.read_text() == content
+        # With the fix, git mv SHOULD be attempted when source is tracked
+        assert git_mv_attempted
+        mock_logger.success.assert_called()
 
 
 class TestCommitIssueCompletion:
