@@ -37,7 +37,7 @@ By not leveraging this rich context, the current `/ll:handoff`:
 
 ### 1. New Process Flow
 
-Update `/ll:handoff` to use a **hybrid approach**:
+Update `/ll:handoff` to use a **conversation-first approach** with optional deep validation:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -45,18 +45,23 @@ Update `/ll:handoff` to use a **hybrid approach**:
 │    - Review entire conversation history above                     │
 │    - Extract user requests, decisions, errors, feedback           │
 │    - Capture chronological flow and reasoning                     │
+│    - Generate continuation prompt from conversation alone         │
 │     ↓                                                             │
-│ 2. Validate and enrich with artifacts (secondary source)          │
+│ 2. [Optional --deep] Validate and enrich with artifacts          │
 │    - Git status (verify actual file state)                        │
 │    - Todo list (cross-check pending items)                        │
 │    - Recent files (ensure nothing was missed)                     │
-│     ↓                                                             │
-│ 3. Generate continuation prompt (combine both sources)            │
-│    - Conversation summary provides narrative flow                 │
-│    - Artifacts provide verification and grounding                 │
 │    - Flag any discrepancies between conversation and disk state   │
+│     ↓                                                             │
+│ 3. [Optional --deep] Enhance prompt with artifact validation     │
+│    - Add artifact validation section to continuation prompt       │
+│    - Include discrepancies, git status, todo state                │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Default behavior** (no flag): Step 1 only - conversation summary is sufficient for most handoffs.
+
+**With `--deep` flag**: Steps 1, 2, 3 - full validation and artifact enrichment for complex situations.
 
 ### 2. Updated Command Structure
 
@@ -67,7 +72,7 @@ Replace the current "Gather Current State" section with:
 ```markdown
 ## Process
 
-### 1. Summarize the Conversation (Primary)
+### 1. Summarize the Conversation (Always)
 
 Review the entire conversation history above and extract:
 
@@ -91,9 +96,9 @@ Review the entire conversation history above and extract:
 - **Code snippets**: Key code that was written or discussed
 - **Architectural decisions**: What patterns or approaches were chosen?
 
-### 2. Validate and Enrich with Artifacts (Secondary)
+### 2. [With --deep] Validate and Enrich with Artifacts
 
-Run these commands to validate and enrich the conversation summary:
+**Only if `--deep` flag was passed**: Run these commands to validate and enrich the conversation summary:
 
 #### Git Status
 ```bash
@@ -117,7 +122,11 @@ git diff --name-only HEAD~1 2>/dev/null || git diff --name-only --cached
 
 ### 3. Generate Continuation Prompt
 
-Write to `.claude/ll-continue-prompt.md` combining both sources:
+Write to `.claude/ll-continue-prompt.md`:
+
+**If `--deep` flag was passed**: Include all sections below.
+
+**If `--deep` flag was NOT passed**: Only include "Conversation Summary Section" and "Next Steps Section".
 
 #### Conversation Summary Section
 - Narrative flow of what happened
@@ -160,6 +169,8 @@ Or copy the prompt content above to paste into a new session.
 
 ## Enhanced Output Format
 
+### Default Mode (no --deep flag)
+
 ```markdown
 # Session Continuation: [Context from conversation]
 
@@ -184,17 +195,6 @@ Or copy the prompt content above to paste into a new session.
 |------|--------------|-------------------|
 | `path/to/file.ts:45` | Added error handling | Discussed in phase 2, user requested retry logic |
 | ... | ... | ... |
-
-## Artifact Validation
-
-### Current Git Status
-[Actual git status output]
-
-### Discrepancies
-[Any differences between conversation and disk state]
-
-### Todo List State
-[Current todo items]
 
 ## Resume Point
 
@@ -222,17 +222,35 @@ Or copy the prompt content above to paste into a new session.
 - Following pattern from `[file:line]` - [why this pattern was chosen]
 ```
 
+### Deep Mode (--deep flag)
+
+Includes everything from Default Mode, plus:
+
+```markdown
+## Artifact Validation
+
+### Current Git Status
+[Actual git status output]
+
+### Discrepancies
+[Any differences between conversation and disk state]
+
+### Todo List State
+[Current todo items]
+```
+
 ## Benefits
 
-| Aspect | Current (Artifacts Only) | Enhanced (Conversation + Artifacts) |
-|--------|-------------------------|--------------------------------------|
-| User feedback | ❌ Not captured | ✅ Included verbatim |
-| Reasoning | ❌ Inferred or missing | ✅ Captured from discussion |
-| Errors | ⚠️ Inferred from git | ✅ Described with resolution |
-| Flow | ❌ No narrative | ✅ Chronological story |
-| Code snippets | ❌ Only file:line refs | ✅ Full snippets included |
-| Validation | ❌ None | ✅ Cross-checked with git |
-| Discrepancies | ❌ Not detected | ✅ Flagged explicitly |
+| Aspect | Current (Artifacts Only) | Enhanced Default (Conversation Only) | Enhanced Deep (--deep flag) |
+|--------|-------------------------|--------------------------------------|-----------------------------|
+| User feedback | ❌ Not captured | ✅ Included verbatim | ✅ Included verbatim |
+| Reasoning | ❌ Inferred or missing | ✅ Captured from discussion | ✅ Captured from discussion |
+| Errors | ⚠️ Inferred from git | ✅ Described with resolution | ✅ Described with resolution |
+| Flow | ❌ No narrative | ✅ Chronological story | ✅ Chronological story |
+| Code snippets | ❌ Only file:line refs | ✅ Full snippets included | ✅ Full snippets included |
+| Speed | ⚠️ Multiple git reads | ✅ Fast - no disk I/O | ⚠️ Slower - validation |
+| Validation | ❌ None | ⚠️ Conversation only | ✅ Cross-checked with git |
+| Discrepancies | ❌ Not detected | ❌ Not detected | ✅ Flagged explicitly |
 
 ## Edge Cases to Handle
 
@@ -309,7 +327,7 @@ For each scenario, verify:
 ## Expected Behavior
 
 ```bash
-# Run handoff - now leverages conversation
+# Default mode - conversation summary only (fast, most common)
 /ll:handoff
 
 # Output includes:
@@ -317,6 +335,12 @@ For each scenario, verify:
 # - Errors encountered and how they were fixed
 # - Decisions and their reasoning
 # - Code snippets with discussion context
+# - Next steps and resume point
+
+# Deep mode - includes artifact validation (for complex situations)
+/ll:handoff --deep
+
+# Output includes everything from default mode, plus:
 # - Artifact validation (git status, todos)
 # - Discrepancy detection between conversation and disk
 ```
