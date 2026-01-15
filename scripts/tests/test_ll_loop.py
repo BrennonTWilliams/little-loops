@@ -1554,6 +1554,93 @@ states:
         # PersistentExecutor.resume() returns None for completed loops
         assert result == 1
 
+    def test_resume_continues_interrupted_loop(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Resume should continue from saved state to completion."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir()
+
+        # Create loop definition with multiple states
+        loop_content = """
+name: test-loop
+initial: step1
+max_iterations: 5
+states:
+  step1:
+    action: "echo step1"
+    evaluate:
+      type: exit_code
+    on_success: step2
+    on_failure: step1
+  step2:
+    action: "echo step2"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: step2
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-loop.yaml").write_text(loop_content)
+
+        # Create state file showing loop interrupted at step2 (not initial)
+        state_file = running_dir / "test-loop.state.json"
+        state_file.write_text(
+            json.dumps(
+                {
+                    "loop_name": "test-loop",
+                    "current_state": "step2",
+                    "iteration": 2,
+                    "captured": {},
+                    "prev_result": None,
+                    "last_result": None,
+                    "started_at": "2026-01-15T10:00:00Z",
+                    "updated_at": "2026-01-15T10:05:00Z",
+                    "status": "running",
+                }
+            )
+        )
+
+        monkeypatch.chdir(tmp_path)
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo step2"],
+                returncode=0,
+                stdout="step2",
+                stderr="",
+            )
+
+            with patch.object(sys, "argv", ["ll-loop", "resume", "test-loop"]):
+                from little_loops.cli import main_loop
+
+                result = main_loop()
+
+        # Verify successful completion
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Resumed and completed: done" in captured.out
+
+        # Verify loop_resume event was emitted
+        events_file = running_dir / "test-loop.events.jsonl"
+        assert events_file.exists()
+
+        with open(events_file) as f:
+            events = [json.loads(line) for line in f if line.strip()]
+
+        event_types = [e["event"] for e in events]
+        assert "loop_resume" in event_types
+
+        # Verify resume started from step2
+        resume_event = next(e for e in events if e["event"] == "loop_resume")
+        assert resume_event["from_state"] == "step2"
+        assert resume_event["iteration"] == 2
+
 
 class TestErrorHandling:
     """Tests for error handling across subcommands."""
