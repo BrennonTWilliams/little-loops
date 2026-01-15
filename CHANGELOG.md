@@ -5,7 +5,17 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Planned
+
+- Test coverage for core modules
+- Windows compatibility testing
+- Performance benchmarks for large repositories
+
 ## [1.0.0] - 2025-01-02
+
+[1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
 
 ### Added
 
@@ -77,11 +87,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All subprocess calls use argument lists (no shell=True)
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
-
-## [Unreleased]
-
-### Planned
-
-- Test coverage for core modules
-- Windows compatibility testing
-- Performance benchmarks for large repositories

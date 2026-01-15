@@ -10,7 +10,10 @@ readme = "../README.md"
 license = "MIT"
 requires-python = ">=3.11"
 authors = [
-    { name = "little-loops" }
+    { name = "Brennon Williams", email = "brennon@brenentech.com" }
+]
+maintainers = [
+    { name = "Brennon Williams", email = "brennon@brenentech.com" }
 ]
 keywords = [
     "claude-code",
@@ -31,10 +34,15 @@ classifiers = [
     "Topic :: Software Development :: Build Tools",
     "Topic :: Software Development :: Quality Assurance",
 ]
-
 dependencies = [
     "pyyaml>=6.0",
 ]
+
+[project.urls]
+Homepage = "https://github.com/BrennonTWilliams/little-loops"
+Documentation = "https://github.com/BrennonTWilliams/little-loops/blob/main/README.md"
+Repository = "https://github.com/BrennonTWilliams/little-loops"
+"Bug Tracker" = "https://github.com/BrennonTWilliams/little-loops/issues"
 
 [project.scripts]
 ll-auto = "little_loops.cli:main_auto"
@@ -55,6 +63,7 @@ llm = [
 
 [tool.hatch.build.targets.wheel]
 packages = ["little_loops"]
+include = ["little_loops/**", "LICENSE"]
 
 [tool.ruff]
 line-length = 100

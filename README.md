@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/little-loops.jpeg" alt="Little Loops Logo" width="200">
+  <img src="https://raw.githubusercontent.com/BrennonTWilliams/little-loops/main/assets/little-loops.jpeg" alt="Little Loops Logo" width="200">
 </p>
 
 # little-loops
