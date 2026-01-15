@@ -7,7 +7,7 @@ import json
 import subprocess
 import sys
 import tempfile
-from collections.abc import Generator
+from collections.abc import Callable, Generator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
@@ -93,6 +93,7 @@ class TestLoopArgumentParsing:
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--quiet", "-q", action="store_true")
         parser.add_argument("--no-llm", action="store_true")
+        parser.add_argument("--llm-model", type=str)
         return parser
 
     def _create_subparser_only(self) -> argparse.ArgumentParser:
@@ -201,6 +202,30 @@ class TestLoopArgumentParsing:
         args = parser.parse_args(["status", "test-loop"])
         assert args.command == "status"
         assert args.loop == "test-loop"
+
+    def test_no_llm_flag_parsed_correctly(self) -> None:
+        """--no-llm flag sets no_llm to True."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop", "--no-llm"])
+        assert args.no_llm is True
+
+    def test_no_llm_default_is_false(self) -> None:
+        """--no-llm defaults to False when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop"])
+        assert args.no_llm is False
+
+    def test_llm_model_flag_parsed_correctly(self) -> None:
+        """--llm-model accepts model string."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop", "--llm-model", "claude-opus-4-20250514"])
+        assert args.llm_model == "claude-opus-4-20250514"
+
+    def test_llm_model_default_is_none(self) -> None:
+        """--llm-model defaults to None when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop"])
+        assert args.llm_model is None
 
 
 class TestResolveLoopPath:
@@ -2221,3 +2246,325 @@ states:
         assert "evaluate" in event_types
         assert "route" in event_types
         assert "loop_complete" in event_types
+
+
+class TestLLMFlags:
+    """Tests for --no-llm and --llm-model CLI flags.
+
+    These tests verify that the LLM-related CLI flags are correctly parsed
+    and their values are properly passed through to the FSM configuration.
+    """
+
+    def test_no_llm_flag_accepted_with_dry_run(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--no-llm flag is accepted by the CLI with --dry-run."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-loop
+initial: done
+states:
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-loop.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--no-llm", "--dry-run"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+
+    def test_llm_model_flag_accepted_with_dry_run(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--llm-model flag is accepted by the CLI with --dry-run."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-loop
+initial: done
+states:
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-loop.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(
+            sys, "argv", ["ll-loop", "run", "test-loop", "--llm-model", "claude-opus-4-20250514", "--dry-run"]
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+
+    def test_no_llm_and_llm_model_combined(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Both --no-llm and --llm-model flags can be used together."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-loop
+initial: done
+states:
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-loop.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-loop", "run", "test-loop", "--no-llm", "--llm-model", "claude-opus-4-20250514", "--dry-run"],
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+
+    def test_no_llm_sets_fsm_llm_enabled_false(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--no-llm sets fsm.llm.enabled to False before execution."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-loop
+initial: check
+states:
+  check:
+    action: "echo test"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-loop.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        captured_fsm = None
+
+        # Import here to get original init before patching
+        from little_loops.fsm.persistence import PersistentExecutor
+
+        original_init: Callable[..., None] = PersistentExecutor.__init__
+
+        def capture_persistent_executor_init(self: Any, fsm: Any, **kwargs: Any) -> None:
+            nonlocal captured_fsm
+            captured_fsm = fsm
+            # Call original init
+            original_init(self, fsm, **kwargs)
+
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo test"],
+                returncode=0,
+                stdout="test",
+                stderr="",
+            )
+            with patch.object(
+                PersistentExecutor, "__init__", capture_persistent_executor_init
+            ):
+                with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--no-llm"]):
+                    from little_loops.cli import main_loop
+
+                    main_loop()
+
+        assert captured_fsm is not None
+        assert captured_fsm.llm.enabled is False
+
+    def test_llm_model_sets_fsm_llm_model(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--llm-model sets fsm.llm.model to the specified value."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-loop
+initial: check
+states:
+  check:
+    action: "echo test"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-loop.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        captured_fsm = None
+
+        # Import here to get original init before patching
+        from little_loops.fsm.persistence import PersistentExecutor
+
+        original_init: Callable[..., None] = PersistentExecutor.__init__
+
+        def capture_persistent_executor_init(self: Any, fsm: Any, **kwargs: Any) -> None:
+            nonlocal captured_fsm
+            captured_fsm = fsm
+            original_init(self, fsm, **kwargs)
+
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo test"],
+                returncode=0,
+                stdout="test",
+                stderr="",
+            )
+            with patch.object(
+                PersistentExecutor, "__init__", capture_persistent_executor_init
+            ):
+                with patch.object(
+                    sys, "argv", ["ll-loop", "run", "test-loop", "--llm-model", "claude-opus-4-20250514"]
+                ):
+                    from little_loops.cli import main_loop
+
+                    main_loop()
+
+        assert captured_fsm is not None
+        assert captured_fsm.llm.model == "claude-opus-4-20250514"
+
+    def test_llm_model_overrides_default_model(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--llm-model overrides the default model value."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Loop with custom llm config that will be overridden
+        loop_content = """
+name: test-loop
+initial: check
+llm:
+  model: "claude-sonnet-4-20250514"
+states:
+  check:
+    action: "echo test"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-loop.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        captured_fsm = None
+
+        # Import here to get original init before patching
+        from little_loops.fsm.persistence import PersistentExecutor
+
+        original_init: Callable[..., None] = PersistentExecutor.__init__
+
+        def capture_persistent_executor_init(self: Any, fsm: Any, **kwargs: Any) -> None:
+            nonlocal captured_fsm
+            captured_fsm = fsm
+            original_init(self, fsm, **kwargs)
+
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo test"],
+                returncode=0,
+                stdout="test",
+                stderr="",
+            )
+            with patch.object(
+                PersistentExecutor, "__init__", capture_persistent_executor_init
+            ):
+                with patch.object(
+                    sys, "argv", ["ll-loop", "run", "test-loop", "--llm-model", "claude-opus-4-20250514"]
+                ):
+                    from little_loops.cli import main_loop
+
+                    main_loop()
+
+        assert captured_fsm is not None
+        # CLI flag should override the YAML-specified model
+        assert captured_fsm.llm.model == "claude-opus-4-20250514"
+
+    def test_no_llm_preserves_other_llm_config(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """--no-llm only changes enabled, preserving other LLM settings."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-loop
+initial: check
+llm:
+  model: "claude-opus-4-20250514"
+  max_tokens: 512
+  timeout: 60
+states:
+  check:
+    action: "echo test"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-loop.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        captured_fsm = None
+
+        # Import here to get original init before patching
+        from little_loops.fsm.persistence import PersistentExecutor
+
+        original_init: Callable[..., None] = PersistentExecutor.__init__
+
+        def capture_persistent_executor_init(self: Any, fsm: Any, **kwargs: Any) -> None:
+            nonlocal captured_fsm
+            captured_fsm = fsm
+            original_init(self, fsm, **kwargs)
+
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo test"],
+                returncode=0,
+                stdout="test",
+                stderr="",
+            )
+            with patch.object(
+                PersistentExecutor, "__init__", capture_persistent_executor_init
+            ):
+                with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--no-llm"]):
+                    from little_loops.cli import main_loop
+
+                    main_loop()
+
+        assert captured_fsm is not None
+        assert captured_fsm.llm.enabled is False
+        # Other settings should be preserved from YAML
+        assert captured_fsm.llm.model == "claude-opus-4-20250514"
+        assert captured_fsm.llm.max_tokens == 512
+        assert captured_fsm.llm.timeout == 60
