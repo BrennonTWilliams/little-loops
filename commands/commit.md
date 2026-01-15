@@ -14,6 +14,37 @@ You are tasked with creating git commits for the changes made during this sessio
    - Run `git diff` to understand the modifications
    - Consider whether changes should be one commit or multiple logical commits
 
+1.5. **Check for files that should be ignored:**
+   - After running `git status`, examine the untracked files
+   - Import `suggest_gitignore_patterns` and `add_patterns_to_gitignore` from `little_loops.git_operations`
+   - Call `suggest_gitignore_patterns()` to analyze untracked files
+   - If suggestions are found (`result.has_suggestions` is True):
+     a. Present findings grouped by category:
+        ```
+        Found {N} untracked file(s) that should typically be ignored:
+
+        {Category}:
+        - Pattern: {pattern}
+        - Files: {comma-separated list of matched files}
+        - Description: {description}
+        ```
+     b. Use `AskUserQuestion` tool to get user approval:
+        ```yaml
+        questions:
+          - header: "Gitignore Suggestions"
+            question: "Found {TOTAL_FILES} untracked file(s) that should typically be ignored. Add these patterns to .gitignore?"
+            options:
+              - label: "Yes, add all suggested patterns"
+                description: "Add {PATTERN_COUNT} pattern(s) to .gitignore: {PATTERMS_LIST}"
+              - label: "No, skip gitignore updates"
+                description: "Proceed with commit without updating .gitignore"
+            multiSelect: false
+        ```
+     c. Handle user response:
+        - **"Yes, add all"**: Extract pattern strings from `result.patterns`, call `add_patterns_to_gitignore()`, show confirmation
+        - **"No, skip"**: Continue with commit workflow
+     d. If patterns were added, run `git status` again to show updated state
+
 2. **Plan your commit(s):**
    - Identify which files belong together
    - Draft clear, descriptive commit messages

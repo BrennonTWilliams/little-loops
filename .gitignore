@@ -35,6 +35,7 @@ build/
 
 # Test coverage
 coverage/
+coverage.json
 .coverage
 .nyc_output/
 
