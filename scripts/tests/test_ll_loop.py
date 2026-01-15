@@ -1889,6 +1889,205 @@ goal: "Test"
         assert "7" in captured.out
 
 
+class TestErrorMessages:
+    """Tests that verify error message content, not just return codes."""
+
+    def test_missing_loop_error_message(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Missing loop shows helpful error message."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "nonexistent"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        assert result == 1
+        assert captured.err != ""  # Error message is not empty
+        assert "nonexistent" in captured.err  # Mentions the loop name
+        assert "not found" in captured.err.lower()  # Helpful error indication
+
+    def test_validation_error_message(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Validation error shows what's wrong."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "invalid.yaml").write_text(
+            """
+name: invalid
+initial: nonexistent
+states:
+  start:
+    action: "echo test"
+    terminal: true
+"""
+        )
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "validate", "invalid"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        assert result == 1
+        assert captured.err != ""
+        assert "validation" in captured.err.lower() or "invalid" in captured.err.lower()
+        assert "nonexistent" in captured.err  # Mentions the invalid state
+
+    def test_yaml_parse_error_message(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Invalid YAML shows parsing error."""
+        # Use compile command which properly catches yaml.YAMLError
+        bad_file = tmp_path / "bad.yaml"
+        bad_file.write_text("invalid: yaml: content: [broken")
+
+        with patch.object(sys, "argv", ["ll-loop", "compile", str(bad_file)]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        assert result == 1
+        assert captured.err != ""
+        assert "yaml" in captured.err.lower() or "parse" in captured.err.lower()
+
+    def test_compile_missing_input_error_message(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Compile with missing file shows helpful error."""
+        missing_path = tmp_path / "nonexistent.yaml"
+        with patch.object(sys, "argv", ["ll-loop", "compile", str(missing_path)]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        assert result == 1
+        assert captured.err != ""
+        assert "not found" in captured.err.lower()
+        assert str(missing_path) in captured.err or "nonexistent" in captured.err
+
+    def test_status_no_state_error_message(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Status with no state shows helpful message."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "status", "test-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        assert result == 1
+        assert captured.err != ""
+        assert "test-loop" in captured.err  # Mentions loop name
+        assert "not found" in captured.err.lower() or "no state" in captured.err.lower()
+
+    def test_resume_no_state_error_message(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Resume with no state shows helpful message."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test.yaml").write_text(
+            """
+name: test
+initial: start
+states:
+  start:
+    action: "echo test"
+    terminal: true
+"""
+        )
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "resume", "test"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        assert result == 1
+        # Note: resume with nothing uses logger.warning() which goes to stdout
+        combined = captured.out + captured.err
+        assert "test" in combined  # Mentions loop name
+        assert "nothing" in combined.lower() or "resume" in combined.lower()
+
+    def test_error_messages_go_to_stderr(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Error messages go to stderr, not stdout."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "nonexistent"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        assert result == 1
+        assert captured.err != ""  # Error in stderr
+
+    def test_error_messages_not_empty(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Error conditions produce non-empty error output."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        error_scenarios = [
+            (["ll-loop", "run", "missing"], "missing loop"),
+            (["ll-loop", "validate", "missing"], "missing loop validation"),
+            (["ll-loop", "status", "missing"], "missing status"),
+        ]
+
+        for argv, scenario in error_scenarios:
+            monkeypatch.chdir(tmp_path)
+            with patch.object(sys, "argv", argv):
+                from little_loops.cli import main_loop
+
+                result = main_loop()
+
+            captured = capsys.readouterr()
+            assert result == 1, f"Expected error for {scenario}"
+            combined = captured.out + captured.err
+            assert combined.strip() != "", f"Empty output for {scenario}"
+
+
 class TestCompileEndToEnd:
     """End-to-end tests for paradigm compilation without mocking."""
 
