@@ -739,6 +739,69 @@ class TestAcceptanceCriteria:
         # Iteration should have increased from saved state
         assert result.iterations >= saved_iteration
 
+    def test_resume_preserves_captured_for_interpolation(
+        self, tmp_loops_dir: Path
+    ) -> None:
+        """Captures from before interrupt are usable after resume via interpolation."""
+        # FSM where step2 uses captured value from step1
+        fsm = FSMLoop(
+            name="capture-resume",
+            initial="step1",
+            states={
+                "step1": StateConfig(
+                    action="fetch.sh",
+                    capture="data",
+                    next="step2",
+                ),
+                "step2": StateConfig(
+                    action='use "${captured.data.output}"',
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        persistence = StatePersistence("capture-resume", tmp_loops_dir)
+        persistence.initialize()
+
+        # Simulate interrupted execution: step1 completed, about to start step2
+        state = LoopState(
+            loop_name="capture-resume",
+            current_state="step2",
+            iteration=2,
+            captured={
+                "data": {
+                    "output": "captured-value",
+                    "stderr": "",
+                    "exit_code": 0,
+                    "duration_ms": 100,
+                }
+            },
+            prev_result={
+                "output": "captured-value",
+                "stderr": "",
+                "exit_code": 0,
+                "state": "step1",
+            },
+            last_result=None,
+            started_at="2026-01-15T10:00:00Z",
+            updated_at="",
+            status="running",
+        )
+        persistence.save_state(state)
+
+        mock_runner = MockActionRunner()
+
+        executor = PersistentExecutor(
+            fsm, persistence=persistence, action_runner=mock_runner
+        )
+        result = executor.resume()
+
+        assert result is not None
+        # Verify the interpolation used the captured value from before resume
+        assert len(mock_runner.calls) == 1
+        assert 'use "captured-value"' in mock_runner.calls[0]
+
     def test_resume_returns_none_for_completed_failed(
         self, simple_fsm: FSMLoop, tmp_loops_dir: Path
     ) -> None:

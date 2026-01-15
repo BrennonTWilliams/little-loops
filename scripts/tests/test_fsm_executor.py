@@ -313,6 +313,232 @@ class TestCapture:
         assert result.captured["warnings"]["output"] == "10"
 
 
+class TestCaptureWorkflow:
+    """Tests for capture-then-use workflow in execution."""
+
+    def test_captured_output_used_in_next_state(self) -> None:
+        """Output captured in state A is interpolated in state B action."""
+        fsm = FSMLoop(
+            name="test",
+            initial="fetch",
+            states={
+                "fetch": StateConfig(
+                    action="echo secret-value-123",
+                    capture="token",
+                    next="use",
+                ),
+                "use": StateConfig(
+                    action='echo "Using: ${captured.token.output}"',
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.results = [
+            ("echo secret-value-123", {"output": "secret-value-123", "exit_code": 0}),
+            ("echo", {"output": "Using: secret-value-123", "exit_code": 0}),
+        ]
+        mock_runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        # Verify the interpolated action was called with the captured value
+        assert len(mock_runner.calls) == 2
+        assert 'echo "Using: secret-value-123"' in mock_runner.calls[1]
+
+    def test_captured_exit_code_interpolation(self) -> None:
+        """Captured exit code can be interpolated in subsequent action."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    capture="result",
+                    on_success="done",
+                    on_failure="report",
+                ),
+                "report": StateConfig(
+                    action='echo "Exit was: ${captured.result.exit_code}"',
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        # Exit code 1 -> failure verdict -> routes to report
+        mock_runner.results = [
+            ("check.sh", {"output": "", "exit_code": 1}),
+            ("echo", {"output": "Exit was: 1", "exit_code": 0}),
+        ]
+        mock_runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        # Verify exit code was interpolated
+        assert 'echo "Exit was: 1"' in mock_runner.calls[1]
+
+    def test_multiple_captures_available_in_later_state(self) -> None:
+        """Multiple captures from different states all available in final state."""
+        fsm = FSMLoop(
+            name="test",
+            initial="step1",
+            states={
+                "step1": StateConfig(
+                    action="first.sh",
+                    capture="a",
+                    next="step2",
+                ),
+                "step2": StateConfig(
+                    action="second.sh",
+                    capture="b",
+                    next="step3",
+                ),
+                "step3": StateConfig(
+                    action='echo "${captured.a.output} and ${captured.b.output}"',
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.results = [
+            ("first.sh", {"output": "first", "exit_code": 0}),
+            ("second.sh", {"output": "second", "exit_code": 0}),
+            ("echo", {"output": "first and second", "exit_code": 0}),
+        ]
+        mock_runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        # Verify both captures were interpolated
+        assert 'echo "first and second"' in mock_runner.calls[2]
+
+    def test_missing_capture_returns_error(self) -> None:
+        """Referencing non-existent capture returns error in result."""
+        fsm = FSMLoop(
+            name="test",
+            initial="use",
+            states={
+                "use": StateConfig(
+                    action='echo "${captured.nonexistent.output}"',
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        # Executor catches interpolation error and returns it
+        assert result.terminated_by == "error"
+        assert result.error is not None
+        assert "not found in captured" in result.error
+
+    def test_capture_with_special_characters(self) -> None:
+        """Captured output with quotes and newlines handled correctly."""
+        fsm = FSMLoop(
+            name="test",
+            initial="fetch",
+            states={
+                "fetch": StateConfig(
+                    action="get_data.sh",
+                    capture="data",
+                    next="use",
+                ),
+                "use": StateConfig(
+                    action='process "${captured.data.output}"',
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        # Output with quotes and newlines
+        special_output = 'line1\nline2 with "quotes"'
+        mock_runner.results = [
+            ("get_data.sh", {"output": special_output, "exit_code": 0}),
+            ("process", {"output": "processed", "exit_code": 0}),
+        ]
+        mock_runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        # Verify special characters were interpolated correctly
+        assert f'process "{special_output}"' in mock_runner.calls[1]
+
+    def test_captured_stderr_interpolation(self) -> None:
+        """Captured stderr can be interpolated."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="command.sh",
+                    capture="cmd",
+                    on_success="done",
+                    on_failure="log_error",
+                ),
+                "log_error": StateConfig(
+                    action='echo "Error: ${captured.cmd.stderr}"',
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.results = [
+            ("command.sh", {"output": "", "stderr": "file not found", "exit_code": 1}),
+            ("echo", {"output": "Error: file not found", "exit_code": 0}),
+        ]
+        mock_runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        # Verify stderr was interpolated
+        assert 'echo "Error: file not found"' in mock_runner.calls[1]
+
+    def test_captured_duration_interpolation(self) -> None:
+        """Captured duration_ms can be interpolated."""
+        fsm = FSMLoop(
+            name="test",
+            initial="measure",
+            states={
+                "measure": StateConfig(
+                    action="slow_task.sh",
+                    capture="timing",
+                    next="report",
+                ),
+                "report": StateConfig(
+                    action='echo "Took: ${captured.timing.duration_ms}ms"',
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.results = [
+            ("slow_task.sh", {"output": "", "exit_code": 0, "duration_ms": 1500}),
+            ("echo", {"output": "Took: 1500ms", "exit_code": 0}),
+        ]
+        mock_runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        # Verify duration was interpolated
+        assert 'echo "Took: 1500ms"' in mock_runner.calls[1]
+
+
 class TestRouting:
     """Tests for verdict routing."""
 
