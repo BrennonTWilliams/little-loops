@@ -93,42 +93,107 @@ Automation tools handle handoff automatically:
 
 ### `/ll:handoff`
 
-Generates a continuation prompt capturing current session state.
+Generates a continuation prompt capturing current session state. Uses a **conversation-first approach** by default - summarizing the conversation history already in context without running external commands.
 
 **Usage:**
 
 ```bash
-/ll:handoff                              # Auto-detect context
-/ll:handoff "Refactoring auth module"    # With explicit description
+/ll:handoff                              # Conversation summary (default, fast)
+/ll:handoff "Refactoring auth module"    # With explicit context hint
+/ll:handoff --deep                       # With artifact validation
+/ll:handoff "Working on BUG-042" --deep  # Context + artifact validation
 ```
 
-**Output:** Writes to `.claude/ll-continue-prompt.md`:
+**Modes:**
+
+| Mode | Command | What's Captured | Speed |
+|------|---------|----------------|-------|
+| Default | `/ll:handoff` | Conversation summary, decisions, errors, code changes | Fast (no disk I/O) |
+| Deep | `/ll:handoff --deep` | Default + git status, todos, discrepancy detection | Slower (runs git) |
+
+**Default Output:** Writes to `.claude/ll-continue-prompt.md`:
 
 ```markdown
 # Session Continuation: Refactoring auth module
 
-## Context
-Working on authentication module refactoring. Completed middleware updates.
+## Conversation Summary
 
-## Completed Work
-- Updated auth middleware (src/middleware/auth.ts:45)
-- Added token validation (src/utils/tokens.ts:12)
+### Primary Intent
+Refactoring the authentication module to support OAuth2 providers.
 
-## Current State
-- **Working on**: User session handling
-- **Modified files**: src/middleware/auth.ts, src/utils/tokens.ts
-- **Last action**: Implemented token refresh logic
+### What Happened
+1. Analyzed existing auth middleware
+2. Discussed JWT vs session-based approach - chose JWT for statelessness
+3. Implemented token validation utility
+4. Encountered CORS issue with refresh endpoint - fixed with credentials flag
 
-## Key File References
-- src/middleware/auth.ts - Main auth middleware
-- src/utils/tokens.ts - Token utilities
+### User Feedback
+- User clarified that refresh tokens should use HTTP-only cookies for security
 
-## Resume
-Run `/ll:resume` in a new session, or copy this prompt content.
+### Errors and Resolutions
+| Error | How Fixed | User Feedback |
+|-------|-----------|---------------|
+| CORS error on /refresh | Added credentials: 'include' | None |
+| Token expiry too short | Increased to 15 minutes | User confirmed 15min is acceptable |
+
+### Code Changes
+| File | Changes Made | Discussion Context |
+|------|--------------|-------------------|
+| `src/middleware/auth.ts:45` | Added token validation | Core auth flow |
+| `src/utils/tokens.ts:12` | New token utility | Extracted for reuse |
+
+## Resume Point
+
+### What Was Being Worked On
+Implementing the refresh token endpoint callback handler
+
+### Direct Quote
+> "Now let's implement the callback handler for the refresh flow"
+
+### Next Step
+Add the /auth/refresh endpoint with cookie handling
 
 ## Important Context
-- Using JWT with 15-minute expiry
-- Refresh tokens stored in HTTP-only cookies
+
+### Decisions Made
+- **JWT over sessions**: Chosen for statelessness and microservice compatibility
+- **HTTP-only cookies**: For refresh tokens to prevent XSS
+
+### Gotchas Discovered
+- **CORS with credentials**: Must set credentials: 'include' on fetch requests
+
+### User-Specified Constraints
+- Refresh tokens must use HTTP-only cookies (security requirement)
+- Token expiry: 15 minutes
+
+### Patterns Being Followed
+- Following pattern from `src/middleware/rate-limit.ts` for middleware structure
+```
+
+**Deep Mode Output:** Includes all sections above, plus:
+
+```markdown
+## Artifact Validation
+
+### Current Git Status
+```
+M  src/middleware/auth.ts
+M  src/utils/tokens.ts
+?? src/utils/cookies.ts
+```
+
+### Discrepancies
+No discrepancies detected between conversation and artifacts
+
+### Todo List State
+| Status | Task |
+|--------|------|
+| in_progress | Implement refresh token endpoint |
+| pending | Add token rotation on refresh |
+| completed | Create token validation utility |
+
+### Plan Files
+- Active plan: `thoughts/shared/plans/2024-01-15-auth-refactor.md`
 ```
 
 ### `/ll:resume`
@@ -304,16 +369,21 @@ If you see "Reached max continuations", the issue required more than 3 session r
 
 ### Writing Good Continuation Prompts
 
-The `/ll:handoff` command auto-generates prompts, but you can improve them:
+The `/ll:handoff` command auto-generates prompts from conversation history. You can improve them:
 
-1. **Provide explicit context** when running handoff:
+1. **Provide explicit context hints** when running handoff:
    ```bash
    /ll:handoff "Implementing OAuth2 flow - finished provider setup, starting callback handler"
    ```
 
-2. **Keep todos updated** - they're included in the prompt
+2. **Use `--deep` for complex situations** when you need to verify disk state:
+   ```bash
+   /ll:handoff --deep
+   ```
 
-3. **Commit frequently** - git status helps track progress
+3. **Keep todos updated** - they're included in deep mode validation
+
+4. **Discuss decisions in conversation** - the conversation summary captures reasoning and trade-offs
 
 ### For Automation
 

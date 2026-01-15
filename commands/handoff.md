@@ -4,84 +4,208 @@ arguments:
   - name: context
     description: Brief description of current work context (optional)
     required: false
+  - name: flags
+    description: "Optional flags: --deep (validate and enrich with git status, todos, recent files)"
+    required: false
 ---
 
 # Session Handoff
 
 Generate a continuation prompt capturing current session state for handoff to a fresh session.
 
+This command uses a **conversation-first approach**: by default, it summarizes the conversation history (which is already in context) without running external commands. Use `--deep` for artifact validation when you need to cross-check conversation against actual disk state.
+
 ## Configuration
 
 Read settings from `.claude/ll-config.json` under `continuation`:
-- `include_todos`: Include todo list state (default: true)
-- `include_git_status`: Include git status (default: true)
-- `include_recent_files`: Include recently modified files (default: true)
+- `include_todos`: Include todo list state in deep mode (default: true)
+- `include_git_status`: Include git status in deep mode (default: true)
+- `include_recent_files`: Include recently modified files in deep mode (default: true)
+
+## Edge Cases
+
+### Compacted Conversations
+If the conversation was recently compacted (look for "Conversation was compacted" message):
+- Note that summary is based on post-compaction context
+- Consider using `--deep` to enrich with artifacts
+- Output includes: "Note: Conversation was compacted; summary based on available context"
+
+### Empty or New Sessions
+If no meaningful conversation history exists:
+- Fall back to artifact-based approach (like `--deep` behavior)
+- Output includes: "Note: Fresh session with no prior context"
+
+### Discrepancies (--deep only)
+When conversation says one thing but artifacts show another:
+- Flag explicitly in Artifact Validation section
+- Do not override conversation summary (user may have discussed planned changes)
+- Recommend user verify intended changes
 
 ## Process
 
-### 1. Gather Current State
+### 1. Summarize the Conversation (Default - Always)
 
-Collect information about the current session:
+Review the entire conversation history above and extract:
 
-#### Todo List
-- Get all todo items (pending, in_progress, completed)
-- Note which items are currently in progress
+#### User Requests
+- **Primary intent**: What was the user trying to accomplish?
+- **Explicit requests**: All specific requests made by the user
+- **Scope changes**: Did the user shift focus or refine requirements?
+
+#### Chronological Flow
+- **Key phases**: What major phases of work were undertaken?
+- **Decisions made**: What choices were made and why?
+- **Pivot points**: Where did the approach change based on discoveries?
+
+#### Errors and Fixes
+- **Errors encountered**: What went wrong?
+- **How fixed**: What was done to resolve each error?
+- **User feedback**: Did the user provide corrections or guidance?
+
+#### Code Changes
+- **Files modified**: What files were actually changed?
+- **Code snippets**: Key code that was written or discussed
+- **Architectural decisions**: What patterns or approaches were chosen?
+
+### 2. Validate with Artifacts (Only with --deep flag)
+
+**Skip this section if `--deep` flag was NOT provided.**
+
+Parse flags:
+```bash
+FLAGS="${flags:-}"
+DEEP_MODE=false
+if [[ "$FLAGS" == *"--deep"* ]]; then DEEP_MODE=true; fi
+```
+
+If `DEEP_MODE` is true, run these commands to validate conversation against disk state:
 
 #### Git Status
-Run: `git status --short`
-- List modified files (M)
-- List added files (A)
-- List untracked files (?)
+```bash
+git status --short
+```
+- **Purpose**: Verify actual file state vs what was discussed
+- **Check**: Are all mentioned files actually modified?
+- **Flag**: Any discrepancies between conversation and disk
+
+#### Todo List
+- **Purpose**: Cross-check pending work
+- **Verify**: In-progress items match current conversation
+- **Include**: All pending items for continuity
 
 #### Recent Modifications
-Run: `git diff --name-only HEAD~1 2>/dev/null || git diff --name-only --cached`
-- Files changed in recent commits
-- Files staged for commit
+```bash
+git diff --name-only HEAD~1 2>/dev/null || git diff --name-only --cached
+```
+- **Purpose**: Catch files modified outside the conversation flow
+- **Include**: Files that may not have been explicitly discussed
 
 #### Plan Files
 Check `thoughts/shared/plans/` for:
 - Any plan files referenced in conversation
 - Most recently modified plan file
 
-#### Context
-- Use provided context argument if given: `${context}`
-- Otherwise, derive from current work (todos, recent activity)
+#### Discrepancy Detection
+Compare conversation claims to artifact reality:
+| Conversation Claim | Artifact Reality | Status |
+|-------------------|------------------|--------|
+| Modified auth.ts | git shows M auth.ts | MATCH |
+| Updated tests | No test changes in git | MISMATCH |
 
-### 2. Generate Continuation Prompt
+### 3. Generate Continuation Prompt
 
-Write to `.claude/ll-continue-prompt.md`:
+Write to `.claude/ll-continue-prompt.md`.
+
+**If `--deep` flag was NOT passed** (default mode):
 
 ```markdown
-# Session Continuation: [Context or Task Description]
+# Session Continuation: [Primary Intent from Conversation]
 
-## Context
-[2-3 sentence summary from gathered state or user-provided context]
+## Conversation Summary
 
-## Completed Work
-[From todo list - items marked completed, with file:line references where applicable]
+### Primary Intent
+[From conversation: what the user was trying to accomplish]
 
-## Current State
-- **Working on**: [From in-progress todos or current activity]
-- **Modified files**: [From git status]
-- **Last action**: [Inferred from recent activity]
+### What Happened
+[Chronological summary of key phases, decisions, and discoveries]
 
-## Key File References
-[Plan files, recently modified files with paths]
+### User Feedback
+[Specific corrections or guidance the user provided, if any]
 
-## Resume
-Run `/ll:resume` in a new session, or copy this prompt content.
+### Errors and Resolutions
+| Error | How Fixed | User Feedback |
+|-------|-----------|---------------|
+| [Error encountered] | [Resolution applied] | [Any user input] |
+
+### Code Changes
+| File | Changes Made | Discussion Context |
+|------|--------------|-------------------|
+| `path/to/file.ts:45` | [What changed] | [Why it was discussed] |
+
+## Resume Point
+
+### What Was Being Worked On
+[Precise description from conversation end]
+
+### Direct Quote
+> [Verbatim quote from most recent work or user request]
+
+### Next Step
+[Immediate next action based on conversation]
 
 ## Important Context
-[Any active decisions, gotchas, or patterns being followed]
+
+### Decisions Made
+- **[Decision]**: [Reasoning from conversation]
+
+### Gotchas Discovered
+- **[Gotcha]**: [How discovered, what to watch for]
+
+### User-Specified Constraints
+[Any specific requirements or constraints the user gave]
+
+### Patterns Being Followed
+- Following pattern from `[file:line]` - [why this pattern was chosen]
 ```
 
-### 3. Output Handoff Signal
+**If `--deep` flag WAS passed** (deep mode):
+
+Include all sections from default mode above, PLUS add this section after "Important Context":
+
+```markdown
+## Artifact Validation
+
+### Current Git Status
+```
+[Output of git status --short]
+```
+
+### Discrepancies
+[Any differences between conversation and disk state]
+- **[File or claim]**: [Conversation said X, disk shows Y]
+(If none: "No discrepancies detected between conversation and artifacts")
+
+### Todo List State
+| Status | Task |
+|--------|------|
+| in_progress | [Current task] |
+| pending | [Next tasks] |
+| completed | [Done tasks] |
+
+### Plan Files
+- Active plan: `[path to plan file]`
+- Related plans: `[other relevant plan files]`
+```
+
+### 4. Output Handoff Signal
 
 After writing the continuation prompt, output:
 
 ```
 CONTEXT_HANDOFF: Ready for fresh session
 Continuation prompt written to: .claude/ll-continue-prompt.md
+
+Source: Conversation summary [+ artifact validation with --deep]
 
 To continue in a new session:
   1. Start a new Claude Code session
@@ -95,14 +219,17 @@ Or copy the prompt content above to paste into a new session.
 ## Examples
 
 ```bash
-# Generate handoff with auto-detected context
+# Generate handoff from conversation summary (default - fast)
 /ll:handoff
 
-# Generate handoff with explicit context
+# Generate handoff with explicit context hint
 /ll:handoff "Refactoring authentication module"
 
-# Generate handoff during issue work
-/ll:handoff "Working on BUG-042 - user validation fix"
+# Generate handoff with artifact validation (slower but comprehensive)
+/ll:handoff --deep
+
+# Combine context and deep mode
+/ll:handoff "Working on BUG-042" --deep
 ```
 
 ---
