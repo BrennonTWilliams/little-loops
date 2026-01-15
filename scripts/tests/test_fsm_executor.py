@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
+from unittest.mock import patch
 
 from little_loops.fsm.executor import (
     ActionResult,
@@ -721,3 +722,201 @@ class TestErrorHandling:
 
         assert result.terminated_by == "error"
         assert "Connection failed" in (result.error or "")
+
+
+class TestTimeoutHandling:
+    """Tests for timeout handling."""
+
+    def test_action_timeout_exit_code_124_routes_to_error(self) -> None:
+        """Exit code 124 from action timeout routes to on_error."""
+        fsm = FSMLoop(
+            name="test",
+            initial="slow",
+            states={
+                "slow": StateConfig(
+                    action="slow_command.sh",
+                    on_success="done",
+                    on_failure="retry",
+                    on_error="error",
+                ),
+                "done": StateConfig(terminal=True),
+                "retry": StateConfig(terminal=True),
+                "error": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        # Exit code 124 is returned on timeout - maps to "error" by default evaluator
+        mock_runner.set_result("slow_command.sh", exit_code=124, stderr="Action timed out")
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        # Exit code 124 >= 2, so maps to "error" verdict
+        assert result.final_state == "error"
+        assert result.terminated_by == "terminal"
+
+    def test_action_timeout_emits_event_with_exit_code_124(self) -> None:
+        """action_complete event includes exit code 124 on timeout."""
+        events: list[dict[str, Any]] = []
+        fsm = FSMLoop(
+            name="test",
+            initial="slow",
+            states={
+                "slow": StateConfig(
+                    action="slow_command.sh",
+                    on_success="done",
+                    on_error="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("slow_command.sh", exit_code=124)
+
+        executor = FSMExecutor(fsm, event_callback=events.append, action_runner=mock_runner)
+        executor.run()
+
+        action_complete = next(e for e in events if e["event"] == "action_complete")
+        assert action_complete["exit_code"] == 124
+
+    def test_action_timeout_captured_result(self) -> None:
+        """Timeout result is captured when state has capture configured."""
+        fsm = FSMLoop(
+            name="test",
+            initial="slow",
+            states={
+                "slow": StateConfig(
+                    action="slow_command.sh",
+                    capture="slow_result",
+                    on_success="done",
+                    on_error="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result(
+            "slow_command.sh",
+            exit_code=124,
+            stderr="Action timed out",
+            output="",
+            duration_ms=30000,
+        )
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert "slow_result" in result.captured
+        assert result.captured["slow_result"]["exit_code"] == 124
+        assert result.captured["slow_result"]["stderr"] == "Action timed out"
+
+    def test_loop_timeout_stops_execution(self) -> None:
+        """Loop terminates when total time exceeds timeout."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            timeout=5,  # 5 second total timeout
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    on_success="done",
+                    on_failure="check",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=1)  # Always fail to keep looping
+
+        # Mock time to simulate timeout after first iteration
+        start_time = 1000.0
+        # First call: start_time_ms, second: check timeout (after 6s)
+        time_values = [start_time, start_time, start_time + 6.0]
+        call_count = [0]
+
+        def mock_time() -> float:
+            result = time_values[min(call_count[0], len(time_values) - 1)]
+            call_count[0] += 1
+            return result
+
+        with patch("little_loops.fsm.executor.time.time", side_effect=mock_time):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.terminated_by == "timeout"
+
+    def test_loop_timeout_emits_loop_complete_event(self) -> None:
+        """loop_complete event includes terminated_by: timeout."""
+        events: list[dict[str, Any]] = []
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            timeout=5,
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    on_success="done",
+                    on_failure="check",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=1)
+
+        start_time = 1000.0
+        time_values = [start_time, start_time, start_time + 6.0]
+        call_count = [0]
+
+        def mock_time() -> float:
+            result = time_values[min(call_count[0], len(time_values) - 1)]
+            call_count[0] += 1
+            return result
+
+        with patch("little_loops.fsm.executor.time.time", side_effect=mock_time):
+            executor = FSMExecutor(fsm, event_callback=events.append, action_runner=mock_runner)
+            executor.run()
+
+        loop_complete = next(e for e in events if e["event"] == "loop_complete")
+        assert loop_complete["terminated_by"] == "timeout"
+
+    def test_loop_timeout_preserves_state(self) -> None:
+        """Loop timeout returns correct final_state and iterations."""
+        fsm = FSMLoop(
+            name="test",
+            initial="step1",
+            timeout=5,
+            states={
+                "step1": StateConfig(action="step1.sh", next="step2"),
+                "step2": StateConfig(action="step2.sh", next="step1"),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        start_time = 1000.0
+        # Timeout check happens BEFORE each iteration starts
+        # - start_time_ms = first call
+        # - iteration 1: check timeout (ok), execute step1, route to step2
+        # - iteration 2: check timeout (exceeds), return timeout
+        time_values = [
+            start_time,  # run() start (start_time_ms)
+            start_time,  # first timeout check (ok)
+            start_time + 6.0,  # second timeout check (exceeds 5s)
+        ]
+        call_count = [0]
+
+        def mock_time() -> float:
+            result = time_values[min(call_count[0], len(time_values) - 1)]
+            call_count[0] += 1
+            return result
+
+        with patch("little_loops.fsm.executor.time.time", side_effect=mock_time):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.terminated_by == "timeout"
+        # One iteration completes (step1 -> step2), then timeout before step2 can execute
+        assert result.iterations == 1
+        # Current state is step2 (routed there after step1 completed)
+        assert result.final_state == "step2"
