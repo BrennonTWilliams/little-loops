@@ -57,6 +57,10 @@ ruff format scripts/
 - Docstrings for classes and public methods
 - Conventional commits: `type(scope): description`
 
+## Development Preferences
+
+- **Prefer Skills over Agents**: When adding new functionality, create a Skill instead of a new Agent. Skills are simpler, more composable, and can be invoked directly by users or other components. Reserve Agents for complex, autonomous multi-step tasks that require specialized capabilities.
+
 ## Issue File Format
 
 Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`
