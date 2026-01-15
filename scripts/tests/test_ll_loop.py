@@ -2101,6 +2101,37 @@ states:
             assert "Running loop" not in captured.out
             assert "Loop completed" not in captured.out
 
+    def test_quiet_mode_suppresses_logo(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--quiet flag suppresses logo display."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-quiet-logo
+initial: done
+max_iterations: 1
+states:
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-quiet-logo.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch("little_loops.fsm.executor.subprocess.run"):
+            with patch.object(sys, "argv", ["ll-loop", "run", "test-quiet-logo", "--quiet"]):
+                from little_loops.cli import main_loop
+
+                result = main_loop()
+
+            assert result == 0
+            captured = capsys.readouterr()
+            # Logo should not be displayed in quiet mode
+            assert "little loops" not in captured.out
+
     def test_creates_state_files(
         self,
         tmp_path: Path,
