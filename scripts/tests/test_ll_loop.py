@@ -846,63 +846,79 @@ states:
 class TestProgressDisplay:
     """Tests for progress display formatting."""
 
-    def test_duration_seconds(self) -> None:
+    @pytest.mark.parametrize(
+        "duration_ms,expected",
+        [
+            (5200, "5.2s"),
+            (30000, "30.0s"),
+            (59900, "59.9s"),
+        ],
+    )
+    def test_duration_seconds(self, duration_ms: int, expected: str) -> None:
         """Duration under 60s formatted as seconds."""
-        duration_ms = 5200
         duration_sec = duration_ms / 1000
         assert duration_sec < 60
         duration_str = f"{duration_sec:.1f}s"
-        assert duration_str == "5.2s"
+        assert duration_str == expected
 
-    def test_duration_minutes(self) -> None:
+    @pytest.mark.parametrize(
+        "duration_ms,expected",
+        [
+            (60000, "1m 0s"),
+            (90000, "1m 30s"),
+            (150000, "2m 30s"),
+            (3600000, "60m 0s"),
+        ],
+    )
+    def test_duration_minutes(self, duration_ms: int, expected: str) -> None:
         """Duration over 60s formatted as minutes."""
-        duration_ms = 150000  # 2.5 minutes
         duration_sec = duration_ms / 1000
         assert duration_sec >= 60
         minutes = int(duration_sec // 60)
         seconds = duration_sec % 60
         duration_str = f"{minutes}m {seconds:.0f}s"
-        assert duration_str == "2m 30s"
+        assert duration_str == expected
 
-    def test_verdict_symbols(self) -> None:
+    @pytest.mark.parametrize(
+        "verdict,expected_symbol",
+        [
+            ("success", "\u2713"),
+            ("target", "\u2713"),
+            ("progress", "\u2713"),
+            ("failure", "\u2717"),
+            ("stall", "\u2717"),
+            ("error", "\u2717"),
+            ("blocked", "\u2717"),
+        ],
+    )
+    def test_verdict_symbols(self, verdict: str, expected_symbol: str) -> None:
         """Correct symbols for success/failure verdicts."""
         success_verdicts = ("success", "target", "progress")
-        failure_verdicts = ("failure", "stall", "error", "blocked")
+        symbol = "\u2713" if verdict in success_verdicts else "\u2717"
+        assert symbol == expected_symbol
 
-        for v in success_verdicts:
-            assert v in success_verdicts
-
-        for v in failure_verdicts:
-            assert v not in success_verdicts
-
-    def test_success_verdict_uses_checkmark(self) -> None:
-        """Success verdicts use checkmark symbol."""
-        success_verdicts = ("success", "target", "progress")
-        for verdict in success_verdicts:
-            symbol = "\u2713" if verdict in success_verdicts else "\u2717"
-            assert symbol == "\u2713"
-
-    def test_failure_verdict_uses_x_mark(self) -> None:
-        """Failure verdicts use x mark symbol."""
-        success_verdicts = ("success", "target", "progress")
-        failure_verdicts = ("failure", "stall", "blocked")
-        for verdict in failure_verdicts:
-            symbol = "\u2713" if verdict in success_verdicts else "\u2717"
-            assert symbol == "\u2717"
-
-    def test_action_truncation_at_60_chars(self) -> None:
-        """Actions over 60 chars are truncated."""
-        action = "x" * 70
+    @pytest.mark.parametrize(
+        "action_length,expect_truncation",
+        [
+            (50, False),
+            (60, False),
+            (61, True),
+            (70, True),
+            (100, True),
+        ],
+    )
+    def test_action_truncation(
+        self, action_length: int, expect_truncation: bool
+    ) -> None:
+        """Actions over 60 chars are truncated with ellipsis."""
+        action = "x" * action_length
         action_display = action[:60] + "..." if len(action) > 60 else action
-        assert len(action_display) == 63  # 60 chars + "..."
-        assert action_display.endswith("...")
-
-    def test_action_no_truncation_under_60_chars(self) -> None:
-        """Actions under 60 chars are not truncated."""
-        action = "x" * 50
-        action_display = action[:60] + "..." if len(action) > 60 else action
-        assert action_display == action
-        assert "..." not in action_display
+        if expect_truncation:
+            assert len(action_display) == 63  # 60 chars + "..."
+            assert action_display.endswith("...")
+        else:
+            assert action_display == action
+            assert "..." not in action_display
 
     def test_confidence_formatting(self) -> None:
         """Confidence value formatted to 2 decimal places."""
