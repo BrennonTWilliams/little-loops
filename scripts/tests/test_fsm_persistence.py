@@ -458,6 +458,32 @@ class TestPersistentExecutor:
         result = executor.resume()
         assert result is None
 
+    def test_resume_returns_none_for_interrupted(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """resume() returns None if loop was interrupted (same as completed/failed)."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+
+        state = LoopState(
+            loop_name="test-loop",
+            current_state="check",
+            iteration=5,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2024-01-15T10:30:00Z",
+            updated_at="",
+            status="interrupted",
+        )
+        persistence.save_state(state)
+
+        executor = PersistentExecutor(
+            simple_fsm, persistence=persistence, action_runner=MockActionRunner()
+        )
+        result = executor.resume()
+        assert result is None
+
     def test_resume_emits_resume_event(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """resume() emits loop_resume event."""
         persistence = StatePersistence("test-loop", tmp_loops_dir)

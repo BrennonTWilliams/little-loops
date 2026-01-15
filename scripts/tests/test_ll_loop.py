@@ -1678,13 +1678,13 @@ states:
         # PersistentExecutor.resume() returns None for completed loops
         assert result == 1
 
-    def test_resume_continues_interrupted_loop(
+    def test_resume_continues_running_loop(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Resume should continue from saved state to completion."""
+        """Resume should continue from saved running state to completion."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         running_dir = loops_dir / ".running"
@@ -1713,7 +1713,7 @@ states:
 """
         (loops_dir / "test-loop.yaml").write_text(loop_content)
 
-        # Create state file showing loop interrupted at step2 (not initial)
+        # Create state file showing loop paused at step2 (not initial)
         state_file = running_dir / "test-loop.state.json"
         state_file.write_text(
             json.dumps(
