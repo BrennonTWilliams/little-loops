@@ -10,7 +10,6 @@ from __future__ import annotations
 
 import tempfile
 from pathlib import Path
-from typing import Any
 
 import pytest
 
@@ -690,9 +689,7 @@ states:
   done:
     terminal: true
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             path = Path(f.name)
 
@@ -715,9 +712,7 @@ states:
 name: incomplete
 # missing initial and states
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             path = Path(f.name)
 
@@ -736,9 +731,7 @@ states:
   done:
     terminal: true
 """
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".yaml", delete=False
-        ) as f:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
             f.write(yaml_content)
             path = Path(f.name)
 

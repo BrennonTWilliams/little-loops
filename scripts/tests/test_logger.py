@@ -15,7 +15,6 @@ import pytest
 
 from little_loops.logger import Logger, format_duration
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -125,27 +124,35 @@ class TestLoggerColorConstants:
 class TestLoggerFormatting:
     """Tests for message formatting."""
 
-    def test_format_includes_timestamp(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_format_includes_timestamp(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Output contains [HH:MM:SS] timestamp."""
         logger.info("test message")
         captured = capsys.readouterr()
         # Match timestamp pattern like [14:32:55]
         assert re.search(r"\[\d{2}:\d{2}:\d{2}\]", captured.out) is not None
 
-    def test_format_with_color_includes_ansi(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_format_with_color_includes_ansi(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Contains ANSI codes when use_color=True."""
         logger.info("test")
         captured = capsys.readouterr()
         # Check for ANSI escape sequence
         assert "\033[" in captured.out
 
-    def test_format_without_color_no_ansi(self, no_color_logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_format_without_color_no_ansi(
+        self, no_color_logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """No ANSI codes when use_color=False."""
         no_color_logger.info("test")
         captured = capsys.readouterr()
         assert "\033[" not in captured.out
 
-    def test_message_appears_in_output(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_message_appears_in_output(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Message text appears in output."""
         logger.info("my specific message")
         captured = capsys.readouterr()
@@ -172,14 +179,18 @@ class TestLoggerInfo:
         captured = capsys.readouterr()
         assert Logger.CYAN in captured.out
 
-    def test_info_writes_to_stdout(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_info_writes_to_stdout(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Writes to stdout, not stderr."""
         logger.info("test")
         captured = capsys.readouterr()
         assert captured.out != ""
         assert captured.err == ""
 
-    def test_info_silent_when_not_verbose(self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_info_silent_when_not_verbose(
+        self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """No output when verbose=False."""
         silent_logger.info("should not appear")
         captured = capsys.readouterr()
@@ -200,13 +211,17 @@ class TestLoggerDebug:
         captured = capsys.readouterr()
         assert "debug message" in captured.out
 
-    def test_debug_uses_gray_color(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_debug_uses_gray_color(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Uses GRAY color code."""
         logger.debug("test")
         captured = capsys.readouterr()
         assert Logger.GRAY in captured.out
 
-    def test_debug_silent_when_not_verbose(self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_debug_silent_when_not_verbose(
+        self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """No output when verbose=False."""
         silent_logger.debug("should not appear")
         captured = capsys.readouterr()
@@ -221,19 +236,25 @@ class TestLoggerDebug:
 class TestLoggerSuccess:
     """Tests for success() method."""
 
-    def test_success_prints_message(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_success_prints_message(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Message appears in output."""
         logger.success("success message")
         captured = capsys.readouterr()
         assert "success message" in captured.out
 
-    def test_success_uses_green_color(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_success_uses_green_color(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Uses GREEN color code."""
         logger.success("test")
         captured = capsys.readouterr()
         assert Logger.GREEN in captured.out
 
-    def test_success_silent_when_not_verbose(self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_success_silent_when_not_verbose(
+        self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """No output when verbose=False."""
         silent_logger.success("should not appear")
         captured = capsys.readouterr()
@@ -248,19 +269,25 @@ class TestLoggerSuccess:
 class TestLoggerWarning:
     """Tests for warning() method."""
 
-    def test_warning_prints_message(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_warning_prints_message(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Message appears in output."""
         logger.warning("warning message")
         captured = capsys.readouterr()
         assert "warning message" in captured.out
 
-    def test_warning_uses_yellow_color(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_warning_uses_yellow_color(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Uses YELLOW color code."""
         logger.warning("test")
         captured = capsys.readouterr()
         assert Logger.YELLOW in captured.out
 
-    def test_warning_silent_when_not_verbose(self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_warning_silent_when_not_verbose(
+        self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """No output when verbose=False."""
         silent_logger.warning("should not appear")
         captured = capsys.readouterr()
@@ -287,14 +314,18 @@ class TestLoggerError:
         captured = capsys.readouterr()
         assert Logger.RED in captured.err
 
-    def test_error_writes_to_stderr(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_error_writes_to_stderr(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Writes to stderr, not stdout."""
         logger.error("test")
         captured = capsys.readouterr()
         assert captured.err != ""
         assert captured.out == ""
 
-    def test_error_silent_when_not_verbose(self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_error_silent_when_not_verbose(
+        self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """No output when verbose=False."""
         silent_logger.error("should not appear")
         captured = capsys.readouterr()
@@ -309,19 +340,25 @@ class TestLoggerError:
 class TestLoggerTiming:
     """Tests for timing() method."""
 
-    def test_timing_prints_message(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_timing_prints_message(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Message appears in output."""
         logger.timing("timing message")
         captured = capsys.readouterr()
         assert "timing message" in captured.out
 
-    def test_timing_uses_magenta_color(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_timing_uses_magenta_color(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Uses MAGENTA color code."""
         logger.timing("test")
         captured = capsys.readouterr()
         assert Logger.MAGENTA in captured.out
 
-    def test_timing_silent_when_not_verbose(self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_timing_silent_when_not_verbose(
+        self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """No output when verbose=False."""
         silent_logger.timing("should not appear")
         captured = capsys.readouterr()
@@ -336,14 +373,18 @@ class TestLoggerTiming:
 class TestLoggerHeader:
     """Tests for header() method."""
 
-    def test_header_prints_separator_and_message(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_header_prints_separator_and_message(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Contains separator lines and message."""
         logger.header("Header Text")
         captured = capsys.readouterr()
         assert "Header Text" in captured.out
         assert "=" in captured.out  # Default separator
 
-    def test_header_uses_custom_char(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_header_uses_custom_char(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Uses specified separator character."""
         logger.header("Test", char="-")
         captured = capsys.readouterr()
@@ -351,7 +392,9 @@ class TestLoggerHeader:
         # Should contain multiple dashes (separator line)
         assert captured.out.count("-") >= 10
 
-    def test_header_uses_custom_width(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_header_uses_custom_width(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Uses specified width for separators."""
         logger.header("Test", char="*", width=20)
         captured = capsys.readouterr()
@@ -359,26 +402,34 @@ class TestLoggerHeader:
         # First line should be 20 asterisks
         assert lines[0] == "*" * 20
 
-    def test_header_default_equals_char(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_header_default_equals_char(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Default char is '='."""
         logger.header("Test")
         captured = capsys.readouterr()
         assert "============" in captured.out
 
-    def test_header_default_width_60(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_header_default_width_60(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Default width is 60."""
         logger.header("Test")
         captured = capsys.readouterr()
         lines = captured.out.strip().split("\n")
         assert len(lines[0]) == 60
 
-    def test_header_silent_when_not_verbose(self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_header_silent_when_not_verbose(
+        self, silent_logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """No output when verbose=False."""
         silent_logger.header("Should not appear")
         captured = capsys.readouterr()
         assert captured.out == ""
 
-    def test_header_has_three_lines(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_header_has_three_lines(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Header outputs separator, message, separator."""
         logger.header("Message")
         captured = capsys.readouterr()
@@ -465,10 +516,10 @@ class TestLoggerEdgeCases:
 
     def test_unicode_message(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
         """Unicode characters handled correctly."""
-        logger.info("Unicode: \u2714 \u2717 \U0001F600")
+        logger.info("Unicode: \u2714 \u2717 \U0001f600")
         captured = capsys.readouterr()
         assert "\u2714" in captured.out
-        assert "\U0001F600" in captured.out
+        assert "\U0001f600" in captured.out
 
     def test_newlines_in_message(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
         """Messages with newlines are preserved."""
@@ -482,7 +533,9 @@ class TestLoggerEdgeCases:
         captured = capsys.readouterr()
         assert "<>&\"'" in captured.out
 
-    def test_multiple_calls_different_timestamps(self, logger: Logger, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_multiple_calls_different_timestamps(
+        self, logger: Logger, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Each call gets current timestamp (at least same format)."""
         logger.info("first")
         captured1 = capsys.readouterr()

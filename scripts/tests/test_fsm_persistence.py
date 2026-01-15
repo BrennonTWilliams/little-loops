@@ -4,12 +4,10 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
-from unittest.mock import MagicMock
 
 import pytest
 
-from little_loops.fsm.executor import ActionResult, ActionRunner, ExecutionResult
+from little_loops.fsm.executor import ActionResult
 from little_loops.fsm.persistence import (
     LoopState,
     PersistentExecutor,
@@ -133,9 +131,7 @@ class TestStatePersistence:
 
         assert persistence.load_state() is None
 
-    def test_load_state_returns_none_for_invalid_json(
-        self, tmp_loops_dir: Path
-    ) -> None:
+    def test_load_state_returns_none_for_invalid_json(self, tmp_loops_dir: Path) -> None:
         """load_state() returns None if file is invalid JSON."""
         persistence = StatePersistence("test-loop", tmp_loops_dir)
         persistence.initialize()
@@ -319,20 +315,16 @@ class TestPersistentExecutor:
         """Create temporary loops directory."""
         return tmp_path / ".loops"
 
-    def test_creates_running_directory(
-        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
-    ) -> None:
+    def test_creates_running_directory(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """PersistentExecutor creates .running directory."""
         mock_runner = MockActionRunner()
-        executor = PersistentExecutor(
+        PersistentExecutor(
             simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner
         )
 
         assert (tmp_loops_dir / ".running").exists()
 
-    def test_run_creates_state_file(
-        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
-    ) -> None:
+    def test_run_creates_state_file(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """run() creates state file."""
         mock_runner = MockActionRunner()
         executor = PersistentExecutor(
@@ -343,9 +335,7 @@ class TestPersistentExecutor:
         state_file = tmp_loops_dir / ".running" / "test-loop.state.json"
         assert state_file.exists()
 
-    def test_run_creates_events_file(
-        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
-    ) -> None:
+    def test_run_creates_events_file(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """run() creates events file."""
         mock_runner = MockActionRunner()
         executor = PersistentExecutor(
@@ -356,9 +346,7 @@ class TestPersistentExecutor:
         events_file = tmp_loops_dir / ".running" / "test-loop.events.jsonl"
         assert events_file.exists()
 
-    def test_run_saves_final_state(
-        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
-    ) -> None:
+    def test_run_saves_final_state(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """run() saves final state with correct status."""
         mock_runner = MockActionRunner()
         executor = PersistentExecutor(
@@ -371,9 +359,7 @@ class TestPersistentExecutor:
         assert state.current_state == result.final_state
         assert state.status == "completed"
 
-    def test_events_are_persisted(
-        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
-    ) -> None:
+    def test_events_are_persisted(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """Events are written to JSONL file during execution."""
         mock_runner = MockActionRunner()
         executor = PersistentExecutor(
@@ -390,9 +376,7 @@ class TestPersistentExecutor:
         assert "state_enter" in event_types
         assert "loop_complete" in event_types
 
-    def test_run_clears_previous_by_default(
-        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
-    ) -> None:
+    def test_run_clears_previous_by_default(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """run() clears previous state/events by default."""
         mock_runner = MockActionRunner()
         executor = PersistentExecutor(
@@ -450,9 +434,7 @@ class TestPersistentExecutor:
         result = executor.resume()
         assert result is None
 
-    def test_resume_returns_none_for_failed(
-        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
-    ) -> None:
+    def test_resume_returns_none_for_failed(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """resume() returns None if loop already failed."""
         persistence = StatePersistence("test-loop", tmp_loops_dir)
         persistence.initialize()
@@ -476,9 +458,7 @@ class TestPersistentExecutor:
         result = executor.resume()
         assert result is None
 
-    def test_resume_emits_resume_event(
-        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
-    ) -> None:
+    def test_resume_emits_resume_event(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """resume() emits loop_resume event."""
         persistence = StatePersistence("test-loop", tmp_loops_dir)
         persistence.initialize()
@@ -521,9 +501,7 @@ class TestPersistentExecutor:
         assert state is not None
         assert state.status == "completed"
 
-    def test_final_status_interrupted_on_max_iterations(
-        self, tmp_loops_dir: Path
-    ) -> None:
+    def test_final_status_interrupted_on_max_iterations(self, tmp_loops_dir: Path) -> None:
         """Final status is 'interrupted' when max_iterations reached."""
         # Create FSM that won't terminate
         fsm = FSMLoop(
@@ -540,9 +518,7 @@ class TestPersistentExecutor:
         )
 
         mock_runner = MockActionRunner()
-        executor = PersistentExecutor(
-            fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner
-        )
+        executor = PersistentExecutor(fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner)
         result = executor.run()
 
         assert result.terminated_by == "max_iterations"
@@ -680,7 +656,7 @@ class TestAcceptanceCriteria:
         self, simple_fsm: FSMLoop, tmp_loops_dir: Path
     ) -> None:
         """AC: .loops/.running/ directory created automatically."""
-        executor = PersistentExecutor(
+        PersistentExecutor(
             simple_fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
         )
 
@@ -707,9 +683,7 @@ class TestAcceptanceCriteria:
         assert "started_at" in data
         assert "status" in data
 
-    def test_events_appended_as_they_occur(
-        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
-    ) -> None:
+    def test_events_appended_as_they_occur(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """AC: Events appended to <name>.events.jsonl as they occur."""
         executor = PersistentExecutor(
             simple_fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
@@ -792,9 +766,7 @@ class TestAcceptanceCriteria:
             result = executor.resume()
             assert result is None, f"Should return None for status={status}"
 
-    def test_list_running_loops_returns_running_status(
-        self, tmp_loops_dir: Path
-    ) -> None:
+    def test_list_running_loops_returns_running_status(self, tmp_loops_dir: Path) -> None:
         """AC: list_running_loops() returns all loops with 'running' status."""
         running_dir = tmp_loops_dir / ".running"
         running_dir.mkdir(parents=True)

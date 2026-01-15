@@ -30,7 +30,6 @@ from little_loops.subprocess_utils import (
     run_claude_command,
 )
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -143,7 +142,9 @@ class TestReadContinuationPrompt:
         result = read_continuation_prompt(temp_repo_with_prompt)
         assert result is not None
 
-    def test_uses_cwd_when_repo_path_none(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_uses_cwd_when_repo_path_none(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Uses Path.cwd() when repo_path is None."""
         monkeypatch.chdir(tmp_path)
         # No prompt file in tmp_path
@@ -163,12 +164,12 @@ class TestReadContinuationPrompt:
         """Reads UTF-8 content correctly."""
         prompt_path = temp_repo / ".claude" / "ll-continue-prompt.md"
         prompt_path.parent.mkdir(parents=True)
-        prompt_path.write_text("Unicode content: \u2714 \u2717 \U0001F600")
+        prompt_path.write_text("Unicode content: \u2714 \u2717 \U0001f600")
 
         result = read_continuation_prompt(temp_repo)
         assert result is not None
         assert "\u2714" in result  # Check mark
-        assert "\U0001F600" in result  # Emoji
+        assert "\U0001f600" in result  # Emoji
 
     def test_prompt_path_constant(self) -> None:
         """CONTINUATION_PROMPT_PATH constant is correct."""
@@ -715,9 +716,7 @@ class TestRunClaudeCommandProcessCallbacks:
                 mock_selector.return_value.get_map.return_value = {}
 
                 # Should not raise
-                result = run_claude_command(
-                    "test", on_process_start=None, on_process_end=None
-                )
+                result = run_claude_command("test", on_process_start=None, on_process_end=None)
                 assert result is not None
 
 

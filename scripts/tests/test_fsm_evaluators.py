@@ -416,9 +416,7 @@ class TestEvaluateDispatcher:
 
     def test_dispatch_output_json(self) -> None:
         """output_json type routes correctly."""
-        config = EvaluateConfig(
-            type="output_json", path=".count", operator="eq", target=0
-        )
+        config = EvaluateConfig(type="output_json", path=".count", operator="eq", target=0)
         ctx = InterpolationContext()
         result = evaluate(config, '{"count": 0}', 0, ctx)
         assert result.verdict == "success"
@@ -446,9 +444,7 @@ class TestEvaluateDispatcher:
 
     def test_dispatch_convergence_with_previous(self) -> None:
         """convergence with previous value works."""
-        config = EvaluateConfig(
-            type="convergence", target=0, previous="${prev.output}"
-        )
+        config = EvaluateConfig(type="convergence", target=0, previous="${prev.output}")
         ctx = InterpolationContext(prev={"output": "10"})
         result = evaluate(config, "5", 0, ctx)
         assert result.verdict == "progress"
@@ -470,9 +466,7 @@ class TestEvaluateDispatcher:
 
     def test_dispatch_convergence_interpolated_tolerance(self) -> None:
         """convergence with interpolated tolerance works."""
-        config = EvaluateConfig(
-            type="convergence", target=0, tolerance="${context.tolerance}"
-        )
+        config = EvaluateConfig(type="convergence", target=0, tolerance="${context.tolerance}")
         ctx = InterpolationContext(context={"tolerance": "1"})
         result = evaluate(config, "0.5", 0, ctx)
         assert result.verdict == "target"
@@ -517,9 +511,7 @@ class TestLLMStructuredEvaluator:
             with patch("little_loops.fsm.evaluators.anthropic", None):
                 yield
 
-    def _create_tool_response(
-        self, verdict: str, confidence: float, reason: str
-    ) -> MagicMock:
+    def _create_tool_response(self, verdict: str, confidence: float, reason: str) -> MagicMock:
         """Helper to create mock tool use response."""
         mock_block = MagicMock()
         mock_block.type = "tool_use"
@@ -590,9 +582,7 @@ class TestLLMStructuredEvaluator:
             "success", 0.4, "Maybe fixed"
         )
 
-        result = evaluate_llm_structured(
-            "...", min_confidence=0.7, uncertain_suffix=False
-        )
+        result = evaluate_llm_structured("...", min_confidence=0.7, uncertain_suffix=False)
 
         assert result.verdict == "success"
         assert result.details["confident"] is False
@@ -734,9 +724,7 @@ class TestEvaluateDispatcherLLM:
                 mock_module.AuthenticationError = Exception
                 yield mock_client
 
-    def _create_tool_response(
-        self, verdict: str, confidence: float, reason: str
-    ) -> MagicMock:
+    def _create_tool_response(self, verdict: str, confidence: float, reason: str) -> MagicMock:
         """Helper to create mock tool use response."""
         mock_block = MagicMock()
         mock_block.type = "tool_use"

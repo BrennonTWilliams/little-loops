@@ -74,7 +74,9 @@ class MergeCoordinator:
         self._current_issue_id: str | None = (
             None  # Track current issue for stash failure attribution
         )
-        self._problematic_commits: set[str] = set()  # Track commits causing repeated rebase conflicts
+        self._problematic_commits: set[str] = (
+            set()
+        )  # Track commits causing repeated rebase conflicts
 
     def start(self) -> None:
         """Start the merge coordinator background thread."""
@@ -802,7 +804,9 @@ class MergeCoordinator:
                             )
                             # Continue anyway - merge may still work or fail appropriately
                         else:
-                            self.logger.info(f"Merge strategy pull succeeded for {conflict_commit[:8]}")
+                            self.logger.info(
+                                f"Merge strategy pull succeeded for {conflict_commit[:8]}"
+                            )
 
                     else:
                         # First time seeing this conflict or couldn't extract commit

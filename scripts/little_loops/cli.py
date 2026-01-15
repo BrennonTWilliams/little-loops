@@ -432,11 +432,19 @@ def main_loop() -> int:
     # Check if first positional arg is a subcommand or a loop name
     # This enables "ll-loop fix-types" shorthand for "ll-loop run fix-types"
     known_subcommands = {
-        "run", "compile", "validate", "list", "status", "stop", "resume", "history"
+        "run",
+        "compile",
+        "validate",
+        "list",
+        "status",
+        "stop",
+        "resume",
+        "history",
     }
 
     # Pre-process args: if first positional arg is not a subcommand, insert "run"
     import sys as _sys
+
     argv = _sys.argv[1:]
     if argv and not argv[0].startswith("-") and argv[0] not in known_subcommands:
         # First arg is a loop name, not a subcommand - insert "run"
@@ -466,12 +474,8 @@ Examples:
     # Run subcommand
     run_parser = subparsers.add_parser("run", help="Run a loop")
     run_parser.add_argument("loop", help="Loop name or path")
-    run_parser.add_argument(
-        "--max-iterations", "-n", type=int, help="Override iteration limit"
-    )
-    run_parser.add_argument(
-        "--no-llm", action="store_true", help="Disable LLM evaluation"
-    )
+    run_parser.add_argument("--max-iterations", "-n", type=int, help="Override iteration limit")
+    run_parser.add_argument("--no-llm", action="store_true", help="Disable LLM evaluation")
     run_parser.add_argument("--llm-model", type=str, help="Override LLM model")
     run_parser.add_argument(
         "--dry-run", action="store_true", help="Show execution plan without running"
@@ -479,9 +483,7 @@ Examples:
     run_parser.add_argument(
         "--background", "-b", action="store_true", help="Run as daemon (not yet implemented)"
     )
-    run_parser.add_argument(
-        "--quiet", "-q", action="store_true", help="Suppress progress output"
-    )
+    run_parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress output")
 
     # Compile subcommand
     compile_parser = subparsers.add_parser("compile", help="Compile paradigm to FSM")
@@ -494,9 +496,7 @@ Examples:
 
     # List subcommand
     list_parser = subparsers.add_parser("list", help="List loops")
-    list_parser.add_argument(
-        "--running", action="store_true", help="Only show running loops"
-    )
+    list_parser.add_argument("--running", action="store_true", help="Only show running loops")
 
     # Status subcommand
     status_parser = subparsers.add_parser("status", help="Show loop status")
@@ -689,8 +689,10 @@ Examples:
             logger.error(f"YAML parse error: {e}")
             return 1
 
-        output_path = Path(args.output) if args.output else Path(
-            str(input_path).replace(".yaml", ".fsm.yaml")
+        output_path = (
+            Path(args.output)
+            if args.output
+            else Path(str(input_path).replace(".yaml", ".fsm.yaml"))
         )
 
         # Convert FSMLoop to dict for YAML output
@@ -698,9 +700,7 @@ Examples:
             "name": fsm.name,
             "paradigm": fsm.paradigm,
             "initial": fsm.initial,
-            "states": {
-                name: _state_to_dict(state) for name, state in fsm.states.items()
-            },
+            "states": {name: _state_to_dict(state) for name, state in fsm.states.items()},
             "max_iterations": fsm.max_iterations,
         }
         if fsm.context:

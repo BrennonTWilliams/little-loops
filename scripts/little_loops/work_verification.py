@@ -68,8 +68,7 @@ def verify_work_was_done(logger: Logger, changed_files: list[str] | None = None)
         # Log which excluded files were modified for diagnostic purposes
         excluded_files = [f for f in changed_files if f]
         logger.warning(
-            f"No meaningful changes detected - only excluded files modified: "
-            f"{excluded_files[:10]}"
+            f"No meaningful changes detected - only excluded files modified: {excluded_files[:10]}"
         )
         return False
 

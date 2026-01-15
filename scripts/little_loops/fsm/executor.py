@@ -517,9 +517,7 @@ class FSMExecutor:
             }
         )
 
-    def _finish(
-        self, terminated_by: str, error: str | None = None
-    ) -> ExecutionResult:
+    def _finish(self, terminated_by: str, error: str | None = None) -> ExecutionResult:
         """Finalize execution and return result."""
         self._emit(
             "loop_complete",

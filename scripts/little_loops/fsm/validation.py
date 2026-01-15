@@ -69,9 +69,7 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
 VALID_OPERATORS = {"eq", "ne", "lt", "le", "gt", "ge"}
 
 
-def _validate_evaluator(
-    state_name: str, evaluate: EvaluateConfig
-) -> list[ValidationError]:
+def _validate_evaluator(state_name: str, evaluate: EvaluateConfig) -> list[ValidationError]:
     """Validate evaluator configuration for type-specific requirements.
 
     Args:
@@ -142,9 +140,7 @@ def _validate_evaluator(
     return errors
 
 
-def _validate_state_routing(
-    state_name: str, state: StateConfig
-) -> list[ValidationError]:
+def _validate_state_routing(state_name: str, state: StateConfig) -> list[ValidationError]:
     """Validate state routing configuration.
 
     Checks for conflicting routing definitions (shorthand vs full route).
@@ -160,9 +156,7 @@ def _validate_state_routing(
     path = f"states.{state_name}"
 
     has_shorthand = (
-        state.on_success is not None
-        or state.on_failure is not None
-        or state.on_error is not None
+        state.on_success is not None or state.on_failure is not None or state.on_error is not None
     )
     has_route = state.route is not None
 
@@ -226,8 +220,7 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
     if not terminal_states:
         errors.append(
             ValidationError(
-                message="No terminal state defined. At least one state must have "
-                "'terminal: true'",
+                message="No terminal state defined. At least one state must have 'terminal: true'",
                 path="states",
             )
         )
@@ -328,9 +321,7 @@ def load_and_validate(path: Path) -> FSMLoop:
             missing.append(field)
 
     if missing:
-        raise ValueError(
-            f"FSM file missing required fields: {', '.join(missing)}"
-        )
+        raise ValueError(f"FSM file missing required fields: {', '.join(missing)}")
 
     # Parse into dataclass
     fsm = FSMLoop.from_dict(data)

@@ -438,9 +438,7 @@ class TestEvents:
         mock_runner = MockActionRunner()
         mock_runner.always_return(exit_code=0)
 
-        executor = FSMExecutor(
-            fsm, event_callback=events.append, action_runner=mock_runner
-        )
+        executor = FSMExecutor(fsm, event_callback=events.append, action_runner=mock_runner)
         executor.run()
 
         event_types = [e["event"] for e in events]
@@ -465,9 +463,7 @@ class TestEvents:
         )
         mock_runner = MockActionRunner()
 
-        executor = FSMExecutor(
-            fsm, event_callback=events.append, action_runner=mock_runner
-        )
+        executor = FSMExecutor(fsm, event_callback=events.append, action_runner=mock_runner)
         executor.run()
 
         for event in events:
@@ -487,9 +483,7 @@ class TestEvents:
         mock_runner = MockActionRunner()
         mock_runner.always_return(exit_code=0)
 
-        executor = FSMExecutor(
-            fsm, event_callback=events.append, action_runner=mock_runner
-        )
+        executor = FSMExecutor(fsm, event_callback=events.append, action_runner=mock_runner)
         executor.run()
 
         complete_event = next(e for e in events if e["event"] == "loop_complete")
@@ -718,9 +712,7 @@ class TestErrorHandling:
         )
 
         class FailingRunner:
-            def run(
-                self, action: str, timeout: int, is_slash_command: bool
-            ) -> ActionResult:
+            def run(self, action: str, timeout: int, is_slash_command: bool) -> ActionResult:
                 del action, timeout, is_slash_command
                 raise RuntimeError("Connection failed")
 

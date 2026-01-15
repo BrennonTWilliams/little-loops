@@ -892,9 +892,7 @@ class WorkerPool:
                             f"Failed to delete gitignored leaked file {file_path}: {e}"
                         )
                 else:
-                    self.logger.debug(
-                        f"Leaked file not found (may have been moved): {file_path}"
-                    )
+                    self.logger.debug(f"Leaked file not found (may have been moved): {file_path}")
 
         if cleaned > 0:
             self.logger.info(f"Cleaned up {cleaned} leaked file(s) from main repo")

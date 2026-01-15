@@ -470,9 +470,7 @@ class TestIntegration:
         assert "FEAT-004" not in ready_ids  # Still blocked
 
         # After auth, profile, settings completed
-        ready = graph.get_ready_issues(
-            completed={"FEAT-001", "FEAT-002", "FEAT-003"}
-        )
+        ready = graph.get_ready_issues(completed={"FEAT-001", "FEAT-002", "FEAT-003"})
         ready_ids = [i.issue_id for i in ready]
         assert "FEAT-004" in ready_ids
 

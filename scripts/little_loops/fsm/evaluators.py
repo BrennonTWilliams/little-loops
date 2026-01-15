@@ -269,9 +269,7 @@ def evaluate_output_json(
     else:
         return EvaluationResult(
             verdict="error",
-            details={
-                "error": f"Operator {operator} not supported for non-numeric values"
-            },
+            details={"error": f"Operator {operator} not supported for non-numeric values"},
         )
 
     return EvaluationResult(

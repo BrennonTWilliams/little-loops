@@ -317,8 +317,7 @@ class TestProblematicCommitTracking:
 
         # Simulate detecting a conflict commit
         conflict_output = (
-            "Rebasing (1/2)\n"
-            "dropping abcdef1234567890abcdef1234567890abcdef12 test message\n"
+            "Rebasing (1/2)\ndropping abcdef1234567890abcdef1234567890abcdef12 test message\n"
         )
 
         conflict_commit = coordinator._detect_conflict_commit(conflict_output)

@@ -32,6 +32,10 @@ classifiers = [
     "Topic :: Software Development :: Quality Assurance",
 ]
 
+dependencies = [
+    "pyyaml>=6.0",
+]
+
 [project.scripts]
 ll-auto = "little_loops.cli:main_auto"
 ll-parallel = "little_loops.cli:main_parallel"

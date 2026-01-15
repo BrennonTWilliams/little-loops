@@ -223,9 +223,7 @@ class PersistentExecutor:
             **executor_kwargs: Additional kwargs for FSMExecutor
         """
         self.fsm = fsm
-        self.persistence = persistence or StatePersistence(
-            fsm.name, loops_dir or Path(".loops")
-        )
+        self.persistence = persistence or StatePersistence(fsm.name, loops_dir or Path(".loops"))
         self.persistence.initialize()
 
         # Create base executor with event callback that persists
@@ -254,9 +252,7 @@ class PersistentExecutor:
             self._last_result = {
                 "verdict": event.get("verdict"),
                 "details": {
-                    k: v
-                    for k, v in event.items()
-                    if k not in ("event", "ts", "type", "verdict")
+                    k: v for k, v in event.items() if k not in ("event", "ts", "type", "verdict")
                 },
             }
 
@@ -377,9 +373,7 @@ def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
     return states
 
 
-def get_loop_history(
-    loop_name: str, loops_dir: Path | None = None
-) -> list[dict[str, Any]]:
+def get_loop_history(loop_name: str, loops_dir: Path | None = None) -> list[dict[str, Any]]:
     """Get event history for a loop.
 
     Args:

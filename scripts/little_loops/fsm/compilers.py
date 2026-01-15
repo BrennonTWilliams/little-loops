@@ -83,8 +83,7 @@ def compile_paradigm(spec: dict[str, Any]) -> FSMLoop:
 
     if paradigm not in compilers:
         raise ValueError(
-            f"Unknown paradigm: '{paradigm}'. "
-            f"Must be one of: {', '.join(sorted(compilers.keys()))}"
+            f"Unknown paradigm: '{paradigm}'. Must be one of: {', '.join(sorted(compilers.keys()))}"
         )
 
     return compilers[paradigm](spec)
@@ -132,9 +131,7 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
     if "goal" not in spec:
         raise ValueError("Goal paradigm requires 'goal' field")
     if "tools" not in spec or not spec["tools"]:
-        raise ValueError(
-            "Goal paradigm requires 'tools' field with at least one tool"
-        )
+        raise ValueError("Goal paradigm requires 'tools' field with at least one tool")
 
     goal = spec["goal"]
     tools = spec["tools"]
@@ -286,8 +283,7 @@ def compile_invariants(spec: dict[str, Any]) -> FSMLoop:
         raise ValueError("Invariants paradigm requires 'name' field")
     if "constraints" not in spec or not spec["constraints"]:
         raise ValueError(
-            "Invariants paradigm requires 'constraints' field "
-            "with at least one constraint"
+            "Invariants paradigm requires 'constraints' field with at least one constraint"
         )
 
     name = spec["name"]
@@ -299,13 +295,9 @@ def compile_invariants(spec: dict[str, Any]) -> FSMLoop:
         if "name" not in constraint:
             raise ValueError(f"Constraint {i} requires 'name' field")
         if "check" not in constraint:
-            raise ValueError(
-                f"Constraint '{constraint.get('name', i)}' requires 'check' field"
-            )
+            raise ValueError(f"Constraint '{constraint.get('name', i)}' requires 'check' field")
         if "fix" not in constraint:
-            raise ValueError(
-                f"Constraint '{constraint.get('name', i)}' requires 'fix' field"
-            )
+            raise ValueError(f"Constraint '{constraint.get('name', i)}' requires 'fix' field")
 
     states: dict[str, StateConfig] = {}
 
@@ -315,9 +307,7 @@ def compile_invariants(spec: dict[str, Any]) -> FSMLoop:
 
         # Next check state or terminal
         next_check = (
-            f"check_{constraints[i + 1]['name']}"
-            if i + 1 < len(constraints)
-            else "all_valid"
+            f"check_{constraints[i + 1]['name']}" if i + 1 < len(constraints) else "all_valid"
         )
 
         states[check_state] = StateConfig(
@@ -384,9 +374,7 @@ def compile_imperative(spec: dict[str, Any]) -> FSMLoop:
     if "name" not in spec:
         raise ValueError("Imperative paradigm requires 'name' field")
     if "steps" not in spec or not spec["steps"]:
-        raise ValueError(
-            "Imperative paradigm requires 'steps' field with at least one step"
-        )
+        raise ValueError("Imperative paradigm requires 'steps' field with at least one step")
     if "until" not in spec:
         raise ValueError("Imperative paradigm requires 'until' field")
     if "check" not in spec["until"]:

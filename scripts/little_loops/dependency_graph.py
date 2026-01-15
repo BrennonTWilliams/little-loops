@@ -82,9 +82,7 @@ class DependencyGraph:
                     continue
                 # Skip missing blockers with warning
                 if blocker_id not in all_issue_ids:
-                    logger.warning(
-                        f"Issue {issue.issue_id} blocked by unknown issue {blocker_id}"
-                    )
+                    logger.warning(f"Issue {issue.issue_id} blocked by unknown issue {blocker_id}")
                     continue
                 # Add bidirectional edge
                 graph.blocked_by[issue.issue_id].add(blocker_id)
@@ -130,9 +128,7 @@ class DependencyGraph:
         """
         return bool(self.get_blocking_issues(issue_id, completed))
 
-    def get_blocking_issues(
-        self, issue_id: str, completed: set[str] | None = None
-    ) -> set[str]:
+    def get_blocking_issues(self, issue_id: str, completed: set[str] | None = None) -> set[str]:
         """Return incomplete issues blocking this one.
 
         Args:
@@ -180,9 +176,7 @@ class DependencyGraph:
 
         # Start with nodes that have no blockers, sorted by priority
         zero_degree = [
-            self.issues[issue_id]
-            for issue_id, degree in in_degree.items()
-            if degree == 0
+            self.issues[issue_id] for issue_id, degree in in_degree.items() if degree == 0
         ]
         zero_degree.sort(key=lambda x: (x.priority_int, x.issue_id))
         queue: deque[str] = deque(issue.issue_id for issue in zero_degree)

@@ -23,7 +23,6 @@ import pytest
 from little_loops.issue_parser import IssueInfo
 from little_loops.parallel.priority_queue import IssuePriorityQueue
 
-
 # =============================================================================
 # Fixtures
 # =============================================================================
@@ -153,9 +152,7 @@ class TestIssuePriorityQueueAdd:
         result = queue.add(sample_issue)
         assert result is True
 
-    def test_add_increases_qsize(
-        self, queue: IssuePriorityQueue, sample_issue: IssueInfo
-    ) -> None:
+    def test_add_increases_qsize(self, queue: IssuePriorityQueue, sample_issue: IssueInfo) -> None:
         """Issue is added and qsize increases."""
         assert queue.qsize() == 0
         queue.add(sample_issue)
@@ -317,9 +314,7 @@ class TestIssuePriorityQueueGet:
         result = queue.get(block=True, timeout=0.01)
         assert result is None
 
-    def test_get_decrements_qsize(
-        self, queue: IssuePriorityQueue, sample_issue: IssueInfo
-    ) -> None:
+    def test_get_decrements_qsize(self, queue: IssuePriorityQueue, sample_issue: IssueInfo) -> None:
         """Queue size decreases after get()."""
         queue.add(sample_issue)
         assert queue.qsize() == 1
@@ -563,8 +558,7 @@ class TestIssuePriorityQueueThreadSafety:
     def test_concurrent_add_operations(self, queue: IssuePriorityQueue) -> None:
         """Multiple threads adding simultaneously."""
         issues = [
-            IssueInfo(Path(f"{i}.md"), "bugs", "P1", f"BUG-{i:03d}", f"Bug {i}")
-            for i in range(100)
+            IssueInfo(Path(f"{i}.md"), "bugs", "P1", f"BUG-{i:03d}", f"Bug {i}") for i in range(100)
         ]
         added_count = []
 
@@ -614,13 +608,10 @@ class TestIssuePriorityQueueThreadSafety:
         assert len(results) == 3
         assert len(set(results)) == 3  # All unique
 
-    def test_concurrent_state_transitions(
-        self, queue: IssuePriorityQueue
-    ) -> None:
+    def test_concurrent_state_transitions(self, queue: IssuePriorityQueue) -> None:
         """Mixed operations under contention."""
         issues = [
-            IssueInfo(Path(f"{i}.md"), "bugs", "P1", f"BUG-{i:03d}", f"Bug {i}")
-            for i in range(20)
+            IssueInfo(Path(f"{i}.md"), "bugs", "P1", f"BUG-{i:03d}", f"Bug {i}") for i in range(20)
         ]
         queue.add_many(issues)
 
@@ -682,12 +673,8 @@ class TestIssuePriorityQueueScanIssues:
             IssueInfo(Path("c.md"), "bugs", "P2", "BUG-003", "P2 Bug"),
         ]
 
-        with patch(
-            "little_loops.parallel.priority_queue.find_issues", return_value=mock_issues
-        ):
-            result = IssuePriorityQueue.scan_issues(
-                mock_config, priority_filter=["P0", "P1"]
-            )
+        with patch("little_loops.parallel.priority_queue.find_issues", return_value=mock_issues):
+            result = IssuePriorityQueue.scan_issues(mock_config, priority_filter=["P0", "P1"])
 
             assert len(result) == 2
             assert all(i.priority in ["P0", "P1"] for i in result)
@@ -741,9 +728,7 @@ class TestIssuePriorityQueueScanIssues:
             IssueInfo(Path("b.md"), "bugs", "P5", "BUG-002", "P5 Bug"),
         ]
 
-        with patch(
-            "little_loops.parallel.priority_queue.find_issues", return_value=mock_issues
-        ):
+        with patch("little_loops.parallel.priority_queue.find_issues", return_value=mock_issues):
             result = IssuePriorityQueue.scan_issues(mock_config)
 
             assert len(result) == 2  # Both P3 and P5 included
