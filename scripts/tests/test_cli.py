@@ -460,3 +460,200 @@ class TestMainParallelIntegration:
             mock_orch_cls.assert_called_once()
             call_kwargs = mock_orch_cls.call_args.kwargs
             assert call_kwargs["verbose"] is True  # default (not --quiet)
+
+
+class TestMainMessagesIntegration:
+    """Integration tests for main_messages entry point."""
+
+    def test_main_messages_default_args(self) -> None:
+        """main_messages with default arguments extracts messages."""
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
+            mock_get_folder.return_value = Path("/mock/project")
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
+                mock_extract.return_value = [
+                    {"content": "Test message 1", "timestamp": "2026-01-01T00:00:00"},
+                    {"content": "Test message 2", "timestamp": "2026-01-01T01:00:00"},
+                ]
+                with patch("little_loops.user_messages.save_messages") as mock_save:
+                    mock_save.return_value = Path("/output/user-messages-123.jsonl")
+
+                    with patch.object(sys, "argv", ["ll-messages"]):
+                        from little_loops.cli import main_messages
+
+                        result = main_messages()
+
+            assert result == 0
+            mock_extract.assert_called_once()
+            mock_save.assert_called_once()
+
+    def test_main_messages_with_limit(self) -> None:
+        """main_messages respects the --limit argument."""
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
+            mock_get_folder.return_value = Path("/mock/project")
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
+                mock_extract.return_value = []
+
+                with patch.object(sys, "argv", ["ll-messages", "-n", "50"]):
+                    from little_loops.cli import main_messages
+
+                    result = main_messages()
+
+            assert result == 0
+            mock_extract.assert_called_once()
+            call_kwargs = mock_extract.call_args.kwargs
+            assert call_kwargs["limit"] == 50
+
+    def test_main_messages_with_since_date(self) -> None:
+        """main_messages parses --since date correctly."""
+        from datetime import datetime
+
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
+            mock_get_folder.return_value = Path("/mock/project")
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
+                mock_extract.return_value = []
+
+                with patch.object(sys, "argv", ["ll-messages", "--since", "2026-01-01"]):
+                    from little_loops.cli import main_messages
+
+                    result = main_messages()
+
+            assert result == 0
+            mock_extract.assert_called_once()
+            call_kwargs = mock_extract.call_args.kwargs
+            assert call_kwargs["since"] == datetime(2026, 1, 1)
+
+    def test_main_messages_with_stdout(self) -> None:
+        """main_messages outputs to stdout with --stdout flag."""
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
+            mock_get_folder.return_value = Path("/mock/project")
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
+                mock_extract.return_value = [{"content": "Test", "timestamp": "2026-01-01T00:00:00"}]
+                with patch("little_loops.user_messages.print_messages_to_stdout") as mock_print:
+
+                    with patch.object(sys, "argv", ["ll-messages", "--stdout"]):
+                        from little_loops.cli import main_messages
+
+                        result = main_messages()
+
+            assert result == 0
+            mock_print.assert_called_once()
+
+    def test_main_messages_no_project_folder(self) -> None:
+        """main_messages returns error when project folder not found."""
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
+            mock_get_folder.return_value = None
+
+            with patch.object(sys, "argv", ["ll-messages"]):
+                from little_loops.cli import main_messages
+
+                result = main_messages()
+
+            assert result == 1
+
+    def test_main_messages_invalid_date_format(self) -> None:
+        """main_messages returns error for invalid date format."""
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
+            mock_get_folder.return_value = Path("/mock/project")
+
+            with patch.object(sys, "argv", ["ll-messages", "--since", "invalid-date"]):
+                from little_loops.cli import main_messages
+
+                result = main_messages()
+
+            assert result == 1
+
+
+class TestMainLoopIntegration:
+    """Integration tests for main_loop entry point."""
+
+    def test_main_loop_list_command(self) -> None:
+        """main_loop list command lists available loops."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            loops_dir = Path(tmpdir) / ".loops"
+            loops_dir.mkdir()
+            (loops_dir / "test-loop.yaml").write_text("name: test")
+
+            with patch.object(sys, "argv", ["ll-loop", "list"]):
+                with patch("pathlib.Path.cwd", return_value=Path(tmpdir)):
+                    from little_loops.cli import main_loop
+
+                    result = main_loop()
+
+            assert result == 0
+
+    def test_main_loop_list_running_command(self) -> None:
+        """main_loop list --running shows running loops."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            loops_dir = Path(tmpdir) / ".loops"
+            loops_dir.mkdir()
+
+            with patch.object(sys, "argv", ["ll-loop", "list", "--running"]):
+                with patch("pathlib.Path.cwd", return_value=Path(tmpdir)):
+                    from little_loops.cli import main_loop
+
+                    result = main_loop()
+
+            assert result == 0
+
+    def test_main_loop_validate_invalid_definition(self) -> None:
+        """main_loop validate returns error for invalid loop."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            loops_dir = Path(tmpdir) / ".loops"
+            loops_dir.mkdir()
+
+            # Create the file so resolve_loop_path doesn't fail immediately
+            loop_content = """
+name: test-loop
+initial: start
+states:
+  start:
+    terminal: true
+"""
+            loop_file = loops_dir / "test-loop.yaml"
+            loop_file.write_text(loop_content)
+
+            with patch("little_loops.fsm.validation.load_and_validate") as mock_load:
+                mock_load.side_effect = ValueError("Invalid loop definition")
+
+                with patch.object(sys, "argv", ["ll-loop", "validate", "test-loop"]):
+                    with patch("pathlib.Path.cwd", return_value=Path(tmpdir)):
+                        from little_loops.cli import main_loop
+
+                        result = main_loop()
+
+                assert result == 1
+
+    def test_main_loop_compile_command(self) -> None:
+        """main_loop compile compiles paradigm to FSM."""
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            input_file = Path(tmpdir) / "paradigm.yaml"
+            input_file.write_text("name: test\nparadigm: simple")
+
+            with patch("little_loops.fsm.compilers.compile_paradigm") as mock_compile:
+                from little_loops.fsm.schema import FSMLoop, StateConfig
+                mock_fsm = FSMLoop(
+                    name="compiled",
+                    paradigm="simple",
+                    initial="start",
+                    states={"start": StateConfig(terminal=True)},
+                    max_iterations=10,
+                )
+                mock_compile.return_value = mock_fsm
+
+                with patch.object(sys, "argv", ["ll-loop", "compile", str(input_file)]):
+                    from little_loops.cli import main_loop
+
+                    result = main_loop()
+
+            assert result == 0
+
+    def test_main_loop_no_command_shows_help(self) -> None:
+        """main_loop with no command shows help and returns error."""
+        with patch.object(sys, "argv", ["ll-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 1
