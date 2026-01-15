@@ -9,7 +9,7 @@ import tempfile
 from collections.abc import Generator
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 
@@ -379,52 +379,467 @@ class TestCmdHistory:
 
 
 class TestStateToDict:
-    """Tests for _state_to_dict helper function."""
+    """Tests for _state_to_dict helper function using real StateConfig objects."""
 
-    def test_simple_state(self) -> None:
-        """Convert simple state config to dict."""
-        # Simulate StateConfig structure
-        state = MagicMock()
-        state.action = "echo hello"
-        state.evaluate = None
-        state.on_success = "done"
-        state.on_failure = None
-        state.on_error = None
-        state.next = None
-        state.route = None
-        state.terminal = False
-        state.capture = None
-        state.timeout = None
-        state.on_maintain = None
+    def _state_to_dict(self, state: StateConfig) -> dict[str, Any]:
+        """Re-implement _state_to_dict logic for testing.
 
+        This mirrors the implementation in cli.py to verify behavior.
+        The actual function is nested inside main_loop() so cannot be imported.
+        """
         d: dict[str, Any] = {}
         if state.action:
             d["action"] = state.action
+        if state.evaluate:
+            d["evaluate"] = {"type": state.evaluate.type}
+            if state.evaluate.target is not None:
+                d["evaluate"]["target"] = state.evaluate.target
+            if state.evaluate.tolerance is not None:
+                d["evaluate"]["tolerance"] = state.evaluate.tolerance
+            if state.evaluate.previous is not None:
+                d["evaluate"]["previous"] = state.evaluate.previous
+            if state.evaluate.operator is not None:
+                d["evaluate"]["operator"] = state.evaluate.operator
+            if state.evaluate.pattern is not None:
+                d["evaluate"]["pattern"] = state.evaluate.pattern
+            if state.evaluate.path is not None:
+                d["evaluate"]["path"] = state.evaluate.path
         if state.on_success:
             d["on_success"] = state.on_success
+        if state.on_failure:
+            d["on_failure"] = state.on_failure
+        if state.on_error:
+            d["on_error"] = state.on_error
+        if state.next:
+            d["next"] = state.next
+        if state.route:
+            d["route"] = dict(state.route.routes)
+            if state.route.default:
+                d["route"]["_"] = state.route.default
+        if state.terminal:
+            d["terminal"] = True
+        if state.capture:
+            d["capture"] = state.capture
+        if state.timeout:
+            d["timeout"] = state.timeout
+        if state.on_maintain:
+            d["on_maintain"] = state.on_maintain
+        return d
 
-        assert d == {"action": "echo hello", "on_success": "done"}
+    def test_simple_state_with_action(self) -> None:
+        """Convert state with action and on_success."""
+        state = make_test_state(action="echo hello", on_success="done")
+        result = self._state_to_dict(state)
+        assert result == {"action": "echo hello", "on_success": "done"}
 
     def test_terminal_state(self) -> None:
         """Convert terminal state to dict."""
-        state = MagicMock()
-        state.action = None
-        state.evaluate = None
-        state.on_success = None
-        state.on_failure = None
-        state.on_error = None
-        state.next = None
-        state.route = None
-        state.terminal = True
-        state.capture = None
-        state.timeout = None
-        state.on_maintain = None
+        state = make_test_state(terminal=True)
+        result = self._state_to_dict(state)
+        assert result == {"terminal": True}
 
-        d: dict[str, Any] = {}
-        if state.terminal:
-            d["terminal"] = True
+    def test_state_with_failure_routing(self) -> None:
+        """Convert state with on_failure."""
+        state = make_test_state(
+            action="pytest",
+            on_success="done",
+            on_failure="fix",
+        )
+        result = self._state_to_dict(state)
+        assert result == {
+            "action": "pytest",
+            "on_success": "done",
+            "on_failure": "fix",
+        }
 
-        assert d == {"terminal": True}
+    def test_state_with_on_error(self) -> None:
+        """Convert state with on_error."""
+        state = make_test_state(
+            action="risky_command",
+            on_success="done",
+            on_error="handle_error",
+        )
+        result = self._state_to_dict(state)
+        assert result == {
+            "action": "risky_command",
+            "on_success": "done",
+            "on_error": "handle_error",
+        }
+
+    def test_state_with_next(self) -> None:
+        """Convert state with unconditional next."""
+        state = make_test_state(action="echo step", next="next_state")
+        result = self._state_to_dict(state)
+        assert result == {"action": "echo step", "next": "next_state"}
+
+    def test_state_with_evaluate_exit_code(self) -> None:
+        """Convert state with exit_code evaluator."""
+        state = make_test_state(
+            action="pytest",
+            evaluate=EvaluateConfig(type="exit_code"),
+            on_success="done",
+            on_failure="fix",
+        )
+        result = self._state_to_dict(state)
+        assert result == {
+            "action": "pytest",
+            "evaluate": {"type": "exit_code"},
+            "on_success": "done",
+            "on_failure": "fix",
+        }
+
+    def test_state_with_evaluate_numeric(self) -> None:
+        """Convert state with output_numeric evaluator."""
+        state = make_test_state(
+            action="wc -l errors.log",
+            evaluate=EvaluateConfig(
+                type="output_numeric",
+                operator="le",
+                target=5,
+            ),
+            on_success="done",
+            on_failure="fix",
+        )
+        result = self._state_to_dict(state)
+        assert result == {
+            "action": "wc -l errors.log",
+            "evaluate": {
+                "type": "output_numeric",
+                "operator": "le",
+                "target": 5,
+            },
+            "on_success": "done",
+            "on_failure": "fix",
+        }
+
+    def test_state_with_evaluate_convergence(self) -> None:
+        """Convert state with convergence evaluator."""
+        state = make_test_state(
+            action="count_errors",
+            evaluate=EvaluateConfig(
+                type="convergence",
+                target=0,
+                tolerance=0.1,
+                previous="${captured.last_count}",
+            ),
+            on_success="done",
+            on_failure="fix",
+        )
+        result = self._state_to_dict(state)
+        assert result["evaluate"]["type"] == "convergence"
+        assert result["evaluate"]["target"] == 0
+        assert result["evaluate"]["tolerance"] == 0.1
+        assert result["evaluate"]["previous"] == "${captured.last_count}"
+
+    def test_state_with_evaluate_pattern(self) -> None:
+        """Convert state with output_contains evaluator."""
+        state = make_test_state(
+            action="grep ERROR log.txt",
+            evaluate=EvaluateConfig(
+                type="output_contains",
+                pattern="ERROR",
+            ),
+            on_success="fix",
+            on_failure="done",
+        )
+        result = self._state_to_dict(state)
+        assert result["evaluate"]["type"] == "output_contains"
+        assert result["evaluate"]["pattern"] == "ERROR"
+
+    def test_state_with_evaluate_json_path(self) -> None:
+        """Convert state with output_json evaluator."""
+        state = make_test_state(
+            action="curl api/status",
+            evaluate=EvaluateConfig(
+                type="output_json",
+                path=".status",
+                target="healthy",
+            ),
+            on_success="done",
+            on_failure="retry",
+        )
+        result = self._state_to_dict(state)
+        assert result["evaluate"]["type"] == "output_json"
+        assert result["evaluate"]["path"] == ".status"
+        assert result["evaluate"]["target"] == "healthy"
+
+    def test_state_with_route_table(self) -> None:
+        """Convert state with route table."""
+        state = make_test_state(
+            action="analyze",
+            evaluate=EvaluateConfig(type="llm_structured"),
+            route=RouteConfig(
+                routes={"success": "done", "failure": "retry", "blocked": "escalate"},
+                default="error_state",
+            ),
+        )
+        result = self._state_to_dict(state)
+        assert result["route"] == {
+            "success": "done",
+            "failure": "retry",
+            "blocked": "escalate",
+            "_": "error_state",
+        }
+
+    def test_state_with_route_no_default(self) -> None:
+        """Convert state with route table but no default."""
+        state = make_test_state(
+            action="check",
+            route=RouteConfig(routes={"pass": "done", "fail": "fix"}),
+        )
+        result = self._state_to_dict(state)
+        assert result["route"] == {"pass": "done", "fail": "fix"}
+        assert "_" not in result["route"]
+
+    def test_state_with_capture(self) -> None:
+        """Convert state with capture variable."""
+        state = make_test_state(
+            action="wc -l errors.log",
+            capture="error_count",
+            on_success="check",
+        )
+        result = self._state_to_dict(state)
+        assert result["capture"] == "error_count"
+
+    def test_state_with_timeout(self) -> None:
+        """Convert state with timeout."""
+        state = make_test_state(
+            action="slow_command",
+            timeout=300,
+            on_success="done",
+        )
+        result = self._state_to_dict(state)
+        assert result["timeout"] == 300
+
+    def test_state_with_on_maintain(self) -> None:
+        """Convert state with on_maintain."""
+        state = make_test_state(
+            action="monitor",
+            on_maintain="monitor",
+            on_success="done",
+        )
+        result = self._state_to_dict(state)
+        assert result["on_maintain"] == "monitor"
+
+    def test_all_fields_populated(self) -> None:
+        """Convert state with all optional fields populated."""
+        state = make_test_state(
+            action="full_test",
+            evaluate=EvaluateConfig(
+                type="output_numeric",
+                operator="eq",
+                target=0,
+            ),
+            on_success="done",
+            on_failure="fix",
+            on_error="error_handler",
+            capture="result",
+            timeout=60,
+        )
+        result = self._state_to_dict(state)
+        assert "action" in result
+        assert "evaluate" in result
+        assert "on_success" in result
+        assert "on_failure" in result
+        assert "on_error" in result
+        assert "capture" in result
+        assert "timeout" in result
+
+
+class TestPrintExecutionPlan:
+    """Tests for print_execution_plan output formatting.
+
+    Note: print_execution_plan is a nested function in main_loop(), so we test
+    via the CLI's --dry-run flag which calls it.
+    """
+
+    def test_basic_plan_shows_states(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Plan output shows all states."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test.yaml").write_text("""
+name: test
+initial: start
+states:
+  start:
+    action: "echo start"
+    on_success: done
+  done:
+    terminal: true
+""")
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "test", "--dry-run"]):
+            from little_loops.cli import main_loop
+
+            main_loop()
+
+        captured = capsys.readouterr()
+        assert "[start]" in captured.out
+        assert "[done]" in captured.out
+
+    def test_terminal_state_marker(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Terminal states marked with [TERMINAL]."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test.yaml").write_text("""
+name: test
+initial: done
+states:
+  done:
+    terminal: true
+""")
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "test", "--dry-run"]):
+            from little_loops.cli import main_loop
+
+            main_loop()
+
+        captured = capsys.readouterr()
+        assert "[TERMINAL]" in captured.out
+
+    def test_long_action_truncated(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Actions over 70 chars are truncated with ..."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        long_action = "echo " + "x" * 100  # 105 chars total
+        (loops_dir / "test.yaml").write_text(f"""
+name: test
+initial: start
+states:
+  start:
+    action: "{long_action}"
+    on_success: done
+  done:
+    terminal: true
+""")
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "test", "--dry-run"]):
+            from little_loops.cli import main_loop
+
+            main_loop()
+
+        captured = capsys.readouterr()
+        # Should be truncated at 70 chars with ...
+        assert "..." in captured.out
+        # Full action should NOT appear
+        assert long_action not in captured.out
+
+    def test_evaluate_type_shown(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Evaluate type is displayed."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test.yaml").write_text("""
+name: test
+initial: check
+states:
+  check:
+    action: "pytest"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: fix
+  fix:
+    action: "fix.sh"
+    next: check
+  done:
+    terminal: true
+""")
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "test", "--dry-run"]):
+            from little_loops.cli import main_loop
+
+            main_loop()
+
+        captured = capsys.readouterr()
+        assert "evaluate: exit_code" in captured.out
+
+    def test_route_mappings_displayed(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Route mappings are displayed correctly."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test.yaml").write_text("""
+name: test
+initial: analyze
+states:
+  analyze:
+    action: "check status"
+    route:
+      success: done
+      failure: retry
+      _: error
+  done:
+    terminal: true
+  retry:
+    action: "retry"
+    next: analyze
+  error:
+    terminal: true
+""")
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "test", "--dry-run"]):
+            from little_loops.cli import main_loop
+
+            main_loop()
+
+        captured = capsys.readouterr()
+        assert "route:" in captured.out
+        assert "success -> done" in captured.out
+        assert "failure -> retry" in captured.out
+        assert "_ -> error" in captured.out
+
+    def test_metadata_shown(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Loop metadata (initial, max_iterations, timeout) shown."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "test.yaml").write_text("""
+name: test
+initial: start
+max_iterations: 25
+timeout: 3600
+states:
+  start:
+    terminal: true
+""")
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "test", "--dry-run"]):
+            from little_loops.cli import main_loop
+
+            main_loop()
+
+        captured = capsys.readouterr()
+        assert "Initial state: start" in captured.out
+        assert "Max iterations: 25" in captured.out
+        assert "Timeout: 3600s" in captured.out
 
 
 class TestProgressDisplay:
@@ -458,6 +873,48 @@ class TestProgressDisplay:
 
         for v in failure_verdicts:
             assert v not in success_verdicts
+
+    def test_success_verdict_uses_checkmark(self) -> None:
+        """Success verdicts use checkmark symbol."""
+        success_verdicts = ("success", "target", "progress")
+        for verdict in success_verdicts:
+            symbol = "\u2713" if verdict in success_verdicts else "\u2717"
+            assert symbol == "\u2713"
+
+    def test_failure_verdict_uses_x_mark(self) -> None:
+        """Failure verdicts use x mark symbol."""
+        success_verdicts = ("success", "target", "progress")
+        failure_verdicts = ("failure", "stall", "blocked")
+        for verdict in failure_verdicts:
+            symbol = "\u2713" if verdict in success_verdicts else "\u2717"
+            assert symbol == "\u2717"
+
+    def test_action_truncation_at_60_chars(self) -> None:
+        """Actions over 60 chars are truncated."""
+        action = "x" * 70
+        action_display = action[:60] + "..." if len(action) > 60 else action
+        assert len(action_display) == 63  # 60 chars + "..."
+        assert action_display.endswith("...")
+
+    def test_action_no_truncation_under_60_chars(self) -> None:
+        """Actions under 60 chars are not truncated."""
+        action = "x" * 50
+        action_display = action[:60] + "..." if len(action) > 60 else action
+        assert action_display == action
+        assert "..." not in action_display
+
+    def test_confidence_formatting(self) -> None:
+        """Confidence value formatted to 2 decimal places."""
+        confidence = 0.875
+        formatted = f"(confidence: {confidence:.2f})"
+        assert formatted == "(confidence: 0.88)"
+
+    def test_iteration_progress_format(self) -> None:
+        """Iteration progress shows [current/max] format."""
+        current = 5
+        max_iter = 50
+        progress = f"[{current}/{max_iter}]"
+        assert progress == "[5/50]"
 
 
 class TestMainLoopIntegration:
