@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import subprocess
 import sys
 import tempfile
 from collections.abc import Generator
@@ -1674,3 +1675,300 @@ goal: "Test"
         assert "running" in captured.out
         assert "fixing" in captured.out
         assert "7" in captured.out
+
+
+class TestEndToEndExecution:
+    """Tests for actual loop execution through PersistentExecutor.run().
+
+    These tests verify the core execution path that --dry-run mode skips:
+    - PersistentExecutor.run() is called and executes the loop
+    - Correct exit codes are returned (0 for terminal, 1 for non-terminal)
+    - State and events files are created during execution
+    - Completion messages display correct final state and iteration count
+
+    All tests mock subprocess.run() at the executor level to avoid actual
+    shell execution while still exercising the full execution path.
+
+    Note: These tests verify event generation via the events file rather than
+    display output, as the display callback mechanism requires separate testing.
+    """
+
+    def test_executes_loop_to_terminal_state(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Loop executes to terminal state and returns 0."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-exec
+initial: check
+max_iterations: 3
+states:
+  check:
+    action: "echo test"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-exec.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo test"],
+                returncode=0,
+                stdout="test",
+                stderr="",
+            )
+            with patch.object(sys, "argv", ["ll-loop", "run", "test-exec"]):
+                from little_loops.cli import main_loop
+
+                result = main_loop()
+
+        assert result == 0
+        assert mock_run.called
+
+        captured = capsys.readouterr()
+        # Verify loop header displayed
+        assert "Running loop: test-exec" in captured.out
+        assert "Max iterations: 3" in captured.out
+        # Verify completion message shows correct final state
+        assert "Loop completed: done" in captured.out
+        assert "1 iterations" in captured.out
+
+    def test_exits_on_max_iterations(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Loop exits with code 1 when max_iterations reached."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-max
+initial: check
+max_iterations: 2
+states:
+  check:
+    action: "echo fail"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-max.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            # Always return failure so loop keeps iterating
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo fail"],
+                returncode=1,
+                stdout="",
+                stderr="error",
+            )
+            with patch.object(sys, "argv", ["ll-loop", "run", "test-max"]):
+                from little_loops.cli import main_loop
+
+                result = main_loop()
+
+        assert result == 1  # Non-terminal exit
+        assert mock_run.call_count == 2  # Ran exactly max_iterations times
+
+        captured = capsys.readouterr()
+        # Verify loop header and completion message
+        assert "Running loop: test-max" in captured.out
+        assert "Max iterations: 2" in captured.out
+        # Final state is check (not done) because max_iterations reached
+        assert "Loop completed: check" in captured.out
+        assert "2 iterations" in captured.out
+
+    def test_reports_final_state_on_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Loop reports correct final state when action fails."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-fail
+initial: check
+max_iterations: 1
+states:
+  check:
+    action: "echo fail"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-fail.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo fail"],
+                returncode=1,
+                stdout="",
+                stderr="",
+            )
+            with patch.object(sys, "argv", ["ll-loop", "run", "test-fail"]):
+                from little_loops.cli import main_loop
+
+                main_loop()
+
+        captured = capsys.readouterr()
+        # Verify completion message - final state is check (stayed there after failure)
+        assert "Loop completed: check" in captured.out
+        assert "1 iterations" in captured.out
+
+    def test_successful_route_to_terminal(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Loop with multiple states routes successfully to terminal."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-route
+initial: check
+max_iterations: 3
+states:
+  check:
+    action: "echo test"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: retry
+  retry:
+    action: "echo retry"
+    next: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-route.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo test"],
+                returncode=0,
+                stdout="test",
+                stderr="",
+            )
+            with patch.object(sys, "argv", ["ll-loop", "run", "test-route"]):
+                from little_loops.cli import main_loop
+
+                result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Verify successful completion
+        assert "Loop completed: done" in captured.out
+        assert "1 iterations" in captured.out
+
+    def test_quiet_mode_suppresses_output(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--quiet flag suppresses progress display."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-quiet
+initial: done
+max_iterations: 1
+states:
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-quiet.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        # Note: Won't actually call subprocess.run for terminal-only loop
+        with patch("little_loops.fsm.executor.subprocess.run"):
+            with patch.object(sys, "argv", ["ll-loop", "run", "test-quiet", "--quiet"]):
+                from little_loops.cli import main_loop
+
+                result = main_loop()
+
+            assert result == 0
+            captured = capsys.readouterr()
+            # Output should be minimal/empty in quiet mode
+            assert "Running loop" not in captured.out
+            assert "Loop completed" not in captured.out
+
+    def test_creates_state_files(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Execution creates state and events files."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-state
+initial: check
+max_iterations: 2
+states:
+  check:
+    action: "echo test"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-state.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo test"],
+                returncode=0,
+                stdout="test",
+                stderr="",
+            )
+            with patch.object(sys, "argv", ["ll-loop", "run", "test-state"]):
+                from little_loops.cli import main_loop
+
+                main_loop()
+
+        # Verify state files created
+        running_dir = loops_dir / ".running"
+        assert running_dir.exists()
+        state_file = running_dir / "test-state.state.json"
+        assert state_file.exists()
+        events_file = running_dir / "test-state.events.jsonl"
+        assert events_file.exists()
+
+        # Verify events file has content
+        with open(events_file) as f:
+            events = [json.loads(line) for line in f if line.strip()]
+        event_types = [e["event"] for e in events]
+        # Verify all expected event types were emitted
+        assert "loop_start" in event_types
+        assert "state_enter" in event_types
+        assert "action_start" in event_types
+        assert "action_complete" in event_types
+        assert "evaluate" in event_types
+        assert "route" in event_types
+        assert "loop_complete" in event_types
