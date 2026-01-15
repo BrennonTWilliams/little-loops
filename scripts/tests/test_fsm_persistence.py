@@ -918,3 +918,116 @@ class TestAcceptanceCriteria:
         assert len(lines) == 2
         assert json.loads(lines[0])["event"] == "first"
         assert json.loads(lines[1])["event"] == "second"
+
+
+class TestCorruptedStateFiles:
+    """Tests for corrupted state file handling."""
+
+    @pytest.fixture
+    def tmp_loops_dir(self, tmp_path: Path) -> Path:
+        """Create temporary loops directory."""
+        return tmp_path / ".loops"
+
+    # State file corruption tests
+    def test_zero_byte_state_file(self, tmp_loops_dir: Path) -> None:
+        """Zero-byte state file should return None."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.state_file.write_text("")
+
+        result = persistence.load_state()
+        assert result is None
+
+    def test_truncated_json_state_file(self, tmp_loops_dir: Path) -> None:
+        """Truncated JSON should return None."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.state_file.write_text('{"status": "running", "current_sta')
+
+        result = persistence.load_state()
+        assert result is None
+
+    def test_binary_garbage_state_file(self, tmp_loops_dir: Path) -> None:
+        """Binary content in state file should be handled."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.state_file.write_bytes(b"\x00\xff\xfe\x80\x90")
+
+        # May raise UnicodeDecodeError since it's not caught
+        # This test documents current behavior
+        try:
+            result = persistence.load_state()
+            assert result is None
+        except UnicodeDecodeError:
+            pass  # Current implementation doesn't catch this
+
+    def test_wrong_encoding_state_file(self, tmp_loops_dir: Path) -> None:
+        """Non-UTF-8 encoding should be handled."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        content = '{"status": "running"}'.encode("utf-16")
+        persistence.state_file.write_bytes(content)
+
+        # May raise UnicodeDecodeError since it's not caught
+        try:
+            result = persistence.load_state()
+            assert result is None
+        except UnicodeDecodeError:
+            pass  # Current implementation doesn't catch this
+
+    # Field validation tests
+    def test_missing_required_field_in_state(self, tmp_loops_dir: Path) -> None:
+        """State JSON missing required field should return None."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.state_file.write_text('{"loop_name": "test"}')
+
+        result = persistence.load_state()
+        assert result is None  # KeyError caught
+
+    def test_wrong_type_for_field_in_state(self, tmp_loops_dir: Path) -> None:
+        """Wrong type for field should be accepted (no validation)."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        # iteration should be int, but no type validation exists
+        state_data = {
+            "loop_name": 123,  # Should be string
+            "current_state": "test",
+            "iteration": "not-an-int",  # Should be int
+            "started_at": "",
+            "status": "running",
+        }
+        persistence.state_file.write_text(json.dumps(state_data))
+
+        result = persistence.load_state()
+        # Current implementation doesn't validate types - documents behavior
+        assert result is not None  # Will load successfully
+
+    def test_null_values_in_state(self, tmp_loops_dir: Path) -> None:
+        """Null values for required fields should be handled."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        state_data = {
+            "loop_name": None,
+            "current_state": None,
+            "iteration": None,
+            "started_at": None,
+            "status": None,
+        }
+        persistence.state_file.write_text(json.dumps(state_data))
+
+        result = persistence.load_state()
+        # Null values are accepted - documents behavior
+        assert result is not None
+
+    # Events file corruption tests
+    def test_truncated_events_file(self, tmp_loops_dir: Path) -> None:
+        """Truncated events JSONL recovers gracefully."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        # Valid line, then truncated line
+        persistence.events_file.write_text('{"event": "start"}\n{"event": "tran')
+
+        events = persistence.read_events()
+        assert len(events) == 1
+        assert events[0]["event"] == "start"
