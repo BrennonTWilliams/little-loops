@@ -735,6 +735,9 @@ class TestCloseIssue:
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     src.rename(dst)
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if "ls-files" in cmd:
+                # Simulate file being tracked
+                return subprocess.CompletedProcess(cmd, 0, stdout=str(sample_issue_info.path), stderr="")
             if "commit" in cmd:
                 return subprocess.CompletedProcess(cmd, 0, stdout="[main abc123] commit", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -870,6 +873,9 @@ class TestCompleteIssueLifecycle:
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     src.rename(dst)
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if "ls-files" in cmd:
+                # Simulate file being tracked
+                return subprocess.CompletedProcess(cmd, 0, stdout=str(sample_issue_info.path), stderr="")
             if "commit" in cmd:
                 return subprocess.CompletedProcess(cmd, 0, stdout="[main def456] commit", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -955,6 +961,11 @@ class TestCompleteIssueLifecycle:
         def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             if "mv" in cmd:
                 raise OSError("Disk full")
+            if "ls-files" in cmd:
+                # Simulate file being tracked so git mv is attempted
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
+                )
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -989,6 +1000,9 @@ class TestCompleteIssueLifecycle:
                 if src.exists():
                     dst.parent.mkdir(parents=True, exist_ok=True)
                     src.rename(dst)
+            if "ls-files" in cmd:
+                # Simulate file being tracked
+                return subprocess.CompletedProcess(cmd, 0, stdout=str(feature_path), stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
