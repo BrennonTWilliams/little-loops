@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from little_loops.fsm.executor import (
     ActionResult,
@@ -654,6 +654,343 @@ class TestEvaluators:
         mock_runner.set_result("grep.sh", output="Test result: FAILED")
         result = FSMExecutor(fsm, action_runner=mock_runner).run()
         assert result.final_state == "retry"
+
+    def test_output_json_evaluator_determines_state(self) -> None:
+        """output_json evaluator extracts field and routes state."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="api.sh",
+                    evaluate=EvaluateConfig(
+                        type="output_json",
+                        path=".status",
+                        operator="eq",
+                        target="ready",
+                    ),
+                    on_success="done",
+                    on_failure="retry",
+                ),
+                "done": StateConfig(terminal=True),
+                "retry": StateConfig(terminal=True),
+            },
+        )
+
+        # Test string value matches -> success
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("api.sh", output='{"status": "ready", "count": 5}')
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+        assert result.final_state == "done"
+
+        # Test string value doesn't match -> failure
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("api.sh", output='{"status": "pending", "count": 5}')
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+        assert result.final_state == "retry"
+
+    def test_output_json_nested_path(self) -> None:
+        """output_json handles nested JSON paths."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="result.sh",
+                    evaluate=EvaluateConfig(
+                        type="output_json",
+                        path=".data.items.0.value",
+                        operator="eq",
+                        target=42,
+                    ),
+                    on_success="done",
+                    on_failure="retry",
+                ),
+                "done": StateConfig(terminal=True),
+                "retry": StateConfig(terminal=True),
+            },
+        )
+
+        mock_runner = MockActionRunner()
+        mock_runner.set_result(
+            "result.sh",
+            output='{"data": {"items": [{"value": 42}, {"value": 100}]}}',
+        )
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+        assert result.final_state == "done"
+
+    def test_output_json_numeric_comparison(self) -> None:
+        """output_json uses numeric comparison for numeric values."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="count.sh",
+                    evaluate=EvaluateConfig(
+                        type="output_json",
+                        path=".count",
+                        operator="lt",
+                        target=10,
+                    ),
+                    on_success="done",
+                    on_failure="retry",
+                ),
+                "done": StateConfig(terminal=True),
+                "retry": StateConfig(terminal=True),
+            },
+        )
+
+        # count=5 < 10 -> success
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("count.sh", output='{"count": 5}')
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+        assert result.final_state == "done"
+
+        # count=15 not < 10 -> failure
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("count.sh", output='{"count": 15}')
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+        assert result.final_state == "retry"
+
+    def test_convergence_evaluator_detects_target(self) -> None:
+        """convergence evaluator returns target verdict when value within tolerance."""
+        fsm = FSMLoop(
+            name="test",
+            initial="optimize",
+            states={
+                "optimize": StateConfig(
+                    action="measure.sh",
+                    evaluate=EvaluateConfig(
+                        type="convergence",
+                        target=0,
+                        tolerance=1.0,
+                        direction="minimize",
+                    ),
+                    route=RouteConfig(
+                        routes={"target": "done", "progress": "optimize", "stall": "stuck"},
+                    ),
+                ),
+                "done": StateConfig(terminal=True),
+                "stuck": StateConfig(terminal=True),
+            },
+        )
+
+        # Value 0.5 within tolerance 1.0 of target 0 -> target verdict
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("measure.sh", output="0.5")
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+        assert result.final_state == "done"
+
+    def test_convergence_evaluator_tracks_progress(self) -> None:
+        """convergence evaluator tracks progress across iterations."""
+        fsm = FSMLoop(
+            name="test",
+            initial="measure",
+            max_iterations=3,
+            states={
+                "measure": StateConfig(
+                    action="count.sh",
+                    evaluate=EvaluateConfig(
+                        type="convergence",
+                        target=0,
+                        tolerance=0,
+                        direction="minimize",
+                        previous="${prev.output}",
+                    ),
+                    route=RouteConfig(
+                        routes={"target": "done", "progress": "measure", "stall": "stuck"},
+                    ),
+                ),
+                "done": StateConfig(terminal=True),
+                "stuck": StateConfig(terminal=True),
+            },
+        )
+
+        mock_runner = MockActionRunner()
+        # Simulate decreasing values: 10 -> 5 -> 0 (progress, progress, target)
+        mock_runner.results = [
+            ("count.sh", {"output": "10"}),  # First: progress (no previous)
+            ("count.sh", {"output": "5"}),  # Second: progress (10 -> 5)
+            ("count.sh", {"output": "0"}),  # Third: target reached
+        ]
+        mock_runner.use_indexed_order = True
+
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+        assert result.final_state == "done"
+        assert result.iterations == 3
+
+    def test_convergence_evaluator_detects_stall(self) -> None:
+        """convergence evaluator returns stall when no progress made."""
+        fsm = FSMLoop(
+            name="test",
+            initial="measure",
+            max_iterations=2,
+            states={
+                "measure": StateConfig(
+                    action="count.sh",
+                    evaluate=EvaluateConfig(
+                        type="convergence",
+                        target=0,
+                        tolerance=0,
+                        direction="minimize",
+                        previous="${prev.output}",
+                    ),
+                    route=RouteConfig(
+                        routes={"target": "done", "progress": "measure", "stall": "stuck"},
+                    ),
+                ),
+                "done": StateConfig(terminal=True),
+                "stuck": StateConfig(terminal=True),
+            },
+        )
+
+        mock_runner = MockActionRunner()
+        # No progress: 10 -> 10 (stall)
+        mock_runner.results = [
+            ("count.sh", {"output": "10"}),  # First: progress (no previous)
+            ("count.sh", {"output": "10"}),  # Second: stall (no change)
+        ]
+        mock_runner.use_indexed_order = True
+
+        result = FSMExecutor(fsm, action_runner=mock_runner).run()
+        assert result.final_state == "stuck"
+        assert result.iterations == 2
+
+    def test_llm_structured_evaluator_routes_on_verdict(self) -> None:
+        """llm_structured evaluator calls LLM and routes based on verdict."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="deploy.sh",
+                    evaluate=EvaluateConfig(
+                        type="llm_structured",
+                        prompt="Did the deployment succeed?",
+                    ),
+                    on_success="done",
+                    on_failure="retry",
+                ),
+                "done": StateConfig(terminal=True),
+                "retry": StateConfig(terminal=True),
+            },
+        )
+
+        # Create mock LLM response
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.name = "evaluate"
+        mock_block.input = {
+            "verdict": "success",
+            "confidence": 0.95,
+            "reason": "Deployment completed successfully",
+        }
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("deploy.sh", output="Deployed to production")
+
+        with patch("little_loops.fsm.evaluators.ANTHROPIC_AVAILABLE", True):
+            with patch("little_loops.fsm.evaluators.anthropic") as mock_anthropic:
+                mock_client = MagicMock()
+                mock_anthropic.Anthropic.return_value = mock_client
+                mock_client.messages.create.return_value = mock_response
+
+                result = FSMExecutor(fsm, action_runner=mock_runner).run()
+
+        assert result.final_state == "done"
+        # Verify LLM was called
+        mock_client.messages.create.assert_called_once()
+
+    def test_llm_structured_evaluator_failure_verdict(self) -> None:
+        """llm_structured evaluator routes to failure on failure verdict."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    on_success="done",
+                    on_failure="retry",
+                ),
+                "done": StateConfig(terminal=True),
+                "retry": StateConfig(terminal=True),
+            },
+        )
+
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.name = "evaluate"
+        mock_block.input = {
+            "verdict": "failure",
+            "confidence": 0.9,
+            "reason": "Tests failed",
+        }
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("test.sh", output="3 tests failed")
+
+        with patch("little_loops.fsm.evaluators.ANTHROPIC_AVAILABLE", True):
+            with patch("little_loops.fsm.evaluators.anthropic") as mock_anthropic:
+                mock_client = MagicMock()
+                mock_anthropic.Anthropic.return_value = mock_client
+                mock_client.messages.create.return_value = mock_response
+
+                result = FSMExecutor(fsm, action_runner=mock_runner).run()
+
+        assert result.final_state == "retry"
+
+    def test_llm_structured_evaluator_blocked_verdict(self) -> None:
+        """llm_structured evaluator routes blocked verdict to configured state."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="deploy.sh",
+                    evaluate=EvaluateConfig(type="llm_structured"),
+                    route=RouteConfig(
+                        routes={
+                            "success": "done",
+                            "failure": "retry",
+                            "blocked": "needs_help",
+                        },
+                    ),
+                ),
+                "done": StateConfig(terminal=True),
+                "retry": StateConfig(terminal=True),
+                "needs_help": StateConfig(terminal=True),
+            },
+        )
+
+        mock_block = MagicMock()
+        mock_block.type = "tool_use"
+        mock_block.name = "evaluate"
+        mock_block.input = {
+            "verdict": "blocked",
+            "confidence": 0.85,
+            "reason": "Missing permissions",
+        }
+        mock_response = MagicMock()
+        mock_response.content = [mock_block]
+
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("deploy.sh", output="Permission denied")
+
+        with patch("little_loops.fsm.evaluators.ANTHROPIC_AVAILABLE", True):
+            with patch("little_loops.fsm.evaluators.anthropic") as mock_anthropic:
+                mock_client = MagicMock()
+                mock_anthropic.Anthropic.return_value = mock_client
+                mock_client.messages.create.return_value = mock_response
+
+                result = FSMExecutor(fsm, action_runner=mock_runner).run()
+
+        assert result.final_state == "needs_help"
 
 
 class TestExecutionResult:
