@@ -2132,6 +2132,38 @@ states:
             # Logo should not be displayed in quiet mode
             assert "little loops" not in captured.out
 
+    def test_background_flag_shows_warning(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--background flag shows warning that it's not implemented."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-background
+initial: done
+max_iterations: 1
+states:
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-background.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch("little_loops.fsm.executor.subprocess.run"):
+            with patch.object(sys, "argv", ["ll-loop", "run", "test-background", "--background"]):
+                from little_loops.cli import main_loop
+
+                result = main_loop()
+
+            assert result == 0
+            captured = capsys.readouterr()
+            # Warning should appear about background mode
+            assert "Background mode not yet implemented" in captured.out
+            assert "running in foreground" in captured.out
+
     def test_creates_state_files(
         self,
         tmp_path: Path,
