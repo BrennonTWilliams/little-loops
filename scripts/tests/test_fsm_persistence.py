@@ -1031,3 +1031,280 @@ class TestCorruptedStateFiles:
         events = persistence.read_events()
         assert len(events) == 1
         assert events[0]["event"] == "start"
+
+
+class TestSignalHandlingPersistence:
+    """Tests for graceful shutdown via signal handling with persistence."""
+
+    @pytest.fixture
+    def multi_state_fsm(self) -> FSMLoop:
+        """Create a multi-state FSM for signal testing."""
+        return FSMLoop(
+            name="signal-test-loop",
+            initial="step1",
+            max_iterations=10,
+            states={
+                "step1": StateConfig(action="echo step1", next="step2"),
+                "step2": StateConfig(action="echo step2", next="step3"),
+                "step3": StateConfig(action="echo step3", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    @pytest.fixture
+    def tmp_loops_dir(self, tmp_path: Path) -> Path:
+        """Create temporary loops directory."""
+        return tmp_path / ".loops"
+
+    def test_persistent_executor_has_request_shutdown(
+        self, multi_state_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """PersistentExecutor exposes request_shutdown method."""
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(
+            multi_state_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner
+        )
+
+        # Method exists and is callable
+        assert hasattr(executor, "request_shutdown")
+        assert callable(executor.request_shutdown)
+
+    def test_request_shutdown_delegates_to_inner_executor(
+        self, multi_state_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """request_shutdown delegates to inner FSMExecutor."""
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(
+            multi_state_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner
+        )
+
+        assert executor._executor._shutdown_requested is False
+        executor.request_shutdown()
+        assert executor._executor._shutdown_requested is True
+
+    def test_signal_termination_saves_state_as_interrupted(
+        self, multi_state_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """Signal termination saves state with status='interrupted'."""
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(
+            multi_state_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner
+        )
+
+        # Request shutdown before run
+        executor.request_shutdown()
+        result = executor.run()
+
+        assert result.terminated_by == "signal"
+
+        # Check persisted state
+        state = executor.persistence.load_state()
+        assert state is not None
+        assert state.status == "interrupted"
+
+    def test_signal_termination_preserves_captured_in_state(
+        self, tmp_loops_dir: Path
+    ) -> None:
+        """Signal termination preserves captured values in state file."""
+        fsm = FSMLoop(
+            name="capture-signal-test",
+            initial="capture_step",
+            max_iterations=10,
+            states={
+                "capture_step": StateConfig(
+                    action="echo captured_value",
+                    capture="my_capture",
+                    next="next_step",
+                ),
+                "next_step": StateConfig(action="echo next", next="capture_step"),
+            },
+        )
+
+        call_count = [0]
+        executor_ref: list[PersistentExecutor] = []
+
+        class CaptureAndShutdownRunner:
+            calls: list[str] = []
+
+            def run(
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+            ) -> ActionResult:
+                del timeout, is_slash_command
+                self.calls.append(action)
+                call_count[0] += 1
+
+                # Shutdown after first iteration
+                if call_count[0] == 2 and executor_ref:
+                    executor_ref[0].request_shutdown()
+
+                if "captured_value" in action:
+                    return ActionResult(
+                        output="important_data_xyz", stderr="", exit_code=0, duration_ms=10
+                    )
+                return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
+
+        runner = CaptureAndShutdownRunner()
+        executor = PersistentExecutor(fsm, loops_dir=tmp_loops_dir, action_runner=runner)
+        executor_ref.append(executor)
+
+        result = executor.run()
+
+        assert result.terminated_by == "signal"
+        assert "my_capture" in result.captured
+        assert result.captured["my_capture"]["output"] == "important_data_xyz"
+
+        # Check state file also has captured values
+        state = executor.persistence.load_state()
+        assert state is not None
+        assert "my_capture" in state.captured
+        assert state.captured["my_capture"]["output"] == "important_data_xyz"
+
+    def test_signal_interrupted_loop_can_be_resumed(
+        self, tmp_loops_dir: Path
+    ) -> None:
+        """Loop interrupted by signal can be resumed later."""
+        fsm = FSMLoop(
+            name="resumable-signal-test",
+            initial="step1",
+            max_iterations=10,
+            states={
+                "step1": StateConfig(action="echo step1", next="step2"),
+                "step2": StateConfig(action="echo step2", next="step3"),
+                "step3": StateConfig(action="echo step3", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        call_count = [0]
+        executor_ref: list[PersistentExecutor] = []
+
+        class ShutdownAfterFirstRunner:
+            calls: list[str] = []
+
+            def run(
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+            ) -> ActionResult:
+                del timeout, is_slash_command
+                self.calls.append(action)
+                call_count[0] += 1
+
+                # Shutdown after first action
+                if call_count[0] == 1 and executor_ref:
+                    executor_ref[0].request_shutdown()
+
+                return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
+
+        runner = ShutdownAfterFirstRunner()
+        executor = PersistentExecutor(fsm, loops_dir=tmp_loops_dir, action_runner=runner)
+        executor_ref.append(executor)
+
+        # First run - gets interrupted
+        result1 = executor.run()
+        assert result1.terminated_by == "signal"
+        assert result1.final_state == "step2"  # Routed after step1
+
+        # Check state shows interrupted
+        state = executor.persistence.load_state()
+        assert state is not None
+        assert state.status == "interrupted"
+
+        # Manually set status to "running" to enable resume
+        # (In real scenario, user would mark as resumable)
+        state.status = "running"
+        executor.persistence.save_state(state)
+
+        # Create new executor for resume
+        runner2 = MockActionRunner()
+        executor2 = PersistentExecutor(fsm, loops_dir=tmp_loops_dir, action_runner=runner2)
+
+        # Resume
+        result2 = executor2.resume()
+
+        assert result2 is not None
+        assert result2.terminated_by == "terminal"
+        assert result2.final_state == "done"
+
+    def test_signal_emits_events_before_termination(
+        self, multi_state_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """Signal termination still emits loop_start and loop_complete events."""
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(
+            multi_state_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner
+        )
+
+        executor.request_shutdown()
+        executor.run()
+
+        events = executor.persistence.read_events()
+        event_types = [e["event"] for e in events]
+
+        assert "loop_start" in event_types
+        assert "loop_complete" in event_types
+
+        # Find loop_complete event
+        loop_complete = next(e for e in events if e["event"] == "loop_complete")
+        assert loop_complete["terminated_by"] == "signal"
+
+    def test_signal_during_multi_iteration_preserves_progress(
+        self, tmp_loops_dir: Path
+    ) -> None:
+        """Signal during multi-iteration execution preserves all progress."""
+        fsm = FSMLoop(
+            name="multi-iter-signal",
+            initial="step1",
+            max_iterations=10,
+            states={
+                "step1": StateConfig(action="echo step1", capture="step1_out", next="step2"),
+                "step2": StateConfig(action="echo step2", capture="step2_out", next="step1"),
+            },
+        )
+
+        call_count = [0]
+        executor_ref: list[PersistentExecutor] = []
+
+        class ProgressTrackingRunner:
+            calls: list[str] = []
+
+            def run(
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+            ) -> ActionResult:
+                del timeout, is_slash_command
+                self.calls.append(action)
+                call_count[0] += 1
+
+                # Shutdown after 4 actions (2 full iterations)
+                if call_count[0] == 4 and executor_ref:
+                    executor_ref[0].request_shutdown()
+
+                # Return call count to track progress
+                return ActionResult(
+                    output=f"call_{call_count[0]}", stderr="", exit_code=0, duration_ms=10
+                )
+
+        runner = ProgressTrackingRunner()
+        executor = PersistentExecutor(fsm, loops_dir=tmp_loops_dir, action_runner=runner)
+        executor_ref.append(executor)
+
+        result = executor.run()
+
+        assert result.terminated_by == "signal"
+        assert result.iterations == 4  # 4 iterations completed
+
+        # Both captures should have latest values
+        assert "step1_out" in result.captured
+        assert "step2_out" in result.captured
+
+        # Verify captures updated over iterations
+        # Last step1 was call 3, last step2 was call 4
+        assert result.captured["step1_out"]["output"] == "call_3"
+        assert result.captured["step2_out"]["output"] == "call_4"

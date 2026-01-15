@@ -34,7 +34,7 @@ class ExecutionResult:
     Attributes:
         final_state: Name of the state when execution stopped
         iterations: Total iterations executed
-        terminated_by: Reason for termination (terminal, max_iterations, timeout, error)
+        terminated_by: Reason for termination (terminal, max_iterations, timeout, signal, error)
         duration_ms: Total execution time in milliseconds
         captured: All captured variable values
         error: Error message if terminated_by is "error"
@@ -42,7 +42,7 @@ class ExecutionResult:
 
     final_state: str
     iterations: int
-    terminated_by: str  # "terminal", "max_iterations", "timeout", "error"
+    terminated_by: str  # "terminal", "max_iterations", "timeout", "signal", "error"
     duration_ms: int
     captured: dict[str, dict[str, Any]]
     error: str | None = None
@@ -176,6 +176,7 @@ class FSMExecutor:
     - A terminal state is reached
     - max_iterations is exceeded
     - A timeout occurs
+    - A shutdown signal is received
     - An unrecoverable error occurs
 
     Events are emitted via the callback for observability.
@@ -206,6 +207,17 @@ class FSMExecutor:
         self.started_at = ""
         self.start_time_ms = 0
 
+        # Shutdown flag for graceful signal handling
+        self._shutdown_requested = False
+
+    def request_shutdown(self) -> None:
+        """Request graceful shutdown of the executor.
+
+        Sets a flag that will be checked at the start of each iteration,
+        allowing the loop to exit cleanly after the current state completes.
+        """
+        self._shutdown_requested = True
+
     def run(self) -> ExecutionResult:
         """Execute the FSM until terminal state or limits reached.
 
@@ -219,6 +231,10 @@ class FSMExecutor:
 
         try:
             while True:
+                # Check shutdown request (signal handling)
+                if self._shutdown_requested:
+                    return self._finish("signal")
+
                 # Check iteration limit
                 if self.iteration >= self.fsm.max_iterations:
                     return self._finish("max_iterations")

@@ -1483,3 +1483,227 @@ class TestTimeoutHandling:
         assert result.iterations == 1
         # Current state is step2 (routed there after step1 completed)
         assert result.final_state == "step2"
+
+
+class TestSignalHandling:
+    """Tests for graceful shutdown via signal handling."""
+
+    def test_request_shutdown_sets_flag(self) -> None:
+        """request_shutdown() sets the internal flag."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={
+                "start": StateConfig(terminal=True),
+            },
+        )
+        executor = FSMExecutor(fsm)
+
+        assert executor._shutdown_requested is False
+        executor.request_shutdown()
+        assert executor._shutdown_requested is True
+
+    def test_shutdown_terminates_before_first_iteration(self) -> None:
+        """Shutdown requested before run() starts terminates immediately."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            max_iterations=10,
+            states={
+                "check": StateConfig(action="pytest", on_success="done", on_failure="check"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.request_shutdown()  # Request shutdown before run
+
+        result = executor.run()
+
+        assert result.terminated_by == "signal"
+        assert result.iterations == 0
+        assert result.final_state == "check"  # Never moved from initial
+        assert len(mock_runner.calls) == 0  # No actions executed
+
+    def test_shutdown_terminates_after_current_iteration(self) -> None:
+        """Shutdown during execution completes current iteration then stops."""
+        fsm = FSMLoop(
+            name="test",
+            initial="step1",
+            max_iterations=10,
+            states={
+                "step1": StateConfig(action="step1.sh", next="step2"),
+                "step2": StateConfig(action="step2.sh", next="step3"),
+                "step3": StateConfig(action="step3.sh", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        # Track calls and trigger shutdown after first action
+        shutdown_executor: FSMExecutor | None = None
+        call_count = [0]
+
+        class ShutdownAfterFirstActionRunner:
+            calls: list[str] = []
+
+            def run(
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+            ) -> ActionResult:
+                del timeout, is_slash_command
+                self.calls.append(action)
+                call_count[0] += 1
+
+                # Shutdown after second action completes
+                if call_count[0] == 2 and shutdown_executor:
+                    shutdown_executor.request_shutdown()
+
+                return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=100)
+
+        runner = ShutdownAfterFirstActionRunner()
+        executor = FSMExecutor(fsm, action_runner=runner)
+        shutdown_executor = executor
+
+        result = executor.run()
+
+        assert result.terminated_by == "signal"
+        # Two iterations completed before shutdown was detected
+        assert result.iterations == 2
+        assert result.final_state == "step3"
+        assert len(runner.calls) == 2  # step1.sh and step2.sh executed
+
+    def test_shutdown_emits_loop_complete_event(self) -> None:
+        """Shutdown emits loop_complete event with terminated_by=signal."""
+        fsm = FSMLoop(
+            name="test-signal",
+            initial="check",
+            states={
+                "check": StateConfig(action="check.sh", on_success="done", on_failure="check"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        events: list[dict[str, Any]] = []
+
+        def capture_event(event: dict[str, Any]) -> None:
+            events.append(event)
+
+        executor = FSMExecutor(fsm, event_callback=capture_event, action_runner=mock_runner)
+        executor.request_shutdown()
+
+        result = executor.run()
+
+        assert result.terminated_by == "signal"
+
+        # Find loop_complete event
+        loop_complete_events = [e for e in events if e.get("event") == "loop_complete"]
+        assert len(loop_complete_events) == 1
+        assert loop_complete_events[0]["terminated_by"] == "signal"
+
+    def test_shutdown_preserves_captured_values(self) -> None:
+        """Shutdown preserves captured values from completed iterations."""
+        fsm = FSMLoop(
+            name="test",
+            initial="capture_step",
+            max_iterations=10,
+            states={
+                "capture_step": StateConfig(
+                    action="get_value.sh",
+                    capture="my_value",
+                    next="process_step",
+                ),
+                "process_step": StateConfig(action="process.sh", next="capture_step"),
+            },
+        )
+
+        shutdown_executor: FSMExecutor | None = None
+        call_count = [0]
+
+        class CaptureAndShutdownRunner:
+            calls: list[str] = []
+
+            def run(
+                self,
+                action: str,
+                timeout: int,
+                is_slash_command: bool,
+            ) -> ActionResult:
+                del timeout, is_slash_command
+                self.calls.append(action)
+                call_count[0] += 1
+
+                # Shutdown after first iteration (capture_step + process_step)
+                if call_count[0] == 2 and shutdown_executor:
+                    shutdown_executor.request_shutdown()
+
+                if "get_value" in action:
+                    return ActionResult(
+                        output="captured_data_123", stderr="", exit_code=0, duration_ms=100
+                    )
+                return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=100)
+
+        runner = CaptureAndShutdownRunner()
+        executor = FSMExecutor(fsm, action_runner=runner)
+        shutdown_executor = executor
+
+        result = executor.run()
+
+        assert result.terminated_by == "signal"
+        assert "my_value" in result.captured
+        assert result.captured["my_value"]["output"] == "captured_data_123"
+
+    def test_shutdown_checked_before_max_iterations(self) -> None:
+        """Shutdown is checked before max_iterations check."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            max_iterations=1,  # Would trigger max_iterations
+            states={
+                "check": StateConfig(action="check.sh", on_success="done", on_failure="check"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        # Both conditions true: shutdown requested AND at max_iterations
+        executor._shutdown_requested = True
+        executor.iteration = 1  # At max_iterations
+
+        result = executor.run()
+
+        # Signal takes precedence over max_iterations
+        assert result.terminated_by == "signal"
+
+    def test_shutdown_checked_before_timeout(self) -> None:
+        """Shutdown is checked before timeout check."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            max_iterations=100,
+            timeout=1,  # 1 second timeout
+            states={
+                "check": StateConfig(action="check.sh", on_success="done", on_failure="check"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        executor = FSMExecutor(fsm)
+        executor._shutdown_requested = True
+        # Simulate timeout by setting start_time far in the past
+        executor.start_time_ms = 0
+        executor.started_at = "2024-01-01T00:00:00+00:00"
+
+        # Mock time to return a value that exceeds timeout
+        with patch("little_loops.fsm.executor.time.time", return_value=10.0):
+            result = executor.run()
+
+        # Signal takes precedence over timeout
+        assert result.terminated_by == "signal"

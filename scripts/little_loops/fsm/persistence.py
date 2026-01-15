@@ -205,6 +205,7 @@ class PersistentExecutor:
     - Save state after each state transition
     - Append events to JSONL file as they occur
     - Support resuming from saved state
+    - Support graceful shutdown via signal handling
     """
 
     def __init__(
@@ -233,6 +234,15 @@ class PersistentExecutor:
             **executor_kwargs,
         )
         self._last_result: dict[str, Any] | None = None
+
+    def request_shutdown(self) -> None:
+        """Request graceful shutdown of the executor.
+
+        Delegates to the underlying FSMExecutor's request_shutdown method.
+        The loop will exit cleanly after the current state completes,
+        saving state as "interrupted" so it can be resumed later.
+        """
+        self._executor.request_shutdown()
 
     def _handle_event(self, event: dict[str, Any]) -> None:
         """Handle event: persist to file and save state.
@@ -293,7 +303,7 @@ class PersistentExecutor:
 
         # Update final state
         final_status = "completed" if result.terminated_by == "terminal" else "failed"
-        if result.terminated_by == "max_iterations":
+        if result.terminated_by in ("max_iterations", "signal"):
             final_status = "interrupted"
 
         final_state = LoopState(
