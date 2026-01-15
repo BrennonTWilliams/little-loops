@@ -443,6 +443,184 @@ Convert text to slug format for filenames.
 
 ---
 
+## little_loops.git_operations
+
+Git utility functions for status checking, work verification, and .gitignore management.
+
+### GitignorePattern
+
+Represents a suggested .gitignore pattern with metadata.
+
+```python
+@dataclass
+class GitignorePattern:
+    pattern: str           # The .gitignore pattern (e.g., "*.log", ".env")
+    category: str          # Category of file (e.g., "coverage", "environment")
+    description: str       # Human-readable description
+    files_matched: list[str]  # Untracked files matching this pattern
+    priority: int          # Suggestion priority (1=highest, 5=lowest)
+```
+
+#### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `is_wildcard` | `bool` | True if pattern contains wildcards (`*`, `?`) |
+| `is_directory` | `bool` | True if pattern targets a directory (ends with `/`) |
+
+### GitignoreSuggestion
+
+Container for gitignore suggestions with user interaction helpers.
+
+```python
+@dataclass
+class GitignoreSuggestion:
+    patterns: list[GitignorePattern]  # Suggested patterns
+    existing_gitignore: Path | None   # Path to .gitignore file
+    already_ignored: list[str]        # Files already covered by .gitignore
+    total_files: int                  # Total untracked files examined
+```
+
+#### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `has_suggestions` | `bool` | True if there are patterns to suggest |
+| `files_to_ignore` | `list[str]` | All files that would be ignored by suggested patterns |
+| `summary` | `str` | Human-readable summary of suggestions |
+
+### suggest_gitignore_patterns
+
+```python
+def suggest_gitignore_patterns(
+    untracked_files: list[str] | None = None,
+    repo_root: Path | str = ".",
+    logger: Logger | None = None,
+) -> GitignoreSuggestion
+```
+
+Analyze untracked files and suggest .gitignore patterns.
+
+Examines untracked files against a curated list of common patterns (coverage reports, environment files, logs, Python/Node.js artifacts, etc.). Respects existing .gitignore patterns and won't suggest patterns for already-ignored files.
+
+**Parameters:**
+- `untracked_files` - Optional list of untracked files. If None, detects via git status
+- `repo_root` - Path to repository root (default: current directory)
+- `logger` - Optional logger for debug output
+
+**Returns:** `GitignoreSuggestion` with suggested patterns and metadata
+
+**Example:**
+```python
+from little_loops.git_operations import suggest_gitignore_patterns
+from little_loops.logger import Logger
+
+logger = Logger()
+result = suggest_gitignore_patterns(logger=logger)
+
+if result.has_suggestions:
+    for pattern in result.patterns:
+        print(f"{pattern.pattern}: {pattern.description}")
+        print(f"  Matches: {', '.join(pattern.files_matched)}")
+```
+
+### add_patterns_to_gitignore
+
+```python
+def add_patterns_to_gitignore(
+    patterns: list[str],
+    repo_root: Path | str = ".",
+    logger: Logger | None = None,
+    backup: bool = True,
+) -> bool
+```
+
+Add patterns to .gitignore file.
+
+Skips duplicate patterns and optionally creates a backup before modifying.
+
+**Parameters:**
+- `patterns` - List of patterns to add
+- `repo_root` - Path to repository root
+- `logger` - Optional logger for output
+- `backup` - If True, creates `.gitignore.backup` before modifying
+
+**Returns:** `True` if patterns were added successfully
+
+**Example:**
+```python
+from little_loops.git_operations import add_patterns_to_gitignore
+from little_loops.logger import Logger
+
+logger = Logger()
+success = add_patterns_to_gitignore(
+    patterns=["*.log", ".env", "coverage.json"],
+    logger=logger
+)
+```
+
+### get_untracked_files
+
+```python
+def get_untracked_files(repo_root: Path | str = ".") -> list[str]
+```
+
+Get list of untracked files from git status.
+
+Uses `git status --porcelain` to detect untracked files.
+
+**Parameters:**
+- `repo_root` - Path to repository root (default: current directory)
+
+**Returns:** List of untracked file paths (relative to repo root)
+
+### check_git_status
+
+```python
+def check_git_status(logger: Logger) -> bool
+```
+
+Check for uncommitted changes.
+
+**Parameters:**
+- `logger` - Logger for output
+
+**Returns:** `True` if there are uncommitted changes
+
+### verify_work_was_done
+
+```python
+def verify_work_was_done(
+    logger: Logger,
+    changed_files: list[str] | None = None,
+) -> bool
+```
+
+Verify that actual work was done (not just issue file moves).
+
+Prevents marking issues as "completed" when no actual fix was implemented by checking if changes were made to files outside of excluded directories (`.issues/`, `thoughts/`, etc.).
+
+**Parameters:**
+- `logger` - Logger for output
+- `changed_files` - Optional list of changed files. If not provided, detects via git diff
+
+**Returns:** `True` if meaningful file changes were detected
+
+### filter_excluded_files
+
+```python
+def filter_excluded_files(files: list[str]) -> list[str]
+```
+
+Filter out files in excluded directories.
+
+**Parameters:**
+- `files` - List of file paths to filter
+
+**Returns:** List of files not in excluded directories
+
+---
+
 ## little_loops.issue_manager
 
 Sequential automated issue management.
@@ -1282,6 +1460,15 @@ Entry point for `ll-messages` command. Extract user messages from Claude Code lo
 from little_loops.config import BRConfig
 from little_loops.issue_parser import IssueParser, IssueInfo, find_issues
 from little_loops.issue_manager import AutoManager
+from little_loops.git_operations import (
+    GitignorePattern,
+    GitignoreSuggestion,
+    suggest_gitignore_patterns,
+    add_patterns_to_gitignore,
+    get_untracked_files,
+    check_git_status,
+    verify_work_was_done,
+)
 from little_loops.state import StateManager, ProcessingState
 from little_loops.logger import Logger, format_duration
 from little_loops.user_messages import (
