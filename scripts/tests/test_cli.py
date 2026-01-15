@@ -657,3 +657,112 @@ states:
             result = main_loop()
 
         assert result == 1
+
+
+class TestSprintArgumentParsing:
+    """Tests for ll-sprint argument parsing."""
+
+    def _parse_sprint_args(self, args: list[str]) -> argparse.Namespace:
+        """Parse arguments using the same parser as main_sprint."""
+        parser = argparse.ArgumentParser(prog="ll-sprint")
+        subparsers = parser.add_subparsers(dest="command")
+
+        # create
+        create = subparsers.add_parser("create")
+        create.add_argument("name")
+        create.add_argument("--issues", required=True)
+        create.add_argument("--description", "-d", default="")
+        create.add_argument("--mode", choices=["auto", "parallel"], default="auto")
+        create.add_argument("--max-workers", type=int, default=4)
+        create.add_argument("--timeout", type=int, default=3600)
+
+        # run
+        run = subparsers.add_parser("run")
+        run.add_argument("sprint")
+        run.add_argument("--parallel", action="store_true")
+        run.add_argument("--dry-run", "-n", action="store_true")
+        run.add_argument("--max-workers", type=int)
+        run.add_argument("--timeout", type=int)
+        run.add_argument("--config", type=Path)
+
+        # list
+        list_parser = subparsers.add_parser("list")
+        list_parser.add_argument("--verbose", "-v", action="store_true")
+
+        # show
+        show = subparsers.add_parser("show")
+        show.add_argument("sprint")
+        show.add_argument("--config", type=Path)
+
+        # delete
+        delete = subparsers.add_parser("delete")
+        delete.add_argument("sprint")
+
+        return parser.parse_args(args)
+
+    def test_create_command(self) -> None:
+        """create subcommand parses correctly."""
+        args = self._parse_sprint_args(
+            [
+                "create",
+                "sprint-1",
+                "--issues",
+                "BUG-001,FEAT-010",
+                "--description",
+                "Q1 fixes",
+                "--mode",
+                "parallel",
+                "--max-workers",
+                "8",
+            ]
+        )
+        assert args.command == "create"
+        assert args.name == "sprint-1"
+        assert args.issues == "BUG-001,FEAT-010"
+        assert args.description == "Q1 fixes"
+        assert args.mode == "parallel"
+        assert args.max_workers == 8
+
+    def test_run_command(self) -> None:
+        """run subcommand parses correctly."""
+        args = self._parse_sprint_args(
+            ["run", "sprint-1", "--parallel", "--dry-run", "--max-workers", "8"]
+        )
+        assert args.command == "run"
+        assert args.sprint == "sprint-1"
+        assert args.parallel is True
+        assert args.dry_run is True
+        assert args.max_workers == 8
+
+    def test_run_sequential(self) -> None:
+        """run without --parallel flag."""
+        args = self._parse_sprint_args(["run", "sprint-1"])
+        assert args.command == "run"
+        assert args.sprint == "sprint-1"
+        assert args.parallel is False
+
+    def test_list_command(self) -> None:
+        """list subcommand."""
+        args = self._parse_sprint_args(["list", "--verbose"])
+        assert args.command == "list"
+        assert args.verbose is True
+
+    def test_show_command(self) -> None:
+        """show subcommand."""
+        args = self._parse_sprint_args(
+            ["show", "sprint-1", "--config", "/my/project"]
+        )
+        assert args.command == "show"
+        assert args.sprint == "sprint-1"
+        assert args.config == Path("/my/project")
+
+    def test_delete_command(self) -> None:
+        """delete subcommand."""
+        args = self._parse_sprint_args(["delete", "sprint-1"])
+        assert args.command == "delete"
+        assert args.sprint == "sprint-1"
+
+    def test_no_command(self) -> None:
+        """No command shows help."""
+        args = self._parse_sprint_args([])
+        assert args.command is None

@@ -4,6 +4,7 @@ Provides command-line interfaces for automated issue management:
 - ll-auto: Sequential issue processing
 - ll-parallel: Parallel issue processing with git worktrees
 - ll-messages: Extract user messages from Claude Code logs
+- ll-sprint: Sprint and sequence management
 """
 
 from __future__ import annotations
@@ -17,6 +18,8 @@ from little_loops.config import BRConfig
 from little_loops.issue_manager import AutoManager
 from little_loops.logger import Logger
 from little_loops.logo import print_logo
+from little_loops.parallel.orchestrator import ParallelOrchestrator
+from little_loops.sprint import SprintManager, SprintOptions
 
 
 def main_auto() -> int:
@@ -911,6 +914,293 @@ Examples:
     else:
         parser.print_help()
         return 1
+
+
+def main_sprint() -> int:
+    """Entry point for ll-sprint command.
+
+    Manage and execute sprint/sequence definitions.
+
+    Returns:
+        Exit code (0 = success)
+    """
+    parser = argparse.ArgumentParser(
+        prog="ll-sprint",
+        description="Manage and execute sprint/sequence definitions",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s create sprint-1 --issues BUG-001,FEAT-010 --description "Q1 fixes"
+  %(prog)s run sprint-1
+  %(prog)s run sprint-1 --parallel
+  %(prog)s run sprint-1 --dry-run
+  %(prog)s list
+  %(prog)s show sprint-1
+  %(prog)s delete sprint-1
+""",
+    )
+
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # create subcommand
+    create_parser = subparsers.add_parser("create", help="Create a new sprint")
+    create_parser.add_argument("name", help="Sprint name (used as filename)")
+    create_parser.add_argument(
+        "--issues",
+        required=True,
+        help="Comma-separated issue IDs (e.g., BUG-001,FEAT-010)",
+    )
+    create_parser.add_argument(
+        "--description", "-d", default="", help="Sprint description"
+    )
+    create_parser.add_argument(
+        "--mode",
+        choices=["auto", "parallel"],
+        default="auto",
+        help="Default execution mode (default: auto)",
+    )
+    create_parser.add_argument(
+        "--max-workers",
+        type=int,
+        default=4,
+        help="Default max workers for parallel mode (default: 4)",
+    )
+    create_parser.add_argument(
+        "--timeout",
+        type=int,
+        default=3600,
+        help="Default timeout in seconds (default: 3600)",
+    )
+
+    # run subcommand
+    run_parser = subparsers.add_parser("run", help="Execute a sprint")
+    run_parser.add_argument("sprint", help="Sprint name to execute")
+    run_parser.add_argument(
+        "--parallel",
+        action="store_true",
+        help="Execute in parallel mode (overrides sprint default)",
+    )
+    run_parser.add_argument(
+        "--dry-run", "-n", action="store_true", help="Show execution plan without running"
+    )
+    run_parser.add_argument(
+        "--max-workers",
+        type=int,
+        help="Override max workers for parallel mode",
+    )
+    run_parser.add_argument(
+        "--timeout", type=int, help="Override timeout in seconds"
+    )
+    run_parser.add_argument(
+        "--config", type=Path, default=None, help="Path to project root"
+    )
+
+    # list subcommand
+    list_parser = subparsers.add_parser("list", help="List all sprints")
+    list_parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show detailed information"
+    )
+
+    # show subcommand
+    show_parser = subparsers.add_parser("show", help="Show sprint details")
+    show_parser.add_argument("sprint", help="Sprint name to show")
+    show_parser.add_argument(
+        "--config", type=Path, default=None, help="Path to project root"
+    )
+
+    # delete subcommand
+    delete_parser = subparsers.add_parser("delete", help="Delete a sprint")
+    delete_parser.add_argument("sprint", help="Sprint name to delete")
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    # Commands that don't need project root
+    if args.command == "list":
+        return _cmd_sprint_list(args, SprintManager())
+    if args.command == "delete":
+        return _cmd_sprint_delete(args, SprintManager())
+
+    # Commands that need project root
+    project_root = args.config if hasattr(args, "config") and args.config else Path.cwd()
+    config = BRConfig(project_root)
+    manager = SprintManager(config=config)
+
+    if args.command == "create":
+        return _cmd_sprint_create(args, manager)
+    if args.command == "show":
+        return _cmd_sprint_show(args, manager)
+    if args.command == "run":
+        return _cmd_sprint_run(args, manager, config)
+
+    return 1
+
+
+def _cmd_sprint_create(args: argparse.Namespace, manager: SprintManager) -> int:
+    """Create a new sprint."""
+    logger = Logger()
+    issues = [i.strip().upper() for i in args.issues.split(",")]
+
+    # Validate issues exist
+    valid = manager.validate_issues(issues)
+    invalid = set(issues) - set(valid.keys())
+
+    if invalid:
+        logger.warning(f"Issue IDs not found: {', '.join(sorted(invalid))}")
+
+    options = SprintOptions(
+        mode=args.mode,
+        max_workers=args.max_workers,
+        timeout=args.timeout,
+    )
+
+    sprint = manager.create(
+        name=args.name,
+        issues=issues,
+        description=args.description,
+        options=options,
+    )
+
+    logger.success(f"Created sprint: {sprint.name}")
+    logger.info(f"  Description: {sprint.description or '(none)'}")
+    logger.info(f"  Issues: {', '.join(sprint.issues)}")
+    logger.info(f"  Mode: {sprint.options.mode if sprint.options else 'auto'}")
+    logger.info(f"  File: .sprints/{sprint.name}.yaml")
+
+    if invalid:
+        logger.warning(f"  Invalid issues: {', '.join(sorted(invalid))}")
+
+    return 0
+
+
+def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
+    """Show sprint details."""
+    logger = Logger()
+    sprint = manager.load(args.sprint)
+    if not sprint:
+        logger.error(f"Sprint not found: {args.sprint}")
+        return 1
+
+    # Validate issues
+    valid = manager.validate_issues(sprint.issues)
+    invalid = set(sprint.issues) - set(valid.keys())
+
+    print(f"Sprint: {sprint.name}")
+    print(f"Description: {sprint.description or '(none)'}")
+    print(f"Created: {sprint.created}")
+    print(f"Issues ({len(sprint.issues)}):")
+
+    for issue_id in sprint.issues:
+        status = "valid" if issue_id in valid else "NOT FOUND"
+        print(f"  - {issue_id} ({status})")
+
+    if sprint.options:
+        print("Options:")
+        print(f"  Mode: {sprint.options.mode}")
+        print(f"  Max iterations: {sprint.options.max_iterations}")
+        print(f"  Timeout: {sprint.options.timeout}s")
+        print(f"  Max workers: {sprint.options.max_workers}")
+
+    if invalid:
+        print(f"\nWarning: {len(invalid)} issue(s) not found")
+
+    return 0
+
+
+def _cmd_sprint_list(args: argparse.Namespace, manager: SprintManager) -> int:
+    """List all sprints."""
+    sprints = manager.list_all()
+
+    if not sprints:
+        print("No sprints defined")
+        return 0
+
+    print(f"Available sprints ({len(sprints)}):")
+
+    for sprint in sprints:
+        if args.verbose:
+            print(f"\n{sprint.name}:")
+            print(f"  Description: {sprint.description or '(none)'}")
+            print(f"  Issues: {', '.join(sprint.issues)}")
+            print(f"  Created: {sprint.created}")
+        else:
+            desc = f" - {sprint.description}" if sprint.description else ""
+            print(f"  {sprint.name}{desc}")
+
+    return 0
+
+
+def _cmd_sprint_delete(args: argparse.Namespace, manager: SprintManager) -> int:
+    """Delete a sprint."""
+    logger = Logger()
+    if not manager.delete(args.sprint):
+        logger.error(f"Sprint not found: {args.sprint}")
+        return 1
+
+    logger.success(f"Deleted sprint: {args.sprint}")
+    return 0
+
+
+def _cmd_sprint_run(
+    args: argparse.Namespace,
+    manager: SprintManager,
+    config: BRConfig,
+) -> int:
+    """Execute a sprint."""
+    logger = Logger()
+    sprint = manager.load(args.sprint)
+    if not sprint:
+        logger.error(f"Sprint not found: {args.sprint}")
+        return 1
+
+    # Validate issues exist
+    valid = manager.validate_issues(sprint.issues)
+    invalid = set(sprint.issues) - set(valid.keys())
+
+    if invalid:
+        logger.error(f"Issue IDs not found: {', '.join(sorted(invalid))}")
+        logger.info("Cannot execute sprint with missing issues")
+        return 1
+
+    # Determine execution mode
+    parallel = args.parallel or (sprint.options and sprint.options.mode == "parallel")
+
+    print_logo()
+
+    logger.info(f"Running sprint: {sprint.name}")
+    logger.info(f"  Mode: {'parallel' if parallel else 'sequential'}")
+    logger.info(f"  Issues: {', '.join(sprint.issues)}")
+
+    if args.dry_run:
+        logger.info("\nDry run mode - no changes will be made")
+        return 0
+
+    # Build only_ids set for filtering
+    only_ids = set(sprint.issues)
+
+    if parallel:
+        # Execute via ParallelOrchestrator
+        max_workers = args.max_workers or (sprint.options.max_workers if sprint.options else 4)
+
+        parallel_config = config.create_parallel_config(
+            max_workers=max_workers,
+            only_ids=only_ids,
+            dry_run=args.dry_run,
+        )
+
+        orchestrator = ParallelOrchestrator(parallel_config, config, Path.cwd())
+        return orchestrator.run()
+    else:
+        # Execute via AutoManager
+        auto_manager = AutoManager(
+            config=config,
+            dry_run=args.dry_run,
+            only_ids=only_ids,
+        )
+        return auto_manager.run()
 
 
 if __name__ == "__main__":
