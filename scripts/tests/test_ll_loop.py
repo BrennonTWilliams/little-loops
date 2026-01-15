@@ -13,6 +13,7 @@ from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
+import yaml
 
 from little_loops.fsm.schema import (
     EvaluateConfig,
@@ -1886,6 +1887,224 @@ goal: "Test"
         assert "running" in captured.out
         assert "fixing" in captured.out
         assert "7" in captured.out
+
+
+class TestCompileEndToEnd:
+    """End-to-end tests for paradigm compilation without mocking."""
+
+    def test_compile_goal_produces_valid_fsm(self, tmp_path: Path) -> None:
+        """Goal paradigm compiles to valid FSM."""
+        paradigm_yaml = """
+paradigm: goal
+goal: "No errors"
+tools:
+  - "echo check"
+  - "echo fix"
+"""
+        input_file = tmp_path / "goal.paradigm.yaml"
+        input_file.write_text(paradigm_yaml)
+        output_file = tmp_path / "goal.fsm.yaml"
+
+        with patch.object(
+            sys, "argv", ["ll-loop", "compile", str(input_file), "-o", str(output_file)]
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        assert output_file.exists()
+
+        # Verify output structure
+        fsm_data = yaml.safe_load(output_file.read_text())
+        assert "states" in fsm_data
+        assert "initial" in fsm_data
+        assert fsm_data["initial"] == "evaluate"
+        assert "evaluate" in fsm_data["states"]
+        assert "fix" in fsm_data["states"]
+        assert "done" in fsm_data["states"]
+
+    def test_compile_convergence_produces_valid_fsm(self, tmp_path: Path) -> None:
+        """Convergence paradigm compiles to valid FSM."""
+        paradigm_yaml = """
+paradigm: convergence
+name: "reduce-errors"
+check: "echo 5"
+toward: 0
+using: "echo fix"
+"""
+        input_file = tmp_path / "convergence.paradigm.yaml"
+        input_file.write_text(paradigm_yaml)
+        output_file = tmp_path / "convergence.fsm.yaml"
+
+        with patch.object(
+            sys, "argv", ["ll-loop", "compile", str(input_file), "-o", str(output_file)]
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+
+        fsm_data = yaml.safe_load(output_file.read_text())
+        assert fsm_data["initial"] == "measure"
+        assert "measure" in fsm_data["states"]
+        assert "apply" in fsm_data["states"]
+        assert "done" in fsm_data["states"]
+
+    def test_compile_invariants_produces_valid_fsm(self, tmp_path: Path) -> None:
+        """Invariants paradigm compiles to valid FSM."""
+        paradigm_yaml = """
+paradigm: invariants
+name: "quality-checks"
+constraints:
+  - name: "tests"
+    check: "echo test"
+    fix: "echo fix-tests"
+  - name: "lint"
+    check: "echo lint"
+    fix: "echo fix-lint"
+"""
+        input_file = tmp_path / "invariants.paradigm.yaml"
+        input_file.write_text(paradigm_yaml)
+        output_file = tmp_path / "invariants.fsm.yaml"
+
+        with patch.object(
+            sys, "argv", ["ll-loop", "compile", str(input_file), "-o", str(output_file)]
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+
+        fsm_data = yaml.safe_load(output_file.read_text())
+        assert fsm_data["initial"] == "check_tests"
+        assert "check_tests" in fsm_data["states"]
+        assert "fix_tests" in fsm_data["states"]
+        assert "check_lint" in fsm_data["states"]
+        assert "fix_lint" in fsm_data["states"]
+        assert "all_valid" in fsm_data["states"]
+
+    def test_compile_imperative_produces_valid_fsm(self, tmp_path: Path) -> None:
+        """Imperative paradigm compiles to valid FSM."""
+        paradigm_yaml = """
+paradigm: imperative
+name: "fix-cycle"
+steps:
+  - "echo step1"
+  - "echo step2"
+until:
+  check: "echo done"
+"""
+        input_file = tmp_path / "imperative.paradigm.yaml"
+        input_file.write_text(paradigm_yaml)
+        output_file = tmp_path / "imperative.fsm.yaml"
+
+        with patch.object(
+            sys, "argv", ["ll-loop", "compile", str(input_file), "-o", str(output_file)]
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+
+        fsm_data = yaml.safe_load(output_file.read_text())
+        assert fsm_data["initial"] == "step_0"
+        assert "step_0" in fsm_data["states"]
+        assert "step_1" in fsm_data["states"]
+        assert "check_done" in fsm_data["states"]
+        assert "done" in fsm_data["states"]
+
+    def test_compiled_output_passes_validation(self, tmp_path: Path) -> None:
+        """Compiled FSM passes validate_fsm() check."""
+        paradigm_yaml = """
+paradigm: goal
+goal: "Test validation"
+tools:
+  - "echo check"
+  - "echo fix"
+"""
+        input_file = tmp_path / "validate-test.paradigm.yaml"
+        input_file.write_text(paradigm_yaml)
+        output_file = tmp_path / "validate-test.fsm.yaml"
+
+        with patch.object(
+            sys, "argv", ["ll-loop", "compile", str(input_file), "-o", str(output_file)]
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+
+        # Load and validate the FSM
+        from little_loops.fsm.schema import FSMLoop
+        from little_loops.fsm.validation import validate_fsm
+
+        fsm_data = yaml.safe_load(output_file.read_text())
+        fsm = FSMLoop.from_dict(fsm_data)
+        errors = validate_fsm(fsm)
+
+        # No error-level validation issues
+        assert not any(e.severity.value == "error" for e in errors)
+
+    def test_compile_unknown_paradigm_returns_error(self, tmp_path: Path) -> None:
+        """Unknown paradigm type returns error."""
+        paradigm_yaml = """
+paradigm: nonexistent-type
+name: "test"
+"""
+        input_file = tmp_path / "unknown.paradigm.yaml"
+        input_file.write_text(paradigm_yaml)
+
+        with patch.object(sys, "argv", ["ll-loop", "compile", str(input_file)]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 1
+
+    def test_compile_goal_missing_required_field_returns_error(
+        self, tmp_path: Path
+    ) -> None:
+        """Goal paradigm missing 'goal' field returns error."""
+        paradigm_yaml = """
+paradigm: goal
+tools:
+  - "echo check"
+"""
+        input_file = tmp_path / "incomplete.paradigm.yaml"
+        input_file.write_text(paradigm_yaml)
+
+        with patch.object(sys, "argv", ["ll-loop", "compile", str(input_file)]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 1
+
+    def test_compile_default_output_path(self, tmp_path: Path) -> None:
+        """Without -o flag, output uses input filename with .fsm.yaml extension."""
+        paradigm_yaml = """
+paradigm: goal
+goal: "Test"
+tools:
+  - "echo check"
+"""
+        input_file = tmp_path / "my-paradigm.yaml"
+        input_file.write_text(paradigm_yaml)
+
+        with patch.object(sys, "argv", ["ll-loop", "compile", str(input_file)]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        # Default output replaces .yaml with .fsm.yaml
+        default_output = tmp_path / "my-paradigm.fsm.yaml"
+        assert default_output.exists()
 
 
 class TestEndToEndExecution:
