@@ -10,6 +10,7 @@ from little_loops.git_operations import (
     GitignorePattern,
     GitignoreSuggestion,
     _file_matches_pattern,
+    _is_already_ignored,
     _read_existing_gitignore,
     add_patterns_to_gitignore,
     suggest_gitignore_patterns,
@@ -277,3 +278,138 @@ class TestAddPatternsToGitignore:
         backup = tmp_path / ".gitignore.backup"
         assert backup.exists()
         assert backup.read_text() == "node_modules/\n"
+
+
+class TestNegationPatterns:
+    """Test gitignore negation pattern support."""
+
+    def test_file_matches_negation_pattern(self) -> None:
+        """Test that _file_matches_pattern handles negation patterns correctly."""
+        # Negation patterns should match the same as their base pattern
+        assert _file_matches_pattern("important.log", "!important.log") is True
+        assert _file_matches_pattern("debug.log", "!important.log") is False
+        assert _file_matches_pattern("important.log", "!*.log") is True
+
+    def test_is_already_ignored_simple_negation(self) -> None:
+        """Test simple negation pattern: *.log but !important.log."""
+        patterns = ["*.log", "!important.log"]
+
+        # debug.log should be ignored (matches *.log, no negation matches)
+        assert _is_already_ignored("debug.log", patterns) is True
+
+        # important.log should NOT be ignored (matches *.log, then negated)
+        assert _is_already_ignored("important.log", patterns) is False
+
+        # test.py should NOT be ignored (doesn't match *.log at all)
+        assert _is_already_ignored("test.py", patterns) is False
+
+    def test_is_already_ignored_negation_only_applies_if_base_matches(self) -> None:
+        """Test that negation only applies if the base pattern would match."""
+        patterns = ["*.log", "!important.log"]
+
+        # A file that doesn't match *.log is not affected by negation
+        assert _is_already_ignored("README.md", patterns) is False
+        assert _is_already_ignored("notes.txt", patterns) is False
+
+    def test_is_already_ignored_wildcard_negation(self) -> None:
+        """Test wildcard negation patterns."""
+        patterns = ["*.log", "!important*.log"]
+
+        # debug.log should be ignored
+        assert _is_already_ignored("debug.log", patterns) is True
+
+        # important.log should NOT be ignored (negated by wildcard)
+        assert _is_already_ignored("important.log", patterns) is False
+
+        # important-debug.log should also NOT be ignored
+        assert _is_already_ignored("important-debug.log", patterns) is False
+
+        # build.log should be ignored
+        assert _is_already_ignored("build.log", patterns) is True
+
+    def test_is_already_ignored_directory_negation(self) -> None:
+        """Test directory negation patterns."""
+        patterns = ["logs/", "!logs/important/"]
+
+        # logs/debug.log should be ignored
+        assert _is_already_ignored("logs/debug.log", patterns) is True
+
+        # logs/important/file.txt should NOT be ignored
+        assert _is_already_ignored("logs/important/file.txt", patterns) is False
+
+        # other/file.txt should NOT be ignored
+        assert _is_already_ignored("other/file.txt", patterns) is False
+
+    def test_is_already_ignored_multiple_negations(self) -> None:
+        """Test multiple negation patterns in sequence."""
+        patterns = ["*.log", "!important.log", "!debug.log"]
+
+        # error.log should be ignored
+        assert _is_already_ignored("error.log", patterns) is True
+
+        # important.log should NOT be ignored
+        assert _is_already_ignored("important.log", patterns) is False
+
+        # debug.log should NOT be ignored
+        assert _is_already_ignored("debug.log", patterns) is False
+
+    def test_is_already_ignored_ignore_after_negation(self) -> None:
+        """Test that an ignore pattern after negation can re-ignore."""
+        patterns = ["*.log", "!important.log", "*.log"]
+
+        # With duplicate *.log, important.log ends up ignored again
+        # because the last *.log pattern re-matches it
+        assert _is_already_ignored("important.log", patterns) is True
+
+        # debug.log is still ignored
+        assert _is_already_ignored("debug.log", patterns) is True
+
+    def test_is_already_ignored_root_anchored_negation(self) -> None:
+        """Test root-anchored negation patterns."""
+        patterns = ["*.log", "!/important.log"]
+
+        # important.log at root should NOT be ignored
+        assert _is_already_ignored("important.log", patterns) is False
+
+        # logs/important.log should still be ignored (negation is root-anchored)
+        assert _is_already_ignored("logs/important.log", patterns) is True
+
+    def test_is_already_ignored_empty_pattern_list(self) -> None:
+        """Test with empty pattern list."""
+        assert _is_already_ignored("any-file.log", []) is False
+        assert _is_already_ignored("important.log", []) is False
+
+    def test_is_already_ignored_only_negation_patterns(self) -> None:
+        """Test with only negation patterns (no base ignore patterns)."""
+        patterns = ["!important.log", "!debug.log"]
+
+        # With only negation patterns, nothing is ignored
+        assert _is_already_ignored("important.log", patterns) is False
+        assert _is_already_ignored("debug.log", patterns) is False
+        assert _is_already_ignored("error.log", patterns) is False
+
+    def test_suggest_respects_negation_patterns(self, tmp_path: Path) -> None:
+        """Test that suggest_gitignore_patterns respects negation patterns."""
+        # Create .gitignore with negation pattern
+        gitignore = tmp_path / ".gitignore"
+        gitignore.write_text("*.log\n!important.log\n")
+
+        result = suggest_gitignore_patterns(
+            untracked_files=["debug.log", "important.log", "test.log"],
+            repo_root=tmp_path,
+        )
+
+        # debug.log and test.log should be in already_ignored
+        assert "debug.log" in result.already_ignored
+        assert "test.log" in result.already_ignored
+
+        # important.log should NOT be in already_ignored (negated)
+        assert "important.log" not in result.already_ignored
+
+    def test_negation_pattern_detection_in_matches(self) -> None:
+        """Test that negation patterns are detected correctly during matching."""
+        # Test the basic pattern matching with negation prefix
+        # The function should return True for match (regardless of ! prefix)
+        assert _file_matches_pattern("file.log", "!*.log") is True
+        assert _file_matches_pattern("file.txt", "!*.log") is False
+        assert _file_matches_pattern("important.log", "!important.log") is True

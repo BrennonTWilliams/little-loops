@@ -362,17 +362,23 @@ def _file_matches_pattern(file_path: str, pattern: str) -> bool:
     - If pattern contains '/', it matches relative to repo root
     - If pattern ends with '/', it matches a directory
     - Leading '/' anchors to repo root
+    - Negation patterns (starting with !) match the same as their base pattern
 
     Args:
         file_path: File path relative to repo root
-        pattern: Gitignore pattern
+        pattern: Gitignore pattern (may start with ! for negation)
 
     Returns:
-        True if file matches pattern
+        True if file matches the base pattern (regardless of negation)
     """
     # Normalize paths
     file_path = file_path.replace("\\", "/")
     pattern = pattern.replace("\\", "/")
+
+    # Strip negation prefix for matching logic
+    # The negation is handled by _is_already_ignored()
+    if pattern.startswith("!"):
+        pattern = pattern[1:]
 
     # Handle directory patterns
     if pattern.endswith("/"):
@@ -412,19 +418,29 @@ def _is_already_ignored(
 ) -> bool:
     """Check if a file is already covered by existing .gitignore patterns.
 
+    Processes patterns in order, with negation patterns (starting with !)
+    overriding previous matches. This follows gitignore semantics where
+    later patterns can negate earlier ones.
+
     Args:
         file_path: File path to check
         existing_patterns: List of patterns from .gitignore
 
     Returns:
-        True if file is already ignored
+        True if file is already ignored (final result after all patterns)
     """
-    # Check against each existing pattern
+    # Process patterns in order - later patterns override earlier ones
+    is_ignored = False
+
     for pattern in existing_patterns:
         if _file_matches_pattern(file_path, pattern):
-            return True
+            # If pattern starts with !, it's a negation
+            if pattern.startswith("!"):
+                is_ignored = False
+            else:
+                is_ignored = True
 
-    return False
+    return is_ignored
 
 
 def suggest_gitignore_patterns(
