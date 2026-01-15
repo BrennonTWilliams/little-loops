@@ -1146,6 +1146,89 @@ states:
         # Should handle missing .loops/ gracefully
         assert result == 0
 
+    def test_list_running_shows_status_info(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --running shows running loops with status info."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir()
+
+        # Create state files
+        (running_dir / "loop-a.state.json").write_text(
+            json.dumps(
+                {
+                    "loop_name": "loop-a",
+                    "current_state": "check-errors",
+                    "iteration": 3,
+                    "captured": {},
+                    "prev_result": None,
+                    "last_result": None,
+                    "started_at": "2026-01-15T10:00:00Z",
+                    "updated_at": "2026-01-15T10:05:00Z",
+                    "status": "running",
+                }
+            )
+        )
+        (running_dir / "loop-b.state.json").write_text(
+            json.dumps(
+                {
+                    "loop_name": "loop-b",
+                    "current_state": "fix-types",
+                    "iteration": 1,
+                    "captured": {},
+                    "prev_result": None,
+                    "last_result": None,
+                    "started_at": "2026-01-15T10:00:00Z",
+                    "updated_at": "2026-01-15T10:00:30Z",
+                    "status": "running",
+                }
+            )
+        )
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "list", "--running"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Running loops:" in captured.out
+        assert "loop-a" in captured.out
+        assert "check-errors" in captured.out
+        assert "iteration 3" in captured.out
+        assert "loop-b" in captured.out
+        assert "fix-types" in captured.out
+        assert "iteration 1" in captured.out
+
+    def test_list_running_empty(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --running with no running loops shows appropriate message."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        running_dir = loops_dir / ".running"
+        running_dir.mkdir()
+        # Empty .running directory - no state files
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "list", "--running"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "No running loops" in captured.out
+
     def test_status_no_state_returns_error(
         self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
