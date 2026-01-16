@@ -51,11 +51,11 @@ A full audit of all commands in `commands/*.md` was performed to assess quality,
 - **Issue**: No arguments, but could benefit from `issue_id` parameter like `ready_issue`
 - **Effort**: Small
 
-### 7. Fix test_dir Config Reference
+### 7. ~~Fix test_dir Config Reference~~ (RESOLVED)
 - **File**: `commands/run_tests.md:20`
-- **Issue**: References `{{config.project.test_dir}}` which may not be in schema
-- **Fix**: Verify in config-schema.json or use documented path
-- **Effort**: Small
+- **Issue**: ~~References `{{config.project.test_dir}}` which may not be in schema~~
+- **Resolution**: Verified - `test_dir` IS in config-schema.json (lines 25-29) with default "tests"
+- **Status**: No action needed - this item was based on incorrect assumption
 
 ## Low Priority
 
@@ -111,4 +111,57 @@ Split into multiple smaller tasks:
 
 ## Status
 
-**Open** | Created: 2026-01-16 | Priority: P3
+**Completed** | Created: 2026-01-16 | Completed: 2026-01-16 | Priority: P3
+
+---
+
+## Verification Notes
+
+- **Verified**: 2026-01-16
+- **Validator**: ready_issue command
+- **Corrections Made**: Item #7 marked as RESOLVED - `test_dir` config reference is valid (exists in config-schema.json lines 25-29)
+- **Remaining Items**: 11 actionable items (1 resolved during verification)
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-16
+- **Status**: Completed (quick fixes implemented, larger items deferred)
+
+### Changes Made
+
+**Item 1 - Fixed typo in commit.md**:
+- `commands/commit.md:38`: Changed "PATTERMS_LIST" to "PATTERNS_LIST"
+
+**Item 2 - Added Arguments section to describe_pr.md**:
+- Added frontmatter `arguments` with `base_branch` parameter
+- Added `## Arguments` section with `$ARGUMENTS` placeholder and documentation
+
+**Item 6 - Added Arguments section to verify_issues.md**:
+- Added frontmatter `arguments` with `issue_id` parameter
+- Added `## Arguments` section with `$ARGUMENTS` placeholder and documentation
+- Added example: `/ll:verify_issues BUG-042`
+
+**Item 11 - Added Integration sections**:
+- `commands/commit.md`: Added Integration section with related commands
+- `commands/help.md`: Added Integration section with usage context
+- Note: `toggle_autoprompt.md` already had Integration section (item was incorrect)
+
+### Deferred Items (separate issues recommended)
+
+- **Item 3**: Standardize argument defaults - Current pattern is already consistent (body text)
+- **Item 4**: Add --dry-run flags - Medium effort, defer
+- **Item 5**: Document exit codes - Medium effort, defer
+- **Item 8**: Dynamic help generation - Large effort, defer
+- **Item 9**: Add --verbose flags - Medium effort, defer
+- **Item 10**: Command aliases - Medium effort, defer
+- **Item 12**: Standardize examples - Commands already have appropriate example counts
+
+### Verification Results
+- Typo check: PASS (no "PATTERMS" found)
+- Arguments sections: PASS (describe_pr.md, verify_issues.md)
+- Integration sections: PASS (commit.md, help.md)
+- Tests: PASS (1330 passed)
+- Lint: Pre-existing issues only (unrelated to changes)
