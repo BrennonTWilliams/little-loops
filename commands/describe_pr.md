@@ -1,5 +1,9 @@
 ---
 description: Generate comprehensive PR descriptions following repository templates
+arguments:
+  - name: base_branch
+    description: Base branch for comparison (default: auto-detect from origin/HEAD)
+    required: false
 ---
 
 # Describe PR
@@ -101,6 +105,16 @@ gh pr create --title "[PR Title]" --body "$(cat <<'EOF'
 EOF
 )"
 ```
+
+---
+
+## Arguments
+
+$ARGUMENTS
+
+- **base_branch** (optional, default: auto-detect): Base branch for PR comparison
+  - If provided, uses specified branch as comparison target
+  - If omitted, auto-detects from `refs/remotes/origin/HEAD` (usually `main` or `master`)
 
 ---
 

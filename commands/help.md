@@ -173,3 +173,17 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 # Analyze ll-parallel/ll-auto logs for tool bugs
 /ll:analyze_log ll-parallel-debug.log
 ```
+
+---
+
+## Integration
+
+This command is typically used when:
+- Starting a new session to remember available commands
+- Looking up command syntax and arguments
+- Discovering workflow patterns
+
+Related documentation:
+- Plugin configuration: `.claude/ll-config.json`
+- Issue tracking: `.issues/` directory
+- Project documentation: `CONTRIBUTING.md`

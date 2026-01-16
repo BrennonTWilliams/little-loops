@@ -1,5 +1,9 @@
 ---
 description: Verify issue files for accuracy, relevance, and completeness by testing claims against actual code
+arguments:
+  - name: issue_id
+    description: Optional specific issue ID to verify
+    required: false
 ---
 
 # Verify Issues
@@ -115,11 +119,24 @@ For resolved issues:
 
 ---
 
+## Arguments
+
+$ARGUMENTS
+
+- **issue_id** (optional): Specific issue ID to verify
+  - If provided, verifies only that specific issue
+  - If omitted, verifies all open issues
+
+---
+
 ## Examples
 
 ```bash
 # Verify all open issues
 /ll:verify_issues
+
+# Verify a specific issue
+/ll:verify_issues BUG-042
 
 # After verification, process resolved issues
 /ll:manage_issue bug fix RESOLVED-ISSUE-ID

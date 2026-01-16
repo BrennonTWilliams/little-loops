@@ -35,7 +35,7 @@ You are tasked with creating git commits for the changes made during this sessio
             question: "Found {TOTAL_FILES} untracked file(s) that should typically be ignored. Add these patterns to .gitignore?"
             options:
               - label: "Yes, add all suggested patterns"
-                description: "Add {PATTERN_COUNT} pattern(s) to .gitignore: {PATTERMS_LIST}"
+                description: "Add {PATTERN_COUNT} pattern(s) to .gitignore: {PATTERNS_LIST}"
               - label: "No, skip gitignore updates"
                 description: "Proceed with commit without updating .gitignore"
             multiSelect: false
@@ -73,3 +73,14 @@ You are tasked with creating git commits for the changes made during this sessio
 - Group related changes together
 - Keep commits focused and atomic when possible
 - The user trusts your judgment - they asked you to commit
+
+---
+
+## Integration
+
+This command creates commits for work done in the current session.
+
+Works well with:
+- `/ll:check_code` - Run before committing to ensure code quality
+- `/ll:run_tests` - Verify tests pass before committing
+- `/ll:describe_pr` - After committing, generate PR description
