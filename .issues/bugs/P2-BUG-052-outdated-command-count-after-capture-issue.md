@@ -16,7 +16,7 @@ Documentation claims 20 slash commands across multiple files, but there are actu
 
 - **Files**:
   - README.md (lines 13, 505)
-  - docs/ARCHITECTURE.md (line 64)
+  - docs/ARCHITECTURE.md (lines 24, 64)
   - docs/COMMANDS.md (missing entry)
 
 ## Current Content
@@ -31,7 +31,12 @@ README.md (line 505):
 ├── commands/             # Slash command templates (20 commands)
 ```
 
-docs/ARCHITECTURE.md (line 64):
+docs/ARCHITECTURE.md (line 24 - mermaid diagram):
+```markdown
+CMD[Commands<br/>20 slash commands]
+```
+
+docs/ARCHITECTURE.md (line 64 - directory structure):
 ```markdown
 ├── commands/                # 20 slash command templates
 ```
@@ -81,7 +86,12 @@ README.md (line 505):
 ├── commands/             # Slash command templates (21 commands)
 ```
 
-docs/ARCHITECTURE.md (line 64):
+docs/ARCHITECTURE.md (line 24 - mermaid diagram):
+```markdown
+CMD[Commands<br/>21 slash commands]
+```
+
+docs/ARCHITECTURE.md (line 64 - directory structure):
 ```markdown
 ├── commands/                # 21 slash command templates
 ```
@@ -95,6 +105,7 @@ docs/COMMANDS.md: Add capture_issue entry
    - Line 505: Change "20 commands" to "21 commands"
 
 2. **docs/ARCHITECTURE.md**
+   - Line 24: Change "20 slash commands" to "21 slash commands" in mermaid diagram
    - Line 64: Change "20" to "21"
 
 3. **docs/COMMANDS.md**
@@ -114,4 +125,21 @@ docs/COMMANDS.md: Add capture_issue entry
 
 ## Status
 
-**Open** | Created: 2026-01-16 | Priority: P2
+**Completed** | Created: 2026-01-16 | Completed: 2026-01-16 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-16
+- **Status**: Completed
+
+### Changes Made
+- README.md: Updated command count from 20 to 21 (lines 13 and 505)
+- docs/ARCHITECTURE.md: Updated command count from 20 to 21 (mermaid diagram and directory structure)
+- docs/COMMANDS.md: Added `/ll:capture_issue` entry in Issue Management section and Quick Reference table
+
+### Verification Results
+- Command count verified: 21 commands in commands/*.md
+- All documentation references now reflect correct count

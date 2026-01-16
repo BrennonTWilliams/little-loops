@@ -44,6 +44,11 @@ Analyze codebase for deprecated, unused, or dead code.
 
 ## Issue Management
 
+### `/ll:capture_issue`
+Capture issues from conversation or natural language description.
+
+**Arguments:** `input` (optional) - natural language description
+
 ### `/ll:scan_codebase`
 Scan codebase to identify bugs, enhancements, and features.
 
@@ -133,6 +138,7 @@ Resume from a previous session's continuation prompt.
 | `check_code` | Run lint, format, type checks |
 | `run_tests` | Execute test suites |
 | `find_dead_code` | Identify unused code |
+| `capture_issue` | Capture issues from conversation or description |
 | `scan_codebase` | Find issues in code |
 | `prioritize_issues` | Assign P0-P5 priorities |
 | `ready_issue` | Validate and fix issue files |
