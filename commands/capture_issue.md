@@ -1,7 +1,7 @@
 ---
 description: Capture issues from conversation or natural language description
 arguments:
-  - name: description
+  - name: input
     description: Natural language description of the issue (optional - analyzes conversation if omitted)
     required: false
 ---
@@ -20,7 +20,7 @@ This command uses project configuration from `.claude/ll-config.json`:
 
 $ARGUMENTS
 
-- **description** (optional): Natural language description of the issue
+- **input** (optional): Natural language description of the issue
   - If provided, parse and create single issue
   - If omitted, analyze conversation for potential issues
 
@@ -31,7 +31,7 @@ $ARGUMENTS
 **Check the arguments to determine mode:**
 
 ```
-IF description argument is provided:
+IF input argument is provided:
   MODE = "direct"
 ELSE:
   MODE = "conversation"
@@ -106,7 +106,7 @@ questions:
 
 If no issues are identified, inform the user:
 ```
-No actionable issues found in this conversation. You can run this command with a description argument:
+No actionable issues found in this conversation. You can run this command with an input argument:
 /ll:capture_issue "description of the issue"
 ```
 

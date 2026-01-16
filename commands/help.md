@@ -46,9 +46,9 @@ CODE QUALITY
 
 ISSUE MANAGEMENT
 ----------------
-/ll:capture_issue [description]
+/ll:capture_issue [input]
     Capture issues from conversation or natural language description
-    Description: optional - analyzes conversation if omitted
+    Input: optional - analyzes conversation if omitted
 
 /ll:scan_codebase
     Scan codebase to identify bugs, enhancements, and features
