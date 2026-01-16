@@ -85,7 +85,7 @@ The codebase already has detection and cleanup logic in `worker_pool.py`:
 - root-cause:external-dependency
 
 ## Status
-**Reopened** | Created: 2026-01-09 | Priority: P2 | Fixed: 2026-01-09 | Reopened: 2026-01-12, 2026-01-13
+**Reopened** | Created: 2026-01-09 | Priority: P2 | Fixed: 2026-01-09 | Reopened: 2026-01-12, 2026-01-13, 2026-01-16
 
 ---
 
@@ -247,3 +247,53 @@ The leak detection and cleanup patterns in `worker_pool.py` and `merge_coordinat
 - Tests: PASS (733 tests)
 - Lint: PASS
 - Types: PASS
+
+---
+
+## Reopened (Fourth Time)
+
+- **Date**: 2026-01-16
+- **By**: /analyze_log
+- **Reason**: Issue recurred with 2 leaks despite third fix (path variant handling)
+
+### New Evidence
+
+**Log File**: `ll-parallel-blender-agents-debug.log`
+**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**Occurrences**: 2
+**Affected External Issues**: BUG-779, ENH-827
+
+```
+[15:52:30] BUG-779 leaked 1 file(s) to main repo: ['issues/enhancements/P2-ENH-827-partial-completion-claim-despite-prompt-fixes.md']
+[15:52:30] Leaked file not found (may have been moved): issues/enhancements/P2-ENH-827-partial-completion-claim-despite-prompt-fixes.md
+
+[15:55:04] ENH-827 leaked 1 file(s) to main repo: ['issues/enhancements/P2-ENH-827-partial-completion-claim-despite-prompt-fixes.md']
+[15:55:04] Leaked file not found (may have been moved): issues/enhancements/P2-ENH-827-partial-completion-claim-despite-prompt-fixes.md
+```
+
+### Analysis
+
+All three previous fixes were in place:
+1. `.claude/` directory copied to worktrees (logs confirm: "Copied .claude/ directory to worktree")
+2. `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` environment variable set for all Claude CLI invocations
+3. Path variant handling for both `issues/` and `.issues/` directories
+
+**Key observations**:
+1. **Same file leaked twice** - The exact same file (`P2-ENH-827-partial-completion-claim-despite-prompt-fixes.md`) was leaked by two different workers (BUG-779 and ENH-827)
+2. **Cleanup failed silently** - Both times showed "Leaked file not found (may have been moved)" meaning the file was detected but not cleaned
+3. **Cross-worker contamination** - BUG-779 created/modified an issue file for ENH-827, indicating workers may be accessing shared state
+4. **Timing**: BUG-779 completed at 15:52:30, ENH-827 dispatched at 15:45:40 - both workers were running simultaneously
+
+**Possible causes**:
+1. **Shared issue state**: Both workers accessed the same issue file (ENH-827), suggesting issue file paths are resolved to main repo instead of worktree
+2. **Race condition in file creation**: The leaked file may have been created and then immediately moved/deleted by another process
+3. **Issue lifecycle move**: ENH-827 may have been moved to completed/ between detection and cleanup
+4. **Cleanup timing gap**: The "not found" message suggests cleanup ran after the file was already moved
+
+### Investigation Required
+
+1. Check if issue file writes are being directed to main repo instead of worktree
+2. Investigate why the same issue file was accessed by two different workers
+3. Verify cleanup timing relative to lifecycle file moves
+4. Consider adding mutex/lock around issue file operations
+5. Check if `.claude/` directory copy is happening before Claude CLI starts writing files
