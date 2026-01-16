@@ -1,9 +1,10 @@
 {
-  "$schema": "https://claude.ai/schemas/plugin/v1",
   "name": "ll",
   "version": "1.0.0",
   "description": "Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing",
-  "author": "little-loops",
+  "author": {
+    "name": "little-loops"
+  },
   "license": "MIT",
   "homepage": "https://github.com/BrennonTWilliams/little-loops",
   "keywords": [
@@ -13,31 +14,8 @@
     "automation",
     "code-quality"
   ],
-  "engines": {
-    "claude-code": ">=1.0.0"
-  },
-  "config": {
-    "file": ".claude/ll-config.json",
-    "schema": "config-schema.json"
-  },
-  "commands": {
-    "directory": "commands"
-  },
-  "agents": {
-    "directory": "agents"
-  },
-  "skills": {
-    "directory": "skills"
-  },
-  "hooks": {
-    "file": "hooks/hooks.json"
-  },
-  "scripts": {
-    "directory": "scripts",
-    "package": "little_loops",
-    "entrypoints": {
-      "ll-auto": "little_loops.cli:main_auto",
-      "ll-parallel": "little_loops.cli:main_parallel"
-    }
-  }
+  "commands": "./commands/",
+  "skills": "./skills/",
+  "agents": "./agents/",
+  "hooks": "./hooks/hooks.json"
 }

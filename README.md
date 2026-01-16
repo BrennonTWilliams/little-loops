@@ -30,11 +30,11 @@ little-loops is a Claude Code plugin that provides a complete development workfl
 ### From local path (development)
 
 ```bash
-# Add the local directory as a marketplace (alias derived from plugin.json name)
+# Add the local directory as a marketplace
 /plugin marketplace add /path/to/little-loops
 
 # Install the plugin
-/plugin install ll
+/plugin install ll@little-loops
 ```
 
 ### Manual configuration
