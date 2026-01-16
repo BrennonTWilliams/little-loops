@@ -46,6 +46,10 @@ CODE QUALITY
 
 ISSUE MANAGEMENT
 ----------------
+/ll:capture_issue [description]
+    Capture issues from conversation or natural language description
+    Description: optional - analyzes conversation if omitted
+
 /ll:scan_codebase
     Scan codebase to identify bugs, enhancements, and features
 
@@ -126,6 +130,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 | `check_code` | Run lint, format, type checks |
 | `run_tests` | Execute test suites |
 | `find_dead_code` | Identify unused code |
+| `capture_issue` | Capture issues from conversation or description |
 | `scan_codebase` | Find issues in code |
 | `prioritize_issues` | Assign P0-P5 priorities |
 | `ready_issue` | Validate and fix issue files |

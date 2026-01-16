@@ -2,7 +2,7 @@
 description: Resume from a previous session's continuation prompt
 arguments:
   - name: prompt_file
-    description: Path to continuation prompt file (default: .claude/ll-continue-prompt.md)
+    description: "Path to continuation prompt file (default: .claude/ll-continue-prompt.md)"
     required: false
 ---
 
