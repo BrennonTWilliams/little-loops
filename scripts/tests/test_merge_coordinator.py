@@ -1395,14 +1395,16 @@ class TestUnmergedFilesHandling:
         request = MergeRequest(worker_result=worker_result)
 
         # Mock _handle_conflict to verify it's called instead of retry-after-reset
-        handle_conflict_called = []
+        handle_conflict_called: list[MergeRequest] = []
 
-        def mock_handle_conflict(req: MergeRequest) -> None:
+        def mock_handle_conflict(
+            req: MergeRequest, used_merge_strategy: bool = False
+        ) -> None:
             handle_conflict_called.append(req)
             # Don't actually run rebase, just mark as failed to avoid infinite loop
             coordinator._handle_failure(req, "Test: conflict handler was called")
 
-        coordinator._handle_conflict = mock_handle_conflict
+        coordinator._handle_conflict = mock_handle_conflict  # type: ignore[method-assign]
 
         # Mock _check_and_recover_index to verify it's called at start but not during conflict
         index_recovery_count = []
@@ -1427,6 +1429,7 @@ class TestUnmergedFilesHandling:
 
         # Verify the issue was marked as failed
         assert request.status == MergeStatus.FAILED
+        assert request.error is not None
         assert "conflict handler was called" in request.error
 
     def test_pre_existing_unmerged_files_cleaned_before_merge(
@@ -1489,3 +1492,124 @@ class TestUnmergedFilesHandling:
 
         # Verify the merge succeeded (no conflict in this case)
         assert request.status == MergeStatus.SUCCESS
+
+
+class TestMergeStrategySkipsRebaseRetry:
+    """Tests for BUG-079: skip rebase retry when merge strategy was used during pull."""
+
+    def test_conflict_handler_skips_rebase_when_merge_strategy_used(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should skip rebase retry when used_merge_strategy=True.
+
+        When merge strategy was used during pull (because rebase would conflict),
+        the conflict handler should fail immediately rather than attempting a
+        rebase that would fail on the same conflicts.
+        """
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create a worktree for the test
+        worktree_path = temp_git_repo / ".worktrees" / "test-branch"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "parallel/test-branch", str(worktree_path)],
+            cwd=temp_git_repo,
+            capture_output=True,
+            check=True,
+        )
+
+        # Create a worker result and merge request
+        worker_result = WorkerResult(
+            issue_id="TEST-001",
+            branch_name="parallel/test-branch",
+            worktree_path=worktree_path,
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        # Track if _handle_failure was called
+        failure_called: list[str] = []
+        original_handle_failure = coordinator._handle_failure
+
+        def mock_handle_failure(req: MergeRequest, error: str) -> None:
+            failure_called.append(error)
+
+        coordinator._handle_failure = mock_handle_failure  # type: ignore[method-assign]
+
+        # Call _handle_conflict with used_merge_strategy=True
+        coordinator._handle_conflict(request, used_merge_strategy=True)
+
+        # Verify failure was called with expected message
+        assert len(failure_called) == 1
+        assert "rebase not attempted" in failure_called[0]
+        assert "merge strategy" in failure_called[0]
+
+        # Verify retry count was incremented
+        assert request.retry_count == 1
+
+        # Restore original
+        coordinator._handle_failure = original_handle_failure  # type: ignore[method-assign]
+
+    def test_conflict_handler_attempts_rebase_when_merge_strategy_not_used(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should attempt rebase retry when used_merge_strategy=False (default).
+
+        When rebase strategy was used during pull (the normal case), the conflict
+        handler should attempt to rebase the feature branch as before.
+        """
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create a worktree for the test
+        worktree_path = temp_git_repo / ".worktrees" / "test-branch"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "parallel/test-branch", str(worktree_path)],
+            cwd=temp_git_repo,
+            capture_output=True,
+            check=True,
+        )
+
+        # Make a commit in the worktree so rebase has something to do
+        test_file = worktree_path / "test.txt"
+        test_file.write_text("test content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "test commit"],
+            cwd=worktree_path,
+            capture_output=True,
+            check=True,
+        )
+
+        # Create a worker result and merge request
+        worker_result = WorkerResult(
+            issue_id="TEST-002",
+            branch_name="parallel/test-branch",
+            worktree_path=worktree_path,
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        # Track if rebase was attempted (request gets re-queued on success)
+        requeued: list[MergeRequest] = []
+
+        def mock_put(req: MergeRequest) -> None:
+            requeued.append(req)
+
+        coordinator._queue.put = mock_put  # type: ignore[method-assign]
+
+        # Call _handle_conflict with used_merge_strategy=False (default)
+        coordinator._handle_conflict(request, used_merge_strategy=False)
+
+        # With no actual conflict, rebase should succeed and request should be re-queued
+        assert len(requeued) == 1
+        assert requeued[0] is request
+        assert request.status == MergeStatus.RETRYING

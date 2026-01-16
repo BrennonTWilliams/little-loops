@@ -767,6 +767,9 @@ class MergeCoordinator:
                 else:
                     raise RuntimeError(f"Failed to checkout main: {checkout_result.stderr}")
 
+            # Track if merge strategy was used during pull (for conflict handling)
+            used_merge_strategy = False
+
             # Pull latest changes
             pull_result = self._git_lock.run(
                 ["pull", "--rebase", "origin", "main"],
@@ -807,6 +810,7 @@ class MergeCoordinator:
                             self.logger.info(
                                 f"Merge strategy pull succeeded for {conflict_commit[:8]}"
                             )
+                            used_merge_strategy = True
 
                     else:
                         # First time seeing this conflict or couldn't extract commit
@@ -883,7 +887,7 @@ class MergeCoordinator:
                 # attempt, not leftover state from previous operations (those are cleaned up
                 # by _check_and_recover_index() at the start of _process_merge)
                 if self._is_unmerged_files_error(error_output) or "CONFLICT" in error_output:
-                    self._handle_conflict(request)
+                    self._handle_conflict(request, used_merge_strategy)
                     return
                 else:
                     raise RuntimeError(f"Merge failed: {merge_result.stderr}")
@@ -903,11 +907,15 @@ class MergeCoordinator:
             # Clear current issue tracking
             self._current_issue_id = None
 
-    def _handle_conflict(self, request: MergeRequest) -> None:
+    def _handle_conflict(
+        self, request: MergeRequest, used_merge_strategy: bool = False
+    ) -> None:
         """Handle a merge conflict with retry logic.
 
         Args:
             request: The merge request that conflicted
+            used_merge_strategy: If True, merge strategy was used during pull and
+                rebase retry should be skipped (rebase would fail on same conflicts)
         """
         result = request.worker_result
         request.retry_count += 1
@@ -918,6 +926,20 @@ class MergeCoordinator:
             cwd=self.repo_path,
             timeout=10,
         )
+
+        # Skip rebase retry if merge strategy was used during pull (BUG-079)
+        # Rebase would fail on the same commits that caused the initial conflict
+        if used_merge_strategy:
+            self.logger.warning(
+                f"Merge conflict for {result.issue_id}, "
+                f"skipping rebase retry (merge strategy was used during pull)"
+            )
+            self._handle_failure(
+                request,
+                "Merge conflict - rebase not attempted (would fail on same conflicts "
+                "that required merge strategy)",
+            )
+            return
 
         if request.retry_count <= self.config.max_merge_retries:
             # Attempt rebase in the worktree
