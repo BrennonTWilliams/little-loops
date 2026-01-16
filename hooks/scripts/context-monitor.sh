@@ -62,14 +62,14 @@ estimate_tokens() {
             if [ -n "$content" ]; then
                 local lines
                 lines=$(echo "$content" | wc -l | tr -d ' ')
-                tokens=$(echo "$lines * $READ_PER_LINE" | bc 2>/dev/null || echo "0")
+                tokens=$((lines * READ_PER_LINE))
             fi
             ;;
         Grep)
             # Output lines x 5 (half of read weight)
             local output
             output=$(echo "$response" | jq -r 'if type == "array" then length else (. | tostring | split("\n") | length) end' 2>/dev/null || echo "0")
-            tokens=$(echo "$output * 5" | bc 2>/dev/null || echo "0")
+            tokens=$((output * 5))
             ;;
         Bash)
             # Output chars x 0.3
@@ -77,7 +77,8 @@ estimate_tokens() {
             stdout_len=$(echo "$response" | jq -r '.stdout // "" | length' 2>/dev/null || echo "0")
             stderr_len=$(echo "$response" | jq -r '.stderr // "" | length' 2>/dev/null || echo "0")
             local total_len=$((stdout_len + stderr_len))
-            tokens=$(echo "$total_len * $BASH_PER_CHAR" | bc 2>/dev/null || echo "0")
+            # Bash arithmetic: multiply by 3 and divide by 10 to approximate * 0.3
+            tokens=$((total_len * 3 / 10))
             ;;
         Glob)
             # File count x 20

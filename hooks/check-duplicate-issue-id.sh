@@ -7,7 +7,7 @@
 # Returns JSON with permissionDecision: allow|deny
 #
 
-set -uo pipefail
+set -euo pipefail
 
 # Allow JSON response function
 allow_response() {
