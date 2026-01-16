@@ -297,3 +297,44 @@ All three previous fixes were in place:
 3. Verify cleanup timing relative to lifecycle file moves
 4. Consider adding mutex/lock around issue file operations
 5. Check if `.claude/` directory copy is happening before Claude CLI starts writing files
+
+---
+
+## Resolution (Fourth Fix)
+
+- **Action**: fix
+- **Completed**: 2026-01-16
+- **Status**: Completed
+
+### Root Cause Identified
+
+The leak detection function's directory-based catch-all logic (third fix) was too broad. When multiple workers run in parallel, the detection would attribute leaked files from one worker (ENH-827) to another worker (BUG-779) because both workers detect new files in `issues/` directory.
+
+**Analysis**:
+1. The primary issue ID check at `worker_pool.py:798` (`issue_id_lower in file_lower`) correctly only catches files with the current worker's issue ID
+2. The fallback directory check at `worker_pool.py:838-840` catches ALL files in `issues/` and `.issues/` directories, regardless of which worker created them
+3. This caused cross-worker contamination: BUG-779 detected ENH-827's leaked file and tried to clean it up
+4. Cleanup failed with "file not found" because ENH-827 was still using the file or had already moved it
+
+### Changes Made
+
+**File**: `scripts/little_loops/parallel/worker_pool.py`
+- Added `import re` at module level
+- Added new helper method `_has_other_issue_id()` (lines 746-775):
+  - Uses regex pattern `(?:bug|enh|feat)-\d+` to detect issue ID patterns in file paths
+  - Returns `True` if file contains a different issue ID (belongs to another worker)
+  - Returns `False` if file contains the current issue ID or no recognizable issue ID
+- Updated `_detect_main_repo_leaks()` (lines 837-843):
+  - Issue directory detection now filters out files with other workers' issue IDs
+  - Only detects files that either contain THIS worker's issue ID or have no issue ID at all
+
+**File**: `scripts/tests/test_worker_pool.py`
+- Updated `test_detect_main_repo_leaks_finds_issue_files()` to use current worker's issue ID
+- Added `test_detect_main_repo_leaks_finds_generic_issue_files()` - tests generic files without issue IDs
+- Added `test_detect_main_repo_leaks_ignores_other_workers_issue_files()` - tests cross-worker isolation
+- Added `test_has_other_issue_id()` - tests the new helper method
+
+### Verification Results
+- Tests: PASS (1333 tests)
+- Lint: PASS
+- Types: PASS

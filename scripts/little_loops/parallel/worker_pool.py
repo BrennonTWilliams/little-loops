@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -742,6 +743,37 @@ class WorkerPool:
             return False, f"Only excluded files modified: {files_preview}"
         return False, "Only excluded files modified (e.g., .issues/, thoughts/)"
 
+    def _has_other_issue_id(self, file_lower: str, current_issue_id_lower: str) -> bool:
+        """Check if file contains a different issue ID than the current worker's.
+
+        This prevents cross-worker contamination where worker A detects worker B's
+        leaked file. When multiple workers run in parallel, their leaked files may
+        both appear in the main repo. Each worker should only clean up its own leaks.
+
+        Args:
+            file_lower: Lowercase file path to check
+            current_issue_id_lower: Lowercase issue ID of the current worker
+
+        Returns:
+            True if the file contains a different issue ID (belongs to another worker),
+            False if the file contains the current issue ID or no recognizable issue ID
+        """
+        # Pattern matches common issue ID formats: BUG-123, ENH-456, FEAT-789
+        # Use non-capturing group (?:...) so findall returns full match, not group
+        matches = re.findall(r"(?:bug|enh|feat)-\d+", file_lower)
+
+        if not matches:
+            # No issue ID found - file doesn't belong to any specific worker
+            return False
+
+        # Check if any of the found issue IDs match the current worker
+        for match in matches:
+            if match == current_issue_id_lower:
+                return False  # File belongs to current worker
+
+        # File has issue ID(s) but none match current worker - belongs to another worker
+        return True
+
     def _detect_main_repo_leaks(self, issue_id: str, baseline_status: set[str]) -> list[str]:
         """Detect files incorrectly written to main repo instead of worktree.
 
@@ -805,8 +837,11 @@ class WorkerPool:
                 leaked_files.append(file_path)
             # Catch issue files in any issue directory variant
             # Handles both .issues/ (with dot) and issues/ (without dot)
+            # Only include files without a different issue ID - files WITH other issue IDs
+            # belong to other workers running in parallel (cross-worker contamination)
             elif file_path.startswith((".issues/", "issues/")):
-                leaked_files.append(file_path)
+                if not self._has_other_issue_id(file_lower, issue_id_lower):
+                    leaked_files.append(file_path)
 
         return leaked_files
 

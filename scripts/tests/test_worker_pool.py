@@ -927,21 +927,97 @@ class TestWorkerPoolHelpers:
         ) -> subprocess.CompletedProcess[str]:
             if args[:2] == ["status", "--porcelain"]:
                 # Test both .issues/ (with dot) and issues/ (without dot) variants
+                # Use files containing THIS worker's issue ID
                 return subprocess.CompletedProcess(
                     args,
                     0,
-                    "?? .issues/bugs/P1-OTHER-001.md\n?? issues/enhancements/P2-ANOTHER-002.md\n",
+                    "?? .issues/bugs/P1-BUG-001-desc.md\n?? issues/enhancements/P2-BUG-001-other.md\n",
                     "",
                 )
             return subprocess.CompletedProcess(args, 0, "", "")
 
         with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
-            # Use unrelated issue ID to ensure detection is via directory prefix, not ID match
-            leaks = worker_pool._detect_main_repo_leaks("UNRELATED-999", baseline_status)
+            leaks = worker_pool._detect_main_repo_leaks("BUG-001", baseline_status)
 
-        # Both should be detected even without matching issue ID (via directory prefix)
-        assert ".issues/bugs/P1-OTHER-001.md" in leaks
-        assert "issues/enhancements/P2-ANOTHER-002.md" in leaks
+        # Both should be detected - they contain this worker's issue ID
+        assert ".issues/bugs/P1-BUG-001-desc.md" in leaks
+        assert "issues/enhancements/P2-BUG-001-other.md" in leaks
+
+    def test_detect_main_repo_leaks_finds_generic_issue_files(
+        self,
+        worker_pool: WorkerPool,
+    ) -> None:
+        """_detect_main_repo_leaks() identifies generic issue files without issue IDs."""
+        baseline_status: set[str] = set()
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["status", "--porcelain"]:
+                # Files without specific issue IDs should still be detected
+                return subprocess.CompletedProcess(
+                    args,
+                    0,
+                    "?? .issues/README.md\n?? issues/template.md\n",
+                    "",
+                )
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            leaks = worker_pool._detect_main_repo_leaks("BUG-001", baseline_status)
+
+        # Generic files (no issue ID) should be detected via directory prefix
+        assert ".issues/README.md" in leaks
+        assert "issues/template.md" in leaks
+
+    def test_detect_main_repo_leaks_ignores_other_workers_issue_files(
+        self,
+        worker_pool: WorkerPool,
+    ) -> None:
+        """_detect_main_repo_leaks() does not detect other workers' issue files."""
+        baseline_status: set[str] = set()
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["status", "--porcelain"]:
+                # This worker is BUG-001, but ENH-002 file also appears (from another worker)
+                return subprocess.CompletedProcess(
+                    args,
+                    0,
+                    "?? .issues/bugs/P1-BUG-001-this-workers-file.md\n"
+                    "?? issues/enhancements/P2-ENH-002-other-workers-file.md\n",
+                    "",
+                )
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            leaks = worker_pool._detect_main_repo_leaks("BUG-001", baseline_status)
+
+        # Should detect this worker's file
+        assert ".issues/bugs/P1-BUG-001-this-workers-file.md" in leaks
+        # Should NOT detect other worker's file (cross-worker isolation)
+        assert "issues/enhancements/P2-ENH-002-other-workers-file.md" not in leaks
+
+    def test_has_other_issue_id(self, worker_pool: WorkerPool) -> None:
+        """_has_other_issue_id() correctly identifies files with other issue IDs."""
+        # No issue ID in filename
+        assert not worker_pool._has_other_issue_id("readme.md", "bug-001")
+
+        # Same issue ID
+        assert not worker_pool._has_other_issue_id("p1-bug-001-fix.md", "bug-001")
+
+        # Different issue ID
+        assert worker_pool._has_other_issue_id("p2-enh-002-other.md", "bug-001")
+
+        # Different issue type with same number
+        assert worker_pool._has_other_issue_id("p1-feat-001-feature.md", "bug-001")
+
+        # Multiple issue IDs, one matches
+        assert not worker_pool._has_other_issue_id("bug-001-related-to-enh-002.md", "bug-001")
+
+        # Multiple issue IDs, none match
+        assert worker_pool._has_other_issue_id("enh-002-related-to-feat-003.md", "bug-001")
 
     def test_cleanup_leaked_files_tracked(
         self,
