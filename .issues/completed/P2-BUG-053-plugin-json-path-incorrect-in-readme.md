@@ -73,4 +73,8 @@ Or alternatively, if the plugin format requires the manifest at root, restore th
 
 ## Status
 
-**Open** | Created: 2026-01-16 | Priority: P2
+**Resolved** | Created: 2026-01-16 | Resolved: 2026-01-16 | Priority: P2
+
+## Resolution
+
+The root `plugin.json` was accidentally deleted from the working directory. The README was correct - Claude Code plugins expect `plugin.json` at the project root. Restored the file with `git restore plugin.json`. The `.claude-plugin/plugin.json` is a separate file (incomplete, only has hooks) and should not be the primary manifest.
