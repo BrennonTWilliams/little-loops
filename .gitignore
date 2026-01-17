@@ -46,7 +46,6 @@ temp/
 
 # Claude Code
 .claude/settings.local.json
-.claude-plugin/
 .mcp.json
 
 # Python

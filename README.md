@@ -21,7 +21,7 @@ little-loops is a Claude Code plugin that provides a complete development workfl
 
 ```bash
 # Add the GitHub repository as a marketplace
-/plugin marketplace add github:BrennonTWilliams/little-loops
+/plugin marketplace add BrennonTWilliams/little-loops
 
 # Install the plugin
 /plugin install ll@little-loops
