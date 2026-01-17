@@ -2,7 +2,7 @@
 description: Generate comprehensive PR descriptions following repository templates
 arguments:
   - name: base_branch
-    description: Base branch for comparison (default: auto-detect from origin/HEAD)
+    description: "Base branch for comparison (default: auto-detect from origin/HEAD)"
     required: false
 ---
 
