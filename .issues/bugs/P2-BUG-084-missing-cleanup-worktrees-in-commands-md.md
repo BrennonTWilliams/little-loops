@@ -49,4 +49,19 @@ Quick Reference entry:
 
 ## Status
 
-**Open** | Created: 2026-01-17 | Priority: P2
+**Completed** | Created: 2026-01-17 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-17
+- **Status**: Completed
+
+### Changes Made
+- `docs/COMMANDS.md`: Added `/ll:cleanup_worktrees` to Git & Workflow section with description and arguments
+- `docs/COMMANDS.md`: Added `cleanup_worktrees` entry to Quick Reference table
+
+### Verification Results
+- Documentation: PASS (entries added in correct locations)

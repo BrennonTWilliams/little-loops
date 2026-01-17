@@ -110,6 +110,12 @@ Create git commits with user approval (no Claude attribution).
 ### `/ll:describe_pr`
 Generate comprehensive PR descriptions from branch changes.
 
+### `/ll:cleanup_worktrees`
+Clean up stale git worktrees and branches from parallel processing.
+
+**Arguments:**
+- `mode`: `run` (default), `dry-run`
+
 ---
 
 ## Session Management
@@ -151,6 +157,7 @@ Resume from a previous session's continuation prompt.
 | `audit_claude_config` | Comprehensive config audit |
 | `commit` | Create git commits |
 | `describe_pr` | Generate PR descriptions |
+| `cleanup_worktrees` | Clean up stale worktrees and branches |
 | `handoff` | Generate session handoff prompt |
 | `resume` | Resume from continuation prompt |
 
