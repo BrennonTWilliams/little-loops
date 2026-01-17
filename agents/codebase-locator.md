@@ -24,7 +24,7 @@ description: |
 allowed_tools:
   - Grep
   - Glob
-  - LS
+  - Bash
 model: sonnet
 ---
 

@@ -23,7 +23,7 @@ allowed_tools:
   - Read
   - Grep
   - Glob
-  - LS
+  - Bash
 model: sonnet
 ---
 
