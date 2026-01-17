@@ -330,16 +330,39 @@ questions:
 - Java: (none common)
 - .NET: dotnet format
 
-#### Step 5c: Advanced Settings (Conditional Group 3)
+#### Step 5c: Features Selection (Round 3)
 
-Build this AskUserQuestion dynamically based on Group 2 responses. Include 1-2 questions:
-
-**If user selected "custom directory" for issues in Group 2**, include custom dir question.
-**Always include** the advanced features multi-select question.
+Use a SINGLE AskUserQuestion call with the features multi-select:
 
 ```yaml
 questions:
-  # ONLY include if user selected "Yes, custom directory" in Group 2:
+  - header: "Features"
+    question: "Which advanced features do you want to enable?"
+    options:
+      - label: "Parallel processing"
+        description: "Configure ll-parallel for concurrent issue processing with git worktrees"
+      - label: "Context monitoring"
+        description: "Auto-handoff reminders at 80% context usage (works in all modes)"
+    multiSelect: true
+```
+
+This round always runs and determines which follow-up questions are needed in Round 4.
+
+#### Step 5d: Advanced Settings (Dynamic Round 4)
+
+Build this round dynamically based on previous responses. **Skip entirely if no follow-up questions are needed.**
+
+**Include questions based on these conditions:**
+
+1. **issues_path** - If user selected "Yes, custom directory" in Round 2
+2. **worktree_files** - If user selected "Parallel processing" in Round 3
+3. **threshold** - If user selected "Context monitoring" in Round 3
+
+If all conditions are false, skip this round entirely (resulting in only 3 total rounds).
+
+```yaml
+questions:
+  # ONLY include if user selected "Yes, custom directory" in Round 2:
   - header: "Issues Path"
     question: "What directory name should be used for issues?"
     options:
@@ -351,26 +374,8 @@ questions:
         description: "Alternative naming"
     multiSelect: false
 
-  # ALWAYS include:
-  - header: "Features"
-    question: "Which advanced features do you want to enable?"
-    options:
-      - label: "Parallel processing"
-        description: "Configure ll-parallel for concurrent issue processing with git worktrees"
-      - label: "Context monitoring"
-        description: "Auto-handoff reminders at 80% context usage (works in all modes)"
-    multiSelect: true
-```
-
-#### Step 5d: Worktree Files (Conditional Group 4)
-
-**Only ask if user selected "Parallel processing" in the Features question (Group 3).**
-
-**Note**: The `.claude/` directory is always copied automatically to worktrees (required for Claude Code project root detection). Only ask about additional files outside `.claude/`.
-
-```yaml
-questions:
-  - header: "Worktree Files"
+  # ONLY include if user selected "Parallel processing" in Round 3:
+  - header: "Worktree"
     question: "Which additional files should be copied to each git worktree? (Note: .claude/ is always copied automatically)"
     options:
       - label: ".env"
@@ -380,23 +385,8 @@ questions:
       - label: ".secrets"
         description: "Secrets file"
     multiSelect: true
-```
 
-If parallel is enabled and user selected files, add to configuration:
-```json
-{
-  "parallel": {
-    "worktree_copy_files": ["<selected files>"]
-  }
-}
-```
-
-#### Step 5e: Context Monitor Settings (Conditional Group 5)
-
-**Only ask if user selected "Context monitoring" in the Features question (Group 3).**
-
-```yaml
-questions:
+  # ONLY include if user selected "Context monitoring" in Round 3:
   - header: "Threshold"
     question: "At what context usage percentage should auto-handoff trigger?"
     options:
@@ -409,6 +399,17 @@ questions:
     multiSelect: false
 ```
 
+**Configuration from Round 4 responses:**
+
+If parallel is enabled and user selected files, add to configuration:
+```json
+{
+  "parallel": {
+    "worktree_copy_files": ["<selected files>"]
+  }
+}
+```
+
 If context monitoring is enabled, add to configuration:
 ```json
 {
@@ -419,23 +420,29 @@ If context monitoring is enabled, add to configuration:
 }
 ```
 
-Only include `auto_handoff_threshold` if user selected a non-default value (not 80%).
-
-Only include non-default values. If user selects exactly `[".env"]` (the default), the `worktree_copy_files` key can be omitted. Note: `.claude/` directory is always copied automatically regardless of this setting.
+**Notes:**
+- Only include `auto_handoff_threshold` if user selected a non-default value (not 80%)
+- Only include non-default values. If user selects exactly `[".env"]` (the default), the `worktree_copy_files` key can be omitted
+- The `.claude/` directory is always copied automatically regardless of `worktree_copy_files` setting
 
 ---
 
 ### Interactive Mode Summary
 
-**Total interaction rounds: 3-5** (reduced from 9-11)
+**Total interaction rounds: 3-4** (reduced from 5)
 
 | Round | Group | Questions |
 |-------|-------|-----------|
 | 1 | Core Settings | name, src_dir, test_cmd, lint_cmd |
 | 2 | Additional Config | format_cmd, issues, scan_dirs, excludes |
-| 3 | Advanced (conditional) | custom_issue_dir?, features (multi-select: parallel, context_monitor) |
-| 4 | Parallel Files (conditional) | worktree_files (only if "Parallel processing" selected) |
-| 5 | Context Settings (conditional) | threshold (only if "Context monitoring" selected) |
+| 3 | Features | features (multi-select: parallel, context_monitor) |
+| 4 | Advanced (dynamic) | issues_path?, worktree_files?, threshold? (0-3 questions based on R2/R3 selections) |
+
+**Round 4 conditions:**
+- **issues_path**: Only if "custom directory" selected in Round 2
+- **worktree_files**: Only if "Parallel processing" selected in Round 3
+- **threshold**: Only if "Context monitoring" selected in Round 3
+- **If no conditions match**: Round 4 is skipped entirely (3 rounds total)
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next
