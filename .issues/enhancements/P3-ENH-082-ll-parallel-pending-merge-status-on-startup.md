@@ -65,7 +65,7 @@ Options:
 ## Related Issues
 
 - **FEAT-081**: Cleanup worktrees command - complements this by providing manual cleanup
-- **BUG-079**: Post-merge rebase handling - related to merge workflow
+- **BUG-079**: Post-merge rebase handling - related to merge workflow (completed)
 
 ## Labels
 
@@ -75,4 +75,25 @@ Options:
 
 ## Status
 
-**Open** | Created: 2026-01-17 | Priority: P3
+**Completed** | Created: 2026-01-17 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: add
+- **Completed**: 2026-01-17
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/parallel/types.py`: Added `PendingWorktreeInfo` dataclass and new config flags (`merge_pending`, `clean_start`, `ignore_pending`) to `ParallelConfig`
+- `scripts/little_loops/parallel/orchestrator.py`: Added `_inspect_worktree()`, `_check_pending_worktrees()`, and `_merge_pending_worktrees()` methods; updated `run()` to check for pending work on startup
+- `scripts/little_loops/cli.py`: Added `--merge-pending`, `--clean-start`, and `--ignore-pending` CLI flags
+- `scripts/little_loops/config.py`: Updated `create_parallel_config()` to accept new parameters
+- `scripts/tests/test_orchestrator.py`: Added `TestCheckPendingWorktrees`, `TestInspectWorktree`, and `TestMergePendingWorktrees` test classes
+
+### Verification Results
+- Tests: PASS (1345 tests)
+- Lint: PASS
+- Types: PASS

@@ -375,6 +375,9 @@ class BRConfig:
         show_model: bool | None = None,
         only_ids: set[str] | None = None,
         skip_ids: set[str] | None = None,
+        merge_pending: bool = False,
+        clean_start: bool = False,
+        ignore_pending: bool = False,
     ) -> ParallelConfig:
         """Create a ParallelConfig from BRConfig settings with optional overrides.
 
@@ -388,6 +391,9 @@ class BRConfig:
             show_model: Make API call to verify model (default: False)
             only_ids: If provided, only process these issue IDs
             skip_ids: Issue IDs to skip (in addition to completed/failed)
+            merge_pending: Attempt to merge pending worktrees (default: False)
+            clean_start: Remove all worktrees without checking (default: False)
+            ignore_pending: Report pending work but continue (default: False)
 
         Returns:
             ParallelConfig configured from BRConfig
@@ -415,6 +421,9 @@ class BRConfig:
             skip_ids=skip_ids,
             worktree_copy_files=self._parallel.worktree_copy_files,
             require_code_changes=self._parallel.require_code_changes,
+            merge_pending=merge_pending,
+            clean_start=clean_start,
+            ignore_pending=ignore_pending,
         )
 
     @property

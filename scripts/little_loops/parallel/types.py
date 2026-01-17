@@ -227,6 +227,32 @@ class OrchestratorState:
 
 
 @dataclass
+class PendingWorktreeInfo:
+    """Information about a pending worktree from a previous run.
+
+    Attributes:
+        worktree_path: Path to the worktree directory
+        branch_name: Git branch name (parallel/<issue-id>-<timestamp>)
+        issue_id: Extracted issue ID (e.g., BUG-045)
+        commits_ahead: Number of commits ahead of main
+        has_uncommitted_changes: Whether there are uncommitted changes
+        changed_files: List of files with uncommitted changes
+    """
+
+    worktree_path: Path
+    branch_name: str
+    issue_id: str
+    commits_ahead: int
+    has_uncommitted_changes: bool
+    changed_files: list[str] = field(default_factory=list)
+
+    @property
+    def has_pending_work(self) -> bool:
+        """Return True if this worktree has work that could be merged."""
+        return self.commits_ahead > 0 or self.has_uncommitted_changes
+
+
+@dataclass
 class ParallelConfig:
     """Configuration for the parallel issue manager.
 
@@ -252,6 +278,9 @@ class ParallelConfig:
         manage_command: Template for manage_issue command
         only_ids: If provided, only process these issue IDs
         skip_ids: Issue IDs to skip (in addition to completed/failed)
+        merge_pending: Attempt to merge pending worktrees from previous runs
+        clean_start: Remove all worktrees without checking for pending work
+        ignore_pending: Report pending work but continue without merging
     """
 
     max_workers: int = 2
@@ -279,6 +308,10 @@ class ParallelConfig:
     # Additional files to copy from main repo to worktrees
     # Note: .claude/ directory is always copied automatically (see worker_pool.py)
     worktree_copy_files: list[str] = field(default_factory=lambda: [".env"])
+    # Pending worktree handling flags
+    merge_pending: bool = False  # Attempt to merge pending worktrees
+    clean_start: bool = False    # Remove all worktrees without checking
+    ignore_pending: bool = False # Report pending work but continue
 
     def get_ready_command(self, issue_id: str) -> str:
         """Build the ready_issue command string.
@@ -332,6 +365,9 @@ class ParallelConfig:
             "only_ids": list(self.only_ids) if self.only_ids else None,
             "skip_ids": list(self.skip_ids) if self.skip_ids else None,
             "require_code_changes": self.require_code_changes,
+            "merge_pending": self.merge_pending,
+            "clean_start": self.clean_start,
+            "ignore_pending": self.ignore_pending,
         }
 
     @classmethod
@@ -361,4 +397,7 @@ class ParallelConfig:
             only_ids=set(only_ids_data) if only_ids_data else None,
             skip_ids=set(skip_ids_data) if skip_ids_data else None,
             require_code_changes=data.get("require_code_changes", True),
+            merge_pending=data.get("merge_pending", False),
+            clean_start=data.get("clean_start", False),
+            ignore_pending=data.get("ignore_pending", False),
         )

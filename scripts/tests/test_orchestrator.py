@@ -398,6 +398,236 @@ class TestOrphanedWorktreeCleanup:
         assert other_dir.exists()
 
 
+class TestCheckPendingWorktrees:
+    """Tests for _check_pending_worktrees method."""
+
+    def test_no_worktrees_dir(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Returns empty list when worktree directory doesn't exist."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        if worktree_base.exists():
+            worktree_base.rmdir()
+
+        result = orchestrator._check_pending_worktrees()
+        assert result == []
+
+    def test_empty_worktrees_dir(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Returns empty list when no worker directories exist."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+
+        result = orchestrator._check_pending_worktrees()
+        assert result == []
+
+    def test_detects_orphaned_worktrees(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Detects worker directories from previous runs."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+
+        # Create fake worktree directory
+        orphan = worktree_base / "worker-bug-001-20260117-120000"
+        orphan.mkdir()
+
+        # Mock git operations
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            if args[0] == "rev-list":
+                result.stdout = "2\n"
+            elif args[0] == "status":
+                result.stdout = ""
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        result = orchestrator._check_pending_worktrees()
+        assert len(result) == 1
+        assert result[0].issue_id == "BUG-001"
+        assert result[0].commits_ahead == 2
+
+    def test_ignores_non_worker_directories(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Does not report directories not starting with worker-."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+
+        # Create non-worker directory
+        other_dir = worktree_base / "other-directory"
+        other_dir.mkdir()
+
+        result = orchestrator._check_pending_worktrees()
+        assert result == []
+
+
+class TestInspectWorktree:
+    """Tests for _inspect_worktree method."""
+
+    def test_extracts_issue_id(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Correctly extracts issue ID from worktree path."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+        worktree_path = worktree_base / "worker-enh-042-20260117-150000"
+        worktree_path.mkdir()
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = "0\n" if args[0] == "rev-list" else ""
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        result = orchestrator._inspect_worktree(worktree_path)
+        assert result is not None
+        assert result.issue_id == "ENH-042"
+        assert result.branch_name == "parallel/enh-042-20260117-150000"
+
+    def test_detects_uncommitted_changes(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Detects uncommitted changes in worktree."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+        worktree_path = worktree_base / "worker-bug-099-20260117-160000"
+        worktree_path.mkdir()
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            if args[0] == "rev-list":
+                result.stdout = "1\n"
+            elif args[0] == "status":
+                result.stdout = " M src/file.py\n?? new_file.txt\n"
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        result = orchestrator._inspect_worktree(worktree_path)
+        assert result is not None
+        assert result.has_uncommitted_changes is True
+        assert len(result.changed_files) == 2
+        assert result.has_pending_work is True
+
+    def test_handles_inspection_failure(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Returns None when inspection fails."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+        worktree_path = worktree_base / "worker-bug-001-20260117-120000"
+        worktree_path.mkdir()
+
+        def mock_git_run_raises(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            raise RuntimeError("Git error")
+
+        orchestrator._git_lock.run = mock_git_run_raises  # type: ignore[method-assign,assignment]
+
+        result = orchestrator._inspect_worktree(worktree_path)
+        assert result is None
+
+
+class TestMergePendingWorktrees:
+    """Tests for _merge_pending_worktrees method."""
+
+    def test_skips_empty_list(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """Does nothing when no pending worktrees."""
+        # Should not raise
+        orchestrator._merge_pending_worktrees([])
+
+    def test_skips_worktrees_without_pending_work(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Skips worktrees that have no commits ahead or uncommitted changes."""
+        from little_loops.parallel.types import PendingWorktreeInfo
+
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+        worktree_path = worktree_base / "worker-bug-001-20260117-120000"
+        worktree_path.mkdir()
+
+        # Create info with no pending work
+        info = PendingWorktreeInfo(
+            worktree_path=worktree_path,
+            branch_name="parallel/bug-001-20260117-120000",
+            issue_id="BUG-001",
+            commits_ahead=0,
+            has_uncommitted_changes=False,
+            changed_files=[],
+        )
+
+        # Should not attempt any merge
+        orchestrator._merge_pending_worktrees([info])
+
+    def test_attempts_merge_with_commits_ahead(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Attempts merge when worktree has commits ahead of main."""
+        from little_loops.parallel.types import PendingWorktreeInfo
+
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(exist_ok=True)
+        worktree_path = worktree_base / "worker-bug-001-20260117-120000"
+        worktree_path.mkdir()
+
+        info = PendingWorktreeInfo(
+            worktree_path=worktree_path,
+            branch_name="parallel/bug-001-20260117-120000",
+            issue_id="BUG-001",
+            commits_ahead=3,
+            has_uncommitted_changes=False,
+            changed_files=[],
+        )
+
+        merge_called = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            result.stdout = ""
+            result.stderr = ""
+            if args[0] == "merge":
+                merge_called.append(args)
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        orchestrator._merge_pending_worktrees([info])
+
+        # Verify merge was called
+        assert len(merge_called) == 1
+        assert "--no-ff" in merge_called[0]
+        assert "parallel/bug-001-20260117-120000" in merge_called[0]
+
+
 class TestStateManagement:
     """Tests for state load/save/cleanup."""
 

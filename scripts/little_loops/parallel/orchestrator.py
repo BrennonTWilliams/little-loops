@@ -23,6 +23,7 @@ from little_loops.parallel.priority_queue import IssuePriorityQueue
 from little_loops.parallel.types import (
     OrchestratorState,
     ParallelConfig,
+    PendingWorktreeInfo,
     WorkerResult,
 )
 from little_loops.parallel.worker_pool import WorkerPool
@@ -103,6 +104,22 @@ class ParallelOrchestrator:
         try:
             self._setup_signal_handlers()
             self._ensure_gitignore_entries()
+
+            # Check for pending work from previous runs (unless clean start)
+            if not self.parallel_config.clean_start:
+                pending_worktrees = self._check_pending_worktrees()
+
+                # Handle pending worktrees based on flags
+                pending_with_work = [p for p in pending_worktrees if p.has_pending_work]
+                if pending_with_work:
+                    if self.parallel_config.merge_pending:
+                        self._merge_pending_worktrees(pending_worktrees)
+                    elif not self.parallel_config.ignore_pending:
+                        # Default behavior: just report (cleanup happens below)
+                        self.logger.info(
+                            "Continuing with cleanup (use --merge-pending to merge)..."
+                        )
+
             self._cleanup_orphaned_worktrees()
             self._load_state()
 
@@ -227,6 +244,194 @@ class ParallelOrchestrator:
             cwd=self.repo_path,
             timeout=30,
         )
+
+    def _inspect_worktree(self, worktree_path: Path) -> PendingWorktreeInfo | None:
+        """Inspect a worktree to determine its status.
+
+        Args:
+            worktree_path: Path to the worktree directory
+
+        Returns:
+            PendingWorktreeInfo if inspection succeeded, None if failed
+        """
+        try:
+            # Extract branch name from worktree path
+            # worker-bug-045-20260117-143022 -> parallel/bug-045-20260117-143022
+            branch_name = worktree_path.name.replace("worker-", "parallel/")
+
+            # Extract issue ID (e.g., bug-045 -> BUG-045)
+            # Pattern: worker-<issue-id>-<timestamp>
+            match = re.match(r"worker-([a-z]+-\d+)-\d{8}-\d{6}", worktree_path.name)
+            issue_id = match.group(1).upper() if match else worktree_path.name
+
+            # Check commits ahead of main
+            result = self._git_lock.run(
+                ["rev-list", "--count", f"main..{branch_name}"],
+                cwd=self.repo_path,
+                timeout=10,
+            )
+            commits_ahead = int(result.stdout.strip()) if result.returncode == 0 else 0
+
+            # Check for uncommitted changes in worktree
+            result = self._git_lock.run(
+                ["status", "--porcelain"],
+                cwd=worktree_path,
+                timeout=10,
+            )
+            changed_files = []
+            has_uncommitted = False
+            if result.returncode == 0 and result.stdout.strip():
+                has_uncommitted = True
+                changed_files = [
+                    line[3:] for line in result.stdout.strip().split("\n") if line
+                ]
+
+            return PendingWorktreeInfo(
+                worktree_path=worktree_path,
+                branch_name=branch_name,
+                issue_id=issue_id,
+                commits_ahead=commits_ahead,
+                has_uncommitted_changes=has_uncommitted,
+                changed_files=changed_files,
+            )
+        except Exception as e:
+            self.logger.warning(f"Failed to inspect worktree {worktree_path.name}: {e}")
+            return None
+
+    def _check_pending_worktrees(self) -> list[PendingWorktreeInfo]:
+        """Check for pending worktrees from previous runs and report status.
+
+        Returns:
+            List of pending worktree information
+        """
+        worktree_base = self.repo_path / self.parallel_config.worktree_base
+        if not worktree_base.exists():
+            return []
+
+        # Find all worker directories
+        worktrees = [
+            item
+            for item in worktree_base.iterdir()
+            if item.is_dir() and item.name.startswith("worker-")
+        ]
+
+        if not worktrees:
+            return []
+
+        self.logger.info("Checking for pending work from previous runs...")
+
+        # Inspect each worktree
+        pending_info: list[PendingWorktreeInfo] = []
+        for worktree_path in worktrees:
+            info = self._inspect_worktree(worktree_path)
+            if info:
+                pending_info.append(info)
+
+        # Report findings
+        with_work = [p for p in pending_info if p.has_pending_work]
+        if with_work:
+            self.logger.warning(f"Found {len(with_work)} worktree(s) with pending work:")
+            for info in with_work:
+                status_parts = []
+                if info.commits_ahead > 0:
+                    status_parts.append(f"{info.commits_ahead} commit(s) ahead of main")
+                if info.has_uncommitted_changes:
+                    status_parts.append(f"{len(info.changed_files)} uncommitted file(s)")
+                status = ", ".join(status_parts)
+                self.logger.warning(
+                    f"  - {info.worktree_path.name}: {info.issue_id} ({status})"
+                )
+
+            self.logger.info("")
+            self.logger.info("Options:")
+            self.logger.info(
+                "  --merge-pending   Attempt to merge pending work before continuing"
+            )
+            self.logger.info("  --clean-start     Remove all worktrees and start fresh")
+            self.logger.info(
+                "  --ignore-pending  Continue without action (worktrees will be cleaned up)"
+            )
+        elif pending_info:
+            self.logger.info(
+                f"Found {len(pending_info)} orphaned worktree(s) with no pending work"
+            )
+
+        return pending_info
+
+    def _merge_pending_worktrees(self, pending: list[PendingWorktreeInfo]) -> None:
+        """Attempt to merge pending worktrees from previous runs.
+
+        Args:
+            pending: List of pending worktree information
+        """
+        with_work = [p for p in pending if p.has_pending_work]
+        if not with_work:
+            return
+
+        self.logger.info(f"Attempting to merge {len(with_work)} pending worktree(s)...")
+
+        for info in with_work:
+            try:
+                # If there are uncommitted changes, commit them first
+                if info.has_uncommitted_changes:
+                    self.logger.info(
+                        f"  Committing uncommitted changes in {info.issue_id}..."
+                    )
+                    self._git_lock.run(
+                        ["add", "-A"],
+                        cwd=info.worktree_path,
+                        timeout=30,
+                    )
+                    self._git_lock.run(
+                        [
+                            "commit",
+                            "-m",
+                            f"WIP: Auto-commit from interrupted session for {info.issue_id}",
+                        ],
+                        cwd=info.worktree_path,
+                        timeout=30,
+                    )
+
+                # Attempt merge
+                self.logger.info(f"  Merging {info.issue_id} ({info.branch_name})...")
+                result = self._git_lock.run(
+                    [
+                        "merge",
+                        "--no-ff",
+                        info.branch_name,
+                        "-m",
+                        f"Merge pending work for {info.issue_id}",
+                    ],
+                    cwd=self.repo_path,
+                    timeout=60,
+                )
+
+                if result.returncode == 0:
+                    self.logger.success(f"  Successfully merged {info.issue_id}")
+                    # Clean up the worktree after successful merge
+                    self._git_lock.run(
+                        ["worktree", "remove", "--force", str(info.worktree_path)],
+                        cwd=self.repo_path,
+                        timeout=30,
+                    )
+                    self._git_lock.run(
+                        ["branch", "-D", info.branch_name],
+                        cwd=self.repo_path,
+                        timeout=10,
+                    )
+                else:
+                    self.logger.warning(
+                        f"  Failed to merge {info.issue_id}: {result.stderr}"
+                    )
+                    # Abort the merge if it failed
+                    self._git_lock.run(
+                        ["merge", "--abort"],
+                        cwd=self.repo_path,
+                        timeout=10,
+                    )
+
+            except Exception as e:
+                self.logger.warning(f"  Error merging {info.issue_id}: {e}")
 
     def _signal_handler(self, signum: int, frame: object) -> None:
         """Handle shutdown signals gracefully."""

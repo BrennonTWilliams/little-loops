@@ -197,6 +197,21 @@ Examples:
         help="Clean up all worktrees and exit",
     )
     parser.add_argument(
+        "--merge-pending",
+        action="store_true",
+        help="Attempt to merge pending work from previous interrupted runs",
+    )
+    parser.add_argument(
+        "--clean-start",
+        action="store_true",
+        help="Remove all worktrees and start fresh (skip pending work check)",
+    )
+    parser.add_argument(
+        "--ignore-pending",
+        action="store_true",
+        help="Report pending work but continue without merging",
+    )
+    parser.add_argument(
         "--stream-output",
         action="store_true",
         help="Stream Claude CLI subprocess output to console",
@@ -265,6 +280,9 @@ Examples:
         show_model=args.show_model if args.show_model else None,
         only_ids=only_ids,
         skip_ids=skip_ids,
+        merge_pending=args.merge_pending,
+        clean_start=args.clean_start,
+        ignore_pending=args.ignore_pending,
     )
 
     # Delete state file if not resuming
