@@ -48,9 +48,9 @@ Resuming from previous session
 [Display full continuation prompt content]
 
 ─────────────────────────────────────────────────────────────────
-
-Ready to continue. What would you like to do next?
 ```
+
+**Then immediately continue with the work described in the prompt.** Do not ask what to do - execute the next steps specified in the continuation prompt.
 
 #### If Continuation Prompt Found (Stale)
 
@@ -64,9 +64,9 @@ Resuming from previous session (stale: <N> hours old)
 
 Note: This continuation prompt is over <N> hours old.
       Some context may be outdated.
-
-Ready to continue. What would you like to do next?
 ```
+
+**Then immediately continue with the work described in the prompt.** Do not ask what to do - execute the next steps. If context is too stale to be actionable, state what's unclear and proceed with what can be determined.
 
 #### If Only State File Found
 
