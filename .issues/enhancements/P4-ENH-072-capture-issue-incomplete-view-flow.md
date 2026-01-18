@@ -65,6 +65,24 @@ questions:
 
 ---
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-18
+- **Status**: Completed
+
+### Changes Made
+- `commands/capture_issue.md`: Added three follow-up AskUserQuestion blocks:
+  1. After "View Existing" in exact duplicate flow (lines 182-194)
+  2. After "View Existing" in similar issue flow (lines 223-235)
+  3. After "View Completed" in reopen flow (lines 263-275)
+
+### Verification Results
+- Tests: PASS (1345 passed)
+- Lint: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2025-01-15 | Priority: P4
+**Completed** | Created: 2025-01-15 | Resolved: 2026-01-18 | Priority: P4

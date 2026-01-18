@@ -179,7 +179,19 @@ questions:
     multiSelect: false
 ```
 
-If "View Existing" selected, read and display the file, then ask again (Skip or Create Anyway).
+If "View Existing" selected, read and display the file, then ask again:
+
+```yaml
+questions:
+  - question: "Having reviewed the existing issue, how would you like to proceed?"
+    header: "Decision"
+    options:
+      - label: "Skip"
+        description: "Don't create - this is a duplicate"
+      - label: "Create Anyway"
+        description: "Create new issue despite similarity"
+    multiSelect: false
+```
 
 #### If Similar Issue Found (score 0.5-0.8)
 
@@ -208,6 +220,20 @@ questions:
     multiSelect: false
 ```
 
+If "View Existing" selected, read and display the file, then ask again:
+
+```yaml
+questions:
+  - question: "Having reviewed the existing issue, how would you like to proceed?"
+    header: "Decision"
+    options:
+      - label: "Update Existing"
+        description: "Add new context to the existing issue"
+      - label: "Create New"
+        description: "Create a separate issue"
+    multiSelect: false
+```
+
 #### If Completed Issue Should Reopen (completed + score >= 0.5)
 
 ```markdown
@@ -231,6 +257,20 @@ questions:
         description: "Create a separate issue"
       - label: "View Completed"
         description: "Show the completed issue content first"
+    multiSelect: false
+```
+
+If "View Completed" selected, read and display the file, then ask again:
+
+```yaml
+questions:
+  - question: "Having reviewed the completed issue, how would you like to proceed?"
+    header: "Decision"
+    options:
+      - label: "Reopen"
+        description: "Move back to active and add new context"
+      - label: "Create New"
+        description: "Create a separate issue"
     multiSelect: false
 ```
 
