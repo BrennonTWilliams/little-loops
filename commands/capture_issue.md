@@ -4,6 +4,9 @@ arguments:
   - name: input
     description: Natural language description of the issue (optional - analyzes conversation if omitted)
     required: false
+  - name: flags
+    description: Optional flags (--quick for minimal template)
+    required: false
 ---
 
 # Capture Issue
@@ -15,6 +18,7 @@ You are tasked with capturing issues from either a natural language description 
 This command uses project configuration from `.claude/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Categories**: `{{config.issues.categories}}`
+- **Template style**: `{{config.issues.capture_template}}` (full or minimal)
 
 ## Arguments
 
@@ -23,10 +27,20 @@ $ARGUMENTS
 - **input** (optional): Natural language description of the issue
   - If provided, parse and create single issue
   - If omitted, analyze conversation for potential issues
+- **flags** (optional): Modify command behavior
+  - `--quick` - Use minimal template regardless of config setting
 
 ## Process
 
 ### Phase 1: Determine Mode and Extract Issues
+
+**Parse flags:**
+
+```bash
+FLAGS="${flags:-}"
+QUICK_MODE=false
+if [[ "$FLAGS" == *"--quick"* ]]; then QUICK_MODE=true; fi
+```
 
 **Check the arguments to determine mode:**
 
@@ -304,6 +318,48 @@ Proceed directly to issue creation without user confirmation.
 
 4. **Create issue file:**
 
+**Determine template style:**
+
+```
+IF QUICK_MODE is true:
+  TEMPLATE_STYLE = "minimal"
+ELSE IF config.issues.capture_template is set:
+  TEMPLATE_STYLE = {{config.issues.capture_template}}
+ELSE:
+  TEMPLATE_STYLE = "full"
+```
+
+**If TEMPLATE_STYLE is "minimal":**
+
+```bash
+cat > "{{config.issues.base_dir}}/[category]/[filename]" << 'EOF'
+---
+discovered_date: [YYYY-MM-DD]
+discovered_by: capture_issue
+---
+
+# [TYPE]-[NNN]: [Title]
+
+## Summary
+
+[Description extracted from input]
+
+## Context
+
+[How this issue was identified]
+
+**Direct mode**: User description: "[original description]"
+
+**Conversation mode**: Identified from conversation discussing: "[brief context]"
+
+---
+
+**Priority**: [P0-P5] | **Created**: [YYYY-MM-DD]
+EOF
+```
+
+**If TEMPLATE_STYLE is "full" (default):**
+
 ```bash
 cat > "{{config.issues.base_dir}}/[category]/[filename]" << 'EOF'
 ---
@@ -484,6 +540,12 @@ ISSUES CAPTURED: [N] total
 
 # Analyze current conversation for issues to capture
 /ll:capture_issue
+
+# Capture with minimal template (quick mode)
+/ll:capture_issue "Quick note: cache is slow" --quick
+
+# Analyze conversation and use minimal templates
+/ll:capture_issue --quick
 ```
 
 ---

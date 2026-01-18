@@ -106,6 +106,12 @@
           "type": ["string", "null"],
           "description": "Directory for issue templates",
           "default": null
+        },
+        "capture_template": {
+          "type": "string",
+          "enum": ["full", "minimal"],
+          "description": "Default template style for captured issues (full includes all sections, minimal includes only Summary, Context, and footer)",
+          "default": "full"
         }
       },
       "additionalProperties": false
