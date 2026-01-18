@@ -1,5 +1,4 @@
 ---
-name: create-loop
 description: |
   Create a new FSM loop configuration interactively. Guides users through paradigm selection, parameter gathering, YAML generation, and validation.
 

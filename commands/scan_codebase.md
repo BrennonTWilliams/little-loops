@@ -1,5 +1,7 @@
 ---
 description: Scan codebase to identify bugs, enhancements, and features, then create issue files
+allowed-tools:
+  - Bash(git:*, gh:*)
 ---
 
 # Scan Codebase

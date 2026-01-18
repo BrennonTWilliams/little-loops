@@ -1,5 +1,4 @@
 ---
-name: issue-workflow
 description: |
   Quick reference for the little-loops issue management workflow. Use this skill when users ask about issue lifecycle, workflow steps, command order, or how to manage issues effectively.
 

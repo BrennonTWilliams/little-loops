@@ -1,5 +1,7 @@
 ---
 description: Run code quality checks (lint, format, types)
+allowed-tools:
+  - Bash(ruff:*, mypy:*, python:*)
 arguments:
   - name: mode
     description: Check mode (lint|format|types|all|fix)

@@ -3,8 +3,10 @@
   "version": "1.0.0",
   "description": "Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing",
   "author": {
-    "name": "little-loops"
+    "name": "little-loops",
+    "url": "https://github.com/BrennonTWilliams"
   },
+  "repository": "https://github.com/BrennonTWilliams/little-loops",
   "license": "MIT",
   "homepage": "https://github.com/BrennonTWilliams/little-loops",
   "keywords": [
@@ -14,8 +16,6 @@
     "automation",
     "code-quality"
   ],
-  "commands": "./commands/",
-  "skills": "./skills/",
-  "agents": "./agents/",
-  "hooks": "./hooks/hooks.json"
+  "commands": ["./commands"],
+  "skills": ["./skills"]
 }

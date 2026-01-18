@@ -1,5 +1,4 @@
 ---
-name: capture-issue
 description: |
   Capture issues from conversation context or natural language descriptions. Supports duplicate detection, reopening completed issues, and batch capture from conversation analysis.
 

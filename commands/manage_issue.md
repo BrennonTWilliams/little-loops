@@ -1,5 +1,7 @@
 ---
 description: Autonomously manage issues - plan, implement, verify, and complete
+allowed-tools:
+  - Bash(git:*)
 arguments:
   - name: issue_type
     description: Type of issue (bug|feature|enhancement)

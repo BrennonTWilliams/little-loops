@@ -1,5 +1,7 @@
 ---
 description: Create git commits with user approval and no Claude attribution
+allowed-tools:
+  - Bash(git:*)
 ---
 
 # Commit Changes
