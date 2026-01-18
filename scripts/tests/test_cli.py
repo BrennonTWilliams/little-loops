@@ -527,9 +527,10 @@ class TestMainMessagesIntegration:
         with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
             mock_get_folder.return_value = Path("/mock/project")
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
-                mock_extract.return_value = [{"content": "Test", "timestamp": "2026-01-01T00:00:00"}]
+                mock_extract.return_value = [
+                    {"content": "Test", "timestamp": "2026-01-01T00:00:00"}
+                ]
                 with patch("little_loops.user_messages.print_messages_to_stdout") as mock_print:
-
                     with patch.object(sys, "argv", ["ll-messages", "--stdout"]):
                         from little_loops.cli import main_messages
 
@@ -633,6 +634,7 @@ states:
 
             with patch("little_loops.fsm.compilers.compile_paradigm") as mock_compile:
                 from little_loops.fsm.schema import FSMLoop, StateConfig
+
                 mock_fsm = FSMLoop(
                     name="compiled",
                     paradigm="simple",
@@ -749,9 +751,7 @@ class TestSprintArgumentParsing:
 
     def test_show_command(self) -> None:
         """show subcommand."""
-        args = self._parse_sprint_args(
-            ["show", "sprint-1", "--config", "/my/project"]
-        )
+        args = self._parse_sprint_args(["show", "sprint-1", "--config", "/my/project"])
         assert args.command == "show"
         assert args.sprint == "sprint-1"
         assert args.config == Path("/my/project")

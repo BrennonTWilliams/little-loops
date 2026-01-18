@@ -421,7 +421,7 @@ class TestHistoryTail:
                 "event": "transition",
                 "ts": f"2026-01-15T10:00:{i:02d}",
                 "from": f"state{i}",
-                "to": f"state{i+1}",
+                "to": f"state{i + 1}",
             }
             for i in range(10)
         ]
@@ -1097,9 +1097,7 @@ class TestProgressDisplay:
             (100, True),
         ],
     )
-    def test_action_truncation(
-        self, action_length: int, expect_truncation: bool
-    ) -> None:
+    def test_action_truncation(self, action_length: int, expect_truncation: bool) -> None:
         """Actions over 60 chars are truncated with ellipsis."""
         action = "x" * action_length
         action_display = action[:60] + "..." if len(action) > 60 else action
@@ -1218,9 +1216,7 @@ states:
         (loops_dir / "test-loop.yaml").write_text(loop_content)
 
         monkeypatch.chdir(tmp_path)
-        with patch.object(
-            sys, "argv", ["ll-loop", "run", "test-loop", "-n", "20", "--dry-run"]
-        ):
+        with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "-n", "20", "--dry-run"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -1339,9 +1335,7 @@ states:
         assert "loop-b" in captured.out
         assert "loop-c" in captured.out
 
-    def test_list_no_loops_dir(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_list_no_loops_dir(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """list with missing .loops/ directory handles gracefully."""
         monkeypatch.chdir(tmp_path)
         with patch.object(sys, "argv", ["ll-loop", "list"]):
@@ -1546,9 +1540,7 @@ goal: "Test goal"
 
     def test_compile_missing_input_returns_error(self, tmp_path: Path) -> None:
         """compile with missing input file returns error."""
-        with patch.object(
-            sys, "argv", ["ll-loop", "compile", str(tmp_path / "nonexistent.yaml")]
-        ):
+        with patch.object(sys, "argv", ["ll-loop", "compile", str(tmp_path / "nonexistent.yaml")]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -1564,9 +1556,7 @@ goal: "Test goal"
 
         assert result == 1
 
-    def test_run_quiet_flag_accepted(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_run_quiet_flag_accepted(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """--quiet flag is accepted by the CLI."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
@@ -1581,9 +1571,7 @@ states:
 
         monkeypatch.chdir(tmp_path)
         # Note: dry-run still outputs execution plan, but --quiet affects run output
-        with patch.object(
-            sys, "argv", ["ll-loop", "run", "test-loop", "--quiet", "--dry-run"]
-        ):
+        with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--quiet", "--dry-run"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -2429,9 +2417,7 @@ name: "test"
 
         assert result == 1
 
-    def test_compile_goal_missing_required_field_returns_error(
-        self, tmp_path: Path
-    ) -> None:
+    def test_compile_goal_missing_required_field_returns_error(self, tmp_path: Path) -> None:
         """Goal paradigm missing 'goal' field returns error."""
         paradigm_yaml = """
 paradigm: goal
@@ -2881,7 +2867,9 @@ states:
 
         monkeypatch.chdir(tmp_path)
         with patch.object(
-            sys, "argv", ["ll-loop", "run", "test-loop", "--llm-model", "claude-opus-4-20250514", "--dry-run"]
+            sys,
+            "argv",
+            ["ll-loop", "run", "test-loop", "--llm-model", "claude-opus-4-20250514", "--dry-run"],
         ):
             from little_loops.cli import main_loop
 
@@ -2910,7 +2898,15 @@ states:
         with patch.object(
             sys,
             "argv",
-            ["ll-loop", "run", "test-loop", "--no-llm", "--llm-model", "claude-opus-4-20250514", "--dry-run"],
+            [
+                "ll-loop",
+                "run",
+                "test-loop",
+                "--no-llm",
+                "--llm-model",
+                "claude-opus-4-20250514",
+                "--dry-run",
+            ],
         ):
             from little_loops.cli import main_loop
 
@@ -2962,9 +2958,7 @@ states:
                 stdout="test",
                 stderr="",
             )
-            with patch.object(
-                PersistentExecutor, "__init__", capture_persistent_executor_init
-            ):
+            with patch.object(PersistentExecutor, "__init__", capture_persistent_executor_init):
                 with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--no-llm"]):
                     from little_loops.cli import main_loop
 
@@ -3016,11 +3010,11 @@ states:
                 stdout="test",
                 stderr="",
             )
-            with patch.object(
-                PersistentExecutor, "__init__", capture_persistent_executor_init
-            ):
+            with patch.object(PersistentExecutor, "__init__", capture_persistent_executor_init):
                 with patch.object(
-                    sys, "argv", ["ll-loop", "run", "test-loop", "--llm-model", "claude-opus-4-20250514"]
+                    sys,
+                    "argv",
+                    ["ll-loop", "run", "test-loop", "--llm-model", "claude-opus-4-20250514"],
                 ):
                     from little_loops.cli import main_loop
 
@@ -3075,11 +3069,11 @@ states:
                 stdout="test",
                 stderr="",
             )
-            with patch.object(
-                PersistentExecutor, "__init__", capture_persistent_executor_init
-            ):
+            with patch.object(PersistentExecutor, "__init__", capture_persistent_executor_init):
                 with patch.object(
-                    sys, "argv", ["ll-loop", "run", "test-loop", "--llm-model", "claude-opus-4-20250514"]
+                    sys,
+                    "argv",
+                    ["ll-loop", "run", "test-loop", "--llm-model", "claude-opus-4-20250514"],
                 ):
                     from little_loops.cli import main_loop
 
@@ -3136,9 +3130,7 @@ states:
                 stdout="test",
                 stderr="",
             )
-            with patch.object(
-                PersistentExecutor, "__init__", capture_persistent_executor_init
-            ):
+            with patch.object(PersistentExecutor, "__init__", capture_persistent_executor_init):
                 with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--no-llm"]):
                     from little_loops.cli import main_loop
 

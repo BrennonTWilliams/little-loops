@@ -5,8 +5,8 @@ from pathlib import Path
 
 import pytest
 
-from little_loops.sprint import SprintManager
 from little_loops.config import BRConfig
+from little_loops.sprint import SprintManager
 
 
 @pytest.fixture
@@ -119,7 +119,7 @@ def test_sprint_yaml_format(sprint_project: BRConfig, tmp_path: Path) -> None:
 
     manager = SprintManager(sprints_dir=tmp_path, config=sprint_project)
 
-    sprint = manager.create(
+    manager.create(
         name="test-sprint",
         issues=["BUG-001"],
         description="Test sprint",

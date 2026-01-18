@@ -318,9 +318,7 @@ class TestPersistentExecutor:
     def test_creates_running_directory(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
         """PersistentExecutor creates .running directory."""
         mock_runner = MockActionRunner()
-        PersistentExecutor(
-            simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner
-        )
+        PersistentExecutor(simple_fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner)
 
         assert (tmp_loops_dir / ".running").exists()
 
@@ -682,9 +680,7 @@ class TestAcceptanceCriteria:
         self, simple_fsm: FSMLoop, tmp_loops_dir: Path
     ) -> None:
         """AC: .loops/.running/ directory created automatically."""
-        PersistentExecutor(
-            simple_fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner()
-        )
+        PersistentExecutor(simple_fsm, loops_dir=tmp_loops_dir, action_runner=MockActionRunner())
 
         assert (tmp_loops_dir / ".running").exists()
 
@@ -765,9 +761,7 @@ class TestAcceptanceCriteria:
         # Iteration should have increased from saved state
         assert result.iterations >= saved_iteration
 
-    def test_resume_preserves_captured_for_interpolation(
-        self, tmp_loops_dir: Path
-    ) -> None:
+    def test_resume_preserves_captured_for_interpolation(self, tmp_loops_dir: Path) -> None:
         """Captures from before interrupt are usable after resume via interpolation."""
         # FSM where step2 uses captured value from step1
         fsm = FSMLoop(
@@ -818,9 +812,7 @@ class TestAcceptanceCriteria:
 
         mock_runner = MockActionRunner()
 
-        executor = PersistentExecutor(
-            fsm, persistence=persistence, action_runner=mock_runner
-        )
+        executor = PersistentExecutor(fsm, persistence=persistence, action_runner=mock_runner)
         result = executor.resume()
 
         assert result is not None
@@ -1102,9 +1094,7 @@ class TestSignalHandlingPersistence:
         assert state is not None
         assert state.status == "interrupted"
 
-    def test_signal_termination_preserves_captured_in_state(
-        self, tmp_loops_dir: Path
-    ) -> None:
+    def test_signal_termination_preserves_captured_in_state(self, tmp_loops_dir: Path) -> None:
         """Signal termination preserves captured values in state file."""
         fsm = FSMLoop(
             name="capture-signal-test",
@@ -1162,9 +1152,7 @@ class TestSignalHandlingPersistence:
         assert "my_capture" in state.captured
         assert state.captured["my_capture"]["output"] == "important_data_xyz"
 
-    def test_signal_interrupted_loop_can_be_resumed(
-        self, tmp_loops_dir: Path
-    ) -> None:
+    def test_signal_interrupted_loop_can_be_resumed(self, tmp_loops_dir: Path) -> None:
         """Loop interrupted by signal can be resumed later."""
         fsm = FSMLoop(
             name="resumable-signal-test",
@@ -1252,9 +1240,7 @@ class TestSignalHandlingPersistence:
         loop_complete = next(e for e in events if e["event"] == "loop_complete")
         assert loop_complete["terminated_by"] == "signal"
 
-    def test_signal_during_multi_iteration_preserves_progress(
-        self, tmp_loops_dir: Path
-    ) -> None:
+    def test_signal_during_multi_iteration_preserves_progress(self, tmp_loops_dir: Path) -> None:
         """Signal during multi-iteration execution preserves all progress."""
         fsm = FSMLoop(
             name="multi-iter-signal",

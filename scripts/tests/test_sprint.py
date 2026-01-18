@@ -1,9 +1,7 @@
 """Tests for sprint module."""
 
-import json
 from pathlib import Path
 
-import pytest
 import yaml
 
 from little_loops.sprint import Sprint, SprintManager, SprintOptions
@@ -290,7 +288,7 @@ class TestSprintYAMLFormat:
         """YAML output matches specification format."""
         manager = SprintManager(sprints_dir=tmp_path)
 
-        sprint = manager.create(
+        manager.create(
             name="sprint-1",
             issues=["BUG-001", "BUG-002"],
             description="Q1 Performance and Security Improvements",
@@ -321,7 +319,7 @@ class TestSprintYAMLFormat:
         manager = SprintManager(sprints_dir=tmp_path)
 
         options = SprintOptions(mode="parallel", max_workers=8)
-        sprint = manager.create(
+        manager.create(
             name="sprint-1",
             issues=["BUG-001"],
             options=options,

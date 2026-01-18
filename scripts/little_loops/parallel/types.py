@@ -310,8 +310,8 @@ class ParallelConfig:
     worktree_copy_files: list[str] = field(default_factory=lambda: [".env"])
     # Pending worktree handling flags
     merge_pending: bool = False  # Attempt to merge pending worktrees
-    clean_start: bool = False    # Remove all worktrees without checking
-    ignore_pending: bool = False # Report pending work but continue
+    clean_start: bool = False  # Remove all worktrees without checking
+    ignore_pending: bool = False  # Report pending work but continue
 
     def get_ready_command(self, issue_id: str) -> str:
         """Build the ready_issue command string.

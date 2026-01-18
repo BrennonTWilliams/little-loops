@@ -968,9 +968,7 @@ Examples:
         required=True,
         help="Comma-separated issue IDs (e.g., BUG-001,FEAT-010)",
     )
-    create_parser.add_argument(
-        "--description", "-d", default="", help="Sprint description"
-    )
+    create_parser.add_argument("--description", "-d", default="", help="Sprint description")
     create_parser.add_argument(
         "--mode",
         choices=["auto", "parallel"],
@@ -1006,12 +1004,8 @@ Examples:
         type=int,
         help="Override max workers for parallel mode",
     )
-    run_parser.add_argument(
-        "--timeout", type=int, help="Override timeout in seconds"
-    )
-    run_parser.add_argument(
-        "--config", type=Path, default=None, help="Path to project root"
-    )
+    run_parser.add_argument("--timeout", type=int, help="Override timeout in seconds")
+    run_parser.add_argument("--config", type=Path, default=None, help="Path to project root")
 
     # list subcommand
     list_parser = subparsers.add_parser("list", help="List all sprints")
@@ -1022,9 +1016,7 @@ Examples:
     # show subcommand
     show_parser = subparsers.add_parser("show", help="Show sprint details")
     show_parser.add_argument("sprint", help="Sprint name to show")
-    show_parser.add_argument(
-        "--config", type=Path, default=None, help="Path to project root"
-    )
+    show_parser.add_argument("--config", type=Path, default=None, help="Path to project root")
 
     # delete subcommand
     delete_parser = subparsers.add_parser("delete", help="Delete a sprint")

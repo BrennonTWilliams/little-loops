@@ -282,9 +282,7 @@ class ParallelOrchestrator:
             has_uncommitted = False
             if result.returncode == 0 and result.stdout.strip():
                 has_uncommitted = True
-                changed_files = [
-                    line[3:] for line in result.stdout.strip().split("\n") if line
-                ]
+                changed_files = [line[3:] for line in result.stdout.strip().split("\n") if line]
 
             return PendingWorktreeInfo(
                 worktree_path=worktree_path,
@@ -338,23 +336,17 @@ class ParallelOrchestrator:
                 if info.has_uncommitted_changes:
                     status_parts.append(f"{len(info.changed_files)} uncommitted file(s)")
                 status = ", ".join(status_parts)
-                self.logger.warning(
-                    f"  - {info.worktree_path.name}: {info.issue_id} ({status})"
-                )
+                self.logger.warning(f"  - {info.worktree_path.name}: {info.issue_id} ({status})")
 
             self.logger.info("")
             self.logger.info("Options:")
-            self.logger.info(
-                "  --merge-pending   Attempt to merge pending work before continuing"
-            )
+            self.logger.info("  --merge-pending   Attempt to merge pending work before continuing")
             self.logger.info("  --clean-start     Remove all worktrees and start fresh")
             self.logger.info(
                 "  --ignore-pending  Continue without action (worktrees will be cleaned up)"
             )
         elif pending_info:
-            self.logger.info(
-                f"Found {len(pending_info)} orphaned worktree(s) with no pending work"
-            )
+            self.logger.info(f"Found {len(pending_info)} orphaned worktree(s) with no pending work")
 
         return pending_info
 
@@ -374,9 +366,7 @@ class ParallelOrchestrator:
             try:
                 # If there are uncommitted changes, commit them first
                 if info.has_uncommitted_changes:
-                    self.logger.info(
-                        f"  Committing uncommitted changes in {info.issue_id}..."
-                    )
+                    self.logger.info(f"  Committing uncommitted changes in {info.issue_id}...")
                     self._git_lock.run(
                         ["add", "-A"],
                         cwd=info.worktree_path,
@@ -420,9 +410,7 @@ class ParallelOrchestrator:
                         timeout=10,
                     )
                 else:
-                    self.logger.warning(
-                        f"  Failed to merge {info.issue_id}: {result.stderr}"
-                    )
+                    self.logger.warning(f"  Failed to merge {info.issue_id}: {result.stderr}")
                     # Abort the merge if it failed
                     self._git_lock.run(
                         ["merge", "--abort"],

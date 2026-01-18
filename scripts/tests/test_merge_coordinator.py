@@ -1397,9 +1397,7 @@ class TestUnmergedFilesHandling:
         # Mock _handle_conflict to verify it's called instead of retry-after-reset
         handle_conflict_called: list[MergeRequest] = []
 
-        def mock_handle_conflict(
-            req: MergeRequest, used_merge_strategy: bool = False
-        ) -> None:
+        def mock_handle_conflict(req: MergeRequest, used_merge_strategy: bool = False) -> None:
             handle_conflict_called.append(req)
             # Don't actually run rebase, just mark as failed to avoid infinite loop
             coordinator._handle_failure(req, "Test: conflict handler was called")

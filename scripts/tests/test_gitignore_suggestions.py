@@ -132,9 +132,7 @@ class TestReadExistingGitignore:
     def test_gitignore_with_comments_and_empty_lines(self, tmp_path: Path) -> None:
         """Test .gitignore with comments and empty lines."""
         gitignore = tmp_path / ".gitignore"
-        gitignore.write_text(
-            "# Comment\n\n*.log\n\n# Another comment\nnode_modules/\n"
-        )
+        gitignore.write_text("# Comment\n\n*.log\n\n# Another comment\nnode_modules/\n")
         patterns = _read_existing_gitignore(tmp_path)
         assert patterns == ["*.log", "node_modules/"]
 

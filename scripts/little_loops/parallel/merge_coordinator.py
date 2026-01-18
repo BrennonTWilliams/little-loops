@@ -907,9 +907,7 @@ class MergeCoordinator:
             # Clear current issue tracking
             self._current_issue_id = None
 
-    def _handle_conflict(
-        self, request: MergeRequest, used_merge_strategy: bool = False
-    ) -> None:
+    def _handle_conflict(self, request: MergeRequest, used_merge_strategy: bool = False) -> None:
         """Handle a merge conflict with retry logic.
 
         Args:

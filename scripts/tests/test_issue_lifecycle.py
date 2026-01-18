@@ -362,9 +362,7 @@ class TestMoveIssueToCompleted:
         assert not original.exists()  # Source still doesn't exist
         mock_logger.info.assert_called()
 
-    def test_untracked_source_skips_git_mv(
-        self, tmp_path: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_untracked_source_skips_git_mv(self, tmp_path: Path, mock_logger: MagicMock) -> None:
         """Test that untracked source files use manual copy without attempting git mv."""
         original = tmp_path / "bugs" / "issue.md"
         completed = tmp_path / "completed" / "issue.md"
@@ -400,9 +398,7 @@ class TestMoveIssueToCompleted:
         assert not git_mv_attempted
         mock_logger.info.assert_called()
 
-    def test_tracked_source_uses_git_mv(
-        self, tmp_path: Path, mock_logger: MagicMock
-    ) -> None:
+    def test_tracked_source_uses_git_mv(self, tmp_path: Path, mock_logger: MagicMock) -> None:
         """Test that tracked source files use git mv for history preservation."""
         original = tmp_path / "bugs" / "issue.md"
         completed = tmp_path / "completed" / "issue.md"
@@ -737,7 +733,9 @@ class TestCloseIssue:
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             if "ls-files" in cmd:
                 # Simulate file being tracked
-                return subprocess.CompletedProcess(cmd, 0, stdout=str(sample_issue_info.path), stderr="")
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
+                )
             if "commit" in cmd:
                 return subprocess.CompletedProcess(cmd, 0, stdout="[main abc123] commit", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
@@ -875,7 +873,9 @@ class TestCompleteIssueLifecycle:
                 return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
             if "ls-files" in cmd:
                 # Simulate file being tracked
-                return subprocess.CompletedProcess(cmd, 0, stdout=str(sample_issue_info.path), stderr="")
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
+                )
             if "commit" in cmd:
                 return subprocess.CompletedProcess(cmd, 0, stdout="[main def456] commit", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")

@@ -152,9 +152,7 @@ class SprintManager:
     Also validates that issue IDs exist before executing sprints.
     """
 
-    def __init__(
-        self, sprints_dir: Path | None = None, config: "BRConfig | None" = None
-    ) -> None:
+    def __init__(self, sprints_dir: Path | None = None, config: "BRConfig | None" = None) -> None:
         """Initialize SprintManager.
 
         Args:
