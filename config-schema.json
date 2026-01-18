@@ -180,7 +180,7 @@
         "timeout_per_issue": {
           "type": "integer",
           "description": "Timeout per issue in seconds",
-          "default": 3600,
+          "default": 7200,
           "minimum": 60
         },
         "max_merge_retries": {

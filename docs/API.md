@@ -1264,7 +1264,7 @@ class ParallelConfig:
     priority_filter: list[str]
     max_issues: int = 0
     dry_run: bool = False
-    timeout_per_issue: int = 3600
+    timeout_per_issue: int = 7200
     orchestrator_timeout: int = 0
     stream_subprocess_output: bool = False
     show_model: bool = False
