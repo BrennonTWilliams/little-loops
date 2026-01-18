@@ -70,3 +70,33 @@ FSM loop system for automation workflows.
 ## Status
 
 **Open** | Created: 2026-01-17 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-18
+- **Status**: Completed
+
+### Changes Made
+- `docs/API.md`: Added FSM and sprint modules to Module Overview table
+- `docs/API.md`: Added comprehensive `## little_loops.fsm` section with:
+  - Submodule overview table
+  - Quick import guide
+  - Detailed documentation for schema module (FSMLoop, StateConfig, EvaluateConfig, RouteConfig, LLMConfig)
+  - Detailed documentation for compilers module (compile_paradigm and paradigm-specific functions)
+  - Detailed documentation for evaluators module (all evaluate_* functions)
+  - Detailed documentation for executor module (FSMExecutor, ExecutionResult, ActionResult)
+  - Detailed documentation for interpolation module (InterpolationContext, interpolate)
+  - Detailed documentation for validation module (ValidationError, validate_fsm, load_and_validate)
+  - Detailed documentation for persistence module (LoopState, StatePersistence, PersistentExecutor)
+- `docs/API.md`: Added comprehensive `## little_loops.sprint` section with:
+  - SprintOptions dataclass
+  - Sprint dataclass with methods
+  - SprintManager class with methods
+
+### Verification Results
+- Tests: PASS (1345 tests)
+- Lint: PASS
+- Types: PASS (only expected optional anthropic import warning)

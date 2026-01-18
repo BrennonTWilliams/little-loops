@@ -30,6 +30,8 @@ pip install /path/to/little-loops/scripts
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.cli` | CLI entry points |
 | `little_loops.parallel` | Parallel processing subpackage |
+| `little_loops.fsm` | FSM loop system subpackage |
+| `little_loops.sprint` | Sprint planning and execution |
 
 ---
 
@@ -1570,4 +1572,804 @@ orchestrator = ParallelOrchestrator(
     br_config=br_config,
 )
 exit_code = orchestrator.run()
+```
+
+---
+
+## little_loops.fsm
+
+FSM (Finite State Machine) loop system for automation workflows. This subpackage provides the schema, compilation, evaluation, and execution engine for declarative automation loops.
+
+### Submodule Overview
+
+| Module | Purpose |
+|--------|---------|
+| `little_loops.fsm.schema` | FSM state machine schema definitions |
+| `little_loops.fsm.compilers` | Compile paradigms (goal, convergence, etc.) to FSM |
+| `little_loops.fsm.evaluators` | Verdict evaluators (exit_code, llm_structured, etc.) |
+| `little_loops.fsm.executor` | FSM execution engine |
+| `little_loops.fsm.interpolation` | Variable substitution (`${context.*}`, etc.) |
+| `little_loops.fsm.validation` | Schema validation utilities |
+| `little_loops.fsm.persistence` | Loop state persistence |
+
+### Quick Import
+
+```python
+from little_loops.fsm import (
+    # Schema
+    FSMLoop, StateConfig, EvaluateConfig, RouteConfig, LLMConfig,
+    # Validation
+    ValidationError, validate_fsm, load_and_validate,
+    # Compilation
+    compile_paradigm,
+    # Interpolation
+    InterpolationContext, InterpolationError, interpolate, interpolate_dict,
+    # Evaluation
+    EvaluationResult, evaluate, evaluate_exit_code, evaluate_output_numeric,
+    evaluate_output_json, evaluate_output_contains, evaluate_convergence,
+    evaluate_llm_structured,
+    # Execution
+    FSMExecutor, ExecutionResult, ActionResult, ActionRunner,
+    # Persistence
+    LoopState, StatePersistence, PersistentExecutor,
+    list_running_loops, get_loop_history,
+)
+```
+
+---
+
+### little_loops.fsm.schema
+
+Schema dataclasses for FSM loop definitions.
+
+#### FSMLoop
+
+Complete FSM loop definition.
+
+```python
+@dataclass
+class FSMLoop:
+    name: str                          # Unique loop identifier
+    initial: str                       # Starting state name
+    states: dict[str, StateConfig]     # State configurations
+    paradigm: str | None = None        # Source paradigm (goal, convergence, etc.)
+    context: dict[str, Any] = {}       # User-defined shared variables
+    scope: list[str] = []              # Paths for concurrency control
+    max_iterations: int = 50           # Safety limit
+    backoff: float | None = None       # Seconds between iterations
+    timeout: int | None = None         # Max runtime in seconds
+    maintain: bool = False             # If True, restart after completion
+    llm: LLMConfig = LLMConfig()       # LLM evaluation settings
+```
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `to_dict()` | `dict` | Convert to dictionary for serialization |
+| `from_dict(data)` | `FSMLoop` | Create from dictionary |
+| `get_all_state_names()` | `set[str]` | All defined state names |
+| `get_terminal_states()` | `set[str]` | States with `terminal=True` |
+| `get_all_referenced_states()` | `set[str]` | All states referenced by transitions |
+
+**Example:**
+```python
+from little_loops.fsm import FSMLoop, StateConfig
+
+fsm = FSMLoop(
+    name="check-fix-loop",
+    initial="check",
+    states={
+        "check": StateConfig(
+            action="pytest",
+            on_success="done",
+            on_failure="fix",
+        ),
+        "fix": StateConfig(
+            action="/ll:manage_issue bug fix",
+            next="check",
+        ),
+        "done": StateConfig(terminal=True),
+    },
+    max_iterations=20,
+)
+```
+
+#### StateConfig
+
+Configuration for a single FSM state.
+
+```python
+@dataclass
+class StateConfig:
+    action: str | None = None          # Command to execute
+    evaluate: EvaluateConfig | None    # Evaluator configuration
+    route: RouteConfig | None          # Full routing table
+    on_success: str | None = None      # Shorthand routing
+    on_failure: str | None = None      # Shorthand routing
+    on_error: str | None = None        # Shorthand routing
+    next: str | None = None            # Unconditional transition
+    terminal: bool = False             # End state marker
+    capture: str | None = None         # Variable name to store output
+    timeout: int | None = None         # Action timeout in seconds
+    on_maintain: str | None = None     # State for maintain mode restart
+```
+
+#### EvaluateConfig
+
+Evaluator configuration for action result interpretation.
+
+```python
+@dataclass
+class EvaluateConfig:
+    type: Literal[
+        "exit_code",        # Map exit codes to verdicts
+        "output_numeric",   # Compare numeric output
+        "output_json",      # Extract and compare JSON path
+        "output_contains",  # Pattern matching
+        "convergence",      # Progress toward target
+        "llm_structured",   # LLM with structured output
+    ]
+    operator: str | None = None        # Comparison: eq, ne, lt, le, gt, ge
+    target: int | float | str | None   # Target value
+    tolerance: float | str | None      # For convergence
+    pattern: str | None = None         # For output_contains
+    negate: bool = False               # Invert match result
+    path: str | None = None            # JSON path for output_json
+    prompt: str | None = None          # For llm_structured
+    schema: dict | None = None         # For llm_structured
+    min_confidence: float = 0.5        # For llm_structured
+    uncertain_suffix: bool = False     # Append _uncertain to low-confidence
+    source: str | None = None          # Override default source
+    previous: str | None = None        # Previous value reference
+    direction: Literal["minimize", "maximize"] = "minimize"
+```
+
+#### RouteConfig
+
+Routing table configuration for verdict-to-state mapping.
+
+```python
+@dataclass
+class RouteConfig:
+    routes: dict[str, str] = {}  # Verdict -> next state
+    default: str | None = None   # Default for unmatched verdicts ("_")
+    error: str | None = None     # State for errors ("_error")
+```
+
+**Example:**
+```python
+from little_loops.fsm import StateConfig, EvaluateConfig, RouteConfig
+
+state = StateConfig(
+    action="check_status",
+    evaluate=EvaluateConfig(
+        type="output_json",
+        path=".status",
+        operator="eq",
+        target="ready",
+    ),
+    route=RouteConfig(
+        routes={"success": "proceed", "failure": "wait"},
+        default="error_state",
+    ),
+)
+```
+
+#### LLMConfig
+
+LLM evaluation configuration.
+
+```python
+@dataclass
+class LLMConfig:
+    enabled: bool = True
+    model: str = "claude-sonnet-4-20250514"
+    max_tokens: int = 256
+    timeout: int = 30
+```
+
+---
+
+### little_loops.fsm.compilers
+
+Paradigm compilers for FSM loop generation. Each paradigm compiles to the universal FSM schema.
+
+#### compile_paradigm
+
+```python
+def compile_paradigm(spec: dict[str, Any]) -> FSMLoop
+```
+
+Route to appropriate compiler based on paradigm field.
+
+**Parameters:**
+- `spec` - Paradigm specification dictionary with `paradigm` field
+
+**Returns:** Compiled `FSMLoop` instance
+
+**Raises:** `ValueError` if paradigm is unknown
+
+**Supported paradigms:** `goal`, `convergence`, `invariants`, `imperative`, `fsm`
+
+**Example:**
+```python
+from little_loops.fsm import compile_paradigm
+
+# Goal paradigm
+spec = {
+    "paradigm": "goal",
+    "goal": "No type errors in src/",
+    "tools": ["/ll:check_code types", "/ll:manage_issue bug fix"],
+    "max_iterations": 20,
+}
+fsm = compile_paradigm(spec)
+print(fsm.initial)  # "evaluate"
+```
+
+#### Paradigm-Specific Compilers
+
+```python
+def compile_goal(spec: dict) -> FSMLoop
+```
+Goal paradigm: evaluate → (success → done, failure → fix), fix → evaluate
+
+```python
+def compile_convergence(spec: dict) -> FSMLoop
+```
+Convergence paradigm: measure → (target → done, progress → apply, stall → done)
+
+```python
+def compile_invariants(spec: dict) -> FSMLoop
+```
+Invariants paradigm: chain multiple check/fix constraints
+
+```python
+def compile_imperative(spec: dict) -> FSMLoop
+```
+Imperative paradigm: step sequence with exit condition
+
+---
+
+### little_loops.fsm.evaluators
+
+Evaluators interpret action output and produce verdicts for state transitions.
+
+#### EvaluationResult
+
+```python
+@dataclass
+class EvaluationResult:
+    verdict: str                  # Routing key for transitions
+    details: dict[str, Any]       # Evaluator-specific metadata
+```
+
+#### Tier 1 Evaluators (Deterministic)
+
+```python
+def evaluate_exit_code(exit_code: int) -> EvaluationResult
+```
+Map Unix exit code to verdict: 0→success, 1→failure, 2+→error
+
+```python
+def evaluate_output_numeric(
+    output: str,
+    operator: str,
+    target: float,
+) -> EvaluationResult
+```
+Parse stdout as number and compare to target.
+
+```python
+def evaluate_output_json(
+    output: str,
+    path: str,
+    operator: str,
+    target: Any,
+) -> EvaluationResult
+```
+Parse JSON and extract value at jq-style path, then compare.
+
+```python
+def evaluate_output_contains(
+    output: str,
+    pattern: str,
+    negate: bool = False,
+) -> EvaluationResult
+```
+Check if pattern (regex or substring) exists in output.
+
+```python
+def evaluate_convergence(
+    current: float,
+    previous: float | None,
+    target: float,
+    tolerance: float = 0,
+    direction: str = "minimize",
+) -> EvaluationResult
+```
+Compare current value to target and previous. Returns: target, progress, or stall.
+
+#### Tier 2 Evaluators (LLM-based)
+
+```python
+def evaluate_llm_structured(
+    output: str,
+    prompt: str | None = None,
+    schema: dict | None = None,
+    min_confidence: float = 0.5,
+    uncertain_suffix: bool = False,
+    model: str = "claude-sonnet-4-20250514",
+    max_tokens: int = 256,
+    timeout: int = 30,
+) -> EvaluationResult
+```
+Evaluate action output using LLM with structured output.
+
+**Note:** Requires `pip install little-loops[llm]` for anthropic package.
+
+#### Dispatcher
+
+```python
+def evaluate(
+    config: EvaluateConfig,
+    output: str,
+    exit_code: int,
+    context: InterpolationContext,
+) -> EvaluationResult
+```
+Dispatch to appropriate evaluator based on config type.
+
+**Example:**
+```python
+from little_loops.fsm import evaluate_exit_code, evaluate_output_contains
+
+# Exit code evaluation
+result = evaluate_exit_code(0)
+print(result.verdict)  # "success"
+
+# Pattern matching
+result = evaluate_output_contains("All tests passed", "passed")
+print(result.verdict)  # "success"
+
+result = evaluate_output_contains("Error occurred", "Error", negate=True)
+print(result.verdict)  # "failure"
+```
+
+---
+
+### little_loops.fsm.executor
+
+Runtime engine for FSM loop execution.
+
+#### FSMExecutor
+
+```python
+class FSMExecutor:
+    def __init__(
+        self,
+        fsm: FSMLoop,
+        event_callback: Callable[[dict], None] | None = None,
+        action_runner: ActionRunner | None = None,
+    )
+```
+
+Execute an FSM loop until terminal state, max iterations, timeout, or signal.
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `run()` | `ExecutionResult` | Execute FSM to completion |
+| `request_shutdown()` | `None` | Request graceful shutdown |
+
+**Example:**
+```python
+from little_loops.fsm import FSMLoop, StateConfig, FSMExecutor
+
+fsm = FSMLoop(
+    name="test",
+    initial="check",
+    states={
+        "check": StateConfig(action="pytest", on_success="done", on_failure="check"),
+        "done": StateConfig(terminal=True),
+    },
+)
+
+events = []
+executor = FSMExecutor(fsm, event_callback=events.append)
+result = executor.run()
+
+print(result.final_state)     # "done"
+print(result.iterations)      # Number of iterations
+print(result.terminated_by)   # "terminal", "max_iterations", "timeout", "signal", or "error"
+```
+
+#### ExecutionResult
+
+```python
+@dataclass
+class ExecutionResult:
+    final_state: str                      # State when execution stopped
+    iterations: int                       # Total iterations
+    terminated_by: str                    # Reason for termination
+    duration_ms: int                      # Total execution time
+    captured: dict[str, dict[str, Any]]   # Captured variable values
+    error: str | None = None              # Error message if failed
+```
+
+#### ActionResult
+
+```python
+@dataclass
+class ActionResult:
+    output: str       # stdout
+    stderr: str       # stderr
+    exit_code: int    # Exit code
+    duration_ms: int  # Execution time
+```
+
+#### ActionRunner Protocol
+
+```python
+class ActionRunner(Protocol):
+    def run(
+        self,
+        action: str,
+        timeout: int,
+        is_slash_command: bool,
+    ) -> ActionResult: ...
+```
+
+Implement this protocol to customize action execution (useful for testing).
+
+---
+
+### little_loops.fsm.interpolation
+
+Variable interpolation using `${namespace.path}` syntax.
+
+#### InterpolationContext
+
+```python
+@dataclass
+class InterpolationContext:
+    context: dict[str, Any] = {}           # User-defined variables
+    captured: dict[str, dict] = {}         # Stored action results
+    prev: dict[str, Any] | None = None     # Previous state result
+    result: dict[str, Any] | None = None   # Current evaluation result
+    state_name: str = ""                   # Current state
+    iteration: int = 1                     # Current iteration
+    loop_name: str = ""                    # FSM loop name
+    started_at: str = ""                   # ISO timestamp
+    elapsed_ms: int = 0                    # Milliseconds since start
+```
+
+**Supported namespaces:**
+- `context` - User-defined variables from FSM context block
+- `captured` - Values stored via `capture:` in states
+- `prev` - Previous state's result (output, exit_code, state)
+- `result` - Current evaluation result (verdict, details)
+- `state` - Current state metadata (name, iteration)
+- `loop` - Loop metadata (name, started_at, elapsed_ms, elapsed)
+- `env` - Environment variables
+
+**Methods:**
+
+```python
+def resolve(self, namespace: str, path: str) -> Any
+```
+Resolve a namespace.path reference to its value.
+
+#### interpolate
+
+```python
+def interpolate(template: str, ctx: InterpolationContext) -> str
+```
+
+Replace `${namespace.path}` variables in template string.
+
+**Example:**
+```python
+from little_loops.fsm import InterpolationContext, interpolate
+
+ctx = InterpolationContext(
+    context={"target_dir": "src/", "threshold": 10},
+    captured={"check": {"output": "5", "exit_code": 0}},
+)
+
+result = interpolate("mypy ${context.target_dir}", ctx)
+# Returns: "mypy src/"
+
+result = interpolate("Errors: ${captured.check.output}", ctx)
+# Returns: "Errors: 5"
+
+# Escape with $$
+result = interpolate("Use $${context.var} syntax", ctx)
+# Returns: "Use ${context.var} syntax"
+```
+
+#### interpolate_dict
+
+```python
+def interpolate_dict(obj: dict[str, Any], ctx: InterpolationContext) -> dict[str, Any]
+```
+
+Recursively interpolate all string values in a dict.
+
+---
+
+### little_loops.fsm.validation
+
+FSM validation and loading utilities.
+
+#### ValidationError
+
+```python
+@dataclass
+class ValidationError:
+    message: str                           # Human-readable description
+    path: str | None = None                # Path to problematic element
+    severity: ValidationSeverity = ERROR   # ERROR or WARNING
+```
+
+#### validate_fsm
+
+```python
+def validate_fsm(fsm: FSMLoop) -> list[ValidationError]
+```
+
+Validate FSM structure and return list of errors.
+
+**Checks performed:**
+- Initial state exists in states dict
+- All referenced states exist
+- At least one terminal state defined
+- Evaluator configs have required fields
+- No conflicting routing definitions
+- Warns about unreachable states
+
+**Example:**
+```python
+from little_loops.fsm import FSMLoop, StateConfig, validate_fsm, ValidationSeverity
+
+fsm = FSMLoop(
+    name="test",
+    initial="start",
+    states={
+        "start": StateConfig(action="echo", on_success="done", on_failure="done"),
+        "done": StateConfig(terminal=True),
+    },
+)
+
+errors = validate_fsm(fsm)
+error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+print(f"Found {len(error_list)} errors")
+```
+
+#### load_and_validate
+
+```python
+def load_and_validate(path: Path) -> FSMLoop
+```
+
+Load YAML file and validate FSM structure.
+
+**Parameters:**
+- `path` - Path to YAML file
+
+**Returns:** Validated `FSMLoop` instance
+
+**Raises:**
+- `FileNotFoundError` - If file doesn't exist
+- `yaml.YAMLError` - If invalid YAML
+- `ValueError` - If validation fails
+
+**Example:**
+```python
+from pathlib import Path
+from little_loops.fsm import load_and_validate
+
+try:
+    fsm = load_and_validate(Path(".loops/my-loop.yaml"))
+    print(f"Loaded loop: {fsm.name}")
+except ValueError as e:
+    print(f"Validation error: {e}")
+```
+
+---
+
+### little_loops.fsm.persistence
+
+State persistence and event streaming for FSM loops.
+
+#### LoopState
+
+```python
+@dataclass
+class LoopState:
+    loop_name: str                        # Name of the loop
+    current_state: str                    # Current FSM state
+    iteration: int                        # Current iteration
+    captured: dict[str, dict[str, Any]]   # Captured outputs
+    prev_result: dict[str, Any] | None    # Previous state result
+    last_result: dict[str, Any] | None    # Last evaluation result
+    started_at: str                       # ISO timestamp
+    updated_at: str                       # Last update timestamp
+    status: str                           # running, completed, failed, interrupted
+```
+
+#### StatePersistence
+
+```python
+class StatePersistence:
+    def __init__(self, loop_name: str, loops_dir: Path | None = None)
+```
+
+Manage loop state persistence and event streaming.
+
+**Methods:**
+
+| Method | Description |
+|--------|-------------|
+| `initialize()` | Create running directory |
+| `save_state(state)` | Save state to JSON file |
+| `load_state()` | Load state, or None if not exists |
+| `clear_state()` | Remove state file |
+| `append_event(event)` | Append event to JSONL file |
+| `read_events()` | Read all events from file |
+| `clear_events()` | Remove events file |
+| `clear_all()` | Clear state and events |
+
+**File structure:**
+```
+.loops/
+├── my-loop.yaml           # Loop definition
+└── .running/              # Runtime state
+    ├── my-loop.state.json
+    └── my-loop.events.jsonl
+```
+
+#### PersistentExecutor
+
+```python
+class PersistentExecutor:
+    def __init__(
+        self,
+        fsm: FSMLoop,
+        persistence: StatePersistence | None = None,
+        loops_dir: Path | None = None,
+        **executor_kwargs,
+    )
+```
+
+FSM Executor with state persistence and event streaming.
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `run(clear_previous=True)` | `ExecutionResult` | Run with persistence |
+| `resume()` | `ExecutionResult \| None` | Resume from saved state |
+| `request_shutdown()` | `None` | Request graceful shutdown |
+
+**Example:**
+```python
+from pathlib import Path
+from little_loops.fsm import FSMLoop, StateConfig, PersistentExecutor
+
+fsm = FSMLoop(
+    name="my-loop",
+    initial="check",
+    states={
+        "check": StateConfig(action="pytest", on_success="done", on_failure="check"),
+        "done": StateConfig(terminal=True),
+    },
+)
+
+executor = PersistentExecutor(fsm, loops_dir=Path(".loops"))
+result = executor.run()
+
+# Later, check saved state
+state = executor.persistence.load_state()
+print(f"Status: {state.status}")
+```
+
+#### Utility Functions
+
+```python
+def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]
+```
+List all loops with saved state.
+
+```python
+def get_loop_history(loop_name: str, loops_dir: Path | None = None) -> list[dict]
+```
+Get event history for a loop.
+
+---
+
+## little_loops.sprint
+
+Sprint planning and execution for batch issue processing.
+
+### SprintOptions
+
+```python
+@dataclass
+class SprintOptions:
+    mode: str = "auto"          # "auto" for sequential, "parallel" for concurrent
+    max_iterations: int = 100   # Max Claude iterations per issue
+    timeout: int = 3600         # Per-issue timeout in seconds
+    max_workers: int = 4        # Worker count for parallel mode
+```
+
+### Sprint
+
+```python
+@dataclass
+class Sprint:
+    name: str                           # Sprint identifier
+    description: str                    # Human-readable purpose
+    issues: list[str]                   # Issue IDs (e.g., BUG-001, FEAT-010)
+    created: str                        # ISO 8601 timestamp
+    options: SprintOptions | None       # Execution options
+```
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `to_dict()` | `dict` | Convert for YAML serialization |
+| `from_dict(data)` | `Sprint` | Create from dictionary |
+| `save(sprints_dir)` | `Path` | Save to YAML file |
+| `load(sprints_dir, name)` | `Sprint \| None` | Load from file |
+
+### SprintManager
+
+```python
+class SprintManager:
+    def __init__(
+        self,
+        sprints_dir: Path | None = None,
+        config: BRConfig | None = None,
+    )
+```
+
+Manager for sprint CRUD operations.
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `create(name, issues, description, options)` | `Sprint` | Create new sprint |
+| `load(name)` | `Sprint \| None` | Load sprint by name |
+| `list_all()` | `list[Sprint]` | List all sprints |
+| `delete(name)` | `bool` | Delete sprint |
+| `validate_issues(issues)` | `dict[str, Path]` | Validate issue IDs exist |
+
+**Example:**
+```python
+from pathlib import Path
+from little_loops.sprint import SprintManager, SprintOptions
+from little_loops.config import BRConfig
+
+config = BRConfig(Path.cwd())
+manager = SprintManager(config=config)
+
+# Create a sprint
+sprint = manager.create(
+    name="week-1",
+    issues=["BUG-001", "BUG-002", "FEAT-010"],
+    description="First week bug fixes and feature",
+    options=SprintOptions(mode="parallel", max_workers=2),
+)
+
+# Validate issues exist
+valid = manager.validate_issues(sprint.issues)
+print(f"Found {len(valid)} valid issues")
+
+# List all sprints
+for s in manager.list_all():
+    print(f"{s.name}: {len(s.issues)} issues")
 ```
