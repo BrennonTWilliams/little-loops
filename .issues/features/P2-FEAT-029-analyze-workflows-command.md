@@ -308,6 +308,18 @@ None. This is the end of the pipeline.
 
 ---
 
+## Verification Notes
+
+**Verified: 2026-01-17**
+
+- Blocker FEAT-011 (User Message History Extraction) is now **completed** (in `.issues/completed/`)
+- Blocker FEAT-026 (Workflow Pattern Analyzer Agent) is now **completed** (in `.issues/completed/`)
+- `agents/workflow-pattern-analyzer.md` exists
+- Still blocked by FEAT-027 and FEAT-028 which are open
+- Partially unblocked - can begin once remaining blockers are implemented
+
+---
+
 ## Status
 
 **Open** | Created: 2026-01-12 | Priority: P2

@@ -187,6 +187,16 @@ None
 
 ---
 
+## Verification Notes
+
+**Verified: 2026-01-17**
+
+- Blocker FEAT-030 (Issue Dependency Parsing and Graph Construction) is now **completed** (in `.issues/completed/`)
+- `scripts/little_loops/dependency_graph.py` exists and provides the infrastructure needed
+- This enhancement is now **unblocked** and ready for implementation
+
+---
+
 ## Status
 
 **Open** | Created: 2026-01-12 | Priority: P2
