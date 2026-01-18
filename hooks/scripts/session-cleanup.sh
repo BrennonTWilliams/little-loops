@@ -5,19 +5,28 @@
 #
 # Cleans up lock files, state, and git worktrees
 #
-# Note: No set -e for cleanup scripts - we want to clean up as much as possible
-# even if individual steps fail
+# IMPORTANT: This is a cleanup script - it must NEVER fail.
+# All operations are wrapped to succeed even if the underlying command fails.
 
-# Clean up lock and state files
-rm -f .claude/.ll-lock .claude/ll-context-state.json 2>/dev/null
+# Cleanup function that always succeeds
+cleanup() {
+    # Clean up lock and state files (relative to CWD which should be project root)
+    rm -f .claude/.ll-lock .claude/ll-context-state.json 2>/dev/null || true
 
-# Clean up git worktrees if present
-if [ -d .worktrees ] && command -v git >/dev/null 2>&1; then
-    # Use process substitution to avoid subshell issues with pipefail
-    while IFS= read -r w; do
-        [ -n "$w" ] && git worktree remove --force "$w" 2>/dev/null
-    done < <(git worktree list 2>/dev/null | grep '\.worktrees' | awk '{print $1}')
-fi
+    # Clean up git worktrees if present
+    if [ -d .worktrees ] && command -v git >/dev/null 2>&1; then
+        # Get list of worktrees, filter for .worktrees, remove each
+        # All errors are suppressed and ignored
+        git worktree list 2>/dev/null | grep '\.worktrees' 2>/dev/null | awk '{print $1}' | while read -r w; do
+            [ -n "$w" ] && git worktree remove --force "$w" 2>/dev/null || true
+        done || true
+    fi
+
+    return 0
+}
+
+# Run cleanup, ignoring any errors
+cleanup || true
 
 echo "[little-loops] Session cleanup complete"
 exit 0
