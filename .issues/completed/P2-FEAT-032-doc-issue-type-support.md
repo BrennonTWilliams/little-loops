@@ -156,6 +156,30 @@ None
 
 ---
 
+## Verification Notes
+
+**Verified: 2026-01-19**
+
+This issue was **superseded by FEAT-033** (Generalize Issue Type System).
+
+The implementation in FEAT-033 created a generalized category system where:
+- `REQUIRED_CATEGORIES` in `config.py` (lines 32-36) defines BUG, FEAT, ENH as required
+- Users can add custom categories (including DOC) via `ll-config.json`:
+  ```json
+  "issues": {
+    "categories": {
+      "documentation": {"prefix": "DOC", "dir": "documentation", "action": "document"}
+    }
+  }
+  ```
+- `_matches_issue_type()` in `issue_discovery.py` (lines 445-469) now iterates over all configured categories dynamically
+
+The hardcoded approach described in this issue is no longer needed. The generalized system provides the same functionality more flexibly.
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-12 | Priority: P2
+**Resolved** | Created: 2026-01-12 | Resolved: 2026-01-19 | Priority: P2
+
+**Resolution**: Superseded by FEAT-033 (Generalize Issue Type System)

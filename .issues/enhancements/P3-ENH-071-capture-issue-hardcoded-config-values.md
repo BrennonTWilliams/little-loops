@@ -11,7 +11,7 @@ The `/ll:capture_issue` command hardcodes directory paths and issue type prefixe
 
 ## Current Behavior
 
-1. **Hardcoded directory paths** (lines 123-125, 146):
+1. **Hardcoded directory paths** (lines 137-139):
    ```bash
    ls -la {{config.issues.base_dir}}/bugs/*.md 2>/dev/null || true
    ls -la {{config.issues.base_dir}}/features/*.md 2>/dev/null || true
@@ -19,19 +19,19 @@ The `/ll:capture_issue` command hardcodes directory paths and issue type prefixe
    ```
    Uses hardcoded `bugs/`, `features/`, `enhancements/` instead of deriving from `config.issues.categories.*.dir`.
 
-2. **Hardcoded `completed/` path** (lines 143, 146, 218, 355):
+2. **Hardcoded `completed/` path** (lines 157, 160, 258, 446, 451):
    ```bash
    ls -la {{config.issues.base_dir}}/completed/*.md
    ```
    Should use `{{config.issues.completed_dir}}` like `manage_issue.md` does.
 
-3. **Hardcoded issue prefixes** (line 250):
+3. **Hardcoded issue prefixes** (line 304):
    ```bash
    grep -oE "(BUG|FEAT|ENH)-[0-9]+"
    ```
    Should derive from `config.issues.categories.*.prefix`.
 
-4. **Unusable `{{config.issues.categories}}` display** (line 17):
+4. **Unusable `{{config.issues.categories}}` display** (line 20):
    ```markdown
    - **Categories**: `{{config.issues.categories}}`
    ```
@@ -46,11 +46,11 @@ The `/ll:capture_issue` command hardcodes directory paths and issue type prefixe
 
 ## Files to Modify
 
-- `commands/capture_issue.md:17` - Fix categories display
-- `commands/capture_issue.md:123-125` - Consider dynamic category iteration
-- `commands/capture_issue.md:143,146` - Use `{{config.issues.completed_dir}}`
-- `commands/capture_issue.md:218,355` - Use `{{config.issues.completed_dir}}`
-- `commands/capture_issue.md:250` - Document or parameterize prefix pattern
+- `commands/capture_issue.md:20` - Fix categories display
+- `commands/capture_issue.md:137-139` - Consider dynamic category iteration
+- `commands/capture_issue.md:157,160,258` - Use `{{config.issues.completed_dir}}`
+- `commands/capture_issue.md:446,451` - Use `{{config.issues.completed_dir}}`
+- `commands/capture_issue.md:304` - Document or parameterize prefix pattern
 
 ## Impact
 
@@ -61,6 +61,14 @@ The `/ll:capture_issue` command hardcodes directory paths and issue type prefixe
 ## Labels
 
 `enhancement`, `commands`, `consistency`
+
+---
+
+## Verification Notes
+
+**Verified: 2026-01-19**
+
+Line numbers updated to reflect current state of `commands/capture_issue.md`. Issue remains valid - the file still uses hardcoded directory names and prefix patterns instead of deriving them from configuration.
 
 ---
 
