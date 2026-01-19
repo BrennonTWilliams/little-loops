@@ -1,13 +1,12 @@
 ---
-description: |
-  Create a new FSM loop configuration interactively. Guides users through paradigm selection, parameter gathering, YAML generation, and validation.
-
-  Trigger keywords: "create loop", "new loop", "make automation loop", "create-loop", "setup automation", "configure loop"
+description: Create a new FSM loop configuration interactively. Guides users through paradigm selection, parameter gathering, YAML generation, and validation.
+allowed-tools:
+  - Bash(mkdir:*, test:*, ll-loop:*)
 ---
 
-# /ll:create-loop
+# Create Loop
 
-Interactive skill for creating new automation loop configurations. This skill guides you through:
+Interactive command for creating new automation loop configurations. This command guides you through:
 1. Choosing a paradigm (type of automation)
 2. Gathering paradigm-specific parameters
 3. Naming the loop
@@ -513,3 +512,30 @@ using: "/ll:manage_issue feature implement"
 tolerance: 1
 max_iterations: 20
 ```
+
+---
+
+## Examples
+
+```bash
+# Start the interactive wizard
+/ll:create-loop
+
+# The command will guide you through:
+# 1. Selecting a paradigm (goal, invariants, convergence, imperative)
+# 2. Configuring paradigm-specific options
+# 3. Naming the loop
+# 4. Previewing and saving the YAML
+```
+
+---
+
+## Integration
+
+This command creates FSM loop configurations that can be executed with the `ll-loop` CLI.
+
+Works well with:
+- `ll-loop <name>` - Execute the created loop
+- `ll-loop validate <name>` - Validate loop configuration
+- `/ll:check_code` - Often used as a fix action in loops
+- `/ll:manage_issue` - Used for complex bug fixes in loops

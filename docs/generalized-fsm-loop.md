@@ -1827,7 +1827,7 @@ The command uses `AskUserQuestion` with various patterns:
 
 ### Implementation Notes
 
-- Command is a skill in `skills/create-loop.md`
+- Command is implemented in `commands/create_loop.md`
 - Uses Claude's natural language understanding to map user intent to paradigm
 - Validates generated YAML before saving
 - Offers to run `ll-loop validate <name>` after creation
@@ -1846,7 +1846,7 @@ The command uses `AskUserQuestion` with various patterns:
 6. ✅ **File structure** - `.loops/` is canonical; separate from `.issues/`; no templates for now
 7. ✅ **CLI UX** - Primary invocation is `ll-loop <loop-name>` (resolves to `.loops/<name>.yaml`)
 8. ✅ **Context handoff integration** - Deferred to future; initial implementation terminates on handoff signal
-9. ✅ **`/ll:create-loop` command** - In scope for v1; interactive skill using `AskUserQuestion`
+9. ✅ **`/ll:create-loop` command** - In scope for v1; interactive command using `AskUserQuestion`
 
 ### For Implementation
 
