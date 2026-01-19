@@ -15,8 +15,9 @@ Documentation enhancement found by `/ll:audit_docs`. The project structure in CO
 ## Location
 
 - **File**: `CONTRIBUTING.md`
-- **Lines**: 71-110
+- **Lines**: 69-111
 - **Section**: Project Structure
+- **Anchor**: `## Project Structure`
 
 ## Current Content
 
@@ -68,4 +69,18 @@ Add `fsm/` subpackage:
 
 ## Status
 
-**Open** | Created: 2026-01-17 | Priority: P4
+**Completed** | Created: 2026-01-17 | Priority: P4
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-18
+- **Status**: Completed
+
+### Changes Made
+- `CONTRIBUTING.md`: Added fsm/ subpackage to project structure section (lines 103-110)
+
+### Verification Results
+- Visual inspection: PASS - fsm/ subpackage correctly documented with all 7 Python source files

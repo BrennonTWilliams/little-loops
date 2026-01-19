@@ -100,6 +100,14 @@ little-loops/
         ├── logo.py              # CLI logo display
         ├── dependency_graph.py  # Dependency graph construction
         ├── user_messages.py     # User message extraction
+        ├── fsm/                  # FSM loop system
+        │   ├── schema.py
+        │   ├── compilers.py
+        │   ├── evaluators.py
+        │   ├── executor.py
+        │   ├── interpolation.py
+        │   ├── validation.py
+        │   └── persistence.py
         └── parallel/     # Parallel processing module
             ├── orchestrator.py
             ├── worker_pool.py
