@@ -67,4 +67,8 @@ This may be expected behavior for local plugins vs marketplace plugins. Research
 
 ## Status
 
-**Open** | Created: 2026-01-18 | Priority: P3
+**Closed - Already Fixed** | Created: 2026-01-18 | Closed: 2026-01-18 | Priority: P3
+
+## Resolution
+
+The `marketplace.json` file was added in commit `f0ed0ed` ("fix: enable GitHub marketplace installation"). The file now exists at `.claude-plugin/marketplace.json` with appropriate metadata. This bug is no longer reproducible.
