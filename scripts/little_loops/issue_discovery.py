@@ -335,12 +335,9 @@ def find_existing_issue(
         for issue_path, is_completed in path_matches:
             try:
                 content = issue_path.read_text(encoding="utf-8")
-                # Check if same type of finding
-                issue_type_match = (
-                    (finding_type == "BUG" and "/bugs/" in str(issue_path))
-                    or (finding_type == "ENH" and "/enhancements/" in str(issue_path))
-                    or (finding_type == "FEAT" and "/features/" in str(issue_path))
-                    or is_completed  # Completed issues could be any type
+                # Check if same type of finding (uses configured categories)
+                issue_type_match = _matches_issue_type(
+                    finding_type, issue_path, config, is_completed
                 )
                 if issue_type_match:
                     # High confidence if same file + same type
@@ -443,6 +440,33 @@ def _get_category_from_issue_path(issue_path: Path, config: BRConfig) -> str:
         if category_config.prefix in filename:
             return category_name
     return "bugs"  # Default
+
+
+def _matches_issue_type(
+    finding_type: str,
+    issue_path: Path,
+    config: BRConfig,
+    is_completed: bool,
+) -> bool:
+    """Check if finding type matches issue path using configured categories.
+
+    Args:
+        finding_type: The type of finding (e.g., 'BUG', 'ENH', 'FEAT')
+        issue_path: Path to the issue file
+        config: Configuration with category definitions
+        is_completed: Whether the issue is in the completed directory
+
+    Returns:
+        True if the finding type matches the issue path's category
+    """
+    if is_completed:
+        return True
+
+    path_str = str(issue_path)
+    for category in config.issues.categories.values():
+        if finding_type == category.prefix and f"/{category.dir}/" in path_str:
+            return True
+    return False
 
 
 def reopen_issue(

@@ -15,6 +15,7 @@ from little_loops.issue_discovery import (
     _extract_file_paths,
     _extract_line_numbers,
     _extract_words,
+    _matches_issue_type,
     _normalize_text,
     find_existing_issue,
     reopen_issue,
@@ -533,3 +534,88 @@ class TestUpdateExistingIssue:
         content = issue_path.read_text()
         # Should only have one Test Section
         assert content.count("## Test Section") == 1
+
+
+class TestMatchesIssueType:
+    """Tests for _matches_issue_type helper function."""
+
+    def test_matches_bug_type(self, temp_project_dir: Path) -> None:
+        """Test matching BUG type to bugs directory."""
+        config = BRConfig(temp_project_dir)
+
+        bug_path = temp_project_dir / ".issues/bugs/P1-BUG-001-test.md"
+        assert _matches_issue_type("BUG", bug_path, config, False) is True
+        assert _matches_issue_type("FEAT", bug_path, config, False) is False
+        assert _matches_issue_type("ENH", bug_path, config, False) is False
+
+    def test_matches_feat_type(self, temp_project_dir: Path) -> None:
+        """Test matching FEAT type to features directory."""
+        config = BRConfig(temp_project_dir)
+
+        feat_path = temp_project_dir / ".issues/features/P2-FEAT-001-test.md"
+        assert _matches_issue_type("FEAT", feat_path, config, False) is True
+        assert _matches_issue_type("BUG", feat_path, config, False) is False
+        assert _matches_issue_type("ENH", feat_path, config, False) is False
+
+    def test_matches_enh_type(self, temp_project_dir: Path) -> None:
+        """Test matching ENH type to enhancements directory."""
+        config = BRConfig(temp_project_dir)
+
+        enh_path = temp_project_dir / ".issues/enhancements/P2-ENH-001-test.md"
+        assert _matches_issue_type("ENH", enh_path, config, False) is True
+        assert _matches_issue_type("BUG", enh_path, config, False) is False
+        assert _matches_issue_type("FEAT", enh_path, config, False) is False
+
+    def test_completed_always_matches(self, temp_project_dir: Path) -> None:
+        """Test that completed issues match any type."""
+        config = BRConfig(temp_project_dir)
+
+        completed_path = temp_project_dir / ".issues/completed/P1-BUG-001-test.md"
+
+        # Any type matches when is_completed=True
+        assert _matches_issue_type("BUG", completed_path, config, True) is True
+        assert _matches_issue_type("FEAT", completed_path, config, True) is True
+        assert _matches_issue_type("ENH", completed_path, config, True) is True
+        assert _matches_issue_type("CUSTOM", completed_path, config, True) is True
+
+    def test_custom_type_with_custom_config(self, temp_project_dir: Path) -> None:
+        """Test matching custom DOC type with configured category."""
+        # Create config with custom DOC category
+        config_data = {
+            "issues": {
+                "categories": {
+                    "documentation": {
+                        "prefix": "DOC",
+                        "dir": "documentation",
+                        "action": "document",
+                    },
+                }
+            }
+        }
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.parent.mkdir(parents=True, exist_ok=True)
+        config_path.write_text(json.dumps(config_data))
+
+        config = BRConfig(temp_project_dir)
+        doc_path = temp_project_dir / ".issues/documentation/P2-DOC-001-readme.md"
+
+        # DOC matches documentation dir
+        assert _matches_issue_type("DOC", doc_path, config, False) is True
+        # Other types don't match
+        assert _matches_issue_type("BUG", doc_path, config, False) is False
+        assert _matches_issue_type("FEAT", doc_path, config, False) is False
+
+        # Required categories still work
+        bug_path = temp_project_dir / ".issues/bugs/P1-BUG-001-test.md"
+        assert _matches_issue_type("BUG", bug_path, config, False) is True
+
+    def test_unknown_type_no_match(self, temp_project_dir: Path) -> None:
+        """Test that unknown types don't match any directory."""
+        config = BRConfig(temp_project_dir)
+
+        bug_path = temp_project_dir / ".issues/bugs/P1-BUG-001-test.md"
+        feat_path = temp_project_dir / ".issues/features/P2-FEAT-001-test.md"
+
+        # Unknown type doesn't match anything
+        assert _matches_issue_type("UNKNOWN", bug_path, config, False) is False
+        assert _matches_issue_type("UNKNOWN", feat_path, config, False) is False

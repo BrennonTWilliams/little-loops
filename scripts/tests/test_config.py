@@ -11,9 +11,11 @@ from little_loops.config import (
     BRConfig,
     CategoryConfig,
     CommandsConfig,
+    DEFAULT_CATEGORIES,
     IssuesConfig,
     ParallelAutomationConfig,
     ProjectConfig,
+    REQUIRED_CATEGORIES,
     ScanConfig,
 )
 
@@ -102,8 +104,11 @@ class TestIssuesConfig:
         config = IssuesConfig.from_dict(data)
 
         assert config.base_dir == "issues/"
-        assert len(config.categories) == 1
+        # User specified bugs, required categories (features, enhancements) are auto-added
+        assert len(config.categories) == 3
         assert config.categories["bugs"].prefix == "BUG"
+        assert "features" in config.categories
+        assert "enhancements" in config.categories
         assert config.completed_dir == "done"
         assert config.priorities == ["P0", "P1"]
         assert config.templates_dir == "templates/"
@@ -472,3 +477,145 @@ class TestBRConfigAliases:
         from little_loops.config import CLConfig
 
         assert CLConfig is BRConfig
+
+
+class TestCategoryConstants:
+    """Tests for REQUIRED_CATEGORIES and DEFAULT_CATEGORIES constants."""
+
+    def test_required_categories_contains_core_types(self) -> None:
+        """Test that REQUIRED_CATEGORIES has bugs, features, enhancements."""
+        assert "bugs" in REQUIRED_CATEGORIES
+        assert "features" in REQUIRED_CATEGORIES
+        assert "enhancements" in REQUIRED_CATEGORIES
+        assert REQUIRED_CATEGORIES["bugs"]["prefix"] == "BUG"
+        assert REQUIRED_CATEGORIES["features"]["prefix"] == "FEAT"
+        assert REQUIRED_CATEGORIES["enhancements"]["prefix"] == "ENH"
+
+    def test_default_categories_includes_required(self) -> None:
+        """Test that DEFAULT_CATEGORIES includes all required categories."""
+        for key in REQUIRED_CATEGORIES:
+            assert key in DEFAULT_CATEGORIES
+
+
+class TestIssuesConfigValidation:
+    """Tests for required category validation."""
+
+    def test_required_categories_always_present_empty_config(self) -> None:
+        """Test that required categories exist with empty config."""
+        config = IssuesConfig.from_dict({})
+
+        assert "bugs" in config.categories
+        assert "features" in config.categories
+        assert "enhancements" in config.categories
+
+    def test_required_categories_merged_with_custom(self) -> None:
+        """Test that custom categories are merged with required."""
+        data = {
+            "categories": {
+                "documentation": {"prefix": "DOC", "dir": "docs", "action": "document"},
+            }
+        }
+        config = IssuesConfig.from_dict(data)
+
+        # Custom category present
+        assert "documentation" in config.categories
+        assert config.categories["documentation"].prefix == "DOC"
+
+        # Required categories also present
+        assert "bugs" in config.categories
+        assert "features" in config.categories
+        assert "enhancements" in config.categories
+
+    def test_user_can_override_required_category_settings(self) -> None:
+        """Test that user can customize required category settings."""
+        data = {
+            "categories": {
+                "bugs": {"prefix": "BUG", "dir": "bug-reports", "action": "resolve"},
+            }
+        }
+        config = IssuesConfig.from_dict(data)
+
+        # User's customization applied
+        assert config.categories["bugs"].dir == "bug-reports"
+        assert config.categories["bugs"].action == "resolve"
+
+        # Other required categories still present
+        assert "features" in config.categories
+        assert "enhancements" in config.categories
+
+
+class TestIssuesConfigHelperMethods:
+    """Tests for IssuesConfig helper methods."""
+
+    def test_get_category_by_prefix_found(self) -> None:
+        """Test get_category_by_prefix returns category when found."""
+        config = IssuesConfig.from_dict({})
+
+        result = config.get_category_by_prefix("BUG")
+
+        assert result is not None
+        assert result.prefix == "BUG"
+        assert result.dir == "bugs"
+
+    def test_get_category_by_prefix_not_found(self) -> None:
+        """Test get_category_by_prefix returns None when not found."""
+        config = IssuesConfig.from_dict({})
+
+        result = config.get_category_by_prefix("UNKNOWN")
+
+        assert result is None
+
+    def test_get_category_by_dir_found(self) -> None:
+        """Test get_category_by_dir returns category when found."""
+        config = IssuesConfig.from_dict({})
+
+        result = config.get_category_by_dir("features")
+
+        assert result is not None
+        assert result.prefix == "FEAT"
+        assert result.dir == "features"
+
+    def test_get_category_by_dir_not_found(self) -> None:
+        """Test get_category_by_dir returns None when not found."""
+        config = IssuesConfig.from_dict({})
+
+        result = config.get_category_by_dir("unknown")
+
+        assert result is None
+
+    def test_get_all_prefixes(self) -> None:
+        """Test get_all_prefixes returns all configured prefixes."""
+        config = IssuesConfig.from_dict({})
+
+        prefixes = config.get_all_prefixes()
+
+        assert "BUG" in prefixes
+        assert "FEAT" in prefixes
+        assert "ENH" in prefixes
+
+    def test_get_all_dirs(self) -> None:
+        """Test get_all_dirs returns all configured directories."""
+        config = IssuesConfig.from_dict({})
+
+        dirs = config.get_all_dirs()
+
+        assert "bugs" in dirs
+        assert "features" in dirs
+        assert "enhancements" in dirs
+
+    def test_get_all_prefixes_with_custom_category(self) -> None:
+        """Test get_all_prefixes includes custom categories."""
+        data = {
+            "categories": {
+                "documentation": {"prefix": "DOC", "dir": "docs", "action": "document"},
+            }
+        }
+        config = IssuesConfig.from_dict(data)
+
+        prefixes = config.get_all_prefixes()
+
+        assert "DOC" in prefixes
+        # Required categories also present
+        assert "BUG" in prefixes
+        assert "FEAT" in prefixes
+        assert "ENH" in prefixes

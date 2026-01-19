@@ -24,7 +24,21 @@ __all__ = [
     "ParallelAutomationConfig",
     "CommandsConfig",
     "ScanConfig",
+    "REQUIRED_CATEGORIES",
+    "DEFAULT_CATEGORIES",
 ]
+
+# Required categories that must always exist (cannot be removed by user config)
+REQUIRED_CATEGORIES: dict[str, dict[str, str]] = {
+    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+    "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
+}
+
+# Default categories (same as required by default, could include optional defaults)
+DEFAULT_CATEGORIES: dict[str, dict[str, str]] = {
+    **REQUIRED_CATEGORIES,
+}
 
 
 @dataclass
@@ -83,15 +97,19 @@ class IssuesConfig:
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> IssuesConfig:
-        """Create IssuesConfig from dictionary."""
-        categories_data = data.get(
-            "categories",
-            {
-                "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
-                "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
-                "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
-            },
-        )
+        """Create IssuesConfig from dictionary.
+
+        Required categories (bugs, features, enhancements) are automatically
+        included if not specified in user config.
+        """
+        # Start with user categories or empty dict
+        categories_data = dict(data.get("categories", {}))
+
+        # Ensure required categories exist (merge with defaults)
+        for key, defaults in REQUIRED_CATEGORIES.items():
+            if key not in categories_data:
+                categories_data[key] = defaults
+
         categories = {
             key: CategoryConfig.from_dict(key, value) for key, value in categories_data.items()
         }
@@ -102,6 +120,50 @@ class IssuesConfig:
             priorities=data.get("priorities", ["P0", "P1", "P2", "P3", "P4", "P5"]),
             templates_dir=data.get("templates_dir"),
         )
+
+    def get_category_by_prefix(self, prefix: str) -> CategoryConfig | None:
+        """Get category config by prefix (e.g., 'BUG', 'FEAT').
+
+        Args:
+            prefix: Issue type prefix to look up
+
+        Returns:
+            CategoryConfig if found, None otherwise
+        """
+        for category in self.categories.values():
+            if category.prefix == prefix:
+                return category
+        return None
+
+    def get_category_by_dir(self, dir_name: str) -> CategoryConfig | None:
+        """Get category config by directory name.
+
+        Args:
+            dir_name: Directory name to look up
+
+        Returns:
+            CategoryConfig if found, None otherwise
+        """
+        for category in self.categories.values():
+            if category.dir == dir_name:
+                return category
+        return None
+
+    def get_all_prefixes(self) -> list[str]:
+        """Get all configured issue type prefixes.
+
+        Returns:
+            List of prefixes (e.g., ['BUG', 'FEAT', 'ENH'])
+        """
+        return [cat.prefix for cat in self.categories.values()]
+
+    def get_all_dirs(self) -> list[str]:
+        """Get all configured issue directory names.
+
+        Returns:
+            List of directory names (e.g., ['bugs', 'features', 'enhancements'])
+        """
+        return [cat.dir for cat in self.categories.values()]
 
 
 @dataclass
