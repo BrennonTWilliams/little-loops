@@ -8,7 +8,7 @@ discovered_date: 2026-01-12T00:00:00Z
 
 ## Summary
 
-Refactor the issue type system to be fully config-driven, removing hardcoded type matching and centralizing default category definitions. This enables users to add custom issue types (like DOC, CHORE, TECH-DEBT) without code changes.
+Refactor the issue type system to be fully config-driven, removing hardcoded type matching and centralizing default category definitions. This enables users to add custom issue types (like DOC, TECH-DEBT) without code changes.
 
 ## Motivation
 
@@ -162,7 +162,7 @@ def get_all_prefixes(self) -> list[str]:
     "issues": {
       "categories": {
         "documentation": {"prefix": "DOC", "dir": "documentation", "action": "document"},
-        "chores": {"prefix": "CHORE", "dir": "chores", "action": "complete"}
+        "tech-debt": {"prefix": "TECH-DEBT", "dir": "tech-debt", "action": "address"}
       }
     }
   }
