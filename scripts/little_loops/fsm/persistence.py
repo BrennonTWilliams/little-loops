@@ -52,7 +52,8 @@ class LoopState:
         last_result: Last evaluation result (verdict, details)
         started_at: ISO timestamp when loop started
         updated_at: ISO timestamp when state was last saved
-        status: Execution status (running, completed, failed, interrupted)
+        status: Execution status (running, completed, failed, interrupted, awaiting_continuation)
+        continuation_prompt: Continuation context from handoff signal (if status is awaiting_continuation)
     """
 
     loop_name: str
@@ -63,11 +64,12 @@ class LoopState:
     last_result: dict[str, Any] | None
     started_at: str
     updated_at: str
-    status: str  # "running", "completed", "failed", "interrupted"
+    status: str  # "running", "completed", "failed", "interrupted", "awaiting_continuation"
+    continuation_prompt: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
-        return {
+        result = {
             "loop_name": self.loop_name,
             "current_state": self.current_state,
             "iteration": self.iteration,
@@ -78,6 +80,9 @@ class LoopState:
             "updated_at": self.updated_at,
             "status": self.status,
         }
+        if self.continuation_prompt is not None:
+            result["continuation_prompt"] = self.continuation_prompt
+        return result
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> LoopState:
@@ -99,6 +104,7 @@ class LoopState:
             started_at=data["started_at"],
             updated_at=data.get("updated_at", ""),
             status=data["status"],
+            continuation_prompt=data.get("continuation_prompt"),
         )
 
 
@@ -223,17 +229,27 @@ class PersistentExecutor:
             loops_dir: Base directory for loops (default: .loops)
             **executor_kwargs: Additional kwargs for FSMExecutor
         """
+        from little_loops.fsm.handoff_handler import HandoffBehavior, HandoffHandler
+        from little_loops.fsm.signal_detector import SignalDetector
+
         self.fsm = fsm
         self.persistence = persistence or StatePersistence(fsm.name, loops_dir or Path(".loops"))
         self.persistence.initialize()
+
+        # Create signal detector and handler based on FSM config
+        signal_detector = SignalDetector()
+        handoff_handler = HandoffHandler(HandoffBehavior(fsm.on_handoff))
 
         # Create base executor with event callback that persists
         self._executor = FSMExecutor(
             fsm,
             event_callback=self._handle_event,
+            signal_detector=signal_detector,
+            handoff_handler=handoff_handler,
             **executor_kwargs,
         )
         self._last_result: dict[str, Any] | None = None
+        self._continuation_prompt: str | None = None
 
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the executor.
@@ -265,6 +281,10 @@ class PersistentExecutor:
                     k: v for k, v in event.items() if k not in ("event", "ts", "type", "verdict")
                 },
             }
+
+        # Track handoff events for continuation prompt
+        if event_type == "handoff_detected":
+            self._continuation_prompt = event.get("continuation")
 
     def _save_state(self) -> None:
         """Save current executor state to file."""
@@ -305,6 +325,8 @@ class PersistentExecutor:
         final_status = "completed" if result.terminated_by == "terminal" else "failed"
         if result.terminated_by in ("max_iterations", "signal"):
             final_status = "interrupted"
+        if result.terminated_by == "handoff":
+            final_status = "awaiting_continuation"
 
         final_state = LoopState(
             loop_name=self.fsm.name,
@@ -316,6 +338,7 @@ class PersistentExecutor:
             started_at=self._executor.started_at,
             updated_at="",
             status=final_status,
+            continuation_prompt=self._continuation_prompt,
         )
         self.persistence.save_state(final_state)
 
@@ -324,6 +347,8 @@ class PersistentExecutor:
     def resume(self) -> ExecutionResult | None:
         """Resume from saved state, or None if no resumable state.
 
+        Resumable states are: "running" and "awaiting_continuation".
+
         Returns:
             ExecutionResult if resumed and completed, None if no resumable state
         """
@@ -331,7 +356,7 @@ class PersistentExecutor:
         if state is None:
             return None
 
-        if state.status != "running":
+        if state.status not in ("running", "awaiting_continuation"):
             return None  # Already completed/failed
 
         # Restore executor state
@@ -342,16 +367,21 @@ class PersistentExecutor:
         self._executor.started_at = state.started_at
         self._last_result = state.last_result
 
-        # Emit resume event
-        self.persistence.append_event(
-            {
-                "event": "loop_resume",
-                "ts": _iso_now(),
-                "loop": self.fsm.name,
-                "from_state": state.current_state,
-                "iteration": state.iteration,
-            }
-        )
+        # Clear any pending handoff from previous run
+        self._executor._pending_handoff = None
+
+        # Emit resume event with continuation context if available
+        resume_event: dict[str, Any] = {
+            "event": "loop_resume",
+            "ts": _iso_now(),
+            "loop": self.fsm.name,
+            "from_state": state.current_state,
+            "iteration": state.iteration,
+        }
+        if state.status == "awaiting_continuation" and state.continuation_prompt:
+            resume_event["from_handoff"] = True
+            resume_event["continuation_prompt"] = state.continuation_prompt
+        self.persistence.append_event(resume_event)
 
         # Continue execution (don't clear previous events)
         return self.run(clear_previous=False)

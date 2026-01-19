@@ -449,6 +449,32 @@ The layered architecture was chosen to:
 
 ---
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-18
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/fsm/signal_detector.py` [CREATED]: SignalDetector class with extensible pattern-based signal detection for CONTEXT_HANDOFF:, FATAL_ERROR:, LOOP_STOP:
+- `scripts/little_loops/fsm/handoff_handler.py` [CREATED]: HandoffHandler class with pause/spawn/terminate behaviors
+- `scripts/little_loops/fsm/schema.py` [MODIFIED]: Added `on_handoff` field to FSMLoop dataclass
+- `scripts/little_loops/fsm/persistence.py` [MODIFIED]: Added `continuation_prompt` to LoopState, updated PersistentExecutor to handle handoffs with `awaiting_continuation` status
+- `scripts/little_loops/fsm/executor.py` [MODIFIED]: Added signal_detector and handoff_handler parameters, `_handle_handoff` method, handoff fields to ExecutionResult
+- `scripts/little_loops/fsm/__init__.py` [MODIFIED]: Exported new classes
+- `scripts/little_loops/cli.py` [MODIFIED]: Updated cmd_status and cmd_resume to display continuation context
+- `scripts/tests/test_signal_detector.py` [CREATED]: 17 unit tests for SignalDetector
+- `scripts/tests/test_handoff_handler.py` [CREATED]: 10 unit tests for HandoffHandler
+
+### Verification Results
+
+- Tests: PASS (1390 tests, all passing)
+- Types: PASS (mypy strict, no issues)
+- Lint: PASS (ruff, all checks passed)
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-17 | Priority: P3
+**Completed** | Created: 2026-01-17 | Completed: 2026-01-18 | Priority: P3

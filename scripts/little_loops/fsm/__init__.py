@@ -50,6 +50,19 @@ Public exports:
     PersistentExecutor: Executor wrapper with persistence
     list_running_loops: List all loops with saved state
     get_loop_history: Get event history for a loop
+
+    # Signal Detection
+    SignalDetector: Detect signals in command output
+    SignalPattern: Configurable signal pattern for detection
+    DetectedSignal: A signal detected in command output
+    HANDOFF_SIGNAL: Built-in handoff signal pattern
+    ERROR_SIGNAL: Built-in error signal pattern
+    STOP_SIGNAL: Built-in stop signal pattern
+
+    # Handoff Handling
+    HandoffHandler: Handle context handoff signals
+    HandoffBehavior: Enum for handoff behaviors (pause/spawn/terminate)
+    HandoffResult: Result from handling a handoff signal
 """
 
 from little_loops.fsm.compilers import compile_paradigm
@@ -71,6 +84,11 @@ from little_loops.fsm.executor import (
     ExecutionResult,
     FSMExecutor,
 )
+from little_loops.fsm.handoff_handler import (
+    HandoffBehavior,
+    HandoffHandler,
+    HandoffResult,
+)
 from little_loops.fsm.interpolation import (
     InterpolationContext,
     InterpolationError,
@@ -91,6 +109,14 @@ from little_loops.fsm.schema import (
     RouteConfig,
     StateConfig,
 )
+from little_loops.fsm.signal_detector import (
+    ERROR_SIGNAL,
+    HANDOFF_SIGNAL,
+    STOP_SIGNAL,
+    DetectedSignal,
+    SignalDetector,
+    SignalPattern,
+)
 from little_loops.fsm.validation import (
     ValidationError,
     load_and_validate,
@@ -102,17 +128,26 @@ __all__ = [
     "ActionRunner",
     "DEFAULT_LLM_PROMPT",
     "DEFAULT_LLM_SCHEMA",
+    "DetectedSignal",
+    "ERROR_SIGNAL",
     "EvaluateConfig",
     "EvaluationResult",
     "ExecutionResult",
     "FSMExecutor",
     "FSMLoop",
+    "HANDOFF_SIGNAL",
+    "HandoffBehavior",
+    "HandoffHandler",
+    "HandoffResult",
     "InterpolationContext",
     "InterpolationError",
     "LLMConfig",
     "LoopState",
     "PersistentExecutor",
     "RouteConfig",
+    "STOP_SIGNAL",
+    "SignalDetector",
+    "SignalPattern",
     "StateConfig",
     "StatePersistence",
     "ValidationError",

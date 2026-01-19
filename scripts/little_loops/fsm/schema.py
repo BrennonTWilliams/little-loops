@@ -339,6 +339,7 @@ class FSMLoop:
         timeout: Max total runtime in seconds (loop-level)
         maintain: If True, restart after completion
         llm: LLM evaluation configuration
+        on_handoff: Behavior when handoff signal detected (pause/spawn/terminate)
     """
 
     name: str
@@ -352,6 +353,7 @@ class FSMLoop:
     timeout: int | None = None
     maintain: bool = False
     llm: LLMConfig = field(default_factory=LLMConfig)
+    on_handoff: Literal["pause", "spawn", "terminate"] = "pause"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -375,6 +377,8 @@ class FSMLoop:
             result["timeout"] = self.timeout
         if self.maintain:
             result["maintain"] = self.maintain
+        if self.on_handoff != "pause":
+            result["on_handoff"] = self.on_handoff
 
         llm_dict = self.llm.to_dict()
         if llm_dict:
@@ -406,6 +410,7 @@ class FSMLoop:
             timeout=data.get("timeout"),
             maintain=data.get("maintain", False),
             llm=llm,
+            on_handoff=data.get("on_handoff", "pause"),
         )
 
     def get_all_state_names(self) -> set[str]:

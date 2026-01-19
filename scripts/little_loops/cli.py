@@ -841,6 +841,12 @@ Examples:
         print(f"Iteration: {state.iteration}")
         print(f"Started: {state.started_at}")
         print(f"Updated: {state.updated_at}")
+        if state.continuation_prompt:
+            # Show truncated continuation context
+            prompt_preview = state.continuation_prompt[:200]
+            if len(state.continuation_prompt) > 200:
+                prompt_preview += "..."
+            print(f"Continuation context: {prompt_preview}")
         return 0
 
     def cmd_stop(loop_name: str) -> int:
@@ -872,6 +878,19 @@ Examples:
         except ValueError as e:
             logger.error(f"Validation error: {e}")
             return 1
+
+        # Check state before resuming to show context
+        persistence = StatePersistence(loop_name)
+        state = persistence.load_state()
+        if state and state.status == "awaiting_continuation":
+            print(f"Resuming from context handoff (iteration {state.iteration})...")
+            if state.continuation_prompt:
+                # Show truncated continuation context
+                prompt_preview = state.continuation_prompt[:500]
+                if len(state.continuation_prompt) > 500:
+                    prompt_preview += "..."
+                print(f"Context: {prompt_preview}")
+                print()
 
         executor = PersistentExecutor(fsm)
         result = executor.resume()

@@ -23,8 +23,10 @@ from little_loops.fsm.evaluators import (
     evaluate_exit_code,
     evaluate_llm_structured,
 )
+from little_loops.fsm.handoff_handler import HandoffHandler
 from little_loops.fsm.interpolation import InterpolationContext, interpolate
 from little_loops.fsm.schema import FSMLoop, StateConfig
+from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
 
 
 @dataclass
@@ -34,18 +36,22 @@ class ExecutionResult:
     Attributes:
         final_state: Name of the state when execution stopped
         iterations: Total iterations executed
-        terminated_by: Reason for termination (terminal, max_iterations, timeout, signal, error)
+        terminated_by: Reason for termination (terminal, max_iterations, timeout, signal, error, handoff)
         duration_ms: Total execution time in milliseconds
         captured: All captured variable values
         error: Error message if terminated_by is "error"
+        handoff: True if execution stopped due to handoff signal
+        continuation_prompt: Continuation context from handoff signal
     """
 
     final_state: str
     iterations: int
-    terminated_by: str  # "terminal", "max_iterations", "timeout", "signal", "error"
+    terminated_by: str  # "terminal", "max_iterations", "timeout", "signal", "error", "handoff"
     duration_ms: int
     captured: dict[str, dict[str, Any]]
     error: str | None = None
+    handoff: bool = False
+    continuation_prompt: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -58,6 +64,10 @@ class ExecutionResult:
         }
         if self.error is not None:
             result["error"] = self.error
+        if self.handoff:
+            result["handoff"] = self.handoff
+        if self.continuation_prompt is not None:
+            result["continuation_prompt"] = self.continuation_prompt
         return result
 
 
@@ -187,6 +197,8 @@ class FSMExecutor:
         fsm: FSMLoop,
         event_callback: EventCallback | None = None,
         action_runner: ActionRunner | None = None,
+        signal_detector: SignalDetector | None = None,
+        handoff_handler: HandoffHandler | None = None,
     ):
         """Initialize the executor.
 
@@ -194,10 +206,14 @@ class FSMExecutor:
             fsm: The FSM loop to execute
             event_callback: Optional callback for events
             action_runner: Optional custom action runner (for testing)
+            signal_detector: Optional signal detector for output parsing
+            handoff_handler: Optional handler for handoff signals
         """
         self.fsm = fsm
-        self.event_callback = event_callback or (lambda e: None)
+        self.event_callback = event_callback or (lambda _: None)
         self.action_runner: ActionRunner = action_runner or DefaultActionRunner()
+        self.signal_detector = signal_detector
+        self.handoff_handler = handoff_handler
 
         # Runtime state
         self.current_state = fsm.initial
@@ -209,6 +225,9 @@ class FSMExecutor:
 
         # Shutdown flag for graceful signal handling
         self._shutdown_requested = False
+
+        # Pending handoff signal (set by _run_action, checked by main loop)
+        self._pending_handoff: DetectedSignal | None = None
 
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the executor.
@@ -277,6 +296,10 @@ class FSMExecutor:
 
                 # Execute state
                 next_state = self._execute_state(state_config)
+
+                # Check for pending handoff signal
+                if self._pending_handoff:
+                    return self._handle_handoff(self._pending_handoff)
 
                 # Handle maintain mode
                 if next_state is None and self.fsm.maintain:
@@ -385,6 +408,12 @@ class FSMExecutor:
                 "exit_code": result.exit_code,
                 "duration_ms": result.duration_ms,
             }
+
+        # Check for signals in output
+        if self.signal_detector:
+            signal = self.signal_detector.detect_first(result.output)
+            if signal and signal.signal_type == "handoff":
+                self._pending_handoff = signal
 
         return result
 
@@ -551,4 +580,38 @@ class FSMExecutor:
             duration_ms=_now_ms() - self.start_time_ms,
             captured=self.captured,
             error=error,
+        )
+
+    def _handle_handoff(self, signal: DetectedSignal) -> ExecutionResult:
+        """Handle a detected handoff signal.
+
+        Emits a handoff_detected event and optionally invokes the handoff handler.
+
+        Args:
+            signal: The detected handoff signal
+
+        Returns:
+            ExecutionResult with handoff information
+        """
+        self._emit(
+            "handoff_detected",
+            {
+                "state": self.current_state,
+                "iteration": self.iteration,
+                "continuation": signal.payload,
+            },
+        )
+
+        # Invoke handler if configured
+        if self.handoff_handler:
+            self.handoff_handler.handle(self.fsm.name, signal.payload)
+
+        return ExecutionResult(
+            final_state=self.current_state,
+            iterations=self.iteration,
+            terminated_by="handoff",
+            duration_ms=_now_ms() - self.start_time_ms,
+            captured=self.captured,
+            handoff=True,
+            continuation_prompt=signal.payload,
         )
