@@ -258,3 +258,23 @@ None - standalone feature.
 ## Status
 
 **Open** | Created: 2026-01-16 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-18
+- **Status**: Completed
+
+### Changes Made
+- `config-schema.json`: Added `documents` section with `enabled` flag and `categories` object supporting dynamic category definitions
+- `commands/init.md`: Added Round 5 for document tracking setup with auto-detect defaults and custom category options
+- `commands/align_issues.md`: Created new command for validating issues against key documents with alignment scoring
+- `commands/help.md`: Added align_issues to command listing and quick reference table
+- `docs/COMMANDS.md`: Added documentation for align_issues command
+
+### Verification Results
+- Tests: PASS (1345 tests passing)
+- Lint: PASS (ruff check)
+- Types: PASS (mypy - no issues)

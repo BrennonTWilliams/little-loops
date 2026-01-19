@@ -464,6 +464,38 @@
         }
       },
       "additionalProperties": false
+    },
+    "documents": {
+      "type": "object",
+      "description": "Key document tracking by category for issue alignment validation",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable document category tracking",
+          "default": false
+        },
+        "categories": {
+          "type": "object",
+          "description": "Document categories with file lists",
+          "additionalProperties": {
+            "type": "object",
+            "properties": {
+              "description": {
+                "type": "string",
+                "description": "What this category covers"
+              },
+              "files": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Relative paths to key documents"
+              }
+            },
+            "required": ["files"]
+          },
+          "default": {}
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

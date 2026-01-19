@@ -425,24 +425,98 @@ If context monitoring is enabled, add to configuration:
 - Only include non-default values. If user selects exactly `[".env"]` (the default), the `worktree_copy_files` key can be omitted
 - The `.claude/` directory is always copied automatically regardless of `worktree_copy_files` setting
 
+#### Step 5e: Document Tracking (Round 5)
+
+**First, scan for markdown documents:**
+```bash
+# Find markdown files that might be key documents
+find . -name "*.md" -not -path "*/.git/*" -not -path "*/node_modules/*" -not -path "*/.issues/*" -not -path "*/.worktrees/*" -not -path "*/thoughts/*" | head -30
+```
+
+Use a SINGLE AskUserQuestion call:
+
+```yaml
+questions:
+  - header: "Docs"
+    question: "Would you like to track key documents by category for issue alignment?"
+    options:
+      - label: "Use defaults (Recommended)"
+        description: "Auto-detect architecture and product documents"
+      - label: "Custom categories"
+        description: "Define your own document categories"
+      - label: "Skip"
+        description: "Don't track documents"
+    multiSelect: false
+```
+
+**If "Use defaults" selected:**
+1. Scan codebase for .md files
+2. Auto-detect architecture docs: files matching `**/architecture*.md`, `**/design*.md`, `**/api*.md`, `docs/*.md`
+3. Auto-detect product docs: files matching `**/goal*.md`, `**/roadmap*.md`, `**/vision*.md`, `**/requirements*.md`
+4. Present discovered files for confirmation:
+
+```yaml
+questions:
+  - header: "Confirm"
+    question: "Found these key documents. Include them all?"
+    options:
+      - label: "Yes, use all found"
+        description: "[list architecture and product docs found]"
+      - label: "Select specific files"
+        description: "Choose which files to include"
+      - label: "Skip document tracking"
+        description: "Don't configure document tracking"
+    multiSelect: false
+```
+
+**If "Custom categories" selected:**
+1. Ask user to name their categories (comma-separated)
+2. For each category, ask which files to include
+
+**Configuration from Round 5 responses:**
+
+If document tracking is enabled with defaults, add to configuration:
+```json
+{
+  "documents": {
+    "enabled": true,
+    "categories": {
+      "architecture": {
+        "description": "System design and technical decisions",
+        "files": ["docs/ARCHITECTURE.md", "docs/API.md"]
+      },
+      "product": {
+        "description": "Product goals and requirements",
+        "files": [".claude/ll-goals.md", "docs/ROADMAP.md"]
+      }
+    }
+  }
+}
+```
+
+If "Skip" selected or no documents found, omit the `documents` section entirely (disabled is the default).
+
 ---
 
 ### Interactive Mode Summary
 
-**Total interaction rounds: 3-4** (reduced from 5)
+**Total interaction rounds: 3-5**
 
 | Round | Group | Questions |
 |-------|-------|-----------|
 | 1 | Core Settings | name, src_dir, test_cmd, lint_cmd |
 | 2 | Additional Config | format_cmd, issues, scan_dirs, excludes |
 | 3 | Features | features (multi-select: parallel, context_monitor) |
-| 4 | Advanced (dynamic) | issues_path?, worktree_files?, threshold? (0-3 questions based on R2/R3 selections) |
+| 4 | Advanced (dynamic) | issues_path?, worktree_files?, threshold? |
+| 5 | Document Tracking | docs (auto-detect or custom categories) |
 
 **Round 4 conditions:**
 - **issues_path**: Only if "custom directory" selected in Round 2
 - **worktree_files**: Only if "Parallel processing" selected in Round 3
 - **threshold**: Only if "Context monitoring" selected in Round 3
-- **If no conditions match**: Round 4 is skipped entirely (3 rounds total)
+- **If no conditions match**: Round 4 is skipped
+
+**Round 5**: Always runs. User can choose "Use defaults", "Custom categories", or "Skip".
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next
@@ -484,6 +558,10 @@ Configuration Summary:
   context_monitor.enabled: true
   context_monitor.auto_handoff_threshold: [threshold]  # Only if non-default
 
+  [DOCUMENTS]                             # Only show if enabled
+  documents.enabled: true
+  documents.categories: [architecture, product]  # List category names
+
 ================================================================================
 ```
 
@@ -515,7 +593,8 @@ Otherwise (neither `--interactive` nor `--yes`):
      "issues": { ... },
      "scan": { ... },
      "parallel": { ... },
-     "context_monitor": { ... }
+     "context_monitor": { ... },
+     "documents": { ... }
    }
    ```
 
@@ -523,6 +602,7 @@ Otherwise (neither `--interactive` nor `--yes`):
    - Omit `parallel` section entirely if not configured in interactive mode
    - Omit `parallel.worktree_copy_files` if user selected exactly the defaults
    - Omit `context_monitor` section if user selected "No" (disabled is the default)
+   - Omit `documents` section if user selected "Skip" (disabled is the default)
 
 ### 9. Update .gitignore
 

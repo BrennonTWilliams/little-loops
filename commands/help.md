@@ -62,6 +62,11 @@ ISSUE MANAGEMENT
 /ll:verify_issues
     Verify all issue files against current codebase state
 
+/ll:align_issues <category> [--verbose]
+    Validate active issues against key documents for alignment
+    Categories: architecture, product, --all
+    Requires: documents.enabled in ll-config.json
+
 /ll:normalize_issues
     Find and fix issue filenames lacking valid IDs (BUG-001, etc.)
 
@@ -135,6 +140,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 | `prioritize_issues` | Assign P0-P5 priorities |
 | `ready_issue` | Validate and fix issue files |
 | `verify_issues` | Check issues against code |
+| `align_issues` | Validate issues against key documents |
 | `normalize_issues` | Fix issue filenames lacking valid IDs |
 | `manage_issue` | Full issue lifecycle management |
 | `iterate_plan` | Update implementation plans |

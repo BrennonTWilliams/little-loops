@@ -63,6 +63,15 @@ Validate issue file for accuracy and auto-correct problems.
 ### `/ll:verify_issues`
 Verify all issue files against current codebase state.
 
+### `/ll:align_issues`
+Validate active issues against key documents for alignment.
+
+**Arguments:**
+- `category`: Document category (`architecture`, `product`, or `--all`)
+- `flags` (optional): `--verbose` for detailed analysis
+
+**Prerequisites:** Configure document tracking via `/ll:init --interactive`
+
 ### `/ll:normalize_issues`
 Find and fix issue filenames lacking valid IDs (BUG-001, etc.).
 
@@ -149,6 +158,7 @@ Resume from a previous session's continuation prompt.
 | `prioritize_issues` | Assign P0-P5 priorities |
 | `ready_issue` | Validate and fix issue files |
 | `verify_issues` | Check issues against code |
+| `align_issues` | Validate issues against key documents |
 | `normalize_issues` | Fix issue filenames lacking valid IDs |
 | `manage_issue` | Full issue lifecycle management |
 | `iterate_plan` | Update implementation plans |
