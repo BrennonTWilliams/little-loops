@@ -240,6 +240,12 @@ None
 
 ---
 
+## Resolution
+
+**Won't Do** - A separate CLI command already exists for executing sequences of issues with dependency awareness, making this enhancement redundant.
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-12 | Priority: P2
+**Won't Do** | Created: 2026-01-12 | Closed: 2026-01-18 | Priority: P2
