@@ -499,20 +499,7 @@ Add resolution section:
 - Types: PASS
 ```
 
-### 2. Commit Changes
-
-```bash
-git add [modified files]
-git commit -m "[action]([component]): [description]
-
-[issue_type] [ISSUE-ID]: [title]
-
-- [change 1]
-- [change 2]
-"
-```
-
-### 3. Move to Completed
+### 2. Move to Completed
 
 **CRITICAL**: Move to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` - this is a SIBLING directory to bugs/features/enhancements, NOT a subdirectory within them.
 
@@ -520,10 +507,26 @@ git commit -m "[action]([component]): [description]
 # ✅ CORRECT: Move to sibling completed/ directory
 git mv "{{config.issues.base_dir}}/[type]/[file].md" \
        "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/"
-git commit -m "chore(issues): mark [ISSUE-ID] as completed"
 
 # ❌ WRONG - NEVER do this (creates nested directory):
 # git mv "{{config.issues.base_dir}}/bugs/P1-BUG-001.md" "{{config.issues.base_dir}}/bugs/completed/"
+```
+
+### 3. Commit All Changes
+
+Commit source changes and moved issue file together in a single commit:
+
+```bash
+git add [modified files] "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/[file].md"
+git commit -m "[action]([component]): [description]
+
+[issue_type] [ISSUE-ID]: [title]
+
+- [change 1]
+- [change 2]
+
+Closes [ISSUE-ID]
+"
 ```
 
 ---
