@@ -387,3 +387,19 @@ class TestLockManager:
 ## Reference
 
 - Design doc: `docs/generalized-fsm-loop.md` section "Concurrency and Locking"
+
+---
+
+## Verification Notes
+
+**Verified: 2026-01-18**
+
+- Blocker FEAT-046 (State Persistence and Events) is now **completed** (in `.issues/completed/`)
+- Blocker FEAT-047 (ll-loop CLI Tool) is now **completed** (in `.issues/completed/`)
+- This feature is now **unblocked** and ready for implementation
+
+---
+
+## Status
+
+**Open** | Created: 2026-01-13 | Priority: P3
