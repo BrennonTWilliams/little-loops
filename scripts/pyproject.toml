@@ -50,6 +50,7 @@ ll-parallel = "little_loops.cli:main_parallel"
 ll-messages = "little_loops.cli:main_messages"
 ll-loop = "little_loops.cli:main_loop"
 ll-sprint = "little_loops.cli:main_sprint"
+ll-workflows = "little_loops.workflow_sequence_analyzer:main"
 
 [project.optional-dependencies]
 dev = [
