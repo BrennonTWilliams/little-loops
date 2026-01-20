@@ -112,7 +112,7 @@ Invoke `workflow-automation-proposer` skill using the **Skill tool**:
 ```
 Skill tool invocation:
   skill: "workflow-automation-proposer"
-  args: "--patterns step1-patterns.yaml --workflows step2-workflows.yaml"
+  args: ".claude/workflow-analysis/step1-patterns.yaml .claude/workflow-analysis/step2-workflows.yaml"
 ```
 
 Wait for completion. If failed, report error and stop.
@@ -212,7 +212,7 @@ Each step uses a different invocation method, but the orchestrator normalizes re
 
 | Invocation | Success Check | Output File | Summary Extraction |
 |------------|---------------|-------------|-------------------|
-| Task (Agent) | Agent returns without error | Specified in prompt | Parse from agent response |
+| Task (Agent) | Agent returns without error | Specified in prompt | Check output file exists and read summary from file |
 | Bash (CLI) | Exit code == 0 | `--output` parameter | First line of stdout |
 | Skill | Skill completes without error | Read from skill output | Parse from skill response |
 

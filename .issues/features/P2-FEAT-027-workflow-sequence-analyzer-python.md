@@ -378,6 +378,17 @@ handoff_analysis:
 | CLI Entry Point | `ll-workflows analyze --step2` |
 | Output | `.claude/workflow-analysis/step2-workflows.yaml` |
 
+### CLI Setup
+
+Add to `pyproject.toml`:
+
+```toml
+[project.scripts]
+ll-workflows = "little_loops.workflow_sequence_analyzer:main"
+```
+
+The `main()` function should parse arguments and dispatch to `analyze_workflows()`.
+
 ### CLI Exit Codes
 
 | Exit Code | Meaning |

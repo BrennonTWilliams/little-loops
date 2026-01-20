@@ -50,9 +50,37 @@ description: |
 # Workflow Automation Proposer
 
 You are the final step in a 3-step workflow analysis pipeline. Your job is to propose concrete automation solutions based on the patterns and workflows identified in Steps 1 and 2.
+
+## Arguments
+
+$ARGUMENTS
 ```
 
-### 2. Proposal Types
+### 2. Input File Resolution
+
+The skill receives input file paths via `$ARGUMENTS`:
+
+| Scenario | Behavior |
+|----------|----------|
+| `$ARGUMENTS` provided | Parse as space-separated paths: `<step1-file> <step2-file>` |
+| `$ARGUMENTS` empty | Look in `.claude/workflow-analysis/` for `step1-patterns.yaml` and `step2-workflows.yaml` |
+
+**Invocation from `/ll:analyze-workflows`:**
+
+```
+Skill tool invocation:
+  skill: "workflow-automation-proposer"
+  args: ".claude/workflow-analysis/step1-patterns.yaml .claude/workflow-analysis/step2-workflows.yaml"
+```
+
+**Direct invocation (auto-detect):**
+
+```bash
+/workflow-automation-proposer
+# Looks for most recent step1/step2 files in .claude/workflow-analysis/
+```
+
+### 3. Proposal Types
 
 | Type | When to Propose | Example |
 |------|-----------------|---------|
@@ -65,7 +93,7 @@ You are the final step in a 3-step workflow analysis pipeline. Your job is to pr
 | `agent_enhancement` | Extend existing agent capabilities | Add entity extraction to analyzer |
 | `existing_command` | User should use existing command | Suggest `/ll:commit` for commit requests |
 
-### 3. Priority Calculation
+### 4. Priority Calculation
 
 ```python
 def calculate_priority(pattern: Pattern, workflows: list[Workflow]) -> str:
@@ -89,7 +117,7 @@ def calculate_priority(pattern: Pattern, workflows: list[Workflow]) -> str:
         return "LOW"       # 1-2 occurrences, minor friction
 ```
 
-### 4. Effort Estimation
+### 5. Effort Estimation
 
 | Effort | Criteria | Example |
 |--------|----------|---------|
@@ -115,7 +143,7 @@ def estimate_effort(proposal_type: str, complexity: str) -> str:
     return effort_matrix.get((proposal_type, complexity), 'MEDIUM')
 ```
 
-### 5. Implementation Sketch Generation
+### 6. Implementation Sketch Generation
 
 For each proposal, generate an actionable implementation plan:
 
@@ -166,7 +194,7 @@ allowed_tools: {proposal.required_tools}
     # ... more types
 ```
 
-### 6. Output Schema: `step3-proposals.yaml`
+### 7. Output Schema: `step3-proposals.yaml`
 
 ```yaml
 analysis_metadata:
@@ -325,7 +353,7 @@ implementation_roadmap:
     - prop-004  # Entity extractor script (MEDIUM effort)
 ```
 
-### 7. Skill Prompt Content
+### 8. Skill Prompt Content
 
 ```markdown
 # Workflow Automation Proposer
