@@ -12,7 +12,7 @@ Create `/ll:analyze-workflows` command that orchestrates the 3-step workflow ana
 
 ## Motivation
 
-The workflow analysis pipeline consists of three agents (FEAT-026, FEAT-027, FEAT-028) that must run in sequence. Users need a single command to:
+The workflow analysis pipeline consists of three components (FEAT-026 agent, FEAT-027 Python module, FEAT-028 skill) that must run in sequence. Users need a single command to:
 
 - Auto-detect the most recent user messages file
 - Run all three analysis steps in order
@@ -32,7 +32,9 @@ allowed_tools:
   - Read
   - Write
   - Glob
-  - Task
+  - Task      # Step 1 (agent)
+  - Bash      # Step 2 (Python CLI)
+  - Skill     # Step 3 (skill)
   - TodoWrite
 ---
 ```
@@ -70,27 +72,48 @@ $ARGUMENTS
 3. Validate file exists and contains messages
 4. Create output directory: `.claude/workflow-analysis/`
 
-### Step 1: Pattern Analysis
+### Step 1: Pattern Analysis (via Task tool → Agent)
 
-Spawn `workflow-pattern-analyzer` agent with:
+Spawn `workflow-pattern-analyzer` agent using the **Task tool**:
 - Input: user-messages JSONL file
 - Output: `.claude/workflow-analysis/step1-patterns.yaml`
 
+```
+Task tool invocation:
+  subagent_type: workflow-pattern-analyzer
+  prompt: "Analyze {messages_file} and write results to .claude/workflow-analysis/step1-patterns.yaml"
+```
+
 Wait for completion. If failed, report error and stop.
 
-### Step 2: Sequence Analysis
+### Step 2: Sequence Analysis (via Bash → Python CLI)
 
-Spawn `workflow-sequence-analyzer` agent with:
+Invoke `workflow-sequence-analyzer` Python module using the **Bash tool**:
 - Input: user-messages file + step1-patterns.yaml
 - Output: `.claude/workflow-analysis/step2-workflows.yaml`
 
-Wait for completion. If failed, report error and stop.
+```bash
+ll-workflows analyze --step2 \
+  --input {messages_file} \
+  --patterns .claude/workflow-analysis/step1-patterns.yaml \
+  --output .claude/workflow-analysis/step2-workflows.yaml
+```
 
-### Step 3: Automation Proposals
+Wait for completion. Check exit code:
+- Exit 0: Success, proceed to Step 3
+- Exit 1: Failure, report error from stderr and stop
 
-Spawn `workflow-automation-proposer` agent with:
+### Step 3: Automation Proposals (via Skill tool → Skill)
+
+Invoke `workflow-automation-proposer` skill using the **Skill tool**:
 - Input: step1-patterns.yaml + step2-workflows.yaml
 - Output: `.claude/workflow-analysis/step3-proposals.yaml`
+
+```
+Skill tool invocation:
+  skill: "workflow-automation-proposer"
+  args: "--patterns step1-patterns.yaml --workflows step2-workflows.yaml"
+```
 
 Wait for completion. If failed, report error and stop.
 
@@ -174,13 +197,41 @@ Display summary to user:
 - High-priority proposals
 - Path to full summary file
 
+## Result Normalization
+
+Each step uses a different invocation method, but the orchestrator normalizes results to a common contract:
+
+| Field | Description |
+|-------|-------------|
+| `success` | Boolean indicating step completed successfully |
+| `output_file` | Path to the step's output YAML file |
+| `summary` | Brief description of what was produced |
+| `error` | Error message if `success` is false |
+
+**Extracting normalized results by invocation type:**
+
+| Invocation | Success Check | Output File | Summary Extraction |
+|------------|---------------|-------------|-------------------|
+| Task (Agent) | Agent returns without error | Specified in prompt | Parse from agent response |
+| Bash (CLI) | Exit code == 0 | `--output` parameter | First line of stdout |
+| Skill | Skill completes without error | Read from skill output | Parse from skill response |
+
+This allows the orchestrator to use consistent logic for progress reporting and error handling regardless of how each step was invoked.
+
 ## Error Handling
 
 If any step fails:
-1. Log the error with step number
-2. Preserve partial outputs
-3. Suggest re-running with `--verbose` for debugging
-4. Suggest checking individual step outputs
+1. Log the error with step number and invocation type
+2. Preserve partial outputs (completed steps remain available)
+3. Report the specific error from the failed invocation:
+   - Task: Agent error message
+   - Bash: stderr output and exit code
+   - Skill: Skill error response
+4. Suggest actionable retry steps:
+   - For Step 1 failures: Check input file format
+   - For Step 2 failures: Run `ll-workflows analyze --step2 --verbose` for debugging
+   - For Step 3 failures: Check that step1 and step2 outputs exist
+5. Allow resuming from last successful step (partial outputs preserved)
 ```
 
 ### 3. Output Directory Structure
@@ -286,17 +337,19 @@ $ cat .claude/workflow-analysis/summary-*.md
 
 ## Dependencies
 
-- Task tool for spawning agents
-- TodoWrite for progress tracking
-- Read/Write for file operations
-- Glob for file detection
+- **Task tool**: Spawning `workflow-pattern-analyzer` agent (Step 1)
+- **Bash tool**: Invoking `ll-workflows` CLI for sequence analysis (Step 2)
+- **Skill tool**: Invoking `workflow-automation-proposer` skill (Step 3)
+- **TodoWrite**: Progress tracking
+- **Read/Write**: File operations for summary generation
+- **Glob**: Input file detection
 
 ## Blocked By
 
 - FEAT-011: User Message History Extraction (provides input data)
-- FEAT-026: Workflow Pattern Analyzer Agent (Step 1)
-- FEAT-027: Workflow Sequence Analyzer Agent (Step 2)
-- FEAT-028: Workflow Automation Proposer Agent (Step 3)
+- FEAT-026: Workflow Pattern Analyzer Agent (Step 1 - invoked via Task tool)
+- FEAT-027: Workflow Sequence Analyzer Module (Step 2 - invoked via Bash/CLI)
+- FEAT-028: Workflow Automation Proposer Skill (Step 3 - invoked via Skill tool)
 
 ## Blocks
 
@@ -315,8 +368,17 @@ None. This is the end of the pipeline.
 - Blocker FEAT-011 (User Message History Extraction) is now **completed** (in `.issues/completed/`)
 - Blocker FEAT-026 (Workflow Pattern Analyzer Agent) is now **completed** (in `.issues/completed/`)
 - `agents/workflow-pattern-analyzer.md` exists
-- Still blocked by FEAT-027 and FEAT-028 which are open
+- Still blocked by FEAT-027 (Python module) and FEAT-028 (skill) which are open
 - Partially unblocked - can begin once remaining blockers are implemented
+
+**Updated: 2026-01-20**
+
+- Revised to use heterogeneous invocation:
+  - Step 1: Task tool → workflow-pattern-analyzer agent
+  - Step 2: Bash tool → `ll-workflows` CLI (Python module)
+  - Step 3: Skill tool → workflow-automation-proposer skill
+- Added result normalization contract for unified handling
+- Updated error handling with invocation-specific guidance
 
 ---
 

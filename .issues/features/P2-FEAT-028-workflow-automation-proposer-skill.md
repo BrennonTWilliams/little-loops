@@ -173,7 +173,7 @@ analysis_metadata:
   patterns_file: step1-patterns.yaml
   workflows_file: step2-workflows.yaml
   analysis_timestamp: 2026-01-12T10:30:00Z
-  agent: workflow-automation-proposer
+  skill: workflow-automation-proposer  # Changed from 'agent' - this is a skill
   version: "1.0"
 
 summary:
@@ -427,7 +427,7 @@ None external. Uses YAML processing.
 
 ## Blocks
 
-- FEAT-029: `/ll:analyze-workflows` Command (orchestrates this skill)
+- FEAT-029: `/ll:analyze-workflows` Command (invokes this skill via Skill tool)
 
 ## Labels
 
@@ -441,7 +441,7 @@ None external. Uses YAML processing.
 
 - Blocker FEAT-026 (Workflow Pattern Analyzer Agent) is now **completed** (in `.issues/completed/`)
 - `agents/workflow-pattern-analyzer.md` exists
-- Still blocked by FEAT-027 (Workflow Sequence Analyzer Agent) which is open
+- Still blocked by FEAT-027 (Workflow Sequence Analyzer Module) which is open
 - Partially unblocked - can begin once FEAT-027 is implemented
 
 ---

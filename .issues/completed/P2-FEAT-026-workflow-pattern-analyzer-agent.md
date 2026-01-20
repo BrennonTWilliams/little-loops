@@ -277,8 +277,8 @@ None external. Uses standard text processing.
 
 ## Blocks
 
-- FEAT-027: Workflow Sequence Analyzer Agent (consumes step1-patterns.yaml)
-- FEAT-029: `/ll:analyze-workflows` Command (orchestrates this agent)
+- FEAT-027: Workflow Sequence Analyzer Module (consumes step1-patterns.yaml)
+- FEAT-029: `/ll:analyze-workflows` Command (orchestrates this agent via Task tool)
 
 ## Labels
 

@@ -257,7 +257,7 @@ analysis_metadata:
   patterns_file: step1-patterns.yaml
   message_count: 200
   analysis_timestamp: 2026-01-12T10:15:00Z
-  agent: workflow-sequence-analyzer
+  module: workflow-sequence-analyzer  # Changed from 'agent' - this is a Python module
   version: "1.0"
 
 session_links:
@@ -378,6 +378,15 @@ handoff_analysis:
 | CLI Entry Point | `ll-workflows analyze --step2` |
 | Output | `.claude/workflow-analysis/step2-workflows.yaml` |
 
+### CLI Exit Codes
+
+| Exit Code | Meaning |
+|-----------|---------|
+| 0 | Success - analysis completed, output file written |
+| 1 | Failure - error message written to stderr |
+
+The CLI should output a brief success summary to stdout on exit 0, enabling the orchestrator to extract status information.
+
 ## Current Behavior
 
 No workflow sequence analysis exists. Users cannot see multi-step workflows or cross-session patterns.
@@ -430,7 +439,7 @@ None external. Uses standard text processing and datetime operations.
 ## Blocks
 
 - FEAT-028: Workflow Automation Proposer Skill (consumes workflow data)
-- FEAT-029: `/ll:analyze-workflows` Command (orchestrates this module)
+- FEAT-029: `/ll:analyze-workflows` Command (invokes this module via Bash/CLI)
 
 ## Labels
 
