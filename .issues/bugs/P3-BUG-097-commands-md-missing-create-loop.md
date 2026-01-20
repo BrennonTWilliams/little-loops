@@ -76,4 +76,21 @@ grep -c "create_loop" docs/COMMANDS.md  # Should be 0 currently
 
 ## Status
 
-**Open** | Created: 2026-01-20 | Priority: P3
+**Completed** | Created: 2026-01-20 | Completed: 2026-01-20 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-20
+- **Status**: Completed
+
+### Changes Made
+- `docs/COMMANDS.md`: Added new "Automation Loops" section with `/ll:create_loop` documentation
+- `docs/COMMANDS.md`: Added `create_loop` entry to Quick Reference table
+
+### Verification Results
+- Command file exists: PASS
+- Documentation added (2 matches): PASS
+- Lint: PASS

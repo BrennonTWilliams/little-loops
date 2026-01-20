@@ -143,6 +143,21 @@ Resume from a previous session's continuation prompt.
 
 ---
 
+## Automation Loops
+
+### `/ll:create_loop`
+Create FSM loop configurations interactively.
+
+**Workflow:**
+1. Select paradigm (goal, convergence, invariants, imperative)
+2. Configure paradigm-specific parameters
+3. Name and preview the loop
+4. Save to `.loops/<name>.yaml` and validate
+
+**See also:** `docs/generalized-fsm-loop.md` for paradigm details.
+
+---
+
 ## Quick Reference
 
 | Command | Description |
@@ -170,6 +185,7 @@ Resume from a previous session's continuation prompt.
 | `cleanup_worktrees` | Clean up stale worktrees and branches |
 | `handoff` | Generate session handoff prompt |
 | `resume` | Resume from continuation prompt |
+| `create_loop` | Interactive FSM loop creation |
 
 ---
 
