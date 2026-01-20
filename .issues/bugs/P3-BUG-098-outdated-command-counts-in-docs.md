@@ -69,4 +69,21 @@ Consider adding automation to detect count mismatches.
 
 ## Status
 
-**Open** | Created: 2026-01-20 | Priority: P3
+**Completed** | Created: 2026-01-20 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-20
+- **Status**: Completed
+
+### Changes Made
+- README.md:13: Updated "24 slash commands" to "25 slash commands"
+- README.md:526: Updated "24 commands" to "25 commands"
+- docs/ARCHITECTURE.md:24: Updated Mermaid diagram from "21 slash commands" to "25 slash commands"
+- docs/ARCHITECTURE.md:64: Updated directory structure comment from "24" to "25"
+
+### Verification Results
+- All 4 locations updated to reflect actual count of 25 command files in commands/
