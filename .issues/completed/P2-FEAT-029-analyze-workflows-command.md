@@ -346,10 +346,12 @@ $ cat .claude/workflow-analysis/summary-*.md
 
 ## Blocked By
 
-- FEAT-011: User Message History Extraction (provides input data)
-- FEAT-026: Workflow Pattern Analyzer Agent (Step 1 - invoked via Task tool)
-- FEAT-027: Workflow Sequence Analyzer Module (Step 2 - invoked via Bash/CLI)
-- FEAT-028: Workflow Automation Proposer Skill (Step 3 - invoked via Skill tool)
+- ~~FEAT-011: User Message History Extraction (provides input data)~~ ✅ Completed
+- ~~FEAT-026: Workflow Pattern Analyzer Agent (Step 1 - invoked via Task tool)~~ ✅ Completed
+- ~~FEAT-027: Workflow Sequence Analyzer Module (Step 2 - invoked via Bash/CLI)~~ ✅ Completed
+- ~~FEAT-028: Workflow Automation Proposer Skill (Step 3 - invoked via Skill tool)~~ ✅ Completed
+
+**All blockers resolved** - ready for implementation.
 
 ## Blocks
 
@@ -380,8 +382,43 @@ None. This is the end of the pipeline.
 - Added result normalization contract for unified handling
 - Updated error handling with invocation-specific guidance
 
+**Verified: 2026-01-20 (Ready Issue Validation)**
+
+- All blockers now completed:
+  - ✅ FEAT-011: User Message History Extraction - completed
+  - ✅ FEAT-026: Workflow Pattern Analyzer Agent - completed, `agents/workflow-pattern-analyzer.md` exists
+  - ✅ FEAT-027: Workflow Sequence Analyzer Module - completed, `scripts/little_loops/workflow_sequence_analyzer.py` exists, `ll-workflows` CLI entry point in pyproject.toml
+  - ✅ FEAT-028: Workflow Automation Proposer Skill - completed, `skills/workflow-automation-proposer/SKILL.md` exists
+- Command location `commands/analyze-workflows.md` follows existing project conventions
+- All required tools (Task, Bash, Skill, TodoWrite, Read, Write, Glob) are available
+- Issue is fully unblocked and ready for implementation
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-20
+- **Status**: Completed
+
+### Changes Made
+- `commands/analyze-workflows.md`: Created new command file that orchestrates the 3-step workflow analysis pipeline
+  - Step 0: Initialize progress tracking with TodoWrite
+  - Step 1: Auto-detect input file using Glob
+  - Step 2: Run pattern analysis via Task tool (workflow-pattern-analyzer agent)
+  - Step 3: Run sequence analysis via Bash tool (ll-workflows CLI)
+  - Step 4: Run automation proposals via Skill tool (workflow-automation-proposer skill)
+  - Step 5: Generate summary report with Read/Write
+  - Includes comprehensive error handling for each step
+  - Preserves partial outputs on failure for debugging
+
+### Verification Results
+- Tests: PASS (1442 passed)
+- Lint: PASS (ruff check scripts/)
+- Types: PASS (mypy scripts/little_loops/)
+
 ---
 
 ## Status
 
-**Open** | Created: 2026-01-12 | Priority: P2
+**Completed** | Created: 2026-01-12 | Completed: 2026-01-20 | Priority: P2
