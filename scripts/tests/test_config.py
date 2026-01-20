@@ -7,15 +7,15 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.config import (
+    DEFAULT_CATEGORIES,
+    REQUIRED_CATEGORIES,
     AutomationConfig,
     BRConfig,
     CategoryConfig,
     CommandsConfig,
-    DEFAULT_CATEGORIES,
     IssuesConfig,
     ParallelAutomationConfig,
     ProjectConfig,
-    REQUIRED_CATEGORIES,
     ScanConfig,
 )
 

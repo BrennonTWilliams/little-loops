@@ -200,6 +200,21 @@ Issue management settings:
 | `priorities` | `[P0-P5]` | Valid priority prefixes |
 | `templates_dir` | `null` | Directory for issue templates |
 
+**Custom Categories**: The three core categories (bugs, features, enhancements) are always included automatically. You can add custom categories and they will be merged with the required ones:
+
+```json
+{
+  "issues": {
+    "categories": {
+      "documentation": {"prefix": "DOC", "dir": "documentation", "action": "document"},
+      "tech-debt": {"prefix": "TECH-DEBT", "dir": "tech-debt", "action": "address"}
+    }
+  }
+}
+```
+
+Each category requires a `prefix` (issue ID prefix), and optionally `dir` (subdirectory name, defaults to category key) and `action` (verb for commit messages, defaults to "address").
+
 #### `automation`
 
 Sequential automation settings (ll-auto):

@@ -176,7 +176,7 @@ def get_all_prefixes(self) -> list[str]:
 - [x] issue_discovery.py uses config-driven type matching
 - [x] Helper methods added to IssuesConfig
 - [x] config-schema.json documents required vs optional
-- [ ] README.md documents custom category configuration (deferred - documentation is optional)
+- [x] README.md documents custom category configuration
 - [x] Existing tests pass
 - [x] New tests for custom category handling
 - [x] Integration test: custom DOC type works without code changes
@@ -245,6 +245,10 @@ None - FEAT-032 can proceed independently but will benefit from this
 5. **scripts/tests/test_issue_discovery.py**:
    - Added `TestMatchesIssueType` with tests for config-driven type matching
    - Includes tests for custom category types (DOC) working without code changes
+
+6. **README.md**:
+   - Added "Custom Categories" section documenting how to add custom issue types
+   - Explains required categories are auto-included and custom ones are merged
 
 ### Verification Results
 - Tests: PASS (1363 tests)
