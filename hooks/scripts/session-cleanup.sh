@@ -29,4 +29,5 @@ cleanup() {
 cleanup || true
 
 echo "[little-loops] Session cleanup complete"
+echo "" >&2  # Workaround for Claude Code stop hook stderr check
 exit 0
