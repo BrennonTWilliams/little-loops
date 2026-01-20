@@ -278,6 +278,8 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `/ll:verify_issues` | Verify issues against codebase |
 | `/ll:normalize_issues` | Fix invalid issue filenames |
 | `/ll:scan_codebase` | Find new issues |
+| `/ll:capture_issue [input]` | Capture issues from conversation |
+| `/ll:align_issues <category>` | Validate issues against key documents |
 
 ### Documentation & Analysis
 
@@ -286,6 +288,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `/ll:audit_docs [scope]` | Audit documentation |
 | `/ll:audit_architecture [focus]` | Analyze architecture |
 | `/ll:describe_pr` | Generate PR description |
+| `/ll:audit_claude_config [scope]` | Audit Claude Code plugin configuration |
 
 ### Git & Workflow
 
@@ -293,6 +296,8 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 |---------|-------------|
 | `/ll:commit` | Create commits with approval |
 | `/ll:iterate_plan [path]` | Update existing plans |
+| `/ll:cleanup_worktrees [mode]` | Clean orphaned git worktrees |
+| `/ll:create_loop` | Interactive FSM loop creation |
 
 ### Session Management
 
@@ -300,6 +305,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 |---------|-------------|
 | `/ll:handoff [context]` | Generate continuation prompt for session handoff |
 | `/ll:resume [prompt_file]` | Resume from previous session's continuation prompt |
+| `/ll:toggle_autoprompt [setting]` | Toggle automatic prompt optimization |
 
 **Automatic context monitoring**: Enable `context_monitor.enabled` to get warnings when context fills up (~80%). The system will remind you to run `/ll:handoff` before context exhaustion. See [Session Handoff Guide](docs/SESSION_HANDOFF.md) for details.
 
