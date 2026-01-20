@@ -133,4 +133,22 @@ None
 
 ## Status
 
-**Open** | Created: 2026-01-09 | Priority: P3
+**Completed** | Created: 2026-01-09 | Completed: 2026-01-20 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-20
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_parser.py`: Added `discovered_by` field to `IssueInfo` dataclass with `Optional[str] = None` default, updated `to_dict()` and `from_dict()` methods, added `_parse_frontmatter()` method to parse YAML frontmatter
+- `commands/scan_codebase.md`: Added `discovered_by: scan_codebase` to issue file frontmatter template
+- `scripts/tests/test_issue_parser.py`: Added 9 new unit tests for `discovered_by` field parsing and serialization
+
+### Verification Results
+- Tests: PASS (1399 total tests, including 9 new tests for discovered_by)
+- Lint: PASS
+- Types: PASS
