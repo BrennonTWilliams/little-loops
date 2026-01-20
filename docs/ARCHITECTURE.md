@@ -80,9 +80,15 @@ little-loops/
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                   # Lifecycle hooks and validation scripts
 │   ├── hooks.json           # Hook configuration
-│   ├── check-duplicate-issue-id.sh  # Validation script
-│   └── prompts/
-│       └── continuation-prompt-template.md  # Handoff prompt template
+│   ├── prompts/
+│   │   └── continuation-prompt-template.md  # Handoff prompt template
+│   └── scripts/             # Hook scripts
+│       ├── check-duplicate-issue-id.sh
+│       ├── context-monitor.sh
+│       ├── precompact-state.sh
+│       ├── session-cleanup.sh
+│       ├── session-start.sh
+│       └── user-prompt-check.sh
 ├── templates/               # Project type configs
 │   ├── python-generic.json
 │   ├── javascript.json
@@ -110,6 +116,18 @@ little-loops/
         ├── logo.py              # CLI logo display
         ├── dependency_graph.py  # Dependency graph construction
         ├── user_messages.py     # User message extraction
+        ├── sprint.py            # Sprint definition and management
+        ├── fsm/                  # FSM loop execution engine
+        │   ├── __init__.py
+        │   ├── schema.py            # Loop schema definitions
+        │   ├── compilers.py         # YAML to FSM compilation
+        │   ├── evaluators.py        # Condition evaluation
+        │   ├── executor.py          # Loop execution
+        │   ├── interpolation.py     # Variable interpolation
+        │   ├── validation.py        # Schema validation
+        │   ├── persistence.py       # State persistence
+        │   ├── signal_detector.py   # Output signal detection
+        │   └── handoff_handler.py   # Session handoff handling
         └── parallel/
             ├── __init__.py
             ├── orchestrator.py

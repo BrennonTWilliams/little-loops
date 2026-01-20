@@ -101,6 +101,24 @@ ls scripts/little_loops/fsm/*.py
 
 ---
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-20
+- **Status**: Completed
+
+### Changes Made
+- `docs/ARCHITECTURE.md`: Updated hooks/ section to show correct `scripts/` subdirectory with all 6 hook scripts
+- `docs/ARCHITECTURE.md`: Added `sprint.py` module to Python package listing
+- `docs/ARCHITECTURE.md`: Added complete `fsm/` subpackage with 10 modules (schema.py, compilers.py, evaluators.py, executor.py, interpolation.py, validation.py, persistence.py, signal_detector.py, handoff_handler.py)
+
+### Verification Results
+- hooks/scripts/ structure: VERIFIED (6 scripts present)
+- fsm/ modules: VERIFIED (10 Python files present)
+- Tests: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-20 | Priority: P2
+**Completed** | Created: 2026-01-20 | Completed: 2026-01-20 | Priority: P2
