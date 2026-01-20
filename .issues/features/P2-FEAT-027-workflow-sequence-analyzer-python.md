@@ -55,7 +55,7 @@ Usage:
     )
 
 CLI:
-    ll-workflows analyze --step2 --input user-messages.jsonl --patterns step1-patterns.yaml
+    ll-workflows analyze --input user-messages.jsonl --patterns step1-patterns.yaml
 """
 
 from dataclasses import dataclass
@@ -375,7 +375,7 @@ handoff_analysis:
 | Component | Path |
 |-----------|------|
 | Python Module | `scripts/little_loops/workflow_sequence_analyzer.py` |
-| CLI Entry Point | `ll-workflows analyze --step2` |
+| CLI Entry Point | `ll-workflows analyze` |
 | Output | `.claude/workflow-analysis/step2-workflows.yaml` |
 
 ### CLI Setup
@@ -406,7 +406,7 @@ No workflow sequence analysis exists. Users cannot see multi-step workflows or c
 
 ```bash
 # Via CLI:
-$ ll-workflows analyze --step2 \
+$ ll-workflows analyze \
     --input user-messages.jsonl \
     --patterns step1-patterns.yaml \
     --output step2-workflows.yaml
