@@ -32,7 +32,7 @@ This completes the analysis pipeline by providing implementable recommendations.
 
 ## Proposed Implementation
 
-### 1. Skill Definition: `skills/workflow-automation-proposer.md`
+### 1. Skill Definition: `skills/workflow-automation-proposer/SKILL.md`
 
 ```markdown
 ---
@@ -408,7 +408,7 @@ Write proposals to `.claude/workflow-analysis/step3-proposals.yaml`
 
 | Component | Path |
 |-----------|------|
-| Skill | `skills/workflow-automation-proposer.md` |
+| Skill | `skills/workflow-automation-proposer/SKILL.md` |
 | Output | `.claude/workflow-analysis/step3-proposals.yaml` |
 
 ## Current Behavior
@@ -450,8 +450,8 @@ None external. Uses YAML processing.
 
 ## Blocked By
 
-- FEAT-026: Workflow Pattern Analyzer Agent (provides pattern data)
-- FEAT-027: Workflow Sequence Analyzer Module (provides workflow data)
+- ~~FEAT-026: Workflow Pattern Analyzer Agent (provides pattern data)~~ ✅ Completed
+- ~~FEAT-027: Workflow Sequence Analyzer Module (provides workflow data)~~ ✅ Completed
 
 ## Blocks
 
@@ -465,15 +465,41 @@ None external. Uses YAML processing.
 
 ## Verification Notes
 
-**Verified: 2026-01-17**
+**Verified: 2026-01-20**
 
-- Blocker FEAT-026 (Workflow Pattern Analyzer Agent) is now **completed** (in `.issues/completed/`)
-- `agents/workflow-pattern-analyzer.md` exists
-- Still blocked by FEAT-027 (Workflow Sequence Analyzer Module) which is open
-- Partially unblocked - can begin once FEAT-027 is implemented
+- Blocker FEAT-026 (Workflow Pattern Analyzer Agent) is **completed** (in `.issues/completed/`)
+  - `agents/workflow-pattern-analyzer.md` exists
+- Blocker FEAT-027 (Workflow Sequence Analyzer Module) is **completed** (in `.issues/completed/`)
+  - `scripts/little_loops/workflow_sequence_analyzer.py` exists
+  - Tests at `scripts/tests/test_workflow_sequence_analyzer.py`
+- **All blockers resolved** - this issue is ready for implementation
+- Updated skill path from `skills/workflow-automation-proposer.md` to `skills/workflow-automation-proposer/SKILL.md` to match project conventions
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-20
+- **Status**: Completed
+
+### Changes Made
+- `skills/workflow-automation-proposer/SKILL.md`: Created new skill definition with:
+  - YAML frontmatter with description and trigger keywords
+  - Input file resolution instructions
+  - Complete proposal type taxonomy
+  - Priority and effort calculation guidance
+  - Full output YAML schema specification
+  - Implementation sketch templates for each proposal type
+  - Example proposal for reference
+
+### Verification Results
+- YAML frontmatter: PASS (parses correctly)
+- Lint: PASS
+- Types: PASS
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-01-12 | Priority: P2
+**Completed** | Created: 2026-01-12 | Completed: 2026-01-20 | Priority: P2
