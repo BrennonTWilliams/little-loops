@@ -1,3 +1,8 @@
+---
+discovered_date: 2026-01-18
+discovered_by: plugin_structure_audit
+---
+
 # ENH-088: Remove or Document Empty .mcp.json File
 
 ## Summary
@@ -54,3 +59,9 @@ Remove the file (Option A) unless there's a specific reason to keep it. It can b
 ## Discovered By
 
 Plugin structure audit using `plugin-dev:plugin-structure` skill
+
+---
+
+## Status
+
+**Open** | Created: 2026-01-18 | Priority: P4
