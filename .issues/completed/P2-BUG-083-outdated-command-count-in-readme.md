@@ -68,24 +68,32 @@ ls commands/*.md | wc -l
 
 ## Status
 
-**Reopened** | Created: 2026-01-17 | Reopened: 2026-01-20 | Priority: P2
+**Completed** | Created: 2026-01-17 | Completed: 2026-01-20 | Priority: P2
 
 ---
 
-## Reopened
+## Completed
 
 - **Date**: 2026-01-20
+- **Fixed by**: /ll:ready_issue auto-correction
+- **Resolution**: Updated command counts from 21 to 24 in all three locations
+
+### Changes Made
+
+1. `README.md:13` - Updated "21 slash commands" → "24 slash commands"
+2. `README.md:520` - Updated "(21 commands)" → "(24 commands)"
+3. `docs/ARCHITECTURE.md:64` - Updated "21 slash command templates" → "24 slash command templates"
+
+---
+
+## History
+
+### Reopened (2026-01-20)
+
 - **By**: audit_docs
 - **Reason**: Documentation issue recurred - count was updated to 22 but has regressed
 
-### New Findings
-
-The command count has again become outdated. Originally fixed when there were 22 commands, but now there are 24:
+The command count had again become outdated. Originally fixed when there were 22 commands, but now there are 24:
 - `capture_issue.md` was added
 - `create_loop.md` was added
 - `align_issues.md` was added
-
-Multiple files need updating:
-1. `README.md:13` - Says "21 slash commands"
-2. `README.md:520` - Plugin Structure says "21 commands"
-3. `docs/ARCHITECTURE.md:64` - Says "21 slash command templates"
