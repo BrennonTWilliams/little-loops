@@ -75,3 +75,23 @@ Line numbers updated to reflect current state of `commands/capture_issue.md`. Is
 ## Status
 
 **Open** | Created: 2025-01-15 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-20
+- **Status**: Completed
+
+### Changes Made
+- `commands/capture_issue.md:20`: Replaced unusable `{{config.issues.categories}}` with `{{config.issues.completed_dir}}`
+- `commands/capture_issue.md:133-145`: Replaced hardcoded directory listing with dynamic glob iteration pattern that skips completed directory
+- `commands/capture_issue.md:162-166`: Used `{{config.issues.completed_dir}}` for completed directory path
+- `commands/capture_issue.md:263`: Used `{{config.issues.completed_dir}}` in completed issue path display
+- `commands/capture_issue.md:309`: Added note about prefix pattern using default category prefixes
+- `commands/capture_issue.md:452-457`: Used `{{config.issues.completed_dir}}` in reopen action with updated documentation note
+
+### Verification Results
+- Tests: N/A (no Python changes)
+- Lint: PASS

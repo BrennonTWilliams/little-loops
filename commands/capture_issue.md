@@ -17,7 +17,7 @@ You are tasked with capturing issues from either a natural language description 
 
 This command uses project configuration from `.claude/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
-- **Categories**: `{{config.issues.categories}}`
+- **Completed dir**: `{{config.issues.completed_dir}}`
 - **Template style**: `{{config.issues.capture_template}}` (full or minimal)
 
 ## Arguments
@@ -130,13 +130,18 @@ For each issue to capture, search for existing duplicates:
 
 #### Search Active Issues
 
-Search in `{{config.issues.base_dir}}/{bugs,features,enhancements}/`:
+Search in all active category directories (excluding completed):
 
 ```bash
 # List all active issues for analysis
-ls -la {{config.issues.base_dir}}/bugs/*.md 2>/dev/null || true
-ls -la {{config.issues.base_dir}}/features/*.md 2>/dev/null || true
-ls -la {{config.issues.base_dir}}/enhancements/*.md 2>/dev/null || true
+for dir in {{config.issues.base_dir}}/*/; do
+    if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ]; then
+        continue
+    fi
+    if [ -d "$dir" ]; then
+        ls -la "$dir"*.md 2>/dev/null || true
+    fi
+done
 ```
 
 For each existing issue file:
@@ -154,10 +159,10 @@ For each existing issue file:
 
 #### Search Completed Issues
 
-Search in `{{config.issues.base_dir}}/completed/`:
+Search in `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`:
 
 ```bash
-ls -la {{config.issues.base_dir}}/completed/*.md 2>/dev/null || true
+ls -la {{config.issues.base_dir}}/{{config.issues.completed_dir}}/*.md 2>/dev/null || true
 ```
 
 Apply same scoring. If a completed issue has score >= 0.5, it's a candidate for reopening.
@@ -255,7 +260,7 @@ questions:
 
 Found completed issue that matches:
 - **Issue**: [ID] - [Title]
-- **Path**: `{{config.issues.base_dir}}/completed/[filename].md`
+- **Path**: `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/[filename].md`
 - **Similarity**: [score as percentage]
 ```
 
@@ -301,6 +306,7 @@ Proceed directly to issue creation without user confirmation.
    Scan ALL issue directories including completed to find highest existing number:
    ```bash
    # Find all issue files and extract numbers
+   # Note: Pattern uses default category prefixes (BUG, FEAT, ENH)
    find {{config.issues.base_dir}} -name "*.md" -type f | grep -oE "(BUG|FEAT|ENH)-[0-9]+" | grep -oE "[0-9]+" | sort -n | tail -1
    ```
 
@@ -443,12 +449,12 @@ git add "[path-to-existing-issue]"
 
 #### Action: Reopen Completed Issue
 
-1. **Move from completed/ to active category directory:**
+1. **Move from {{config.issues.completed_dir}}/ to active category directory:**
 
 ```bash
 # Determine target directory from issue type in filename
-# BUG-XXX -> bugs/, FEAT-XXX -> features/, ENH-XXX -> enhancements/
-git mv "{{config.issues.base_dir}}/completed/[filename]" "{{config.issues.base_dir}}/[category]/"
+# Note: Uses default category mapping (BUG->bugs, FEAT->features, ENH->enhancements)
+git mv "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/[filename]" "{{config.issues.base_dir}}/[category]/"
 ```
 
 2. **Append Reopened section:**
