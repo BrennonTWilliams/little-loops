@@ -4,15 +4,17 @@ discovered_branch: main
 discovered_date: 2026-01-12T12:00:00Z
 ---
 
-# FEAT-027: Workflow Sequence Analysis Agent
+# FEAT-027: Workflow Sequence Analysis Module (Python)
 
 ## Summary
 
-Create `workflow-sequence-analyzer` agent (Step 2 of the workflow analysis pipeline) that identifies multi-step workflows, handoff points, and cross-session patterns using advanced linking techniques including entity-based clustering, time-gap weighting, and semantic similarity scoring.
+Create a `workflow_sequence_analyzer` **Python module** (Step 2 of the workflow analysis pipeline) that identifies multi-step workflows, handoff points, and cross-session patterns using algorithmic techniques including entity-based clustering, time-gap weighting, and semantic similarity scoring.
+
+> **Note**: Originally proposed as an LLM agent, this was revised to be a Python module because the work is algorithmic (regex, math, clustering) rather than requiring LLM judgment. Contrast with Step 1 (`workflow-pattern-analyzer` agent) which does message *categorization* that benefits from LLM reasoning.
 
 ## Motivation
 
-Pattern analysis (FEAT-026) identifies individual message categories and repeated phrases, but doesn't reveal multi-step workflows like "explore → modify → verify" or workflows that span multiple sessions. This agent:
+Pattern analysis (FEAT-026) identifies individual message categories and repeated phrases, but doesn't reveal multi-step workflows like "explore → modify → verify" or workflows that span multiple sessions. This module:
 
 - Links related sessions using git branch, handoff markers, and entity overlap
 - Clusters messages by shared entities (files, concepts) rather than just categories
@@ -22,33 +24,47 @@ Pattern analysis (FEAT-026) identifies individual message categories and repeate
 
 This enables accurate automation proposals by understanding complete workflows, not just isolated patterns.
 
+**Why a Python module, not an LLM agent?**
+- Entity extraction = regex patterns (deterministic)
+- Time-gap weighting = math calculations (deterministic)
+- Clustering = algorithmic (no LLM needed)
+- Semantic similarity = heuristics or embeddings (programmatic)
+- No LLM costs for what is essentially data processing
+
 ## Proposed Implementation
 
-### 1. Agent Definition: `agents/workflow-sequence-analyzer.md`
+### 1. Python Module: `scripts/little_loops/workflow_sequence_analyzer.py`
 
-```yaml
----
-name: workflow-sequence-analyzer
-description: |
-  Second-pass analysis agent that identifies multi-step workflows and cross-session patterns.
-  Uses entity clustering, time-gap weighting, and semantic similarity for accurate workflow detection.
-  Used as Step 2 of the /ll:analyze-workflows pipeline.
+```python
+"""
+Workflow Sequence Analyzer - Step 2 of the workflow analysis pipeline.
 
-  <example>
-  Input: step1-patterns.yaml + user-messages.jsonl
-  → Link related sessions
-  → Cluster messages by entities
-  → Detect workflow boundaries
-  → Output step2-workflows.yaml
-  </example>
+Identifies multi-step workflows and cross-session patterns using:
+- Entity-based clustering
+- Time-gap weighted boundaries
+- Semantic similarity scoring
+- Workflow template matching
 
-allowed_tools:
-  - Read
-  - Write
-  - Grep
-  - Glob
-model: sonnet
----
+Usage:
+    from little_loops.workflow_sequence_analyzer import analyze_workflows
+
+    result = analyze_workflows(
+        messages_file="user-messages.jsonl",
+        patterns_file="step1-patterns.yaml",
+        output_file="step2-workflows.yaml"
+    )
+
+CLI:
+    ll-workflows analyze --step2 --input user-messages.jsonl --patterns step1-patterns.yaml
+"""
+
+from dataclasses import dataclass
+from pathlib import Path
+import yaml
+import json
+import re
+from datetime import datetime
+from typing import Optional
 ```
 
 ### 2. Cross-Session Workflow Linking
@@ -358,7 +374,8 @@ handoff_analysis:
 
 | Component | Path |
 |-----------|------|
-| Agent | `agents/workflow-sequence-analyzer.md` |
+| Python Module | `scripts/little_loops/workflow_sequence_analyzer.py` |
+| CLI Entry Point | `ll-workflows analyze --step2` |
 | Output | `.claude/workflow-analysis/step2-workflows.yaml` |
 
 ## Current Behavior
@@ -368,7 +385,13 @@ No workflow sequence analysis exists. Users cannot see multi-step workflows or c
 ## Expected Behavior
 
 ```bash
-# After running /ll:analyze-workflows, Step 2 produces:
+# Via CLI:
+$ ll-workflows analyze --step2 \
+    --input user-messages.jsonl \
+    --patterns step1-patterns.yaml \
+    --output step2-workflows.yaml
+
+# Or via /ll:analyze-workflows which calls Python module internally:
 $ cat .claude/workflow-analysis/step2-workflows.yaml
 
 session_links:
@@ -392,8 +415,8 @@ workflows:
 ## Impact
 
 - **Severity**: High - Core component of workflow analysis pipeline
-- **Effort**: High - Complex linking algorithms
-- **Risk**: Medium - Accuracy depends on heuristics; may need tuning
+- **Effort**: Medium - Algorithmic Python implementation (no LLM prompt engineering)
+- **Risk**: Low - Deterministic algorithms are easier to test and tune than LLM prompts
 
 ## Dependencies
 
@@ -406,12 +429,12 @@ None external. Uses standard text processing and datetime operations.
 
 ## Blocks
 
-- FEAT-028: Workflow Automation Proposer Agent (consumes workflow data)
-- FEAT-029: `/ll:analyze-workflows` Command (orchestrates this agent)
+- FEAT-028: Workflow Automation Proposer Skill (consumes workflow data)
+- FEAT-029: `/ll:analyze-workflows` Command (orchestrates this module)
 
 ## Labels
 
-`feature`, `agent`, `workflow-analysis`, `cross-session`, `entity-clustering`
+`feature`, `python`, `workflow-analysis`, `cross-session`, `entity-clustering`
 
 ---
 

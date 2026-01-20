@@ -4,17 +4,19 @@ discovered_branch: main
 discovered_date: 2026-01-06T20:47:28Z
 ---
 
-# FEAT-022: Product Analyzer Agent
+# FEAT-022: Product Analyzer Skill
 
 ## Summary
 
-Create a specialized `product-analyzer` agent that analyzes the codebase against product goals to identify:
+Create a `product-analyzer` **skill** that analyzes the codebase against product goals to identify:
 - Feature gaps (goals without implementation)
 - User experience improvements
 - Business value opportunities
 - Strategic alignment issues
 
-This agent operates at the product/business level, complementing the existing technical analysis agents.
+This skill operates at the product/business level, complementing the existing technical analysis capabilities.
+
+> **Note**: Originally proposed as an agent, this was revised to be a skill per project guidelines: "Prefer Skills over Agents. Skills are simpler, more composable, and can be invoked directly. Reserve Agents for complex, autonomous multi-step tasks."
 
 ## Motivation
 
@@ -25,17 +27,23 @@ Current agents (`codebase-analyzer`, `codebase-pattern-finder`, etc.) focus on t
 
 None answer the question: **"Is this codebase delivering on its product goals?"**
 
-The `product-analyzer` agent bridges this gap by:
+The `product-analyzer` skill bridges this gap by:
 1. Reading product goals from `ll-goals.md`
 2. Mapping goals to codebase capabilities
 3. Identifying where code falls short of product vision
 4. Suggesting features that would advance strategic priorities
 
+**Why a Skill, not an Agent:**
+- Single-purpose analysis with fixed input/output
+- No autonomous multi-step decision-making needed
+- No sub-agent spawning required
+- Command `/ll:scan_product` orchestrates; skill provides instructions
+
 ## Proposed Implementation
 
-### 1. Agent Definition
+### 1. Skill Definition
 
-Create `agents/product-analyzer.md`:
+Create `skills/product-analyzer.md`:
 
 ```markdown
 ---
@@ -43,29 +51,12 @@ description: |
   Analyzes codebase against product goals to identify feature gaps,
   user experience improvements, and business value opportunities.
   Requires product analysis to be enabled and ll-goals.md to exist.
-tools:
-  - Read
-  - Grep
-  - Glob
-model: sonnet
-trigger:
-  when_to_use: |
-    Use this agent via /ll:scan_product when product analysis is enabled.
-    This agent is specifically for product-focused analysis, separate from
-    technical scanning done by /ll:scan_codebase.
 
-    Use cases:
-    - Identify features needed to meet product goals
-    - Assess user experience from code structure
-    - Find opportunities for business value
-    - Validate strategic alignment of implementations
-  example_prompts:
-    - "What features are missing to meet our product goals?"
-    - "How well does the codebase serve our target users?"
-    - "Identify opportunities to improve business value"
+  Trigger keywords: "product analysis", "analyze product goals",
+  "feature gaps", "product scan", "goal alignment"
 ---
 
-# Product Analyzer Agent
+# Product Analyzer Skill
 
 You are a product-focused analyst examining a codebase against defined product goals.
 
@@ -142,9 +133,9 @@ findings:
 - Each finding must tie back to a goal or persona
 ```
 
-### 2. Agent Behavior Specification
+### 2. Skill Behavior Specification
 
-The agent should:
+When invoked (via `/ll:scan_product` or directly), the skill should:
 
 **Read First**:
 1. `.claude/ll-goals.md` - Product goals (required)
@@ -162,17 +153,21 @@ The agent should:
 - Business value and effort estimates
 - File:line references for evidence
 
-### 3. Integration with Existing Agents
+### 3. Integration with Existing Components
 
-The `product-analyzer` complements technical agents but runs separately:
+The `product-analyzer` skill complements technical analysis but runs separately:
 
-| Agent | Focus | Finds | Used By |
-|-------|-------|-------|---------|
-| `codebase-analyzer` | Implementation | Bugs, tech debt | `/ll:scan_codebase` |
-| `codebase-pattern-finder` | Architecture | Patterns, anti-patterns | `/ll:scan_codebase` |
-| `product-analyzer` | Product | Feature gaps, UX issues | `/ll:scan_product` |
+| Component | Type | Focus | Finds | Used By |
+|-----------|------|-------|-------|---------|
+| `codebase-analyzer` | Agent | Implementation | Bugs, tech debt | `/ll:scan_codebase` |
+| `codebase-pattern-finder` | Agent | Architecture | Patterns, anti-patterns | `/ll:scan_codebase` |
+| `product-analyzer` | **Skill** | Product | Feature gaps, UX issues | `/ll:scan_product` |
 
 **Separation of Concerns**: Technical and product scanning are kept separate. `/ll:scan_codebase` remains focused on technical issues. `/ll:scan_product` is the dedicated command for product-focused analysis.
+
+**Why a Skill here but Agents for codebase analysis?**
+- Codebase analyzers need autonomous exploration across many files with dynamic decisions
+- Product analyzer has a fixed workflow: read goals → scan codebase → compare → output
 
 ### 4. Guardrails
 
@@ -184,35 +179,35 @@ Prevent misuse:
 
 ## Location
 
-- **New File**: `agents/product-analyzer.md`
+- **New File**: `skills/product-analyzer.md`
 - **Used By**: `commands/scan_product.md` (dedicated product scanning command)
 
 ## Current Behavior
 
-No agent exists for product-level analysis. All scanning is technical.
+No skill exists for product-level analysis. All scanning is technical.
 
 ## Expected Behavior
 
 When product analysis is enabled:
-1. Agent reads goals document
+1. Skill reads goals document
 2. Analyzes codebase against goals
 3. Returns structured findings with business context
 4. Findings become FEAT-XXX or ENH-XXX issues with product impact fields
 
 ## Acceptance Criteria
 
-- [ ] Agent file `agents/product-analyzer.md` created with complete prompt
-- [ ] Agent returns empty result when `product.enabled: false`
-- [ ] Agent returns empty result when `ll-goals.md` doesn't exist
-- [ ] Agent output follows structured YAML format with required fields
-- [ ] Integration test: agent produces valid findings for sample goals file
+- [ ] Skill file `skills/product-analyzer.md` created with complete prompt
+- [ ] Skill returns empty result when `product.enabled: false`
+- [ ] Skill returns empty result when `ll-goals.md` doesn't exist
+- [ ] Skill output follows structured YAML format with required fields
+- [ ] Integration test: skill produces valid findings for sample goals file
 - [ ] Findings include file:line evidence references
 - [ ] Deduplication check against existing issues works
 
 ## Impact
 
 - **Severity**: High - Core capability for Product dimension
-- **Effort**: Medium - New agent with complex prompt
+- **Effort**: Medium - New skill with detailed prompt
 - **Risk**: Medium - Requires careful prompt engineering to avoid hallucination
 
 ## Dependencies
@@ -232,7 +227,7 @@ When product analysis is enabled:
 
 ## Labels
 
-`feature`, `product-dimension`, `agent`, `analysis`
+`feature`, `product-dimension`, `skill`, `analysis`
 
 ---
 

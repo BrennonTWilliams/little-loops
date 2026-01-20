@@ -4,15 +4,17 @@ discovered_branch: main
 discovered_date: 2026-01-12T12:00:00Z
 ---
 
-# FEAT-028: Workflow Automation Proposer Agent
+# FEAT-028: Workflow Automation Proposer Skill
 
 ## Summary
 
-Create `workflow-automation-proposer` agent (Step 3 of the workflow analysis pipeline) that synthesizes patterns and workflows into concrete automation proposals including slash commands, scripts, and hooks.
+Create `workflow-automation-proposer` **skill** (Step 3 of the workflow analysis pipeline) that synthesizes patterns and workflows into concrete automation proposals including slash commands, scripts, and hooks.
+
+> **Note**: Originally proposed as an agent, this was revised to be a skill per project guidelines: "Prefer Skills over Agents." This is single-pass synthesis work with fixed input/output, not autonomous multi-step exploration.
 
 ## Motivation
 
-Pattern analysis (FEAT-026) and workflow detection (FEAT-027) identify what users do repeatedly, but don't propose solutions. This agent:
+Pattern analysis (FEAT-026) and workflow detection (FEAT-027) identify what users do repeatedly, but don't propose solutions. This skill:
 
 - Synthesizes patterns and workflows into actionable proposals
 - Proposes new slash commands for repeated multi-step workflows
@@ -22,32 +24,32 @@ Pattern analysis (FEAT-026) and workflow detection (FEAT-027) identify what user
 
 This completes the analysis pipeline by providing implementable recommendations.
 
+**Why a Skill, not an Agent:**
+- Single-pass synthesis (read inputs → generate proposals → output)
+- Fixed input/output structure (YAML in, YAML out)
+- No autonomous exploration or sub-agent spawning needed
+- The "judgment" required (matching patterns to automation types) fits skill prompting
+
 ## Proposed Implementation
 
-### 1. Agent Definition: `agents/workflow-automation-proposer.md`
+### 1. Skill Definition: `skills/workflow-automation-proposer.md`
 
-```yaml
+```markdown
 ---
-name: workflow-automation-proposer
 description: |
-  Final synthesis agent that proposes concrete automation solutions based on patterns and workflows.
-  Used as Step 3 of the /ll:analyze-workflows pipeline.
+  Synthesizes workflow patterns into concrete automation proposals.
+  Final step (Step 3) of the /ll:analyze-workflows pipeline.
 
-  <example>
   Input: step1-patterns.yaml + step2-workflows.yaml
-  → Analyze high-frequency patterns
-  → Match to automation types
-  → Generate implementation sketches
-  → Output step3-proposals.yaml
-  </example>
+  Output: step3-proposals.yaml
 
-allowed_tools:
-  - Read
-  - Write
-  - Grep
-  - Glob
-model: sonnet
+  Trigger keywords: "propose automations", "workflow proposals",
+  "automation suggestions", "step 3 workflow analysis"
 ---
+
+# Workflow Automation Proposer
+
+You are the final step in a 3-step workflow analysis pipeline. Your job is to propose concrete automation solutions based on the patterns and workflows identified in Steps 1 and 2.
 ```
 
 ### 2. Proposal Types
@@ -323,7 +325,7 @@ implementation_roadmap:
     - prop-004  # Entity extractor script (MEDIUM effort)
 ```
 
-### 7. Agent System Prompt
+### 7. Skill Prompt Content
 
 ```markdown
 # Workflow Automation Proposer
@@ -378,7 +380,7 @@ Write proposals to `.claude/workflow-analysis/step3-proposals.yaml`
 
 | Component | Path |
 |-----------|------|
-| Agent | `agents/workflow-automation-proposer.md` |
+| Skill | `skills/workflow-automation-proposer.md` |
 | Output | `.claude/workflow-analysis/step3-proposals.yaml` |
 
 ## Current Behavior
@@ -411,7 +413,7 @@ proposals:
 ## Impact
 
 - **Severity**: High - Completes the workflow analysis pipeline
-- **Effort**: Medium - Requires synthesis logic and template generation
+- **Effort**: Medium - Skill prompt with synthesis logic
 - **Risk**: Low - Read-only analysis, proposals are suggestions only
 
 ## Dependencies
@@ -421,15 +423,15 @@ None external. Uses YAML processing.
 ## Blocked By
 
 - FEAT-026: Workflow Pattern Analyzer Agent (provides pattern data)
-- FEAT-027: Workflow Sequence Analyzer Agent (provides workflow data)
+- FEAT-027: Workflow Sequence Analyzer Module (provides workflow data)
 
 ## Blocks
 
-- FEAT-029: `/ll:analyze-workflows` Command (orchestrates this agent)
+- FEAT-029: `/ll:analyze-workflows` Command (orchestrates this skill)
 
 ## Labels
 
-`feature`, `agent`, `workflow-analysis`, `automation-proposals`
+`feature`, `skill`, `workflow-analysis`, `automation-proposals`
 
 ---
 
