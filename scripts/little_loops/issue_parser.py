@@ -84,6 +84,7 @@ class IssueInfo:
         title: Issue title from markdown header
         blocked_by: List of issue IDs that block this issue
         blocks: List of issue IDs that this issue blocks
+        discovered_by: Source command/workflow that created this issue
     """
 
     path: Path
@@ -93,6 +94,7 @@ class IssueInfo:
     title: str
     blocked_by: list[str] = field(default_factory=list)
     blocks: list[str] = field(default_factory=list)
+    discovered_by: str | None = None
 
     @property
     def priority_int(self) -> int:
@@ -113,6 +115,7 @@ class IssueInfo:
             "title": self.title,
             "blocked_by": self.blocked_by,
             "blocks": self.blocks,
+            "discovered_by": self.discovered_by,
         }
 
     @classmethod
@@ -126,6 +129,7 @@ class IssueInfo:
             title=data["title"],
             blocked_by=data.get("blocked_by", []),
             blocks=data.get("blocks", []),
+            discovered_by=data.get("discovered_by"),
         )
 
 
@@ -170,6 +174,10 @@ class IssueParser:
         # Read content once for all content-based parsing
         content = self._read_content(issue_path)
 
+        # Parse frontmatter for discovered_by
+        frontmatter = self._parse_frontmatter(content)
+        discovered_by = frontmatter.get("discovered_by")
+
         # Parse title and dependencies from file content
         title = self._parse_title_from_content(content, issue_path)
         blocked_by = self._parse_blocked_by(content)
@@ -183,6 +191,7 @@ class IssueParser:
             title=title,
             blocked_by=blocked_by,
             blocks=blocks,
+            discovered_by=discovered_by,
         )
 
     def _parse_priority(self, filename: str) -> str:
@@ -273,6 +282,46 @@ class IssueParser:
             return issue_path.read_text(encoding="utf-8")
         except Exception:
             return ""
+
+    def _parse_frontmatter(self, content: str) -> dict[str, Any]:
+        """Extract YAML frontmatter from issue content.
+
+        Looks for content between opening and closing '---' markers.
+        Returns empty dict if no frontmatter found or on parse error.
+
+        Args:
+            content: File content to parse
+
+        Returns:
+            Dictionary of frontmatter fields, or empty dict
+        """
+        if not content or not content.startswith("---"):
+            return {}
+
+        # Find closing ---
+        end_match = re.search(r"\n---\s*\n", content[3:])
+        if not end_match:
+            return {}
+
+        frontmatter_text = content[4 : 3 + end_match.start()]
+
+        # Simple YAML-like parsing for key: value pairs
+        # Avoids adding yaml dependency for this simple use case
+        result: dict[str, Any] = {}
+        for line in frontmatter_text.split("\n"):
+            line = line.strip()
+            if not line or line.startswith("#"):
+                continue
+            if ":" in line:
+                key, value = line.split(":", 1)
+                key = key.strip()
+                value = value.strip()
+                # Handle null/empty values
+                if value.lower() in ("null", "~", ""):
+                    result[key] = None
+                else:
+                    result[key] = value
+        return result
 
     def _parse_title_from_content(self, content: str, issue_path: Path) -> str:
         """Extract title from issue file content.

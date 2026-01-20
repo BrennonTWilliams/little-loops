@@ -190,6 +190,7 @@ For each finding, create an issue file with YAML frontmatter:
 discovered_commit: [COMMIT_HASH]
 discovered_branch: [BRANCH_NAME]
 discovered_date: [SCAN_DATE]
+discovered_by: scan_codebase
 ---
 
 # [PREFIX]-[NUMBER]: [Title]

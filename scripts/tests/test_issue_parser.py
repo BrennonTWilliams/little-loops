@@ -139,6 +139,67 @@ class TestIssueInfo:
         assert restored.issue_id == original.issue_id
         assert restored.title == original.title
 
+    def test_discovered_by_default_none(self) -> None:
+        """Test discovered_by defaults to None."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="bugs",
+            priority="P0",
+            issue_id="BUG-001",
+            title="Test",
+        )
+        assert info.discovered_by is None
+
+    def test_discovered_by_value(self) -> None:
+        """Test discovered_by can be set."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="bugs",
+            priority="P0",
+            issue_id="BUG-001",
+            title="Test",
+            discovered_by="scan_codebase",
+        )
+        assert info.discovered_by == "scan_codebase"
+
+    def test_discovered_by_in_to_dict(self) -> None:
+        """Test discovered_by appears in to_dict."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="bugs",
+            priority="P0",
+            issue_id="BUG-001",
+            title="Test",
+            discovered_by="audit_architecture",
+        )
+        data = info.to_dict()
+        assert data["discovered_by"] == "audit_architecture"
+
+    def test_discovered_by_from_dict(self) -> None:
+        """Test discovered_by is restored from dict."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "bugs",
+            "priority": "P1",
+            "issue_id": "BUG-200",
+            "title": "Test Issue",
+            "discovered_by": "scan_codebase",
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.discovered_by == "scan_codebase"
+
+    def test_discovered_by_from_dict_missing(self) -> None:
+        """Test from_dict defaults to None for missing discovered_by."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "bugs",
+            "priority": "P1",
+            "issue_id": "BUG-200",
+            "title": "Legacy Issue",
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.discovered_by is None
+
 
 class TestIssueParser:
     """Tests for IssueParser class."""
@@ -321,6 +382,110 @@ class TestIssueParser:
         # Should get sequential ID BUG-011, not a random hash-based ID
         assert info.issue_id == "BUG-011"
         assert info.issue_type == "bugs"
+
+    def test_parse_discovered_by_from_frontmatter(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing discovered_by from YAML frontmatter."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("""---
+discovered_commit: abc123
+discovered_branch: main
+discovered_date: 2026-01-20
+discovered_by: scan_codebase
+---
+
+# BUG-001: Test Issue
+
+## Summary
+Test description.
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.discovered_by == "scan_codebase"
+
+    def test_parse_no_frontmatter(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing issue without frontmatter."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("""# BUG-001: Test Issue
+
+## Summary
+Test description.
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.discovered_by is None
+
+    def test_parse_frontmatter_null_discovered_by(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing frontmatter with null discovered_by."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("""---
+discovered_commit: abc123
+discovered_by: null
+---
+
+# BUG-001: Test Issue
+
+## Summary
+Test.
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.discovered_by is None
+
+    def test_parse_frontmatter_only_discovered_by(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing frontmatter with only discovered_by field."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-001-test.md"
+        issue_file.write_text("""---
+discovered_by: audit_architecture
+---
+
+# BUG-001: Test Issue
+
+## Summary
+Test.
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.discovered_by == "audit_architecture"
 
 
 class TestGetNextIssueNumber:
