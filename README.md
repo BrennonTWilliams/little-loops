@@ -289,6 +289,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `/ll:audit_architecture [focus]` | Analyze architecture |
 | `/ll:describe_pr` | Generate PR description |
 | `/ll:audit_claude_config [scope]` | Audit Claude Code plugin configuration |
+| `/ll:analyze-workflows [file]` | Analyze user message patterns for automation |
 
 ### Git & Workflow
 

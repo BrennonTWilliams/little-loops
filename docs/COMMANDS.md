@@ -109,6 +109,12 @@ Comprehensive audit of Claude Code plugin configuration with parallel sub-agents
 
 **Flags:** `--non-interactive`, `--fix`
 
+### `/ll:analyze-workflows`
+Analyze user message history to identify patterns, workflows, and automation opportunities.
+
+**Arguments:**
+- `file` (optional): Path to user-messages JSONL file (auto-detected if omitted)
+
 ---
 
 ## Git & Workflow
@@ -180,6 +186,7 @@ Create FSM loop configurations interactively.
 | `audit_architecture` | Analyze code structure |
 | `audit_docs` | Check documentation accuracy |
 | `audit_claude_config` | Comprehensive config audit |
+| `analyze-workflows` | Analyze user message patterns for automation |
 | `commit` | Create git commits |
 | `describe_pr` | Generate PR descriptions |
 | `cleanup_worktrees` | Clean up stale worktrees and branches |

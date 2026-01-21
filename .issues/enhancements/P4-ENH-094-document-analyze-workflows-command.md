@@ -49,9 +49,9 @@ Analyze user message history to identify patterns, workflows, and automation opp
 
 ## Acceptance Criteria
 
-- [ ] `/ll:analyze-workflows` added to README.md Commands section
-- [ ] `/ll:analyze-workflows` added to docs/COMMANDS.md reference
-- [ ] Command description matches the frontmatter in commands/analyze-workflows.md
+- [x] `/ll:analyze-workflows` added to README.md Commands section
+- [x] `/ll:analyze-workflows` added to docs/COMMANDS.md reference
+- [x] Command description matches the frontmatter in commands/analyze-workflows.md
 
 ## Labels
 
@@ -62,3 +62,20 @@ Analyze user message history to identify patterns, workflows, and automation opp
 ## Status
 
 **Open** | Created: 2026-01-20 | Priority: P4
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-20
+- **Status**: Completed
+
+### Changes Made
+- `README.md`: Added `/ll:analyze-workflows [file]` to Documentation & Analysis section (line 292)
+- `docs/COMMANDS.md`: Added detailed `/ll:analyze-workflows` section with arguments (lines 112-116)
+- `docs/COMMANDS.md`: Added `analyze-workflows` to Quick Reference table (line 189)
+
+### Verification Results
+- README.md: PASS (command documented in table)
+- docs/COMMANDS.md: PASS (detailed section and quick reference added)
