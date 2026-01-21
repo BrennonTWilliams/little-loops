@@ -50,10 +50,10 @@ fi
 # Extract filename from path
 FILENAME=$(basename "$FILE_PATH")
 
-# Extract issue ID (e.g., BUG-001, FEAT-002, ENH-003) from filename
-# Pattern: P[0-5]-(BUG|FEAT|ENH)-[0-9]{3}-
+# Extract issue ID (e.g., BUG-001, FEAT-002, ENH-003, BUG-1234) from filename
+# Pattern: P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-
 # Use || true to prevent exit on no match
-ISSUE_ID=$(echo "$FILENAME" | grep -oE '(BUG|FEAT|ENH)-[0-9]{3}' | head -1 || true)
+ISSUE_ID=$(echo "$FILENAME" | grep -oE '(BUG|FEAT|ENH)-[0-9]{3,}' | head -1 || true)
 
 # If no issue ID found, allow (not a standard issue file)
 if [[ -z "$ISSUE_ID" ]]; then

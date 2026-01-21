@@ -18,7 +18,7 @@ This command uses project configuration from `.claude/ll-config.json`:
 Issue files must follow the naming pattern `P[0-5]-[PREFIX]-[NNN]-[slug].md` where:
 - `P[0-5]` is the priority prefix
 - `[PREFIX]` is the category prefix (BUG, FEAT, ENH)
-- `[NNN]` is a 3-digit **globally unique** sequential ID (e.g., 001, 042)
+- `[NNN]` is a 3+ digit **globally unique** sequential ID (e.g., 001, 042, 1234)
 - `[slug]` is a descriptive slug
 
 **Files without valid IDs** (like `P0-split-base-builder-god-class.md`) cannot be:
@@ -110,7 +110,7 @@ for dir in {{config.issues.base_dir}}/*/; do
         ls "$dir"*.md 2>/dev/null | while read file; do
             basename=$(basename "$file")
             # Check if filename contains valid ID pattern: PREFIX-NNN
-            if ! echo "$basename" | grep -qE '(BUG|FEAT|ENH)-[0-9]{3}'; then
+            if ! echo "$basename" | grep -qE '(BUG|FEAT|ENH)-[0-9]{3,}'; then
                 echo "  INVALID: $basename"
             fi
         done
@@ -127,7 +127,7 @@ Issue IDs must be **globally unique** across all types (BUG, FEAT, ENH). Scan fo
 find {{config.issues.base_dir}} -name "*.md" -type f ! -path "*/completed/*" | while read file; do
     basename=$(basename "$file")
     # Extract the numeric ID (e.g., 007 from BUG-007 or FEAT-007)
-    id_num=$(echo "$basename" | grep -oE '(BUG|FEAT|ENH)-[0-9]{3}' | grep -oE '[0-9]{3}')
+    id_num=$(echo "$basename" | grep -oE '(BUG|FEAT|ENH)-[0-9]{3,}' | grep -oE '[0-9]{3,}')
     if [ -n "$id_num" ]; then
         echo "$id_num:$file"
     fi
@@ -159,8 +159,8 @@ Find the highest existing ID number **across ALL issue types** (BUG, FEAT, ENH):
 ```bash
 # Find global maximum across all types and directories (including completed/)
 find {{config.issues.base_dir}} -name "*.md" -type f | \
-    grep -oE '(BUG|FEAT|ENH)-[0-9]{3}' | \
-    grep -oE '[0-9]{3}' | \
+    grep -oE '(BUG|FEAT|ENH)-[0-9]{3,}' | \
+    grep -oE '[0-9]{3,}' | \
     sort -n | \
     tail -1
 ```
@@ -297,12 +297,12 @@ grep -r "[old-filename]" {{config.issues.base_dir}}/ thoughts/shared/plans/
 
 A filename is considered **valid** if it matches:
 ```regex
-^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3}-[a-z0-9-]+\.md$
+^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$
 ```
 
 A filename **needs normalization** if:
 - Missing category prefix (`BUG`, `FEAT`, `ENH`)
-- Missing 3-digit ID number
+- Missing 3+ digit ID number
 - Has non-standard prefix format
 - **Uses an ID number that exists with a different prefix** (cross-type duplicate)
 

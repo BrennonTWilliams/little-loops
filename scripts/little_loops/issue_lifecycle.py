@@ -290,7 +290,7 @@ def create_issue_from_failure(
     """
     bug_num = get_next_issue_number(config, "bugs")
     prefix = config.get_issue_prefix("bugs")
-    bug_id = f"{prefix}-{bug_num}"
+    bug_id = f"{prefix}-{bug_num:03d}"
 
     # Try to extract meaningful error info
     error_lines = error_output.split("\n")[:20]  # First 20 lines
