@@ -425,7 +425,20 @@ If context monitoring is enabled, add to configuration:
 - Only include non-default values. If user selects exactly `[".env"]` (the default), the `worktree_copy_files` key can be omitted
 - The `.claude/` directory is always copied automatically regardless of `worktree_copy_files` setting
 
-#### Step 5e: Document Tracking (Round 5)
+---
+
+#### Transition: Round 4 → Round 5
+
+**After completing Round 4 (or skipping if no conditions match):**
+- **ALWAYS proceed to Round 5 (Document Tracking)** - this round is mandatory
+- Do NOT skip to the Advanced Settings Gate (Round 5.5)
+- Do NOT skip directly to the summary
+
+---
+
+#### Step 5e: Document Tracking (Round 5) - ALWAYS RUNS
+
+**IMPORTANT**: This round MUST be executed regardless of Round 4 outcomes. Do not skip this round.
 
 **First, scan for markdown documents:**
 ```bash
@@ -716,17 +729,17 @@ If prompt optimization settings differ from defaults, add to configuration:
 
 **Total interaction rounds: 4-9**
 
-| Round | Group | Questions |
-|-------|-------|-----------|
-| 1 | Core Settings | name, src_dir, test_cmd, lint_cmd |
-| 2 | Additional Config | format_cmd, issues, scan_dirs, excludes |
-| 3 | Features | features (multi-select: parallel, context_monitor) |
-| 4 | Advanced (dynamic) | issues_path?, worktree_files?, threshold? |
-| 5 | Document Tracking | docs (auto-detect or custom categories) |
-| 5.5 | Advanced Gate | configure_advanced? |
-| 6 | Project Advanced (optional) | test_dir, build_cmd |
-| 7 | Continuation (optional) | auto_detect, include, expiry |
-| 8 | Prompt Optimization (optional) | enabled, mode, confirm |
+| Round | Group | Questions | Conditions |
+|-------|-------|-----------|------------|
+| 1 | Core Settings | name, src_dir, test_cmd, lint_cmd | Always |
+| 2 | Additional Config | format_cmd, issues, scan_dirs, excludes | Always |
+| 3 | Features | features (multi-select: parallel, context_monitor) | Always |
+| 4 | Advanced (dynamic) | issues_path?, worktree_files?, threshold? | Conditional |
+| **5** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
+| 5.5 | Advanced Gate | configure_advanced? | Always |
+| 6 | Project Advanced (optional) | test_dir, build_cmd | If Gate=Configure |
+| 7 | Continuation (optional) | auto_detect, include, expiry | If Gate=Configure |
+| 8 | Prompt Optimization (optional) | enabled, mode, confirm | If Gate=Configure |
 
 **Round 4 conditions:**
 - **issues_path**: Only if "custom directory" selected in Round 2
