@@ -71,18 +71,13 @@ Users need a targeted way to modify specific configuration areas interactively.
 
 ## Acceptance Criteria
 
-- [ ] `/ll:configure` prompts for area selection
-- [ ] `/ll:configure <area>` runs interactive config for that area
-- [ ] `/ll:configure --list` shows all areas with status
-- [ ] `/ll:configure <area> --show` displays current settings
-- [ ] `/ll:configure <area> --reset` removes section (uses defaults)
-- [ ] Config changes are merged without losing other sections
-- [ ] Non-default values only are written to config
-
-## Plan File
-
-Detailed implementation plan available at:
-`.claude/plans/golden-tumbling-dove.md`
+- [x] `/ll:configure` prompts for area selection
+- [x] `/ll:configure <area>` runs interactive config for that area
+- [x] `/ll:configure --list` shows all areas with status
+- [x] `/ll:configure <area> --show` displays current settings
+- [x] `/ll:configure <area> --reset` removes section (uses defaults)
+- [x] Config changes are merged without losing other sections
+- [x] Non-default values only are written to config
 
 ## Impact
 
@@ -98,4 +93,24 @@ Detailed implementation plan available at:
 
 ## Status
 
-**Open** | Created: 2026-01-21 | Priority: P3
+**Completed** | Created: 2026-01-21 | Completed: 2026-01-21 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-21
+- **Status**: Completed
+
+### Changes Made
+- `commands/configure.md`: Created new command with full interactive configuration for all 10 config areas
+- Supports `--list`, `--show`, `--reset` modes
+- Interactive area selection using AskUserQuestion with 4+4+2 grouping
+- Per-area configuration with 1-2 question rounds each
+- Diff display before applying changes
+- Minimal writes (only non-default values)
+
+### Verification Results
+- Lint: PASS (`ruff check scripts/`)
+- Types: PASS (`python -m mypy scripts/little_loops/`)
