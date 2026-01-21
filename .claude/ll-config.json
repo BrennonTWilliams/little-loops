@@ -21,5 +21,18 @@
   "context_monitor": {
     "enabled": true,
     "auto_handoff_threshold": 80
+  },
+  "documents": {
+    "enabled": true,
+    "categories": {
+      "architecture": {
+        "description": "System design and technical decisions",
+        "files": ["docs/ARCHITECTURE.md", "docs/API.md"]
+      },
+      "guidelines": {
+        "description": "Development guidelines and conventions",
+        "files": [".claude/CLAUDE.md", "CONTRIBUTING.md"]
+      }
+    }
   }
 }

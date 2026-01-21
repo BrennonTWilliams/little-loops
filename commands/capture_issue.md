@@ -358,6 +358,10 @@ discovered_by: capture_issue
 
 **Conversation mode**: Identified from conversation discussing: "[brief context]"
 
+## Related Key Documentation
+
+_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+
 ---
 
 **Priority**: [P0-P5] | **Created**: [YYYY-MM-DD]
@@ -406,6 +410,10 @@ TBD - requires investigation
 - **Effort**: TBD
 - **Risk**: TBD
 
+## Related Key Documentation
+
+_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+
 ## Labels
 
 `[type-label]`, `captured`
@@ -422,6 +430,65 @@ EOF
 ```bash
 git add "{{config.issues.base_dir}}/[category]/[filename]"
 ```
+
+### Phase 4b: Link Relevant Documents (if documents.enabled)
+
+**Skip this phase if**:
+- `documents.enabled` is not `true` in `.claude/ll-config.json`
+- OR no documents are configured in `documents.categories`
+
+**Process:**
+
+1. **Load configured documents:**
+   ```bash
+   # Read document categories from config
+   # For each category in {{config.documents.categories}}:
+   #   - Get the files array
+   #   - Read each document file
+   ```
+
+2. **Extract key concepts from each document:**
+   - Headers and section titles
+   - Key terms (nouns, technical terms)
+   - File paths mentioned
+
+3. **Score relevance against issue content:**
+   - Match issue summary, context, and proposed solution against document concepts
+   - Use simple keyword overlap (similar to duplicate detection in Phase 2)
+   - Score > 0.3 = relevant
+
+4. **Select top matches (max 3 documents):**
+   - Rank by relevance score
+   - Take top 3 unique documents across all categories
+
+5. **Update issue file:**
+
+   Replace the placeholder "Related Key Documentation" section:
+
+   ```markdown
+   ## Related Key Documentation
+
+   | Category | Document | Relevance |
+   |----------|----------|-----------|
+   | [category] | [document path] | [brief reason] |
+   | [category] | [document path] | [brief reason] |
+   ```
+
+   Example:
+   ```markdown
+   ## Related Key Documentation
+
+   | Category | Document | Relevance |
+   |----------|----------|-----------|
+   | architecture | docs/ARCHITECTURE.md | Mentions hook lifecycle |
+   | product | .claude/ll-goals.md | Workflow automation goal |
+   ```
+
+6. **Note in output:**
+   Add to Phase 5 report a new field:
+   ```markdown
+   - **Linked Docs**: [count] documents linked
+   ```
 
 #### Action: Update Existing Issue
 

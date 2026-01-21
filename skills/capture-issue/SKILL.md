@@ -53,6 +53,16 @@ This analyzes the conversation to identify potential issues and presents them fo
 | "Can you capture the issues we discussed?" | `/ll:capture_issue` |
 | "Log this as a bug" | `/ll:capture_issue "[context from conversation]"` |
 
+## Document Linking
+
+When `documents.enabled` is true in the project config, captured issues will automatically:
+- Link relevant documents from configured categories
+- Show linked docs in the capture report
+
+To enable document linking:
+1. Run `/ll:init --interactive` and enable document tracking
+2. Or add `documents` section to `.claude/ll-config.json`
+
 ## Integration
 
 After capturing issues:

@@ -127,7 +127,7 @@ Replace scoring system with actionable checks:
 - `commands/capture_issue.md` - Add Phase 4b
 - `commands/normalize_issues.md` - Add Section 7b
 - `commands/align_issues.md` - Complete rewrite
-- `skills/capture-issue.md` - Update if skill version exists
+- `skills/capture-issue/SKILL.md` - Update skill to link docs
 
 ## Impact
 
@@ -160,6 +160,27 @@ Replace scoring system with actionable checks:
 
 ---
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-21
+- **Status**: Completed
+
+### Changes Made
+- `commands/capture_issue.md`: Added "Related Key Documentation" section to both minimal and full issue templates; Added Phase 4b for document linking when `documents.enabled`
+- `commands/normalize_issues.md`: Added Section 7b to add missing document references during normalization
+- `commands/align_issues.md`: Complete rewrite replacing subjective 0-100% scoring with concrete relevance checks (✓/⚠/✗) and alignment checks with specific recommendations; Added `--fix` flag for auto-fixing relevance issues
+- `skills/capture-issue/SKILL.md`: Added Document Linking section explaining the feature
+- `.claude/ll-config.json`: Dogfooded documents config with architecture and guidelines categories
+
+### Verification Results
+- Tests: PASS (1442 tests)
+- Lint: PASS
+- Types: PASS
+- JSON validation: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-21 | Priority: P2
+**Completed** | Created: 2026-01-21 | Completed: 2026-01-21 | Priority: P2

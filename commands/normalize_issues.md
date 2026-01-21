@@ -246,6 +246,57 @@ Check if any other files reference the old filename and offer to update:
 grep -r "[old-filename]" {{config.issues.base_dir}}/ thoughts/shared/plans/
 ```
 
+### 7b. Add Missing Document References (if documents.enabled)
+
+**Skip this section if**:
+- `documents.enabled` is not `true` in `.claude/ll-config.json`
+- OR no documents are configured
+
+**Process:**
+
+For each issue file:
+
+1. **Check if "Related Key Documentation" section exists:**
+   ```bash
+   grep -q "## Related Key Documentation" "$issue_file"
+   ```
+
+2. **If section is missing OR contains only placeholder text:**
+
+   Placeholder text patterns:
+   - `_No documents linked`
+   - `_No relevant documents identified`
+
+3. **Link relevant documents:**
+   - Load documents from `{{config.documents.categories}}`
+   - Read each document and extract key concepts
+   - Match against issue content
+   - Select top 3 matches
+
+4. **Add or update section:**
+
+   If section is missing, append to file before `## Labels` or `---` footer:
+   ```bash
+   # Find insertion point (before ## Labels or final ---)
+   # Insert the Related Key Documentation section
+   ```
+
+   If section exists with placeholder, replace the placeholder line:
+   ```bash
+   # Replace "_No documents linked..." with the table
+   ```
+
+5. **Track in report:**
+   Add to Step 8 output:
+   ```markdown
+   ## Document References Added
+
+   | Issue | Documents Linked |
+   |-------|------------------|
+   | BUG-071 | docs/ARCHITECTURE.md, docs/API.md |
+   | ENH-045 | .claude/ll-goals.md |
+   ```
+
 ### 8. Output Report
 
 ```markdown

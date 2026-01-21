@@ -1,17 +1,17 @@
 ---
-description: Validate active issues against key documents for goal, rule, and design alignment
+description: Validate active issues against key documents for relevance and alignment
 arguments:
   - name: category
     description: Document category to check against (e.g., architecture, product) or --all
     required: true
   - name: flags
-    description: "Optional flags: --verbose (show detailed analysis)"
+    description: "Optional flags: --verbose (detailed analysis), --fix (auto-fix relevance issues)"
     required: false
 ---
 
 # Align Issues with Documents
 
-You are tasked with validating that active issues align with key documents configured in `ll-config.json`.
+You are tasked with validating that active issues have correct document references and align with key documents configured in `ll-config.json`.
 
 ## Configuration
 
@@ -60,6 +60,7 @@ $ARGUMENTS
 
 - **flags** (optional): Command flags
   - `--verbose` - Include detailed alignment analysis for each issue
+  - `--fix` - Auto-fix relevance issues (add missing docs, remove irrelevant ones)
 
 ## Process
 
@@ -69,11 +70,13 @@ $ARGUMENTS
 CATEGORY="${category}"
 FLAGS="${flags:-}"
 VERBOSE=false
+FIX_MODE=false
 
 if [[ "$FLAGS" == *"--verbose"* ]]; then VERBOSE=true; fi
+if [[ "$FLAGS" == *"--fix"* ]]; then FIX_MODE=true; fi
 ```
 
-### 2. Load Document Category
+### 2. Load Document Categories
 
 ```bash
 # If CATEGORY is "--all", iterate through all categories in {{config.documents.categories}}
@@ -107,11 +110,11 @@ For each document file in the category:
 
 2. **Read document content**
 
-3. **Extract key concepts** from the document:
-   - Goals and objectives (look for "## Goals", "## Objectives", purpose statements)
-   - Rules and standards (look for "must", "should", "never", guidelines)
-   - Design patterns (look for architectural patterns, conventions)
-   - Terminology and naming conventions (key terms used consistently)
+3. **Extract constraints and concepts**:
+   - Goals and objectives (from "## Goals", "## Objectives" sections)
+   - Rules (statements with "must", "should", "never", "always")
+   - Design patterns and conventions
+   - Terminology definitions
 
 ### 4. Find Active Issues
 
@@ -127,37 +130,90 @@ For each issue file:
 #### A. Read Issue Content
 - Title and summary
 - Proposed implementation approach
-- Expected changes
-- Affected components
+- Related Key Documentation section (if present)
 
-#### B. Check Alignment Against Documents
+#### B. Doc Relevance Check
 
-Evaluate these alignment dimensions:
+For each document linked in the issue's "Related Key Documentation" section:
 
-| Dimension | Question | Weight |
-|-----------|----------|--------|
-| **Goal Alignment** | Does this issue support documented goals? | 30% |
-| **Rule Compliance** | Does the proposed solution follow documented standards? | 25% |
-| **Design Consistency** | Is the approach consistent with documented architecture? | 25% |
-| **Terminology** | Does the issue use correct terms from documentation? | 20% |
+1. **Read the linked document**
+2. **Check for meaningful connection** to the issue:
+   - Does the document discuss concepts mentioned in the issue?
+   - Does the issue mention components/patterns from the document?
+   - Is there terminology overlap?
 
-#### C. Calculate Alignment Score
+3. **Classify relevance:**
+   - **✓ Relevant** - Clear, meaningful connection
+   - **⚠ Weak** - Tangential connection only
+   - **✗ Not Relevant** - No meaningful connection
 
-Score from 0-100% based on weighted dimensions:
+4. **Generate recommendation** for non-relevant docs:
+   ```
+   → Recommend: Remove [document] from Related Key Documentation
+   ```
 
-- **High (80-100%)**: Issue aligns well with documents
-- **Medium (50-79%)**: Issue has some misalignments that should be addressed
-- **Low (0-49%)**: Issue has significant misalignments requiring review
+#### C. Missing Documentation Check
 
-#### D. Identify Concerns
+For documents NOT currently linked to the issue:
 
-For scores below 80%, identify specific misalignments:
-- "Proposes pattern not documented in architecture"
-- "Uses term 'X' but docs use 'Y'"
-- "Feature doesn't appear in product roadmap"
-- "Violates documented coding standard"
+1. **Check if document should be linked:**
+   - Does the issue propose changes to components mentioned in the document?
+   - Does the issue's solution approach relate to patterns in the document?
 
-### 6. Output Report
+2. **If high relevance detected:**
+   ```
+   → Recommend: Add [document] to Related Key Documentation
+   ```
+
+#### D. Alignment Check
+
+For each RELEVANT linked document:
+
+1. **Extract constraints from document:**
+   - Direct rules ("must use X", "never do Y")
+   - Patterns ("use exponential backoff", "all errors must be logged")
+   - Conventions ("naming format: X", "file structure: Y")
+
+2. **Compare against issue proposal:**
+   - Does the proposed solution follow documented rules?
+   - Does it use documented patterns?
+   - Are there conflicts or contradictions?
+
+3. **Classify alignment:**
+   - **✓ Aligned** - Follows documented constraints
+   - **⚠ Unclear** - Can't determine alignment (proposal too vague)
+   - **✗ Misaligned** - Contradicts documented constraints
+
+4. **For misalignments, generate specific recommendation:**
+   ```markdown
+   Document states:
+     "[exact quote from document]"
+
+   Issue proposes:
+     "[quote from issue that conflicts]"
+
+   → Recommend: [specific action to resolve]
+   ```
+
+### 6. Apply Fixes (if --fix)
+
+When `--fix` flag is present:
+
+**Auto-fix relevance issues:**
+- Remove documents marked as "✗ Not Relevant" from issue's Related Key Documentation
+- Add documents with high relevance that are missing
+
+**Do NOT auto-fix alignment issues** - these require human decision:
+- May need to update the issue to follow docs
+- OR may need to update docs if issue represents valid new direction
+
+For each fix applied:
+```bash
+# Edit the issue file to update Related Key Documentation section
+# Use Edit tool to replace the table content
+```
+
+### 7. Output Report
 
 ```markdown
 ================================================================================
@@ -174,108 +230,70 @@ ISSUE ALIGNMENT REPORT: [category]
 ## Summary
 
 - **Issues analyzed**: X
-- **High alignment (80-100%)**: N
-- **Medium alignment (50-79%)**: N
-- **Low alignment (0-49%)**: N
+- **Relevance issues found**: N (Y auto-fixed)
+- **Alignment issues found**: M (require review)
 
-## High Alignment (80-100%)
+## Results by Issue
 
-| Issue | Score | Notes |
-|-------|-------|-------|
-| FEAT-033 | 95% | Follows config-driven pattern from ARCHITECTURE.md |
-| BUG-052 | 88% | Addresses documented component |
+### [ISSUE-ID]: [Title]
 
-## Medium Alignment (50-79%)
+**Doc Relevance Check**
+✓ docs/ARCHITECTURE.md - Relevant (discusses hook lifecycle)
+✗ docs/ROADMAP.md - Not relevant
+  → Recommend: Remove docs/ROADMAP.md from Related Key Documentation
 
-| Issue | Score | Concerns |
-|-------|-------|----------|
-| ENH-045 | 62% | Proposes pattern not in architecture docs |
+**Missing Documentation**
+  → Recommend: Add docs/API.md to Related Key Documentation (mentions error handling patterns)
 
-## Low Alignment (0-49%)
-
-| Issue | Score | Action Needed |
-|-------|-------|---------------|
-| FEAT-071 | 35% | Review against API.md section 3.2 |
-
-## Recommendations
-
-1. **High Priority**: Review FEAT-071 against documented API patterns
-2. **Consider**: Update docs/ARCHITECTURE.md if ENH-045 pattern is approved
-3. **Terminology**: Standardize usage of "[term]" across issues
-
-================================================================================
-```
-
-### 7. Verbose Output (if --verbose)
-
-For each issue with score below 80%, include detailed analysis:
-
-```markdown
-### Detailed Analysis: [ISSUE-ID]
-
-**Issue**: [Title]
-**File**: [path to issue file]
-
-**Score Breakdown**:
-- Goal alignment: X/30
-- Rule compliance: X/25
-- Design consistency: X/25
-- Terminology: X/20
-- **Total**: XX/100
-
-**Specific Concerns**:
-1. [Concern 1]: [Detailed explanation with reference to document section]
-2. [Concern 2]: [Detailed explanation with reference to document section]
-
-**Suggested Improvements**:
-- [Specific suggestion 1]
-- [Specific suggestion 2]
+**Alignment Check**
+✓ Aligned with docs/ARCHITECTURE.md
 
 ---
-```
 
-### 8. Multi-Category Output (if --all)
+### [ISSUE-ID]: [Title]
 
-When checking all categories, produce a combined report:
+**Doc Relevance Check**
+✓ docs/ARCHITECTURE.md - Relevant (retry logic patterns)
 
-```markdown
-================================================================================
-ISSUE ALIGNMENT REPORT: All Categories
-================================================================================
+**Alignment Check**
+✗ Misaligned with docs/ARCHITECTURE.md Section 4.2
 
-## Categories Analyzed
+  Document states:
+    "All retry logic must use exponential backoff with jitter"
 
-| Category | Documents | Description |
-|----------|-----------|-------------|
-| architecture | 2 files | System design and technical decisions |
-| product | 1 file | Product goals and requirements |
+  Issue proposes:
+    "Fixed 5-second retry interval"
 
-## Overall Summary
+  → Recommend: Update Proposed Solution to use exponential backoff
+    OR update docs/ARCHITECTURE.md if fixed interval is intentional
 
-| Category | High | Medium | Low |
-|----------|------|--------|-----|
-| architecture | 5 | 2 | 1 |
-| product | 4 | 3 | 1 |
+---
 
-## Issues Requiring Attention
+## Action Summary
 
-Issues with low alignment in ANY category:
+### Relevance Fixes Needed
+| Issue | Action | Document |
+|-------|--------|----------|
+| FEAT-045 | Remove | docs/ROADMAP.md |
+| FEAT-045 | Add | docs/API.md |
+| BUG-032 | Remove | docs/GOALS.md |
 
-| Issue | architecture | product | Primary Concern |
-|-------|--------------|---------|-----------------|
-| FEAT-071 | 35% | 72% | Architecture misalignment |
-| ENH-089 | 85% | 42% | Not in product roadmap |
-
-## Per-Category Details
-
-### Architecture Alignment
-[Same format as single-category report]
-
-### Product Alignment
-[Same format as single-category report]
+### Alignment Issues (Require Review)
+| Issue | Document | Conflict |
+|-------|----------|----------|
+| ENH-089 | docs/ARCHITECTURE.md | Proposes fixed retry vs exponential backoff |
+| FEAT-071 | docs/API.md | Uses REST endpoint for streaming data |
 
 ================================================================================
 ```
+
+### 8. Verbose Output (if --verbose)
+
+Include full document quotes and detailed reasoning for each check.
+
+### 9. Multi-Category Output (if --all)
+
+When checking all categories, produce combined report with per-category sections.
 
 ---
 
@@ -293,6 +311,12 @@ Issues with low alignment in ANY category:
 
 # Verbose output with detailed analysis
 /ll:align_issues architecture --verbose
+
+# Auto-fix relevance issues (add missing docs, remove irrelevant)
+/ll:align_issues architecture --fix
+
+# Combined: verbose output and auto-fix
+/ll:align_issues --all --verbose --fix
 ```
 
 ---
@@ -301,9 +325,10 @@ Issues with low alignment in ANY category:
 
 This command works well with:
 - `/ll:init --interactive` - Set up document tracking
+- `/ll:capture_issue` - Creates issues with doc references
+- `/ll:normalize_issues` - Adds doc references to existing issues
 - `/ll:verify_issues` - Verify issue accuracy before alignment check
 - `/ll:manage_issue` - Process issues after reviewing alignment
-- `/ll:scan_codebase` - Create new issues that reference key documents
 
 ---
 
@@ -322,7 +347,12 @@ This command works well with:
 - Check that documents haven't been moved or renamed
 - Update paths in `.claude/ll-config.json` if files moved
 
-**Low alignment scores**
-- Review the specific concerns in the report
-- Either update the issue to align with documentation
-- Or update documentation if the issue represents a valid new direction
+**Relevance marked as "Not relevant" incorrectly**
+- Check if document was manually linked for a reason not obvious from content
+- Use `--verbose` to see detailed reasoning
+- Adjust document content to make connection clearer
+
+**Alignment marked as "Misaligned" incorrectly**
+- Review the quoted constraints from the document
+- The issue may need more specific language to show alignment
+- Or the document may need updating to reflect new valid approaches
