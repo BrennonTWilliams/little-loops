@@ -5,7 +5,7 @@ arguments:
     description: Document category to check against (e.g., architecture, product) or --all
     required: true
   - name: flags
-    description: "Optional flags: --verbose (detailed analysis), --fix (auto-fix relevance issues)"
+    description: "Optional flags: --verbose (detailed analysis), --dry-run (report only, no auto-fixing)"
     required: false
 ---
 
@@ -60,7 +60,7 @@ $ARGUMENTS
 
 - **flags** (optional): Command flags
   - `--verbose` - Include detailed alignment analysis for each issue
-  - `--fix` - Auto-fix relevance issues (add missing docs, remove irrelevant ones)
+  - `--dry-run` - Report-only mode; show what would be fixed without making changes
 
 ## Process
 
@@ -70,10 +70,10 @@ $ARGUMENTS
 CATEGORY="${category}"
 FLAGS="${flags:-}"
 VERBOSE=false
-FIX_MODE=false
+DRY_RUN=false
 
 if [[ "$FLAGS" == *"--verbose"* ]]; then VERBOSE=true; fi
-if [[ "$FLAGS" == *"--fix"* ]]; then FIX_MODE=true; fi
+if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
 ```
 
 ### 2. Load Document Categories
@@ -195,22 +195,45 @@ For each RELEVANT linked document:
    → Recommend: [specific action to resolve]
    ```
 
-### 6. Apply Fixes (if --fix)
+### 6. Apply Fixes (unless --dry-run)
 
-When `--fix` flag is present:
+By default, auto-fix both relevance and alignment issues. Skip all fixes if `--dry-run` flag is present.
 
-**Auto-fix relevance issues:**
-- Remove documents marked as "✗ Not Relevant" from issue's Related Key Documentation
-- Add documents with high relevance that are missing
+#### 6a. Auto-fix Relevance Issues
 
-**Do NOT auto-fix alignment issues** - these require human decision:
-- May need to update the issue to follow docs
-- OR may need to update docs if issue represents valid new direction
+- **Remove** documents marked as "✗ Not Relevant" from issue's Related Key Documentation
+- **Add** documents with high relevance that are missing
 
-For each fix applied:
+#### 6b. Auto-fix Alignment Issues
+
+For issues marked as "✗ Misaligned":
+
+1. **Determine if auto-fixable** - An alignment issue is auto-fixable when:
+   - The document constraint is clear and specific
+   - The issue's Proposed Solution explicitly contradicts it
+   - There is one obvious way to align
+
+2. **For auto-fixable issues:**
+   - Locate the "Proposed Solution" or "Proposed Implementation" section
+   - Update the conflicting text to align with the document constraint
+   - Add a note explaining the alignment correction:
+
+   ```markdown
+   > **Auto-aligned**: Updated to follow [document] constraint:
+   > "[constraint quote]"
+   ```
+
+3. **For non-auto-fixable issues** (ambiguous, multiple options, or intentional new direction):
+   - Mark as "REQUIRES REVIEW" in the report
+   - Do NOT auto-fix
+   - List resolution options for human decision
+
+#### 6c. Apply Edits
+
+For each fix:
 ```bash
-# Edit the issue file to update Related Key Documentation section
-# Use Edit tool to replace the table content
+# Use Edit tool to update the issue file
+# Track change for report output
 ```
 
 ### 7. Output Report
@@ -230,8 +253,9 @@ ISSUE ALIGNMENT REPORT: [category]
 ## Summary
 
 - **Issues analyzed**: X
-- **Relevance issues found**: N (Y auto-fixed)
-- **Alignment issues found**: M (require review)
+- **Relevance issues**: N found (Y auto-fixed, Z skipped)
+- **Alignment issues**: M found (K auto-fixed, L require review)
+- **Mode**: [Auto-fix applied | Dry-run - no changes made]
 
 ## Results by Issue
 
@@ -271,18 +295,22 @@ ISSUE ALIGNMENT REPORT: [category]
 
 ## Action Summary
 
-### Relevance Fixes Needed
+### Relevance Fixes Applied
 | Issue | Action | Document |
 |-------|--------|----------|
-| FEAT-045 | Remove | docs/ROADMAP.md |
-| FEAT-045 | Add | docs/API.md |
-| BUG-032 | Remove | docs/GOALS.md |
+| FEAT-045 | Removed | docs/ROADMAP.md |
+| FEAT-045 | Added | docs/API.md |
+| BUG-032 | Removed | docs/GOALS.md |
 
-### Alignment Issues (Require Review)
-| Issue | Document | Conflict |
-|-------|----------|----------|
-| ENH-089 | docs/ARCHITECTURE.md | Proposes fixed retry vs exponential backoff |
-| FEAT-071 | docs/API.md | Uses REST endpoint for streaming data |
+### Alignment Fixes Applied
+| Issue | Document | Original | Fixed To |
+|-------|----------|----------|----------|
+| ENH-089 | docs/ARCHITECTURE.md | "Fixed retry interval" | "Exponential backoff" |
+
+### Issues Requiring Review
+| Issue | Document | Reason |
+|-------|----------|--------|
+| FEAT-071 | docs/API.md | Multiple resolution options |
 
 ================================================================================
 ```
@@ -300,23 +328,23 @@ When checking all categories, produce combined report with per-category sections
 ## Examples
 
 ```bash
-# Check architecture alignment for all active issues
+# Check and auto-fix alignment (default behavior)
 /ll:align_issues architecture
 
-# Check product/roadmap alignment
+# Check product/roadmap alignment with auto-fix
 /ll:align_issues product
 
-# Check all configured categories
+# Check all configured categories with auto-fix
 /ll:align_issues --all
 
-# Verbose output with detailed analysis
+# Verbose output with detailed analysis and auto-fix
 /ll:align_issues architecture --verbose
 
-# Auto-fix relevance issues (add missing docs, remove irrelevant)
-/ll:align_issues architecture --fix
+# Dry-run: report only, no changes
+/ll:align_issues architecture --dry-run
 
-# Combined: verbose output and auto-fix
-/ll:align_issues --all --verbose --fix
+# Verbose dry-run for detailed analysis without changes
+/ll:align_issues --all --verbose --dry-run
 ```
 
 ---

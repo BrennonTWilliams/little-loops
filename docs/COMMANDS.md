@@ -64,11 +64,11 @@ Validate issue file for accuracy and auto-correct problems.
 Verify all issue files against current codebase state.
 
 ### `/ll:align_issues`
-Validate active issues against key documents for alignment.
+Validate active issues against key documents for relevance and alignment.
 
 **Arguments:**
 - `category`: Document category (`architecture`, `product`, or `--all`)
-- `flags` (optional): `--verbose` for detailed analysis
+- `flags` (optional): `--verbose` (detailed analysis), `--dry-run` (report only, no auto-fixing)
 
 **Prerequisites:** Configure document tracking via `/ll:init --interactive`
 
