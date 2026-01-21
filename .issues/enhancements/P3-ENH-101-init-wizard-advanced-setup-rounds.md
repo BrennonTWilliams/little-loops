@@ -183,4 +183,27 @@ If "Configure" is selected, proceed to Rounds 6-8. Otherwise, skip to final outp
 
 ## Status
 
-**Open** | Created: 2026-01-21 | Priority: P3
+**Completed** | Created: 2026-01-21 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-21
+- **Status**: Completed
+
+### Changes Made
+- `commands/init.md`: Added advanced setup rounds (6-8) with entry gate question
+  - Step 5f: Advanced Settings Gate - asks if user wants to configure advanced settings
+  - Step 5g: Project Advanced (Round 6) - test_dir, build_cmd
+  - Step 5h: Continuation Behavior (Round 7) - auto_detect, include options, expiry
+  - Step 5i: Prompt Optimization (Round 8) - enabled, mode, confirm
+- Updated Interactive Mode Summary table to reflect new rounds (4-9 total)
+- Updated Display Summary to show continuation and prompt_optimization sections
+- Updated config template to include new sections
+
+### Verification Results
+- Tests: PASS
+- Lint: PASS
+- Types: PASS

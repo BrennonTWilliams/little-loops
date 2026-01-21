@@ -496,11 +496,225 @@ If document tracking is enabled with defaults, add to configuration:
 
 If "Skip" selected or no documents found, omit the `documents` section entirely (disabled is the default).
 
+#### Step 5f: Advanced Settings Gate
+
+Use a SINGLE AskUserQuestion call:
+
+```yaml
+questions:
+  - header: "Advanced"
+    question: "Would you like to configure additional advanced settings?"
+    options:
+      - label: "Skip (Recommended)"
+        description: "Use sensible defaults for continuation, prompt optimization, and more"
+      - label: "Configure"
+        description: "Set up test directory, build command, continuation, and prompt optimization"
+    multiSelect: false
+```
+
+If "Skip (Recommended)" is selected, proceed directly to step 6 (Display Summary).
+If "Configure" is selected, continue to Rounds 6-8.
+
+#### Step 5g: Project Advanced (Round 6)
+
+**Only run if user selected "Configure" in the Advanced Settings Gate.**
+
+Use a SINGLE AskUserQuestion call with 2 questions:
+
+```yaml
+questions:
+  - header: "Test Dir"
+    question: "Do you have a separate test directory?"
+    options:
+      - label: "tests/ (Recommended)"
+        description: "Standard tests/ directory"
+      - label: "test/"
+        description: "Alternative test/ directory"
+      - label: "Same as src"
+        description: "Tests are alongside source files"
+    multiSelect: false
+
+  - header: "Build Cmd"
+    question: "Do you have a build command?"
+    options:
+      - label: "Skip (Recommended)"
+        description: "No build step needed (common for scripting languages)"
+      - label: "npm run build"
+        description: "Node.js build"
+      - label: "python -m build"
+        description: "Python package build"
+      - label: "make build"
+        description: "Makefile build"
+    multiSelect: false
+```
+
+**Populate options based on detected project type:**
+- Python: tests/, test/, Same as src | Skip, python -m build, make build
+- Node.js: tests/, test/, __tests__/ | npm run build, yarn build, Skip
+- Go: *_test.go files in same dir | go build, make build, Skip
+- Rust: tests/ | cargo build, cargo build --release, Skip
+- Java: src/test/java/ | mvn package, gradle build, Skip
+- .NET: tests/ | dotnet build, dotnet publish, Skip
+
+**Configuration from Round 6 responses:**
+
+If user selected a non-default test directory, add to configuration:
+```json
+{
+  "project": {
+    "test_dir": "<selected directory>"
+  }
+}
+```
+
+If user selected a build command (not "Skip"), add to configuration:
+```json
+{
+  "project": {
+    "build_cmd": "<selected command>"
+  }
+}
+```
+
+**Notes:**
+- Only include `test_dir` if different from the schema default ("tests")
+- Only include `build_cmd` if user selected a command (not "Skip")
+
+#### Step 5h: Continuation Behavior (Round 7)
+
+**Only run if user selected "Configure" in the Advanced Settings Gate.**
+
+Use a SINGLE AskUserQuestion call with 3 questions:
+
+```yaml
+questions:
+  - header: "Auto-detect"
+    question: "Enable automatic session continuation detection?"
+    options:
+      - label: "Yes (Recommended)"
+        description: "Auto-detect continuation prompts on session start"
+      - label: "No"
+        description: "Manual /ll:resume required"
+    multiSelect: false
+
+  - header: "Include"
+    question: "What should continuation prompts include?"
+    options:
+      - label: "Todos"
+        description: "Include pending todo list items"
+      - label: "Git status"
+        description: "Include current git status"
+      - label: "Recent files"
+        description: "Include recently modified files"
+    multiSelect: true
+
+  - header: "Expiry"
+    question: "How long should continuation prompts remain valid?"
+    options:
+      - label: "24 hours (Recommended)"
+        description: "Prompts expire after one day"
+      - label: "48 hours"
+        description: "Prompts expire after two days"
+      - label: "No expiry (168 hours)"
+        description: "Prompts remain valid for one week"
+    multiSelect: false
+```
+
+**Configuration from Round 7 responses:**
+
+If continuation settings differ from defaults, add to configuration:
+```json
+{
+  "continuation": {
+    "auto_detect_on_session_start": true,
+    "include_todos": true,
+    "include_git_status": true,
+    "include_recent_files": true,
+    "prompt_expiry_hours": 24
+  }
+}
+```
+
+**Mapping:**
+- "Yes (Recommended)" for auto-detect → `auto_detect_on_session_start: true` (default, can omit)
+- "No" for auto-detect → `auto_detect_on_session_start: false`
+- "Todos" selected → `include_todos: true` (default)
+- "Git status" selected → `include_git_status: true` (default)
+- "Recent files" selected → `include_recent_files: true` (default)
+- "24 hours" → `prompt_expiry_hours: 24` (default, can omit)
+- "48 hours" → `prompt_expiry_hours: 48`
+- "No expiry" → `prompt_expiry_hours: 168`
+
+**Notes:**
+- Only include `continuation` section if any value differs from schema defaults
+- By default, all three include options are true, so only include if user deselects any
+
+#### Step 5i: Prompt Optimization (Round 8)
+
+**Only run if user selected "Configure" in the Advanced Settings Gate.**
+
+Use a SINGLE AskUserQuestion call with 3 questions:
+
+```yaml
+questions:
+  - header: "Optimize"
+    question: "Enable automatic prompt optimization?"
+    options:
+      - label: "Yes (Recommended)"
+        description: "Enhance prompts with codebase context"
+      - label: "No"
+        description: "Use prompts as-is"
+    multiSelect: false
+
+  - header: "Mode"
+    question: "Optimization mode?"
+    options:
+      - label: "Quick (Recommended)"
+        description: "Fast optimization using config patterns"
+      - label: "Thorough"
+        description: "Full codebase analysis via sub-agent"
+    multiSelect: false
+
+  - header: "Confirm"
+    question: "Require confirmation before applying optimized prompts?"
+    options:
+      - label: "Yes (Recommended)"
+        description: "Show optimized prompt for approval"
+      - label: "No"
+        description: "Apply optimization automatically"
+    multiSelect: false
+```
+
+**Configuration from Round 8 responses:**
+
+If prompt optimization settings differ from defaults, add to configuration:
+```json
+{
+  "prompt_optimization": {
+    "enabled": true,
+    "mode": "quick",
+    "confirm": true
+  }
+}
+```
+
+**Mapping:**
+- "Yes (Recommended)" for enabled → `enabled: true` (default, can omit)
+- "No" for enabled → `enabled: false`
+- "Quick (Recommended)" → `mode: "quick"` (default, can omit)
+- "Thorough" → `mode: "thorough"`
+- "Yes (Recommended)" for confirm → `confirm: true` (default, can omit)
+- "No" for confirm → `confirm: false`
+
+**Notes:**
+- Only include `prompt_optimization` section if any value differs from schema defaults
+- If user selects "No" for enabled, the mode and confirm settings are still recorded but have no effect
+
 ---
 
 ### Interactive Mode Summary
 
-**Total interaction rounds: 3-5**
+**Total interaction rounds: 4-9**
 
 | Round | Group | Questions |
 |-------|-------|-----------|
@@ -509,6 +723,10 @@ If "Skip" selected or no documents found, omit the `documents` section entirely 
 | 3 | Features | features (multi-select: parallel, context_monitor) |
 | 4 | Advanced (dynamic) | issues_path?, worktree_files?, threshold? |
 | 5 | Document Tracking | docs (auto-detect or custom categories) |
+| 5.5 | Advanced Gate | configure_advanced? |
+| 6 | Project Advanced (optional) | test_dir, build_cmd |
+| 7 | Continuation (optional) | auto_detect, include, expiry |
+| 8 | Prompt Optimization (optional) | enabled, mode, confirm |
 
 **Round 4 conditions:**
 - **issues_path**: Only if "custom directory" selected in Round 2
@@ -517,6 +735,10 @@ If "Skip" selected or no documents found, omit the `documents` section entirely 
 - **If no conditions match**: Round 4 is skipped
 
 **Round 5**: Always runs. User can choose "Use defaults", "Custom categories", or "Skip".
+
+**Rounds 6-8 conditions:**
+- Only run if user selects "Configure" in Round 5.5 (Advanced Gate)
+- If "Skip (Recommended)" is selected, rounds 6-8 are skipped entirely
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next
@@ -538,11 +760,12 @@ Configuration Summary:
   [PROJECT]
   project.name:       [name]
   project.src_dir:    [src_dir]
+  project.test_dir:   [test_dir]                # Only show if configured
   project.test_cmd:   [test_cmd]
   project.lint_cmd:   [lint_cmd]
   project.type_cmd:   [type_cmd]
   project.format_cmd: [format_cmd]
-  project.build_cmd:  [build_cmd]
+  project.build_cmd:  [build_cmd]               # Only show if configured
 
   [ISSUES]
   issues.base_dir:    [base_dir]
@@ -561,6 +784,18 @@ Configuration Summary:
   [DOCUMENTS]                             # Only show if enabled
   documents.enabled: true
   documents.categories: [architecture, product]  # List category names
+
+  [CONTINUATION]                          # Only show if configured (non-defaults)
+  continuation.auto_detect_on_session_start: [true/false]
+  continuation.include_todos: [true/false]
+  continuation.include_git_status: [true/false]
+  continuation.include_recent_files: [true/false]
+  continuation.prompt_expiry_hours: [hours]
+
+  [PROMPT OPTIMIZATION]                   # Only show if configured (non-defaults)
+  prompt_optimization.enabled: [true/false]
+  prompt_optimization.mode: [quick/thorough]
+  prompt_optimization.confirm: [true/false]
 
 ================================================================================
 ```
@@ -594,7 +829,9 @@ Otherwise (neither `--interactive` nor `--yes`):
      "scan": { ... },
      "parallel": { ... },
      "context_monitor": { ... },
-     "documents": { ... }
+     "documents": { ... },
+     "continuation": { ... },
+     "prompt_optimization": { ... }
    }
    ```
 
@@ -603,6 +840,8 @@ Otherwise (neither `--interactive` nor `--yes`):
    - Omit `parallel.worktree_copy_files` if user selected exactly the defaults
    - Omit `context_monitor` section if user selected "No" (disabled is the default)
    - Omit `documents` section if user selected "Skip" (disabled is the default)
+   - Omit `continuation` section if all values match schema defaults
+   - Omit `prompt_optimization` section if all values match schema defaults
 
 ### 9. Update .gitignore
 
