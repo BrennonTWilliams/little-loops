@@ -62,9 +62,10 @@ ISSUE MANAGEMENT
 /ll:verify_issues
     Verify all issue files against current codebase state
 
-/ll:align_issues <category> [--verbose]
-    Validate active issues against key documents for alignment
+/ll:align_issues <category> [flags]
+    Validate active issues against key documents for relevance and alignment
     Categories: architecture, product, --all
+    Flags: --verbose (detailed analysis), --dry-run (report only, no auto-fixing)
     Requires: documents.enabled in ll-config.json
 
 /ll:normalize_issues
