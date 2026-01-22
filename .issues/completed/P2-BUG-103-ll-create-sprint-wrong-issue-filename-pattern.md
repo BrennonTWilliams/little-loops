@@ -55,3 +55,19 @@ Or better, use Claude's Glob tool with pattern `**/*-BUG-001-*.md`.
 ---
 
 **Priority**: P2 | **Created**: 2026-01-22
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-22
+- **Status**: Completed
+
+### Changes Made
+- `.claude/commands/ll_create_sprint.md`: Fixed the bash pattern in issue validation from `${issue_id}-*.md` to `*-${issue_id}-*.md` to properly match files with priority prefix (e.g., `P2-BUG-001-description.md`)
+
+### Verification Results
+- Tests: PASS (1442 passed)
+- Lint: PASS
+- Types: PASS

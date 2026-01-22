@@ -70,8 +70,8 @@ For each issue ID in the list, verify it exists:
 
 ```bash
 for issue_id in "${ISSUE_ARRAY[@]}"; do
-  # Search for issue file
-  if ! find {{config.issues.base_dir}} -name "${issue_id}-*.md" | grep -q .; then
+  # Search for issue file (pattern includes priority prefix, e.g., P2-BUG-001-description.md)
+  if ! find {{config.issues.base_dir}} -name "*-${issue_id}-*.md" | grep -q .; then
     echo "Warning: Issue ${issue_id} not found"
   fi
 done
