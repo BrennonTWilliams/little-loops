@@ -2,7 +2,7 @@
   "$schema": "https://raw.githubusercontent.com/BrennonTWilliams/little-loops/main/config-schema.json",
   "project": {
     "name": "little-loops",
-    "src_dir": ".",
+    "src_dir": "scripts/",
     "test_cmd": "python -m pytest scripts/tests/",
     "lint_cmd": "ruff check scripts/",
     "type_cmd": "python -m mypy scripts/little_loops/",
@@ -13,14 +13,10 @@
   },
   "scan": {
     "focus_dirs": ["scripts/"],
-    "exclude_patterns": ["**/__pycache__/**", "**/.git/**", "**/*.log", "**/.venv/**", "**/dist/**", "**/build/**", "**/*.pyc"]
-  },
-  "parallel": {
-    "worktree_copy_files": [".claude/settings.local.json"]
+    "exclude_patterns": ["**/__pycache__/**", "**/.git/**", "**/.venv/**", "**/dist/**", "**/build/**"]
   },
   "context_monitor": {
-    "enabled": true,
-    "auto_handoff_threshold": 80
+    "enabled": true
   },
   "documents": {
     "enabled": true,
