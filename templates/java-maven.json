@@ -29,5 +29,8 @@
       "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
       "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"}
     }
+  },
+  "product": {
+    "enabled": false
   }
 }

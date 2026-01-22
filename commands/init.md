@@ -346,9 +346,48 @@ questions:
     multiSelect: true
 ```
 
-This round always runs and determines which follow-up questions are needed in Round 4.
+This round always runs and determines which follow-up questions are needed in Round 5.
 
-#### Step 5d: Advanced Settings (Dynamic Round 4)
+#### Step 5d: Product Analysis (Round 4)
+
+Use a SINGLE AskUserQuestion call:
+
+```yaml
+questions:
+  - header: "Product"
+    question: "Enable product-focused issue analysis? (Optional)"
+    options:
+      - label: "No, skip (Recommended)"
+        description: "Technical analysis only - standard issue tracking"
+      - label: "Yes, enable"
+        description: "Add product goals, user impact, and business value to issues"
+    multiSelect: false
+```
+
+**If "Yes, enable" selected:**
+1. Create `.claude/ll-goals.md` from the goals template. Read the template content from `templates/ll-goals-template.md` (relative to the little-loops plugin directory) and write it to `.claude/ll-goals.md` in the user's project.
+
+2. Add to configuration:
+```json
+{
+  "product": {
+    "enabled": true,
+    "goals_file": ".claude/ll-goals.md"
+  }
+}
+```
+
+**If "No, skip" selected:**
+- Omit the `product` section entirely (disabled is the default)
+
+**Configuration notes:**
+- Only include `product` section if enabled
+- `analyze_user_impact` and `analyze_business_value` default to `true` and can be omitted
+- The goals file location can be customized via `goals_file` property
+
+**After completing Round 4, proceed to Round 5 (Advanced Settings).**
+
+#### Step 5e: Advanced Settings (Dynamic Round 5)
 
 Build this round dynamically based on previous responses. **Skip entirely if no follow-up questions are needed.**
 
@@ -358,7 +397,7 @@ Build this round dynamically based on previous responses. **Skip entirely if no 
 2. **worktree_files** - If user selected "Parallel processing" in Round 3
 3. **threshold** - If user selected "Context monitoring" in Round 3
 
-If all conditions are false, skip this round entirely and proceed directly to Round 5 (Document Tracking).
+If all conditions are false, skip this round entirely and proceed directly to Round 6 (Document Tracking).
 
 ```yaml
 questions:
@@ -426,13 +465,13 @@ If context monitoring is enabled, add to configuration:
 - The `.claude/` directory is always copied automatically regardless of `worktree_copy_files` setting
 
 **⚠️ MANDATORY NEXT STEP - DO NOT SKIP:**
-After completing Round 4 (or if Round 4 was skipped because no conditions matched), you MUST immediately proceed to **Round 5 (Document Tracking)** below. Round 5 is NOT optional. Do NOT display the summary yet. Do NOT say "All rounds complete." Continue reading and execute Round 5.
+After completing Round 5 (or if Round 5 was skipped because no conditions matched), you MUST immediately proceed to **Round 6 (Document Tracking)** below. Round 6 is NOT optional. Do NOT display the summary yet. Do NOT say "All rounds complete." Continue reading and execute Round 6.
 
 ---
 
-#### Step 5e: Document Tracking (Round 5) - MANDATORY, ALWAYS RUNS
+#### Step 5f: Document Tracking (Round 6) - MANDATORY, ALWAYS RUNS
 
-**⚠️ CRITICAL**: You MUST execute this round. This is Round 5 of the wizard. The wizard is NOT complete until you have asked the user about document tracking. If you skipped here without asking the Document Tracking question, GO BACK and ask it now.
+**⚠️ CRITICAL**: You MUST execute this round. This is Round 6 of the wizard. The wizard is NOT complete until you have asked the user about document tracking. If you skipped here without asking the Document Tracking question, GO BACK and ask it now.
 
 **First, scan for markdown documents:**
 ```bash
@@ -503,11 +542,11 @@ If document tracking is enabled with defaults, add to configuration:
 
 If "Skip" selected or no documents found, omit the `documents` section entirely (disabled is the default).
 
-**After completing Round 5, proceed to Step 5f (Extended Config Gate).**
+**After completing Round 6, proceed to Step 5g (Extended Config Gate).**
 
-#### Step 5f: Extended Configuration Gate (Round 5.5)
+#### Step 5g: Extended Configuration Gate (Round 6.5)
 
-**After completing Round 5 (Document Tracking), proceed here.**
+**After completing Round 6 (Document Tracking), proceed here.**
 
 Use a SINGLE AskUserQuestion call:
 
@@ -523,10 +562,10 @@ questions:
     multiSelect: false
 ```
 
-If "Skip (Recommended)" is selected, proceed directly to step 6 (Display Summary).
-If "Configure" is selected, continue to Rounds 6-8.
+If "Skip (Recommended)" is selected, proceed directly to step 7 (Display Summary).
+If "Configure" is selected, continue to Rounds 7-9.
 
-#### Step 5g: Project Advanced (Round 6)
+#### Step 5h: Project Advanced (Round 7)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
@@ -591,7 +630,7 @@ If user selected a build command (not "Skip"), add to configuration:
 - Only include `test_dir` if different from the schema default ("tests")
 - Only include `build_cmd` if user selected a command (not "Skip")
 
-#### Step 5h: Continuation Behavior (Round 7)
+#### Step 5i: Continuation Behavior (Round 8)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
@@ -660,7 +699,7 @@ If continuation settings differ from defaults, add to configuration:
 - Only include `continuation` section if any value differs from schema defaults
 - By default, all three include options are true, so only include if user deselects any
 
-#### Step 5i: Prompt Optimization (Round 8)
+#### Step 5j: Prompt Optimization (Round 9)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
@@ -725,31 +764,34 @@ If prompt optimization settings differ from defaults, add to configuration:
 
 ### Interactive Mode Summary
 
-**Total interaction rounds: 5-9**
+**Total interaction rounds: 6-10**
 
 | Round | Group | Questions | Conditions |
 |-------|-------|-----------|------------|
 | 1 | Core Settings | name, src_dir, test_cmd, lint_cmd | Always |
 | 2 | Additional Config | format_cmd, issues, scan_dirs, excludes | Always |
 | 3 | Features | features (multi-select: parallel, context_monitor) | Always |
-| 4 | Advanced (dynamic) | issues_path?, worktree_files?, threshold? | Conditional |
-| **5** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
-| 5.5 | Extended Config Gate | configure_extended? | Always |
-| 6 | Project Advanced (optional) | test_dir, build_cmd | If Gate=Configure |
-| 7 | Continuation (optional) | auto_detect, include, expiry | If Gate=Configure |
-| 8 | Prompt Optimization (optional) | enabled, mode, confirm | If Gate=Configure |
+| **4** | **Product Analysis** | **product (opt-in for product-focused analysis)** | **Always** |
+| 5 | Advanced (dynamic) | issues_path?, worktree_files?, threshold? | Conditional |
+| **6** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
+| 6.5 | Extended Config Gate | configure_extended? | Always |
+| 7 | Project Advanced (optional) | test_dir, build_cmd | If Gate=Configure |
+| 8 | Continuation (optional) | auto_detect, include, expiry | If Gate=Configure |
+| 9 | Prompt Optimization (optional) | enabled, mode, confirm | If Gate=Configure |
 
-**Round 4 conditions:**
+**Round 4**: Always runs. User can enable product-focused issue analysis (disabled by default).
+
+**Round 5 conditions:**
 - **issues_path**: Only if "custom directory" selected in Round 2
 - **worktree_files**: Only if "Parallel processing" selected in Round 3
 - **threshold**: Only if "Context monitoring" selected in Round 3
-- **If no conditions match**: Round 4 is skipped
+- **If no conditions match**: Round 5 is skipped
 
-**Round 5**: Always runs. User can choose "Use defaults", "Custom categories", or "Skip".
+**Round 6**: Always runs. User can choose "Use defaults", "Custom categories", or "Skip".
 
-**Rounds 6-8 conditions:**
-- Only run if user selects "Configure" in Round 5.5 (Extended Config Gate)
-- If "Skip (Recommended)" is selected, rounds 6-8 are skipped entirely
+**Rounds 7-9 conditions:**
+- Only run if user selects "Configure" in Round 6.5 (Extended Config Gate)
+- If "Skip (Recommended)" is selected, rounds 7-9 are skipped entirely
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next
@@ -791,6 +833,10 @@ Configuration Summary:
   [CONTEXT MONITOR]                       # Only show if enabled
   context_monitor.enabled: true
   context_monitor.auto_handoff_threshold: [threshold]  # Only if non-default
+
+  [PRODUCT]                               # Only show if enabled
+  product.enabled: true
+  product.goals_file: .claude/ll-goals.md
 
   [DOCUMENTS]                             # Only show if enabled
   documents.enabled: true
@@ -840,6 +886,7 @@ Otherwise (neither `--interactive` nor `--yes`):
      "scan": { ... },
      "parallel": { ... },
      "context_monitor": { ... },
+     "product": { ... },
      "documents": { ... },
      "continuation": { ... },
      "prompt_optimization": { ... }
@@ -850,6 +897,7 @@ Otherwise (neither `--interactive` nor `--yes`):
    - Omit `parallel` section entirely if not configured in interactive mode
    - Omit `parallel.worktree_copy_files` if user selected exactly the defaults
    - Omit `context_monitor` section if user selected "No" (disabled is the default)
+   - Omit `product` section if user selected "No, skip" (disabled is the default)
    - Omit `documents` section if user selected "Skip" (disabled is the default)
    - Omit `continuation` section if all values match schema defaults
    - Omit `prompt_optimization` section if all values match schema defaults
@@ -887,13 +935,15 @@ INITIALIZATION COMPLETE
   little loops
 
 Created: .claude/ll-config.json
+Created: .claude/ll-goals.md (product goals template)  # Only show if product enabled
 Updated: .gitignore (added state file exclusions)
 
 Next steps:
   1. Review and customize: .claude/ll-config.json
   2. Try a command: /ll:check_code
   3. Set up issue tracking: mkdir -p .issues/{bugs,features,enhancements}
-  4. Run parallel processing: ll-parallel      # Only show if parallel configured
+  4. Configure product goals: .claude/ll-goals.md      # Only show if product enabled
+  5. Run parallel processing: ll-parallel      # Only show if parallel configured
 
 Documentation: https://github.com/BrennonTWilliams/little-loops
 

@@ -496,6 +496,33 @@
         }
       },
       "additionalProperties": false
+    },
+    "product": {
+      "type": "object",
+      "description": "Product/business analysis configuration (opt-in feature, disabled by default)",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable product-focused issue analysis",
+          "default": false
+        },
+        "goals_file": {
+          "type": "string",
+          "description": "Path to product goals/vision document",
+          "default": ".claude/ll-goals.md"
+        },
+        "analyze_user_impact": {
+          "type": "boolean",
+          "description": "Include user impact assessment in issues",
+          "default": true
+        },
+        "analyze_business_value": {
+          "type": "boolean",
+          "description": "Include business value scoring in issues",
+          "default": true
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

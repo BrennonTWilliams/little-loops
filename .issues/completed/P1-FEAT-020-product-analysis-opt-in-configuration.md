@@ -178,4 +178,23 @@ None
 
 ## Status
 
-**Open** | Created: 2026-01-06 | Priority: P1
+**Completed** | Created: 2026-01-06 | Priority: P1
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-22
+- **Status**: Completed
+
+### Changes Made
+- `config-schema.json`: Added `product` configuration section with enabled, goals_file, analyze_user_impact, and analyze_business_value properties
+- `commands/init.md`: Added Round 4 (Product Analysis) to interactive wizard, renumbered subsequent rounds
+- `templates/ll-goals-template.md`: Created goals file template for product analysis
+- `templates/*.json`: Added `product: { enabled: false }` to all 9 project templates
+
+### Verification Results
+- Tests: PASS (1442 tests)
+- Lint: PASS
+- Types: PASS
