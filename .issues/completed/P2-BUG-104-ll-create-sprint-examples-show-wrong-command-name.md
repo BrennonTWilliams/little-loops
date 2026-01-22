@@ -57,3 +57,24 @@ Rename `.claude/commands/ll_create_sprint.md` to `.claude/commands/create_sprint
 ---
 
 **Priority**: P2 | **Created**: 2026-01-22
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-22
+- **Status**: Completed
+
+### Changes Made
+- `.claude/commands/ll_create_sprint.md` → `.claude/commands/create_sprint.md`: Renamed command file to remove redundant `ll_` prefix
+- `.claude/commands/create_sprint.md`: Updated examples from `/ll:create-sprint` to `/ll:create_sprint` (3 occurrences)
+- `.issues/bugs/P2-BUG-105-*.md`: Updated command references to new name
+- `.issues/enhancements/P3-ENH-106-*.md`: Updated command references to new name
+- `.issues/enhancements/P3-ENH-107-*.md`: Updated command references to new name
+- `.issues/enhancements/P4-ENH-108-*.md`: Updated command references to new name
+
+### Verification Results
+- File rename: PASS
+- Example updates: PASS (no `/ll:create-sprint` occurrences remain)
+- Lint: PASS

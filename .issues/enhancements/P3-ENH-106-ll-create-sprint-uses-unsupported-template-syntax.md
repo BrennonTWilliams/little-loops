@@ -3,15 +3,15 @@ discovered_date: 2026-01-22
 discovered_by: capture_issue
 ---
 
-# ENH-106: ll_create_sprint uses unsupported template syntax
+# ENH-106: create_sprint uses unsupported template syntax
 
 ## Summary
 
-The `/ll:ll_create_sprint` command uses Handlebars-style template syntax like `{{config.issues.base_dir}}` throughout the document, but Claude Code does not support this templating. The values are not substituted, causing Claude to attempt literal commands with `{{config...}}` in them.
+The `/ll:create_sprint` command uses Handlebars-style template syntax like `{{config.issues.base_dir}}` throughout the document, but Claude Code does not support this templating. The values are not substituted, causing Claude to attempt literal commands with `{{config...}}` in them.
 
 ## Context
 
-Identified during audit of the `/ll:ll_create_sprint` slash command. Multiple lines reference config values using template syntax that doesn't work.
+Identified during audit of the `/ll:create_sprint` slash command. Multiple lines reference config values using template syntax that doesn't work.
 
 ## Current Behavior
 

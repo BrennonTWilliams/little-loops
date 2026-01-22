@@ -3,15 +3,15 @@ discovered_date: 2026-01-22
 discovered_by: capture_issue
 ---
 
-# ENH-108: ll_create_sprint should use Claude tools instead of bash
+# ENH-108: create_sprint should use Claude tools instead of bash
 
 ## Summary
 
-The `/ll:ll_create_sprint` command instructs Claude to use bash `find` commands for file operations, but Claude Code has specialized tools (Glob, Grep, Read) that are preferred for these operations.
+The `/ll:create_sprint` command instructs Claude to use bash `find` commands for file operations, but Claude Code has specialized tools (Glob, Grep, Read) that are preferred for these operations.
 
 ## Context
 
-Identified during audit of the `/ll:ll_create_sprint` slash command. Using bash commands may have permission issues or different behavior compared to Claude's built-in tools.
+Identified during audit of the `/ll:create_sprint` slash command. Using bash commands may have permission issues or different behavior compared to Claude's built-in tools.
 
 ## Current Behavior
 

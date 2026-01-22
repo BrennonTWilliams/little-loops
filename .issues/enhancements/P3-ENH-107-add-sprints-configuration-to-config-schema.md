@@ -11,12 +11,12 @@ The sprint feature stores files in `.sprints/` but this location is hardcoded. T
 
 ## Context
 
-Identified during audit of the `/ll:ll_create_sprint` slash command. Other features like `issues`, `automation`, and `parallel` have configurable settings in the schema, but sprints does not.
+Identified during audit of the `/ll:create_sprint` slash command. Other features like `issues`, `automation`, and `parallel` have configurable settings in the schema, but sprints does not.
 
 ## Current Behavior
 
 - `SprintManager` defaults to `.sprints/` (hardcoded in `sprint.py:162`)
-- Command documentation says `.sprints/` (hardcoded in `ll_create_sprint.md:24`)
+- Command documentation says `.sprints/` (hardcoded in `create_sprint.md:24`)
 - No configuration options in `config-schema.json`
 
 ## Expected Behavior
@@ -57,7 +57,7 @@ Add a `sprints` section to `config-schema.json`:
 
 1. Add `sprints` section to `config-schema.json`
 2. Update `SprintManager.__init__` to read from config
-3. Update `ll_create_sprint.md` to reference config values
+3. Update `create_sprint.md` to reference config values
 
 ## Impact
 

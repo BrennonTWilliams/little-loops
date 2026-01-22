@@ -146,13 +146,13 @@ ll-sprint list
 
 ```bash
 # Create sprint with explicit issue list
-/ll:create-sprint sprint-1 --issues "BUG-001,BUG-002,FEAT-010" --description "Q1 fixes"
+/ll:create_sprint sprint-1 --issues "BUG-001,BUG-002,FEAT-010" --description "Q1 fixes"
 
 # Create sprint interactively (select issues)
-/ll:create-sprint q1-features --description "Q1 feature work"
+/ll:create_sprint q1-features --description "Q1 feature work"
 
 # Create sprint with all P0 bugs
-/ll:create-sprint critical-fixes --priority P0
+/ll:create_sprint critical-fixes --priority P0
 ```
 
 ## Sprint Execution (Reference)
