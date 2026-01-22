@@ -425,20 +425,14 @@ If context monitoring is enabled, add to configuration:
 - Only include non-default values. If user selects exactly `[".env"]` (the default), the `worktree_copy_files` key can be omitted
 - The `.claude/` directory is always copied automatically regardless of `worktree_copy_files` setting
 
----
-
-#### Transition: Round 4 → Round 5
-
-**After completing Round 4 (or skipping if no conditions match):**
-- **ALWAYS proceed to Round 5 (Document Tracking)** - this round is mandatory
-- Do NOT skip to the Extended Config Gate (Round 5.5)
-- Do NOT skip directly to the summary
+**⚠️ MANDATORY NEXT STEP - DO NOT SKIP:**
+After completing Round 4 (or if Round 4 was skipped because no conditions matched), you MUST immediately proceed to **Round 5 (Document Tracking)** below. Round 5 is NOT optional. Do NOT display the summary yet. Do NOT say "All rounds complete." Continue reading and execute Round 5.
 
 ---
 
-#### Step 5e: Document Tracking (Round 5) - ALWAYS RUNS
+#### Step 5e: Document Tracking (Round 5) - MANDATORY, ALWAYS RUNS
 
-**IMPORTANT**: This round MUST be executed regardless of Round 4 outcomes. Do not skip this round.
+**⚠️ CRITICAL**: You MUST execute this round. This is Round 5 of the wizard. The wizard is NOT complete until you have asked the user about document tracking. If you skipped here without asking the Document Tracking question, GO BACK and ask it now.
 
 **First, scan for markdown documents:**
 ```bash
