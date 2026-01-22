@@ -145,6 +145,7 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
             action=check_tool,
             on_success="done",
             on_failure="fix",
+            on_error="fix",
         ),
         "fix": StateConfig(
             action=fix_tool,
