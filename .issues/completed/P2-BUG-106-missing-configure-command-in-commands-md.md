@@ -59,3 +59,20 @@ Also add to the quick reference table:
 ## Status
 
 **Open** | Created: 2026-01-22 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-22
+- **Status**: Completed
+
+### Changes Made
+- `docs/COMMANDS.md`: Added `/ll:configure` entry under "Setup & Configuration" section with arguments and flags
+- `docs/COMMANDS.md`: Added `configure` to quick reference table
+
+### Verification Results
+- Tests: N/A (documentation only)
+- Lint: PASS
+- Types: PASS

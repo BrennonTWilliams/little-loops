@@ -12,6 +12,14 @@ Initialize little-loops configuration for a project.
 ### `/ll:help`
 List all available little-loops commands with descriptions.
 
+### `/ll:configure`
+Interactively configure specific areas in ll-config.json.
+
+**Arguments:**
+- `area` (optional): `project`, `issues`, `parallel`, `automation`, `documents`, `continuation`, `context`, `prompt`, `scan`, `workflow`
+
+**Flags:** `--list`, `--show`, `--reset`
+
 ---
 
 ## Prompt Optimization
@@ -170,6 +178,7 @@ Create FSM loop configurations interactively.
 |---------|-------------|
 | `init` | Initialize project configuration |
 | `help` | Show command help |
+| `configure` | Interactive configuration editor |
 | `toggle_autoprompt` | Toggle automatic prompt optimization |
 | `check_code` | Run lint, format, type checks |
 | `run_tests` | Execute test suites |
