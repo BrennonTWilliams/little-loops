@@ -17,7 +17,6 @@ from typing import Any
 from little_loops.config import BRConfig
 from little_loops.issue_manager import AutoManager
 from little_loops.logger import Logger
-from little_loops.logo import print_logo
 from little_loops.parallel.orchestrator import ParallelOrchestrator
 from little_loops.sprint import SprintManager, SprintOptions
 
@@ -91,8 +90,6 @@ Examples:
     )
 
     args = parser.parse_args()
-
-    print_logo()
 
     project_root = args.config or Path.cwd()
     config = BRConfig(project_root)
@@ -246,9 +243,6 @@ Examples:
     config = BRConfig(project_root)
 
     logger = Logger(verbose=not args.quiet)
-
-    if not args.quiet:
-        print_logo()
 
     # Handle cleanup mode
     if args.cleanup:
@@ -599,7 +593,6 @@ Examples:
     def run_foreground(executor: PersistentExecutor, fsm: FSMLoop) -> int:
         """Run loop with progress display."""
         if not getattr(args, "quiet", False):
-            print_logo()
             print(f"Running loop: {fsm.name}")
             print(f"Max iterations: {fsm.max_iterations}")
             print()
@@ -1234,8 +1227,6 @@ def _cmd_sprint_run(
 
     # Determine execution mode
     parallel = args.parallel or (sprint.options and sprint.options.mode == "parallel")
-
-    print_logo()
 
     logger.info(f"Running sprint: {sprint.name}")
     logger.info(f"  Mode: {'parallel' if parallel else 'sequential'}")
