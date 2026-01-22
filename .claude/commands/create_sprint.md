@@ -150,9 +150,6 @@ ll-sprint list
 
 # Create sprint interactively (select issues)
 /ll:create_sprint q1-features --description "Q1 feature work"
-
-# Create sprint with all P0 bugs
-/ll:create_sprint critical-fixes --priority P0
 ```
 
 ## Sprint Execution (Reference)

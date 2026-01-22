@@ -69,3 +69,19 @@ Option 2 would be a useful feature enhancement - automatically selecting all iss
 ---
 
 **Priority**: P2 | **Created**: 2026-01-22
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-22
+- **Status**: Completed
+
+### Changes Made
+- `.claude/commands/create_sprint.md`: Removed the invalid example at lines 154-155 that referenced the undefined `--priority P0` argument
+
+### Verification Results
+- Tests: N/A (documentation change)
+- Lint: PASS
+- Types: PASS
