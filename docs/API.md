@@ -28,6 +28,7 @@ pip install /path/to/little-loops/scripts
 | `little_loops.state` | State persistence |
 | `little_loops.logger` | Logging utilities |
 | `little_loops.user_messages` | User message extraction from Claude logs |
+| `little_loops.workflow_sequence_analyzer` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.cli` | CLI entry points |
 | `little_loops.parallel` | Parallel processing subpackage |
 | `little_loops.fsm` | FSM loop system subpackage |
@@ -1455,6 +1456,299 @@ Entry point for `ll-messages` command. Extract user messages from Claude Code lo
 
 ---
 
+## little_loops.workflow_sequence_analyzer
+
+Step 2 of a 3-step workflow analysis pipeline. Analyzes user message patterns to identify multi-step workflows, link related sessions, and detect workflow boundaries.
+
+### Quick Example
+
+```python
+from pathlib import Path
+from little_loops.workflow_sequence_analyzer import analyze_workflows
+
+# Analyze messages from Step 1 output
+result = analyze_workflows(
+    messages_file=Path(".claude/user-messages.jsonl"),
+    patterns_file=Path(".claude/workflow-analysis/step1-patterns.yaml"),
+    output_file=Path(".claude/workflow-analysis/step2-workflows.yaml"),
+)
+
+print(f"Found {len(result.workflows)} workflows")
+print(f"Linked {len(result.session_links)} sessions")
+```
+
+### SessionLink
+
+Represents a link between related sessions.
+
+```python
+@dataclass
+class SessionLink:
+    link_id: str                    # Unique identifier for the link
+    sessions: list[dict[str, Any]]  # Session data with positions
+    unified_workflow: dict[str, Any]  # Combined workflow metadata
+    confidence: float               # Link confidence score (0.0-1.0)
+```
+
+#### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `to_dict()` | `dict` | Convert for YAML serialization |
+
+### EntityCluster
+
+Represents a group of messages sharing common entities.
+
+```python
+@dataclass
+class EntityCluster:
+    cluster_id: str                 # Unique identifier for the cluster
+    primary_entities: list[str]     # Top 3 most common entities
+    all_entities: set[str]          # All entities in the cluster
+    messages: list[str]             # Message UUIDs in this cluster
+    span: dict[str, str]            # Time span (first, last timestamps)
+    inferred_workflow: str          # Inferred workflow type
+    cohesion_score: float           # Cluster cohesion (0.0-1.0)
+```
+
+#### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `to_dict()` | `dict` | Convert for YAML serialization |
+
+### WorkflowBoundary
+
+Represents a potential boundary between workflows.
+
+```python
+@dataclass
+class WorkflowBoundary:
+    msg_a: str                      # UUID of first message
+    msg_b: str                      # UUID of second message
+    time_gap_seconds: float         # Time between messages
+    time_gap_weight: float          # Boundary weight from time gap (0.0-1.0)
+    entity_overlap: float           # Jaccard similarity of entities (0.0-1.0)
+    final_boundary_score: float     # Combined boundary score
+    is_boundary: bool               # True if score >= threshold
+```
+
+#### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `to_dict()` | `dict` | Convert for YAML serialization |
+
+### Workflow
+
+Represents a detected multi-step workflow.
+
+```python
+@dataclass
+class Workflow:
+    workflow_id: str                # Unique identifier
+    name: str                       # Human-readable name
+    pattern: str                    # Template pattern matched
+    pattern_confidence: float       # Match confidence (0.0-1.0)
+    messages: list[str]             # Message UUIDs in workflow
+    session_span: dict[str, str]    # Time span (first, last)
+    entity_cluster: str | None      # Related entity cluster ID
+    semantic_cluster: str | None    # Related semantic cluster ID
+    duration_minutes: float         # Workflow duration
+    handoff_points: list[str]       # Detected handoff message UUIDs
+```
+
+#### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `to_dict()` | `dict` | Convert for YAML serialization |
+
+### WorkflowAnalysis
+
+Complete output container for all analysis results.
+
+```python
+@dataclass
+class WorkflowAnalysis:
+    metadata: dict[str, Any]                # Analysis metadata
+    session_links: list[SessionLink]        # Linked sessions
+    entity_clusters: list[EntityCluster]    # Entity-based clusters
+    workflow_boundaries: list[WorkflowBoundary]  # Detected boundaries
+    workflows: list[Workflow]               # Detected workflows
+    handoff_analysis: dict[str, Any]        # Handoff statistics
+```
+
+#### Methods
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `to_dict()` | `dict` | Convert for YAML serialization |
+
+### analyze_workflows
+
+```python
+def analyze_workflows(
+    messages_file: Path,
+    patterns_file: Path,
+    output_file: Path | None = None,
+) -> WorkflowAnalysis
+```
+
+Main entry point for workflow sequence analysis (Step 2 of pipeline).
+
+**Parameters:**
+- `messages_file` - Path to JSONL file with user messages
+- `patterns_file` - Path to YAML file from Step 1 (pattern analysis)
+- `output_file` - Optional output path for YAML results
+
+**Returns:** `WorkflowAnalysis` with all analysis results
+
+**Example:**
+```python
+from pathlib import Path
+from little_loops.workflow_sequence_analyzer import analyze_workflows
+
+result = analyze_workflows(
+    messages_file=Path(".claude/user-messages.jsonl"),
+    patterns_file=Path(".claude/workflow-analysis/step1-patterns.yaml"),
+)
+
+for workflow in result.workflows:
+    print(f"{workflow.name}: {len(workflow.messages)} messages")
+    print(f"  Pattern: {workflow.pattern}")
+    print(f"  Duration: {workflow.duration_minutes:.1f} min")
+```
+
+### Helper Functions
+
+#### extract_entities
+
+```python
+def extract_entities(content: str) -> set[str]
+```
+
+Extract entities from message content using regex patterns.
+
+**Parameters:**
+- `content` - Message text to analyze
+
+**Returns:** Set of extracted entities (file paths, issue IDs, commands, etc.)
+
+**Example:**
+```python
+from little_loops.workflow_sequence_analyzer import extract_entities
+
+entities = extract_entities("Fix BUG-123 in src/utils.py using /ll:manage_issue")
+# Returns: {"BUG-123", "src/utils.py", "/ll:manage_issue"}
+```
+
+#### calculate_boundary_weight
+
+```python
+def calculate_boundary_weight(time_gap_seconds: float) -> float
+```
+
+Map time gaps to boundary weights using tiered thresholds.
+
+**Parameters:**
+- `time_gap_seconds` - Time gap between messages in seconds
+
+**Returns:** Weight from 0.0 (same task) to 0.95 (likely different workflow)
+
+**Thresholds:**
+- < 30s → 0.0 (same task)
+- 30s-2min → 0.1
+- 2-5min → 0.3
+- 5-15min → 0.5
+- 15-30min → 0.7
+- 30min-2h → 0.85
+- > 2h → 0.95 (likely different workflow)
+
+#### entity_overlap
+
+```python
+def entity_overlap(entities_a: set[str], entities_b: set[str]) -> float
+```
+
+Calculate Jaccard similarity between two entity sets.
+
+**Parameters:**
+- `entities_a` - First entity set
+- `entities_b` - Second entity set
+
+**Returns:** Jaccard coefficient (0.0-1.0), or 0.0 if either set is empty
+
+#### get_verb_class
+
+```python
+def get_verb_class(content: str) -> str | None
+```
+
+Extract verb class from message content.
+
+**Parameters:**
+- `content` - Message text to analyze
+
+**Returns:** Verb class name or `None` if no match
+
+**Classes:** `deletion`, `modification`, `creation`, `search`, `verification`, `execution`
+
+#### semantic_similarity
+
+```python
+def semantic_similarity(
+    msg_a: dict[str, Any],
+    msg_b: dict[str, Any],
+    patterns: dict[str, Any],
+) -> float
+```
+
+Calculate weighted similarity between two messages.
+
+**Parameters:**
+- `msg_a` - First message dict
+- `msg_b` - Second message dict
+- `patterns` - Step 1 patterns data for category lookup
+
+**Returns:** Similarity score (0.0-1.0)
+
+**Weights:**
+- Keyword overlap: 0.3
+- Verb class match: 0.3
+- Entity overlap: 0.3
+- Category match: 0.1
+
+### Constants
+
+#### VERB_CLASSES
+
+```python
+VERB_CLASSES: dict[str, set[str]]
+```
+
+Mapping of verb class names to sets of related verbs:
+- `deletion` - delete, remove, drop, etc.
+- `modification` - update, modify, change, etc.
+- `creation` - create, add, new, etc.
+- `search` - find, search, look, etc.
+- `verification` - test, verify, check, etc.
+- `execution` - run, execute, build, etc.
+
+#### WORKFLOW_TEMPLATES
+
+```python
+WORKFLOW_TEMPLATES: dict[str, list[str]]
+```
+
+Mapping of workflow pattern names to category sequences:
+- `explore -> modify -> verify`
+- `create -> refine -> finalize`
+- `search -> analyze -> implement`
+
+---
+
 ## Import Shortcuts
 
 ```python
@@ -1478,6 +1772,21 @@ from little_loops.user_messages import (
     get_project_folder,
     extract_user_messages,
     save_messages,
+)
+
+# Workflow analysis
+from little_loops.workflow_sequence_analyzer import (
+    analyze_workflows,
+    SessionLink,
+    EntityCluster,
+    WorkflowBoundary,
+    Workflow,
+    WorkflowAnalysis,
+    extract_entities,
+    calculate_boundary_weight,
+    entity_overlap,
+    get_verb_class,
+    semantic_similarity,
 )
 
 # Parallel subpackage
