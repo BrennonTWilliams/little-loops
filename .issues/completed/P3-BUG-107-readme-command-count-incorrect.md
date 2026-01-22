@@ -17,12 +17,13 @@ The README.md claims little-loops has "25 slash commands" but there are actually
 ## Location
 
 - **File**: `README.md`
-- **Line(s)**: 14, 527
+- **Line(s)**: 13, 527
 - **Section**: Overview, Plugin Structure
+- **Anchor**: `25 slash commands` (search for this string)
 
 ## Current Content
 
-Line 14:
+Line 13:
 ```markdown
 - **25 slash commands** for development workflows
 ```
@@ -64,7 +65,7 @@ The actual count of command files in `commands/` is 26:
 
 ## Expected Content
 
-Line 14:
+Line 13:
 ```markdown
 - **26 slash commands** for development workflows
 ```
@@ -88,4 +89,18 @@ Line 527:
 
 ## Status
 
-**Open** | Created: 2026-01-22 | Priority: P3
+**Completed** | Created: 2026-01-22 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-22
+- **Status**: Completed
+
+### Changes Made
+- `README.md`: Updated command count from 25 to 26 on lines 13 and 527
+
+### Verification Results
+- Visual verification: PASS (both occurrences updated correctly)
