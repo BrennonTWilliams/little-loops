@@ -13,9 +13,12 @@ The `/ll:create_sprint` command uses Handlebars-style template syntax like `{{co
 
 Identified during audit of the `/ll:create_sprint` slash command. Multiple lines reference config values using template syntax that doesn't work.
 
+**File**: `.claude/commands/create_sprint.md`
+**Anchor**: `## Configuration`
+
 ## Current Behavior
 
-Lines 24-25, 61, 74-76 contain:
+Lines 22-23, 62, 74 contain:
 ```markdown
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Categories**: `{{config.issues.categories}}`
@@ -67,3 +70,22 @@ Then update bash examples to use variable assignment after reading config.
 ---
 
 **Priority**: P3 | **Created**: 2026-01-22
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-22
+- **Status**: Completed
+
+### Changes Made
+- `.claude/commands/create_sprint.md`: Replaced template syntax with prose instructions
+  - Configuration section now instructs Claude to read config file
+  - Bash examples use hardcoded `.issues` default path
+  - Lines 22-24, 62, 74 updated
+
+### Verification Results
+- Template syntax removed: PASS (0 instances of `{{config`)
+- Lint: PASS
+- Types: PASS

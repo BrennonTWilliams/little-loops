@@ -18,9 +18,9 @@ You are tasked with creating sprint definitions for the little-loops project. Sp
 
 ## Configuration
 
-This command uses project configuration from `.claude/ll-config.json`:
-- **Issues base**: `{{config.issues.base_dir}}`
-- **Categories**: `{{config.issues.categories}}`
+Read settings from `.claude/ll-config.json` under `issues`:
+- `base_dir`: Issues directory (default: `.issues`)
+- `categories`: Issue categories (default: `bugs`, `features`, `enhancements`)
 - **Sprints directory**: `.sprints/`
 
 ## Process
@@ -59,7 +59,7 @@ Use AskUserQuestion to present selection options:
 If selecting from active issues:
 1. Use Bash to list active issues:
    ```bash
-   find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" | sort
+   find .issues -name "*.md" -not -path "*/completed/*" | sort
    ```
 2. Parse and group by category/priority
 3. Present organized list for selection
@@ -71,7 +71,7 @@ For each issue ID in the list, verify it exists:
 ```bash
 for issue_id in "${ISSUE_ARRAY[@]}"; do
   # Search for issue file (pattern includes priority prefix, e.g., P2-BUG-001-description.md)
-  if ! find {{config.issues.base_dir}} -name "*-${issue_id}-*.md" | grep -q .; then
+  if ! find .issues -name "*-${issue_id}-*.md" | grep -q .; then
     echo "Warning: Issue ${issue_id} not found"
   fi
 done
