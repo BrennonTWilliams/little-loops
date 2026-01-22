@@ -358,7 +358,7 @@ Build this round dynamically based on previous responses. **Skip entirely if no 
 2. **worktree_files** - If user selected "Parallel processing" in Round 3
 3. **threshold** - If user selected "Context monitoring" in Round 3
 
-If all conditions are false, skip this round entirely (resulting in only 3 total rounds).
+If all conditions are false, skip this round entirely and proceed directly to Round 5 (Document Tracking).
 
 ```yaml
 questions:
@@ -431,7 +431,7 @@ If context monitoring is enabled, add to configuration:
 
 **After completing Round 4 (or skipping if no conditions match):**
 - **ALWAYS proceed to Round 5 (Document Tracking)** - this round is mandatory
-- Do NOT skip to the Advanced Settings Gate (Round 5.5)
+- Do NOT skip to the Extended Config Gate (Round 5.5)
 - Do NOT skip directly to the summary
 
 ---
@@ -509,7 +509,11 @@ If document tracking is enabled with defaults, add to configuration:
 
 If "Skip" selected or no documents found, omit the `documents` section entirely (disabled is the default).
 
-#### Step 5f: Advanced Settings Gate
+**After completing Round 5, proceed to Step 5f (Extended Config Gate).**
+
+#### Step 5f: Extended Configuration Gate (Round 5.5)
+
+**After completing Round 5 (Document Tracking), proceed here.**
 
 Use a SINGLE AskUserQuestion call:
 
@@ -530,7 +534,7 @@ If "Configure" is selected, continue to Rounds 6-8.
 
 #### Step 5g: Project Advanced (Round 6)
 
-**Only run if user selected "Configure" in the Advanced Settings Gate.**
+**Only run if user selected "Configure" in the Extended Config Gate.**
 
 Use a SINGLE AskUserQuestion call with 2 questions:
 
@@ -595,7 +599,7 @@ If user selected a build command (not "Skip"), add to configuration:
 
 #### Step 5h: Continuation Behavior (Round 7)
 
-**Only run if user selected "Configure" in the Advanced Settings Gate.**
+**Only run if user selected "Configure" in the Extended Config Gate.**
 
 Use a SINGLE AskUserQuestion call with 3 questions:
 
@@ -664,7 +668,7 @@ If continuation settings differ from defaults, add to configuration:
 
 #### Step 5i: Prompt Optimization (Round 8)
 
-**Only run if user selected "Configure" in the Advanced Settings Gate.**
+**Only run if user selected "Configure" in the Extended Config Gate.**
 
 Use a SINGLE AskUserQuestion call with 3 questions:
 
@@ -727,7 +731,7 @@ If prompt optimization settings differ from defaults, add to configuration:
 
 ### Interactive Mode Summary
 
-**Total interaction rounds: 4-9**
+**Total interaction rounds: 5-9**
 
 | Round | Group | Questions | Conditions |
 |-------|-------|-----------|------------|
@@ -736,7 +740,7 @@ If prompt optimization settings differ from defaults, add to configuration:
 | 3 | Features | features (multi-select: parallel, context_monitor) | Always |
 | 4 | Advanced (dynamic) | issues_path?, worktree_files?, threshold? | Conditional |
 | **5** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
-| 5.5 | Advanced Gate | configure_advanced? | Always |
+| 5.5 | Extended Config Gate | configure_extended? | Always |
 | 6 | Project Advanced (optional) | test_dir, build_cmd | If Gate=Configure |
 | 7 | Continuation (optional) | auto_detect, include, expiry | If Gate=Configure |
 | 8 | Prompt Optimization (optional) | enabled, mode, confirm | If Gate=Configure |
@@ -750,7 +754,7 @@ If prompt optimization settings differ from defaults, add to configuration:
 **Round 5**: Always runs. User can choose "Use defaults", "Custom categories", or "Skip".
 
 **Rounds 6-8 conditions:**
-- Only run if user selects "Configure" in Round 5.5 (Advanced Gate)
+- Only run if user selects "Configure" in Round 5.5 (Extended Config Gate)
 - If "Skip (Recommended)" is selected, rounds 6-8 are skipped entirely
 
 **Key behavior**:
