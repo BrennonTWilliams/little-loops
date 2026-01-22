@@ -386,10 +386,16 @@ class FSMExecutor:
 
         self._emit("action_start", {"action": action})
 
+        # Determine if this is a slash command/prompt based on action_type or heuristic
+        if state.action_type is not None:
+            is_slash_command = state.action_type in ("prompt", "slash_command")
+        else:
+            is_slash_command = action.startswith("/")
+
         result = self.action_runner.run(
             action,
             timeout=state.timeout or 120,
-            is_slash_command=action.startswith("/"),
+            is_slash_command=is_slash_command,
         )
 
         self._emit(
@@ -436,8 +442,14 @@ class FSMExecutor:
         if state.evaluate is None:
             # Default evaluation based on action type
             if action_result:
-                if state.action and state.action.startswith("/"):
-                    # Slash command: use LLM evaluation
+                # Determine if this is a prompt/slash command for default evaluation
+                if state.action_type is not None:
+                    is_prompt = state.action_type in ("prompt", "slash_command")
+                else:
+                    is_prompt = state.action is not None and state.action.startswith("/")
+
+                if is_prompt:
+                    # Slash command or prompt: use LLM evaluation
                     result = evaluate_llm_structured(
                         action_result.output,
                         model=self.fsm.llm.model,

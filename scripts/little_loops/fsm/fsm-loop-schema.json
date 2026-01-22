@@ -74,6 +74,11 @@
           "type": "string",
           "description": "Command to execute (shell or slash command)"
         },
+        "action_type": {
+          "type": "string",
+          "description": "How to execute the action: prompt (Claude CLI), slash_command (Claude CLI), or shell (bash). If omitted, uses heuristic: / prefix = slash_command, else = shell.",
+          "enum": ["prompt", "slash_command", "shell"]
+        },
         "evaluate": {
           "$ref": "#/definitions/evaluateConfig"
         },

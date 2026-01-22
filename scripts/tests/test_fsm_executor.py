@@ -205,6 +205,123 @@ class TestFSMExecutorBasic:
         assert len(mock_runner.calls) == 0
 
 
+class TestActionType:
+    """Tests for action_type field behavior in executor."""
+
+    def test_action_type_prompt_runs_action(self) -> None:
+        """action_type=prompt executes the action even without / prefix."""
+        fsm = FSMLoop(
+            name="test",
+            initial="analyze",
+            states={
+                "analyze": StateConfig(
+                    action="Analyze the code",
+                    action_type="prompt",
+                    on_success="done",
+                    on_failure="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0, output="Analysis complete")
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        assert "Analyze the code" in mock_runner.calls
+
+    def test_action_type_shell_runs_action(self) -> None:
+        """action_type=shell executes the action as shell."""
+        fsm = FSMLoop(
+            name="test",
+            initial="run",
+            states={
+                "run": StateConfig(
+                    action="/usr/bin/ls",
+                    action_type="shell",
+                    on_success="done",
+                    on_failure="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        assert "/usr/bin/ls" in mock_runner.calls
+
+    def test_action_type_slash_command_runs_action(self) -> None:
+        """action_type=slash_command executes the action via Claude CLI."""
+        fsm = FSMLoop(
+            name="test",
+            initial="commit",
+            states={
+                "commit": StateConfig(
+                    action="/ll:commit",
+                    action_type="slash_command",
+                    on_success="done",
+                    on_failure="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        assert "/ll:commit" in mock_runner.calls
+
+    def test_action_type_none_uses_heuristic_slash(self) -> None:
+        """Without action_type, / prefix triggers slash command detection."""
+        fsm = FSMLoop(
+            name="test",
+            initial="cmd",
+            states={
+                "cmd": StateConfig(
+                    action="/ll:help",
+                    on_success="done",
+                    on_failure="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        assert "/ll:help" in mock_runner.calls
+
+    def test_action_type_none_uses_heuristic_shell(self) -> None:
+        """Without action_type, non-/ prefix triggers shell execution."""
+        fsm = FSMLoop(
+            name="test",
+            initial="cmd",
+            states={
+                "cmd": StateConfig(
+                    action="echo hello",
+                    on_success="done",
+                    on_failure="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        assert "echo hello" in mock_runner.calls
+
+
 class TestVariableInterpolation:
     """Tests for variable interpolation in executor."""
 

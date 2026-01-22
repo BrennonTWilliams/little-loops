@@ -170,6 +170,8 @@ class StateConfig:
 
     Attributes:
         action: Command to execute (shell or slash command)
+        action_type: How to execute the action (prompt, slash_command, shell).
+            If None, uses heuristic: / prefix = slash_command, else = shell.
         evaluate: Evaluator configuration for result interpretation
         route: Full routing table (verdict -> state mapping)
         on_success: Shorthand for success verdict routing
@@ -183,6 +185,7 @@ class StateConfig:
     """
 
     action: str | None = None
+    action_type: Literal["prompt", "slash_command", "shell"] | None = None
     evaluate: EvaluateConfig | None = None
     route: RouteConfig | None = None
     on_success: str | None = None
@@ -200,6 +203,8 @@ class StateConfig:
 
         if self.action is not None:
             result["action"] = self.action
+        if self.action_type is not None:
+            result["action_type"] = self.action_type
         if self.evaluate is not None:
             result["evaluate"] = self.evaluate.to_dict()
         if self.route is not None:
@@ -236,6 +241,7 @@ class StateConfig:
 
         return cls(
             action=data.get("action"),
+            action_type=data.get("action_type"),
             evaluate=evaluate,
             route=route,
             on_success=data.get("on_success"),

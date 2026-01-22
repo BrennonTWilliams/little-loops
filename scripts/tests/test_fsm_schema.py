@@ -293,6 +293,64 @@ class TestStateConfig:
         assert restored.capture == original.capture
         assert restored.timeout == original.timeout
 
+    def test_action_type_field(self) -> None:
+        """State with explicit action_type."""
+        state = StateConfig(
+            action="Analyze the code and fix bugs",
+            action_type="prompt",
+            on_success="done",
+            on_failure="retry",
+        )
+
+        assert state.action_type == "prompt"
+
+    def test_action_type_roundtrip(self) -> None:
+        """action_type survives serialization roundtrip."""
+        original = StateConfig(
+            action="echo hello",
+            action_type="shell",
+            on_success="done",
+        )
+
+        restored = StateConfig.from_dict(original.to_dict())
+
+        assert restored.action_type == "shell"
+
+    def test_action_type_none_by_default(self) -> None:
+        """action_type is None when not specified."""
+        state = StateConfig(action="pytest")
+
+        assert state.action_type is None
+
+    def test_action_type_slash_command(self) -> None:
+        """action_type can be slash_command."""
+        state = StateConfig(
+            action="/ll:commit",
+            action_type="slash_command",
+            on_success="done",
+        )
+
+        assert state.action_type == "slash_command"
+
+    def test_action_type_in_to_dict(self) -> None:
+        """action_type is included in to_dict output when set."""
+        state = StateConfig(
+            action="Analyze this",
+            action_type="prompt",
+        )
+
+        result = state.to_dict()
+
+        assert result["action_type"] == "prompt"
+
+    def test_action_type_omitted_from_to_dict_when_none(self) -> None:
+        """action_type is not in to_dict output when None."""
+        state = StateConfig(action="echo test")
+
+        result = state.to_dict()
+
+        assert "action_type" not in result
+
 
 class TestLLMConfig:
     """Tests for LLMConfig dataclass."""
