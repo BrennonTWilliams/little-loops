@@ -543,14 +543,21 @@ Examples:
     logger = Logger(verbose=not getattr(args, "quiet", False))
 
     def resolve_loop_path(name_or_path: str) -> Path:
-        """Resolve loop name to path."""
+        """Resolve loop name to path, preferring compiled FSM over paradigm."""
         path = Path(name_or_path)
         if path.exists():
             return path
-        # Try .loops/<name>.yaml
+
+        # Try .loops/<name>.fsm.yaml first (compiled FSM)
+        fsm_path = Path(".loops") / f"{name_or_path}.fsm.yaml"
+        if fsm_path.exists():
+            return fsm_path
+
+        # Fall back to .loops/<name>.yaml (paradigm)
         loops_path = Path(".loops") / f"{name_or_path}.yaml"
         if loops_path.exists():
             return loops_path
+
         raise FileNotFoundError(f"Loop not found: {name_or_path}")
 
     def print_execution_plan(fsm: FSMLoop) -> None:
@@ -663,7 +670,17 @@ Examples:
         """Run a loop."""
         try:
             path = resolve_loop_path(loop_name)
-            fsm = load_and_validate(path)
+
+            # Load the file to check format
+            with open(path) as f:
+                spec = yaml.safe_load(f)
+
+            # Auto-compile if it's a paradigm file (has 'paradigm' but no 'initial')
+            if "paradigm" in spec and "initial" not in spec:
+                logger.info(f"Auto-compiling paradigm file: {path}")
+                fsm = compile_paradigm(spec)
+            else:
+                fsm = load_and_validate(path)
         except FileNotFoundError as e:
             logger.error(str(e))
             return 1
@@ -784,7 +801,18 @@ Examples:
         """Validate a loop definition."""
         try:
             path = resolve_loop_path(loop_name)
-            fsm = load_and_validate(path)
+
+            # Load the file to check format
+            with open(path) as f:
+                spec = yaml.safe_load(f)
+
+            # Auto-compile if it's a paradigm file (has 'paradigm' but no 'initial')
+            if "paradigm" in spec and "initial" not in spec:
+                logger.info(f"Compiling paradigm file for validation: {path}")
+                fsm = compile_paradigm(spec)
+            else:
+                fsm = load_and_validate(path)
+
             logger.success(f"{loop_name} is valid")
             print(f"  States: {', '.join(fsm.states.keys())}")
             print(f"  Initial: {fsm.initial}")
@@ -871,7 +899,17 @@ Examples:
         """Resume an interrupted loop."""
         try:
             path = resolve_loop_path(loop_name)
-            fsm = load_and_validate(path)
+
+            # Load the file to check format
+            with open(path) as f:
+                spec = yaml.safe_load(f)
+
+            # Auto-compile if it's a paradigm file (has 'paradigm' but no 'initial')
+            if "paradigm" in spec and "initial" not in spec:
+                logger.info(f"Auto-compiling paradigm file: {path}")
+                fsm = compile_paradigm(spec)
+            else:
+                fsm = load_and_validate(path)
         except FileNotFoundError as e:
             logger.error(str(e))
             return 1
