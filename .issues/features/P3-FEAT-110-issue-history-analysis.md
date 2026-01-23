@@ -3,46 +3,48 @@ discovered_date: 2026-01-23
 discovered_by: capture_issue
 ---
 
-# FEAT-110: Issue History Analysis Command
+# FEAT-110: Advanced Issue History Analysis
 
 ## Summary
 
-Add a new `/ll:analyze_history` slash command with supporting Python module to analyze completed issues in `.issues/completed/` and identify patterns, quality metrics, workflow effectiveness, file hotspots, and improvement opportunities.
+Extend the basic `ll-history` command (FEAT-111) with advanced analysis: file hotspot detection via git correlation, AI-generated insights, quality metrics, and a `/ll:analyze_history` slash command with skill integration.
+
+## Prerequisites
+
+- **FEAT-111**: Basic `ll-history summary` command (provides foundation)
 
 ## Context
 
-With 116+ completed issues, the project has accumulated significant historical data that could provide valuable insights into:
-- Development velocity and trends
-- Code quality patterns
-- Workflow effectiveness
-- Architecture hotspots (frequently changed files)
-- Process improvement opportunities
-
-Currently there's no way to analyze this data systematically.
+Building on the basic history summary (FEAT-111), this adds deeper analysis capabilities:
+- File hotspot detection (correlate issues with git commits)
+- Quality metrics inference
+- AI-generated insights and recommendations
+- Slash command and skill for natural language access
 
 ## Proposed Solution
 
-### Components to Create
+### Components to Create/Extend
 
-1. **Python Module**: `scripts/little_loops/issue_history_analyzer.py`
-   - Parse completed issues and extract completion metadata
-   - Calculate temporal, type, priority, quality, workflow, and hotspot metrics
-   - Generate insights and recommendations
-   - Support Markdown, YAML, and JSON output formats
+1. **Extend Python Module**: `scripts/little_loops/issue_history.py`
+   - Add git correlation for file hotspot detection
+   - Add quality metrics extraction from issue content
+   - Add insight generation logic
+   - Support Markdown and YAML output formats (JSON from FEAT-111)
 
 2. **Slash Command**: `commands/analyze_history.md`
    - Arguments: `format` (markdown|yaml|json), `output` (file path)
-   - Run analysis and display report
+   - Run full analysis and display report
    - Offer follow-up actions
 
 3. **Skill**: `skills/analyze-history/SKILL.md`
    - Trigger keywords: "analyze history", "issue history", "velocity report", etc.
    - Natural language triggering for the command
 
-4. **CLI Entry Point**: `ll-history` command
-   - Standalone command-line interface
+4. **Extend CLI**: Add `ll-history analyze` subcommand
+   - Full analysis with hotspots and insights
+   - Multiple output formats
 
-5. **Tests**: `scripts/tests/test_issue_history_analyzer.py`
+5. **Tests**: Extend `scripts/tests/test_issue_history.py`
 
 ### Analysis Categories
 
@@ -90,20 +92,21 @@ Currently there's no way to analyze this data systematically.
 ## Impact
 
 - **Priority**: P3 - Valuable but not blocking other work
-- **Effort**: Medium - ~4 files, ~600 lines total
-- **Risk**: Low - Additive feature, no modifications to existing behavior
+- **Effort**: Medium - Builds on FEAT-111, adds ~400 lines
+- **Risk**: Low - Additive feature, extends existing module
+- **Depends on**: FEAT-111 must be completed first
 
 ## Implementation Plan
 
 See: `/Users/brennon/.claude/plans/sunny-mapping-pine.md`
 
-## Related Key Documentation
+## Related
 
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+- **Prerequisite**: FEAT-111 (basic `ll-history summary` command)
 
 ## Labels
 
-`feature`, `analysis`, `reporting`
+`feature`, `analysis`, `reporting`, `advanced`
 
 ---
 
