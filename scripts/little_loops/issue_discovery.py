@@ -10,6 +10,7 @@ import re
 import subprocess
 from dataclasses import dataclass, field
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -19,8 +20,46 @@ if TYPE_CHECKING:
 
 
 # =============================================================================
+# Enums
+# =============================================================================
+
+
+class MatchClassification(Enum):
+    """Classification of how a finding matches an existing issue.
+
+    Used to distinguish between true duplicates, regressions, and invalid fixes
+    when a finding matches a completed issue.
+    """
+
+    NEW_ISSUE = "new_issue"  # No existing issue matches
+    DUPLICATE = "duplicate"  # Active issue exists
+    REGRESSION = "regression"  # Completed, files modified AFTER fix (fix broke)
+    INVALID_FIX = "invalid_fix"  # Completed, files NOT modified after fix (never worked)
+    UNVERIFIED = "unverified"  # Completed, no fix commit tracked (can't determine)
+
+
+# =============================================================================
 # Data Classes
 # =============================================================================
+
+
+@dataclass
+class RegressionEvidence:
+    """Evidence for regression vs invalid fix classification.
+
+    Attributes:
+        fix_commit_sha: SHA of the commit that fixed the original issue
+        fix_commit_exists: Whether the fix commit exists in current history
+        files_modified_since_fix: Files from the fix that were modified after fix
+        days_since_fix: Number of days since the fix was applied
+        related_commits: Commits that modified the relevant files after fix
+    """
+
+    fix_commit_sha: str | None = None
+    fix_commit_exists: bool = True
+    files_modified_since_fix: list[str] = field(default_factory=list)
+    days_since_fix: int = 0
+    related_commits: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -33,6 +72,8 @@ class FindingMatch:
         match_score: Confidence score from 0.0 to 1.0
         is_completed: Whether the matched issue is in completed/
         matched_terms: Terms that matched (for debugging)
+        classification: How to classify this match (regression, duplicate, etc.)
+        regression_evidence: Evidence supporting regression classification
     """
 
     issue_path: Path | None
@@ -40,6 +81,8 @@ class FindingMatch:
     match_score: float
     is_completed: bool = False
     matched_terms: list[str] = field(default_factory=list)
+    classification: MatchClassification = MatchClassification.NEW_ISSUE
+    regression_evidence: RegressionEvidence | None = None
 
     @property
     def should_skip(self) -> bool:
@@ -60,6 +103,43 @@ class FindingMatch:
     def should_reopen(self) -> bool:
         """Return True if a completed issue should be reopened."""
         return self.is_completed and self.match_score >= 0.5
+
+    @property
+    def should_reopen_as_regression(self) -> bool:
+        """Return True if issue should be reopened as a regression.
+
+        A regression means the fix was applied but later code changes broke it.
+        """
+        return (
+            self.is_completed
+            and self.match_score >= 0.5
+            and self.classification == MatchClassification.REGRESSION
+        )
+
+    @property
+    def should_reopen_as_invalid_fix(self) -> bool:
+        """Return True if issue should be reopened due to invalid fix.
+
+        An invalid fix means the original fix never actually resolved the issue.
+        """
+        return (
+            self.is_completed
+            and self.match_score >= 0.5
+            and self.classification == MatchClassification.INVALID_FIX
+        )
+
+    @property
+    def is_unverified(self) -> bool:
+        """Return True if regression status cannot be determined.
+
+        Unverified means the completed issue has no fix commit tracked,
+        so we cannot determine if this is a regression or invalid fix.
+        """
+        return (
+            self.is_completed
+            and self.match_score >= 0.5
+            and self.classification == MatchClassification.UNVERIFIED
+        )
 
 
 # =============================================================================
@@ -295,6 +375,194 @@ def search_issues_by_file_path(
 
 
 # =============================================================================
+# Git History Analysis
+# =============================================================================
+
+
+def _extract_fix_commit(content: str) -> str | None:
+    """Extract fix commit SHA from issue Resolution section.
+
+    Args:
+        content: Issue file content
+
+    Returns:
+        Fix commit SHA if found, None otherwise
+    """
+    # Look for "Fix Commit: <sha>" pattern in Resolution section
+    match = re.search(r"\*\*Fix Commit\*\*:\s*([a-f0-9]{7,40})", content)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _extract_files_changed(content: str) -> list[str]:
+    """Extract files changed from issue Resolution section.
+
+    Args:
+        content: Issue file content
+
+    Returns:
+        List of file paths that were changed to fix the issue
+    """
+    files: list[str] = []
+
+    # Look for Files Changed section
+    section_match = re.search(
+        r"###\s*Files Changed\s*\n(.*?)(?=\n###|\n##|\Z)",
+        content,
+        re.DOTALL,
+    )
+    if section_match:
+        section = section_match.group(1)
+        # Extract backtick-quoted paths: `path/to/file.py`
+        for match in re.finditer(r"`([^`]+)`", section):
+            path = match.group(1).strip()
+            if path and not path.startswith("See "):  # Skip placeholder text
+                files.append(path)
+
+    return files
+
+
+def _extract_completion_date(content: str) -> datetime | None:
+    """Extract completion/closed date from issue Resolution section.
+
+    Args:
+        content: Issue file content
+
+    Returns:
+        Completion date if found, None otherwise
+    """
+    # Look for "Completed: YYYY-MM-DD" or "Closed: YYYY-MM-DD"
+    match = re.search(r"\*\*(?:Completed|Closed)\*\*:\s*(\d{4}-\d{2}-\d{2})", content)
+    if match:
+        try:
+            return datetime.strptime(match.group(1), "%Y-%m-%d")
+        except ValueError:
+            return None
+    return None
+
+
+def _commit_exists_in_history(commit_sha: str) -> bool:
+    """Check if a commit exists in the current git history.
+
+    Args:
+        commit_sha: SHA of the commit to check
+
+    Returns:
+        True if commit exists in current history
+    """
+    result = subprocess.run(
+        ["git", "cat-file", "-t", commit_sha],
+        capture_output=True,
+        text=True,
+    )
+    return result.returncode == 0 and result.stdout.strip() == "commit"
+
+
+def _get_files_modified_since_commit(
+    since_commit: str,
+    target_files: list[str],
+) -> tuple[list[str], list[str]]:
+    """Find which target files have been modified since a given commit.
+
+    Args:
+        since_commit: SHA of the commit to check since
+        target_files: List of file paths to check
+
+    Returns:
+        Tuple of (modified_files, related_commits) where:
+        - modified_files: Target files that were modified after the commit
+        - related_commits: SHAs of commits that modified the target files
+    """
+    if not target_files:
+        return [], []
+
+    modified_files: list[str] = []
+    related_commits: set[str] = set()
+
+    for file_path in target_files:
+        # Get commits that modified this file since the fix commit
+        result = subprocess.run(
+            ["git", "log", "--pretty=format:%H", f"{since_commit}..HEAD", "--", file_path],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode == 0 and result.stdout.strip():
+            modified_files.append(file_path)
+            for sha in result.stdout.strip().split("\n"):
+                if sha:
+                    related_commits.add(sha[:8])  # Short SHA
+
+    return modified_files, list(related_commits)
+
+
+def detect_regression_or_duplicate(
+    config: BRConfig,
+    completed_issue_path: Path,
+) -> tuple[MatchClassification, RegressionEvidence]:
+    """Analyze a completed issue to classify if a match is a regression or invalid fix.
+
+    Classification Logic:
+    - UNVERIFIED: No fix commit tracked - can't determine
+    - INVALID_FIX: Fix commit not in history - fix was never merged/deployed
+    - REGRESSION: Files modified AFTER fix - fix worked but later changes broke it
+    - INVALID_FIX: Files NOT modified after fix - fix was applied but never worked
+
+    Args:
+        config: Project configuration
+        completed_issue_path: Path to the completed issue file
+
+    Returns:
+        Tuple of (classification, evidence) with analysis results
+    """
+    evidence = RegressionEvidence()
+
+    try:
+        content = completed_issue_path.read_text(encoding="utf-8")
+    except Exception:
+        return MatchClassification.UNVERIFIED, evidence
+
+    # Extract fix commit
+    fix_commit = _extract_fix_commit(content)
+    evidence.fix_commit_sha = fix_commit
+
+    if not fix_commit:
+        # No fix commit tracked - can't determine regression vs invalid fix
+        return MatchClassification.UNVERIFIED, evidence
+
+    # Check if fix commit exists in current history
+    if not _commit_exists_in_history(fix_commit):
+        evidence.fix_commit_exists = False
+        return MatchClassification.INVALID_FIX, evidence
+
+    # Extract files changed in the fix
+    files_changed = _extract_files_changed(content)
+
+    if not files_changed:
+        # No files tracked - can't determine
+        return MatchClassification.UNVERIFIED, evidence
+
+    # Check if any of those files were modified since the fix
+    modified_files, related_commits = _get_files_modified_since_commit(
+        fix_commit, files_changed
+    )
+    evidence.files_modified_since_fix = modified_files
+    evidence.related_commits = related_commits
+
+    # Calculate days since fix
+    completion_date = _extract_completion_date(content)
+    if completion_date:
+        evidence.days_since_fix = (datetime.now() - completion_date).days
+
+    if modified_files:
+        # Files were modified after fix - this is a regression
+        return MatchClassification.REGRESSION, evidence
+    else:
+        # Files were NOT modified after fix - the fix never actually worked
+        return MatchClassification.INVALID_FIX, evidence
+
+
+# =============================================================================
 # Main Discovery Functions
 # =============================================================================
 
@@ -313,6 +581,9 @@ def find_existing_issue(
     2. Title word overlap (>70% = likely duplicate)
     3. Content overlap analysis
 
+    For matches to completed issues, performs regression analysis to determine
+    if the match is a regression (fix broke) or invalid fix (never worked).
+
     Args:
         config: Project configuration
         finding_type: Issue type ("BUG", "ENH", "FEAT")
@@ -321,7 +592,8 @@ def find_existing_issue(
         finding_content: Full content/description of finding
 
     Returns:
-        FindingMatch with best match details
+        FindingMatch with best match details, including classification and
+        regression evidence for completed issue matches
     """
     best_match = FindingMatch(
         issue_path=None,
@@ -340,6 +612,15 @@ def find_existing_issue(
                     finding_type, issue_path, config, is_completed
                 )
                 if issue_type_match:
+                    # Determine classification
+                    if is_completed:
+                        classification, evidence = detect_regression_or_duplicate(
+                            config, issue_path
+                        )
+                    else:
+                        classification = MatchClassification.DUPLICATE
+                        evidence = None
+
                     # High confidence if same file + same type
                     return FindingMatch(
                         issue_path=issue_path,
@@ -347,6 +628,8 @@ def find_existing_issue(
                         match_score=0.85,
                         is_completed=is_completed,
                         matched_terms=[file_path],
+                        classification=classification,
+                        regression_evidence=evidence,
                     )
             except Exception:
                 continue
@@ -364,12 +647,23 @@ def find_existing_issue(
                     issue_words = _extract_words(issue_title)
                     overlap = _calculate_word_overlap(title_words, issue_words)
                     if overlap > 0.7 and overlap > best_match.match_score:
+                        # Determine classification
+                        if is_completed:
+                            classification, evidence = detect_regression_or_duplicate(
+                                config, issue_path
+                            )
+                        else:
+                            classification = MatchClassification.DUPLICATE
+                            evidence = None
+
                         best_match = FindingMatch(
                             issue_path=issue_path,
                             match_type="similar",
                             match_score=overlap,
                             is_completed=is_completed,
                             matched_terms=list(title_words & issue_words),
+                            classification=classification,
+                            regression_evidence=evidence,
                         )
             except Exception:
                 continue
@@ -383,13 +677,25 @@ def find_existing_issue(
         for issue_path, score, is_completed in content_matches[:5]:  # Top 5
             adjusted_score = score * 0.8  # Content matches are less precise
             if adjusted_score > best_match.match_score:
+                # Determine classification
+                if is_completed:
+                    classification, evidence = detect_regression_or_duplicate(
+                        config, issue_path
+                    )
+                else:
+                    classification = MatchClassification.DUPLICATE
+                    evidence = None
+
                 best_match = FindingMatch(
                     issue_path=issue_path,
                     match_type="content",
                     match_score=adjusted_score,
                     is_completed=is_completed,
+                    classification=classification,
+                    regression_evidence=evidence,
                 )
 
+    # If no match found, classification is NEW_ISSUE (the default)
     return best_match
 
 
@@ -398,26 +704,67 @@ def find_existing_issue(
 # =============================================================================
 
 
-def _build_reopen_section(reason: str, new_context: str, source_command: str) -> str:
+def _build_reopen_section(
+    reason: str,
+    new_context: str,
+    source_command: str,
+    classification: MatchClassification | None = None,
+    regression_evidence: RegressionEvidence | None = None,
+) -> str:
     """Build the reopened section for an issue.
 
     Args:
         reason: Reason for reopening
         new_context: New context/findings
         source_command: Command that triggered reopen
+        classification: How this issue was classified (regression, invalid_fix, etc.)
+        regression_evidence: Evidence supporting the classification
 
     Returns:
         Markdown section string
     """
+    # Determine section header based on classification
+    if classification == MatchClassification.REGRESSION:
+        section_header = "## Regression"
+        classification_line = "- **Classification**: Regression (fix was broken by later changes)"
+    elif classification == MatchClassification.INVALID_FIX:
+        section_header = "## Reopened (Invalid Fix)"
+        classification_line = "- **Classification**: Invalid Fix (original fix never resolved the issue)"
+    else:
+        section_header = "## Reopened"
+        classification_line = ""
+
+    # Build evidence section if available
+    evidence_section = ""
+    if regression_evidence:
+        evidence_lines = []
+        if regression_evidence.fix_commit_sha:
+            evidence_lines.append(f"- **Original Fix Commit**: {regression_evidence.fix_commit_sha}")
+        if not regression_evidence.fix_commit_exists:
+            evidence_lines.append("- **Fix Status**: Fix commit not found in history (possibly never merged)")
+        if regression_evidence.files_modified_since_fix:
+            files_list = ", ".join(f"`{f}`" for f in regression_evidence.files_modified_since_fix[:5])
+            evidence_lines.append(f"- **Files Modified Since Fix**: {files_list}")
+        if regression_evidence.related_commits:
+            commits_list = ", ".join(regression_evidence.related_commits[:5])
+            evidence_lines.append(f"- **Related Commits**: {commits_list}")
+        if regression_evidence.days_since_fix > 0:
+            evidence_lines.append(f"- **Days Since Fix**: {regression_evidence.days_since_fix}")
+
+        if evidence_lines:
+            evidence_section = "\n### Evidence\n\n" + "\n".join(evidence_lines)
+
     return f"""
 
 ---
 
-## Reopened
+{section_header}
 
 - **Date**: {datetime.now().strftime("%Y-%m-%d")}
 - **By**: {source_command}
 - **Reason**: {reason}
+{classification_line}
+{evidence_section}
 
 ### New Findings
 
@@ -476,6 +823,8 @@ def reopen_issue(
     new_context: str,
     source_command: str,
     logger: Logger,
+    classification: MatchClassification | None = None,
+    regression_evidence: RegressionEvidence | None = None,
 ) -> Path | None:
     """Move issue from completed back to active with Reopened section.
 
@@ -486,6 +835,8 @@ def reopen_issue(
         new_context: New context/findings to add
         source_command: Command triggering the reopen
         logger: Logger for output
+        classification: How this issue was classified (regression, invalid_fix, etc.)
+        regression_evidence: Evidence supporting the classification
 
     Returns:
         New path to reopened issue, or None if failed
@@ -506,14 +857,26 @@ def reopen_issue(
         logger.warning(f"Active issue already exists: {target_path}")
         return None
 
-    logger.info(f"Reopening {completed_issue_path.name} -> {category}/")
+    # Log with classification info if available
+    if classification == MatchClassification.REGRESSION:
+        logger.info(f"Reopening {completed_issue_path.name} as REGRESSION -> {category}/")
+    elif classification == MatchClassification.INVALID_FIX:
+        logger.info(f"Reopening {completed_issue_path.name} as INVALID_FIX -> {category}/")
+    else:
+        logger.info(f"Reopening {completed_issue_path.name} -> {category}/")
 
     try:
         # Read and update content
         content = completed_issue_path.read_text(encoding="utf-8")
 
-        # Add reopened section
-        reopen_section = _build_reopen_section(reopen_reason, new_context, source_command)
+        # Add reopened section with classification info
+        reopen_section = _build_reopen_section(
+            reopen_reason,
+            new_context,
+            source_command,
+            classification,
+            regression_evidence,
+        )
         content += reopen_section
 
         # Try git mv first for history preservation

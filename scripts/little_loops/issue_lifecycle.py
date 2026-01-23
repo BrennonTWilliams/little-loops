@@ -20,16 +20,36 @@ from little_loops.logger import Logger
 # =============================================================================
 
 
-def _build_closure_resolution(close_status: str, close_reason: str) -> str:
+def _build_closure_resolution(
+    close_status: str,
+    close_reason: str,
+    fix_commit: str | None = None,
+    files_changed: list[str] | None = None,
+) -> str:
     """Build resolution section for closed issues.
 
     Args:
         close_status: Status text (e.g., "Closed - Already Fixed")
         close_reason: Reason code (e.g., "already_fixed", "invalid_ref")
+        fix_commit: SHA of the commit that fixed the issue (for regression tracking)
+        files_changed: List of files modified by the fix (for regression tracking)
 
     Returns:
         Resolution section markdown string
     """
+    # Build fix commit line
+    fix_commit_line = f"- **Fix Commit**: {fix_commit}\n" if fix_commit else ""
+
+    # Build files changed section
+    if files_changed:
+        files_list = "\n".join(f"  - `{f}`" for f in files_changed)
+        files_section = f"""
+### Files Changed
+{files_list}
+"""
+    else:
+        files_section = ""
+
     return f"""
 
 ---
@@ -40,22 +60,42 @@ def _build_closure_resolution(close_status: str, close_reason: str) -> str:
 - **Closed**: {datetime.now().strftime("%Y-%m-%d")}
 - **Reason**: {close_reason}
 - **Closure**: Automated (ready_issue validation)
-
+{fix_commit_line}
 ### Closure Notes
 Issue was automatically closed during validation.
 The issue was determined to be invalid, already resolved, or not actionable.
-"""
+{files_section}"""
 
 
-def _build_completion_resolution(action: str) -> str:
+def _build_completion_resolution(
+    action: str,
+    fix_commit: str | None = None,
+    files_changed: list[str] | None = None,
+) -> str:
     """Build resolution section for completed issues.
 
     Args:
         action: Action verb (e.g., "fix", "implement")
+        fix_commit: SHA of the commit that fixed the issue (for regression tracking)
+        files_changed: List of files modified by the fix (for regression tracking)
 
     Returns:
         Resolution section markdown string
     """
+    # Build fix commit line
+    fix_commit_line = f"- **Fix Commit**: {fix_commit}" if fix_commit else ""
+
+    # Build files changed section
+    if files_changed:
+        files_list = "\n".join(f"  - `{f}`" for f in files_changed)
+        files_section = f"""
+### Files Changed
+{files_list}"""
+    else:
+        files_section = """
+### Files Changed
+- See git history for details"""
+
     return f"""
 
 ---
@@ -66,9 +106,8 @@ def _build_completion_resolution(action: str) -> str:
 - **Completed**: {datetime.now().strftime("%Y-%m-%d")}
 - **Status**: Completed (automated fallback)
 - **Implementation**: Command exited early but issue was addressed
-
-### Changes Made
-- See git history for changes
+{fix_commit_line}
+{files_section}
 
 ### Verification Results
 - Automated verification passed
@@ -365,6 +404,8 @@ def close_issue(
     logger: Logger,
     close_reason: str | None,
     close_status: str | None,
+    fix_commit: str | None = None,
+    files_changed: list[str] | None = None,
 ) -> bool:
     """Close an issue by moving it to completed with closure status.
 
@@ -377,6 +418,8 @@ def close_issue(
         logger: Logger for output
         close_reason: Reason code (e.g., "already_fixed", "invalid_ref")
         close_status: Status text (e.g., "Closed - Already Fixed")
+        fix_commit: SHA of the commit that fixed the issue (for regression tracking)
+        files_changed: List of files modified by the fix (for regression tracking)
 
     Returns:
         True if successful, False otherwise
@@ -408,7 +451,9 @@ def close_issue(
 
     try:
         # Prepare content with resolution section
-        resolution = _build_closure_resolution(close_status, close_reason)
+        resolution = _build_closure_resolution(
+            close_status, close_reason, fix_commit, files_changed
+        )
         content = _prepare_issue_content(original_path, resolution)
 
         # Move to completed directory

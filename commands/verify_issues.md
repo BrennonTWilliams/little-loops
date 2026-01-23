@@ -47,6 +47,30 @@ find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" | sort
 | RESOLVED | Issue appears to be fixed |
 | INVALID | Issue description is incorrect |
 | NEEDS_UPDATE | Valid but needs clarification |
+| REGRESSION_LIKELY | Matches completed issue, files modified since fix |
+| POSSIBLE_REGRESSION | Matches completed issue, but can't confirm regression |
+
+#### D. Regression Detection (for matches to completed issues)
+
+When an issue matches a completed issue, perform regression analysis:
+
+1. **Extract fix metadata** from the completed issue's Resolution section:
+   - `Fix Commit`: SHA of the commit that fixed the issue
+   - `Files Changed`: List of files modified by the fix
+
+2. **Analyze git history** to classify the match:
+   | Scenario | Classification | Meaning |
+   |----------|----------------|---------|
+   | No fix commit tracked | UNVERIFIED | Can't determine - original fix not recorded |
+   | Fix commit not in history | INVALID_FIX | Fix was never merged/deployed |
+   | Files modified AFTER fix | REGRESSION | Fix worked, later changes broke it |
+   | Files NOT modified after fix | INVALID_FIX | Fix was applied but never actually worked |
+
+3. **Present evidence** including:
+   - Original fix commit SHA
+   - Files modified since fix
+   - Related commits that touched the fixed files
+   - Days since original fix
 
 ### 3. Request User Approval
 
@@ -110,11 +134,19 @@ For resolved issues:
 |----------|-------|---------------|
 | ENH-005 | Title | Update line numbers |
 
+### Potential Regressions
+| Issue ID | Matched Completed | Classification | Evidence |
+|----------|-------------------|----------------|----------|
+| BUG-006 | BUG-003 | REGRESSION | Files modified after fix: `src/module.py` |
+| ENH-007 | ENH-002 | INVALID_FIX | Files unchanged since fix - fix never worked |
+| BUG-008 | BUG-001 | UNVERIFIED | No fix commit tracked |
+
 ## Recommended Actions
 1. Move resolved issues to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` (sibling to category dirs)
 2. Update outdated issues with current info
 3. Remove or archive invalid issues
 4. Re-prioritize if needed
+5. Review potential regressions - reopen completed issues with proper classification
 ```
 
 ---

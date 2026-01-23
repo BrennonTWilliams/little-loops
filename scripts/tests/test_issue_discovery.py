@@ -11,12 +11,18 @@ import pytest
 from little_loops.config import BRConfig
 from little_loops.issue_discovery import (
     FindingMatch,
+    MatchClassification,
+    RegressionEvidence,
     _calculate_word_overlap,
+    _extract_completion_date,
     _extract_file_paths,
+    _extract_files_changed,
+    _extract_fix_commit,
     _extract_line_numbers,
     _extract_words,
     _matches_issue_type,
     _normalize_text,
+    detect_regression_or_duplicate,
     find_existing_issue,
     reopen_issue,
     search_issues_by_content,
@@ -619,3 +625,394 @@ class TestMatchesIssueType:
         # Unknown type doesn't match anything
         assert _matches_issue_type("UNKNOWN", bug_path, config, False) is False
         assert _matches_issue_type("UNKNOWN", feat_path, config, False) is False
+
+
+class TestMatchClassification:
+    """Tests for MatchClassification enum."""
+
+    def test_classification_values(self) -> None:
+        """Test classification enum values."""
+        assert MatchClassification.NEW_ISSUE.value == "new_issue"
+        assert MatchClassification.DUPLICATE.value == "duplicate"
+        assert MatchClassification.REGRESSION.value == "regression"
+        assert MatchClassification.INVALID_FIX.value == "invalid_fix"
+        assert MatchClassification.UNVERIFIED.value == "unverified"
+
+
+class TestRegressionEvidence:
+    """Tests for RegressionEvidence dataclass."""
+
+    def test_default_values(self) -> None:
+        """Test default values for RegressionEvidence."""
+        evidence = RegressionEvidence()
+        assert evidence.fix_commit_sha is None
+        assert evidence.fix_commit_exists is True
+        assert evidence.files_modified_since_fix == []
+        assert evidence.days_since_fix == 0
+        assert evidence.related_commits == []
+
+    def test_with_values(self) -> None:
+        """Test RegressionEvidence with values."""
+        evidence = RegressionEvidence(
+            fix_commit_sha="abc123",
+            fix_commit_exists=True,
+            files_modified_since_fix=["src/module.py"],
+            days_since_fix=30,
+            related_commits=["def456"],
+        )
+        assert evidence.fix_commit_sha == "abc123"
+        assert evidence.fix_commit_exists is True
+        assert evidence.files_modified_since_fix == ["src/module.py"]
+        assert evidence.days_since_fix == 30
+        assert evidence.related_commits == ["def456"]
+
+
+class TestFindingMatchRegressionProperties:
+    """Tests for FindingMatch regression-related properties."""
+
+    def test_should_reopen_as_regression(self) -> None:
+        """Test should_reopen_as_regression property."""
+        match = FindingMatch(
+            issue_path=Path("completed/test.md"),
+            match_type="exact",
+            match_score=0.85,
+            is_completed=True,
+            classification=MatchClassification.REGRESSION,
+        )
+        assert match.should_reopen_as_regression is True
+        assert match.should_reopen_as_invalid_fix is False
+        assert match.is_unverified is False
+
+    def test_should_reopen_as_invalid_fix(self) -> None:
+        """Test should_reopen_as_invalid_fix property."""
+        match = FindingMatch(
+            issue_path=Path("completed/test.md"),
+            match_type="exact",
+            match_score=0.85,
+            is_completed=True,
+            classification=MatchClassification.INVALID_FIX,
+        )
+        assert match.should_reopen_as_regression is False
+        assert match.should_reopen_as_invalid_fix is True
+        assert match.is_unverified is False
+
+    def test_is_unverified(self) -> None:
+        """Test is_unverified property."""
+        match = FindingMatch(
+            issue_path=Path("completed/test.md"),
+            match_type="exact",
+            match_score=0.85,
+            is_completed=True,
+            classification=MatchClassification.UNVERIFIED,
+        )
+        assert match.should_reopen_as_regression is False
+        assert match.should_reopen_as_invalid_fix is False
+        assert match.is_unverified is True
+
+    def test_active_issue_not_regression(self) -> None:
+        """Test that active issues don't trigger regression properties."""
+        match = FindingMatch(
+            issue_path=Path("bugs/test.md"),
+            match_type="exact",
+            match_score=0.85,
+            is_completed=False,
+            classification=MatchClassification.DUPLICATE,
+        )
+        assert match.should_reopen_as_regression is False
+        assert match.should_reopen_as_invalid_fix is False
+        assert match.is_unverified is False
+
+    def test_low_score_not_regression(self) -> None:
+        """Test that low-score matches don't trigger regression properties."""
+        match = FindingMatch(
+            issue_path=Path("completed/test.md"),
+            match_type="content",
+            match_score=0.3,
+            is_completed=True,
+            classification=MatchClassification.REGRESSION,
+        )
+        # Score is too low (< 0.5) so should_reopen is False
+        assert match.should_reopen_as_regression is False
+
+
+class TestGitHistoryExtraction:
+    """Tests for git history extraction helper functions."""
+
+    def test_extract_fix_commit_found(self) -> None:
+        """Test extracting fix commit SHA from content."""
+        content = """## Resolution
+- **Fix Commit**: abc123def456
+- **Completed**: 2024-01-15
+"""
+        assert _extract_fix_commit(content) == "abc123def456"
+
+    def test_extract_fix_commit_short_sha(self) -> None:
+        """Test extracting short fix commit SHA."""
+        content = "- **Fix Commit**: abc1234"
+        assert _extract_fix_commit(content) == "abc1234"
+
+    def test_extract_fix_commit_not_found(self) -> None:
+        """Test when fix commit is not present."""
+        content = """## Resolution
+- **Completed**: 2024-01-15
+"""
+        assert _extract_fix_commit(content) is None
+
+    def test_extract_files_changed(self) -> None:
+        """Test extracting files changed from content."""
+        content = """### Files Changed
+  - `src/module.py`
+  - `src/utils.py`
+  - `tests/test_module.py`
+"""
+        files = _extract_files_changed(content)
+        assert "src/module.py" in files
+        assert "src/utils.py" in files
+        assert "tests/test_module.py" in files
+
+    def test_extract_files_changed_empty(self) -> None:
+        """Test when no files changed section exists."""
+        content = """## Resolution
+- **Completed**: 2024-01-15
+"""
+        files = _extract_files_changed(content)
+        assert files == []
+
+    def test_extract_files_changed_skips_placeholder(self) -> None:
+        """Test that placeholder text is skipped."""
+        content = """### Files Changed
+- See git history for details
+"""
+        files = _extract_files_changed(content)
+        assert files == []
+
+    def test_extract_completion_date_completed(self) -> None:
+        """Test extracting completion date."""
+        content = "- **Completed**: 2024-01-15"
+        date = _extract_completion_date(content)
+        assert date is not None
+        assert date.year == 2024
+        assert date.month == 1
+        assert date.day == 15
+
+    def test_extract_completion_date_closed(self) -> None:
+        """Test extracting closed date."""
+        content = "- **Closed**: 2024-06-30"
+        date = _extract_completion_date(content)
+        assert date is not None
+        assert date.year == 2024
+        assert date.month == 6
+        assert date.day == 30
+
+    def test_extract_completion_date_not_found(self) -> None:
+        """Test when no completion date exists."""
+        content = "No date here"
+        assert _extract_completion_date(content) is None
+
+
+class TestDetectRegressionOrDuplicate:
+    """Tests for detect_regression_or_duplicate function."""
+
+    @pytest.fixture
+    def completed_issue_with_fix(self, temp_project_dir: Path) -> Path:
+        """Create a completed issue with fix commit metadata."""
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        completed_dir.mkdir(parents=True, exist_ok=True)
+
+        issue_path = completed_dir / "P1-BUG-010-test-fix.md"
+        issue_path.write_text("""# BUG-010: Test issue with fix
+
+## Summary
+A test issue that was fixed.
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2024-01-15
+- **Status**: Completed
+- **Fix Commit**: abc123def456789
+
+### Files Changed
+  - `src/module.py`
+  - `src/utils.py`
+""")
+        return issue_path
+
+    @pytest.fixture
+    def completed_issue_no_fix_commit(self, temp_project_dir: Path) -> Path:
+        """Create a completed issue without fix commit metadata."""
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        completed_dir.mkdir(parents=True, exist_ok=True)
+
+        issue_path = completed_dir / "P2-BUG-011-no-fix-commit.md"
+        issue_path.write_text("""# BUG-011: Old issue without fix tracking
+
+## Summary
+An old issue that was fixed before fix tracking was added.
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2023-06-01
+- **Status**: Completed
+
+### Files Changed
+- See git history for details
+""")
+        return issue_path
+
+    def test_unverified_when_no_fix_commit(
+        self, temp_project_dir: Path, completed_issue_no_fix_commit: Path
+    ) -> None:
+        """Test UNVERIFIED classification when no fix commit tracked."""
+        config = BRConfig(temp_project_dir)
+
+        classification, evidence = detect_regression_or_duplicate(
+            config, completed_issue_no_fix_commit
+        )
+
+        assert classification == MatchClassification.UNVERIFIED
+        assert evidence.fix_commit_sha is None
+
+    def test_invalid_fix_when_commit_not_in_history(self, temp_project_dir: Path) -> None:
+        """Test INVALID_FIX when fix commit doesn't exist in git history."""
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        completed_dir.mkdir(parents=True, exist_ok=True)
+
+        issue_path = completed_dir / "P2-BUG-012-no-files.md"
+        issue_path.write_text("""# BUG-012: Issue with non-existent fix commit
+
+---
+
+## Resolution
+
+- **Fix Commit**: abc123def
+- **Completed**: 2024-01-15
+
+### Files Changed
+  - `src/module.py`
+""")
+
+        config = BRConfig(temp_project_dir)
+        classification, evidence = detect_regression_or_duplicate(config, issue_path)
+
+        # Fix commit exists in metadata but not in git history = INVALID_FIX
+        # (the fix was never merged or was rebased away)
+        assert classification == MatchClassification.INVALID_FIX
+        assert evidence.fix_commit_sha == "abc123def"
+        assert evidence.fix_commit_exists is False
+
+    def test_evidence_populated(
+        self, temp_project_dir: Path, completed_issue_with_fix: Path
+    ) -> None:
+        """Test that evidence is populated from issue content."""
+        config = BRConfig(temp_project_dir)
+
+        classification, evidence = detect_regression_or_duplicate(
+            config, completed_issue_with_fix
+        )
+
+        # Fix commit SHA should be extracted from the issue content
+        assert evidence.fix_commit_sha == "abc123def456789"
+        # Classification will be INVALID_FIX since the fake SHA doesn't exist in git history
+        # This is correct behavior - if the commit doesn't exist, it was never merged
+        assert classification == MatchClassification.INVALID_FIX
+        assert evidence.fix_commit_exists is False
+
+    def test_nonexistent_file_returns_unverified(self, temp_project_dir: Path) -> None:
+        """Test that nonexistent file returns UNVERIFIED."""
+        config = BRConfig(temp_project_dir)
+        fake_path = temp_project_dir / ".issues" / "completed" / "fake.md"
+
+        classification, evidence = detect_regression_or_duplicate(config, fake_path)
+
+        assert classification == MatchClassification.UNVERIFIED
+
+
+class TestReopenIssueWithClassification:
+    """Tests for reopen_issue with classification support."""
+
+    def test_reopen_as_regression_adds_section(
+        self, temp_project_dir: Path, issues_with_content: Path
+    ) -> None:
+        """Test that reopening as regression adds proper section."""
+        config = BRConfig(temp_project_dir)
+        logger = Logger()
+
+        # Create a new completed issue for this test
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        completed_path = completed_dir / "P1-BUG-020-regression-test.md"
+        completed_path.write_text("""# BUG-020: Regression test issue
+
+## Summary
+Test issue for regression reopening.
+""")
+
+        evidence = RegressionEvidence(
+            fix_commit_sha="abc123",
+            files_modified_since_fix=["src/module.py"],
+            related_commits=["def456"],
+            days_since_fix=30,
+        )
+
+        new_path = reopen_issue(
+            config,
+            completed_path,
+            reopen_reason="Bug reappeared after refactoring",
+            new_context="Error occurs again in production.",
+            source_command="verify_issues",
+            logger=logger,
+            classification=MatchClassification.REGRESSION,
+            regression_evidence=evidence,
+        )
+
+        assert new_path is not None
+        content = new_path.read_text()
+        assert "## Regression" in content
+        assert "Regression (fix was broken by later changes)" in content
+        assert "Original Fix Commit" in content
+        assert "abc123" in content
+        assert "Files Modified Since Fix" in content
+        assert "src/module.py" in content
+
+    def test_reopen_as_invalid_fix_adds_section(
+        self, temp_project_dir: Path, issues_with_content: Path
+    ) -> None:
+        """Test that reopening as invalid fix adds proper section."""
+        config = BRConfig(temp_project_dir)
+        logger = Logger()
+
+        # Create a new completed issue for this test
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        completed_path = completed_dir / "P1-BUG-021-invalid-fix-test.md"
+        completed_path.write_text("""# BUG-021: Invalid fix test issue
+
+## Summary
+Test issue for invalid fix reopening.
+""")
+
+        evidence = RegressionEvidence(
+            fix_commit_sha="xyz789",
+            fix_commit_exists=False,
+        )
+
+        new_path = reopen_issue(
+            config,
+            completed_path,
+            reopen_reason="Original fix never worked",
+            new_context="Bug was never actually fixed.",
+            source_command="ready_issue",
+            logger=logger,
+            classification=MatchClassification.INVALID_FIX,
+            regression_evidence=evidence,
+        )
+
+        assert new_path is not None
+        content = new_path.read_text()
+        assert "## Reopened (Invalid Fix)" in content
+        assert "Invalid Fix (original fix never resolved the issue)" in content
+        assert "Fix commit not found in history" in content

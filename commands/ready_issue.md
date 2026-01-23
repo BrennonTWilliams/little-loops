@@ -150,6 +150,8 @@ If line numbers are outdated but an Anchor field exists:
 | Issue is too vague even after attempting to clarify | too_vague | Closed - Invalid |
 | Duplicate of another issue | duplicate | Closed - Duplicate |
 | Out of scope or rejected requirement | wont_do | Closed - Won't Do |
+| Matches completed issue, files modified since fix | regression_likely | Regression - Reopen as Regression |
+| Matches completed issue, can't confirm regression | possible_regression | Possible Regression - Needs Review |
 
 ### 4. Determine Verdict
 
@@ -159,11 +161,30 @@ If line numbers are outdated but an Anchor field exists:
 | CORRECTED | Auto-corrections made, now ready | Fixed issues, proceed to implementation |
 | NOT_READY | Cannot auto-correct | Needs manual intervention (use sparingly) |
 | CLOSE | Issue should not be implemented | See closure conditions above |
+| REGRESSION_LIKELY | Matches completed issue with evidence | Files modified since original fix |
+| POSSIBLE_REGRESSION | Matches completed issue, uncertain | No fix commit or files tracked |
 
 **Priority order**:
 1. First, try to auto-correct any issues
 2. If issue is invalid/obsolete, use CLOSE
-3. Only use NOT_READY if manual intervention is truly required
+3. If issue matches completed issue, analyze for regression (see Regression Detection below)
+4. Only use NOT_READY if manual intervention is truly required
+
+### 4.5 Regression Detection (when matching completed issues)
+
+When an issue appears to match a completed issue, perform regression analysis:
+
+1. **Check for completed issue match**: Search `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` for similar issues
+2. **Extract fix metadata** from matched completed issue's Resolution section:
+   - `Fix Commit`: SHA of the commit that fixed the issue
+   - `Files Changed`: List of files modified by the fix
+3. **Classify the match**:
+   | Scenario | Classification | Verdict |
+   |----------|----------------|---------|
+   | No fix commit tracked | UNVERIFIED | POSSIBLE_REGRESSION |
+   | Fix commit not in history | INVALID_FIX | REGRESSION_LIKELY |
+   | Files modified AFTER fix | REGRESSION | REGRESSION_LIKELY |
+   | Files NOT modified after fix | INVALID_FIX | REGRESSION_LIKELY |
 
 ### 5. Auto-Correction
 
@@ -184,7 +205,7 @@ After making corrections, use verdict CORRECTED (not READY or NOT_READY).
 
 ```markdown
 ## VERDICT
-[READY|CORRECTED|NOT_READY|CLOSE]
+[READY|CORRECTED|NOT_READY|CLOSE|REGRESSION_LIKELY|POSSIBLE_REGRESSION]
 
 ## VALIDATED_FILE
 [REQUIRED for ALL verdicts - Absolute path to the issue file that was validated, e.g., /path/to/.issues/bugs/P1-BUG-002-description.md]
@@ -197,6 +218,47 @@ After making corrections, use verdict CORRECTED (not READY or NOT_READY).
 ## CLOSE_STATUS
 [Only include this section if verdict is CLOSE]
 Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't Do
+
+## MATCHED_COMPLETED_ISSUE
+[Only include this section if verdict is REGRESSION_LIKELY or POSSIBLE_REGRESSION]
+- **Issue ID**: [Matched completed issue ID, e.g., BUG-003]
+- **Path**: [Path to matched completed issue]
+- **Similarity**: [Match score, e.g., 0.85]
+- **Matched Terms**: [Terms that triggered the match]
+
+## REGRESSION_EVIDENCE
+[Only include this section if verdict is REGRESSION_LIKELY or POSSIBLE_REGRESSION]
+- **Classification**: REGRESSION | INVALID_FIX | UNVERIFIED
+- **Fix Commit**: [SHA or "Not tracked"]
+- **Fix Commit Exists**: Yes | No
+- **Files Changed in Fix**: [List of files from original fix]
+- **Files Modified Since Fix**: [Files that were changed after the fix]
+- **Related Commits**: [Commits that modified the fixed files]
+- **Days Since Fix**: [Number of days]
+
+## RECOMMENDED_ACTION
+[Only include this section if verdict is REGRESSION_LIKELY or POSSIBLE_REGRESSION]
+- For REGRESSION: "Reopen completed issue as regression - fix was broken by later changes"
+- For INVALID_FIX: "Reopen completed issue - original fix never resolved the issue"
+- For UNVERIFIED: "Cannot determine regression status - recommend manual review"
+
+## REGRESSION_NOTE_TEMPLATE
+[Only include this section if verdict is REGRESSION_LIKELY or POSSIBLE_REGRESSION]
+```
+## Regression
+
+- **Date**: [Today's date]
+- **Classification**: [REGRESSION | INVALID_FIX]
+- **Original Fix Commit**: [SHA]
+- **Files Modified Since Fix**: [List]
+- **Related Commits**: [List]
+
+### Evidence
+[Description of why this is classified as regression/invalid fix]
+
+### New Findings
+[Current manifestation of the issue]
+```
 
 ## VALIDATION
 
@@ -234,6 +296,7 @@ Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't 
 ## NEXT_STEPS
 - [Recommended actions if not ready]
 - [Or "Proceed to implementation with: `/ll:manage_issue [issue_type] [action] [ISSUE_ID]`" if ready/corrected]
+- [Or "Reopen completed issue [ISSUE_ID] as regression" if REGRESSION_LIKELY]
 ```
 
 ---
@@ -289,5 +352,7 @@ The automation scripts (`ll-auto`, `ll-parallel`) run this automatically before 
 | CORRECTED | Proceed to implementation (corrections saved) |
 | NOT_READY | Mark as failed, skip issue |
 | CLOSE | Move to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` with closure status |
+| REGRESSION_LIKELY | Reopen completed issue with classification and evidence |
+| POSSIBLE_REGRESSION | Flag for manual review, may reopen if confirmed |
 
 **Note**: The completed directory is a SIBLING to category directories (bugs/, features/, enhancements/), not a subdirectory within them.
