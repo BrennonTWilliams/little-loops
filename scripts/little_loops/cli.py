@@ -1261,5 +1261,75 @@ def _cmd_sprint_run(
         return auto_manager.run()
 
 
+def main_history() -> int:
+    """Entry point for ll-history command.
+
+    Display summary statistics for completed issues.
+
+    Returns:
+        Exit code (0 = success)
+    """
+    from little_loops.issue_history import (
+        calculate_summary,
+        format_summary_json,
+        format_summary_text,
+        scan_completed_issues,
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="ll-history",
+        description="Display summary statistics for completed issues",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s summary              # Show summary statistics
+  %(prog)s summary --json       # Output as JSON
+  %(prog)s summary -d /path     # Custom issues directory
+""",
+    )
+
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # summary subcommand
+    summary_parser = subparsers.add_parser("summary", help="Show issue statistics")
+    summary_parser.add_argument(
+        "--json",
+        action="store_true",
+        help="Output as JSON instead of formatted text",
+    )
+    summary_parser.add_argument(
+        "-d",
+        "--directory",
+        type=Path,
+        default=None,
+        help="Path to issues directory (default: .issues)",
+    )
+
+    args = parser.parse_args()
+
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    if args.command == "summary":
+        # Determine completed directory
+        issues_dir = args.directory or Path.cwd() / ".issues"
+        completed_dir = issues_dir / "completed"
+
+        # Scan and calculate
+        issues = scan_completed_issues(completed_dir)
+        summary = calculate_summary(issues)
+
+        # Output
+        if args.json:
+            print(format_summary_json(summary))
+        else:
+            print(format_summary_text(summary))
+
+        return 0
+
+    return 1
+
+
 if __name__ == "__main__":
     sys.exit(main_auto())

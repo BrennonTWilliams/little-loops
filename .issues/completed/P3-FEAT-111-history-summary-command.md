@@ -81,10 +81,10 @@ By Discovery Source:
 
 ## Acceptance Criteria
 
-- [ ] `ll-history summary` shows type/priority/source breakdown
-- [ ] `ll-history summary --json` outputs machine-readable JSON
-- [ ] Handles empty `.issues/completed/` gracefully
-- [ ] Tests cover parsing and statistics calculation
+- [x] `ll-history summary` shows type/priority/source breakdown
+- [x] `ll-history summary --json` outputs machine-readable JSON
+- [x] Handles empty `.issues/completed/` gracefully
+- [x] Tests cover parsing and statistics calculation
 
 ## Related
 
@@ -97,3 +97,23 @@ By Discovery Source:
 ---
 
 **Priority**: P3 | **Created**: 2026-01-23
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_history.py`: New module with CompletedIssue and HistorySummary dataclasses, parsing functions, and summary formatters
+- `scripts/little_loops/cli.py`: Added main_history() entry point function
+- `scripts/pyproject.toml`: Registered ll-history CLI entry point
+- `scripts/tests/test_issue_history.py`: 32 comprehensive tests for all functionality
+
+### Verification Results
+- Tests: PASS (32/32 new tests, 1507 total)
+- Lint: PASS
+- Types: PASS
+- End-to-end: Verified against real .issues/completed/ with 116 issues
