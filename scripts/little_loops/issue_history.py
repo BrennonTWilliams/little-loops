@@ -5,25 +5,44 @@ Provides analysis of completed issues including:
 - Priority distribution (P0-P5)
 - Discovery source breakdown
 - Completion velocity metrics
+- Trend analysis over time periods
+- Subsystem health tracking
+- Technical debt metrics
 """
 
 from __future__ import annotations
 
 import json
 import re
+from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 __all__ = [
+    # Core dataclasses
     "CompletedIssue",
     "HistorySummary",
+    # Advanced analysis dataclasses
+    "PeriodMetrics",
+    "SubsystemHealth",
+    "TechnicalDebtMetrics",
+    "HistoryAnalysis",
+    # Parsing and scanning
     "parse_completed_issue",
     "scan_completed_issues",
+    "scan_active_issues",
+    # Summary functions
     "calculate_summary",
+    "calculate_analysis",
+    # Formatting functions
     "format_summary_text",
     "format_summary_json",
+    "format_analysis_text",
+    "format_analysis_json",
+    "format_analysis_markdown",
+    "format_analysis_yaml",
 ]
 
 
@@ -91,6 +110,153 @@ class HistorySummary:
             "date_range_days": self.date_range_days,
             "velocity": round(self.velocity, 2) if self.velocity else None,
         }
+
+
+# =============================================================================
+# Advanced Analysis Dataclasses (FEAT-110)
+# =============================================================================
+
+
+@dataclass
+class PeriodMetrics:
+    """Metrics for a specific time period."""
+
+    period_start: date
+    period_end: date
+    period_label: str  # e.g., "Q1 2025", "Jan 2025", "Week 3"
+    total_completed: int = 0
+    type_counts: dict[str, int] = field(default_factory=dict)
+    priority_counts: dict[str, int] = field(default_factory=dict)
+    avg_completion_days: float | None = None
+
+    @property
+    def bug_ratio(self) -> float | None:
+        """Calculate bug percentage."""
+        if self.total_completed == 0:
+            return None
+        bug_count = self.type_counts.get("BUG", 0)
+        return bug_count / self.total_completed
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "period_start": self.period_start.isoformat(),
+            "period_end": self.period_end.isoformat(),
+            "period_label": self.period_label,
+            "total_completed": self.total_completed,
+            "type_counts": self.type_counts,
+            "priority_counts": self.priority_counts,
+            "bug_ratio": round(self.bug_ratio, 3) if self.bug_ratio is not None else None,
+            "avg_completion_days": (
+                round(self.avg_completion_days, 1) if self.avg_completion_days else None
+            ),
+        }
+
+
+@dataclass
+class SubsystemHealth:
+    """Health metrics for a subsystem (directory)."""
+
+    subsystem: str  # Directory path
+    total_issues: int = 0
+    recent_issues: int = 0  # Issues in last 30 days
+    issue_ids: list[str] = field(default_factory=list)
+    trend: str = "stable"  # "improving", "stable", "degrading"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "subsystem": self.subsystem,
+            "total_issues": self.total_issues,
+            "recent_issues": self.recent_issues,
+            "issue_ids": self.issue_ids[:5],  # Top 5
+            "trend": self.trend,
+        }
+
+
+@dataclass
+class TechnicalDebtMetrics:
+    """Technical debt health indicators."""
+
+    backlog_size: int = 0  # Total open issues
+    backlog_growth_rate: float = 0.0  # Net issues/week
+    aging_30_plus: int = 0  # Issues > 30 days old
+    aging_60_plus: int = 0  # Issues > 60 days old
+    high_priority_open: int = 0  # P0-P1 open
+    debt_paydown_ratio: float = 0.0  # maintenance vs features
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "backlog_size": self.backlog_size,
+            "backlog_growth_rate": round(self.backlog_growth_rate, 2),
+            "aging_30_plus": self.aging_30_plus,
+            "aging_60_plus": self.aging_60_plus,
+            "high_priority_open": self.high_priority_open,
+            "debt_paydown_ratio": round(self.debt_paydown_ratio, 2),
+        }
+
+
+@dataclass
+class HistoryAnalysis:
+    """Complete history analysis report."""
+
+    generated_date: date
+    total_completed: int
+    total_active: int
+    date_range_start: date | None
+    date_range_end: date | None
+
+    # Core summary (from existing HistorySummary)
+    summary: HistorySummary
+
+    # Trend analysis
+    period_metrics: list[PeriodMetrics] = field(default_factory=list)
+    velocity_trend: str = "stable"  # "increasing", "stable", "decreasing"
+    bug_ratio_trend: str = "stable"
+
+    # Subsystem health
+    subsystem_health: list[SubsystemHealth] = field(default_factory=list)
+
+    # Technical debt
+    debt_metrics: TechnicalDebtMetrics | None = None
+
+    # Comparative analysis (optional)
+    comparison_period: str | None = None  # e.g., "30d"
+    previous_period: PeriodMetrics | None = None
+    current_period: PeriodMetrics | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "generated_date": self.generated_date.isoformat(),
+            "total_completed": self.total_completed,
+            "total_active": self.total_active,
+            "date_range_start": (
+                self.date_range_start.isoformat() if self.date_range_start else None
+            ),
+            "date_range_end": (
+                self.date_range_end.isoformat() if self.date_range_end else None
+            ),
+            "summary": self.summary.to_dict(),
+            "period_metrics": [p.to_dict() for p in self.period_metrics],
+            "velocity_trend": self.velocity_trend,
+            "bug_ratio_trend": self.bug_ratio_trend,
+            "subsystem_health": [s.to_dict() for s in self.subsystem_health],
+            "debt_metrics": self.debt_metrics.to_dict() if self.debt_metrics else None,
+            "comparison_period": self.comparison_period,
+            "previous_period": (
+                self.previous_period.to_dict() if self.previous_period else None
+            ),
+            "current_period": (
+                self.current_period.to_dict() if self.current_period else None
+            ),
+        }
+
+
+# =============================================================================
+# Parsing Functions
+# =============================================================================
 
 
 def parse_completed_issue(file_path: Path) -> CompletedIssue:
@@ -318,3 +484,757 @@ def format_summary_json(summary: HistorySummary) -> str:
         JSON string
     """
     return json.dumps(summary.to_dict(), indent=2)
+
+
+# =============================================================================
+# Advanced Analysis Functions (FEAT-110)
+# =============================================================================
+
+
+def _parse_discovered_date(content: str) -> date | None:
+    """Extract discovered_date from YAML frontmatter.
+
+    Args:
+        content: File content
+
+    Returns:
+        discovered_date value or None
+    """
+    if not content.startswith("---"):
+        return None
+
+    end_match = re.search(r"\n---\s*\n", content[3:])
+    if not end_match:
+        return None
+
+    frontmatter = content[4 : 3 + end_match.start()]
+
+    for line in frontmatter.split("\n"):
+        if line.strip().startswith("discovered_date:"):
+            value = line.split(":", 1)[1].strip()
+            try:
+                return date.fromisoformat(value)
+            except ValueError:
+                return None
+
+    return None
+
+
+def _extract_subsystem(content: str) -> str | None:
+    """Extract primary subsystem/directory from issue content.
+
+    Args:
+        content: Issue file content
+
+    Returns:
+        Directory path (e.g., "scripts/little_loops/") or None
+    """
+    # Look for file paths in Location or common patterns
+    patterns = [
+        r"\*\*File\*\*:\s*`?([^`\n]+/)[^/`\n]+`?",  # **File**: path/to/file.py
+        r"`([a-zA-Z_][\w/.-]+/)[^/`]+\.py`",  # `path/to/file.py`
+    ]
+
+    for pattern in patterns:
+        match = re.search(pattern, content)
+        if match:
+            return match.group(1)
+
+    return None
+
+
+def _calculate_period_label(start: date, period_type: str) -> str:
+    """Generate human-readable period label.
+
+    Args:
+        start: Period start date
+        period_type: "weekly", "monthly", "quarterly"
+
+    Returns:
+        Label like "Q1 2025", "Jan 2025", "Week 3 2025"
+    """
+    if period_type == "quarterly":
+        quarter = (start.month - 1) // 3 + 1
+        return f"Q{quarter} {start.year}"
+    elif period_type == "monthly":
+        return start.strftime("%b %Y")
+    else:  # weekly
+        week_num = start.isocalendar()[1]
+        return f"Week {week_num} {start.year}"
+
+
+def _group_by_period(
+    issues: list[CompletedIssue],
+    period_type: Literal["weekly", "monthly", "quarterly"] = "monthly",
+) -> list[PeriodMetrics]:
+    """Group issues by time period and calculate metrics.
+
+    Args:
+        issues: List of completed issues with dates
+        period_type: Grouping period
+
+    Returns:
+        List of PeriodMetrics sorted by date ascending
+    """
+    # Filter issues with dates
+    dated_issues = [i for i in issues if i.completed_date]
+    if not dated_issues:
+        return []
+
+    # Sort by date
+    dated_issues.sort(key=lambda i: i.completed_date)  # type: ignore
+
+    # Determine period boundaries
+    periods: dict[str, list[CompletedIssue]] = defaultdict(list)
+
+    for issue in dated_issues:
+        completed = issue.completed_date
+        assert completed is not None
+
+        if period_type == "quarterly":
+            quarter = (completed.month - 1) // 3
+            period_start = date(completed.year, quarter * 3 + 1, 1)
+        elif period_type == "monthly":
+            period_start = date(completed.year, completed.month, 1)
+        else:  # weekly
+            # Start of week (Monday)
+            period_start = completed - timedelta(days=completed.weekday())
+
+        key = period_start.isoformat()
+        periods[key].append(issue)
+
+    # Calculate metrics for each period
+    result: list[PeriodMetrics] = []
+    for period_key in sorted(periods.keys()):
+        period_issues = periods[period_key]
+        period_start = date.fromisoformat(period_key)
+
+        # Calculate period end
+        if period_type == "quarterly":
+            month = period_start.month + 3
+            year = period_start.year
+            if month > 12:
+                month = 1
+                year += 1
+            period_end = date(year, month, 1) - timedelta(days=1)
+        elif period_type == "monthly":
+            month = period_start.month + 1
+            year = period_start.year
+            if month > 12:
+                month = 1
+                year += 1
+            period_end = date(year, month, 1) - timedelta(days=1)
+        else:  # weekly
+            period_end = period_start + timedelta(days=6)
+
+        # Count types and priorities
+        type_counts: dict[str, int] = {}
+        priority_counts: dict[str, int] = {}
+
+        for issue in period_issues:
+            type_counts[issue.issue_type] = type_counts.get(issue.issue_type, 0) + 1
+            priority_counts[issue.priority] = priority_counts.get(issue.priority, 0) + 1
+
+        result.append(
+            PeriodMetrics(
+                period_start=period_start,
+                period_end=period_end,
+                period_label=_calculate_period_label(period_start, period_type),
+                total_completed=len(period_issues),
+                type_counts=dict(sorted(type_counts.items())),
+                priority_counts=dict(sorted(priority_counts.items())),
+            )
+        )
+
+    return result
+
+
+def _calculate_trend(values: list[float]) -> str:
+    """Determine trend from a series of values.
+
+    Args:
+        values: Time-ordered series of values
+
+    Returns:
+        "increasing", "decreasing", or "stable"
+    """
+    if len(values) < 3:
+        return "stable"
+
+    # Simple linear regression slope
+    n = len(values)
+    sum_x = sum(range(n))
+    sum_y = sum(values)
+    sum_xy = sum(i * v for i, v in enumerate(values))
+    sum_x2 = sum(i * i for i in range(n))
+
+    denominator = n * sum_x2 - sum_x * sum_x
+    if denominator == 0:
+        return "stable"
+
+    slope = (n * sum_xy - sum_x * sum_y) / denominator
+
+    # Normalize slope by average value
+    avg = sum_y / n if n > 0 else 1
+    if avg == 0:
+        avg = 1
+    normalized_slope = slope / avg
+
+    if normalized_slope > 0.05:
+        return "increasing"
+    elif normalized_slope < -0.05:
+        return "decreasing"
+    return "stable"
+
+
+def _analyze_subsystems(
+    issues: list[CompletedIssue],
+    recent_days: int = 30,
+) -> list[SubsystemHealth]:
+    """Analyze health by subsystem/directory.
+
+    Args:
+        issues: List of completed issues
+        recent_days: Days to consider "recent"
+
+    Returns:
+        List of SubsystemHealth sorted by total issues descending
+    """
+    subsystems: dict[str, SubsystemHealth] = {}
+    cutoff = date.today() - timedelta(days=recent_days)
+
+    for issue in issues:
+        try:
+            content = issue.path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        subsystem = _extract_subsystem(content)
+        if not subsystem:
+            continue
+
+        if subsystem not in subsystems:
+            subsystems[subsystem] = SubsystemHealth(subsystem=subsystem)
+
+        health = subsystems[subsystem]
+        health.total_issues += 1
+        health.issue_ids.append(issue.issue_id)
+
+        if issue.completed_date and issue.completed_date >= cutoff:
+            health.recent_issues += 1
+
+    # Calculate trends based on recent vs historical ratio
+    for health in subsystems.values():
+        if health.total_issues >= 5:
+            recent_ratio = health.recent_issues / health.total_issues
+            if recent_ratio > 0.5:
+                health.trend = "degrading"
+            elif recent_ratio < 0.2:
+                health.trend = "improving"
+
+    # Sort by total issues descending
+    result = sorted(subsystems.values(), key=lambda s: -s.total_issues)
+    return result[:10]  # Top 10
+
+
+def scan_active_issues(issues_dir: Path) -> list[tuple[Path, str, str, date | None]]:
+    """Scan active issue directories.
+
+    Args:
+        issues_dir: Path to .issues/ directory
+
+    Returns:
+        List of (path, issue_type, priority, discovered_date) tuples
+    """
+    results: list[tuple[Path, str, str, date | None]] = []
+
+    for category_dir in ["bugs", "features", "enhancements"]:
+        category_path = issues_dir / category_dir
+        if not category_path.exists():
+            continue
+
+        for file_path in category_path.glob("*.md"):
+            filename = file_path.name
+
+            # Extract priority
+            priority = "P5"
+            priority_match = re.match(r"^(P\d)", filename)
+            if priority_match:
+                priority = priority_match.group(1)
+
+            # Extract type
+            issue_type = "UNKNOWN"
+            type_match = re.search(r"(BUG|ENH|FEAT)", filename)
+            if type_match:
+                issue_type = type_match.group(1)
+
+            # Extract discovered date from content
+            discovered_date = None
+            try:
+                content = file_path.read_text(encoding="utf-8")
+                discovered_date = _parse_discovered_date(content)
+            except Exception:
+                pass
+
+            results.append((file_path, issue_type, priority, discovered_date))
+
+    return results
+
+
+def _calculate_debt_metrics(
+    completed_issues: list[CompletedIssue],
+    active_issues: list[tuple[Path, str, str, date | None]],
+) -> TechnicalDebtMetrics:
+    """Calculate technical debt health metrics.
+
+    Args:
+        completed_issues: List of completed issues
+        active_issues: List of active issue tuples
+
+    Returns:
+        TechnicalDebtMetrics with calculated values
+    """
+    today = date.today()
+    metrics = TechnicalDebtMetrics()
+
+    # Backlog size
+    metrics.backlog_size = len(active_issues)
+
+    # Count aging and high priority
+    for _path, _issue_type, priority, discovered_date in active_issues:
+        if priority in ("P0", "P1"):
+            metrics.high_priority_open += 1
+
+        if discovered_date:
+            age = (today - discovered_date).days
+            if age >= 30:
+                metrics.aging_30_plus += 1
+            if age >= 60:
+                metrics.aging_60_plus += 1
+
+    # Calculate backlog growth rate (issues per week)
+    # Look at last 4 weeks of completions vs creations
+    four_weeks_ago = today - timedelta(days=28)
+
+    completed_recently = sum(
+        1
+        for i in completed_issues
+        if i.completed_date and i.completed_date >= four_weeks_ago
+    )
+
+    created_recently = sum(1 for _, _, _, d in active_issues if d and d >= four_weeks_ago)
+
+    # Net change per week
+    if completed_recently > 0 or created_recently > 0:
+        metrics.backlog_growth_rate = (created_recently - completed_recently) / 4.0
+
+    # Debt paydown ratio (bug fixes vs features)
+    bug_count = sum(1 for i in completed_issues if i.issue_type == "BUG")
+    feat_count = sum(1 for i in completed_issues if i.issue_type == "FEAT")
+
+    if feat_count > 0:
+        metrics.debt_paydown_ratio = bug_count / feat_count
+    elif bug_count > 0:
+        metrics.debt_paydown_ratio = float(bug_count)  # All maintenance
+
+    return metrics
+
+
+def calculate_analysis(
+    completed_issues: list[CompletedIssue],
+    issues_dir: Path | None = None,
+    period_type: Literal["weekly", "monthly", "quarterly"] = "monthly",
+    compare_days: int | None = None,
+) -> HistoryAnalysis:
+    """Calculate comprehensive history analysis.
+
+    Args:
+        completed_issues: List of completed issues
+        issues_dir: Path to .issues/ for active issue scanning
+        period_type: Grouping period for trend analysis
+        compare_days: Days for comparative analysis (e.g., 30 for 30d comparison)
+
+    Returns:
+        HistoryAnalysis with all metrics
+    """
+    today = date.today()
+
+    # Get base summary
+    summary = calculate_summary(completed_issues)
+
+    # Scan active issues if directory provided
+    active_issues: list[tuple[Path, str, str, date | None]] = []
+    if issues_dir:
+        active_issues = scan_active_issues(issues_dir)
+
+    # Calculate period metrics
+    period_metrics = _group_by_period(completed_issues, period_type)
+
+    # Determine velocity trend
+    if len(period_metrics) >= 3:
+        velocities = [float(p.total_completed) for p in period_metrics]
+        velocity_trend = _calculate_trend(velocities)
+    else:
+        velocity_trend = "stable"
+
+    # Determine bug ratio trend
+    if len(period_metrics) >= 3:
+        bug_ratios = [p.bug_ratio or 0.0 for p in period_metrics]
+        # For bug ratio, decreasing is good (keep as-is)
+        bug_ratio_trend = _calculate_trend(bug_ratios)
+    else:
+        bug_ratio_trend = "stable"
+
+    # Subsystem health
+    subsystem_health = _analyze_subsystems(completed_issues)
+
+    # Technical debt metrics
+    debt_metrics = _calculate_debt_metrics(completed_issues, active_issues)
+
+    # Build analysis
+    analysis = HistoryAnalysis(
+        generated_date=today,
+        total_completed=len(completed_issues),
+        total_active=len(active_issues),
+        date_range_start=summary.earliest_date,
+        date_range_end=summary.latest_date,
+        summary=summary,
+        period_metrics=period_metrics,
+        velocity_trend=velocity_trend,
+        bug_ratio_trend=bug_ratio_trend,
+        subsystem_health=subsystem_health,
+        debt_metrics=debt_metrics,
+    )
+
+    # Comparative analysis
+    if compare_days:
+        analysis.comparison_period = f"{compare_days}d"
+        cutoff = today - timedelta(days=compare_days)
+        prev_cutoff = cutoff - timedelta(days=compare_days)
+
+        current_issues = [
+            i
+            for i in completed_issues
+            if i.completed_date and i.completed_date >= cutoff
+        ]
+        previous_issues = [
+            i
+            for i in completed_issues
+            if i.completed_date and prev_cutoff <= i.completed_date < cutoff
+        ]
+
+        if current_issues:
+            current_types: dict[str, int] = {}
+            for i in current_issues:
+                current_types[i.issue_type] = current_types.get(i.issue_type, 0) + 1
+
+            analysis.current_period = PeriodMetrics(
+                period_start=cutoff,
+                period_end=today,
+                period_label=f"Last {compare_days} days",
+                total_completed=len(current_issues),
+                type_counts=current_types,
+            )
+
+        if previous_issues:
+            prev_types: dict[str, int] = {}
+            for i in previous_issues:
+                prev_types[i.issue_type] = prev_types.get(i.issue_type, 0) + 1
+
+            analysis.previous_period = PeriodMetrics(
+                period_start=prev_cutoff,
+                period_end=cutoff - timedelta(days=1),
+                period_label=f"Previous {compare_days} days",
+                total_completed=len(previous_issues),
+                type_counts=prev_types,
+            )
+
+    return analysis
+
+
+# =============================================================================
+# Analysis Formatting Functions (FEAT-110)
+# =============================================================================
+
+
+def format_analysis_json(analysis: HistoryAnalysis) -> str:
+    """Format analysis as JSON.
+
+    Args:
+        analysis: HistoryAnalysis to format
+
+    Returns:
+        JSON string
+    """
+    return json.dumps(analysis.to_dict(), indent=2)
+
+
+def format_analysis_yaml(analysis: HistoryAnalysis) -> str:
+    """Format analysis as YAML.
+
+    Args:
+        analysis: HistoryAnalysis to format
+
+    Returns:
+        YAML string (falls back to JSON if yaml not available)
+    """
+    try:
+        import yaml
+
+        return yaml.dump(analysis.to_dict(), default_flow_style=False, sort_keys=False)
+    except ImportError:
+        # Fallback to JSON if yaml not available
+        return format_analysis_json(analysis)
+
+
+def format_analysis_text(analysis: HistoryAnalysis) -> str:
+    """Format analysis as human-readable text.
+
+    Args:
+        analysis: HistoryAnalysis to format
+
+    Returns:
+        Formatted text string
+    """
+    lines: list[str] = []
+
+    lines.append("Issue History Analysis")
+    lines.append("=" * 22)
+    lines.append(f"Generated: {analysis.generated_date}")
+    lines.append(f"Completed: {analysis.total_completed}  |  Active: {analysis.total_active}")
+
+    if analysis.date_range_start and analysis.date_range_end:
+        lines.append(f"Date Range: {analysis.date_range_start} to {analysis.date_range_end}")
+
+    # Summary
+    lines.append("")
+    lines.append("Summary")
+    lines.append("-" * 7)
+    summary = analysis.summary
+    if summary.velocity:
+        lines.append(f"Velocity: {summary.velocity:.2f} issues/day")
+    lines.append(f"Velocity Trend: {analysis.velocity_trend}")
+    lines.append(f"Bug Ratio Trend: {analysis.bug_ratio_trend}")
+
+    # Type distribution
+    lines.append("")
+    lines.append("By Type:")
+    total = analysis.total_completed or 1
+    for issue_type, count in summary.type_counts.items():
+        pct = count * 100 // total
+        lines.append(f"  {issue_type:5}: {count:3} ({pct:2}%)")
+
+    # Period metrics
+    if analysis.period_metrics:
+        lines.append("")
+        lines.append("Period Metrics")
+        lines.append("-" * 14)
+        for period in analysis.period_metrics[-6:]:  # Last 6 periods
+            bug_pct = f"{period.bug_ratio * 100:.0f}%" if period.bug_ratio else "N/A"
+            lines.append(
+                f"  {period.period_label:12}: {period.total_completed:3} completed, {bug_pct} bugs"
+            )
+
+    # Subsystem health
+    if analysis.subsystem_health:
+        lines.append("")
+        lines.append("Subsystem Health")
+        lines.append("-" * 16)
+        for sub in analysis.subsystem_health[:5]:
+            trend_symbol = {"improving": "↓", "degrading": "↑", "stable": "→"}.get(
+                sub.trend, "?"
+            )
+            lines.append(
+                f"  {sub.subsystem:30}: {sub.total_issues:3} total, "
+                f"{sub.recent_issues:2} recent {trend_symbol}"
+            )
+
+    # Technical debt
+    if analysis.debt_metrics:
+        lines.append("")
+        lines.append("Technical Debt")
+        lines.append("-" * 14)
+        debt = analysis.debt_metrics
+        lines.append(f"  Backlog Size: {debt.backlog_size}")
+        lines.append(f"  Growth Rate: {debt.backlog_growth_rate:+.1f} issues/week")
+        lines.append(f"  High Priority Open (P0-P1): {debt.high_priority_open}")
+        lines.append(f"  Aging >30 days: {debt.aging_30_plus}")
+
+    # Comparison
+    if analysis.comparison_period and analysis.current_period and analysis.previous_period:
+        lines.append("")
+        lines.append(f"Comparison ({analysis.comparison_period})")
+        lines.append("-" * 20)
+        curr = analysis.current_period
+        prev = analysis.previous_period
+
+        if prev.total_completed > 0:
+            change = (
+                (curr.total_completed - prev.total_completed) / prev.total_completed * 100
+            )
+            lines.append(
+                f"  Completed: {prev.total_completed} -> {curr.total_completed} ({change:+.0f}%)"
+            )
+        else:
+            lines.append(f"  Completed: {prev.total_completed} -> {curr.total_completed}")
+
+    return "\n".join(lines)
+
+
+def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
+    """Format analysis as Markdown report.
+
+    Args:
+        analysis: HistoryAnalysis to format
+
+    Returns:
+        Markdown string
+    """
+    lines: list[str] = []
+
+    lines.append("# Issue History Analysis Report")
+    lines.append("")
+    lines.append(
+        f"**Generated**: {analysis.generated_date} | "
+        f"**Total Completed**: {analysis.total_completed} | "
+        f"**Active Issues**: {analysis.total_active}"
+    )
+
+    if analysis.date_range_start and analysis.date_range_end:
+        lines.append(
+            f"**Date Range**: {analysis.date_range_start} to {analysis.date_range_end}"
+        )
+
+    # Executive Summary
+    lines.append("")
+    lines.append("## Executive Summary")
+    lines.append("")
+    lines.append("| Metric | Value | Trend |")
+    lines.append("|--------|-------|-------|")
+
+    velocity = (
+        f"{analysis.summary.velocity:.2f}/day" if analysis.summary.velocity else "N/A"
+    )
+    velocity_symbol = {"increasing": "↑", "decreasing": "↓", "stable": "→"}.get(
+        analysis.velocity_trend, ""
+    )
+    lines.append(f"| Velocity | {velocity} | {velocity_symbol} {analysis.velocity_trend} |")
+
+    bug_count = analysis.summary.type_counts.get("BUG", 0)
+    total = analysis.total_completed or 1
+    bug_pct = bug_count * 100 // total
+    bug_symbol = {"increasing": "↑ ⚠️", "decreasing": "↓ ✓", "stable": "→"}.get(
+        analysis.bug_ratio_trend, ""
+    )
+    lines.append(f"| Bug Ratio | {bug_pct}% | {bug_symbol} |")
+
+    if analysis.debt_metrics:
+        growth = analysis.debt_metrics.backlog_growth_rate
+        growth_status = "↓ ✓" if growth < 0 else ("→" if growth == 0 else "↑ ⚠️")
+        lines.append(f"| Backlog Growth | {growth:+.1f}/week | {growth_status} |")
+
+    # Type Distribution
+    lines.append("")
+    lines.append("## Type Distribution")
+    lines.append("")
+    lines.append("| Type | Count | Percentage |")
+    lines.append("|------|-------|------------|")
+    for issue_type, count in analysis.summary.type_counts.items():
+        pct = count * 100 // total
+        lines.append(f"| {issue_type} | {count} | {pct}% |")
+
+    # Period Trends
+    if analysis.period_metrics:
+        lines.append("")
+        lines.append("## Period Trends")
+        lines.append("")
+        lines.append("| Period | Completed | Bug % |")
+        lines.append("|--------|-----------|-------|")
+        for period in analysis.period_metrics[-8:]:  # Last 8
+            bug_pct_str = f"{period.bug_ratio * 100:.0f}%" if period.bug_ratio else "N/A"
+            lines.append(
+                f"| {period.period_label} | {period.total_completed} | {bug_pct_str} |"
+            )
+
+    # Subsystem Health
+    if analysis.subsystem_health:
+        lines.append("")
+        lines.append("## Subsystem Health")
+        lines.append("")
+        lines.append("| Subsystem | Total | Recent (30d) | Trend |")
+        lines.append("|-----------|-------|--------------|-------|")
+        for sub in analysis.subsystem_health:
+            trend_symbol = {"improving": "↓ ✓", "degrading": "↑ ⚠️", "stable": "→"}.get(
+                sub.trend, ""
+            )
+            lines.append(
+                f"| `{sub.subsystem}` | {sub.total_issues} | {sub.recent_issues} | {trend_symbol} |"
+            )
+
+    # Technical Debt
+    if analysis.debt_metrics:
+        lines.append("")
+        lines.append("## Technical Debt Health")
+        lines.append("")
+        debt = analysis.debt_metrics
+        lines.append("| Metric | Value | Assessment |")
+        lines.append("|--------|-------|------------|")
+
+        backlog_status = (
+            "✓ Low"
+            if debt.backlog_size < 20
+            else ("⚠️ High" if debt.backlog_size > 50 else "Moderate")
+        )
+        lines.append(f"| Backlog Size | {debt.backlog_size} | {backlog_status} |")
+
+        growth_status = (
+            "✓ Shrinking"
+            if debt.backlog_growth_rate < 0
+            else ("⚠️ Growing" if debt.backlog_growth_rate > 2 else "Stable")
+        )
+        lines.append(f"| Growth Rate | {debt.backlog_growth_rate:+.1f}/week | {growth_status} |")
+
+        hp_status = "✓ Good" if debt.high_priority_open < 3 else "⚠️ Attention needed"
+        lines.append(f"| High Priority Open | {debt.high_priority_open} | {hp_status} |")
+
+        aging_status = (
+            "✓ Healthy"
+            if debt.aging_30_plus < 5
+            else ("⚠️ Review needed" if debt.aging_30_plus > 10 else "Moderate")
+        )
+        lines.append(f"| Aging >30 days | {debt.aging_30_plus} | {aging_status} |")
+
+    # Comparison
+    if analysis.comparison_period and analysis.current_period and analysis.previous_period:
+        lines.append("")
+        lines.append(f"## Comparative Analysis (Last {analysis.comparison_period})")
+        lines.append("")
+        curr = analysis.current_period
+        prev = analysis.previous_period
+
+        lines.append("| Metric | Previous | Current | Change |")
+        lines.append("|--------|----------|---------|--------|")
+
+        if prev.total_completed > 0:
+            change = (
+                (curr.total_completed - prev.total_completed) / prev.total_completed * 100
+            )
+            change_str = f"{change:+.0f}%"
+        else:
+            change_str = "N/A"
+        lines.append(
+            f"| Completed | {prev.total_completed} | {curr.total_completed} | {change_str} |"
+        )
+
+        prev_bugs = prev.type_counts.get("BUG", 0)
+        curr_bugs = curr.type_counts.get("BUG", 0)
+        if prev_bugs > 0:
+            bug_change = (curr_bugs - prev_bugs) / prev_bugs * 100
+            bug_change_str = f"{bug_change:+.0f}%"
+            if bug_change < 0:
+                bug_change_str += " ✓"
+        else:
+            bug_change_str = "N/A"
+        lines.append(f"| Bugs Fixed | {prev_bugs} | {curr_bugs} | {bug_change_str} |")
+
+    return "\n".join(lines)

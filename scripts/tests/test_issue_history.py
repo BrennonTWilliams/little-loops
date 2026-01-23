@@ -467,3 +467,534 @@ class TestMainHistoryIntegration:
         assert "Total Completed: 2" in captured.out
         assert "BUG" in captured.out
         assert "ENH" in captured.out
+
+
+# =============================================================================
+# FEAT-110: Advanced History Analysis Tests
+# =============================================================================
+
+
+class TestPeriodMetrics:
+    """Tests for PeriodMetrics dataclass."""
+
+    def test_bug_ratio(self) -> None:
+        """Test bug ratio calculation."""
+        from little_loops.issue_history import PeriodMetrics
+
+        period = PeriodMetrics(
+            period_start=date(2026, 1, 1),
+            period_end=date(2026, 1, 31),
+            period_label="Jan 2026",
+            total_completed=10,
+            type_counts={"BUG": 3, "ENH": 5, "FEAT": 2},
+        )
+        assert period.bug_ratio == 0.3
+
+    def test_bug_ratio_no_bugs(self) -> None:
+        """Test bug ratio with no bugs."""
+        from little_loops.issue_history import PeriodMetrics
+
+        period = PeriodMetrics(
+            period_start=date(2026, 1, 1),
+            period_end=date(2026, 1, 31),
+            period_label="Jan 2026",
+            total_completed=5,
+            type_counts={"ENH": 5},
+        )
+        assert period.bug_ratio == 0.0
+
+    def test_bug_ratio_empty(self) -> None:
+        """Test bug ratio with no completions."""
+        from little_loops.issue_history import PeriodMetrics
+
+        period = PeriodMetrics(
+            period_start=date(2026, 1, 1),
+            period_end=date(2026, 1, 31),
+            period_label="Jan 2026",
+            total_completed=0,
+        )
+        assert period.bug_ratio is None
+
+    def test_to_dict(self) -> None:
+        """Test serialization."""
+        from little_loops.issue_history import PeriodMetrics
+
+        period = PeriodMetrics(
+            period_start=date(2026, 1, 1),
+            period_end=date(2026, 1, 31),
+            period_label="Jan 2026",
+            total_completed=10,
+            type_counts={"BUG": 3},
+        )
+        result = period.to_dict()
+        assert result["period_start"] == "2026-01-01"
+        assert result["period_label"] == "Jan 2026"
+        assert result["bug_ratio"] == 0.3
+
+
+class TestSubsystemHealth:
+    """Tests for SubsystemHealth dataclass."""
+
+    def test_to_dict(self) -> None:
+        """Test serialization."""
+        from little_loops.issue_history import SubsystemHealth
+
+        health = SubsystemHealth(
+            subsystem="scripts/little_loops/",
+            total_issues=10,
+            recent_issues=3,
+            issue_ids=["BUG-001", "BUG-002"],
+            trend="improving",
+        )
+        result = health.to_dict()
+        assert result["subsystem"] == "scripts/little_loops/"
+        assert result["trend"] == "improving"
+
+    def test_to_dict_limits_issue_ids(self) -> None:
+        """Test that to_dict limits issue_ids to 5."""
+        from little_loops.issue_history import SubsystemHealth
+
+        health = SubsystemHealth(
+            subsystem="test/",
+            issue_ids=["ID-1", "ID-2", "ID-3", "ID-4", "ID-5", "ID-6", "ID-7"],
+        )
+        result = health.to_dict()
+        assert len(result["issue_ids"]) == 5
+
+
+class TestTechnicalDebtMetrics:
+    """Tests for TechnicalDebtMetrics dataclass."""
+
+    def test_to_dict(self) -> None:
+        """Test serialization."""
+        from little_loops.issue_history import TechnicalDebtMetrics
+
+        debt = TechnicalDebtMetrics(
+            backlog_size=25,
+            backlog_growth_rate=1.5,
+            aging_30_plus=8,
+            high_priority_open=2,
+        )
+        result = debt.to_dict()
+        assert result["backlog_size"] == 25
+        assert result["backlog_growth_rate"] == 1.5
+
+    def test_to_dict_rounds_values(self) -> None:
+        """Test that to_dict rounds float values."""
+        from little_loops.issue_history import TechnicalDebtMetrics
+
+        debt = TechnicalDebtMetrics(
+            backlog_growth_rate=1.567,
+            debt_paydown_ratio=2.789,
+        )
+        result = debt.to_dict()
+        assert result["backlog_growth_rate"] == 1.57
+        assert result["debt_paydown_ratio"] == 2.79
+
+
+class TestHistoryAnalysis:
+    """Tests for HistoryAnalysis dataclass."""
+
+    def test_to_dict(self) -> None:
+        """Test serialization."""
+        from little_loops.issue_history import HistoryAnalysis, HistorySummary
+
+        analysis = HistoryAnalysis(
+            generated_date=date(2026, 1, 23),
+            total_completed=50,
+            total_active=10,
+            date_range_start=date(2026, 1, 1),
+            date_range_end=date(2026, 1, 23),
+            summary=HistorySummary(total_count=50),
+        )
+        result = analysis.to_dict()
+        assert result["generated_date"] == "2026-01-23"
+        assert result["total_completed"] == 50
+
+    def test_to_dict_with_none_dates(self) -> None:
+        """Test serialization with None dates."""
+        from little_loops.issue_history import HistoryAnalysis, HistorySummary
+
+        analysis = HistoryAnalysis(
+            generated_date=date(2026, 1, 23),
+            total_completed=0,
+            total_active=0,
+            date_range_start=None,
+            date_range_end=None,
+            summary=HistorySummary(total_count=0),
+        )
+        result = analysis.to_dict()
+        assert result["date_range_start"] is None
+        assert result["date_range_end"] is None
+
+
+class TestCalculateAnalysis:
+    """Tests for calculate_analysis function."""
+
+    def test_empty_issues(self) -> None:
+        """Test analysis with no issues."""
+        from little_loops.issue_history import calculate_analysis
+
+        analysis = calculate_analysis([])
+        assert analysis.total_completed == 0
+        assert analysis.period_metrics == []
+        assert analysis.velocity_trend == "stable"
+
+    def test_with_issues(self, tmp_path: Path) -> None:
+        """Test analysis with sample issues."""
+        from little_loops.issue_history import CompletedIssue, calculate_analysis
+
+        issues = [
+            CompletedIssue(
+                path=tmp_path / "P1-BUG-001.md",
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 10),
+            ),
+            CompletedIssue(
+                path=tmp_path / "P2-ENH-002.md",
+                issue_type="ENH",
+                priority="P2",
+                issue_id="ENH-002",
+                completed_date=date(2026, 1, 15),
+            ),
+        ]
+
+        analysis = calculate_analysis(issues)
+        assert analysis.total_completed == 2
+        assert analysis.summary.type_counts["BUG"] == 1
+
+    def test_with_comparison(self, tmp_path: Path) -> None:
+        """Test analysis with comparison period."""
+        from little_loops.issue_history import CompletedIssue, calculate_analysis
+
+        today = date.today()
+        issues = [
+            CompletedIssue(
+                path=tmp_path / "P1-BUG-001.md",
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=today,
+            ),
+        ]
+
+        analysis = calculate_analysis(issues, compare_days=30)
+        assert analysis.comparison_period == "30d"
+
+    def test_with_issues_dir(self, tmp_path: Path) -> None:
+        """Test analysis scanning active issues."""
+        from little_loops.issue_history import CompletedIssue, calculate_analysis
+
+        # Create completed issues
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        # Create active issues directory
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P1-BUG-010-active.md").write_text("# Active bug\n")
+
+        issues = [
+            CompletedIssue(
+                path=completed_dir / "P1-BUG-001.md",
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 10),
+            ),
+        ]
+
+        analysis = calculate_analysis(issues, issues_dir=tmp_path / ".issues")
+        assert analysis.total_active == 1
+        assert analysis.debt_metrics is not None
+        assert analysis.debt_metrics.backlog_size == 1
+
+
+class TestScanActiveIssues:
+    """Tests for scan_active_issues function."""
+
+    def test_scan_empty(self, tmp_path: Path) -> None:
+        """Test scanning empty directory."""
+        from little_loops.issue_history import scan_active_issues
+
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+
+        result = scan_active_issues(issues_dir)
+        assert result == []
+
+    def test_scan_with_issues(self, tmp_path: Path) -> None:
+        """Test scanning directory with issues."""
+        from little_loops.issue_history import scan_active_issues
+
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P0-BUG-001-critical.md").write_text("# Critical bug\n")
+        (bugs_dir / "P2-BUG-002-minor.md").write_text("# Minor bug\n")
+
+        features_dir = tmp_path / ".issues" / "features"
+        features_dir.mkdir(parents=True)
+        (features_dir / "P3-FEAT-001-feature.md").write_text("# Feature\n")
+
+        result = scan_active_issues(tmp_path / ".issues")
+        assert len(result) == 3
+
+        # Check types were extracted
+        types = {r[1] for r in result}
+        assert "BUG" in types
+        assert "FEAT" in types
+
+
+class TestFormatAnalysis:
+    """Tests for analysis formatting functions."""
+
+    def test_format_analysis_text(self) -> None:
+        """Test text formatting."""
+        from little_loops.issue_history import (
+            HistoryAnalysis,
+            HistorySummary,
+            format_analysis_text,
+        )
+
+        analysis = HistoryAnalysis(
+            generated_date=date(2026, 1, 23),
+            total_completed=50,
+            total_active=10,
+            date_range_start=date(2026, 1, 1),
+            date_range_end=date(2026, 1, 23),
+            summary=HistorySummary(
+                total_count=50,
+                type_counts={"BUG": 20, "ENH": 30},
+            ),
+        )
+
+        text = format_analysis_text(analysis)
+        assert "Issue History Analysis" in text
+        assert "Completed: 50" in text
+        assert "BUG" in text
+
+    def test_format_analysis_json(self) -> None:
+        """Test JSON formatting."""
+        from little_loops.issue_history import (
+            HistoryAnalysis,
+            HistorySummary,
+            format_analysis_json,
+        )
+
+        analysis = HistoryAnalysis(
+            generated_date=date(2026, 1, 23),
+            total_completed=50,
+            total_active=10,
+            date_range_start=None,
+            date_range_end=None,
+            summary=HistorySummary(total_count=50),
+        )
+
+        json_str = format_analysis_json(analysis)
+        data = json.loads(json_str)
+        assert data["total_completed"] == 50
+
+    def test_format_analysis_markdown(self) -> None:
+        """Test Markdown formatting."""
+        from little_loops.issue_history import (
+            HistoryAnalysis,
+            HistorySummary,
+            format_analysis_markdown,
+        )
+
+        analysis = HistoryAnalysis(
+            generated_date=date(2026, 1, 23),
+            total_completed=50,
+            total_active=10,
+            date_range_start=date(2026, 1, 1),
+            date_range_end=date(2026, 1, 23),
+            summary=HistorySummary(
+                total_count=50,
+                type_counts={"BUG": 20},
+            ),
+        )
+
+        md = format_analysis_markdown(analysis)
+        assert "# Issue History Analysis Report" in md
+        assert "| Metric |" in md
+
+
+class TestAnalyzeArgumentParsing:
+    """Tests for ll-history analyze argument parsing."""
+
+    def _parse_history_args(self, args: list[str]) -> argparse.Namespace:
+        """Parse arguments using the same parser as main_history."""
+        parser = argparse.ArgumentParser()
+        subparsers = parser.add_subparsers(dest="command")
+
+        # summary
+        summary_parser = subparsers.add_parser("summary")
+        summary_parser.add_argument("--json", action="store_true")
+        summary_parser.add_argument("-d", "--directory", type=Path, default=None)
+
+        # analyze
+        analyze_parser = subparsers.add_parser("analyze")
+        analyze_parser.add_argument(
+            "-f",
+            "--format",
+            type=str,
+            choices=["text", "json", "markdown", "yaml"],
+            default="text",
+        )
+        analyze_parser.add_argument("-d", "--directory", type=Path, default=None)
+        analyze_parser.add_argument(
+            "-p",
+            "--period",
+            type=str,
+            choices=["weekly", "monthly", "quarterly"],
+            default="monthly",
+        )
+        analyze_parser.add_argument("-c", "--compare", type=int, default=None)
+
+        return parser.parse_args(args)
+
+    def test_analyze_default(self) -> None:
+        """Test analyze with defaults."""
+        args = self._parse_history_args(["analyze"])
+        assert args.command == "analyze"
+        assert args.format == "text"
+        assert args.period == "monthly"
+        assert args.compare is None
+
+    def test_analyze_format_markdown(self) -> None:
+        """Test --format markdown."""
+        args = self._parse_history_args(["analyze", "--format", "markdown"])
+        assert args.format == "markdown"
+
+    def test_analyze_format_short(self) -> None:
+        """Test -f json."""
+        args = self._parse_history_args(["analyze", "-f", "json"])
+        assert args.format == "json"
+
+    def test_analyze_compare(self) -> None:
+        """Test --compare flag."""
+        args = self._parse_history_args(["analyze", "--compare", "30"])
+        assert args.compare == 30
+
+    def test_analyze_period_quarterly(self) -> None:
+        """Test --period quarterly."""
+        args = self._parse_history_args(["analyze", "--period", "quarterly"])
+        assert args.period == "quarterly"
+
+    def test_analyze_combined(self) -> None:
+        """Test multiple flags together."""
+        args = self._parse_history_args(
+            ["analyze", "-f", "markdown", "-p", "weekly", "-c", "14"]
+        )
+        assert args.format == "markdown"
+        assert args.period == "weekly"
+        assert args.compare == 14
+
+
+class TestMainHistoryAnalyze:
+    """Integration tests for ll-history analyze."""
+
+    def test_main_history_analyze_text(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Test ll-history analyze text output."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "analyze", "-d", str(tmp_path / ".issues")],
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Issue History Analysis" in captured.out
+
+    def test_main_history_analyze_markdown(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Test ll-history analyze --format markdown."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "analyze", "--format", "markdown", "-d", str(tmp_path / ".issues")],
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "# Issue History Analysis Report" in captured.out
+
+    def test_main_history_analyze_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Test ll-history analyze --format json."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "analyze", "--format", "json", "-d", str(tmp_path / ".issues")],
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert "total_completed" in data
+
+    def test_main_history_analyze_with_compare(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Test ll-history analyze --compare."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+        (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "analyze", "--compare", "30", "-d", str(tmp_path / ".issues")],
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+
+    def test_main_history_analyze_empty(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Test ll-history analyze with empty directory."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        completed_dir.mkdir(parents=True)
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-history", "analyze", "-d", str(tmp_path / ".issues")],
+        ):
+            from little_loops.cli import main_history
+
+            result = main_history()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Completed: 0" in captured.out
