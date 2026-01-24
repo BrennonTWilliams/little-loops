@@ -33,6 +33,8 @@ __all__ = [
     "RegressionAnalysis",
     "TestGap",
     "TestGapAnalysis",
+    "RejectionMetrics",
+    "RejectionAnalysis",
     "TechnicalDebtMetrics",
     "HistoryAnalysis",
     # Parsing and scanning
@@ -45,6 +47,7 @@ __all__ = [
     "analyze_hotspots",
     "analyze_regression_clustering",
     "analyze_test_gaps",
+    "analyze_rejection_rates",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",
@@ -310,6 +313,66 @@ class TestGapAnalysis:
 
 
 @dataclass
+class RejectionMetrics:
+    """Metrics for rejection and invalid closure tracking."""
+
+    total_closed: int = 0
+    rejected_count: int = 0
+    invalid_count: int = 0
+    duplicate_count: int = 0
+    deferred_count: int = 0
+    completed_count: int = 0
+
+    @property
+    def rejection_rate(self) -> float:
+        """Calculate rejection rate."""
+        if self.total_closed == 0:
+            return 0.0
+        return self.rejected_count / self.total_closed
+
+    @property
+    def invalid_rate(self) -> float:
+        """Calculate invalid rate."""
+        if self.total_closed == 0:
+            return 0.0
+        return self.invalid_count / self.total_closed
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "total_closed": self.total_closed,
+            "rejected_count": self.rejected_count,
+            "invalid_count": self.invalid_count,
+            "duplicate_count": self.duplicate_count,
+            "deferred_count": self.deferred_count,
+            "completed_count": self.completed_count,
+            "rejection_rate": round(self.rejection_rate, 3),
+            "invalid_rate": round(self.invalid_rate, 3),
+        }
+
+
+@dataclass
+class RejectionAnalysis:
+    """Analysis of rejection and invalid closure patterns."""
+
+    overall: RejectionMetrics = field(default_factory=RejectionMetrics)
+    by_type: dict[str, RejectionMetrics] = field(default_factory=dict)
+    by_month: dict[str, RejectionMetrics] = field(default_factory=dict)
+    common_reasons: list[tuple[str, int]] = field(default_factory=list)
+    trend: str = "stable"  # "improving", "stable", "degrading"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "overall": self.overall.to_dict(),
+            "by_type": {k: v.to_dict() for k, v in self.by_type.items()},
+            "by_month": {k: v.to_dict() for k, v in sorted(self.by_month.items())},
+            "common_reasons": self.common_reasons[:10],
+            "trend": self.trend,
+        }
+
+
+@dataclass
 class TechnicalDebtMetrics:
     """Technical debt health indicators."""
 
@@ -362,6 +425,9 @@ class HistoryAnalysis:
     # Test gap analysis
     test_gap_analysis: TestGapAnalysis | None = None
 
+    # Rejection analysis
+    rejection_analysis: RejectionAnalysis | None = None
+
     # Technical debt
     debt_metrics: TechnicalDebtMetrics | None = None
 
@@ -395,6 +461,9 @@ class HistoryAnalysis:
             ),
             "test_gap_analysis": (
                 self.test_gap_analysis.to_dict() if self.test_gap_analysis else None
+            ),
+            "rejection_analysis": (
+                self.rejection_analysis.to_dict() if self.rejection_analysis else None
             ),
             "debt_metrics": self.debt_metrics.to_dict() if self.debt_metrics else None,
             "comparison_period": self.comparison_period,
@@ -509,6 +578,51 @@ def _parse_completion_date(content: str, file_path: Path) -> date | None:
         return date.fromtimestamp(mtime)
     except OSError:
         return None
+
+
+def _parse_resolution_action(content: str) -> str:
+    """Extract resolution action category from issue content.
+
+    Categorizes based on Resolution section fields:
+    - "completed": Normal completion with **Action**: fix/implement
+    - "rejected": Explicitly rejected (out of scope, not valid)
+    - "invalid": Invalid reference or spec
+    - "duplicate": Duplicate of existing issue
+    - "deferred": Deferred to future work
+
+    Args:
+        content: Issue file content
+
+    Returns:
+        Resolution category string
+    """
+    # Look for Status field patterns
+    status_match = re.search(r"\*\*Status\*\*:\s*(.+?)(?:\n|$)", content)
+    if status_match:
+        status = status_match.group(1).strip().lower()
+        if "closed" in status:
+            # Check Reason field for specific category
+            reason_match = re.search(r"\*\*Reason\*\*:\s*(.+?)(?:\n|$)", content)
+            if reason_match:
+                reason = reason_match.group(1).strip().lower()
+                if "duplicate" in reason:
+                    return "duplicate"
+                if "invalid" in reason:
+                    return "invalid"
+                if "deferred" in reason:
+                    return "deferred"
+                if "rejected" in reason or "out of scope" in reason:
+                    return "rejected"
+            # Generic closed without specific reason
+            return "rejected"
+
+    # Check for Action field (normal completion)
+    action_match = re.search(r"\*\*Action\*\*:\s*(.+?)(?:\n|$)", content)
+    if action_match:
+        return "completed"
+
+    # Default to completed if no resolution section
+    return "completed"
 
 
 def scan_completed_issues(completed_dir: Path) -> list[CompletedIssue]:
@@ -1304,6 +1418,112 @@ def analyze_test_gaps(
     )
 
 
+def analyze_rejection_rates(issues: list[CompletedIssue]) -> RejectionAnalysis:
+    """Analyze rejection and invalid closure patterns.
+
+    Args:
+        issues: List of completed issues
+
+    Returns:
+        RejectionAnalysis with overall and grouped metrics
+    """
+    if not issues:
+        return RejectionAnalysis()
+
+    # Count by category
+    overall = RejectionMetrics()
+    by_type: dict[str, RejectionMetrics] = {}
+    by_month: dict[str, RejectionMetrics] = {}
+    reason_counts: dict[str, int] = {}
+
+    for issue in issues:
+        try:
+            content = issue.path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        category = _parse_resolution_action(content)
+        overall.total_closed += 1
+
+        # Update overall counts
+        if category == "completed":
+            overall.completed_count += 1
+        elif category == "rejected":
+            overall.rejected_count += 1
+        elif category == "invalid":
+            overall.invalid_count += 1
+        elif category == "duplicate":
+            overall.duplicate_count += 1
+        elif category == "deferred":
+            overall.deferred_count += 1
+
+        # By type
+        if issue.issue_type not in by_type:
+            by_type[issue.issue_type] = RejectionMetrics()
+        type_metrics = by_type[issue.issue_type]
+        type_metrics.total_closed += 1
+        if category == "rejected":
+            type_metrics.rejected_count += 1
+        elif category == "invalid":
+            type_metrics.invalid_count += 1
+        elif category == "duplicate":
+            type_metrics.duplicate_count += 1
+        elif category == "deferred":
+            type_metrics.deferred_count += 1
+        elif category == "completed":
+            type_metrics.completed_count += 1
+
+        # By month
+        if issue.completed_date:
+            month_key = issue.completed_date.strftime("%Y-%m")
+            if month_key not in by_month:
+                by_month[month_key] = RejectionMetrics()
+            month_metrics = by_month[month_key]
+            month_metrics.total_closed += 1
+            if category == "rejected":
+                month_metrics.rejected_count += 1
+            elif category == "invalid":
+                month_metrics.invalid_count += 1
+            elif category == "duplicate":
+                month_metrics.duplicate_count += 1
+            elif category == "deferred":
+                month_metrics.deferred_count += 1
+            elif category == "completed":
+                month_metrics.completed_count += 1
+
+        # Extract reason for rejection/invalid
+        if category in ("rejected", "invalid", "duplicate", "deferred"):
+            reason_match = re.search(r"\*\*Reason\*\*:\s*(.+?)(?:\n|$)", content)
+            if reason_match:
+                reason = reason_match.group(1).strip()
+                reason_counts[reason] = reason_counts.get(reason, 0) + 1
+
+    # Calculate trend from monthly data
+    sorted_months = sorted(by_month.keys())
+    if len(sorted_months) >= 3:
+        recent = sorted_months[-3:]
+        rates = [by_month[m].rejection_rate + by_month[m].invalid_rate for m in recent]
+        if rates[-1] < rates[0] * 0.8:
+            trend = "improving"
+        elif rates[-1] > rates[0] * 1.2:
+            trend = "degrading"
+        else:
+            trend = "stable"
+    else:
+        trend = "stable"
+
+    # Sort reasons by count
+    common_reasons = sorted(reason_counts.items(), key=lambda x: -x[1])[:10]
+
+    return RejectionAnalysis(
+        overall=overall,
+        by_type=by_type,
+        by_month=by_month,
+        common_reasons=common_reasons,
+        trend=trend,
+    )
+
+
 def scan_active_issues(issues_dir: Path) -> list[tuple[Path, str, str, date | None]]:
     """Scan active issue directories.
 
@@ -1464,6 +1684,9 @@ def calculate_analysis(
     # Test gap analysis
     test_gap_analysis = analyze_test_gaps(completed_issues, hotspot_analysis)
 
+    # Rejection rate analysis
+    rejection_analysis = analyze_rejection_rates(completed_issues)
+
     # Technical debt metrics
     debt_metrics = _calculate_debt_metrics(completed_issues, active_issues)
 
@@ -1482,6 +1705,7 @@ def calculate_analysis(
         hotspot_analysis=hotspot_analysis,
         regression_analysis=regression_analysis,
         test_gap_analysis=test_gap_analysis,
+        rejection_analysis=rejection_analysis,
         debt_metrics=debt_metrics,
     )
 
@@ -1711,6 +1935,61 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
             lines.append("Priority Test Targets:")
             for i, target in enumerate(tga.priority_test_targets[:5], 1):
                 lines.append(f"  {i}. {target}")
+
+    # Rejection analysis
+    if analysis.rejection_analysis:
+        rej = analysis.rejection_analysis
+        overall = rej.overall
+
+        if overall.total_closed > 0:
+            lines.append("")
+            lines.append("Rejection Analysis")
+            lines.append("-" * 18)
+            lines.append(
+                f"  Overall rejection rate: {overall.rejection_rate * 100:.1f}% "
+                f"({overall.rejected_count}/{overall.total_closed})"
+            )
+            lines.append(
+                f"  Invalid rate: {overall.invalid_rate * 100:.1f}% "
+                f"({overall.invalid_count}/{overall.total_closed})"
+            )
+            if overall.duplicate_count > 0:
+                lines.append(f"  Duplicates: {overall.duplicate_count}")
+            if overall.deferred_count > 0:
+                lines.append(f"  Deferred: {overall.deferred_count}")
+
+            # By type
+            if rej.by_type:
+                lines.append("")
+                lines.append("  By Type:")
+                for issue_type in sorted(rej.by_type.keys()):
+                    metrics = rej.by_type[issue_type]
+                    rate = metrics.rejection_rate + metrics.invalid_rate
+                    lines.append(f"    {issue_type:5}: {rate * 100:.1f}% non-completion")
+
+            # Trend
+            if rej.by_month:
+                sorted_months = sorted(rej.by_month.keys())[-6:]
+                if len(sorted_months) >= 2:
+                    lines.append("")
+                    lines.append("  Trend (last 6 months):")
+                    trend_parts = []
+                    for month in sorted_months:
+                        m = rej.by_month[month]
+                        rate = (m.rejection_rate + m.invalid_rate) * 100
+                        trend_parts.append(f"{month[-2:]}: {rate:.0f}%")
+                    lines.append(f"    {', '.join(trend_parts)}")
+                    trend_symbol = {"improving": "↓", "degrading": "↑", "stable": "→"}.get(
+                        rej.trend, "→"
+                    )
+                    lines.append(f"    Direction: {rej.trend} {trend_symbol}")
+
+            # Common reasons
+            if rej.common_reasons:
+                lines.append("")
+                lines.append("  Common Rejection Reasons:")
+                for reason, count in rej.common_reasons[:5]:
+                    lines.append(f'    - "{reason}" ({count})')
 
     # Technical debt
     if analysis.debt_metrics:
@@ -1961,6 +2240,61 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
             lines.append("")
             for target in tga.priority_test_targets[:10]:
                 lines.append(f"- `{target}`")
+
+    # Rejection Analysis
+    if analysis.rejection_analysis:
+        rej = analysis.rejection_analysis
+        overall = rej.overall
+
+        if overall.total_closed > 0:
+            lines.append("")
+            lines.append("## Rejection Analysis")
+            lines.append("")
+            lines.append(
+                f"**Overall rejection rate**: {overall.rejection_rate * 100:.1f}% "
+                f"({overall.rejected_count}/{overall.total_closed})"
+            )
+            lines.append(
+                f"**Invalid rate**: {overall.invalid_rate * 100:.1f}% "
+                f"({overall.invalid_count}/{overall.total_closed})"
+            )
+            lines.append("")
+
+            # By type table
+            if rej.by_type:
+                lines.append("### By Issue Type")
+                lines.append("")
+                lines.append("| Type | Rejected | Invalid | Total | Rate |")
+                lines.append("|------|----------|---------|-------|------|")
+                for issue_type in sorted(rej.by_type.keys()):
+                    m = rej.by_type[issue_type]
+                    rate = (m.rejection_rate + m.invalid_rate) * 100
+                    lines.append(
+                        f"| {issue_type} | {m.rejected_count} | {m.invalid_count} | "
+                        f"{m.total_closed} | {rate:.1f}% |"
+                    )
+                lines.append("")
+
+            # Trend
+            if rej.by_month and len(rej.by_month) >= 2:
+                lines.append("### Trend")
+                lines.append("")
+                sorted_months = sorted(rej.by_month.keys())[-6:]
+                trend_parts = []
+                for month in sorted_months:
+                    m = rej.by_month[month]
+                    rate = (m.rejection_rate + m.invalid_rate) * 100
+                    trend_parts.append(f"{month}: {rate:.0f}%")
+                lines.append(" → ".join(trend_parts))
+                lines.append(f"*Trend: {rej.trend}*")
+                lines.append("")
+
+            # Common reasons
+            if rej.common_reasons:
+                lines.append("### Common Rejection Reasons")
+                lines.append("")
+                for reason, count in rej.common_reasons[:5]:
+                    lines.append(f'- "{reason}" ({count})')
 
     # Technical Debt
     if analysis.debt_metrics:

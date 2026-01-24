@@ -38,7 +38,7 @@ class RejectionMetrics:
 ### Analysis Function
 
 ```python
-def analyze_rejection_rates(issues: list[IssueHistory]) -> RejectionMetrics:
+def analyze_rejection_rates(issues: list[CompletedIssue]) -> RejectionMetrics:
     """Analyze rejection and invalid closure patterns."""
     # Parse resolution_action field to identify rejections
     # Group by time period and issue type
@@ -75,12 +75,12 @@ Rejection Analysis:
 
 ## Acceptance Criteria
 
-- [ ] `RejectionMetrics` dataclass captures rejection/invalid statistics
-- [ ] `_parse_resolution_action` helper categorizes resolution types
-- [ ] Analysis shows breakdown by issue type
-- [ ] Monthly trend shows direction of change
-- [ ] Common rejection reasons extracted from resolution notes
-- [ ] Output integrated into `ll-history analyze` report
+- [x] `RejectionMetrics` dataclass captures rejection/invalid statistics
+- [x] `_parse_resolution_action` helper categorizes resolution types
+- [x] Analysis shows breakdown by issue type
+- [x] Monthly trend shows direction of change
+- [x] Common rejection reasons extracted from resolution notes
+- [x] Output integrated into `ll-history analyze` report
 
 ## Impact
 
@@ -105,3 +105,20 @@ None - Can be implemented independently
 ---
 
 **Priority**: P3 | **Created**: 2026-01-23
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_history.py`: Added `RejectionMetrics` and `RejectionAnalysis` dataclasses, `_parse_resolution_action()` helper, `analyze_rejection_rates()` function, integrated into `calculate_analysis()`, added text and markdown formatting
+- `scripts/tests/test_issue_history.py`: Added 18 unit tests covering parsing, dataclasses, and analysis function
+
+### Verification Results
+- Tests: PASS (124 tests)
+- Lint: PASS
+- Types: PASS

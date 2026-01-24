@@ -18,11 +18,15 @@ from little_loops.issue_history import (
     HotspotAnalysis,
     RegressionAnalysis,
     RegressionCluster,
+    RejectionAnalysis,
+    RejectionMetrics,
     TestGap,
     TestGapAnalysis,
     _extract_paths_from_issue,
+    _parse_resolution_action,
     analyze_hotspots,
     analyze_regression_clustering,
+    analyze_rejection_rates,
     analyze_test_gaps,
     calculate_summary,
     format_summary_json,
@@ -1791,3 +1795,295 @@ class TestAnalyzeTestGaps:
 
         # Higher bug count should come first
         assert result.priority_test_targets[0] == "src/high.py"
+
+
+# =============================================================================
+# Rejection Analysis Tests (ENH-112)
+# =============================================================================
+
+
+class TestParseResolutionAction:
+    """Tests for _parse_resolution_action helper."""
+
+    def test_completed_with_action(self) -> None:
+        """Test normal completion with Action field."""
+        content = """## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-15
+- **Status**: Completed
+"""
+        assert _parse_resolution_action(content) == "completed"
+
+    def test_rejected_with_reason(self) -> None:
+        """Test rejection with explicit reason."""
+        content = """## Resolution
+
+- **Status**: Closed - Rejected
+- **Closed**: 2026-01-15
+- **Reason**: rejected
+"""
+        assert _parse_resolution_action(content) == "rejected"
+
+    def test_invalid_with_reason(self) -> None:
+        """Test invalid with explicit reason."""
+        content = """## Resolution
+
+- **Status**: Closed - Invalid
+- **Closed**: 2026-01-15
+- **Reason**: invalid_ref
+"""
+        assert _parse_resolution_action(content) == "invalid"
+
+    def test_duplicate_with_reason(self) -> None:
+        """Test duplicate detection."""
+        content = """## Resolution
+
+- **Status**: Closed
+- **Reason**: duplicate of BUG-001
+"""
+        assert _parse_resolution_action(content) == "duplicate"
+
+    def test_deferred_with_reason(self) -> None:
+        """Test deferred detection."""
+        content = """## Resolution
+
+- **Status**: Closed
+- **Reason**: deferred to v2
+"""
+        assert _parse_resolution_action(content) == "deferred"
+
+    def test_closed_without_reason(self) -> None:
+        """Test closed without specific reason defaults to rejected."""
+        content = """## Resolution
+
+- **Status**: Closed - Already Fixed
+- **Closed**: 2026-01-15
+"""
+        assert _parse_resolution_action(content) == "rejected"
+
+    def test_no_resolution_section(self) -> None:
+        """Test content without resolution section defaults to completed."""
+        content = """# Issue Title
+
+Some description.
+"""
+        assert _parse_resolution_action(content) == "completed"
+
+
+class TestRejectionMetrics:
+    """Tests for RejectionMetrics dataclass."""
+
+    def test_rates_empty(self) -> None:
+        """Test rates with no data."""
+        metrics = RejectionMetrics()
+        assert metrics.rejection_rate == 0.0
+        assert metrics.invalid_rate == 0.0
+
+    def test_rates_calculation(self) -> None:
+        """Test rate calculations."""
+        metrics = RejectionMetrics(
+            total_closed=100,
+            rejected_count=10,
+            invalid_count=5,
+            completed_count=85,
+        )
+        assert metrics.rejection_rate == 0.1
+        assert metrics.invalid_rate == 0.05
+
+    def test_to_dict(self) -> None:
+        """Test serialization."""
+        metrics = RejectionMetrics(
+            total_closed=100,
+            rejected_count=10,
+            invalid_count=5,
+        )
+        result = metrics.to_dict()
+        assert result["total_closed"] == 100
+        assert result["rejection_rate"] == 0.1
+        assert result["invalid_rate"] == 0.05
+
+
+class TestRejectionAnalysis:
+    """Tests for RejectionAnalysis dataclass."""
+
+    def test_to_dict_empty(self) -> None:
+        """Test serialization with no data."""
+        analysis = RejectionAnalysis()
+        result = analysis.to_dict()
+        assert result["overall"]["total_closed"] == 0
+        assert result["by_type"] == {}
+        assert result["by_month"] == {}
+
+    def test_to_dict_with_data(self) -> None:
+        """Test serialization with data."""
+        analysis = RejectionAnalysis(
+            overall=RejectionMetrics(total_closed=10, rejected_count=2),
+            by_type={"BUG": RejectionMetrics(total_closed=5, rejected_count=1)},
+            common_reasons=[("duplicate", 3), ("invalid", 2)],
+            trend="improving",
+        )
+        result = analysis.to_dict()
+        assert result["overall"]["total_closed"] == 10
+        assert "BUG" in result["by_type"]
+        assert len(result["common_reasons"]) == 2
+        assert result["trend"] == "improving"
+
+
+class TestAnalyzeRejectionRates:
+    """Tests for analyze_rejection_rates function."""
+
+    def test_empty_issues(self) -> None:
+        """Test with empty list."""
+        result = analyze_rejection_rates([])
+        assert result.overall.total_closed == 0
+
+    def test_all_completed(self, tmp_path: Path) -> None:
+        """Test with all completed issues."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("""## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-15
+- **Status**: Completed
+""")
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 15),
+            )
+        ]
+        result = analyze_rejection_rates(issues)
+        assert result.overall.total_closed == 1
+        assert result.overall.completed_count == 1
+        assert result.overall.rejected_count == 0
+
+    def test_mixed_outcomes(self, tmp_path: Path) -> None:
+        """Test with mixed completion outcomes."""
+        completed = tmp_path / "P1-BUG-001.md"
+        completed.write_text("- **Action**: fix\n- **Status**: Completed")
+
+        rejected = tmp_path / "P2-BUG-002.md"
+        rejected.write_text("- **Status**: Closed\n- **Reason**: rejected")
+
+        invalid = tmp_path / "P3-ENH-001.md"
+        invalid.write_text("- **Status**: Closed\n- **Reason**: invalid_ref")
+
+        issues = [
+            CompletedIssue(
+                path=completed,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 15),
+            ),
+            CompletedIssue(
+                path=rejected,
+                issue_type="BUG",
+                priority="P2",
+                issue_id="BUG-002",
+                completed_date=date(2026, 1, 16),
+            ),
+            CompletedIssue(
+                path=invalid,
+                issue_type="ENH",
+                priority="P3",
+                issue_id="ENH-001",
+                completed_date=date(2026, 1, 17),
+            ),
+        ]
+        result = analyze_rejection_rates(issues)
+        assert result.overall.total_closed == 3
+        assert result.overall.completed_count == 1
+        assert result.overall.rejected_count == 1
+        assert result.overall.invalid_count == 1
+
+    def test_by_type_grouping(self, tmp_path: Path) -> None:
+        """Test grouping by issue type."""
+        bug = tmp_path / "P1-BUG-001.md"
+        bug.write_text("- **Status**: Closed\n- **Reason**: rejected")
+
+        enh = tmp_path / "P2-ENH-001.md"
+        enh.write_text("- **Action**: improve\n- **Status**: Completed")
+
+        issues = [
+            CompletedIssue(
+                path=bug,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 15),
+            ),
+            CompletedIssue(
+                path=enh,
+                issue_type="ENH",
+                priority="P2",
+                issue_id="ENH-001",
+                completed_date=date(2026, 1, 16),
+            ),
+        ]
+        result = analyze_rejection_rates(issues)
+        assert "BUG" in result.by_type
+        assert "ENH" in result.by_type
+        assert result.by_type["BUG"].rejected_count == 1
+        assert result.by_type["ENH"].completed_count == 1
+
+    def test_by_month_grouping(self, tmp_path: Path) -> None:
+        """Test grouping by month."""
+        jan = tmp_path / "P1-BUG-001.md"
+        jan.write_text("- **Action**: fix")
+
+        feb = tmp_path / "P2-BUG-002.md"
+        feb.write_text("- **Status**: Closed\n- **Reason**: rejected")
+
+        issues = [
+            CompletedIssue(
+                path=jan,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 15),
+            ),
+            CompletedIssue(
+                path=feb,
+                issue_type="BUG",
+                priority="P2",
+                issue_id="BUG-002",
+                completed_date=date(2026, 2, 15),
+            ),
+        ]
+        result = analyze_rejection_rates(issues)
+        assert "2026-01" in result.by_month
+        assert "2026-02" in result.by_month
+
+    def test_common_reasons_extracted(self, tmp_path: Path) -> None:
+        """Test common reasons extraction."""
+        f1 = tmp_path / "P1-BUG-001.md"
+        f1.write_text("- **Status**: Closed\n- **Reason**: duplicate of BUG-100")
+
+        f2 = tmp_path / "P2-BUG-002.md"
+        f2.write_text("- **Status**: Closed\n- **Reason**: duplicate of BUG-100")
+
+        issues = [
+            CompletedIssue(
+                path=f1,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 15),
+            ),
+            CompletedIssue(
+                path=f2,
+                issue_type="BUG",
+                priority="P2",
+                issue_id="BUG-002",
+                completed_date=date(2026, 1, 16),
+            ),
+        ]
+        result = analyze_rejection_rates(issues)
+        assert len(result.common_reasons) > 0
+        assert result.common_reasons[0][0] == "duplicate of BUG-100"
+        assert result.common_reasons[0][1] == 2
