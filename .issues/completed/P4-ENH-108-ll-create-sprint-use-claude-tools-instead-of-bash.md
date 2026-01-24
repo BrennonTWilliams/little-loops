@@ -15,15 +15,21 @@ Identified during audit of the `/ll:create_sprint` slash command. Using bash com
 
 ## Current Behavior
 
-Lines 62-63 and 74-77 use bash `find`:
+Lines 67-69 and 78-84 in `.claude/commands/create_sprint.md` use bash `find`:
 ```bash
-find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" | sort
+find .issues -name "*.md" -not -path "*/completed/*" | sort
 ```
 
 ```bash
 for issue_id in "${ISSUE_ARRAY[@]}"; do
-  if ! find {{config.issues.base_dir}} -name "${issue_id}-*.md" | grep -q .; then
+  # Search for issue file (pattern includes priority prefix, e.g., P2-BUG-001-description.md)
+  if ! find .issues -name "*-${issue_id}-*.md" | grep -q .; then
+    echo "Warning: Issue ${issue_id} not found"
+  fi
+done
 ```
+
+**Anchor**: `create_sprint.md` → Sections "Option B: Interactive Category Selection" and "Validate Issues Exist"
 
 ## Expected Behavior
 
@@ -65,3 +71,21 @@ Replace bash file operations with Claude tool instructions:
 ---
 
 **Priority**: P4 | **Created**: 2026-01-22
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `.claude/commands/create_sprint.md`: Replaced bash `find` commands with instructions to use Claude's Glob tool
+  - Section "Option B: Interactive Category Selection": Now uses Glob with pattern `.issues/**/*.md`
+  - Section "3. Validate Issues Exist": Now uses Glob with pattern `.issues/**/*-{issue_id}-*.md`
+
+### Verification Results
+- Tests: N/A (documentation change only)
+- Lint: N/A (markdown file)
+- Types: N/A (markdown file)

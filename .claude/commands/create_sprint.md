@@ -64,27 +64,19 @@ Use AskUserQuestion to present selection options:
 #### Option B: Interactive Category Selection
 
 If selecting from active issues:
-1. Use Bash to list active issues:
-   ```bash
-   find .issues -name "*.md" -not -path "*/completed/*" | sort
-   ```
+1. Use the Glob tool to find active issues:
+   - Pattern: `.issues/**/*.md`
+   - Then filter results to exclude paths containing `/completed/`
 2. Parse and group by category/priority
 3. Present organized list for selection
 
 ### 3. Validate Issues Exist
 
-For each issue ID in the list, verify it exists:
+For each issue ID in the list, use the Glob tool to verify it exists:
+- Pattern: `.issues/**/*-{issue_id}-*.md`
+- Example: For issue `BUG-001`, use pattern `.issues/**/*-BUG-001-*.md`
 
-```bash
-for issue_id in "${ISSUE_ARRAY[@]}"; do
-  # Search for issue file (pattern includes priority prefix, e.g., P2-BUG-001-description.md)
-  if ! find .issues -name "*-${issue_id}-*.md" | grep -q .; then
-    echo "Warning: Issue ${issue_id} not found"
-  fi
-done
-```
-
-Report any missing issues and ask if the user wants to:
+If a pattern returns no results, the issue is missing. Report any missing issues and ask if the user wants to:
 - Continue without missing issues
 - Remove missing issues from list
 - Cancel and fix the list
