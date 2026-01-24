@@ -20,18 +20,31 @@ You are tasked with creating sprint definitions for the little-loops project. Sp
 
 ## Configuration
 
-This command uses project configuration from `.claude/ll-config.json`:
+Read settings from `.claude/ll-config.json`:
 
 **Issues settings** (under `issues`):
-- `base_dir`: Issues directory - `{{config.issues.base_dir}}`
+- `base_dir`: Issues directory (default: `.issues`)
 
 **Sprints settings** (under `sprints`):
-- `sprints_dir`: Directory for sprint definitions - `{{config.sprints.sprints_dir}}`
-- `default_mode`: Default execution mode - `{{config.sprints.default_mode}}`
-- `default_timeout`: Default timeout per issue in seconds - `{{config.sprints.default_timeout}}`
-- `default_max_workers`: Default worker count for parallel mode - `{{config.sprints.default_max_workers}}`
+- `sprints_dir`: Directory for sprint definitions (default: `.sprints`)
+- `default_mode`: Default execution mode (default: `auto`)
+- `default_timeout`: Default timeout per issue in seconds (default: `3600`)
+- `default_max_workers`: Default worker count for parallel mode (default: `4`)
 
 ## Process
+
+### 0. Load Configuration
+
+Read the project configuration from `.claude/ll-config.json` to get sprint settings.
+
+Use the Read tool to read `.claude/ll-config.json`, then extract:
+- `issues.base_dir` - Issues directory (use default `.issues` if not set)
+- `sprints.sprints_dir` - Directory for sprint files (use default `.sprints` if not set)
+- `sprints.default_mode` - Default execution mode (use default `auto` if not set)
+- `sprints.default_timeout` - Default timeout in seconds (use default `3600` if not set)
+- `sprints.default_max_workers` - Default worker count (use default `4` if not set)
+
+Store these values for use in subsequent steps.
 
 ### 1. Validate and Parse Inputs
 
@@ -66,7 +79,7 @@ Use AskUserQuestion to present selection options:
 
 If selecting from active issues:
 1. Use the Glob tool to find active issues:
-   - Pattern: `.issues/**/*.md`
+   - Pattern: `{issues.base_dir}/**/*.md` (using the configured issues directory)
    - Then filter results to exclude paths containing `/completed/`
 2. Parse and group by category/priority
 3. Present organized list for selection
@@ -74,8 +87,8 @@ If selecting from active issues:
 ### 3. Validate Issues Exist
 
 For each issue ID in the list, use the Glob tool to verify it exists:
-- Pattern: `.issues/**/*-[ISSUE-ID]-*.md` (substitute the actual issue ID)
-- Example: For issue `BUG-001`, use pattern `.issues/**/*-BUG-001-*.md`
+- Pattern: `{issues.base_dir}/**/*-[ISSUE-ID]-*.md` (substitute the actual issue ID, using the configured issues directory)
+- Example: For issue `BUG-001`, use pattern `{issues.base_dir}/**/*-BUG-001-*.md`
 
 If a pattern returns no results, the issue is missing. Report any missing issues and ask if the user wants to:
 - Continue without missing issues
@@ -84,17 +97,17 @@ If a pattern returns no results, the issue is missing. Report any missing issues
 
 ### 4. Create Sprint Directory (if needed)
 
-Ensure the sprints directory exists:
+Ensure the configured sprints directory exists:
 
 ```bash
-mkdir -p .sprints
+mkdir -p {sprints.sprints_dir}  # using the configured sprints directory
 ```
 
 ### 4b. Check for Existing Sprint
 
 Before writing, check if a sprint with this name already exists:
 
-Use the Glob tool to check: `.sprints/${SPRINT_NAME}.yaml`
+Use the Glob tool to check: `{sprints.sprints_dir}/${SPRINT_NAME}.yaml` (using the configured sprints directory)
 
 If the file exists, use AskUserQuestion:
 
@@ -119,7 +132,7 @@ questions:
 
 ### 5. Create Sprint YAML File
 
-Create the sprint definition at `.sprints/${SPRINT_NAME}.yaml`:
+Create the sprint definition at `{sprints.sprints_dir}/${SPRINT_NAME}.yaml` (using the configured sprints directory):
 
 ```yaml
 name: sprint-1
@@ -131,9 +144,9 @@ issues:
   - FEAT-010
   - FEAT-015
 options:
-  mode: auto  # auto (sequential) or parallel
-  timeout: 3600
-  max_workers: 4  # for parallel mode
+  mode: auto  # use the configured default_mode, or "parallel" for concurrent
+  timeout: 3600  # use the configured default_timeout
+  max_workers: 4  # use the configured default_max_workers
 ```
 
 **Fields:**
@@ -153,7 +166,7 @@ Display the created sprint:
 ```markdown
 ## Sprint Created Successfully
 
-**File**: `.sprints/${SPRINT_NAME}.yaml`
+**File**: `{sprints.sprints_dir}/${SPRINT_NAME}.yaml`
 **Name**: ${SPRINT_NAME}
 **Description**: ${SPRINT_DESC}
 **Issues**: ${issue_count}
@@ -209,4 +222,4 @@ The `ll-sprint` tool reuses existing components:
 - **Sequential mode**: Uses `AutoManager` from `issue_manager.py`
 - **Parallel mode**: Uses `ParallelOrchestrator` from `parallel/orchestrator.py`
 
-Sprint definitions are stored in `.sprints/` directory (recommended to gitignore for project-specific sprints, or commit for reusable templates).
+Sprint definitions are stored in the configured sprints directory (default: `.sprints/`). Recommended to gitignore for project-specific sprints, or commit for reusable templates.

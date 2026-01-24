@@ -13,7 +13,7 @@ The `/ll:create_sprint` command uses `{{config.sprints.*}}` template syntax that
 
 The command's Configuration section (lines 23-33) shows template placeholders like `{{config.sprints.sprints_dir}}`, but Claude Code commands don't support automatic Jinja-style interpolation. Claude must read `.claude/ll-config.json` to get actual values.
 
-Other commands like `capture_issue.md` handle this more explicitly in their process steps.
+Some commands like `handoff.md` and `configure.md` handle this more explicitly by including config reading instructions in their process steps.
 
 ## Current Behavior
 
@@ -55,7 +55,8 @@ Then update references throughout the document to use "the configured sprints di
 | Category | Document | Relevance |
 |----------|----------|-----------|
 | config | .claude/ll-config.json | Configuration file to read |
-| commands | commands/capture_issue.md | Example of explicit config handling |
+| commands | commands/handoff.md | Example of explicit config reading |
+| commands | commands/configure.md | Example of explicit config reading |
 
 ## Labels
 
@@ -65,4 +66,24 @@ Then update references throughout the document to use "the configured sprints di
 
 ## Status
 
-**Open** | Created: 2026-01-24 | Priority: P4
+**Completed** | Created: 2026-01-24 | Priority: P4
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-24
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_sprint.md`: Updated Configuration section to use explicit "Read settings from" language instead of template syntax
+- `commands/create_sprint.md`: Added Step 0: Load Configuration with explicit instructions to read `.claude/ll-config.json`
+- `commands/create_sprint.md`: Updated all hardcoded paths and values to reference configured values (issues.base_dir, sprints.sprints_dir, etc.)
+- `commands/create_sprint.md`: Updated YAML example to reference configured defaults
+- `commands/create_sprint.md`: Updated Integration section to reference "configured sprints directory"
+
+### Verification Results
+- Tests: N/A (command documentation change)
+- Lint: PASS
+- Types: PASS
