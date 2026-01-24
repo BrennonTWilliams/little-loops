@@ -126,3 +126,28 @@ max_iterations: 20
 ## Status
 
 **Open** | Created: 2026-01-23 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md`: Added Step 0 (Creation Mode) with template vs custom selection
+- `commands/create_loop.md`: Added Step 0.1 (Template Selection) with 4 pre-built templates:
+  - Python quality (lint + types + format)
+  - JavaScript quality (lint + types)
+  - Tests until passing
+  - Full quality gate
+- `commands/create_loop.md`: Added Step 0.2 (Template Customization) for source dir and max iterations
+- `commands/create_loop.md`: Added Template Quick Reference section with guidance on when to use templates vs custom
+
+### Verification Results
+- Lint: PASS
+- Tests: 1694 passed, 1 pre-existing failure unrelated to changes
+
+### Commits
+- See git log for commit

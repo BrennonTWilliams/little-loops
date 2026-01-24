@@ -24,7 +24,179 @@ Use these tools during the workflow:
 
 ## Workflow
 
-### Step 1: Paradigm Selection
+### Step 0: Creation Mode
+
+Use AskUserQuestion to determine whether to use a template or build from scratch:
+
+```yaml
+questions:
+  - question: "How would you like to create your loop?"
+    header: "Creation mode"
+    multiSelect: false
+    options:
+      - label: "Start from template (Recommended)"
+        description: "Choose a pre-built loop for common tasks"
+      - label: "Build from paradigm"
+        description: "Configure a new loop from scratch"
+```
+
+**If "Start from template"**: Continue to Step 0.1 (Template Selection)
+**If "Build from paradigm"**: Skip to Step 1 (Paradigm Selection) - existing flow
+
+---
+
+### Step 0.1: Template Selection
+
+If "Start from template" was selected:
+
+```yaml
+questions:
+  - question: "Which template would you like to use?"
+    header: "Template"
+    multiSelect: false
+    options:
+      - label: "Python quality (lint + types + format)"
+        description: "ruff check/fix + mypy + ruff format until clean"
+      - label: "JavaScript quality (lint + types)"
+        description: "eslint + tsc until clean"
+      - label: "Run tests until passing"
+        description: "pytest/jest with auto-fix until green"
+      - label: "Full quality gate (tests + types + lint)"
+        description: "All checks must pass before completing"
+```
+
+---
+
+#### Template Definitions
+
+##### Template: python-quality
+
+```yaml
+paradigm: invariants
+name: "python-quality"
+constraints:
+  - name: "lint"
+    check: "ruff check {{src_dir}}"
+    fix: "ruff check --fix {{src_dir}}"
+  - name: "types"
+    check: "mypy {{src_dir}}"
+    fix: "echo 'Fix type errors manually or use /ll:manage_issue bug fix'"
+  - name: "format"
+    check: "ruff format --check {{src_dir}}"
+    fix: "ruff format {{src_dir}}"
+maintain: false
+max_iterations: {{max_iterations}}
+```
+
+##### Template: javascript-quality
+
+```yaml
+paradigm: invariants
+name: "javascript-quality"
+constraints:
+  - name: "lint"
+    check: "npx eslint {{src_dir}}"
+    fix: "npx eslint --fix {{src_dir}}"
+  - name: "types"
+    check: "npx tsc --noEmit"
+    fix: "echo 'Fix type errors manually'"
+maintain: false
+max_iterations: {{max_iterations}}
+```
+
+##### Template: tests-until-passing
+
+```yaml
+paradigm: goal
+name: "tests-until-passing"
+goal: "All tests pass"
+tools:
+  - "{{test_cmd}}"
+  - "/ll:manage_issue bug fix"
+max_iterations: {{max_iterations}}
+```
+
+**Test command by template context:**
+- Python projects: `pytest`
+- JavaScript projects: `npm test`
+- Custom: Ask user for test command
+
+##### Template: full-quality-gate
+
+```yaml
+paradigm: invariants
+name: "full-quality-gate"
+constraints:
+  - name: "tests"
+    check: "{{test_cmd}}"
+    fix: "/ll:manage_issue bug fix"
+  - name: "types"
+    check: "{{type_cmd}}"
+    fix: "/ll:manage_issue bug fix"
+  - name: "lint"
+    check: "{{lint_cmd}}"
+    fix: "{{lint_fix_cmd}}"
+maintain: false
+max_iterations: {{max_iterations}}
+```
+
+**Command defaults for full-quality-gate:**
+
+| Language | test_cmd | type_cmd | lint_cmd | lint_fix_cmd |
+|----------|----------|----------|----------|--------------|
+| Python | `pytest` | `mypy {{src_dir}}` | `ruff check {{src_dir}}` | `ruff check --fix {{src_dir}}` |
+| JavaScript | `npm test` | `npx tsc --noEmit` | `npx eslint {{src_dir}}` | `npx eslint --fix {{src_dir}}` |
+
+---
+
+### Step 0.2: Template Customization
+
+After template selection, ask for customization:
+
+```yaml
+questions:
+  - question: "What source directory should the loop check?"
+    header: "Source dir"
+    multiSelect: false
+    options:
+      - label: "src/ (Recommended)"
+        description: "Standard source directory"
+      - label: "."
+        description: "Project root"
+      - label: "lib/"
+        description: "Library directory"
+      - label: "Custom path"
+        description: "Specify your own directory"
+
+  - question: "What's the maximum number of fix attempts?"
+    header: "Max iterations"
+    multiSelect: false
+    options:
+      - label: "20 (Recommended)"
+        description: "Good for most use cases"
+      - label: "10"
+        description: "Quick fixes only"
+      - label: "50"
+        description: "For complex issues"
+```
+
+**If "Custom path" selected for source dir**: Ask for path via Other option.
+
+**Apply substitutions to selected template:**
+- Replace `{{src_dir}}` with selected source directory
+- Replace `{{max_iterations}}` with selected max iterations
+- Replace `{{test_cmd}}`, `{{type_cmd}}`, `{{lint_cmd}}`, `{{lint_fix_cmd}}` with language-appropriate defaults
+
+**Flow after template customization:**
+- The generated YAML and auto-suggested loop name are ready
+- Continue directly to Step 4 (Preview and Confirm) with the template-populated configuration
+- Skip Step 1 (Paradigm Selection), Step 2 (Paradigm-Specific Questions), and Step 3 (Loop Name) since template provides all configuration
+
+---
+
+### Step 1: Paradigm Selection (Custom Mode Only)
+
+If user selected "Build from paradigm" in Step 0, use this flow.
 
 Use AskUserQuestion with a single-select to determine the loop type:
 
@@ -93,6 +265,66 @@ questions:
 - "What command checks for errors?" (free text via Other)
 - "What command fixes the errors?" (free text via Other)
 
+**Evaluator Selection** (ask after check command is determined):
+
+```yaml
+questions:
+  - question: "How should success be determined for the check command?"
+    header: "Evaluator"
+    multiSelect: false
+    options:
+      - label: "Exit code (Recommended)"
+        description: "Success if command exits with code 0"
+      - label: "Output contains pattern"
+        description: "Success if output contains specific text"
+      - label: "Output is numeric"
+        description: "Compare numeric output to threshold"
+      - label: "AI interpretation"
+        description: "Let Claude analyze the output"
+```
+
+**If "Output contains pattern" was selected**, ask:
+```yaml
+questions:
+  - question: "What pattern indicates success?"
+    header: "Pattern"
+    multiSelect: false
+    options:
+      - label: "Success"
+        description: "Match the word 'Success' in output"
+      - label: "0 errors"
+        description: "Match '0 errors' in output"
+      - label: "no issues found"
+        description: "Match 'no issues found' in output"
+      - label: "Custom pattern"
+        description: "Specify your own pattern (via Other)"
+```
+
+**If "Output is numeric" was selected**, ask:
+```yaml
+questions:
+  - question: "What numeric condition indicates success?"
+    header: "Condition"
+    multiSelect: false
+    options:
+      - label: "Equals 0"
+        description: "Success if output equals 0"
+      - label: "Less than threshold"
+        description: "Success if output is below a value"
+      - label: "Greater than threshold"
+        description: "Success if output is above a value"
+```
+
+If "Less than threshold" or "Greater than threshold" selected, ask for target value via Other.
+
+**Evaluator type mapping:**
+- "Exit code" → `type: exit_code` (or omit, as this is the default)
+- "Output contains pattern" → `type: output_contains, pattern: "<pattern>"`
+- "Output is numeric" + "Equals 0" → `type: output_numeric, operator: eq, target: 0`
+- "Output is numeric" + "Less than threshold" → `type: output_numeric, operator: lt, target: <value>`
+- "Output is numeric" + "Greater than threshold" → `type: output_numeric, operator: gt, target: <value>`
+- "AI interpretation" → `type: llm_structured`
+
 **Generate Goal YAML:**
 
 ```yaml
@@ -103,6 +335,12 @@ tools:
   - "<check-command>"      # First tool is the check
   - "<fix-command>"        # Second tool is the fix
 max_iterations: <selected-max>
+# Include evaluator only if not using default (exit_code):
+evaluator:                 # Optional - omit for exit_code default
+  type: "<output_contains|output_numeric|llm_structured>"
+  pattern: "<pattern>"     # For output_contains only
+  operator: "<eq|lt|gt>"   # For output_numeric only
+  target: <number>         # For output_numeric only
 ```
 
 **Example for "Type errors + Lint errors":**
@@ -161,6 +399,26 @@ questions:
 | Lint clean | `ruff check src/` | `ruff check --fix src/` |
 | Build succeeds | Ask for build command | Ask for fix command |
 
+**Evaluator Selection** (ask for each constraint if user wants custom evaluation):
+
+```yaml
+questions:
+  - question: "How should success be determined for '[CONSTRAINT_NAME]' check?"
+    header: "Evaluator"
+    multiSelect: false
+    options:
+      - label: "Exit code (Recommended)"
+        description: "Success if command exits with code 0"
+      - label: "Output contains pattern"
+        description: "Success if output contains specific text"
+      - label: "Output is numeric"
+        description: "Compare numeric output to threshold"
+      - label: "AI interpretation"
+        description: "Let Claude analyze the output"
+```
+
+Follow the same conditional flow as Goal paradigm for pattern/numeric follow-ups.
+
 **Generate Invariants YAML:**
 
 ```yaml
@@ -170,6 +428,12 @@ constraints:
   - name: "<constraint-1-name>"
     check: "<check-command>"
     fix: "<fix-command>"
+    # Include evaluator only if not using default (exit_code):
+    evaluator:               # Optional per-constraint
+      type: "<output_contains|output_numeric|llm_structured>"
+      pattern: "<pattern>"   # For output_contains only
+      operator: "<eq|lt|gt>" # For output_numeric only
+      target: <number>       # For output_numeric only
   - name: "<constraint-2-name>"
     check: "<check-command>"
     fix: "<fix-command>"
@@ -311,6 +575,26 @@ questions:
         description: "Specify your own exit check"
 ```
 
+**Evaluator Selection** (ask for the exit condition check):
+
+```yaml
+questions:
+  - question: "How should success be determined for the exit condition?"
+    header: "Evaluator"
+    multiSelect: false
+    options:
+      - label: "Exit code (Recommended)"
+        description: "Success if command exits with code 0"
+      - label: "Output contains pattern"
+        description: "Success if output contains specific text"
+      - label: "Output is numeric"
+        description: "Compare numeric output to threshold"
+      - label: "AI interpretation"
+        description: "Let Claude analyze the output"
+```
+
+Follow the same conditional flow as Goal paradigm for pattern/numeric follow-ups.
+
 **Generate Imperative YAML:**
 
 ```yaml
@@ -323,6 +607,12 @@ steps:
 until:
   check: "<exit-condition-command>"
   passes: true
+  # Include evaluator only if not using default (exit_code):
+  evaluator:                 # Optional for exit condition
+    type: "<output_contains|output_numeric|llm_structured>"
+    pattern: "<pattern>"     # For output_contains only
+    operator: "<eq|lt|gt>"   # For output_numeric only
+    target: <number>         # For output_numeric only
 max_iterations: 20
 backoff: 2
 ```
@@ -465,13 +755,14 @@ Transitions:
   <terminal>: [terminal]
 Initial: <initial-state>
 Max iterations: <max_iterations>
+Evaluator: <type> [<details>]  # Only shown if non-default evaluator configured
 
 This will create: .loops/<name>.yaml
 ```
 
 **Example previews by paradigm:**
 
-Goal paradigm:
+Goal paradigm (with output_contains evaluator):
 ```
 ## Compiled FSM Preview
 States: evaluate → fix → done
@@ -481,6 +772,20 @@ Transitions:
   done: [terminal]
 Initial: evaluate
 Max iterations: 10
+Evaluator: output_contains [pattern: "0 errors"]
+```
+
+Goal paradigm (default exit_code):
+```
+## Compiled FSM Preview
+States: evaluate → fix → done
+Transitions:
+  evaluate: success→done, failure→fix, error→fix
+  fix: next→evaluate
+  done: [terminal]
+Initial: evaluate
+Max iterations: 10
+Evaluator: exit_code (default)
 ```
 
 Convergence paradigm:
@@ -493,9 +798,10 @@ Transitions:
   done: [terminal]
 Initial: measure
 Max iterations: 50
+Evaluator: convergence [toward: 0, tolerance: 0]
 ```
 
-Invariants paradigm (with constraints: tests, types, lint):
+Invariants paradigm (with per-constraint evaluators):
 ```
 ## Compiled FSM Preview
 States: check_tests → fix_tests → check_types → fix_types → check_lint → fix_lint → all_valid
@@ -509,6 +815,10 @@ Transitions:
   all_valid: [terminal]
 Initial: check_tests
 Max iterations: 50
+Evaluators:
+  check_tests: exit_code (default)
+  check_types: output_contains [pattern: "Success"]
+  check_lint: exit_code (default)
 ```
 
 Imperative paradigm (with 3 steps):
@@ -523,6 +833,7 @@ Transitions:
   done: [terminal]
 Initial: step_0
 Max iterations: 20
+Evaluator: output_numeric [operator: eq, target: 0]
 ```
 
 Use AskUserQuestion:
@@ -641,6 +952,25 @@ If confirmed:
    ```
 
 ## Quick Reference
+
+### Template Quick Reference
+
+| Template | Paradigm | Best For |
+|----------|----------|----------|
+| Python quality | invariants | Python projects with ruff + mypy |
+| JavaScript quality | invariants | JS/TS projects with eslint + tsc |
+| Tests until passing | goal | Any project with test suite |
+| Full quality gate | invariants | CI-like multi-check validation |
+
+**When to use templates:**
+- You want a working loop quickly
+- Your use case matches a common pattern
+- You're new to loop creation
+
+**When to build custom:**
+- You have unique check/fix commands
+- You need convergence (metric-based) loops
+- You need imperative (step sequence) loops
 
 ### Paradigm Decision Tree
 
