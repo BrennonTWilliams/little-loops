@@ -92,11 +92,11 @@ Cross-Cutting Concern Analysis:
 
 ## Acceptance Criteria
 
-- [ ] `CrossCuttingSmell` dataclass captures concern details
-- [ ] Keyword-based concern type detection
-- [ ] Scatter score calculated based on directory spread
-- [ ] Pattern suggestions for consolidation
-- [ ] Output integrated into `ll-history analyze` report
+- [x] `CrossCuttingSmell` dataclass captures concern details
+- [x] Keyword-based concern type detection
+- [x] Scatter score calculated based on directory spread
+- [x] Pattern suggestions for consolidation
+- [x] Output integrated into `ll-history analyze` report
 
 ## Impact
 
@@ -121,3 +121,23 @@ None
 ---
 
 **Priority**: P4 | **Created**: 2026-01-23
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_history.py`: Added `CrossCuttingSmell` and `CrossCuttingAnalysis` dataclasses
+- `scripts/little_loops/issue_history.py`: Added `_CROSS_CUTTING_KEYWORDS` and `_CONCERN_PATTERNS` constants
+- `scripts/little_loops/issue_history.py`: Added `detect_cross_cutting_smells()` function
+- `scripts/little_loops/issue_history.py`: Integrated into `calculate_analysis()` and `format_analysis_text()`
+- `scripts/tests/test_issue_history.py`: Added comprehensive tests for new functionality
+
+### Verification Results
+- Tests: PASS (199 tests, all passing)
+- Lint: PASS (ruff check)
+- Types: PASS (mypy)

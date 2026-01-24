@@ -44,6 +44,8 @@ __all__ = [
     "TechnicalDebtMetrics",
     "ComplexityProxy",
     "ComplexityProxyAnalysis",
+    "CrossCuttingSmell",
+    "CrossCuttingAnalysis",
     "HistoryAnalysis",
     # Parsing and scanning
     "parse_completed_issue",
@@ -60,6 +62,7 @@ __all__ = [
     "detect_config_gaps",
     "analyze_agent_effectiveness",
     "analyze_complexity_proxy",
+    "detect_cross_cutting_smells",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",
@@ -641,6 +644,46 @@ class ComplexityProxyAnalysis:
 
 
 @dataclass
+class CrossCuttingSmell:
+    """A detected cross-cutting concern scattered across the codebase."""
+
+    concern_type: str  # "logging", "error-handling", "validation", "auth", "caching"
+    affected_directories: list[str] = field(default_factory=list)
+    issue_count: int = 0
+    issue_ids: list[str] = field(default_factory=list)
+    scatter_score: float = 0.0  # higher = more scattered (0-1)
+    suggested_pattern: str = ""  # "middleware", "decorator", "aspect"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "concern_type": self.concern_type,
+            "affected_directories": self.affected_directories[:10],
+            "issue_count": self.issue_count,
+            "issue_ids": self.issue_ids[:10],
+            "scatter_score": round(self.scatter_score, 2),
+            "suggested_pattern": self.suggested_pattern,
+        }
+
+
+@dataclass
+class CrossCuttingAnalysis:
+    """Analysis of cross-cutting concerns scattered across the codebase."""
+
+    smells: list[CrossCuttingSmell] = field(default_factory=list)
+    most_scattered_concern: str = ""
+    consolidation_opportunities: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "smells": [s.to_dict() for s in self.smells],
+            "most_scattered_concern": self.most_scattered_concern,
+            "consolidation_opportunities": self.consolidation_opportunities[:10],
+        }
+
+
+@dataclass
 class HistoryAnalysis:
     """Complete history analysis report."""
 
@@ -687,6 +730,9 @@ class HistoryAnalysis:
 
     # Configuration gaps analysis
     config_gaps_analysis: ConfigGapsAnalysis | None = None
+
+    # Cross-cutting concern analysis
+    cross_cutting_analysis: CrossCuttingAnalysis | None = None
 
     # Technical debt
     debt_metrics: TechnicalDebtMetrics | None = None
@@ -741,6 +787,9 @@ class HistoryAnalysis:
             ),
             "config_gaps_analysis": (
                 self.config_gaps_analysis.to_dict() if self.config_gaps_analysis else None
+            ),
+            "cross_cutting_analysis": (
+                self.cross_cutting_analysis.to_dict() if self.cross_cutting_analysis else None
             ),
             "debt_metrics": self.debt_metrics.to_dict() if self.debt_metrics else None,
             "comparison_period": self.comparison_period,
@@ -2007,6 +2056,24 @@ _MANUAL_PATTERNS: dict[str, dict[str, Any]] = {
     },
 }
 
+# Cross-cutting concern keywords for smell detection
+_CROSS_CUTTING_KEYWORDS: dict[str, list[str]] = {
+    "logging": ["log", "logger", "logging", "debug", "trace", "print"],
+    "error-handling": ["error", "exception", "try", "catch", "raise", "except", "fail"],
+    "validation": ["valid", "validate", "check", "assert", "verify", "sanitize"],
+    "auth": ["auth", "permission", "role", "access", "token", "credential", "login"],
+    "caching": ["cache", "memo", "memoize", "store", "ttl", "expire", "cached"],
+}
+
+# Suggested patterns for each cross-cutting concern type
+_CONCERN_PATTERNS: dict[str, str] = {
+    "logging": "decorator",
+    "error-handling": "middleware",
+    "validation": "decorator",
+    "auth": "middleware",
+    "caching": "decorator",
+}
+
 
 def detect_manual_patterns(issues: list[CompletedIssue]) -> ManualPatternAnalysis:
     """Detect recurring manual activities that could be automated.
@@ -2083,6 +2150,103 @@ def detect_manual_patterns(issues: list[CompletedIssue]) -> ManualPatternAnalysi
         total_manual_interventions=total_interventions,
         automatable_count=automatable,
         automation_suggestions=suggestions[:10],
+    )
+
+
+def detect_cross_cutting_smells(
+    issues: list[CompletedIssue],
+    hotspots: HotspotAnalysis,
+) -> CrossCuttingAnalysis:
+    """Detect cross-cutting concerns scattered across the codebase.
+
+    Identifies when issues consistently touch multiple unrelated directories,
+    suggesting missing abstractions for cross-cutting concerns like logging,
+    error handling, or validation.
+
+    Args:
+        issues: List of completed issues
+        hotspots: Hotspot analysis results (provides directory reference)
+
+    Returns:
+        CrossCuttingAnalysis with detected smells
+    """
+    if not issues:
+        return CrossCuttingAnalysis()
+
+    # Track concern data: {concern_type: {dirs: set, issues: list}}
+    concern_data: dict[str, dict[str, Any]] = {}
+    for concern_type in _CROSS_CUTTING_KEYWORDS:
+        concern_data[concern_type] = {
+            "directories": set(),
+            "issue_ids": [],
+        }
+
+    # Get all unique directories from hotspots for scatter score calculation
+    all_directories: set[str] = set()
+    if hotspots.directory_hotspots:
+        all_directories = {h.path for h in hotspots.directory_hotspots}
+
+    # Analyze each issue
+    for issue in issues:
+        try:
+            content = issue.path.read_text(encoding="utf-8")
+            content_lower = content.lower()
+        except Exception:
+            continue
+
+        # Extract paths from this issue
+        paths = _extract_paths_from_issue(content)
+        issue_dirs = {str(Path(p).parent) for p in paths if "/" in p or "\\" in p}
+        all_directories.update(issue_dirs)
+
+        # Check if this issue touches multiple directories (3+)
+        if len(issue_dirs) < 3:
+            continue
+
+        # Check for concern keywords
+        for concern_type, keywords in _CROSS_CUTTING_KEYWORDS.items():
+            if any(kw in content_lower for kw in keywords):
+                concern_data[concern_type]["directories"].update(issue_dirs)
+                if issue.issue_id not in concern_data[concern_type]["issue_ids"]:
+                    concern_data[concern_type]["issue_ids"].append(issue.issue_id)
+
+    # Build CrossCuttingSmell objects
+    smells: list[CrossCuttingSmell] = []
+    total_dirs = len(all_directories) if all_directories else 1
+
+    for concern_type, data in concern_data.items():
+        if data["issue_ids"]:  # Only include concerns with detected issues
+            dirs = sorted(data["directories"])
+            scatter_score = len(dirs) / total_dirs if total_dirs > 0 else 0.0
+
+            smell = CrossCuttingSmell(
+                concern_type=concern_type,
+                affected_directories=dirs,
+                issue_count=len(data["issue_ids"]),
+                issue_ids=data["issue_ids"],
+                scatter_score=scatter_score,
+                suggested_pattern=_CONCERN_PATTERNS.get(concern_type, "aspect"),
+            )
+            smells.append(smell)
+
+    # Sort by scatter score descending
+    smells.sort(key=lambda s: -s.scatter_score)
+
+    # Identify most scattered concern
+    most_scattered = smells[0].concern_type if smells else ""
+
+    # Build consolidation opportunities
+    consolidation_opportunities = []
+    for smell in smells:
+        if smell.scatter_score >= 0.3:  # Threshold for suggesting consolidation
+            consolidation_opportunities.append(
+                f"Centralize {smell.concern_type} ({smell.issue_count} issues would benefit)"
+            )
+
+    return CrossCuttingAnalysis(
+        smells=smells,
+        most_scattered_concern=most_scattered,
+        consolidation_opportunities=consolidation_opportunities[:10],
     )
 
 
@@ -2657,6 +2821,9 @@ def calculate_analysis(
     # Configuration gaps analysis (depends on manual_pattern_analysis)
     config_gaps_analysis = detect_config_gaps(manual_pattern_analysis, project_root)
 
+    # Cross-cutting concern analysis (depends on hotspot_analysis)
+    cross_cutting_analysis = detect_cross_cutting_smells(completed_issues, hotspot_analysis)
+
     # Technical debt metrics
     debt_metrics = _calculate_debt_metrics(completed_issues, active_issues)
 
@@ -2681,6 +2848,7 @@ def calculate_analysis(
         agent_effectiveness_analysis=agent_effectiveness_analysis,
         complexity_proxy_analysis=complexity_proxy_analysis,
         config_gaps_analysis=config_gaps_analysis,
+        cross_cutting_analysis=cross_cutting_analysis,
         debt_metrics=debt_metrics,
     )
 
@@ -3126,6 +3294,42 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
             lines.append("  Complexity Outliers (>2x baseline):")
             for path in cpa.complexity_outliers[:5]:
                 lines.append(f"    - {path}")
+
+    # Cross-cutting concern analysis
+    if analysis.cross_cutting_analysis:
+        cca = analysis.cross_cutting_analysis
+
+        if cca.smells:
+            lines.append("")
+            lines.append("Cross-Cutting Concern Analysis")
+            lines.append("-" * 30)
+
+            for i, smell in enumerate(cca.smells[:5], 1):
+                scatter_label = (
+                    "HIGH"
+                    if smell.scatter_score >= 0.6
+                    else "MEDIUM"
+                    if smell.scatter_score >= 0.3
+                    else "LOW"
+                )
+                lines.append("")
+                lines.append(f"  {i}. {smell.concern_type.title()} [{scatter_label} SCATTER]")
+                dirs_str = ", ".join(smell.affected_directories[:3])
+                if len(smell.affected_directories) > 3:
+                    dirs_str += ", ..."
+                lines.append(f"     Directories: {dirs_str}")
+                issues_str = ", ".join(smell.issue_ids[:3])
+                if len(smell.issue_ids) > 3:
+                    issues_str += ", ..."
+                lines.append(f"     Issues: {issues_str} ({smell.issue_count} total)")
+                lines.append(f"     Scatter score: {smell.scatter_score:.2f}")
+                lines.append(f"     Suggested pattern: {smell.suggested_pattern}")
+
+            if cca.consolidation_opportunities:
+                lines.append("")
+                lines.append("  Consolidation Opportunities:")
+                for opp in cca.consolidation_opportunities[:5]:
+                    lines.append(f"    - {opp}")
 
     # Technical debt
     if analysis.debt_metrics:

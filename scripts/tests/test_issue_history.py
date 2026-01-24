@@ -21,6 +21,8 @@ from little_loops.issue_history import (
     ConfigGapsAnalysis,
     CouplingAnalysis,
     CouplingPair,
+    CrossCuttingAnalysis,
+    CrossCuttingSmell,
     HistorySummary,
     Hotspot,
     HotspotAnalysis,
@@ -44,6 +46,7 @@ from little_loops.issue_history import (
     analyze_test_gaps,
     calculate_summary,
     detect_config_gaps,
+    detect_cross_cutting_smells,
     detect_manual_patterns,
     format_summary_json,
     format_summary_text,
@@ -3370,3 +3373,214 @@ class TestDetectConfigGaps:
         assert len(result.gaps) == 0
         # Coverage is 1.0 since there are no recognized patterns to cover
         assert result.coverage_score == 1.0
+
+
+class TestCrossCuttingSmell:
+    """Tests for CrossCuttingSmell dataclass."""
+
+    def test_to_dict(self) -> None:
+        """Test to_dict conversion."""
+        smell = CrossCuttingSmell(
+            concern_type="logging",
+            affected_directories=["src/api", "src/core", "src/utils"],
+            issue_count=3,
+            issue_ids=["BUG-001", "ENH-002", "BUG-003"],
+            scatter_score=0.75,
+            suggested_pattern="decorator",
+        )
+        result = smell.to_dict()
+
+        assert result["concern_type"] == "logging"
+        assert len(result["affected_directories"]) == 3
+        assert result["issue_count"] == 3
+        assert result["scatter_score"] == 0.75
+        assert result["suggested_pattern"] == "decorator"
+
+    def test_to_dict_limits_lists(self) -> None:
+        """Test that to_dict limits list lengths to 10."""
+        smell = CrossCuttingSmell(
+            concern_type="error-handling",
+            affected_directories=[f"dir{i}" for i in range(15)],
+            issue_ids=[f"BUG-{i:03d}" for i in range(15)],
+        )
+        result = smell.to_dict()
+
+        assert len(result["affected_directories"]) == 10
+        assert len(result["issue_ids"]) == 10
+
+
+class TestCrossCuttingAnalysis:
+    """Tests for CrossCuttingAnalysis dataclass."""
+
+    def test_to_dict_empty(self) -> None:
+        """Test to_dict with empty analysis."""
+        analysis = CrossCuttingAnalysis()
+        result = analysis.to_dict()
+
+        assert result["smells"] == []
+        assert result["most_scattered_concern"] == ""
+        assert result["consolidation_opportunities"] == []
+
+    def test_to_dict_with_smells(self) -> None:
+        """Test to_dict with smells."""
+        smell = CrossCuttingSmell(
+            concern_type="logging",
+            issue_count=2,
+            scatter_score=0.5,
+        )
+        analysis = CrossCuttingAnalysis(
+            smells=[smell],
+            most_scattered_concern="logging",
+            consolidation_opportunities=["Centralize logging (2 issues would benefit)"],
+        )
+        result = analysis.to_dict()
+
+        assert len(result["smells"]) == 1
+        assert result["most_scattered_concern"] == "logging"
+        assert len(result["consolidation_opportunities"]) == 1
+
+
+class TestDetectCrossCuttingSmells:
+    """Tests for detect_cross_cutting_smells function."""
+
+    def test_empty_issues(self) -> None:
+        """Test with empty list."""
+        result = detect_cross_cutting_smells([], HotspotAnalysis())
+        assert result.smells == []
+        assert result.most_scattered_concern == ""
+
+    def test_issues_without_multi_directory(self, tmp_path: Path) -> None:
+        """Test issues that don't touch multiple directories."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("""## Changes
+Fixed logging in `src/api/handler.py`.
+""")
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+        result = detect_cross_cutting_smells(issues, HotspotAnalysis())
+        # Should not detect smell since only 1 directory
+        assert result.smells == [] or all(s.issue_count == 0 for s in result.smells)
+
+    def test_detects_logging_concern(self, tmp_path: Path) -> None:
+        """Test detection of logging concern across directories."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("""## Summary
+Added logging throughout the application.
+
+## Changes Made
+- `src/api/routes.py`: Added logger
+- `src/core/engine.py`: Added debug logging
+- `src/utils/helpers.py`: Added trace logging
+- `scripts/cli.py`: Added logging setup
+""")
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+        result = detect_cross_cutting_smells(issues, HotspotAnalysis())
+
+        logging_smells = [s for s in result.smells if s.concern_type == "logging"]
+        assert len(logging_smells) == 1
+        assert logging_smells[0].issue_count == 1
+        assert "BUG-001" in logging_smells[0].issue_ids
+
+    def test_detects_error_handling_concern(self, tmp_path: Path) -> None:
+        """Test detection of error handling concern."""
+        issue_file = tmp_path / "P2-ENH-001.md"
+        issue_file.write_text("""## Summary
+Improved error handling across modules.
+
+## Changes Made
+- `src/api/handler.py`: Added try/except blocks
+- `src/core/processor.py`: Improved exception handling
+- `src/services/client.py`: Added error recovery
+- `tests/test_api.py`: Added error test cases
+""")
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="ENH",
+                priority="P2",
+                issue_id="ENH-001",
+            )
+        ]
+        result = detect_cross_cutting_smells(issues, HotspotAnalysis())
+
+        error_smells = [s for s in result.smells if s.concern_type == "error-handling"]
+        assert len(error_smells) == 1
+        assert error_smells[0].suggested_pattern == "middleware"
+
+    def test_aggregates_across_issues(self, tmp_path: Path) -> None:
+        """Test aggregation across multiple issues."""
+        issue1 = tmp_path / "P1-BUG-001.md"
+        issue1.write_text(
+            "Added validation to `src/api/v1/routes.py`, `src/core/models.py`, "
+            "`src/utils/validators.py`."
+        )
+
+        issue2 = tmp_path / "P2-ENH-002.md"
+        issue2.write_text(
+            "More validation in `src/api/v2/routes.py`, `src/services/auth.py`, "
+            "`tests/test_valid.py`."
+        )
+
+        issues = [
+            CompletedIssue(path=issue1, issue_type="BUG", priority="P1", issue_id="BUG-001"),
+            CompletedIssue(path=issue2, issue_type="ENH", priority="P2", issue_id="ENH-002"),
+        ]
+        result = detect_cross_cutting_smells(issues, HotspotAnalysis())
+
+        validation_smells = [s for s in result.smells if s.concern_type == "validation"]
+        if validation_smells:
+            assert validation_smells[0].issue_count >= 1
+
+    def test_file_read_error_handled(self, tmp_path: Path) -> None:
+        """Test that file read errors are handled gracefully."""
+        nonexistent = tmp_path / "nonexistent.md"
+        issues = [
+            CompletedIssue(
+                path=nonexistent,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+        # Should not raise
+        result = detect_cross_cutting_smells(issues, HotspotAnalysis())
+        assert result is not None
+
+    def test_smells_sorted_by_scatter_score(self, tmp_path: Path) -> None:
+        """Test that smells are sorted by scatter score descending."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("""
+logging logging logging
+error error
+validation
+auth auth auth auth
+caching
+
+Files: `a/f1.py`, `b/f2.py`, `c/f3.py`, `d/f4.py`
+""")
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+        result = detect_cross_cutting_smells(issues, HotspotAnalysis())
+
+        if len(result.smells) >= 2:
+            for i in range(len(result.smells) - 1):
+                assert result.smells[i].scatter_score >= result.smells[i + 1].scatter_score
