@@ -12,6 +12,7 @@ import tempfile
 from pathlib import Path
 
 import pytest
+import yaml
 
 from little_loops.fsm.schema import (
     EvaluateConfig,
@@ -577,6 +578,126 @@ class TestFSMValidation:
 
         assert any("no transition defined" in e.message for e in errors)
 
+    def test_on_error_only_shorthand(self) -> None:
+        """State with on_error and next is valid."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="risky-operation",
+                    on_error="handle_error",
+                    next="done",  # fallback for success/failure
+                ),
+                "handle_error": make_state(action="log", next="done"),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert len(error_list) == 0
+
+    def test_next_only_transition_valid(self) -> None:
+        """State with only 'next' transition is valid."""
+        fsm = FSMLoop(
+            name="test",
+            initial="step1",
+            states={
+                "step1": StateConfig(action="echo 1", next="step2"),
+                "step2": StateConfig(action="echo 2", next="done"),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert len(error_list) == 0
+
+    def test_terminal_only_state_valid(self) -> None:
+        """Terminal state with no action is valid."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={
+                "start": make_state(action="test", on_success="end", on_failure="end"),
+                "end": StateConfig(terminal=True),  # no action, no routing
+            },
+        )
+        errors = validate_fsm(fsm)
+
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert len(error_list) == 0
+
+    def test_self_reference_transition(self) -> None:
+        """State referencing itself is valid (retry pattern)."""
+        fsm = FSMLoop(
+            name="test",
+            initial="retry_state",
+            states={
+                "retry_state": StateConfig(
+                    action="might-fail",
+                    on_success="done",
+                    on_failure="retry_state",  # self-reference
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert len(error_list) == 0
+
+    def test_circular_state_references(self) -> None:
+        """Circular references without terminal produce error."""
+        fsm = FSMLoop(
+            name="test",
+            initial="a",
+            states={
+                "a": StateConfig(action="step a", next="b"),
+                "b": StateConfig(action="step b", next="c"),
+                "c": StateConfig(action="step c", next="a"),  # circular
+            },
+        )
+        errors = validate_fsm(fsm)
+
+        # No terminal state error
+        assert any("No terminal state defined" in e.message for e in errors)
+
+    def test_empty_states_dict(self) -> None:
+        """Empty states dict produces errors."""
+        fsm = FSMLoop(
+            name="test",
+            initial="start",
+            states={},
+        )
+        errors = validate_fsm(fsm)
+
+        # Initial state not found
+        assert any("Initial state 'start' not found" in e.message for e in errors)
+        # No terminal state
+        assert any("No terminal state defined" in e.message for e in errors)
+
+    def test_multiple_terminal_states(self) -> None:
+        """Multiple terminal states are valid."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test",
+                    on_success="success_end",
+                    on_failure="failure_end",
+                ),
+                "success_end": StateConfig(terminal=True),
+                "failure_end": StateConfig(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert len(error_list) == 0
+
 
 class TestEvaluatorValidation:
     """Tests for evaluator-specific validation."""
@@ -730,6 +851,188 @@ class TestEvaluatorValidation:
 
         assert any("between 0 and 1" in e.message for e in errors)
 
+    def test_output_numeric_requires_target(self) -> None:
+        """output_numeric requires target field."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test",
+                    evaluate=EvaluateConfig(type="output_numeric", operator="eq"),  # no target
+                    on_success="done",
+                    on_failure="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+
+        assert any("requires 'target' field" in e.message for e in errors)
+
+    def test_output_json_requires_operator(self) -> None:
+        """output_json requires operator field."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test",
+                    evaluate=EvaluateConfig(
+                        type="output_json",
+                        path="$.result",
+                        target=0,
+                        # no operator
+                    ),
+                    on_success="done",
+                    on_failure="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+
+        assert any("requires 'operator' field" in e.message for e in errors)
+
+    def test_valid_operators_accepted(self) -> None:
+        """All valid operators are accepted."""
+        for op in ["eq", "ne", "lt", "le", "gt", "ge"]:
+            fsm = FSMLoop(
+                name="test",
+                initial="check",
+                states={
+                    "check": StateConfig(
+                        action="test",
+                        evaluate=EvaluateConfig(type="output_numeric", operator=op, target=5),
+                        on_success="done",
+                        on_failure="done",
+                    ),
+                    "done": make_state(terminal=True),
+                },
+            )
+            errors = validate_fsm(fsm)
+
+            error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+            assert len(error_list) == 0, f"Operator {op} should be valid"
+
+    def test_convergence_invalid_direction(self) -> None:
+        """Convergence with invalid direction is rejected."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test",
+                    evaluate=EvaluateConfig(
+                        type="convergence",
+                        target=0,
+                        direction="invalid",  # type: ignore[arg-type]
+                    ),
+                    on_success="done",
+                    on_failure="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+
+        assert any("Invalid direction" in e.message for e in errors)
+
+    def test_convergence_valid_directions(self) -> None:
+        """Convergence with valid directions passes."""
+        for direction in ("minimize", "maximize"):
+            fsm = FSMLoop(
+                name="test",
+                initial="check",
+                states={
+                    "check": StateConfig(
+                        action="test",
+                        evaluate=EvaluateConfig(
+                            type="convergence",
+                            target=0,
+                            direction=direction,
+                        ),
+                        on_success="done",
+                        on_failure="done",
+                    ),
+                    "done": make_state(terminal=True),
+                },
+            )
+            errors = validate_fsm(fsm)
+
+            error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+            assert len(error_list) == 0, f"Direction {direction} should be valid"
+
+    def test_convergence_interpolation_tolerance_skips_validation(self) -> None:
+        """Interpolation string tolerance skips numeric validation."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test",
+                    evaluate=EvaluateConfig(
+                        type="convergence",
+                        target=0,
+                        tolerance="${context.tolerance}",  # interpolation string
+                    ),
+                    on_success="done",
+                    on_failure="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+
+        error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert len(error_list) == 0
+
+    def test_min_confidence_boundary_values(self) -> None:
+        """min_confidence at boundaries (0 and 1) is valid."""
+        for confidence in [0, 0.0, 1, 1.0]:
+            fsm = FSMLoop(
+                name="test",
+                initial="check",
+                states={
+                    "check": StateConfig(
+                        action="test",
+                        evaluate=EvaluateConfig(
+                            type="llm_structured",
+                            min_confidence=confidence,
+                        ),
+                        on_success="done",
+                        on_failure="done",
+                    ),
+                    "done": make_state(terminal=True),
+                },
+            )
+            errors = validate_fsm(fsm)
+
+            error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
+            assert len(error_list) == 0, f"min_confidence={confidence} should be valid"
+
+    def test_min_confidence_negative(self) -> None:
+        """Negative min_confidence is rejected."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="test",
+                    evaluate=EvaluateConfig(
+                        type="llm_structured",
+                        min_confidence=-0.1,
+                    ),
+                    on_success="done",
+                    on_failure="done",
+                ),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+
+        assert any("between 0 and 1" in e.message for e in errors)
+
 
 class TestLoadAndValidate:
     """Tests for load_and_validate function."""
@@ -799,6 +1102,100 @@ states:
         finally:
             path.unlink()
 
+    def test_invalid_yaml_syntax(self) -> None:
+        """Invalid YAML syntax raises yaml.YAMLError."""
+        yaml_content = """
+name: test
+initial: [unclosed bracket
+states:
+  done:
+    terminal: true
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            with pytest.raises(yaml.YAMLError):
+                load_and_validate(path)
+        finally:
+            path.unlink()
+
+    def test_non_dict_yaml_root(self) -> None:
+        """Non-dict YAML root raises ValueError."""
+        yaml_content = "- item1\n- item2\n"  # list, not dict
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            with pytest.raises(ValueError, match="must contain a YAML mapping"):
+                load_and_validate(path)
+        finally:
+            path.unlink()
+
+    def test_warnings_logged_not_raised(self) -> None:
+        """Warnings are logged but don't raise exceptions."""
+        yaml_content = """
+name: test-loop
+initial: start
+states:
+  start:
+    action: test
+    on_success: done
+    on_failure: done
+  done:
+    terminal: true
+  orphan:
+    action: unreachable
+    next: done
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            # Should not raise despite unreachable state warning
+            fsm = load_and_validate(path)
+            assert fsm.name == "test-loop"
+            assert "orphan" in fsm.states
+        finally:
+            path.unlink()
+
+    def test_missing_name_field(self) -> None:
+        """Missing 'name' field raises ValueError."""
+        yaml_content = """
+initial: start
+states:
+  start:
+    terminal: true
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            with pytest.raises(ValueError, match="missing required fields.*name"):
+                load_and_validate(path)
+        finally:
+            path.unlink()
+
+    def test_missing_states_field(self) -> None:
+        """Missing 'states' field raises ValueError."""
+        yaml_content = """
+name: test
+initial: start
+"""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write(yaml_content)
+            path = Path(f.name)
+
+        try:
+            with pytest.raises(ValueError, match="missing required fields.*states"):
+                load_and_validate(path)
+        finally:
+            path.unlink()
+
 
 class TestValidationError:
     """Tests for ValidationError dataclass."""
@@ -821,3 +1218,33 @@ class TestValidationError:
         )
 
         assert str(error) == "[WARNING] Test warning"
+
+    def test_error_str_without_path(self) -> None:
+        """String format without path."""
+        error = ValidationError(
+            message="General error",
+            severity=ValidationSeverity.ERROR,
+        )
+
+        assert str(error) == "[ERROR] General error"
+
+    def test_warning_str_with_path(self) -> None:
+        """Warning format includes path."""
+        error = ValidationError(
+            message="Potential issue",
+            path="states.orphan",
+            severity=ValidationSeverity.WARNING,
+        )
+
+        assert str(error) == "[WARNING] states.orphan: Potential issue"
+
+    def test_default_severity_is_error(self) -> None:
+        """Default severity is ERROR."""
+        error = ValidationError(message="Something wrong")
+
+        assert error.severity == ValidationSeverity.ERROR
+
+    def test_severity_enum_values(self) -> None:
+        """Severity enum has expected values."""
+        assert ValidationSeverity.ERROR.value == "error"
+        assert ValidationSeverity.WARNING.value == "warning"
