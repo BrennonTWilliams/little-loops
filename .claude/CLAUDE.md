@@ -80,5 +80,9 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-auto` - Automated sequential issue processing
 - `ll-parallel` - Parallel issue processing with git worktrees
 - `ll-messages` - Extract user messages from Claude Code logs
+- `ll-loop` - FSM-based automation loop execution
+- `ll-sprint` - Sprint-based issue processing
+- `ll-workflows` - Workflow sequence analyzer
+- `ll-history` - View completed issue statistics and history
 
 Install: `pip install -e "./scripts[dev]"`
