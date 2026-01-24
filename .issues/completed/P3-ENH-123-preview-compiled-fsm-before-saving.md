@@ -79,4 +79,22 @@ This could be as simple as a text diagram or table showing the state machine.
 
 ## Status
 
-**Open** | Created: 2026-01-23 | Priority: P3
+**Completed** | Created: 2026-01-23 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md`: Added FSM Compilation Reference section documenting state structures for all paradigms
+- `commands/create_loop.md`: Updated Step 4 to generate and display FSM preview alongside paradigm YAML
+- Added example previews for each paradigm (goal, convergence, invariants, imperative)
+
+### Verification Results
+- Tests: PASS
+- Lint: PASS (no Python files in commands/)
+- Types: N/A (markdown command file)

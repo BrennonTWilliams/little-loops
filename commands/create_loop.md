@@ -344,6 +344,73 @@ backoff: 2
 
 ---
 
+## FSM Compilation Reference
+
+Each paradigm compiles to a specific FSM structure. Use this reference when generating the FSM preview in Step 4.
+
+### Goal Paradigm → FSM
+```
+States: evaluate, fix, done
+Initial: evaluate
+
+Transitions:
+  evaluate:
+    - on_success → done
+    - on_failure → fix
+    - on_error → fix
+  fix:
+    - next → evaluate
+  done: [terminal]
+```
+
+### Convergence Paradigm → FSM
+```
+States: measure, apply, done
+Initial: measure
+
+Transitions:
+  measure:
+    - route[target] → done
+    - route[progress] → apply
+    - route[stall] → done
+  apply:
+    - next → measure
+  done: [terminal]
+```
+
+### Invariants Paradigm → FSM
+For each constraint `{name}` in order:
+```
+States: check_{name1}, fix_{name1}, check_{name2}, fix_{name2}, ..., all_valid
+Initial: check_{first_constraint}
+
+Transitions:
+  check_{name}:
+    - on_success → check_{next} (or all_valid if last)
+    - on_failure → fix_{name}
+  fix_{name}:
+    - next → check_{name}
+  all_valid: [terminal]
+    - on_maintain → check_{first} (if maintain: true)
+```
+
+### Imperative Paradigm → FSM
+For each step in order:
+```
+States: step_0, step_1, ..., step_N, check_done, done
+Initial: step_0
+
+Transitions:
+  step_N:
+    - next → step_{N+1} (or check_done if last)
+  check_done:
+    - on_success → done
+    - on_failure → step_0
+  done: [terminal]
+```
+
+---
+
 ### Step 3: Loop Name
 
 After gathering paradigm-specific parameters, ask for the loop name:
@@ -368,16 +435,93 @@ questions:
 
 ### Step 4: Preview and Confirm
 
-Display the generated YAML and ask for confirmation:
+Generate and display both the paradigm YAML and the compiled FSM preview.
+
+**Generate FSM Preview:**
+
+Using the FSM Compilation Reference above, generate a preview showing:
+1. States in execution order (use → between states)
+2. Transitions for each non-terminal state
+3. Terminal states marked with `[terminal]`
+4. Initial state and max_iterations from the configuration
+
+**Display format:**
 
 ```
 Here's your loop configuration:
 
+## Paradigm YAML
 ```yaml
 <generated-yaml>
 ```
 
+## Compiled FSM Preview
+States: <state1> → <state2> → ... → <terminal>
+Transitions:
+  <state1>: <verdict>→<target>, <verdict>→<target>
+  <state2>: next→<target>
+  ...
+  <terminal>: [terminal]
+Initial: <initial-state>
+Max iterations: <max_iterations>
+
 This will create: .loops/<name>.yaml
+```
+
+**Example previews by paradigm:**
+
+Goal paradigm:
+```
+## Compiled FSM Preview
+States: evaluate → fix → done
+Transitions:
+  evaluate: success→done, failure→fix, error→fix
+  fix: next→evaluate
+  done: [terminal]
+Initial: evaluate
+Max iterations: 10
+```
+
+Convergence paradigm:
+```
+## Compiled FSM Preview
+States: measure → apply → done
+Transitions:
+  measure: target→done, progress→apply, stall→done
+  apply: next→measure
+  done: [terminal]
+Initial: measure
+Max iterations: 50
+```
+
+Invariants paradigm (with constraints: tests, types, lint):
+```
+## Compiled FSM Preview
+States: check_tests → fix_tests → check_types → fix_types → check_lint → fix_lint → all_valid
+Transitions:
+  check_tests: success→check_types, failure→fix_tests
+  fix_tests: next→check_tests
+  check_types: success→check_lint, failure→fix_types
+  fix_types: next→check_types
+  check_lint: success→all_valid, failure→fix_lint
+  fix_lint: next→check_lint
+  all_valid: [terminal]
+Initial: check_tests
+Max iterations: 50
+```
+
+Imperative paradigm (with 3 steps):
+```
+## Compiled FSM Preview
+States: step_0 → step_1 → step_2 → check_done → done
+Transitions:
+  step_0: next→step_1
+  step_1: next→step_2
+  step_2: next→check_done
+  check_done: success→done, failure→step_0
+  done: [terminal]
+Initial: step_0
+Max iterations: 20
 ```
 
 Use AskUserQuestion:
