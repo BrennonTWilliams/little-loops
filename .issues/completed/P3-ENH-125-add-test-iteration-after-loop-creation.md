@@ -105,6 +105,24 @@ Result: ERROR (could not parse numeric value)
 
 ---
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli.py`: Added `cmd_test()` function and `test` subcommand to `ll-loop` CLI
+- `commands/create_loop.md`: Added Step 5.5 to offer test iteration after validation
+- `scripts/tests/test_ll_loop.py`: Added TestCmdTest class with 7 test cases
+
+### Verification Results
+- Tests: PASS (143 tests, including 7 new tests)
+- Lint: PASS
+- Types: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-23 | Priority: P3
+**Completed** | Created: 2026-01-23 | Priority: P3

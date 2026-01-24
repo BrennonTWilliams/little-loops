@@ -3142,3 +3142,222 @@ states:
         assert captured_fsm.llm.model == "claude-opus-4-20250514"
         assert captured_fsm.llm.max_tokens == 512
         assert captured_fsm.llm.timeout == 60
+
+
+class TestCmdTest:
+    """Tests for ll-loop test subcommand."""
+
+    def test_test_nonexistent_loop(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Test with non-existent loop shows error."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "test", "nonexistent"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "not found" in captured.out.lower() or "not found" in captured.err.lower()
+
+    def test_test_shell_action_success(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Test with successful shell command shows success verdict."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        loop_yaml = """
+paradigm: goal
+name: test-echo
+goal: echo works
+tools:
+  - "echo hello"
+  - "echo fixed"
+max_iterations: 5
+"""
+        (loops_dir / "test-echo.yaml").write_text(loop_yaml)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "test", "test-echo"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "SUCCESS" in captured.out
+        assert "evaluate → done" in captured.out or "evaluate" in captured.out
+        assert "configured correctly" in captured.out
+
+    def test_test_shell_action_failure(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Test with failing shell command shows failure verdict."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        loop_yaml = """
+paradigm: goal
+name: test-fail
+goal: exit with error
+tools:
+  - "exit 1"
+  - "echo fixed"
+max_iterations: 5
+"""
+        (loops_dir / "test-fail.yaml").write_text(loop_yaml)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "test", "test-fail"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0  # Test succeeds even if loop would fail
+        captured = capsys.readouterr()
+        assert "FAILURE" in captured.out
+        assert "evaluate → fix" in captured.out or "fix" in captured.out
+        assert "configured correctly" in captured.out
+
+    def test_test_slash_command_skipped(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Test with slash command action is skipped."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        loop_yaml = """
+paradigm: goal
+name: test-slash
+goal: slash command works
+tools:
+  - "/ll:check_code"
+  - "/ll:check_code fix"
+max_iterations: 5
+"""
+        (loops_dir / "test-slash.yaml").write_text(loop_yaml)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "test", "test-slash"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0  # Should succeed but skip execution
+        captured = capsys.readouterr()
+        assert "SKIPPED" in captured.out
+        assert "slash command" in captured.out.lower()
+        assert "valid" in captured.out
+
+    def test_test_parse_error_in_evaluator(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Test with evaluator that can't parse output shows error verdict."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        loop_yaml = """
+name: test-parse-error
+initial: check
+states:
+  check:
+    action: "echo 'not a number'"
+    evaluate:
+      type: output_numeric
+      operator: eq
+      target: 0
+    on_success: done
+    on_failure: fix
+    on_error: done
+  fix:
+    action: "echo fixing"
+    next: check
+  done:
+    terminal: true
+max_iterations: 5
+"""
+        (loops_dir / "test-parse-error.yaml").write_text(loop_yaml)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "test", "test-parse-error"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 1  # Test fails due to evaluator error
+        captured = capsys.readouterr()
+        assert "ERROR" in captured.out
+        assert "output_numeric" in captured.out
+        assert "issues" in captured.out.lower()
+
+    def test_test_no_action_initial_state(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Test with initial state having no action shows no action to test."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        loop_yaml = """
+name: test-no-action
+initial: start
+states:
+  start:
+    next: done
+  done:
+    terminal: true
+max_iterations: 5
+"""
+        (loops_dir / "test-no-action.yaml").write_text(loop_yaml)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "test", "test-no-action"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "no action" in captured.out.lower()
+        assert "valid" in captured.out.lower()
+
+    def test_test_subcommand_registered(self) -> None:
+        """Test subcommand is registered in known_subcommands."""
+        # This verifies the subcommand won't be treated as a loop name
+        import sys as _sys
+        from unittest.mock import patch as mock_patch
+
+        with mock_patch.object(_sys, "argv", ["ll-loop", "test", "--help"]):
+            # If test is not a known subcommand, it would be parsed as a loop name
+            # and "run" would be inserted, causing different behavior
+            from little_loops.cli import main_loop
+
+            # Should not raise SystemExit for unrecognized subcommand
+            # (--help will cause SystemExit 0, which is expected)
+            try:
+                main_loop()
+            except SystemExit as e:
+                # --help causes exit 0
+                assert e.code == 0

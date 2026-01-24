@@ -12,6 +12,7 @@ Interactive command for creating new automation loop configurations. This comman
 3. Naming the loop
 4. Generating and previewing YAML
 5. Saving and validating
+6. Optional test iteration to verify the loop works
 
 ## Allowed Tools
 
@@ -573,9 +574,38 @@ If confirmed:
    ll-loop validate <name>
    ```
 
-5. **Report results:**
+5. **Offer test iteration** (after validation succeeds):
 
-   On success:
+   Use AskUserQuestion:
+   ```yaml
+   questions:
+     - question: "Would you like to run a test iteration to verify the loop works?"
+       header: "Test run"
+       multiSelect: false
+       options:
+         - label: "Yes, run one iteration (Recommended)"
+           description: "Execute check command and verify evaluation works"
+         - label: "No, I'll test manually"
+           description: "Skip test iteration"
+   ```
+
+   If "Yes, run one iteration":
+   ```bash
+   ll-loop test <name>
+   ```
+
+   Display the test output directly. The test command provides:
+   - Check command and exit code
+   - Output preview
+   - Evaluator type and verdict
+   - Would-transition target
+   - Success indicator or warning with specific issues
+
+   Continue to the success report regardless of test result.
+
+6. **Report results:**
+
+   On success (no test issues):
    ```
    Loop created successfully!
 
@@ -583,6 +613,21 @@ If confirmed:
    States: <list-of-states>
    Initial: <initial-state>
    Max iterations: <max>
+
+   Run now with: ll-loop <name>
+   ```
+
+   On success with test issues (test ran but found problems):
+   ```
+   Loop created successfully!
+
+   File: .loops/<name>.yaml
+   States: <list-of-states>
+   Initial: <initial-state>
+   Max iterations: <max>
+
+   Note: Test iteration found issues - see output above.
+   You may want to review the configuration before running.
 
    Run now with: ll-loop <name>
    ```

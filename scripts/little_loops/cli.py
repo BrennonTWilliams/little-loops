@@ -455,6 +455,7 @@ def main_loop() -> int:
         "stop",
         "resume",
         "history",
+        "test",
     }
 
     # Pre-process args: if first positional arg is not a subcommand, insert "run"
@@ -474,6 +475,7 @@ Examples:
   %(prog)s fix-types              # Run loop from .loops/fix-types.yaml
   %(prog)s run fix-types --dry-run  # Show execution plan
   %(prog)s validate fix-types     # Validate loop definition
+  %(prog)s test fix-types         # Run single test iteration
   %(prog)s compile paradigm.yaml  # Compile paradigm to FSM
   %(prog)s list                   # List available loops
   %(prog)s list --running         # List running loops
@@ -531,6 +533,12 @@ Examples:
     history_parser.add_argument(
         "--tail", "-n", type=int, default=50, help="Last N events (default: 50)"
     )
+
+    # Test subcommand
+    test_parser = subparsers.add_parser(
+        "test", help="Run a single test iteration to verify loop configuration"
+    )
+    test_parser.add_argument("loop", help="Loop name")
 
     args = parser.parse_args(argv)
 
@@ -962,6 +970,156 @@ Examples:
 
         return 0
 
+    def cmd_test(loop_name: str) -> int:
+        """Run a single test iteration to verify loop configuration.
+
+        Executes the initial state's action and evaluation, then reports
+        what the loop would do without actually transitioning further.
+        """
+        from little_loops.fsm.evaluators import EvaluationResult, evaluate, evaluate_exit_code
+        from little_loops.fsm.executor import DefaultActionRunner
+        from little_loops.fsm.interpolation import InterpolationContext
+
+        try:
+            path = resolve_loop_path(loop_name)
+
+            # Load the file to check format
+            with open(path) as f:
+                spec = yaml.safe_load(f)
+
+            # Auto-compile if it's a paradigm file
+            if "paradigm" in spec and "initial" not in spec:
+                fsm = compile_paradigm(spec)
+            else:
+                fsm = load_and_validate(path)
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            return 1
+        except ValueError as e:
+            logger.error(f"Validation error: {e}")
+            return 1
+
+        # Get initial state
+        initial = fsm.initial
+        state_config = fsm.states[initial]
+
+        print(f"## Test Iteration: {loop_name}")
+        print()
+        print(f"State: {initial}")
+
+        # If no action, report and exit
+        if not state_config.action:
+            print(f"Initial state '{initial}' has no action to test")
+            print()
+            print("✓ Loop structure is valid (no check action to execute)")
+            return 0
+
+        action = state_config.action
+        is_slash = action.startswith("/") or state_config.action_type in (
+            "prompt",
+            "slash_command",
+        )
+
+        print(f"Action: {action}")
+        print()
+
+        if is_slash:
+            print("Note: Slash commands require Claude CLI; skipping actual execution.")
+            print()
+            print("Verdict: SKIPPED (slash command)")
+            print()
+            print("✓ Loop structure is valid (slash command not executed)")
+            return 0
+
+        # Run the action
+        runner = DefaultActionRunner()
+        timeout = state_config.timeout or 120
+        result = runner.run(action, timeout=timeout, is_slash_command=False)
+
+        print(f"Exit code: {result.exit_code}")
+
+        # Truncate output for display
+        output_lines = result.output.strip().split("\n")
+        if len(output_lines) > 10:
+            extra = len(output_lines) - 10
+            output_preview = "\n".join(output_lines[:10]) + f"\n... ({extra} more lines)"
+        elif len(result.output) > 500:
+            output_preview = result.output[:500] + "..."
+        else:
+            output_preview = result.output.strip() if result.output.strip() else "(empty)"
+
+        print(f"Output:\n{output_preview}")
+
+        if result.stderr:
+            stderr_lines = result.stderr.strip().split("\n")
+            if len(stderr_lines) > 5:
+                extra = len(stderr_lines) - 5
+                stderr_preview = "\n".join(stderr_lines[:5]) + f"\n... ({extra} more lines)"
+            else:
+                stderr_preview = result.stderr.strip()
+            print(f"Stderr:\n{stderr_preview}")
+
+        print()
+
+        # Evaluate
+        ctx = InterpolationContext()
+        eval_result: EvaluationResult
+
+        if state_config.evaluate:
+            eval_result = evaluate(
+                config=state_config.evaluate,
+                output=result.output,
+                exit_code=result.exit_code,
+                context=ctx,
+            )
+            evaluator_type: str = state_config.evaluate.type
+        else:
+            # Default to exit_code evaluation
+            eval_result = evaluate_exit_code(result.exit_code)
+            evaluator_type = "exit_code (default)"
+
+        print(f"Evaluator: {evaluator_type}")
+        print(f"Verdict: {eval_result.verdict.upper()}")
+
+        if eval_result.details:
+            for key, value in eval_result.details.items():
+                if key != "exit_code" or evaluator_type != "exit_code (default)":
+                    print(f"  {key}: {value}")
+
+        # Determine next state based on verdict
+        verdict = eval_result.verdict
+        next_state = None
+
+        if state_config.route:
+            routes = state_config.route.routes
+            if verdict in routes:
+                next_state = routes[verdict]
+            elif state_config.route.default:
+                next_state = state_config.route.default
+        else:
+            if verdict == "success" and state_config.on_success:
+                next_state = state_config.on_success
+            elif verdict == "failure" and state_config.on_failure:
+                next_state = state_config.on_failure
+            elif verdict == "error" and state_config.on_error:
+                next_state = state_config.on_error
+
+        print()
+        if next_state:
+            print(f"Would transition: {initial} → {next_state}")
+        else:
+            print(f"Would transition: {initial} → (no route for '{verdict}')")
+
+        # Summary
+        print()
+        has_error = eval_result.verdict == "error" or "error" in eval_result.details
+        if has_error:
+            print("⚠ Loop has issues - review the error details above")
+            return 1
+        else:
+            print("✓ Loop appears to be configured correctly")
+            return 0
+
     # Dispatch commands
     if args.command == "run":
         return cmd_run(args.loop)
@@ -979,6 +1137,8 @@ Examples:
         return cmd_resume(args.loop)
     elif args.command == "history":
         return cmd_history(args.loop)
+    elif args.command == "test":
+        return cmd_test(args.loop)
     else:
         parser.print_help()
         return 1
