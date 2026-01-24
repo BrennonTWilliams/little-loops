@@ -149,4 +149,63 @@ The evaluator simulation would need mock inputs:
 
 ## Status
 
-**Open** | Created: 2026-01-23 | Priority: P4
+**Completed** | Created: 2026-01-23 | Completed: 2026-01-23 | Priority: P4
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+
+1. **scripts/little_loops/fsm/executor.py**
+   - Added `SimulationActionRunner` class that implements `ActionRunner` protocol
+   - Supports scenario modes: all-pass, all-fail, first-fail, alternating
+   - Interactive mode prompts user for simulated exit codes
+   - Records all calls for summary reporting
+
+2. **scripts/little_loops/cli.py**
+   - Added `simulate` subcommand to `ll-loop`
+   - Supports `--scenario` flag for predefined result patterns
+   - Supports `--max-iterations` override (caps at 20 by default for safety)
+   - Auto-compiles paradigm files
+   - Shows trace output with state transitions and simulated results
+
+3. **scripts/tests/test_fsm_executor.py**
+   - Added `TestSimulationActionRunner` test class with 9 tests
+   - Tests all scenario modes, call recording, and FSM integration
+
+4. **scripts/tests/test_ll_loop.py**
+   - Added `TestCmdSimulate` test class with 8 tests
+   - Tests subcommand registration, scenarios, max iterations, paradigm support
+
+### Verification Results
+- Tests: PASS (218 tests in executor + CLI modules)
+- Lint: PASS
+- Types: PASS
+
+### Usage
+
+```bash
+# Interactive simulation (prompts for results)
+ll-loop simulate fix-types
+
+# Scenario mode (auto-selects results)
+ll-loop simulate fix-types --scenario=all-pass
+ll-loop simulate fix-types --scenario=first-fail
+ll-loop simulate fix-types --scenario=all-fail
+ll-loop simulate fix-types --scenario=alternating
+
+# Override max iterations
+ll-loop simulate fix-types --scenario=all-pass -n 5
+```
+
+### Implementation Notes
+
+- Implemented Option A (Interactive Simulation) + Option B (Predefined Scenarios) from the issue
+- Option C (Trace Mode with real execution) was not implemented as it was marked out of scope
+- Simulation uses exit code-based evaluation which works for most evaluators
+- Convergence and LLM evaluators may not work perfectly in simulation mode since they require specific output formats

@@ -3361,3 +3361,265 @@ max_iterations: 5
             except SystemExit as e:
                 # --help causes exit 0
                 assert e.code == 0
+
+
+class TestCmdSimulate:
+    """Tests for ll-loop simulate command."""
+
+    def test_simulate_subcommand_registered(self) -> None:
+        """Simulate subcommand is registered in known_subcommands."""
+        import sys as _sys
+        from unittest.mock import patch as mock_patch
+
+        with mock_patch.object(_sys, "argv", ["ll-loop", "simulate", "--help"]):
+            from little_loops.cli import main_loop
+
+            try:
+                main_loop()
+            except SystemExit as e:
+                assert e.code == 0
+
+    def test_simulate_nonexistent_loop(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """simulate with nonexistent loop returns error."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "simulate", "nonexistent"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 1
+
+    def test_simulate_all_pass_scenario(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """simulate with --scenario=all-pass runs to terminal."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_yaml = """
+name: test-sim
+initial: check
+states:
+  check:
+    action: "run_check"
+    on_success: done
+    on_failure: fix
+  fix:
+    action: "run_fix"
+    next: check
+  done:
+    terminal: true
+max_iterations: 5
+"""
+        (loops_dir / "test-sim.yaml").write_text(loop_yaml)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(
+            sys, "argv", ["ll-loop", "simulate", "test-sim", "--scenario=all-pass"]
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "SIMULATION: test-sim" in captured.out
+        assert "scenario=all-pass" in captured.out
+        assert "Summary" in captured.out
+        assert "terminal" in captured.out
+
+    def test_simulate_first_fail_scenario(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """simulate with --scenario=first-fail shows fix transition."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_yaml = """
+name: test-sim
+initial: check
+states:
+  check:
+    action: "run_check"
+    on_success: done
+    on_failure: fix
+  fix:
+    action: "run_fix"
+    next: check
+  done:
+    terminal: true
+max_iterations: 5
+"""
+        (loops_dir / "test-sim.yaml").write_text(loop_yaml)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(
+            sys, "argv", ["ll-loop", "simulate", "test-sim", "--scenario=first-fail"]
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # First fail means: check (fail) -> fix -> check (pass) -> done
+        assert "check → fix" in captured.out
+        assert "fix → check" in captured.out
+        assert "check → done" in captured.out
+
+    def test_simulate_max_iterations_limit(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """simulate caps iterations at 20 by default."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_yaml = """
+name: test-sim
+initial: check
+states:
+  check:
+    action: "run_check"
+    on_success: done
+    on_failure: check
+  done:
+    terminal: true
+max_iterations: 100
+"""
+        (loops_dir / "test-sim.yaml").write_text(loop_yaml)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(
+            sys, "argv", ["ll-loop", "simulate", "test-sim", "--scenario=all-fail"]
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Limiting simulation to 20 iterations" in captured.out
+        assert "max_iterations" in captured.out
+
+    def test_simulate_custom_max_iterations(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """simulate respects --max-iterations override."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_yaml = """
+name: test-sim
+initial: check
+states:
+  check:
+    action: "run_check"
+    on_success: done
+    on_failure: check
+  done:
+    terminal: true
+max_iterations: 100
+"""
+        (loops_dir / "test-sim.yaml").write_text(loop_yaml)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-loop", "simulate", "test-sim", "--scenario=all-fail", "-n", "3"],
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Should not show limiting message since user explicitly set iterations
+        assert "Limiting simulation" not in captured.out
+        assert "Iterations: 3" in captured.out
+
+    def test_simulate_shows_simulated_actions(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """simulate output shows [SIMULATED] markers."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_yaml = """
+name: test-sim
+initial: check
+states:
+  check:
+    action: "mypy src/"
+    on_success: done
+    on_failure: done
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-sim.yaml").write_text(loop_yaml)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(
+            sys, "argv", ["ll-loop", "simulate", "test-sim", "--scenario=all-pass"]
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "[SIMULATED]" in captured.out
+        assert "mypy src/" in captured.out
+
+    def test_simulate_with_paradigm_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """simulate auto-compiles paradigm files."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        # Use imperative paradigm with correct structure
+        paradigm_yaml = """
+name: imperative-test
+paradigm: imperative
+steps:
+  - "echo step1"
+  - "echo step2"
+until:
+  check: "echo done"
+"""
+        (loops_dir / "imperative-test.yaml").write_text(paradigm_yaml)
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(
+            sys, "argv", ["ll-loop", "simulate", "imperative-test", "--scenario=all-pass"]
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "SIMULATION: imperative-test" in captured.out
+        # With all-pass scenario, terminates on success
+        assert "terminal" in captured.out

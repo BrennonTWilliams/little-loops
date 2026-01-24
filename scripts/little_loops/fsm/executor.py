@@ -11,9 +11,10 @@ This module provides the execution engine that runs FSM loops:
 from __future__ import annotations
 
 import subprocess
+import sys
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from typing import Any, Protocol
 
@@ -167,6 +168,113 @@ class DefaultActionRunner:
                 exit_code=124,  # Standard timeout exit code
                 duration_ms=timeout * 1000,
             )
+
+
+@dataclass
+class SimulationActionRunner:
+    """Action runner for simulation mode - prompts user instead of executing.
+
+    This runner allows users to trace through FSM logic without executing
+    real commands. It can either prompt interactively for results or use
+    predefined scenarios.
+
+    Attributes:
+        scenario: Predefined result pattern ("all-pass", "all-fail", "first-fail", "alternating")
+        call_count: Number of actions simulated so far
+        calls: List of all actions that would have been executed
+    """
+
+    scenario: str | None = None
+    call_count: int = 0
+    calls: list[str] = field(default_factory=list)
+
+    def run(
+        self,
+        action: str,
+        timeout: int,
+        is_slash_command: bool,
+    ) -> ActionResult:
+        """Prompt user for simulated result instead of executing.
+
+        Args:
+            action: The command that would be executed
+            timeout: Timeout (ignored in simulation)
+            is_slash_command: Whether this is a slash command
+
+        Returns:
+            ActionResult with simulated exit code
+        """
+        del timeout  # unused in simulation
+        self.calls.append(action)
+        self.call_count += 1
+
+        cmd_type = "slash command" if is_slash_command else "shell command"
+        print(f"    [SIMULATED] Would execute ({cmd_type}): {action}")
+
+        if self.scenario:
+            exit_code = self._scenario_result()
+            scenario_label = {
+                "all-pass": "Success (scenario: all-pass)",
+                "all-fail": "Failure (scenario: all-fail)",
+                "first-fail": "Failure" if self.call_count == 1 else "Success",
+                "alternating": "Failure" if self.call_count % 2 == 1 else "Success",
+            }.get(self.scenario, "Success")
+            print(f"    [AUTO] Result: {scenario_label}")
+        else:
+            exit_code = self._prompt_result()
+
+        return ActionResult(
+            output=f"[simulated output for: {action}]",
+            stderr="",
+            exit_code=exit_code,
+            duration_ms=0,
+        )
+
+    def _scenario_result(self) -> int:
+        """Return exit code based on scenario pattern.
+
+        Returns:
+            0 for success, 1 for failure based on scenario logic
+        """
+        if self.scenario == "all-pass":
+            return 0
+        elif self.scenario == "all-fail":
+            return 1
+        elif self.scenario == "first-fail":
+            # First call fails, rest pass
+            return 1 if self.call_count == 1 else 0
+        elif self.scenario == "alternating":
+            # Odd calls fail, even calls pass
+            return 1 if self.call_count % 2 == 1 else 0
+        return 0
+
+    def _prompt_result(self) -> int:
+        """Prompt user for simulated exit code.
+
+        Returns:
+            Exit code based on user selection
+        """
+        print()
+        print("    ? What should the simulated result be?")
+        print("      1) Success (exit 0) [default]")
+        print("      2) Failure (exit 1)")
+        print("      3) Error (exit 2)")
+
+        while True:
+            try:
+                sys.stdout.write("    > ")
+                sys.stdout.flush()
+                choice = sys.stdin.readline().strip()
+                if choice in ("1", ""):
+                    return 0
+                elif choice == "2":
+                    return 1
+                elif choice == "3":
+                    return 2
+                print("    Invalid choice. Enter 1, 2, or 3.")
+            except (EOFError, KeyboardInterrupt):
+                print()
+                return 0
 
 
 def _now_ms() -> int:

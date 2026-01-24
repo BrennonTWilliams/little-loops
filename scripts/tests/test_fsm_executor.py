@@ -10,6 +10,7 @@ from little_loops.fsm.executor import (
     ActionResult,
     ExecutionResult,
     FSMExecutor,
+    SimulationActionRunner,
 )
 from little_loops.fsm.schema import (
     EvaluateConfig,
@@ -1824,3 +1825,102 @@ class TestSignalHandling:
 
         # Signal takes precedence over timeout
         assert result.terminated_by == "signal"
+
+
+class TestSimulationActionRunner:
+    """Tests for SimulationActionRunner."""
+
+    def test_scenario_all_pass(self) -> None:
+        """All-pass scenario returns exit code 0 for all calls."""
+        runner = SimulationActionRunner(scenario="all-pass")
+        results = [
+            runner.run("cmd1", timeout=60, is_slash_command=False).exit_code,
+            runner.run("cmd2", timeout=60, is_slash_command=False).exit_code,
+            runner.run("cmd3", timeout=60, is_slash_command=False).exit_code,
+        ]
+        assert results == [0, 0, 0]
+
+    def test_scenario_all_fail(self) -> None:
+        """All-fail scenario returns exit code 1 for all calls."""
+        runner = SimulationActionRunner(scenario="all-fail")
+        results = [
+            runner.run("cmd1", timeout=60, is_slash_command=False).exit_code,
+            runner.run("cmd2", timeout=60, is_slash_command=False).exit_code,
+            runner.run("cmd3", timeout=60, is_slash_command=False).exit_code,
+        ]
+        assert results == [1, 1, 1]
+
+    def test_scenario_first_fail(self) -> None:
+        """First-fail scenario returns 1 first, then 0."""
+        runner = SimulationActionRunner(scenario="first-fail")
+        results = [
+            runner.run("cmd1", timeout=60, is_slash_command=False).exit_code,
+            runner.run("cmd2", timeout=60, is_slash_command=False).exit_code,
+            runner.run("cmd3", timeout=60, is_slash_command=False).exit_code,
+        ]
+        assert results == [1, 0, 0]
+
+    def test_scenario_alternating(self) -> None:
+        """Alternating scenario returns 1, 0, 1, 0..."""
+        runner = SimulationActionRunner(scenario="alternating")
+        results = [
+            runner.run("cmd", timeout=60, is_slash_command=False).exit_code
+            for _ in range(4)
+        ]
+        assert results == [1, 0, 1, 0]
+
+    def test_records_calls(self) -> None:
+        """Runner records all calls."""
+        runner = SimulationActionRunner(scenario="all-pass")
+        runner.run("cmd1", timeout=60, is_slash_command=False)
+        runner.run("cmd2", timeout=60, is_slash_command=True)
+        assert runner.calls == ["cmd1", "cmd2"]
+        assert runner.call_count == 2
+
+    def test_returns_simulated_output(self) -> None:
+        """Runner returns simulated output string."""
+        runner = SimulationActionRunner(scenario="all-pass")
+        result = runner.run("echo hello", timeout=60, is_slash_command=False)
+        assert "simulated" in result.output.lower()
+        assert "echo hello" in result.output
+
+    def test_returns_zero_duration(self) -> None:
+        """Simulation returns 0 duration since nothing executed."""
+        runner = SimulationActionRunner(scenario="all-pass")
+        result = runner.run("sleep 10", timeout=60, is_slash_command=False)
+        assert result.duration_ms == 0
+
+    def test_returns_empty_stderr(self) -> None:
+        """Simulation returns empty stderr."""
+        runner = SimulationActionRunner(scenario="all-fail")
+        result = runner.run("failing_cmd", timeout=60, is_slash_command=False)
+        assert result.stderr == ""
+
+    def test_with_fsm_executor(self) -> None:
+        """SimulationActionRunner integrates with FSMExecutor."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            max_iterations=5,
+            states={
+                "check": StateConfig(
+                    action="run_check",
+                    on_success="done",
+                    on_failure="fix",
+                ),
+                "fix": StateConfig(action="run_fix", next="check"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        # first-fail: first check fails, fix runs, second check passes
+        sim_runner = SimulationActionRunner(scenario="first-fail")
+        executor = FSMExecutor(fsm, action_runner=sim_runner)
+        result = executor.run()
+
+        assert result.terminated_by == "terminal"
+        assert result.final_state == "done"
+        # Should have: check (fail) -> fix -> check (pass) -> done
+        assert sim_runner.call_count == 3
+        assert "run_check" in sim_runner.calls[0]
+        assert "run_fix" in sim_runner.calls[1]
+        assert "run_check" in sim_runner.calls[2]

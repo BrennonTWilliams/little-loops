@@ -456,6 +456,7 @@ def main_loop() -> int:
         "resume",
         "history",
         "test",
+        "simulate",
     }
 
     # Pre-process args: if first positional arg is not a subcommand, insert "run"
@@ -476,6 +477,7 @@ Examples:
   %(prog)s run fix-types --dry-run  # Show execution plan
   %(prog)s validate fix-types     # Validate loop definition
   %(prog)s test fix-types         # Run single test iteration
+  %(prog)s simulate fix-types     # Interactive simulation (dry-run with prompts)
   %(prog)s compile paradigm.yaml  # Compile paradigm to FSM
   %(prog)s list                   # List available loops
   %(prog)s list --running         # List running loops
@@ -539,6 +541,24 @@ Examples:
         "test", help="Run a single test iteration to verify loop configuration"
     )
     test_parser.add_argument("loop", help="Loop name")
+
+    # Simulate subcommand
+    simulate_parser = subparsers.add_parser(
+        "simulate",
+        help="Trace loop execution interactively without running commands",
+    )
+    simulate_parser.add_argument("loop", help="Loop name or path")
+    simulate_parser.add_argument(
+        "--scenario",
+        choices=["all-pass", "all-fail", "first-fail", "alternating"],
+        help="Auto-select results based on pattern instead of prompting",
+    )
+    simulate_parser.add_argument(
+        "--max-iterations",
+        "-n",
+        type=int,
+        help="Override max iterations for simulation (default: min of loop config or 20)",
+    )
 
     args = parser.parse_args(argv)
 
@@ -1120,6 +1140,97 @@ Examples:
             print("✓ Loop appears to be configured correctly")
             return 0
 
+    def cmd_simulate(loop_name: str) -> int:
+        """Run interactive simulation of loop execution.
+
+        Traces through loop logic without executing commands, allowing users
+        to verify state transitions and understand loop behavior.
+        """
+        from little_loops.fsm.executor import FSMExecutor, SimulationActionRunner
+
+        try:
+            path = resolve_loop_path(loop_name)
+
+            # Load the file to check format
+            with open(path) as f:
+                spec = yaml.safe_load(f)
+
+            # Auto-compile if it's a paradigm file
+            if "paradigm" in spec and "initial" not in spec:
+                fsm = compile_paradigm(spec)
+            else:
+                fsm = load_and_validate(path)
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            return 1
+        except ValueError as e:
+            logger.error(f"Validation error: {e}")
+            return 1
+
+        # Apply CLI overrides
+        if args.max_iterations:
+            fsm.max_iterations = args.max_iterations
+        else:
+            # Limit iterations for simulation safety (cap at 20 unless overridden)
+            if fsm.max_iterations > 20:
+                logger.info(f"Limiting simulation to 20 iterations (loop config: {fsm.max_iterations})")
+                fsm.max_iterations = 20
+
+        # Create simulation runner
+        sim_runner = SimulationActionRunner(scenario=args.scenario)
+
+        # Track simulation state
+        states_visited: list[str] = []
+
+        def simulation_callback(event: dict) -> None:
+            """Display simulation progress."""
+            event_type = event.get("event")
+
+            if event_type == "state_enter":
+                iteration = event.get("iteration", 0)
+                state = event.get("state", "")
+                states_visited.append(state)
+                print()
+                print(f"[{iteration}] State: {state}")
+
+            elif event_type == "action_start":
+                action = event.get("action", "")
+                action_display = action[:70] + "..." if len(action) > 70 else action
+                print(f"    Action: {action_display}")
+
+            elif event_type == "evaluate":
+                evaluator = event.get("type", "exit_code")
+                verdict = event.get("verdict", "")
+                print(f"    Evaluator: {evaluator}")
+                print(f"    Result: {verdict.upper()}")
+
+            elif event_type == "route":
+                from_state = event.get("from", "")
+                to_state = event.get("to", "")
+                print(f"    Transition: {from_state} → {to_state}")
+
+        # Print header
+        mode_str = f"scenario={args.scenario}" if args.scenario else "interactive"
+        print(f"=== SIMULATION: {fsm.name} ({mode_str}) ===")
+
+        # Run simulation
+        executor = FSMExecutor(
+            fsm,
+            event_callback=simulation_callback,
+            action_runner=sim_runner,
+        )
+        result = executor.run()
+
+        # Print summary
+        print()
+        print("=== Summary ===")
+        print(f"States visited: {' → '.join(states_visited)}")
+        print(f"Iterations: {result.iterations}")
+        print(f"Would have executed {len(sim_runner.calls)} commands")
+        print(f"Terminated by: {result.terminated_by}")
+
+        return 0
+
     # Dispatch commands
     if args.command == "run":
         return cmd_run(args.loop)
@@ -1139,6 +1250,8 @@ Examples:
         return cmd_history(args.loop)
     elif args.command == "test":
         return cmd_test(args.loop)
+    elif args.command == "simulate":
+        return cmd_simulate(args.loop)
     else:
         parser.print_help()
         return 1
