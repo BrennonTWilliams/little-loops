@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-01-23
 discovered_by: planning
+anchor: scripts/little_loops/issue_history.py::calculate_analysis
 ---
 
 # ENH-116: Hotspot Analysis
@@ -43,7 +44,7 @@ class HotspotAnalysis:
 ### Analysis Function
 
 ```python
-def analyze_hotspots(issues: list[IssueHistory]) -> HotspotAnalysis:
+def analyze_hotspots(issues: list[CompletedIssue]) -> HotspotAnalysis:
     """Identify files and directories that appear repeatedly in issues."""
     # Extract file paths from issue descriptions and affected_files
     # Aggregate by file and directory
@@ -54,7 +55,7 @@ def analyze_hotspots(issues: list[IssueHistory]) -> HotspotAnalysis:
 ### Path Extraction Helper
 
 ```python
-def _extract_paths_from_issue(issue: IssueHistory) -> list[str]:
+def _extract_paths_from_issue(issue: CompletedIssue) -> list[str]:
     """Extract file paths from issue description and affected_files field."""
     # Parse affected_files field
     # Extract paths from description (e.g., `path/to/file.py:123`)
@@ -86,12 +87,12 @@ Hotspot Analysis:
 
 ## Acceptance Criteria
 
-- [ ] `Hotspot` dataclass captures path, counts, and bug ratio
-- [ ] `_extract_paths_from_issue` helper extracts paths reliably
-- [ ] Analysis identifies both file and directory hotspots
-- [ ] Bug magnets highlighted (high bug-to-total ratio)
-- [ ] Churn indicator based on frequency
-- [ ] Output integrated into `ll-history analyze` report
+- [x] `Hotspot` dataclass captures path, counts, and bug ratio
+- [x] `_extract_paths_from_issue` helper extracts paths reliably
+- [x] Analysis identifies both file and directory hotspots
+- [x] Bug magnets highlighted (high bug-to-total ratio)
+- [x] Churn indicator based on frequency
+- [x] Output integrated into `ll-history analyze` report
 
 ## Impact
 
@@ -120,3 +121,24 @@ None - Foundation analysis
 ---
 
 **Priority**: P2 | **Created**: 2026-01-23
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/issue_history.py`: Added `Hotspot` and `HotspotAnalysis` dataclasses, `_extract_paths_from_issue()` helper, and `analyze_hotspots()` function
+- `scripts/little_loops/issue_history.py`: Integrated hotspot analysis into `calculate_analysis()` and `HistoryAnalysis` dataclass
+- `scripts/little_loops/issue_history.py`: Added hotspot sections to `format_analysis_text()` and `format_analysis_markdown()` formatters
+- `scripts/tests/test_issue_history.py`: Added comprehensive tests for all new hotspot functionality
+
+### Verification Results
+
+- Tests: PASS (79 tests)
+- Lint: PASS
+- Types: PASS

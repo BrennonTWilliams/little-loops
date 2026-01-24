@@ -27,6 +27,8 @@ __all__ = [
     # Advanced analysis dataclasses
     "PeriodMetrics",
     "SubsystemHealth",
+    "Hotspot",
+    "HotspotAnalysis",
     "TechnicalDebtMetrics",
     "HistoryAnalysis",
     # Parsing and scanning
@@ -36,6 +38,7 @@ __all__ = [
     # Summary functions
     "calculate_summary",
     "calculate_analysis",
+    "analyze_hotspots",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",
@@ -175,6 +178,46 @@ class SubsystemHealth:
 
 
 @dataclass
+class Hotspot:
+    """A file or directory that appears in multiple issues."""
+
+    path: str
+    issue_count: int = 0
+    issue_ids: list[str] = field(default_factory=list)
+    issue_types: dict[str, int] = field(default_factory=dict)  # {"BUG": 5, "ENH": 3}
+    bug_ratio: float = 0.0  # bugs / total issues
+    churn_indicator: str = "low"  # "high", "medium", "low"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "path": self.path,
+            "issue_count": self.issue_count,
+            "issue_ids": self.issue_ids[:10],  # Top 10
+            "issue_types": self.issue_types,
+            "bug_ratio": round(self.bug_ratio, 3),
+            "churn_indicator": self.churn_indicator,
+        }
+
+
+@dataclass
+class HotspotAnalysis:
+    """Analysis of files and directories appearing repeatedly in issues."""
+
+    file_hotspots: list[Hotspot] = field(default_factory=list)
+    directory_hotspots: list[Hotspot] = field(default_factory=list)
+    bug_magnets: list[Hotspot] = field(default_factory=list)  # >60% bug ratio
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "file_hotspots": [h.to_dict() for h in self.file_hotspots],
+            "directory_hotspots": [h.to_dict() for h in self.directory_hotspots],
+            "bug_magnets": [h.to_dict() for h in self.bug_magnets],
+        }
+
+
+@dataclass
 class TechnicalDebtMetrics:
     """Technical debt health indicators."""
 
@@ -218,6 +261,9 @@ class HistoryAnalysis:
     # Subsystem health
     subsystem_health: list[SubsystemHealth] = field(default_factory=list)
 
+    # Hotspot analysis
+    hotspot_analysis: HotspotAnalysis | None = None
+
     # Technical debt
     debt_metrics: TechnicalDebtMetrics | None = None
 
@@ -243,6 +289,9 @@ class HistoryAnalysis:
             "velocity_trend": self.velocity_trend,
             "bug_ratio_trend": self.bug_ratio_trend,
             "subsystem_health": [s.to_dict() for s in self.subsystem_health],
+            "hotspot_analysis": (
+                self.hotspot_analysis.to_dict() if self.hotspot_analysis else None
+            ),
             "debt_metrics": self.debt_metrics.to_dict() if self.debt_metrics else None,
             "comparison_period": self.comparison_period,
             "previous_period": (
@@ -543,6 +592,37 @@ def _extract_subsystem(content: str) -> str | None:
     return None
 
 
+def _extract_paths_from_issue(content: str) -> list[str]:
+    """Extract all file paths from issue content.
+
+    Args:
+        content: Issue file content
+
+    Returns:
+        List of file paths found in content
+    """
+    patterns = [
+        r"\*\*File\*\*:\s*`?([^`\n:]+)`?",  # **File**: path/to/file.py
+        r"`([a-zA-Z_][\w/.-]+\.[a-z]{2,4})`",  # `path/to/file.py`
+        r"(?:^|\s)([a-zA-Z_][\w/.-]+\.[a-z]{2,4})(?::\d+)?(?:\s|$|:|\))",  # path.py:123
+    ]
+
+    paths: set[str] = set()
+    for pattern in patterns:
+        for match in re.finditer(pattern, content, re.MULTILINE):
+            path = match.group(1).strip()
+            # Must look like a file path
+            if "/" in path or path.endswith(
+                (".py", ".md", ".js", ".ts", ".json", ".yaml", ".yml")
+            ):
+                # Normalize: remove line numbers (path.py:123 -> path.py)
+                if ":" in path and path.split(":")[-1].isdigit():
+                    path = ":".join(path.split(":")[:-1])
+                paths.add(path)
+
+    return sorted(paths)
+
+
 def _calculate_period_label(start: date, period_type: str) -> str:
     """Generate human-readable period label.
 
@@ -737,6 +817,117 @@ def _analyze_subsystems(
     return result[:10]  # Top 10
 
 
+def analyze_hotspots(issues: list[CompletedIssue]) -> HotspotAnalysis:
+    """Identify files and directories that appear repeatedly in issues.
+
+    Args:
+        issues: List of completed issues
+
+    Returns:
+        HotspotAnalysis with file and directory hotspots
+    """
+    file_data: dict[str, dict[str, Any]] = {}  # path -> {count, ids, types}
+    dir_data: dict[str, dict[str, Any]] = {}  # dir -> {count, ids, types}
+
+    for issue in issues:
+        try:
+            content = issue.path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        paths = _extract_paths_from_issue(content)
+
+        for path in paths:
+            # Track file hotspot
+            if path not in file_data:
+                file_data[path] = {"count": 0, "ids": [], "types": {}}
+            file_data[path]["count"] += 1
+            file_data[path]["ids"].append(issue.issue_id)
+            file_data[path]["types"][issue.issue_type] = (
+                file_data[path]["types"].get(issue.issue_type, 0) + 1
+            )
+
+            # Track directory hotspot
+            if "/" in path:
+                dir_path = "/".join(path.split("/")[:-1]) + "/"
+            else:
+                dir_path = "./"
+
+            if dir_path not in dir_data:
+                dir_data[dir_path] = {"count": 0, "ids": [], "types": {}}
+            if issue.issue_id not in dir_data[dir_path]["ids"]:
+                dir_data[dir_path]["count"] += 1
+                dir_data[dir_path]["ids"].append(issue.issue_id)
+                dir_data[dir_path]["types"][issue.issue_type] = (
+                    dir_data[dir_path]["types"].get(issue.issue_type, 0) + 1
+                )
+
+    # Convert to Hotspot objects
+    file_hotspots: list[Hotspot] = []
+    for path, data in file_data.items():
+        bug_count = data["types"].get("BUG", 0)
+        total = data["count"]
+        bug_ratio = bug_count / total if total > 0 else 0.0
+
+        # Determine churn indicator
+        if total >= 5:
+            churn = "high"
+        elif total >= 3:
+            churn = "medium"
+        else:
+            churn = "low"
+
+        file_hotspots.append(
+            Hotspot(
+                path=path,
+                issue_count=total,
+                issue_ids=data["ids"],
+                issue_types=data["types"],
+                bug_ratio=bug_ratio,
+                churn_indicator=churn,
+            )
+        )
+
+    # Convert directory data to Hotspot objects
+    dir_hotspots: list[Hotspot] = []
+    for path, data in dir_data.items():
+        bug_count = data["types"].get("BUG", 0)
+        total = data["count"]
+        bug_ratio = bug_count / total if total > 0 else 0.0
+
+        if total >= 5:
+            churn = "high"
+        elif total >= 3:
+            churn = "medium"
+        else:
+            churn = "low"
+
+        dir_hotspots.append(
+            Hotspot(
+                path=path,
+                issue_count=total,
+                issue_ids=data["ids"],
+                issue_types=data["types"],
+                bug_ratio=bug_ratio,
+                churn_indicator=churn,
+            )
+        )
+
+    # Sort by issue count descending
+    file_hotspots.sort(key=lambda h: -h.issue_count)
+    dir_hotspots.sort(key=lambda h: -h.issue_count)
+
+    # Identify bug magnets (>60% bug ratio, at least 3 issues)
+    bug_magnets = [h for h in file_hotspots if h.bug_ratio > 0.6 and h.issue_count >= 3]
+    bug_magnets.sort(key=lambda h: (-h.bug_ratio, -h.issue_count))
+
+    return HotspotAnalysis(
+        file_hotspots=file_hotspots[:10],  # Top 10
+        directory_hotspots=dir_hotspots[:10],  # Top 10
+        bug_magnets=bug_magnets[:5],  # Top 5
+    )
+
+
 def scan_active_issues(issues_dir: Path) -> list[tuple[Path, str, str, date | None]]:
     """Scan active issue directories.
 
@@ -888,6 +1079,9 @@ def calculate_analysis(
     # Subsystem health
     subsystem_health = _analyze_subsystems(completed_issues)
 
+    # Hotspot analysis
+    hotspot_analysis = analyze_hotspots(completed_issues)
+
     # Technical debt metrics
     debt_metrics = _calculate_debt_metrics(completed_issues, active_issues)
 
@@ -903,6 +1097,7 @@ def calculate_analysis(
         velocity_trend=velocity_trend,
         bug_ratio_trend=bug_ratio_trend,
         subsystem_health=subsystem_health,
+        hotspot_analysis=hotspot_analysis,
         debt_metrics=debt_metrics,
     )
 
@@ -1049,6 +1244,33 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
                 f"{sub.recent_issues:2} recent {trend_symbol}"
             )
 
+    # Hotspot analysis
+    if analysis.hotspot_analysis:
+        hotspots = analysis.hotspot_analysis
+
+        if hotspots.file_hotspots:
+            lines.append("")
+            lines.append("File Hotspots")
+            lines.append("-" * 13)
+            for h in hotspots.file_hotspots[:5]:
+                types_str = ", ".join(
+                    f"{k}:{v}" for k, v in sorted(h.issue_types.items())
+                )
+                churn_flag = " [HIGH CHURN]" if h.churn_indicator == "high" else ""
+                lines.append(
+                    f"  {h.path:40}: {h.issue_count:2} issues ({types_str}){churn_flag}"
+                )
+
+        if hotspots.bug_magnets:
+            lines.append("")
+            lines.append("Bug Magnets (>60% bugs)")
+            lines.append("-" * 23)
+            for h in hotspots.bug_magnets:
+                lines.append(
+                    f"  {h.path}: {h.bug_ratio * 100:.0f}% bugs "
+                    f"({h.issue_types.get('BUG', 0)}/{h.issue_count})"
+                )
+
     # Technical debt
     if analysis.debt_metrics:
         lines.append("")
@@ -1170,6 +1392,53 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
             lines.append(
                 f"| `{sub.subsystem}` | {sub.total_issues} | {sub.recent_issues} | {trend_symbol} |"
             )
+
+    # Hotspot Analysis
+    if analysis.hotspot_analysis:
+        hotspots = analysis.hotspot_analysis
+
+        if hotspots.file_hotspots:
+            lines.append("")
+            lines.append("## File Hotspots")
+            lines.append("")
+            lines.append("| File | Issues | Types | Churn |")
+            lines.append("|------|--------|-------|-------|")
+            for h in hotspots.file_hotspots:
+                types_str = ", ".join(
+                    f"{k}:{v}" for k, v in sorted(h.issue_types.items())
+                )
+                churn_badge = (
+                    "🔥"
+                    if h.churn_indicator == "high"
+                    else ("⚡" if h.churn_indicator == "medium" else "")
+                )
+                lines.append(f"| `{h.path}` | {h.issue_count} | {types_str} | {churn_badge} |")
+
+        if hotspots.directory_hotspots:
+            lines.append("")
+            lines.append("## Directory Hotspots")
+            lines.append("")
+            lines.append("| Directory | Issues | Types |")
+            lines.append("|-----------|--------|-------|")
+            for h in hotspots.directory_hotspots[:5]:
+                types_str = ", ".join(
+                    f"{k}:{v}" for k, v in sorted(h.issue_types.items())
+                )
+                lines.append(f"| `{h.path}` | {h.issue_count} | {types_str} |")
+
+        if hotspots.bug_magnets:
+            lines.append("")
+            lines.append("## Bug Magnets")
+            lines.append("")
+            lines.append("Files with >60% bug ratio that may need refactoring attention:")
+            lines.append("")
+            lines.append("| File | Bug Ratio | Bugs/Total |")
+            lines.append("|------|-----------|------------|")
+            for h in hotspots.bug_magnets:
+                lines.append(
+                    f"| `{h.path}` | {h.bug_ratio * 100:.0f}% | "
+                    f"{h.issue_types.get('BUG', 0)}/{h.issue_count} |"
+                )
 
     # Technical Debt
     if analysis.debt_metrics:

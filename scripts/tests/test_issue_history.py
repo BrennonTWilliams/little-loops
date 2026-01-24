@@ -14,6 +14,10 @@ import pytest
 from little_loops.issue_history import (
     CompletedIssue,
     HistorySummary,
+    Hotspot,
+    HotspotAnalysis,
+    _extract_paths_from_issue,
+    analyze_hotspots,
     calculate_summary,
     format_summary_json,
     format_summary_text,
@@ -998,3 +1002,250 @@ class TestMainHistoryAnalyze:
         assert result == 0
         captured = capsys.readouterr()
         assert "Completed: 0" in captured.out
+
+
+class TestHotspot:
+    """Tests for Hotspot dataclass."""
+
+    def test_to_dict(self) -> None:
+        """Test to_dict serialization."""
+        hotspot = Hotspot(
+            path="src/core/processor.py",
+            issue_count=5,
+            issue_ids=["BUG-001", "BUG-002", "ENH-003", "BUG-004", "ENH-005"],
+            issue_types={"BUG": 3, "ENH": 2},
+            bug_ratio=0.6,
+            churn_indicator="high",
+        )
+        result = hotspot.to_dict()
+
+        assert result["path"] == "src/core/processor.py"
+        assert result["issue_count"] == 5
+        assert result["bug_ratio"] == 0.6
+        assert result["churn_indicator"] == "high"
+        assert result["issue_types"] == {"BUG": 3, "ENH": 2}
+
+    def test_to_dict_limits_issue_ids(self) -> None:
+        """Test that to_dict limits issue_ids to 10."""
+        hotspot = Hotspot(
+            path="test.py",
+            issue_count=15,
+            issue_ids=[f"BUG-{i:03d}" for i in range(15)],
+        )
+        result = hotspot.to_dict()
+
+        assert len(result["issue_ids"]) == 10
+
+
+class TestHotspotAnalysis:
+    """Tests for HotspotAnalysis dataclass."""
+
+    def test_to_dict_empty(self) -> None:
+        """Test to_dict with empty lists."""
+        analysis = HotspotAnalysis()
+        result = analysis.to_dict()
+
+        assert result["file_hotspots"] == []
+        assert result["directory_hotspots"] == []
+        assert result["bug_magnets"] == []
+
+    def test_to_dict_with_hotspots(self) -> None:
+        """Test to_dict with hotspots."""
+        hotspot = Hotspot(path="test.py", issue_count=3)
+        analysis = HotspotAnalysis(file_hotspots=[hotspot])
+        result = analysis.to_dict()
+
+        assert len(result["file_hotspots"]) == 1
+        assert result["file_hotspots"][0]["path"] == "test.py"
+
+
+class TestExtractPathsFromIssue:
+    """Tests for _extract_paths_from_issue function."""
+
+    def test_extract_file_pattern(self) -> None:
+        """Test extracting **File**: pattern."""
+        content = "**File**: `scripts/little_loops/cli.py`"
+        paths = _extract_paths_from_issue(content)
+        assert "scripts/little_loops/cli.py" in paths
+
+    def test_extract_backtick_pattern(self) -> None:
+        """Test extracting backtick file paths."""
+        content = "The bug is in `src/core/processor.py` and `src/utils/helper.py`"
+        paths = _extract_paths_from_issue(content)
+        assert "src/core/processor.py" in paths
+        assert "src/utils/helper.py" in paths
+
+    def test_extract_path_with_line_number(self) -> None:
+        """Test extracting paths with line numbers."""
+        content = "See scripts/cli.py:123 for the issue"
+        paths = _extract_paths_from_issue(content)
+        assert "scripts/cli.py" in paths
+
+    def test_no_paths_found(self) -> None:
+        """Test with no file paths."""
+        content = "This is a general issue with no specific files."
+        paths = _extract_paths_from_issue(content)
+        assert paths == []
+
+    def test_multiple_file_extensions(self) -> None:
+        """Test various file extensions."""
+        content = """
+        config.json
+        readme.md
+        test.yaml
+        app.ts
+        """
+        paths = _extract_paths_from_issue(content)
+        assert "config.json" in paths
+        assert "readme.md" in paths
+        assert "test.yaml" in paths
+        assert "app.ts" in paths
+
+
+class TestAnalyzeHotspots:
+    """Tests for analyze_hotspots function."""
+
+    def test_empty_issues(self) -> None:
+        """Test with empty issues list."""
+        result = analyze_hotspots([])
+        assert result.file_hotspots == []
+        assert result.directory_hotspots == []
+        assert result.bug_magnets == []
+
+    def test_single_issue(self, tmp_path: Path) -> None:
+        """Test with a single issue containing file paths."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("**File**: `src/core/processor.py`\n\nBug in processor.")
+
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+
+        result = analyze_hotspots(issues)
+        assert len(result.file_hotspots) == 1
+        assert result.file_hotspots[0].path == "src/core/processor.py"
+        assert result.file_hotspots[0].issue_count == 1
+
+    def test_bug_magnet_detection(self, tmp_path: Path) -> None:
+        """Test detection of bug magnets (>60% bug ratio)."""
+        # Create 4 issues for same file: 3 bugs, 1 enhancement
+        issues = []
+        for i, issue_type in enumerate(["BUG", "BUG", "BUG", "ENH"]):
+            issue_file = tmp_path / f"P1-{issue_type}-{i:03d}.md"
+            issue_file.write_text("**File**: `src/problematic.py`")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type=issue_type,
+                    priority="P1",
+                    issue_id=f"{issue_type}-{i:03d}",
+                )
+            )
+
+        result = analyze_hotspots(issues)
+        assert len(result.bug_magnets) == 1
+        assert result.bug_magnets[0].path == "src/problematic.py"
+        assert result.bug_magnets[0].bug_ratio == 0.75  # 3/4
+
+    def test_churn_indicator_high(self, tmp_path: Path) -> None:
+        """Test high churn indicator assignment (5+ issues)."""
+        issues = []
+        for i in range(5):
+            issue_file = tmp_path / f"P1-BUG-{i:03d}.md"
+            issue_file.write_text("**File**: `src/churny.py`")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-{i:03d}",
+                )
+            )
+
+        result = analyze_hotspots(issues)
+        assert result.file_hotspots[0].churn_indicator == "high"
+
+    def test_churn_indicator_medium(self, tmp_path: Path) -> None:
+        """Test medium churn indicator assignment (3-4 issues)."""
+        issues = []
+        for i in range(3):
+            issue_file = tmp_path / f"P1-BUG-{i:03d}.md"
+            issue_file.write_text("**File**: `src/moderate.py`")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-{i:03d}",
+                )
+            )
+
+        result = analyze_hotspots(issues)
+        assert result.file_hotspots[0].churn_indicator == "medium"
+
+    def test_churn_indicator_low(self, tmp_path: Path) -> None:
+        """Test low churn indicator assignment (1-2 issues)."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("**File**: `src/stable.py`")
+
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+
+        result = analyze_hotspots(issues)
+        assert result.file_hotspots[0].churn_indicator == "low"
+
+    def test_directory_hotspot(self, tmp_path: Path) -> None:
+        """Test directory hotspot aggregation."""
+        issues = []
+        for i, filename in enumerate(["file1.py", "file2.py"]):
+            issue_file = tmp_path / f"P1-BUG-{i:03d}.md"
+            issue_file.write_text(f"**File**: `src/core/{filename}`")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-{i:03d}",
+                )
+            )
+
+        result = analyze_hotspots(issues)
+        # Should have 2 file hotspots
+        assert len(result.file_hotspots) == 2
+        # Should have 1 directory hotspot with 2 issues
+        dir_hotspot = next(
+            (h for h in result.directory_hotspots if h.path == "src/core/"), None
+        )
+        assert dir_hotspot is not None
+        assert dir_hotspot.issue_count == 2
+
+    def test_bug_magnet_threshold(self, tmp_path: Path) -> None:
+        """Test bug magnet requires at least 3 issues."""
+        # Create 2 issues for same file: 2 bugs (100% but under threshold)
+        issues = []
+        for i in range(2):
+            issue_file = tmp_path / f"P1-BUG-{i:03d}.md"
+            issue_file.write_text("**File**: `src/small.py`")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-{i:03d}",
+                )
+            )
+
+        result = analyze_hotspots(issues)
+        # Should not be a bug magnet (only 2 issues, needs 3+)
+        assert len(result.bug_magnets) == 0
