@@ -40,6 +40,8 @@ __all__ = [
     "AgentOutcome",
     "AgentEffectivenessAnalysis",
     "TechnicalDebtMetrics",
+    "ComplexityProxy",
+    "ComplexityProxyAnalysis",
     "HistoryAnalysis",
     # Parsing and scanning
     "parse_completed_issue",
@@ -54,6 +56,7 @@ __all__ = [
     "analyze_rejection_rates",
     "detect_manual_patterns",
     "analyze_agent_effectiveness",
+    "analyze_complexity_proxy",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",
@@ -73,6 +76,7 @@ class CompletedIssue:
     priority: str  # P0-P5
     issue_id: str  # e.g., BUG-001
     discovered_by: str | None = None
+    discovered_date: date | None = None
     completed_date: date | None = None
 
     def to_dict(self) -> dict[str, Any]:
@@ -83,6 +87,9 @@ class CompletedIssue:
             "priority": self.priority,
             "issue_id": self.issue_id,
             "discovered_by": self.discovered_by,
+            "discovered_date": (
+                self.discovered_date.isoformat() if self.discovered_date else None
+            ),
             "completed_date": (self.completed_date.isoformat() if self.completed_date else None),
         }
 
@@ -540,6 +547,53 @@ class TechnicalDebtMetrics:
 
 
 @dataclass
+class ComplexityProxy:
+    """Duration-based complexity proxy for a file or directory."""
+
+    path: str
+    avg_resolution_days: float
+    median_resolution_days: float
+    issue_count: int
+    slowest_issue: tuple[str, float]  # (issue_id, days)
+    complexity_score: float  # normalized 0-1
+    comparison_to_baseline: str  # "2.1x baseline", etc.
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "path": self.path,
+            "avg_resolution_days": round(self.avg_resolution_days, 1),
+            "median_resolution_days": round(self.median_resolution_days, 1),
+            "issue_count": self.issue_count,
+            "slowest_issue": {
+                "issue_id": self.slowest_issue[0],
+                "days": round(self.slowest_issue[1], 1),
+            },
+            "complexity_score": round(self.complexity_score, 3),
+            "comparison_to_baseline": self.comparison_to_baseline,
+        }
+
+
+@dataclass
+class ComplexityProxyAnalysis:
+    """Analysis using issue duration as complexity proxy."""
+
+    file_complexity: list[ComplexityProxy] = field(default_factory=list)
+    directory_complexity: list[ComplexityProxy] = field(default_factory=list)
+    baseline_days: float = 0.0  # median across all issues
+    complexity_outliers: list[str] = field(default_factory=list)  # files >2x baseline
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "file_complexity": [c.to_dict() for c in self.file_complexity[:10]],
+            "directory_complexity": [c.to_dict() for c in self.directory_complexity[:10]],
+            "baseline_days": round(self.baseline_days, 1),
+            "complexity_outliers": self.complexity_outliers[:10],
+        }
+
+
+@dataclass
 class HistoryAnalysis:
     """Complete history analysis report."""
 
@@ -580,6 +634,9 @@ class HistoryAnalysis:
 
     # Agent effectiveness analysis
     agent_effectiveness_analysis: AgentEffectivenessAnalysis | None = None
+
+    # Complexity proxy analysis
+    complexity_proxy_analysis: ComplexityProxyAnalysis | None = None
 
     # Technical debt
     debt_metrics: TechnicalDebtMetrics | None = None
@@ -627,6 +684,11 @@ class HistoryAnalysis:
                 if self.agent_effectiveness_analysis
                 else None
             ),
+            "complexity_proxy_analysis": (
+                self.complexity_proxy_analysis.to_dict()
+                if self.complexity_proxy_analysis
+                else None
+            ),
             "debt_metrics": self.debt_metrics.to_dict() if self.debt_metrics else None,
             "comparison_period": self.comparison_period,
             "previous_period": (self.previous_period.to_dict() if self.previous_period else None),
@@ -667,8 +729,9 @@ def parse_completed_issue(file_path: Path) -> CompletedIssue:
         issue_type = type_match.group(1)
         issue_id = f"{type_match.group(1)}-{type_match.group(2)}"
 
-    # Parse frontmatter for discovered_by
+    # Parse frontmatter for discovered_by and discovered_date
     discovered_by = _parse_discovered_by(content)
+    discovered_date = _parse_discovered_date(content)
 
     # Parse completion date from Resolution section or file mtime
     completed_date = _parse_completion_date(content, file_path)
@@ -679,6 +742,7 @@ def parse_completed_issue(file_path: Path) -> CompletedIssue:
         priority=priority,
         issue_id=issue_id,
         discovered_by=discovered_by,
+        discovered_date=discovered_date,
         completed_date=completed_date,
     )
 
@@ -2100,6 +2164,159 @@ def scan_active_issues(issues_dir: Path) -> list[tuple[Path, str, str, date | No
     return results
 
 
+def analyze_complexity_proxy(
+    issues: list[CompletedIssue],
+    hotspots: HotspotAnalysis,
+) -> ComplexityProxyAnalysis:
+    """Use issue duration as proxy for code complexity.
+
+    Areas that consistently take longer to resolve suggest higher complexity,
+    insufficient documentation, or accumulated technical debt.
+
+    Args:
+        issues: List of completed issues with dates
+        hotspots: Pre-computed hotspot analysis for path information
+
+    Returns:
+        ComplexityProxyAnalysis with duration-based complexity metrics
+    """
+    # Calculate durations for all issues with both dates
+    issue_durations: dict[str, float] = {}  # issue_id -> days
+    for issue in issues:
+        if issue.discovered_date and issue.completed_date:
+            delta = issue.completed_date - issue.discovered_date
+            days = float(delta.days)
+            if days >= 0:  # Sanity check
+                issue_durations[issue.issue_id] = days
+
+    if not issue_durations:
+        return ComplexityProxyAnalysis()
+
+    # Calculate baseline (median duration)
+    all_durations = sorted(issue_durations.values())
+    n = len(all_durations)
+    if n % 2 == 0:
+        baseline_days = (all_durations[n // 2 - 1] + all_durations[n // 2]) / 2
+    else:
+        baseline_days = all_durations[n // 2]
+
+    if baseline_days == 0:
+        baseline_days = 1.0  # Avoid division by zero
+
+    # Map issues to their affected files by reading issue content
+    issue_to_files: dict[str, list[str]] = {}
+    for issue in issues:
+        if issue.issue_id in issue_durations:
+            try:
+                content = issue.path.read_text(encoding="utf-8")
+                paths = _extract_paths_from_issue(content)
+                if paths:
+                    issue_to_files[issue.issue_id] = paths
+            except Exception:
+                continue
+
+    # Aggregate durations by file
+    file_durations: dict[str, list[tuple[str, float]]] = {}  # path -> [(issue_id, days), ...]
+    for issue_id, files in issue_to_files.items():
+        days = issue_durations[issue_id]
+        for f in files:
+            if f not in file_durations:
+                file_durations[f] = []
+            file_durations[f].append((issue_id, days))
+
+    # Aggregate durations by directory
+    dir_durations: dict[str, list[tuple[str, float]]] = {}
+    for path, entries in file_durations.items():
+        dir_path = "/".join(path.split("/")[:-1]) + "/" if "/" in path else "./"
+        if dir_path not in dir_durations:
+            dir_durations[dir_path] = []
+        dir_durations[dir_path].extend(entries)
+
+    # Build file complexity proxies
+    file_complexity: list[ComplexityProxy] = []
+    for path, entries in file_durations.items():
+        if len(entries) < 2:  # Need at least 2 data points
+            continue
+
+        durations = [d for _, d in entries]
+        avg = sum(durations) / len(durations)
+        sorted_d = sorted(durations)
+        median = sorted_d[len(sorted_d) // 2]
+        slowest = max(entries, key=lambda x: x[1])
+
+        # Normalize complexity score (0-1 based on how much slower than baseline)
+        ratio = avg / baseline_days
+        complexity_score = min(1.0, (ratio - 1) / 4)  # 5x slower = 1.0
+        complexity_score = max(0.0, complexity_score)
+
+        comparison = f"{ratio:.1f}x baseline" if ratio >= 1.5 else "near baseline"
+
+        file_complexity.append(
+            ComplexityProxy(
+                path=path,
+                avg_resolution_days=avg,
+                median_resolution_days=median,
+                issue_count=len(entries),
+                slowest_issue=slowest,
+                complexity_score=complexity_score,
+                comparison_to_baseline=comparison,
+            )
+        )
+
+    # Build directory complexity proxies
+    directory_complexity: list[ComplexityProxy] = []
+    for dir_path, entries in dir_durations.items():
+        if len(entries) < 3:  # Need at least 3 data points for directories
+            continue
+
+        # Deduplicate by issue_id for directory-level stats
+        unique_entries: dict[str, float] = {}
+        for issue_id, days in entries:
+            if issue_id not in unique_entries or days > unique_entries[issue_id]:
+                unique_entries[issue_id] = days
+
+        entries_list = list(unique_entries.items())
+        durations = list(unique_entries.values())
+        avg = sum(durations) / len(durations)
+        sorted_d = sorted(durations)
+        median = sorted_d[len(sorted_d) // 2]
+        slowest = max(entries_list, key=lambda x: x[1])
+
+        ratio = avg / baseline_days
+        complexity_score = min(1.0, (ratio - 1) / 4)
+        complexity_score = max(0.0, complexity_score)
+
+        comparison = f"{ratio:.1f}x baseline" if ratio >= 1.5 else "near baseline"
+
+        directory_complexity.append(
+            ComplexityProxy(
+                path=dir_path,
+                avg_resolution_days=avg,
+                median_resolution_days=median,
+                issue_count=len(unique_entries),
+                slowest_issue=slowest,
+                complexity_score=complexity_score,
+                comparison_to_baseline=comparison,
+            )
+        )
+
+    # Sort by complexity score descending
+    file_complexity.sort(key=lambda c: -c.complexity_score)
+    directory_complexity.sort(key=lambda c: -c.complexity_score)
+
+    # Identify outliers (>2x baseline)
+    complexity_outliers = [
+        c.path for c in file_complexity if c.avg_resolution_days > baseline_days * 2
+    ]
+
+    return ComplexityProxyAnalysis(
+        file_complexity=file_complexity[:10],
+        directory_complexity=directory_complexity[:10],
+        baseline_days=baseline_days,
+        complexity_outliers=complexity_outliers[:10],
+    )
+
+
 def _calculate_debt_metrics(
     completed_issues: list[CompletedIssue],
     active_issues: list[tuple[Path, str, str, date | None]],
@@ -2226,6 +2443,9 @@ def calculate_analysis(
     # Agent effectiveness analysis
     agent_effectiveness_analysis = analyze_agent_effectiveness(completed_issues)
 
+    # Complexity proxy analysis
+    complexity_proxy_analysis = analyze_complexity_proxy(completed_issues, hotspot_analysis)
+
     # Technical debt metrics
     debt_metrics = _calculate_debt_metrics(completed_issues, active_issues)
 
@@ -2248,6 +2468,7 @@ def calculate_analysis(
         rejection_analysis=rejection_analysis,
         manual_pattern_analysis=manual_pattern_analysis,
         agent_effectiveness_analysis=agent_effectiveness_analysis,
+        complexity_proxy_analysis=complexity_proxy_analysis,
         debt_metrics=debt_metrics,
     )
 
@@ -2624,6 +2845,46 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
                     lines.append(f"    - {issue_type}: best handled by {best_agent}")
                 for agent, issue_type, reason in aea.problematic_combinations[:3]:
                     lines.append(f"    - {agent} underperforms for {issue_type} ({reason})")
+
+    # Complexity proxy analysis
+    if analysis.complexity_proxy_analysis:
+        cpa = analysis.complexity_proxy_analysis
+
+        lines.append("")
+        lines.append("Complexity Proxy Analysis")
+        lines.append("-" * 25)
+        lines.append(f"  Baseline resolution time: {cpa.baseline_days:.1f} days (median)")
+
+        if cpa.file_complexity:
+            lines.append("")
+            lines.append("  High Complexity Files (by resolution time):")
+            for i, cp in enumerate(cpa.file_complexity[:5], 1):
+                score_label = (
+                    "HIGH"
+                    if cp.complexity_score >= 0.7
+                    else "MEDIUM"
+                    if cp.complexity_score >= 0.4
+                    else "LOW"
+                )
+                lines.append(f"  {i}. {cp.path}")
+                lines.append(f"     Avg: {cp.avg_resolution_days:.1f} days ({cp.comparison_to_baseline})")
+                lines.append(f"     Median: {cp.median_resolution_days:.1f} days, Issues: {cp.issue_count}")
+                lines.append(f"     Slowest: {cp.slowest_issue[0]} ({cp.slowest_issue[1]:.1f} days)")
+                lines.append(f"     Complexity score: {cp.complexity_score:.2f} [{score_label}]")
+
+        if cpa.directory_complexity:
+            lines.append("")
+            lines.append("  High Complexity Directories:")
+            for cp in cpa.directory_complexity[:5]:
+                lines.append(
+                    f"    {cp.path}: avg {cp.avg_resolution_days:.1f} days ({cp.comparison_to_baseline})"
+                )
+
+        if cpa.complexity_outliers:
+            lines.append("")
+            lines.append("  Complexity Outliers (>2x baseline):")
+            for path in cpa.complexity_outliers[:5]:
+                lines.append(f"    - {path}")
 
     # Technical debt
     if analysis.debt_metrics:

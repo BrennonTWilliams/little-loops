@@ -15,6 +15,8 @@ from little_loops.issue_history import (
     AgentEffectivenessAnalysis,
     AgentOutcome,
     CompletedIssue,
+    ComplexityProxy,
+    ComplexityProxyAnalysis,
     CouplingAnalysis,
     CouplingPair,
     HistorySummary,
@@ -32,6 +34,7 @@ from little_loops.issue_history import (
     _extract_paths_from_issue,
     _parse_resolution_action,
     analyze_agent_effectiveness,
+    analyze_complexity_proxy,
     analyze_coupling,
     analyze_hotspots,
     analyze_regression_clustering,
@@ -2890,3 +2893,217 @@ class TestAnalyzeAgentEffectiveness:
         assert len(result.outcomes) == 3
         agent_names = {o.agent_name for o in result.outcomes}
         assert agent_names == {"ll-auto", "ll-parallel", "manual"}
+
+
+class TestComplexityProxy:
+    """Tests for ComplexityProxy dataclass."""
+
+    def test_to_dict(self) -> None:
+        """Test to_dict serialization."""
+        proxy = ComplexityProxy(
+            path="src/core/processor.py",
+            avg_resolution_days=6.8,
+            median_resolution_days=5.2,
+            issue_count=12,
+            slowest_issue=("BUG-031", 14.5),
+            complexity_score=0.89,
+            comparison_to_baseline="2.7x baseline",
+        )
+        result = proxy.to_dict()
+
+        assert result["path"] == "src/core/processor.py"
+        assert result["avg_resolution_days"] == 6.8
+        assert result["median_resolution_days"] == 5.2
+        assert result["issue_count"] == 12
+        assert result["slowest_issue"]["issue_id"] == "BUG-031"
+        assert result["slowest_issue"]["days"] == 14.5
+        assert result["complexity_score"] == 0.89
+        assert result["comparison_to_baseline"] == "2.7x baseline"
+
+
+class TestComplexityProxyAnalysis:
+    """Tests for ComplexityProxyAnalysis dataclass."""
+
+    def test_to_dict_empty(self) -> None:
+        """Test to_dict with empty lists."""
+        analysis = ComplexityProxyAnalysis()
+        result = analysis.to_dict()
+
+        assert result["file_complexity"] == []
+        assert result["directory_complexity"] == []
+        assert result["baseline_days"] == 0.0
+        assert result["complexity_outliers"] == []
+
+    def test_to_dict_with_data(self) -> None:
+        """Test to_dict with complexity data."""
+        proxy = ComplexityProxy(
+            path="test.py",
+            avg_resolution_days=5.0,
+            median_resolution_days=4.0,
+            issue_count=3,
+            slowest_issue=("BUG-001", 8.0),
+            complexity_score=0.5,
+            comparison_to_baseline="2.0x baseline",
+        )
+        analysis = ComplexityProxyAnalysis(
+            file_complexity=[proxy],
+            baseline_days=2.5,
+            complexity_outliers=["test.py"],
+        )
+        result = analysis.to_dict()
+
+        assert len(result["file_complexity"]) == 1
+        assert result["baseline_days"] == 2.5
+        assert result["complexity_outliers"] == ["test.py"]
+
+
+class TestAnalyzeComplexityProxy:
+    """Tests for analyze_complexity_proxy function."""
+
+    def test_empty_issues(self) -> None:
+        """Test with empty issues list."""
+        result = analyze_complexity_proxy([], HotspotAnalysis())
+        assert result.file_complexity == []
+        assert result.directory_complexity == []
+        assert result.baseline_days == 0.0
+
+    def test_issues_without_dates(self, tmp_path: Path) -> None:
+        """Test with issues missing discovered_date."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("**File**: `src/test.py`\n\nBug description.")
+
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 15),
+                # No discovered_date
+            )
+        ]
+
+        result = analyze_complexity_proxy(issues, HotspotAnalysis())
+        assert result.file_complexity == []  # No duration calculable
+
+    def test_duration_calculation(self, tmp_path: Path) -> None:
+        """Test that durations are calculated correctly."""
+        # Create two issues for same file with different durations
+        issues = []
+        for i, (disc, comp) in enumerate(
+            [
+                (date(2026, 1, 1), date(2026, 1, 5)),  # 4 days
+                (date(2026, 1, 10), date(2026, 1, 20)),  # 10 days
+            ]
+        ):
+            issue_file = tmp_path / f"P1-BUG-{i:03d}.md"
+            issue_file.write_text("**File**: `src/complex.py`\n\nBug in complex code.")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-{i:03d}",
+                    discovered_date=disc,
+                    completed_date=comp,
+                )
+            )
+
+        result = analyze_complexity_proxy(issues, HotspotAnalysis())
+
+        # Should have file complexity for src/complex.py
+        assert len(result.file_complexity) == 1
+        fc = result.file_complexity[0]
+        assert fc.path == "src/complex.py"
+        assert fc.avg_resolution_days == 7.0  # (4 + 10) / 2
+        assert fc.issue_count == 2
+
+    def test_outlier_detection(self, tmp_path: Path) -> None:
+        """Test that outliers >2x baseline are detected."""
+        issues = []
+        # Create 3 issues: 2 fast (2 days each), 1 slow (10 days)
+        durations = [
+            (date(2026, 1, 1), date(2026, 1, 3), "fast1.py"),  # 2 days
+            (date(2026, 1, 1), date(2026, 1, 3), "fast2.py"),  # 2 days
+            (date(2026, 1, 1), date(2026, 1, 11), "slow.py"),  # 10 days
+        ]
+        for i, (disc, comp, file) in enumerate(durations):
+            issue_file = tmp_path / f"P1-BUG-{i:03d}.md"
+            issue_file.write_text(f"**File**: `src/{file}`\n\nBug.")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-{i:03d}",
+                    discovered_date=disc,
+                    completed_date=comp,
+                )
+            )
+        # Add duplicate issues for same files to meet 2-issue threshold
+        for i, (disc, comp, file) in enumerate(durations):
+            issue_file = tmp_path / f"P1-ENH-{i:03d}.md"
+            issue_file.write_text(f"**File**: `src/{file}`\n\nEnhancement.")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="ENH",
+                    priority="P1",
+                    issue_id=f"ENH-{i:03d}",
+                    discovered_date=disc,
+                    completed_date=comp,
+                )
+            )
+
+        result = analyze_complexity_proxy(issues, HotspotAnalysis())
+
+        # Baseline should be 2 days (median of [2, 2, 2, 2, 10, 10])
+        # slow.py at 10 days should be an outlier (>4 days = 2x baseline)
+        assert "src/slow.py" in result.complexity_outliers
+
+    def test_single_issue_per_file_excluded(self, tmp_path: Path) -> None:
+        """Test that files with only 1 issue are excluded from file complexity."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("**File**: `src/single.py`\n\nBug.")
+
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                discovered_date=date(2026, 1, 1),
+                completed_date=date(2026, 1, 5),
+            )
+        ]
+
+        result = analyze_complexity_proxy(issues, HotspotAnalysis())
+
+        # Should have no file complexity (need at least 2 data points)
+        assert len(result.file_complexity) == 0
+        # But baseline should still be calculated
+        assert result.baseline_days == 4.0
+
+    def test_baseline_calculation(self, tmp_path: Path) -> None:
+        """Test baseline is calculated as median."""
+        issues = []
+        # 5 issues with durations: 1, 2, 3, 4, 10 days
+        # Median should be 3
+        for i, days in enumerate([1, 2, 3, 4, 10]):
+            issue_file = tmp_path / f"P1-BUG-{i:03d}.md"
+            issue_file.write_text(f"**File**: `src/file{i}.py`\n\nBug.")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-{i:03d}",
+                    discovered_date=date(2026, 1, 1),
+                    completed_date=date(2026, 1, 1) + timedelta(days=days),
+                )
+            )
+
+        result = analyze_complexity_proxy(issues, HotspotAnalysis())
+
+        # Median of [1, 2, 3, 4, 10] = 3
+        assert result.baseline_days == 3.0
