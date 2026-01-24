@@ -83,3 +83,21 @@ Then update the paradigm compilers to accept and use explicit evaluator configs.
 ## Status
 
 **Open** | Created: 2026-01-23 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md`: Added evaluator selection questions after check command collection for goal, invariants, and imperative paradigms. Added conditional follow-up questions for output_contains (pattern selection) and output_numeric (condition selection). Updated YAML templates to include evaluator configuration. Enhanced FSM preview to show evaluator info.
+- `scripts/little_loops/fsm/compilers.py`: Added `_build_evaluate_config()` helper function. Updated `compile_goal()` to accept and pass evaluator config to StateConfig. Updated `compile_invariants()` to accept per-constraint evaluator config. Updated `compile_imperative()` to accept evaluator config for exit condition.
+- `scripts/tests/test_fsm_compilers.py`: Added comprehensive `TestEvaluatorSupport` class with 13 test cases covering all paradigms and evaluator types.
+
+### Verification Results
+- Tests: PASS (67 tests passed)
+- Lint: PASS
+- Types: PASS
