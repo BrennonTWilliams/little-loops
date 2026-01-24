@@ -11,12 +11,16 @@ The `/ll:create_sprint` command documents naming conventions but doesn't enforce
 
 ## Context
 
-Lines 47-49 of the command document naming requirements:
+Lines 59-62 of the command document naming requirements:
 - Must be non-empty
 - Should use lowercase letters, numbers, and hyphens only
 - Suggested format: `sprint-N`, `q1-features`, `bug-fixes-week-1`
 
-However, there's no validation step to enforce these rules before creating the sprint file.
+However, while these requirements are documented, there's no validation logic to enforce these rules before creating the sprint file. The current documentation at lines 59-62 only states what names "should" be, without providing actual enforcement code.
+
+### Anchor
+- File: `commands/create_sprint.md`
+- Anchor: `**Validate sprint name:**`
 
 ## Current Behavior
 
@@ -73,7 +77,7 @@ questions:
 
 | Category | Document | Relevance |
 |----------|----------|-----------|
-| commands | commands/create_sprint.md | Target file (lines 47-49) |
+| commands | commands/create_sprint.md | Target file (lines 59-62, anchor: `**Validate sprint name:**`) |
 
 ## Labels
 
@@ -83,4 +87,24 @@ questions:
 
 ## Status
 
-**Open** | Created: 2026-01-24 | Priority: P4
+**Completed** | Created: 2026-01-24 | Priority: P4
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-24
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_sprint.md`: Added comprehensive sprint name validation logic including:
+  - Validation rules (non-empty, pattern matching, no consecutive hyphens)
+  - Auto-suggestion algorithm for correcting invalid names
+  - Example corrections table
+  - AskUserQuestion flow for empty names
+  - AskUserQuestion flow for invalid names with options to accept suggestion, enter different name, or use original
+
+### Verification Results
+- Lint: PASS
+- Types: PASS

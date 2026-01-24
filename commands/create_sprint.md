@@ -61,6 +61,68 @@ SPRINT_ISSUES="${issues:-}"
 - Should use lowercase letters, numbers, and hyphens only
 - Suggest format: `sprint-N`, `q1-features`, `bug-fixes-week-1`
 
+**Validation rules:**
+1. Must be non-empty
+2. Must match pattern: `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` (or single char `^[a-z0-9]$`)
+3. No consecutive hyphens (`--`)
+4. No leading or trailing hyphens
+
+**If name is invalid**, auto-generate a suggested correction:
+- Convert to lowercase
+- Replace spaces and underscores with hyphens
+- Remove invalid characters (keep only `a-z`, `0-9`, `-`)
+- Collapse consecutive hyphens to single hyphen
+- Trim leading/trailing hyphens
+
+**Example corrections:**
+
+| Input | Issue | Suggestion |
+|-------|-------|------------|
+| `Sprint 1` | Uppercase and space | `sprint-1` |
+| `--test--` | Leading/trailing hyphens | `test` |
+| `Q1_bugs` | Uppercase and underscore | `q1-bugs` |
+| `my..sprint` | Invalid characters | `my-sprint` |
+| `` (empty) | Empty name | Prompt user to provide name |
+
+**If name is empty**, use AskUserQuestion to prompt for a name:
+
+```yaml
+questions:
+  - question: "Sprint name is required. What should the sprint be called?"
+    header: "Name"
+    multiSelect: false
+    options:
+      - label: "sprint-1"
+        description: "Default sequential name"
+      - label: "q1-features"
+        description: "Quarterly feature sprint"
+      - label: "bug-fixes"
+        description: "Bug fix sprint"
+```
+
+Then re-validate the provided name.
+
+**If name is invalid (non-empty but fails validation)**, use AskUserQuestion:
+
+```yaml
+questions:
+  - question: "Sprint name '${SPRINT_NAME}' is invalid: ${REASON}. How would you like to proceed?"
+    header: "Fix name"
+    multiSelect: false
+    options:
+      - label: "Use '${SUGGESTED_NAME}' (Recommended)"
+        description: "Auto-corrected name following conventions"
+      - label: "Enter different name"
+        description: "Provide your own valid name"
+      - label: "Use original anyway"
+        description: "May cause issues with ll-sprint CLI"
+```
+
+**Based on user response:**
+- **"Use '${SUGGESTED_NAME}'"**: Update `SPRINT_NAME` to the suggested value and continue
+- **"Enter different name"**: Prompt for new name and re-validate
+- **"Use original anyway"**: Continue with original name (warn about potential issues)
+
 ### 2. Gather Issue List
 
 If `issues` argument was provided, use it directly.
