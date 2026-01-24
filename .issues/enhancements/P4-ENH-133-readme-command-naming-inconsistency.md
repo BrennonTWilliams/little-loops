@@ -6,7 +6,7 @@ discovered_by: audit_docs
 doc_file: README.md
 ---
 
-# ENH-128: README.md command naming inconsistency (create-loop vs create_loop)
+# ENH-133: README.md command naming inconsistency (create-loop vs create_loop)
 
 ## Summary
 

@@ -22,11 +22,14 @@ pip install /path/to/little-loops/scripts
 | `little_loops.issue_discovery` | Issue discovery and deduplication |
 | `little_loops.issue_manager` | Sequential automation |
 | `little_loops.issue_lifecycle` | Issue lifecycle operations |
+| `little_loops.issue_history` | Issue history and statistics |
 | `little_loops.git_operations` | Git utilities |
+| `little_loops.dependency_graph` | Dependency graph construction |
 | `little_loops.work_verification` | Verification helpers |
 | `little_loops.subprocess_utils` | Subprocess handling |
 | `little_loops.state` | State persistence |
 | `little_loops.logger` | Logging utilities |
+| `little_loops.logo` | CLI logo display |
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.workflow_sequence_analyzer` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.cli` | CLI entry points |

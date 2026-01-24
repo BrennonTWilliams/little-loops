@@ -75,6 +75,11 @@ little-loops/
 ├── commands/             # Slash command templates (*.md)
 ├── agents/               # 8 agent definitions (*.md)
 ├── hooks/                # Lifecycle hooks
+├── skills/               # 4 skill definitions
+│   ├── analyze-history/
+│   ├── capture-issue/
+│   ├── issue-workflow/
+│   └── workflow-automation-proposer/
 ├── templates/            # Project-type config templates
 ├── docs/                 # Documentation
 │   ├── TROUBLESHOOTING.md  # Common issues and solutions
@@ -93,21 +98,26 @@ little-loops/
         ├── issue_parser.py
         ├── issue_discovery.py  # Issue discovery and deduplication
         ├── issue_lifecycle.py
+        ├── issue_history.py         # Issue history and statistics
         ├── git_operations.py
         ├── work_verification.py
+        ├── sprint.py                # Sprint planning and execution
         ├── subprocess_utils.py
         ├── logger.py
         ├── logo.py              # CLI logo display
         ├── dependency_graph.py  # Dependency graph construction
         ├── user_messages.py     # User message extraction
         ├── fsm/                  # FSM loop system
+        │   ├── __init__.py
         │   ├── schema.py
         │   ├── compilers.py
         │   ├── evaluators.py
         │   ├── executor.py
         │   ├── interpolation.py
         │   ├── validation.py
-        │   └── persistence.py
+        │   ├── persistence.py
+        │   ├── signal_detector.py
+        │   └── handoff_handler.py
         └── parallel/     # Parallel processing module
             ├── orchestrator.py
             ├── worker_pool.py

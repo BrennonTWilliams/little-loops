@@ -19,21 +19,23 @@ Multiple documentation files have outdated directory structure diagrams that don
 
 Missing from directory structure:
 - `skills/` directory (4 skills: analyze-history, capture-issue, issue-workflow, workflow-automation-proposer)
-- `fsm/signal_detector.py`
-- `fsm/handoff_handler.py`
+
+Note: `fsm/signal_detector.py` and `fsm/handoff_handler.py` are already documented at lines 130-131.
 
 ### 2. CONTRIBUTING.md (Lines 71-119)
 
 Missing from project structure:
 - `skills/` directory with 4 skills
+- `fsm/signal_detector.py` and `fsm/handoff_handler.py` in the fsm/ directory listing
+- `issue_history.py` module
 
 ### 3. docs/API.md (Lines 16-36)
 
 Missing from Module Overview table:
 - `little_loops.issue_history` module
 - `little_loops.logo` module
-- `little_loops.fsm.signal_detector` module
-- `little_loops.fsm.handoff_handler` module
+
+Note: FSM submodules (signal_detector, handoff_handler) are covered by the `little_loops.fsm` entry, following the same pattern as `little_loops.parallel`.
 
 ## Current Structure (Partial)
 
@@ -92,10 +94,9 @@ little-loops/
 
 ## Implementation Notes
 
-1. Update ARCHITECTURE.md directory structure diagram
-2. Update CONTRIBUTING.md project structure
-3. Add module entries to API.md Module Overview table
-4. Consider adding basic documentation for new modules in API.md
+1. Update ARCHITECTURE.md directory structure diagram - add `skills/` directory
+2. Update CONTRIBUTING.md project structure - add `skills/`, FSM modules, and `issue_history.py`
+3. Add `issue_history` and `logo` module entries to API.md Module Overview table
 
 ## Impact
 
@@ -111,4 +112,37 @@ little-loops/
 
 ## Status
 
-**Open** | Created: 2026-01-23 | Priority: P3
+**Completed** | Created: 2026-01-23 | Completed: 2026-01-23 | Priority: P3
+
+---
+
+## Verification Notes
+
+**Validated**: 2026-01-23 by `/ll:ready_issue`
+
+- Confirmed `skills/` directory exists with 4 skills
+- Confirmed `fsm/signal_detector.py` and `fsm/handoff_handler.py` exist
+- Confirmed `issue_history.py` and `logo.py` modules exist
+- Verified line numbers in affected documentation files are accurate
+- Corrected issue: ARCHITECTURE.md already documents FSM modules at lines 130-131
+- Corrected issue: FSM submodules follow existing pattern (covered by parent package entry)
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `docs/ARCHITECTURE.md`: Added `skills/` directory with 4 skills to directory structure
+- `CONTRIBUTING.md`: Added `skills/` directory, FSM modules (signal_detector.py, handoff_handler.py, __init__.py), and Python modules (issue_history.py, sprint.py)
+- `docs/API.md`: Added module entries for issue_history, logo, and dependency_graph
+
+### Additional Fixes
+- Renamed duplicate `P4-ENH-128-readme-command-naming-inconsistency.md` to `P4-ENH-133` to resolve ID collision
+
+### Verification Results
+- Documentation changes verified by visual inspection
+- All referenced files/modules exist in the codebase

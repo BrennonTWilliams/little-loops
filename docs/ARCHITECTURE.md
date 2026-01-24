@@ -89,6 +89,15 @@ little-loops/
 │       ├── session-cleanup.sh
 │       ├── session-start.sh
 │       └── user-prompt-check.sh
+├── skills/                  # 4 skill definitions
+│   ├── analyze-history/
+│   │   └── SKILL.md
+│   ├── capture-issue/
+│   │   └── SKILL.md
+│   ├── issue-workflow/
+│   │   └── SKILL.md
+│   └── workflow-automation-proposer/
+│       └── SKILL.md
 ├── templates/               # Project type configs
 │   ├── python-generic.json
 │   ├── javascript.json
