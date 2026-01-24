@@ -58,3 +58,28 @@ FSM-based automation loop execution (create loops with `/ll:create_loop`):
 ## Status
 
 **Open** | Created: 2026-01-23 | Priority: P4
+
+---
+
+## Verification Notes
+
+**Validated**: 2026-01-23 by `/ll:ready_issue`
+
+- Confirmed `README.md` line 301 uses underscore (`/ll:create_loop`) ✓
+- Confirmed `README.md` line 357 uses hyphen (`/ll:create-loop`) - inconsistency verified ✓
+- Confirmed `commands/create_loop.md` exists (underscore version is correct)
+- Line numbers are accurate as of current code
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `README.md`: Fixed line 357 to use `/ll:create_loop` (underscore) instead of `/ll:create-loop` (hyphen)
+
+### Verification Results
+- Visual inspection: PASS - Both references now use consistent underscore naming

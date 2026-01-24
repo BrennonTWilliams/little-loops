@@ -354,7 +354,7 @@ ll-auto --config /path/to/repo   # Specify project root
 
 ### ll-loop
 
-FSM-based automation loop execution (create loops with `/ll:create-loop`):
+FSM-based automation loop execution (create loops with `/ll:create_loop`):
 
 ```bash
 ll-loop run <loop-name>          # Execute a loop by name
