@@ -62,6 +62,12 @@ def sample_config() -> dict[str, Any]:
             "ready_command": "ready_issue {{issue_id}}",
             "manage_command": "manage_issue {{issue_type}} {{action}} {{issue_id}}",
         },
+        "sprints": {
+            "sprints_dir": ".sprints",
+            "default_mode": "auto",
+            "default_timeout": 3600,
+            "default_max_workers": 4,
+        },
     }
 
 

@@ -24,6 +24,7 @@ __all__ = [
     "ParallelAutomationConfig",
     "CommandsConfig",
     "ScanConfig",
+    "SprintsConfig",
     "REQUIRED_CATEGORIES",
     "DEFAULT_CATEGORIES",
 ]
@@ -281,6 +282,26 @@ class ScanConfig:
         )
 
 
+@dataclass
+class SprintsConfig:
+    """Sprint management configuration."""
+
+    sprints_dir: str = ".sprints"
+    default_mode: str = "auto"
+    default_timeout: int = 3600
+    default_max_workers: int = 4
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SprintsConfig:
+        """Create SprintsConfig from dictionary."""
+        return cls(
+            sprints_dir=data.get("sprints_dir", ".sprints"),
+            default_mode=data.get("default_mode", "auto"),
+            default_timeout=data.get("default_timeout", 3600),
+            default_max_workers=data.get("default_max_workers", 4),
+        )
+
+
 class BRConfig:
     """Main configuration class for little-loops.
 
@@ -326,6 +347,7 @@ class BRConfig:
         self._parallel = ParallelAutomationConfig.from_dict(self._raw_config.get("parallel", {}))
         self._commands = CommandsConfig.from_dict(self._raw_config.get("commands", {}))
         self._scan = ScanConfig.from_dict(self._raw_config.get("scan", {}))
+        self._sprints = SprintsConfig.from_dict(self._raw_config.get("sprints", {}))
 
     @property
     def project(self) -> ProjectConfig:
@@ -356,6 +378,11 @@ class BRConfig:
     def scan(self) -> ScanConfig:
         """Get scan configuration."""
         return self._scan
+
+    @property
+    def sprints(self) -> SprintsConfig:
+        """Get sprints configuration."""
+        return self._sprints
 
     @property
     def repo_path(self) -> Path:
@@ -552,6 +579,12 @@ class BRConfig:
                 "focus_dirs": self._scan.focus_dirs,
                 "exclude_patterns": self._scan.exclude_patterns,
                 "custom_agents": self._scan.custom_agents,
+            },
+            "sprints": {
+                "sprints_dir": self._sprints.sprints_dir,
+                "default_mode": self._sprints.default_mode,
+                "default_timeout": self._sprints.default_timeout,
+                "default_max_workers": self._sprints.default_max_workers,
             },
         }
 

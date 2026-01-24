@@ -156,12 +156,32 @@ class SprintManager:
         """Initialize SprintManager.
 
         Args:
-            sprints_dir: Directory for sprint definitions (default: .sprints/)
-            config: Project configuration for issue validation (optional)
+            sprints_dir: Directory for sprint definitions (overrides config)
+            config: Project configuration for settings and issue validation
         """
-        self.sprints_dir = sprints_dir or Path(".sprints")
         self.config = config
+        # Derive sprints_dir: explicit arg > config > default
+        if sprints_dir is not None:
+            self.sprints_dir = sprints_dir
+        elif config is not None:
+            self.sprints_dir = Path(config.sprints.sprints_dir)
+        else:
+            self.sprints_dir = Path(".sprints")
         self.sprints_dir.mkdir(parents=True, exist_ok=True)
+
+    def get_default_options(self) -> SprintOptions:
+        """Get default SprintOptions from config or hardcoded defaults.
+
+        Returns:
+            SprintOptions with values from config if available, else defaults
+        """
+        if self.config is not None:
+            return SprintOptions(
+                mode=self.config.sprints.default_mode,
+                timeout=self.config.sprints.default_timeout,
+                max_workers=self.config.sprints.default_max_workers,
+            )
+        return SprintOptions()
 
     def create(
         self,

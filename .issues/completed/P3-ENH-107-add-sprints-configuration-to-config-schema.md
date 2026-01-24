@@ -15,8 +15,8 @@ Identified during audit of the `/ll:create_sprint` slash command. Other features
 
 ## Current Behavior
 
-- `SprintManager` defaults to `.sprints/` (hardcoded in `sprint.py:162`)
-- Command documentation says `.sprints/` (hardcoded in `create_sprint.md:24`)
+- `SprintManager` defaults to `.sprints/` (hardcoded in `scripts/little_loops/sprint.py:162`)
+- Command documentation says `.sprints/` (hardcoded in `.claude/commands/create_sprint.md:24`)
 - No configuration options in `config-schema.json`
 
 ## Expected Behavior
@@ -78,3 +78,24 @@ Add a `sprints` section to `config-schema.json`:
 ---
 
 **Priority**: P3 | **Created**: 2026-01-22
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `config-schema.json`: Added `sprints` configuration section with `sprints_dir`, `default_mode`, `default_timeout`, `default_max_workers` properties
+- `scripts/little_loops/config.py`: Added `SprintsConfig` dataclass with `from_dict()` classmethod, integrated into `BRConfig` class with property accessor and `to_dict()` serialization
+- `scripts/little_loops/sprint.py`: Updated `SprintManager` to read `sprints_dir` from config, added `get_default_options()` helper method
+- `scripts/tests/test_config.py`: Added `TestSprintsConfig` test class
+- `scripts/tests/conftest.py`: Added `sprints` section to `sample_config` fixture
+- `.claude/commands/create_sprint.md`: Updated documentation to reference configurable settings
+
+### Verification Results
+- Tests: PASS (47 config tests, 25 sprint tests)
+- Lint: PASS
+- Types: PASS

@@ -17,6 +17,7 @@ from little_loops.config import (
     ParallelAutomationConfig,
     ProjectConfig,
     ScanConfig,
+    SprintsConfig,
 )
 
 
@@ -251,6 +252,34 @@ class TestScanConfig:
         assert "**/node_modules/**" in config.exclude_patterns
         assert "**/__pycache__/**" in config.exclude_patterns
         assert config.custom_agents == []
+
+
+class TestSprintsConfig:
+    """Tests for SprintsConfig dataclass."""
+
+    def test_from_dict_with_all_fields(self) -> None:
+        """Test creating SprintsConfig with all fields."""
+        data = {
+            "sprints_dir": "custom-sprints/",
+            "default_mode": "parallel",
+            "default_timeout": 7200,
+            "default_max_workers": 8,
+        }
+        config = SprintsConfig.from_dict(data)
+
+        assert config.sprints_dir == "custom-sprints/"
+        assert config.default_mode == "parallel"
+        assert config.default_timeout == 7200
+        assert config.default_max_workers == 8
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating SprintsConfig with default values."""
+        config = SprintsConfig.from_dict({})
+
+        assert config.sprints_dir == ".sprints"
+        assert config.default_mode == "auto"
+        assert config.default_timeout == 3600
+        assert config.default_max_workers == 4
 
 
 class TestBRConfig:

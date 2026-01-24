@@ -18,10 +18,17 @@ You are tasked with creating sprint definitions for the little-loops project. Sp
 
 ## Configuration
 
-Read settings from `.claude/ll-config.json` under `issues`:
+Read settings from `.claude/ll-config.json`:
+
+**Issues settings** (under `issues`):
 - `base_dir`: Issues directory (default: `.issues`)
 - `categories`: Issue categories (default: `bugs`, `features`, `enhancements`)
-- **Sprints directory**: `.sprints/`
+
+**Sprints settings** (under `sprints`):
+- `sprints_dir`: Directory for sprint definitions (default: `.sprints`)
+- `default_mode`: Default execution mode - `auto` (sequential) or `parallel` (default: `auto`)
+- `default_timeout`: Default timeout per issue in seconds (default: `3600`)
+- `default_max_workers`: Default worker count for parallel mode (default: `4`)
 
 ## Process
 
