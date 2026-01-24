@@ -15,6 +15,8 @@ from little_loops.issue_history import (
     AgentEffectivenessAnalysis,
     AgentOutcome,
     CompletedIssue,
+    CouplingAnalysis,
+    CouplingPair,
     HistorySummary,
     Hotspot,
     HotspotAnalysis,
@@ -30,6 +32,7 @@ from little_loops.issue_history import (
     _extract_paths_from_issue,
     _parse_resolution_action,
     analyze_agent_effectiveness,
+    analyze_coupling,
     analyze_hotspots,
     analyze_regression_clustering,
     analyze_rejection_rates,
@@ -291,9 +294,7 @@ class TestCalculateSummary:
         """Test discovery source counting."""
         issues = [
             CompletedIssue(Path("a.md"), "BUG", "P1", "BUG-1", discovered_by="manual"),
-            CompletedIssue(
-                Path("b.md"), "BUG", "P1", "BUG-2", discovered_by="scan_codebase"
-            ),
+            CompletedIssue(Path("b.md"), "BUG", "P1", "BUG-2", discovered_by="scan_codebase"),
             CompletedIssue(Path("c.md"), "BUG", "P1", "BUG-3"),  # None -> "unknown"
         ]
 
@@ -306,15 +307,9 @@ class TestCalculateSummary:
     def test_date_range(self) -> None:
         """Test date range calculation."""
         issues = [
-            CompletedIssue(
-                Path("a.md"), "BUG", "P1", "BUG-1", completed_date=date(2026, 1, 5)
-            ),
-            CompletedIssue(
-                Path("b.md"), "BUG", "P1", "BUG-2", completed_date=date(2026, 1, 10)
-            ),
-            CompletedIssue(
-                Path("c.md"), "BUG", "P1", "BUG-3", completed_date=date(2026, 1, 1)
-            ),
+            CompletedIssue(Path("a.md"), "BUG", "P1", "BUG-1", completed_date=date(2026, 1, 5)),
+            CompletedIssue(Path("b.md"), "BUG", "P1", "BUG-2", completed_date=date(2026, 1, 10)),
+            CompletedIssue(Path("c.md"), "BUG", "P1", "BUG-3", completed_date=date(2026, 1, 1)),
         ]
 
         summary = calculate_summary(issues)
@@ -439,16 +434,16 @@ class TestMainHistoryIntegration:
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
 
-        with patch.object(
-            sys, "argv", ["ll-history", "summary", "-d", str(tmp_path / ".issues")]
-        ):
+        with patch.object(sys, "argv", ["ll-history", "summary", "-d", str(tmp_path / ".issues")]):
             from little_loops.cli import main_history
 
             result = main_history()
 
         assert result == 0
 
-    def test_main_history_summary_json(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_main_history_summary_json(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Test main_history summary --json output."""
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
@@ -468,16 +463,16 @@ class TestMainHistoryIntegration:
         assert data["total_count"] == 1
         assert data["type_counts"]["BUG"] == 1
 
-    def test_main_history_summary_text(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_main_history_summary_text(
+        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """Test main_history summary text output."""
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
         (completed_dir / "P1-BUG-001-test.md").write_text("# BUG-001\n")
         (completed_dir / "P2-ENH-002-test.md").write_text("# ENH-002\n")
 
-        with patch.object(
-            sys, "argv", ["ll-history", "summary", "-d", str(tmp_path / ".issues")]
-        ):
+        with patch.object(sys, "argv", ["ll-history", "summary", "-d", str(tmp_path / ".issues")]):
             from little_loops.cli import main_history
 
             result = main_history()
@@ -906,9 +901,7 @@ class TestAnalyzeArgumentParsing:
 
     def test_analyze_combined(self) -> None:
         """Test multiple flags together."""
-        args = self._parse_history_args(
-            ["analyze", "-f", "markdown", "-p", "weekly", "-c", "14"]
-        )
+        args = self._parse_history_args(["analyze", "-f", "markdown", "-p", "weekly", "-c", "14"])
         assert args.format == "markdown"
         assert args.period == "weekly"
         assert args.compare == 14
@@ -1241,9 +1234,7 @@ class TestAnalyzeHotspots:
         # Should have 2 file hotspots
         assert len(result.file_hotspots) == 2
         # Should have 1 directory hotspot with 2 issues
-        dir_hotspot = next(
-            (h for h in result.directory_hotspots if h.path == "src/core/"), None
-        )
+        dir_hotspot = next((h for h in result.directory_hotspots if h.path == "src/core/"), None)
         assert dir_hotspot is not None
         assert dir_hotspot.issue_count == 2
 
@@ -1266,6 +1257,290 @@ class TestAnalyzeHotspots:
         result = analyze_hotspots(issues)
         # Should not be a bug magnet (only 2 issues, needs 3+)
         assert len(result.bug_magnets) == 0
+
+
+class TestCouplingPair:
+    """Tests for CouplingPair dataclass."""
+
+    def test_to_dict(self) -> None:
+        """Test to_dict serialization."""
+        pair = CouplingPair(
+            file_a="src/a.py",
+            file_b="src/b.py",
+            co_occurrence_count=5,
+            coupling_strength=0.75,
+            issue_ids=["BUG-001", "BUG-002"],
+        )
+        result = pair.to_dict()
+
+        assert result["file_a"] == "src/a.py"
+        assert result["file_b"] == "src/b.py"
+        assert result["co_occurrence_count"] == 5
+        assert result["coupling_strength"] == 0.75
+        assert result["issue_ids"] == ["BUG-001", "BUG-002"]
+
+    def test_to_dict_limits_issue_ids(self) -> None:
+        """Test to_dict limits issue_ids to 10."""
+        pair = CouplingPair(
+            file_a="src/a.py",
+            file_b="src/b.py",
+            co_occurrence_count=15,
+            coupling_strength=0.9,
+            issue_ids=[f"BUG-{i:03d}" for i in range(15)],
+        )
+        result = pair.to_dict()
+        assert len(result["issue_ids"]) == 10
+
+
+class TestCouplingAnalysis:
+    """Tests for CouplingAnalysis dataclass."""
+
+    def test_to_dict_empty(self) -> None:
+        """Test to_dict with empty analysis."""
+        analysis = CouplingAnalysis()
+        result = analysis.to_dict()
+
+        assert result["pairs"] == []
+        assert result["clusters"] == []
+        assert result["hotspots"] == []
+
+    def test_to_dict_with_data(self) -> None:
+        """Test to_dict with populated analysis."""
+        pair = CouplingPair(
+            file_a="src/a.py",
+            file_b="src/b.py",
+            co_occurrence_count=3,
+            coupling_strength=0.6,
+        )
+        analysis = CouplingAnalysis(
+            pairs=[pair],
+            clusters=[["src/a.py", "src/b.py"]],
+            hotspots=["src/hub.py"],
+        )
+        result = analysis.to_dict()
+
+        assert len(result["pairs"]) == 1
+        assert result["pairs"][0]["file_a"] == "src/a.py"
+        assert result["clusters"] == [["src/a.py", "src/b.py"]]
+        assert result["hotspots"] == ["src/hub.py"]
+
+
+class TestAnalyzeCoupling:
+    """Tests for analyze_coupling function."""
+
+    def test_empty_issues(self) -> None:
+        """Test with empty issues list."""
+        result = analyze_coupling([])
+        assert result.pairs == []
+        assert result.clusters == []
+        assert result.hotspots == []
+
+    def test_coupling_detected(self, tmp_path: Path) -> None:
+        """Test detection of coupled files."""
+        # Create 3 issues where src/a.py and src/b.py appear together
+        issues = []
+        for i in range(3):
+            issue_file = tmp_path / f"P1-BUG-{i:03d}.md"
+            issue_file.write_text("**File**: `src/a.py`\n**File**: `src/b.py`\nBug in both.")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-{i:03d}",
+                )
+            )
+
+        result = analyze_coupling(issues)
+        assert len(result.pairs) >= 1
+        pair = result.pairs[0]
+        assert {pair.file_a, pair.file_b} == {"src/a.py", "src/b.py"}
+        assert pair.co_occurrence_count == 3
+        assert pair.coupling_strength == 1.0  # Perfect coupling (3/3 union)
+
+    def test_no_coupling_single_occurrence(self, tmp_path: Path) -> None:
+        """Test that single co-occurrence is not reported."""
+        # Files appear together only once
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("**File**: `src/a.py`\n**File**: `src/b.py`")
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+
+        result = analyze_coupling(issues)
+        assert len(result.pairs) == 0  # Requires 2+ co-occurrences
+
+    def test_weak_coupling_filtered(self, tmp_path: Path) -> None:
+        """Test that weak coupling (< 0.3) is filtered out."""
+        # Create issues where files have low Jaccard similarity
+        # a.py appears in 5 issues, b.py in 5 different issues, with only 2 overlap
+        # Jaccard = 2 / (5 + 5 - 2) = 2/8 = 0.25
+        issues = []
+        for i in range(5):
+            issue_file = tmp_path / f"P1-BUG-A{i:03d}.md"
+            issue_file.write_text("**File**: `src/a.py`")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-A{i:03d}",
+                )
+            )
+
+        for i in range(5):
+            issue_file = tmp_path / f"P1-BUG-B{i:03d}.md"
+            issue_file.write_text("**File**: `src/b.py`")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-B{i:03d}",
+                )
+            )
+
+        # Add 2 issues where both appear (co-occurrence)
+        for i in range(2):
+            issue_file = tmp_path / f"P1-BUG-AB{i:03d}.md"
+            issue_file.write_text("**File**: `src/a.py`\n**File**: `src/b.py`")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-AB{i:03d}",
+                )
+            )
+
+        result = analyze_coupling(issues)
+        # With 2 co-occurrences but Jaccard = 2/(7+7-2) = 2/12 = 0.167 < 0.3
+        # Should be filtered out
+        matching_pairs = [
+            p for p in result.pairs if {p.file_a, p.file_b} == {"src/a.py", "src/b.py"}
+        ]
+        assert len(matching_pairs) == 0
+
+    def test_coupling_hotspot_detection(self, tmp_path: Path) -> None:
+        """Test detection of coupling hotspots (files coupled with 3+ others)."""
+        # Create issues where src/hub.py is coupled with 3 different files
+        # Each pair appears in exactly the same issues to get Jaccard = 1.0
+        issues = []
+
+        # Create 2 issues where hub.py + a.py appear (Jaccard = 1.0)
+        for i in range(2):
+            issue_file = tmp_path / f"P1-BUG-HA{i}.md"
+            issue_file.write_text("**File**: `src/hub.py`\n**File**: `src/a.py`")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-HA{i}",
+                )
+            )
+
+        # Create 2 issues where hub.py + b.py appear (separate issues)
+        for i in range(2):
+            issue_file = tmp_path / f"P1-BUG-HB{i}.md"
+            issue_file.write_text("**File**: `src/hub.py`\n**File**: `src/b.py`")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-HB{i}",
+                )
+            )
+
+        # Create 2 issues where hub.py + c.py appear (separate issues)
+        for i in range(2):
+            issue_file = tmp_path / f"P1-BUG-HC{i}.md"
+            issue_file.write_text("**File**: `src/hub.py`\n**File**: `src/c.py`")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-HC{i}",
+                )
+            )
+
+        result = analyze_coupling(issues)
+        # hub.py is coupled with 3 other files (a, b, c), so it should be a hotspot
+        assert "src/hub.py" in result.hotspots
+
+    def test_cluster_formation(self, tmp_path: Path) -> None:
+        """Test that highly coupled files form clusters."""
+        # Create a triangle of files that all appear together
+        # (a, b, c) all appear in same 3 issues -> all pairwise strength = 1.0
+        issues = []
+        for i in range(3):
+            issue_file = tmp_path / f"P1-BUG-{i:03d}.md"
+            issue_file.write_text(
+                "**File**: `src/a.py`\n**File**: `src/b.py`\n**File**: `src/c.py`"
+            )
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-{i:03d}",
+                )
+            )
+
+        result = analyze_coupling(issues)
+        # Should have at least 1 cluster containing all three files
+        assert len(result.clusters) >= 1
+        # The cluster should contain all three files
+        cluster = result.clusters[0]
+        assert set(cluster) == {"src/a.py", "src/b.py", "src/c.py"}
+
+    def test_coupling_strength_calculation(self, tmp_path: Path) -> None:
+        """Test Jaccard similarity calculation."""
+        # a.py in issues 1, 2, 3 (3 issues)
+        # b.py in issues 2, 3 (2 issues)
+        # co-occurrence = 2 (issues 2, 3)
+        # union = 3 (issues 1, 2, 3)
+        # Jaccard = 2/3 = 0.667
+        issues = []
+
+        # Issue 1: only a.py
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("**File**: `src/a.py`")
+        issues.append(
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        )
+
+        # Issues 2 and 3: both a.py and b.py
+        for i in range(2, 4):
+            issue_file = tmp_path / f"P1-BUG-{i:03d}.md"
+            issue_file.write_text("**File**: `src/a.py`\n**File**: `src/b.py`")
+            issues.append(
+                CompletedIssue(
+                    path=issue_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-{i:03d}",
+                )
+            )
+
+        result = analyze_coupling(issues)
+        assert len(result.pairs) == 1
+        pair = result.pairs[0]
+        assert pair.co_occurrence_count == 2
+        # Jaccard = 2/3 ~ 0.667
+        assert abs(pair.coupling_strength - 0.667) < 0.01
 
 
 class TestRegressionCluster:
@@ -2354,8 +2629,7 @@ ruff check
         if len(result.patterns) >= 2:
             for i in range(len(result.patterns) - 1):
                 assert (
-                    result.patterns[i].occurrence_count
-                    >= result.patterns[i + 1].occurrence_count
+                    result.patterns[i].occurrence_count >= result.patterns[i + 1].occurrence_count
                 )
 
 
@@ -2468,9 +2742,7 @@ class TestAnalyzeAgentEffectiveness:
     def test_single_completed_issue(self, tmp_path: Path) -> None:
         """Test with single completed issue."""
         issue_file = tmp_path / "P1-BUG-001.md"
-        issue_file.write_text(
-            "**Log Type**: ll-auto\n\n## Resolution\n\n- **Action**: fix\n"
-        )
+        issue_file.write_text("**Log Type**: ll-auto\n\n## Resolution\n\n- **Action**: fix\n")
         issues = [
             CompletedIssue(
                 path=issue_file,
@@ -2496,15 +2768,9 @@ class TestAnalyzeAgentEffectiveness:
         issue3.write_text("**Tool**: ll-auto\n- **Action**: improve")
 
         issues = [
-            CompletedIssue(
-                path=issue1, issue_type="BUG", priority="P1", issue_id="BUG-001"
-            ),
-            CompletedIssue(
-                path=issue2, issue_type="BUG", priority="P1", issue_id="BUG-002"
-            ),
-            CompletedIssue(
-                path=issue3, issue_type="ENH", priority="P1", issue_id="ENH-001"
-            ),
+            CompletedIssue(path=issue1, issue_type="BUG", priority="P1", issue_id="BUG-001"),
+            CompletedIssue(path=issue2, issue_type="BUG", priority="P1", issue_id="BUG-002"),
+            CompletedIssue(path=issue3, issue_type="ENH", priority="P1", issue_id="ENH-001"),
         ]
         result = analyze_agent_effectiveness(issues)
 
@@ -2584,9 +2850,7 @@ class TestAnalyzeAgentEffectiveness:
             if i < 2:
                 issue.write_text("**Tool**: ll-auto\n- **Action**: fix")
             else:
-                issue.write_text(
-                    "**Tool**: ll-auto\n- **Status**: Closed\n- **Reason**: rejected"
-                )
+                issue.write_text("**Tool**: ll-auto\n- **Status**: Closed\n- **Reason**: rejected")
 
         issues = [
             CompletedIssue(
@@ -2616,15 +2880,9 @@ class TestAnalyzeAgentEffectiveness:
         issue3.write_text("Regular issue content\n- **Action**: fix")  # manual
 
         issues = [
-            CompletedIssue(
-                path=issue1, issue_type="BUG", priority="P1", issue_id="BUG-001"
-            ),
-            CompletedIssue(
-                path=issue2, issue_type="BUG", priority="P1", issue_id="BUG-002"
-            ),
-            CompletedIssue(
-                path=issue3, issue_type="BUG", priority="P1", issue_id="BUG-003"
-            ),
+            CompletedIssue(path=issue1, issue_type="BUG", priority="P1", issue_id="BUG-001"),
+            CompletedIssue(path=issue2, issue_type="BUG", priority="P1", issue_id="BUG-002"),
+            CompletedIssue(path=issue3, issue_type="BUG", priority="P1", issue_id="BUG-003"),
         ]
         result = analyze_agent_effectiveness(issues)
 

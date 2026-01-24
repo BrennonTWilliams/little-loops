@@ -83,9 +83,7 @@ class CompletedIssue:
             "priority": self.priority,
             "issue_id": self.issue_id,
             "discovered_by": self.discovered_by,
-            "completed_date": (
-                self.completed_date.isoformat() if self.completed_date else None
-            ),
+            "completed_date": (self.completed_date.isoformat() if self.completed_date else None),
         }
 
 
@@ -121,9 +119,7 @@ class HistorySummary:
             "type_counts": self.type_counts,
             "priority_counts": self.priority_counts,
             "discovery_counts": self.discovery_counts,
-            "earliest_date": (
-                self.earliest_date.isoformat() if self.earliest_date else None
-            ),
+            "earliest_date": (self.earliest_date.isoformat() if self.earliest_date else None),
             "latest_date": self.latest_date.isoformat() if self.latest_date else None,
             "date_range_days": self.date_range_days,
             "velocity": round(self.velocity, 2) if self.velocity else None,
@@ -229,6 +225,44 @@ class HotspotAnalysis:
             "file_hotspots": [h.to_dict() for h in self.file_hotspots],
             "directory_hotspots": [h.to_dict() for h in self.directory_hotspots],
             "bug_magnets": [h.to_dict() for h in self.bug_magnets],
+        }
+
+
+@dataclass
+class CouplingPair:
+    """A pair of files that frequently appear together in issues."""
+
+    file_a: str
+    file_b: str
+    co_occurrence_count: int = 0
+    coupling_strength: float = 0.0  # 0-1, Jaccard similarity
+    issue_ids: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "file_a": self.file_a,
+            "file_b": self.file_b,
+            "co_occurrence_count": self.co_occurrence_count,
+            "coupling_strength": round(self.coupling_strength, 3),
+            "issue_ids": self.issue_ids[:10],  # Top 10
+        }
+
+
+@dataclass
+class CouplingAnalysis:
+    """Analysis of files that frequently change together."""
+
+    pairs: list[CouplingPair] = field(default_factory=list)
+    clusters: list[list[str]] = field(default_factory=list)  # Groups of coupled files
+    hotspots: list[str] = field(default_factory=list)  # Files coupled with 3+ others
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "pairs": [p.to_dict() for p in self.pairs],
+            "clusters": self.clusters[:10],  # Top 10 clusters
+            "hotspots": self.hotspots[:10],  # Top 10 hotspots
         }
 
 
@@ -529,6 +563,9 @@ class HistoryAnalysis:
     # Hotspot analysis
     hotspot_analysis: HotspotAnalysis | None = None
 
+    # Coupling analysis
+    coupling_analysis: CouplingAnalysis | None = None
+
     # Regression clustering analysis
     regression_analysis: RegressionAnalysis | None = None
 
@@ -561,9 +598,7 @@ class HistoryAnalysis:
             "date_range_start": (
                 self.date_range_start.isoformat() if self.date_range_start else None
             ),
-            "date_range_end": (
-                self.date_range_end.isoformat() if self.date_range_end else None
-            ),
+            "date_range_end": (self.date_range_end.isoformat() if self.date_range_end else None),
             "summary": self.summary.to_dict(),
             "period_metrics": [p.to_dict() for p in self.period_metrics],
             "velocity_trend": self.velocity_trend,
@@ -571,6 +606,9 @@ class HistoryAnalysis:
             "subsystem_health": [s.to_dict() for s in self.subsystem_health],
             "hotspot_analysis": (
                 self.hotspot_analysis.to_dict() if self.hotspot_analysis else None
+            ),
+            "coupling_analysis": (
+                self.coupling_analysis.to_dict() if self.coupling_analysis else None
             ),
             "regression_analysis": (
                 self.regression_analysis.to_dict() if self.regression_analysis else None
@@ -582,9 +620,7 @@ class HistoryAnalysis:
                 self.rejection_analysis.to_dict() if self.rejection_analysis else None
             ),
             "manual_pattern_analysis": (
-                self.manual_pattern_analysis.to_dict()
-                if self.manual_pattern_analysis
-                else None
+                self.manual_pattern_analysis.to_dict() if self.manual_pattern_analysis else None
             ),
             "agent_effectiveness_analysis": (
                 self.agent_effectiveness_analysis.to_dict()
@@ -593,12 +629,8 @@ class HistoryAnalysis:
             ),
             "debt_metrics": self.debt_metrics.to_dict() if self.debt_metrics else None,
             "comparison_period": self.comparison_period,
-            "previous_period": (
-                self.previous_period.to_dict() if self.previous_period else None
-            ),
-            "current_period": (
-                self.current_period.to_dict() if self.current_period else None
-            ),
+            "previous_period": (self.previous_period.to_dict() if self.previous_period else None),
+            "current_period": (self.current_period.to_dict() if self.current_period else None),
         }
 
 
@@ -854,9 +886,7 @@ def calculate_summary(issues: list[CompletedIssue]) -> HistorySummary:
     # Sort counts for consistent output
     type_counts = dict(sorted(type_counts.items()))
     priority_counts = dict(sorted(priority_counts.items()))
-    discovery_counts = dict(
-        sorted(discovery_counts.items(), key=lambda x: (-x[1], x[0]))
-    )
+    discovery_counts = dict(sorted(discovery_counts.items(), key=lambda x: (-x[1], x[0])))
 
     return HistorySummary(
         total_count=len(issues),
@@ -885,9 +915,7 @@ def format_summary_text(summary: HistorySummary) -> str:
 
     if summary.earliest_date and summary.latest_date:
         days = summary.date_range_days or 0
-        lines.append(
-            f"Date Range: {summary.earliest_date} to {summary.latest_date} ({days} days)"
-        )
+        lines.append(f"Date Range: {summary.earliest_date} to {summary.latest_date} ({days} days)")
         if summary.velocity:
             lines.append(f"Velocity: {summary.velocity:.1f} issues/day")
 
@@ -1002,9 +1030,7 @@ def _extract_paths_from_issue(content: str) -> list[str]:
         for match in re.finditer(pattern, content, re.MULTILINE):
             path = match.group(1).strip()
             # Must look like a file path
-            if "/" in path or path.endswith(
-                (".py", ".md", ".js", ".ts", ".json", ".yaml", ".yml")
-            ):
+            if "/" in path or path.endswith((".py", ".md", ".js", ".ts", ".json", ".yaml", ".yml")):
                 # Normalize: remove line numbers (path.py:123 -> path.py)
                 if ":" in path and path.split(":")[-1].isdigit():
                     path = ":".join(path.split(":")[:-1])
@@ -1365,6 +1391,132 @@ def analyze_hotspots(issues: list[CompletedIssue]) -> HotspotAnalysis:
     )
 
 
+def analyze_coupling(issues: list[CompletedIssue]) -> CouplingAnalysis:
+    """Identify files that frequently change together across issues.
+
+    Uses Jaccard similarity to calculate coupling strength between file pairs.
+    Files with coupling strength >= 0.3 and at least 2 co-occurrences are included.
+
+    Args:
+        issues: List of completed issues
+
+    Returns:
+        CouplingAnalysis with coupled pairs, clusters, and hotspots
+    """
+    # Build file -> set of issue IDs mapping
+    file_to_issues: dict[str, set[str]] = {}
+
+    for issue in issues:
+        try:
+            content = issue.path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        paths = _extract_paths_from_issue(content)
+        for path in paths:
+            if path not in file_to_issues:
+                file_to_issues[path] = set()
+            file_to_issues[path].add(issue.issue_id)
+
+    # Calculate pairwise coupling
+    files = list(file_to_issues.keys())
+    pairs: list[CouplingPair] = []
+
+    for i, file_a in enumerate(files):
+        for file_b in files[i + 1 :]:
+            a_issues = file_to_issues[file_a]
+            b_issues = file_to_issues[file_b]
+            co_occur = a_issues & b_issues
+            union = a_issues | b_issues
+
+            if len(co_occur) < 2:  # Require at least 2 co-occurrences
+                continue
+
+            # Jaccard similarity
+            strength = len(co_occur) / len(union) if union else 0.0
+
+            if strength >= 0.3:  # Only include significant coupling
+                pairs.append(
+                    CouplingPair(
+                        file_a=file_a,
+                        file_b=file_b,
+                        co_occurrence_count=len(co_occur),
+                        coupling_strength=strength,
+                        issue_ids=sorted(co_occur),
+                    )
+                )
+
+    # Sort by coupling strength descending
+    pairs.sort(key=lambda p: (-p.coupling_strength, -p.co_occurrence_count))
+
+    # Build clusters using simple connected components
+    clusters = _build_coupling_clusters(pairs)
+
+    # Identify hotspots (files coupled with 3+ others)
+    file_coupling_count: dict[str, int] = {}
+    for pair in pairs:
+        file_coupling_count[pair.file_a] = file_coupling_count.get(pair.file_a, 0) + 1
+        file_coupling_count[pair.file_b] = file_coupling_count.get(pair.file_b, 0) + 1
+
+    hotspots = [f for f, count in file_coupling_count.items() if count >= 3]
+    hotspots.sort(key=lambda f: -file_coupling_count[f])
+
+    return CouplingAnalysis(
+        pairs=pairs[:20],  # Top 20 pairs
+        clusters=clusters[:10],  # Top 10 clusters
+        hotspots=hotspots[:10],  # Top 10 hotspots
+    )
+
+
+def _build_coupling_clusters(pairs: list[CouplingPair]) -> list[list[str]]:
+    """Build clusters of coupled files using connected components.
+
+    Args:
+        pairs: List of coupling pairs
+
+    Returns:
+        List of file clusters (each cluster is a list of file paths)
+    """
+    # Build adjacency for high-coupling pairs (strength >= 0.5)
+    adjacency: dict[str, set[str]] = {}
+    for pair in pairs:
+        if pair.coupling_strength >= 0.5:
+            if pair.file_a not in adjacency:
+                adjacency[pair.file_a] = set()
+            if pair.file_b not in adjacency:
+                adjacency[pair.file_b] = set()
+            adjacency[pair.file_a].add(pair.file_b)
+            adjacency[pair.file_b].add(pair.file_a)
+
+    # Find connected components
+    visited: set[str] = set()
+    clusters: list[list[str]] = []
+
+    for start in adjacency:
+        if start in visited:
+            continue
+        # BFS to find component
+        cluster: list[str] = []
+        queue = [start]
+        while queue:
+            node = queue.pop(0)
+            if node in visited:
+                continue
+            visited.add(node)
+            cluster.append(node)
+            for neighbor in adjacency.get(node, set()):
+                if neighbor not in visited:
+                    queue.append(neighbor)
+
+        if len(cluster) >= 2:  # Only include clusters with 2+ files
+            cluster.sort()
+            clusters.append(cluster)
+
+    # Sort clusters by size descending
+    clusters.sort(key=lambda c: -len(c))
+    return clusters
+
+
 def analyze_regression_clustering(
     issues: list[CompletedIssue],
 ) -> RegressionAnalysis:
@@ -1564,19 +1716,13 @@ def analyze_test_gaps(
     gaps.sort(key=lambda g: (-g.gap_score, -g.bug_count))
 
     # Calculate averages for correlation
-    avg_with_tests = (
-        sum(files_with_tests) / len(files_with_tests) if files_with_tests else 0.0
-    )
+    avg_with_tests = sum(files_with_tests) / len(files_with_tests) if files_with_tests else 0.0
     avg_without_tests = (
-        sum(files_without_tests) / len(files_without_tests)
-        if files_without_tests
-        else 0.0
+        sum(files_without_tests) / len(files_without_tests) if files_without_tests else 0.0
     )
 
     # Identify untested bug magnets (from hotspot analysis)
-    untested_magnets = [
-        h.path for h in hotspots.bug_magnets if _find_test_file(h.path) is None
-    ]
+    untested_magnets = [h.path for h in hotspots.bug_magnets if _find_test_file(h.path) is None]
 
     # Priority test targets: untested files sorted by bug count
     priority_targets = [g.source_file for g in gaps if not g.has_test_file]
@@ -1898,9 +2044,7 @@ def analyze_agent_effectiveness(issues: list[CompletedIssue]) -> AgentEffectiven
                 f"{outcome.success_rate * 100:.0f}% success "
                 f"({outcome.success_count}/{outcome.total_count})"
             )
-            problematic_combinations.append(
-                (outcome.agent_name, outcome.issue_type, reason)
-            )
+            problematic_combinations.append((outcome.agent_name, outcome.issue_type, reason))
 
     # Sort by success rate ascending (worst first)
     problematic_combinations.sort(key=lambda x: float(x[2].split("%")[0]))
@@ -1992,9 +2136,7 @@ def _calculate_debt_metrics(
     four_weeks_ago = today - timedelta(days=28)
 
     completed_recently = sum(
-        1
-        for i in completed_issues
-        if i.completed_date and i.completed_date >= four_weeks_ago
+        1 for i in completed_issues if i.completed_date and i.completed_date >= four_weeks_ago
     )
 
     created_recently = sum(1 for _, _, _, d in active_issues if d and d >= four_weeks_ago)
@@ -2066,6 +2208,9 @@ def calculate_analysis(
     # Hotspot analysis
     hotspot_analysis = analyze_hotspots(completed_issues)
 
+    # Coupling analysis
+    coupling_analysis = analyze_coupling(completed_issues)
+
     # Regression clustering analysis
     regression_analysis = analyze_regression_clustering(completed_issues)
 
@@ -2097,6 +2242,7 @@ def calculate_analysis(
         bug_ratio_trend=bug_ratio_trend,
         subsystem_health=subsystem_health,
         hotspot_analysis=hotspot_analysis,
+        coupling_analysis=coupling_analysis,
         regression_analysis=regression_analysis,
         test_gap_analysis=test_gap_analysis,
         rejection_analysis=rejection_analysis,
@@ -2112,9 +2258,7 @@ def calculate_analysis(
         prev_cutoff = cutoff - timedelta(days=compare_days)
 
         current_issues = [
-            i
-            for i in completed_issues
-            if i.completed_date and i.completed_date >= cutoff
+            i for i in completed_issues if i.completed_date and i.completed_date >= cutoff
         ]
         previous_issues = [
             i
@@ -2240,9 +2384,7 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
         lines.append("Subsystem Health")
         lines.append("-" * 16)
         for sub in analysis.subsystem_health[:5]:
-            trend_symbol = {"improving": "↓", "degrading": "↑", "stable": "→"}.get(
-                sub.trend, "?"
-            )
+            trend_symbol = {"improving": "↓", "degrading": "↑", "stable": "→"}.get(sub.trend, "?")
             lines.append(
                 f"  {sub.subsystem:30}: {sub.total_issues:3} total, "
                 f"{sub.recent_issues:2} recent {trend_symbol}"
@@ -2257,13 +2399,9 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
             lines.append("File Hotspots")
             lines.append("-" * 13)
             for h in hotspots.file_hotspots[:5]:
-                types_str = ", ".join(
-                    f"{k}:{v}" for k, v in sorted(h.issue_types.items())
-                )
+                types_str = ", ".join(f"{k}:{v}" for k, v in sorted(h.issue_types.items()))
                 churn_flag = " [HIGH CHURN]" if h.churn_indicator == "high" else ""
-                lines.append(
-                    f"  {h.path:40}: {h.issue_count:2} issues ({types_str}){churn_flag}"
-                )
+                lines.append(f"  {h.path:40}: {h.issue_count:2} issues ({types_str}){churn_flag}")
 
         if hotspots.bug_magnets:
             lines.append("")
@@ -2274,6 +2412,45 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
                     f"  {h.path}: {h.bug_ratio * 100:.0f}% bugs "
                     f"({h.issue_types.get('BUG', 0)}/{h.issue_count})"
                 )
+
+    # Coupling analysis
+    if analysis.coupling_analysis:
+        coupling = analysis.coupling_analysis
+
+        if coupling.pairs:
+            lines.append("")
+            lines.append("Coupling Detection")
+            lines.append("-" * 18)
+
+            lines.append("Highly Coupled File Pairs:")
+            for i, p in enumerate(coupling.pairs[:5], 1):
+                strength_label = (
+                    "HIGH"
+                    if p.coupling_strength >= 0.7
+                    else "MEDIUM"
+                    if p.coupling_strength >= 0.5
+                    else "LOW"
+                )
+                lines.append(f"  {i}. {p.file_a} <-> {p.file_b}")
+                lines.append(
+                    f"     Co-occurrences: {p.co_occurrence_count}, "
+                    f"Strength: {p.coupling_strength:.2f} [{strength_label}]"
+                )
+
+        if coupling.clusters:
+            lines.append("")
+            lines.append("Coupling Clusters:")
+            for i, cluster in enumerate(coupling.clusters[:3], 1):
+                files_str = ", ".join(cluster[:4])
+                if len(cluster) > 4:
+                    files_str += f" (+{len(cluster) - 4} more)"
+                lines.append(f"  {i}. [{files_str}]")
+
+        if coupling.hotspots:
+            lines.append("")
+            lines.append("Coupling Hotspots (coupled with 3+ files):")
+            for f in coupling.hotspots[:5]:
+                lines.append(f"  - {f}")
 
     # Regression clustering analysis
     if analysis.regression_analysis:
@@ -2310,9 +2487,7 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
 
             # Show correlation stats
             lines.append(f"  Files with tests: avg {tga.files_with_tests_avg_bugs:.1f} bugs")
-            lines.append(
-                f"  Files without tests: avg {tga.files_without_tests_avg_bugs:.1f} bugs"
-            )
+            lines.append(f"  Files without tests: avg {tga.files_without_tests_avg_bugs:.1f} bugs")
             lines.append("")
 
             # Show critical gaps
@@ -2395,9 +2570,7 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
             lines.append("")
             lines.append("Manual Pattern Analysis")
             lines.append("-" * 23)
-            lines.append(
-                f"  Total manual interventions: {mpa.total_manual_interventions}"
-            )
+            lines.append(f"  Total manual interventions: {mpa.total_manual_interventions}")
             lines.append(
                 f"  Potentially automatable: {mpa.automatable_percentage:.0f}% "
                 f"({mpa.automatable_count}/{mpa.total_manual_interventions})"
@@ -2408,8 +2581,7 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
             for i, pattern in enumerate(mpa.patterns[:5], 1):
                 lines.append("")
                 lines.append(
-                    f"  {i}. {pattern.pattern_description} "
-                    f"({pattern.occurrence_count} occurrences)"
+                    f"  {i}. {pattern.pattern_description} ({pattern.occurrence_count} occurrences)"
                 )
                 issues_str = ", ".join(pattern.affected_issues[:3])
                 if len(pattern.affected_issues) > 3:
@@ -2451,9 +2623,7 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
                 for issue_type, best_agent in sorted(aea.best_agent_by_type.items()):
                     lines.append(f"    - {issue_type}: best handled by {best_agent}")
                 for agent, issue_type, reason in aea.problematic_combinations[:3]:
-                    lines.append(
-                        f"    - {agent} underperforms for {issue_type} ({reason})"
-                    )
+                    lines.append(f"    - {agent} underperforms for {issue_type} ({reason})")
 
     # Technical debt
     if analysis.debt_metrics:
@@ -2475,9 +2645,7 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
         prev = analysis.previous_period
 
         if prev.total_completed > 0:
-            change = (
-                (curr.total_completed - prev.total_completed) / prev.total_completed * 100
-            )
+            change = (curr.total_completed - prev.total_completed) / prev.total_completed * 100
             lines.append(
                 f"  Completed: {prev.total_completed} -> {curr.total_completed} ({change:+.0f}%)"
             )
@@ -2507,9 +2675,7 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
     )
 
     if analysis.date_range_start and analysis.date_range_end:
-        lines.append(
-            f"**Date Range**: {analysis.date_range_start} to {analysis.date_range_end}"
-        )
+        lines.append(f"**Date Range**: {analysis.date_range_start} to {analysis.date_range_end}")
 
     # Executive Summary
     lines.append("")
@@ -2518,9 +2684,7 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
     lines.append("| Metric | Value | Trend |")
     lines.append("|--------|-------|-------|")
 
-    velocity = (
-        f"{analysis.summary.velocity:.2f}/day" if analysis.summary.velocity else "N/A"
-    )
+    velocity = f"{analysis.summary.velocity:.2f}/day" if analysis.summary.velocity else "N/A"
     velocity_symbol = {"increasing": "↑", "decreasing": "↓", "stable": "→"}.get(
         analysis.velocity_trend, ""
     )
@@ -2558,9 +2722,7 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
         lines.append("|--------|-----------|-------|")
         for period in analysis.period_metrics[-8:]:  # Last 8
             bug_pct_str = f"{period.bug_ratio * 100:.0f}%" if period.bug_ratio else "N/A"
-            lines.append(
-                f"| {period.period_label} | {period.total_completed} | {bug_pct_str} |"
-            )
+            lines.append(f"| {period.period_label} | {period.total_completed} | {bug_pct_str} |")
 
     # Subsystem Health
     if analysis.subsystem_health:
@@ -2588,9 +2750,7 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
             lines.append("| File | Issues | Types | Churn |")
             lines.append("|------|--------|-------|-------|")
             for h in hotspots.file_hotspots:
-                types_str = ", ".join(
-                    f"{k}:{v}" for k, v in sorted(h.issue_types.items())
-                )
+                types_str = ", ".join(f"{k}:{v}" for k, v in sorted(h.issue_types.items()))
                 churn_badge = (
                     "🔥"
                     if h.churn_indicator == "high"
@@ -2605,9 +2765,7 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
             lines.append("| Directory | Issues | Types |")
             lines.append("|-----------|--------|-------|")
             for h in hotspots.directory_hotspots[:5]:
-                types_str = ", ".join(
-                    f"{k}:{v}" for k, v in sorted(h.issue_types.items())
-                )
+                types_str = ", ".join(f"{k}:{v}" for k, v in sorted(h.issue_types.items()))
                 lines.append(f"| `{h.path}` | {h.issue_count} | {types_str} |")
 
         if hotspots.bug_magnets:
@@ -2623,6 +2781,50 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
                     f"| `{h.path}` | {h.bug_ratio * 100:.0f}% | "
                     f"{h.issue_types.get('BUG', 0)}/{h.issue_count} |"
                 )
+
+    # Coupling Analysis
+    if analysis.coupling_analysis:
+        coupling = analysis.coupling_analysis
+
+        if coupling.pairs:
+            lines.append("")
+            lines.append("## Coupling Detection")
+            lines.append("")
+            lines.append("Files that frequently change together across issues:")
+            lines.append("")
+            lines.append("| File A | File B | Co-occurrences | Strength |")
+            lines.append("|--------|--------|----------------|----------|")
+            for p in coupling.pairs[:10]:
+                strength_badge = (
+                    "🔴"
+                    if p.coupling_strength >= 0.7
+                    else ("🟠" if p.coupling_strength >= 0.5 else "🟡")
+                )
+                lines.append(
+                    f"| `{p.file_a}` | `{p.file_b}` | {p.co_occurrence_count} | "
+                    f"{p.coupling_strength:.2f} {strength_badge} |"
+                )
+
+        if coupling.clusters:
+            lines.append("")
+            lines.append("### Coupling Clusters")
+            lines.append("")
+            lines.append("Groups of tightly coupled files (consider consolidating):")
+            lines.append("")
+            for i, cluster in enumerate(coupling.clusters[:5], 1):
+                files_str = ", ".join(f"`{f}`" for f in cluster[:5])
+                if len(cluster) > 5:
+                    files_str += f" (+{len(cluster) - 5} more)"
+                lines.append(f"{i}. {files_str}")
+
+        if coupling.hotspots:
+            lines.append("")
+            lines.append("### Coupling Hotspots")
+            lines.append("")
+            lines.append("Files coupled with 3+ other files (potential abstraction candidates):")
+            lines.append("")
+            for f in coupling.hotspots[:5]:
+                lines.append(f"- `{f}`")
 
     # Regression Clustering Analysis
     if analysis.regression_analysis:
@@ -2642,9 +2844,7 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
             lines.append("|------|-------------|---------|----------|")
             for c in regression.clusters:
                 severity_badge = (
-                    "🔴"
-                    if c.severity == "critical"
-                    else ("🟠" if c.severity == "high" else "🟡")
+                    "🔴" if c.severity == "critical" else ("🟠" if c.severity == "high" else "🟡")
                 )
                 lines.append(
                     f"| `{c.primary_file}` | {c.regression_count} | "
@@ -2778,12 +2978,8 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
             lines.append("")
             lines.append("### Recurring Patterns")
             lines.append("")
-            lines.append(
-                "| Pattern | Occurrences | Affected Issues | Suggestion | Complexity |"
-            )
-            lines.append(
-                "|---------|-------------|-----------------|------------|------------|"
-            )
+            lines.append("| Pattern | Occurrences | Affected Issues | Suggestion | Complexity |")
+            lines.append("|---------|-------------|-----------------|------------|------------|")
 
             for pattern in mpa.patterns[:10]:
                 issues_str = ", ".join(pattern.affected_issues[:3])
@@ -2812,16 +3008,10 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
             lines.append("")
             lines.append("## Agent Effectiveness Analysis")
             lines.append("")
-            lines.append(
-                "| Agent | Type | Success Rate | Completed | Rejected | Failed |"
-            )
-            lines.append(
-                "|-------|------|--------------|-----------|----------|--------|"
-            )
+            lines.append("| Agent | Type | Success Rate | Completed | Rejected | Failed |")
+            lines.append("|-------|------|--------------|-----------|----------|--------|")
 
-            for outcome in sorted(
-                aea.outcomes, key=lambda o: (o.agent_name, o.issue_type)
-            ):
+            for outcome in sorted(aea.outcomes, key=lambda o: (o.agent_name, o.issue_type)):
                 rate_pct = outcome.success_rate * 100
                 flag = " ⚠️" if outcome.total_count >= 5 and rate_pct < 50 else ""
                 lines.append(
@@ -2836,13 +3026,9 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
                 lines.append("### Recommendations")
                 lines.append("")
                 for issue_type, best_agent in sorted(aea.best_agent_by_type.items()):
-                    lines.append(
-                        f"- **{issue_type}**: Best handled by `{best_agent}`"
-                    )
+                    lines.append(f"- **{issue_type}**: Best handled by `{best_agent}`")
                 for agent, issue_type, reason in aea.problematic_combinations[:3]:
-                    lines.append(
-                        f"- **{agent}** underperforms for {issue_type} ({reason})"
-                    )
+                    lines.append(f"- **{agent}** underperforms for {issue_type} ({reason})")
 
     # Technical Debt
     if analysis.debt_metrics:
@@ -2889,9 +3075,7 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
         lines.append("|--------|----------|---------|--------|")
 
         if prev.total_completed > 0:
-            change = (
-                (curr.total_completed - prev.total_completed) / prev.total_completed * 100
-            )
+            change = (curr.total_completed - prev.total_completed) / prev.total_completed * 100
             change_str = f"{change:+.0f}%"
         else:
             change_str = "N/A"

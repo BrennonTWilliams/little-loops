@@ -45,11 +45,11 @@ class CouplingAnalysis:
 
 ```python
 def analyze_coupling(
-    issues: list[IssueHistory],
+    issues: list[CompletedIssue],
     hotspots: HotspotAnalysis
 ) -> CouplingAnalysis:
     """Identify files that frequently change together."""
-    # Build co-occurrence matrix from issue affected_files
+    # Build co-occurrence matrix using _extract_paths_from_issue()
     # Calculate coupling strength (co-occur / total appearances)
     # Cluster highly coupled files
     # Identify coupling hotspots (files coupled with many others)
@@ -58,10 +58,14 @@ def analyze_coupling(
 ### Coupling Strength Calculation
 
 ```python
-def _calculate_coupling_strength(file_a: str, file_b: str, issues: list) -> float:
+def _calculate_coupling_strength(
+    file_a: str,
+    file_b: str,
+    file_to_issues: dict[str, set[str]]
+) -> float:
     """Calculate coupling strength between two files."""
-    a_issues = set(i.id for i in issues if file_a in i.affected_files)
-    b_issues = set(i.id for i in issues if file_b in i.affected_files)
+    a_issues = file_to_issues.get(file_a, set())
+    b_issues = file_to_issues.get(file_b, set())
     co_occur = len(a_issues & b_issues)
     # Jaccard similarity
     return co_occur / len(a_issues | b_issues) if a_issues | b_issues else 0
@@ -96,12 +100,12 @@ Coupling Detection Analysis:
 
 ## Acceptance Criteria
 
-- [ ] `CouplingPair` dataclass captures file pair relationships
-- [ ] Coupling strength based on Jaccard similarity
-- [ ] Clusters identified for groups of coupled files
-- [ ] Hotspots flagged for files coupled with many others
-- [ ] Refactoring suggestions based on coupling patterns
-- [ ] Output integrated into `ll-history analyze` report
+- [x] `CouplingPair` dataclass captures file pair relationships
+- [x] Coupling strength based on Jaccard similarity
+- [x] Clusters identified for groups of coupled files
+- [x] Hotspots flagged for files coupled with many others
+- [ ] Refactoring suggestions based on coupling patterns (deferred - not implemented)
+- [x] Output integrated into `ll-history analyze` report
 
 ## Impact
 
@@ -113,7 +117,7 @@ Coupling Detection Analysis:
 
 ### Blocked By
 
-- ENH-116: Hotspot Analysis (provides path extraction utilities)
+- ~~ENH-116: Hotspot Analysis (provides path extraction utilities)~~ **COMPLETED**
 
 ### Blocks
 
@@ -126,3 +130,26 @@ None
 ---
 
 **Priority**: P3 | **Created**: 2026-01-23
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_history.py`: Added CouplingPair and CouplingAnalysis dataclasses, analyze_coupling() and _build_coupling_clusters() functions, integrated into calculate_analysis() and HistoryAnalysis, added text and markdown formatting
+- `scripts/tests/test_issue_history.py`: Added 11 comprehensive tests for coupling detection
+
+### Verification Results
+- Tests: PASS (168 tests)
+- Lint: PASS
+- Types: PASS
+- Format: PASS
+
+### Notes
+- Refactoring suggestions were deferred as not essential for the core coupling detection feature
+- Coupling strength uses Jaccard similarity with threshold >= 0.3 and minimum 2 co-occurrences
+- Clusters use connected components with strength >= 0.5 threshold
