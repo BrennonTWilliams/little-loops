@@ -413,6 +413,18 @@ ll-messages -v                       # Verbose progress output
 
 Output is JSONL format with message content and metadata (timestamp, session ID, working directory, git branch).
 
+### ll-history
+
+View completed issue statistics and history:
+
+```bash
+ll-history summary                   # Display issue statistics
+ll-history summary --json            # Output as JSON for scripting
+ll-history summary -d /path/to/.issues  # Custom issues directory
+```
+
+Shows total completed issues, date range, velocity (issues/day), and breakdowns by type (BUG/ENH/FEAT) and priority (P0-P5).
+
 ## Command Override
 
 Projects can override plugin commands by placing files in `.claude/commands/ll/`.
@@ -548,6 +560,7 @@ little-loops/
         ├── issue_manager.py    # Sequential automation
         ├── issue_parser.py     # Issue file parsing
         ├── issue_lifecycle.py  # Issue lifecycle operations
+        ├── issue_history.py    # Issue history and statistics
         ├── git_operations.py   # Git utilities
         ├── work_verification.py # Verification helpers
         ├── subprocess_utils.py # Subprocess handling

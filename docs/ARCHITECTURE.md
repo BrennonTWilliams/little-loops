@@ -110,6 +110,7 @@ little-loops/
         ├── issue_parser.py      # Issue file parsing
         ├── issue_discovery.py   # Issue discovery and deduplication
         ├── issue_lifecycle.py   # Issue lifecycle operations
+        ├── issue_history.py     # Issue history and statistics
         ├── git_operations.py    # Git utilities
         ├── work_verification.py # Verification helpers
         ├── subprocess_utils.py  # Subprocess handling
