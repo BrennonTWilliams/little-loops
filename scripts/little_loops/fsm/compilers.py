@@ -48,6 +48,36 @@ def _slugify(text: str, max_length: int = 50) -> str:
     return text.strip("-").lower()[:max_length]
 
 
+def _build_evaluate_config(evaluator_spec: dict[str, Any] | None) -> EvaluateConfig | None:
+    """Build EvaluateConfig from evaluator specification dict.
+
+    Args:
+        evaluator_spec: Optional evaluator configuration dict with keys:
+            - type: Evaluator type (exit_code, output_contains, output_numeric, llm_structured)
+            - pattern: Pattern string for output_contains
+            - operator: Comparison operator for output_numeric (eq, lt, gt, le, ge, ne)
+            - target: Target value for output_numeric
+
+    Returns:
+        EvaluateConfig instance if spec provided, None otherwise
+    """
+    if evaluator_spec is None:
+        return None
+
+    eval_type = evaluator_spec.get("type", "exit_code")
+
+    # For exit_code, we can return None to use the default behavior
+    if eval_type == "exit_code":
+        return None
+
+    return EvaluateConfig(
+        type=eval_type,
+        pattern=evaluator_spec.get("pattern"),
+        operator=evaluator_spec.get("operator"),
+        target=evaluator_spec.get("target"),
+    )
+
+
 def compile_paradigm(spec: dict[str, Any]) -> FSMLoop:
     """Route to appropriate compiler based on paradigm field.
 
@@ -117,6 +147,9 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
           - /ll:manage_issue bug fix  # Fix tool (second, optional)
         max_iterations: 20            # Optional, defaults to 50
         name: "my-goal"               # Optional, auto-generated from goal
+        evaluator:                    # Optional evaluator config
+          type: output_contains
+          pattern: "Success"
 
     Args:
         spec: Goal paradigm specification dict
@@ -140,9 +173,13 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
 
     name = spec.get("name", f"goal-{_slugify(goal)}")
 
+    # Extract evaluator config if provided
+    evaluate_config = _build_evaluate_config(spec.get("evaluator"))
+
     states = {
         "evaluate": StateConfig(
             action=check_tool,
+            evaluate=evaluate_config,
             on_success="done",
             on_failure="fix",
             on_error="fix",
@@ -265,6 +302,9 @@ def compile_invariants(spec: dict[str, Any]) -> FSMLoop:
           - name: "tests-pass"
             check: "pytest"
             fix: "/ll:manage_issue bug fix"
+            evaluator:               # Optional per-constraint
+              type: output_contains
+              pattern: "passed"
           - name: "lint-clean"
             check: "ruff check src/"
             fix: "/ll:check_code fix"
@@ -311,8 +351,12 @@ def compile_invariants(spec: dict[str, Any]) -> FSMLoop:
             f"check_{constraints[i + 1]['name']}" if i + 1 < len(constraints) else "all_valid"
         )
 
+        # Extract evaluator config if provided for this constraint
+        evaluate_config = _build_evaluate_config(constraint.get("evaluator"))
+
         states[check_state] = StateConfig(
             action=constraint["check"],
+            evaluate=evaluate_config,
             on_success=next_check,
             on_failure=fix_state,
         )
@@ -359,6 +403,9 @@ def compile_imperative(spec: dict[str, Any]) -> FSMLoop:
         until:
           check: "mypy src/"
           passes: true
+          evaluator:               # Optional evaluator for exit condition
+            type: output_contains
+            pattern: "Success"
         max_iterations: 20
         backoff: 2  # Seconds between iterations
 
@@ -385,6 +432,9 @@ def compile_imperative(spec: dict[str, Any]) -> FSMLoop:
     steps = spec["steps"]
     until_check = spec["until"]["check"]
 
+    # Extract evaluator config for exit condition if provided
+    evaluate_config = _build_evaluate_config(spec["until"].get("evaluator"))
+
     states: dict[str, StateConfig] = {}
 
     # Create step states
@@ -397,9 +447,10 @@ def compile_imperative(spec: dict[str, Any]) -> FSMLoop:
             next=next_state,
         )
 
-    # Create check_done state
+    # Create check_done state with optional evaluator
     states["check_done"] = StateConfig(
         action=until_check,
+        evaluate=evaluate_config,
         on_success="done",
         on_failure="step_0",
     )

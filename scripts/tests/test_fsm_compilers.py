@@ -673,3 +673,252 @@ class TestImperativeCompiler:
         fsm = compile_imperative(spec)
         errors = validate_fsm(fsm)
         assert not any(e.severity.value == "error" for e in errors)
+
+
+class TestEvaluatorSupport:
+    """Tests for evaluator configuration support in paradigm compilers."""
+
+    def test_goal_with_output_contains_evaluator(self) -> None:
+        """Goal paradigm passes output_contains evaluator to evaluate state."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Lint passes",
+            "tools": ["ruff check src/", "ruff check --fix src/"],
+            "evaluator": {
+                "type": "output_contains",
+                "pattern": "All checks passed",
+            },
+        }
+        fsm = compile_goal(spec)
+
+        assert fsm.states["evaluate"].evaluate is not None
+        assert fsm.states["evaluate"].evaluate.type == "output_contains"
+        assert fsm.states["evaluate"].evaluate.pattern == "All checks passed"
+
+    def test_goal_with_output_numeric_evaluator(self) -> None:
+        """Goal paradigm passes output_numeric evaluator to evaluate state."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "No errors",
+            "tools": ["error_count.sh", "fix_errors.sh"],
+            "evaluator": {
+                "type": "output_numeric",
+                "operator": "eq",
+                "target": 0,
+            },
+        }
+        fsm = compile_goal(spec)
+
+        assert fsm.states["evaluate"].evaluate is not None
+        assert fsm.states["evaluate"].evaluate.type == "output_numeric"
+        assert fsm.states["evaluate"].evaluate.operator == "eq"
+        assert fsm.states["evaluate"].evaluate.target == 0
+
+    def test_goal_with_llm_structured_evaluator(self) -> None:
+        """Goal paradigm passes llm_structured evaluator to evaluate state."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Code is clean",
+            "tools": ["code_review.sh", "auto_fix.sh"],
+            "evaluator": {
+                "type": "llm_structured",
+            },
+        }
+        fsm = compile_goal(spec)
+
+        assert fsm.states["evaluate"].evaluate is not None
+        assert fsm.states["evaluate"].evaluate.type == "llm_structured"
+
+    def test_goal_with_exit_code_evaluator_returns_none(self) -> None:
+        """Goal with exit_code evaluator returns None (uses default behavior)."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Tests pass",
+            "tools": ["pytest", "fix_tests.sh"],
+            "evaluator": {
+                "type": "exit_code",
+            },
+        }
+        fsm = compile_goal(spec)
+
+        # exit_code is the default, so we return None to use runtime default
+        assert fsm.states["evaluate"].evaluate is None
+
+    def test_goal_without_evaluator(self) -> None:
+        """Goal without evaluator config has None evaluate field."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Tests pass",
+            "tools": ["pytest", "fix_tests.sh"],
+        }
+        fsm = compile_goal(spec)
+
+        assert fsm.states["evaluate"].evaluate is None
+
+    def test_goal_with_evaluator_validates(self) -> None:
+        """Goal with evaluator passes validation."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Lint clean",
+            "tools": ["ruff check src/", "ruff check --fix src/"],
+            "evaluator": {
+                "type": "output_contains",
+                "pattern": "0 errors",
+            },
+        }
+        fsm = compile_goal(spec)
+        errors = validate_fsm(fsm)
+        assert not any(e.severity.value == "error" for e in errors)
+
+    def test_invariants_with_per_constraint_evaluator(self) -> None:
+        """Invariants paradigm passes per-constraint evaluator config."""
+        spec = {
+            "paradigm": "invariants",
+            "name": "quality-gate",
+            "constraints": [
+                {
+                    "name": "lint",
+                    "check": "ruff check src/",
+                    "fix": "ruff check --fix src/",
+                    "evaluator": {
+                        "type": "output_contains",
+                        "pattern": "0 errors",
+                    },
+                },
+                {
+                    "name": "types",
+                    "check": "mypy src/",
+                    "fix": "/ll:manage_issue bug fix",
+                    # No evaluator - uses default
+                },
+            ],
+        }
+        fsm = compile_invariants(spec)
+
+        # First constraint has evaluator
+        assert fsm.states["check_lint"].evaluate is not None
+        assert fsm.states["check_lint"].evaluate.type == "output_contains"
+        assert fsm.states["check_lint"].evaluate.pattern == "0 errors"
+
+        # Second constraint has no evaluator
+        assert fsm.states["check_types"].evaluate is None
+
+    def test_invariants_mixed_evaluators(self) -> None:
+        """Invariants with different evaluator types per constraint."""
+        spec = {
+            "paradigm": "invariants",
+            "name": "test",
+            "constraints": [
+                {
+                    "name": "c1",
+                    "check": "cmd1",
+                    "fix": "fix1",
+                    "evaluator": {"type": "output_contains", "pattern": "OK"},
+                },
+                {
+                    "name": "c2",
+                    "check": "cmd2",
+                    "fix": "fix2",
+                    "evaluator": {"type": "output_numeric", "operator": "lt", "target": 5},
+                },
+                {
+                    "name": "c3",
+                    "check": "cmd3",
+                    "fix": "fix3",
+                    "evaluator": {"type": "llm_structured"},
+                },
+            ],
+        }
+        fsm = compile_invariants(spec)
+
+        assert fsm.states["check_c1"].evaluate.type == "output_contains"
+        assert fsm.states["check_c2"].evaluate.type == "output_numeric"
+        assert fsm.states["check_c2"].evaluate.operator == "lt"
+        assert fsm.states["check_c2"].evaluate.target == 5
+        assert fsm.states["check_c3"].evaluate.type == "llm_structured"
+
+    def test_invariants_with_evaluator_validates(self) -> None:
+        """Invariants with evaluator passes validation."""
+        spec = {
+            "paradigm": "invariants",
+            "name": "test",
+            "constraints": [
+                {
+                    "name": "c1",
+                    "check": "cmd",
+                    "fix": "fix",
+                    "evaluator": {"type": "output_contains", "pattern": "passed"},
+                },
+            ],
+        }
+        fsm = compile_invariants(spec)
+        errors = validate_fsm(fsm)
+        assert not any(e.severity.value == "error" for e in errors)
+
+    def test_imperative_with_until_evaluator(self) -> None:
+        """Imperative paradigm passes evaluator config to check_done state."""
+        spec = {
+            "paradigm": "imperative",
+            "name": "build-loop",
+            "steps": ["npm run build"],
+            "until": {
+                "check": "npm test",
+                "evaluator": {
+                    "type": "output_numeric",
+                    "operator": "eq",
+                    "target": 0,
+                },
+            },
+        }
+        fsm = compile_imperative(spec)
+
+        assert fsm.states["check_done"].evaluate is not None
+        assert fsm.states["check_done"].evaluate.type == "output_numeric"
+        assert fsm.states["check_done"].evaluate.operator == "eq"
+        assert fsm.states["check_done"].evaluate.target == 0
+
+    def test_imperative_with_output_contains_evaluator(self) -> None:
+        """Imperative with output_contains evaluator for exit condition."""
+        spec = {
+            "paradigm": "imperative",
+            "name": "test",
+            "steps": ["cmd1"],
+            "until": {
+                "check": "verify",
+                "evaluator": {
+                    "type": "output_contains",
+                    "pattern": "SUCCESS",
+                },
+            },
+        }
+        fsm = compile_imperative(spec)
+
+        assert fsm.states["check_done"].evaluate.type == "output_contains"
+        assert fsm.states["check_done"].evaluate.pattern == "SUCCESS"
+
+    def test_imperative_without_until_evaluator(self) -> None:
+        """Imperative without evaluator in until has None evaluate field."""
+        spec = {
+            "paradigm": "imperative",
+            "name": "test",
+            "steps": ["cmd1"],
+            "until": {"check": "verify"},
+        }
+        fsm = compile_imperative(spec)
+
+        assert fsm.states["check_done"].evaluate is None
+
+    def test_imperative_with_evaluator_validates(self) -> None:
+        """Imperative with evaluator passes validation."""
+        spec = {
+            "paradigm": "imperative",
+            "name": "test",
+            "steps": ["cmd"],
+            "until": {
+                "check": "verify",
+                "evaluator": {"type": "output_contains", "pattern": "OK"},
+            },
+        }
+        fsm = compile_imperative(spec)
+        errors = validate_fsm(fsm)
+        assert not any(e.severity.value == "error" for e in errors)
