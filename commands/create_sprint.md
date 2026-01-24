@@ -1,5 +1,7 @@
 ---
 description: Create a sprint definition with a curated list of issues
+allowed-tools:
+  - Bash(mkdir:*)
 arguments:
   - name: name
     description: Sprint name (e.g., "sprint-1", "q1-bug-fixes")
@@ -18,17 +20,16 @@ You are tasked with creating sprint definitions for the little-loops project. Sp
 
 ## Configuration
 
-Read settings from `.claude/ll-config.json`:
+This command uses project configuration from `.claude/ll-config.json`:
 
 **Issues settings** (under `issues`):
-- `base_dir`: Issues directory (default: `.issues`)
-- `categories`: Issue categories (default: `bugs`, `features`, `enhancements`)
+- `base_dir`: Issues directory - `{{config.issues.base_dir}}`
 
 **Sprints settings** (under `sprints`):
-- `sprints_dir`: Directory for sprint definitions (default: `.sprints`)
-- `default_mode`: Default execution mode - `auto` (sequential) or `parallel` (default: `auto`)
-- `default_timeout`: Default timeout per issue in seconds (default: `3600`)
-- `default_max_workers`: Default worker count for parallel mode (default: `4`)
+- `sprints_dir`: Directory for sprint definitions - `{{config.sprints.sprints_dir}}`
+- `default_mode`: Default execution mode - `{{config.sprints.default_mode}}`
+- `default_timeout`: Default timeout per issue in seconds - `{{config.sprints.default_timeout}}`
+- `default_max_workers`: Default worker count for parallel mode - `{{config.sprints.default_max_workers}}`
 
 ## Process
 
@@ -73,7 +74,7 @@ If selecting from active issues:
 ### 3. Validate Issues Exist
 
 For each issue ID in the list, use the Glob tool to verify it exists:
-- Pattern: `.issues/**/*-{issue_id}-*.md`
+- Pattern: `.issues/**/*-[ISSUE-ID]-*.md` (substitute the actual issue ID)
 - Example: For issue `BUG-001`, use pattern `.issues/**/*-BUG-001-*.md`
 
 If a pattern returns no results, the issue is missing. Report any missing issues and ask if the user wants to:
@@ -81,7 +82,15 @@ If a pattern returns no results, the issue is missing. Report any missing issues
 - Remove missing issues from list
 - Cancel and fix the list
 
-### 4. Create Sprint YAML File
+### 4. Create Sprint Directory (if needed)
+
+Ensure the sprints directory exists:
+
+```bash
+mkdir -p .sprints
+```
+
+### 5. Create Sprint YAML File
 
 Create the sprint definition at `.sprints/${SPRINT_NAME}.yaml`:
 
@@ -96,7 +105,6 @@ issues:
   - FEAT-015
 options:
   mode: auto  # auto (sequential) or parallel
-  max_iterations: 100
   timeout: 3600
   max_workers: 4  # for parallel mode
 ```
@@ -108,11 +116,10 @@ options:
 - `issues`: List of issue IDs (validated to exist)
 - `options`: Execution defaults (optional)
   - `mode`: "auto" for sequential, "parallel" for concurrent
-  - `max_iterations`: Max Claude iterations per issue
   - `timeout`: Per-issue timeout in seconds
   - `max_workers`: Worker count for parallel mode
 
-### 5. Output Confirmation
+### 6. Output Confirmation
 
 Display the created sprint:
 
