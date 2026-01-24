@@ -29,6 +29,8 @@ __all__ = [
     "SubsystemHealth",
     "Hotspot",
     "HotspotAnalysis",
+    "RegressionCluster",
+    "RegressionAnalysis",
     "TechnicalDebtMetrics",
     "HistoryAnalysis",
     # Parsing and scanning
@@ -39,6 +41,7 @@ __all__ = [
     "calculate_summary",
     "calculate_analysis",
     "analyze_hotspots",
+    "analyze_regression_clustering",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",
@@ -218,6 +221,46 @@ class HotspotAnalysis:
 
 
 @dataclass
+class RegressionCluster:
+    """A cluster of bugs where fixes led to new bugs."""
+
+    primary_file: str  # Main file in the regression chain
+    regression_count: int = 0  # Number of regression pairs
+    fix_bug_pairs: list[tuple[str, str]] = field(default_factory=list)  # (fixed_id, caused_id)
+    related_files: list[str] = field(default_factory=list)  # All files in chain
+    time_pattern: str = "immediate"  # "immediate" (<3d), "delayed" (3-7d), "chronic" (recurring)
+    severity: str = "medium"  # "critical", "high", "medium"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "primary_file": self.primary_file,
+            "regression_count": self.regression_count,
+            "fix_bug_pairs": self.fix_bug_pairs[:10],  # Top 10
+            "related_files": self.related_files[:10],  # Top 10
+            "time_pattern": self.time_pattern,
+            "severity": self.severity,
+        }
+
+
+@dataclass
+class RegressionAnalysis:
+    """Analysis of regression patterns in bug fixes."""
+
+    clusters: list[RegressionCluster] = field(default_factory=list)
+    total_regression_chains: int = 0
+    most_fragile_files: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "clusters": [c.to_dict() for c in self.clusters],
+            "total_regression_chains": self.total_regression_chains,
+            "most_fragile_files": self.most_fragile_files[:5],  # Top 5
+        }
+
+
+@dataclass
 class TechnicalDebtMetrics:
     """Technical debt health indicators."""
 
@@ -264,6 +307,9 @@ class HistoryAnalysis:
     # Hotspot analysis
     hotspot_analysis: HotspotAnalysis | None = None
 
+    # Regression clustering analysis
+    regression_analysis: RegressionAnalysis | None = None
+
     # Technical debt
     debt_metrics: TechnicalDebtMetrics | None = None
 
@@ -291,6 +337,9 @@ class HistoryAnalysis:
             "subsystem_health": [s.to_dict() for s in self.subsystem_health],
             "hotspot_analysis": (
                 self.hotspot_analysis.to_dict() if self.hotspot_analysis else None
+            ),
+            "regression_analysis": (
+                self.regression_analysis.to_dict() if self.regression_analysis else None
             ),
             "debt_metrics": self.debt_metrics.to_dict() if self.debt_metrics else None,
             "comparison_period": self.comparison_period,
@@ -928,6 +977,129 @@ def analyze_hotspots(issues: list[CompletedIssue]) -> HotspotAnalysis:
     )
 
 
+def analyze_regression_clustering(
+    issues: list[CompletedIssue],
+) -> RegressionAnalysis:
+    """Detect files where bug fixes frequently lead to new bugs.
+
+    Uses heuristics:
+    1. Temporal proximity: Bug B completed within 7 days of Bug A
+    2. File overlap: Both bugs affect same file(s)
+
+    Args:
+        issues: List of completed issues
+
+    Returns:
+        RegressionAnalysis with clusters of related regressions
+    """
+    # Filter to bugs only and sort by completion date
+    bugs = [i for i in issues if i.issue_type == "BUG" and i.completed_date]
+    bugs.sort(key=lambda i: i.completed_date)  # type: ignore
+
+    if len(bugs) < 2:
+        return RegressionAnalysis()
+
+    # Extract file paths for each bug
+    bug_files: dict[str, set[str]] = {}  # issue_id -> set of files
+    for bug in bugs:
+        try:
+            content = bug.path.read_text(encoding="utf-8")
+            paths = _extract_paths_from_issue(content)
+            bug_files[bug.issue_id] = set(paths)
+        except Exception:
+            bug_files[bug.issue_id] = set()
+
+    # Find regression pairs (temporal proximity + file overlap)
+    regression_pairs: list[tuple[CompletedIssue, CompletedIssue, set[str]]] = []
+
+    for i, bug_a in enumerate(bugs[:-1]):
+        files_a = bug_files.get(bug_a.issue_id, set())
+        if not files_a:
+            continue
+
+        for bug_b in bugs[i + 1 :]:
+            # Check temporal proximity (within 7 days)
+            days_apart = (bug_b.completed_date - bug_a.completed_date).days  # type: ignore
+            if days_apart > 7:
+                break  # Bugs are sorted, no need to check further
+
+            files_b = bug_files.get(bug_b.issue_id, set())
+            if not files_b:
+                continue
+
+            # Check file overlap
+            overlap = files_a & files_b
+            if overlap:
+                regression_pairs.append((bug_a, bug_b, overlap))
+
+    if not regression_pairs:
+        return RegressionAnalysis()
+
+    # Group by primary file (most common overlapping file)
+    file_regressions: dict[str, list[tuple[str, str, int]]] = {}  # file -> [(id_a, id_b, days)]
+
+    for bug_a, bug_b, overlap in regression_pairs:
+        days = (bug_b.completed_date - bug_a.completed_date).days  # type: ignore
+        for file_path in overlap:
+            if file_path not in file_regressions:
+                file_regressions[file_path] = []
+            file_regressions[file_path].append((bug_a.issue_id, bug_b.issue_id, days))
+
+    # Build clusters
+    clusters: list[RegressionCluster] = []
+
+    for file_path, pairs in file_regressions.items():
+        # Determine time pattern
+        avg_days = sum(d for _, _, d in pairs) / len(pairs)
+        if avg_days < 3:
+            time_pattern = "immediate"
+        elif len(pairs) >= 3:
+            time_pattern = "chronic"
+        else:
+            time_pattern = "delayed"
+
+        # Determine severity
+        if len(pairs) >= 4:
+            severity = "critical"
+        elif len(pairs) >= 2:
+            severity = "high"
+        else:
+            severity = "medium"
+
+        # Collect related files
+        related_files: set[str] = set()
+        for bug_a, bug_b, _ in regression_pairs:
+            if file_path in (
+                bug_files.get(bug_a.issue_id, set()) & bug_files.get(bug_b.issue_id, set())
+            ):
+                related_files.update(bug_files.get(bug_a.issue_id, set()))
+                related_files.update(bug_files.get(bug_b.issue_id, set()))
+        related_files.discard(file_path)
+
+        clusters.append(
+            RegressionCluster(
+                primary_file=file_path,
+                regression_count=len(pairs),
+                fix_bug_pairs=[(a, b) for a, b, _ in pairs],
+                related_files=sorted(related_files),
+                time_pattern=time_pattern,
+                severity=severity,
+            )
+        )
+
+    # Sort by regression count descending
+    clusters.sort(key=lambda c: (-c.regression_count, c.primary_file))
+
+    # Identify most fragile files
+    most_fragile = [c.primary_file for c in clusters[:5]]
+
+    return RegressionAnalysis(
+        clusters=clusters[:10],  # Top 10
+        total_regression_chains=len(regression_pairs),
+        most_fragile_files=most_fragile,
+    )
+
+
 def scan_active_issues(issues_dir: Path) -> list[tuple[Path, str, str, date | None]]:
     """Scan active issue directories.
 
@@ -1082,6 +1254,9 @@ def calculate_analysis(
     # Hotspot analysis
     hotspot_analysis = analyze_hotspots(completed_issues)
 
+    # Regression clustering analysis
+    regression_analysis = analyze_regression_clustering(completed_issues)
+
     # Technical debt metrics
     debt_metrics = _calculate_debt_metrics(completed_issues, active_issues)
 
@@ -1098,6 +1273,7 @@ def calculate_analysis(
         bug_ratio_trend=bug_ratio_trend,
         subsystem_health=subsystem_health,
         hotspot_analysis=hotspot_analysis,
+        regression_analysis=regression_analysis,
         debt_metrics=debt_metrics,
     )
 
@@ -1271,6 +1447,30 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
                     f"({h.issue_types.get('BUG', 0)}/{h.issue_count})"
                 )
 
+    # Regression clustering analysis
+    if analysis.regression_analysis:
+        regression = analysis.regression_analysis
+
+        if regression.clusters:
+            lines.append("")
+            lines.append("Regression Clustering")
+            lines.append("-" * 20)
+            lines.append(f"Total regression chains detected: {regression.total_regression_chains}")
+            lines.append("")
+            lines.append("Fragile Code Clusters:")
+            for i, c in enumerate(regression.clusters[:5], 1):
+                severity_flag = (
+                    f" [{c.severity.upper()}]" if c.severity in ("critical", "high") else ""
+                )
+                lines.append(f"  {i}. {c.primary_file}{severity_flag}")
+                lines.append(f"     Regression count: {c.regression_count}")
+                lines.append(f"     Pattern: {c.time_pattern}")
+                if c.fix_bug_pairs:
+                    chain = " -> ".join(f"{a} fix -> {b}" for a, b in c.fix_bug_pairs[:3])
+                    if len(c.fix_bug_pairs) > 3:
+                        chain += " ..."
+                    lines.append(f"     Chain: {chain}")
+
     # Technical debt
     if analysis.debt_metrics:
         lines.append("")
@@ -1439,6 +1639,42 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
                     f"| `{h.path}` | {h.bug_ratio * 100:.0f}% | "
                     f"{h.issue_types.get('BUG', 0)}/{h.issue_count} |"
                 )
+
+    # Regression Clustering Analysis
+    if analysis.regression_analysis:
+        regression = analysis.regression_analysis
+
+        if regression.clusters:
+            lines.append("")
+            lines.append("## Regression Clustering")
+            lines.append("")
+            lines.append(
+                f"**Total regression chains detected**: {regression.total_regression_chains}"
+            )
+            lines.append("")
+            lines.append("Files where fixes frequently lead to new bugs:")
+            lines.append("")
+            lines.append("| File | Regressions | Pattern | Severity |")
+            lines.append("|------|-------------|---------|----------|")
+            for c in regression.clusters:
+                severity_badge = (
+                    "🔴"
+                    if c.severity == "critical"
+                    else ("🟠" if c.severity == "high" else "🟡")
+                )
+                lines.append(
+                    f"| `{c.primary_file}` | {c.regression_count} | "
+                    f"{c.time_pattern} | {severity_badge} |"
+                )
+
+        if regression.most_fragile_files:
+            lines.append("")
+            lines.append("### Most Fragile Files")
+            lines.append("")
+            lines.append("Files requiring architectural attention:")
+            lines.append("")
+            for f in regression.most_fragile_files:
+                lines.append(f"- `{f}`")
 
     # Technical Debt
     if analysis.debt_metrics:

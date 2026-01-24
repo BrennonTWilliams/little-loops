@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 from unittest.mock import patch
 
@@ -16,8 +16,11 @@ from little_loops.issue_history import (
     HistorySummary,
     Hotspot,
     HotspotAnalysis,
+    RegressionAnalysis,
+    RegressionCluster,
     _extract_paths_from_issue,
     analyze_hotspots,
+    analyze_regression_clustering,
     calculate_summary,
     format_summary_json,
     format_summary_text,
@@ -1249,3 +1252,280 @@ class TestAnalyzeHotspots:
         result = analyze_hotspots(issues)
         # Should not be a bug magnet (only 2 issues, needs 3+)
         assert len(result.bug_magnets) == 0
+
+
+class TestRegressionCluster:
+    """Tests for RegressionCluster dataclass."""
+
+    def test_to_dict(self) -> None:
+        """Test to_dict serialization."""
+        cluster = RegressionCluster(
+            primary_file="src/core/processor.py",
+            regression_count=3,
+            fix_bug_pairs=[
+                ("BUG-001", "BUG-002"),
+                ("BUG-002", "BUG-003"),
+                ("BUG-003", "BUG-004"),
+            ],
+            related_files=["src/core/state.py", "src/core/events.py"],
+            time_pattern="chronic",
+            severity="critical",
+        )
+        result = cluster.to_dict()
+
+        assert result["primary_file"] == "src/core/processor.py"
+        assert result["regression_count"] == 3
+        assert result["time_pattern"] == "chronic"
+        assert result["severity"] == "critical"
+        assert len(result["fix_bug_pairs"]) == 3
+
+    def test_to_dict_limits_lists(self) -> None:
+        """Test that to_dict limits lists to 10 items."""
+        cluster = RegressionCluster(
+            primary_file="test.py",
+            regression_count=15,
+            fix_bug_pairs=[(f"BUG-{i:03d}", f"BUG-{i + 1:03d}") for i in range(15)],
+            related_files=[f"file{i}.py" for i in range(15)],
+        )
+        result = cluster.to_dict()
+
+        assert len(result["fix_bug_pairs"]) == 10
+        assert len(result["related_files"]) == 10
+
+
+class TestRegressionAnalysis:
+    """Tests for RegressionAnalysis dataclass."""
+
+    def test_to_dict_empty(self) -> None:
+        """Test to_dict with empty data."""
+        analysis = RegressionAnalysis()
+        result = analysis.to_dict()
+
+        assert result["clusters"] == []
+        assert result["total_regression_chains"] == 0
+        assert result["most_fragile_files"] == []
+
+    def test_to_dict_with_clusters(self) -> None:
+        """Test to_dict with clusters."""
+        cluster = RegressionCluster(primary_file="test.py", regression_count=2)
+        analysis = RegressionAnalysis(
+            clusters=[cluster],
+            total_regression_chains=1,
+            most_fragile_files=["test.py"],
+        )
+        result = analysis.to_dict()
+
+        assert len(result["clusters"]) == 1
+        assert result["total_regression_chains"] == 1
+        assert result["most_fragile_files"] == ["test.py"]
+
+
+class TestAnalyzeRegressionClustering:
+    """Tests for analyze_regression_clustering function."""
+
+    def test_empty_issues(self) -> None:
+        """Test with empty issues list."""
+        result = analyze_regression_clustering([])
+        assert result.clusters == []
+        assert result.total_regression_chains == 0
+
+    def test_no_bugs(self, tmp_path: Path) -> None:
+        """Test with no bug issues."""
+        issue_file = tmp_path / "P1-ENH-001.md"
+        issue_file.write_text("**File**: `src/core/processor.py`")
+
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="ENH",
+                priority="P1",
+                issue_id="ENH-001",
+                completed_date=date(2026, 1, 1),
+            )
+        ]
+
+        result = analyze_regression_clustering(issues)
+        assert result.clusters == []
+
+    def test_single_bug(self, tmp_path: Path) -> None:
+        """Test with single bug issue."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("**File**: `src/core/processor.py`")
+
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 1),
+            )
+        ]
+
+        result = analyze_regression_clustering(issues)
+        assert result.clusters == []
+
+    def test_regression_detected(self, tmp_path: Path) -> None:
+        """Test detection of regression chain."""
+        # Create two bugs affecting same file within 7 days
+        bug1_file = tmp_path / "P1-BUG-001.md"
+        bug1_file.write_text("**File**: `src/core/processor.py`")
+
+        bug2_file = tmp_path / "P1-BUG-002.md"
+        bug2_file.write_text("**File**: `src/core/processor.py`")
+
+        issues = [
+            CompletedIssue(
+                path=bug1_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 1),
+            ),
+            CompletedIssue(
+                path=bug2_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-002",
+                completed_date=date(2026, 1, 3),  # 2 days later
+            ),
+        ]
+
+        result = analyze_regression_clustering(issues)
+        assert result.total_regression_chains == 1
+        assert len(result.clusters) == 1
+        assert result.clusters[0].primary_file == "src/core/processor.py"
+        assert result.clusters[0].regression_count == 1
+        assert ("BUG-001", "BUG-002") in result.clusters[0].fix_bug_pairs
+
+    def test_no_regression_beyond_7_days(self, tmp_path: Path) -> None:
+        """Test that bugs >7 days apart are not considered regressions."""
+        bug1_file = tmp_path / "P1-BUG-001.md"
+        bug1_file.write_text("**File**: `src/core/processor.py`")
+
+        bug2_file = tmp_path / "P1-BUG-002.md"
+        bug2_file.write_text("**File**: `src/core/processor.py`")
+
+        issues = [
+            CompletedIssue(
+                path=bug1_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 1),
+            ),
+            CompletedIssue(
+                path=bug2_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-002",
+                completed_date=date(2026, 1, 10),  # 9 days later
+            ),
+        ]
+
+        result = analyze_regression_clustering(issues)
+        assert result.total_regression_chains == 0
+        assert len(result.clusters) == 0
+
+    def test_no_regression_different_files(self, tmp_path: Path) -> None:
+        """Test that bugs affecting different files are not regressions."""
+        bug1_file = tmp_path / "P1-BUG-001.md"
+        bug1_file.write_text("**File**: `src/core/processor.py`")
+
+        bug2_file = tmp_path / "P1-BUG-002.md"
+        bug2_file.write_text("**File**: `src/api/handlers.py`")
+
+        issues = [
+            CompletedIssue(
+                path=bug1_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 1),
+            ),
+            CompletedIssue(
+                path=bug2_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-002",
+                completed_date=date(2026, 1, 3),
+            ),
+        ]
+
+        result = analyze_regression_clustering(issues)
+        assert result.total_regression_chains == 0
+
+    def test_severity_classification(self, tmp_path: Path) -> None:
+        """Test severity classification based on regression count."""
+        # Create 5 bugs with same file to trigger critical severity (4+ pairs)
+        issues = []
+        for i in range(5):
+            bug_file = tmp_path / f"P1-BUG-{i:03d}.md"
+            bug_file.write_text("**File**: `src/critical.py`")
+            issues.append(
+                CompletedIssue(
+                    path=bug_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-{i:03d}",
+                    completed_date=date(2026, 1, 1) + timedelta(days=i),
+                )
+            )
+
+        result = analyze_regression_clustering(issues)
+        assert result.clusters[0].severity == "critical"
+
+    def test_time_pattern_immediate(self, tmp_path: Path) -> None:
+        """Test immediate time pattern (<3 days)."""
+        bug1_file = tmp_path / "P1-BUG-001.md"
+        bug1_file.write_text("**File**: `src/fast.py`")
+
+        bug2_file = tmp_path / "P1-BUG-002.md"
+        bug2_file.write_text("**File**: `src/fast.py`")
+
+        issues = [
+            CompletedIssue(
+                path=bug1_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+                completed_date=date(2026, 1, 1),
+            ),
+            CompletedIssue(
+                path=bug2_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-002",
+                completed_date=date(2026, 1, 2),  # 1 day later
+            ),
+        ]
+
+        result = analyze_regression_clustering(issues)
+        assert result.clusters[0].time_pattern == "immediate"
+
+    def test_most_fragile_files(self, tmp_path: Path) -> None:
+        """Test most fragile files list."""
+        # Create two separate regression chains
+        files = [
+            ("src/fragile1.py", 0),
+            ("src/fragile1.py", 1),
+            ("src/fragile2.py", 3),
+            ("src/fragile2.py", 4),
+        ]
+        issues = []
+        for i, (file_path, day_offset) in enumerate(files):
+            bug_file = tmp_path / f"P1-BUG-{i:03d}.md"
+            bug_file.write_text(f"**File**: `{file_path}`")
+            issues.append(
+                CompletedIssue(
+                    path=bug_file,
+                    issue_type="BUG",
+                    priority="P1",
+                    issue_id=f"BUG-{i:03d}",
+                    completed_date=date(2026, 1, 1) + timedelta(days=day_offset),
+                )
+            )
+
+        result = analyze_regression_clustering(issues)
+        assert "src/fragile1.py" in result.most_fragile_files
+        assert "src/fragile2.py" in result.most_fragile_files

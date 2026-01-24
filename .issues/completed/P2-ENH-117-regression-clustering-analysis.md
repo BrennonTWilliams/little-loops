@@ -44,7 +44,7 @@ class RegressionAnalysis:
 
 ```python
 def analyze_regression_clustering(
-    issues: list[IssueHistory],
+    issues: list[CompletedIssue],
     hotspots: HotspotAnalysis
 ) -> RegressionAnalysis:
     """Detect files where fixes frequently cause new bugs."""
@@ -89,12 +89,12 @@ Regression Clustering Analysis:
 
 ## Acceptance Criteria
 
-- [ ] `RegressionCluster` dataclass captures regression chain details
-- [ ] Analysis detects temporal and file-based regression patterns
-- [ ] Severity classification based on chain length and frequency
-- [ ] Time patterns identified (immediate vs chronic)
-- [ ] Related files included in cluster analysis
-- [ ] Output integrated into `ll-history analyze` report
+- [x] `RegressionCluster` dataclass captures regression chain details
+- [x] Analysis detects temporal and file-based regression patterns
+- [x] Severity classification based on chain length and frequency
+- [x] Time patterns identified (immediate vs chronic)
+- [x] Related files included in cluster analysis
+- [x] Output integrated into `ll-history analyze` report
 
 ## Impact
 
@@ -106,8 +106,11 @@ Regression Clustering Analysis:
 
 ### Blocked By
 
-- ENH-116: Hotspot Analysis (provides file extraction utilities)
-- ENH-120: Complexity Proxy Analysis (enhances severity assessment)
+- ENH-116: Hotspot Analysis (provides file extraction utilities) ✅ Completed
+
+### Optional Enhancements
+
+- ENH-120: Complexity Proxy Analysis (can enhance severity assessment, not required)
 
 ### Blocks
 
@@ -120,3 +123,25 @@ None
 ---
 
 **Priority**: P2 | **Created**: 2026-01-23
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/issue_history.py`: Added `RegressionCluster` and `RegressionAnalysis` dataclasses for regression pattern tracking
+- `scripts/little_loops/issue_history.py`: Implemented `analyze_regression_clustering()` function using temporal proximity and file overlap heuristics
+- `scripts/little_loops/issue_history.py`: Integrated regression analysis into `HistoryAnalysis` dataclass and `calculate_analysis()` function
+- `scripts/little_loops/issue_history.py`: Added regression clustering sections to `format_analysis_text()` and `format_analysis_markdown()` formatters
+- `scripts/tests/test_issue_history.py`: Added comprehensive tests for all new regression clustering functionality (13 test cases)
+
+### Verification Results
+
+- Tests: PASS (92 tests)
+- Lint: PASS
+- Types: PASS
