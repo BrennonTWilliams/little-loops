@@ -99,13 +99,13 @@ Test Gap Correlation Analysis:
 
 ## Acceptance Criteria
 
-- [ ] `TestGap` dataclass captures source-test relationship
-- [ ] Test file detection covers common naming patterns
-- [ ] Gap score calculation weights bugs against test presence
-- [ ] Correlation analysis shows test-bug relationship
-- [ ] Priority ordering based on bug count and test status
-- [ ] Actionable recommendations for each gap
-- [ ] Output integrated into `ll-history analyze` report
+- [x] `TestGap` dataclass captures source-test relationship
+- [x] Test file detection covers common naming patterns
+- [x] Gap score calculation weights bugs against test presence
+- [x] Correlation analysis shows test-bug relationship
+- [x] Priority ordering based on bug count and test status
+- [x] Actionable recommendations for each gap
+- [x] Output integrated into `ll-history analyze` report
 
 ## Impact
 
@@ -117,11 +117,18 @@ Test Gap Correlation Analysis:
 
 ### Blocked By
 
-- ENH-116: Hotspot Analysis (provides file extraction and bug magnet data)
+- ~~ENH-116: Hotspot Analysis~~ (COMPLETED - provides file extraction and bug magnet data)
 
 ### Blocks
 
 None
+
+## Implementation Notes
+
+- The issue uses `IssueHistory` in examples but the actual dataclass is `CompletedIssue` (see `scripts/little_loops/issue_history.py:56`)
+- `HotspotAnalysis` exists at `scripts/little_loops/issue_history.py:207`
+- `analyze_hotspots()` function exists at `scripts/little_loops/issue_history.py:869`
+- Test file detection logic should be added to `issue_history.py`
 
 ## Labels
 
@@ -130,3 +137,27 @@ None
 ---
 
 **Priority**: P2 | **Created**: 2026-01-23
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/issue_history.py`: Added `TestGap` and `TestGapAnalysis` dataclasses
+- `scripts/little_loops/issue_history.py`: Added `_find_test_file()` helper for test file detection
+- `scripts/little_loops/issue_history.py`: Added `analyze_test_gaps()` function to correlate bugs with test coverage
+- `scripts/little_loops/issue_history.py`: Added `test_gap_analysis` field to `HistoryAnalysis` dataclass
+- `scripts/little_loops/issue_history.py`: Integrated test gap analysis into `calculate_analysis()`
+- `scripts/little_loops/issue_history.py`: Added test gap section to `format_analysis_text()` and `format_analysis_markdown()`
+- `scripts/tests/test_issue_history.py`: Added comprehensive tests for TestGap, TestGapAnalysis, and analyze_test_gaps
+
+### Verification Results
+
+- Tests: PASS (106 tests)
+- Lint: PASS
+- Types: PASS

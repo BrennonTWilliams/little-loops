@@ -31,6 +31,8 @@ __all__ = [
     "HotspotAnalysis",
     "RegressionCluster",
     "RegressionAnalysis",
+    "TestGap",
+    "TestGapAnalysis",
     "TechnicalDebtMetrics",
     "HistoryAnalysis",
     # Parsing and scanning
@@ -42,6 +44,7 @@ __all__ = [
     "calculate_analysis",
     "analyze_hotspots",
     "analyze_regression_clustering",
+    "analyze_test_gaps",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",
@@ -261,6 +264,52 @@ class RegressionAnalysis:
 
 
 @dataclass
+class TestGap:
+    """A source file with bugs but missing or weak test coverage."""
+
+    source_file: str
+    bug_count: int = 0
+    bug_ids: list[str] = field(default_factory=list)
+    has_test_file: bool = False
+    test_file_path: str | None = None
+    gap_score: float = 0.0  # bug_count * multiplier, higher = worse
+    priority: str = "low"  # "critical", "high", "medium", "low"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "source_file": self.source_file,
+            "bug_count": self.bug_count,
+            "bug_ids": self.bug_ids[:10],  # Top 10
+            "has_test_file": self.has_test_file,
+            "test_file_path": self.test_file_path,
+            "gap_score": round(self.gap_score, 2),
+            "priority": self.priority,
+        }
+
+
+@dataclass
+class TestGapAnalysis:
+    """Analysis of test coverage gaps correlated with bug occurrences."""
+
+    gaps: list[TestGap] = field(default_factory=list)
+    untested_bug_magnets: list[str] = field(default_factory=list)
+    files_with_tests_avg_bugs: float = 0.0
+    files_without_tests_avg_bugs: float = 0.0
+    priority_test_targets: list[str] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "gaps": [g.to_dict() for g in self.gaps],
+            "untested_bug_magnets": self.untested_bug_magnets[:5],
+            "files_with_tests_avg_bugs": round(self.files_with_tests_avg_bugs, 2),
+            "files_without_tests_avg_bugs": round(self.files_without_tests_avg_bugs, 2),
+            "priority_test_targets": self.priority_test_targets[:10],
+        }
+
+
+@dataclass
 class TechnicalDebtMetrics:
     """Technical debt health indicators."""
 
@@ -310,6 +359,9 @@ class HistoryAnalysis:
     # Regression clustering analysis
     regression_analysis: RegressionAnalysis | None = None
 
+    # Test gap analysis
+    test_gap_analysis: TestGapAnalysis | None = None
+
     # Technical debt
     debt_metrics: TechnicalDebtMetrics | None = None
 
@@ -340,6 +392,9 @@ class HistoryAnalysis:
             ),
             "regression_analysis": (
                 self.regression_analysis.to_dict() if self.regression_analysis else None
+            ),
+            "test_gap_analysis": (
+                self.test_gap_analysis.to_dict() if self.test_gap_analysis else None
             ),
             "debt_metrics": self.debt_metrics.to_dict() if self.debt_metrics else None,
             "comparison_period": self.comparison_period,
@@ -670,6 +725,53 @@ def _extract_paths_from_issue(content: str) -> list[str]:
                 paths.add(path)
 
     return sorted(paths)
+
+
+def _find_test_file(source_path: str) -> str | None:
+    """Find corresponding test file for a source file.
+
+    Checks common test file naming patterns:
+    - tests/test_<name>.py
+    - tests/<path>/test_<name>.py
+    - <path>/test_<name>.py
+    - <path>/<name>_test.py
+    - <path>/tests/test_<name>.py
+
+    Args:
+        source_path: Path to source file (e.g., "src/core/processor.py")
+
+    Returns:
+        Path to test file if found, None otherwise
+    """
+    if not source_path.endswith(".py"):
+        return None  # Only check Python files for now
+
+    path = Path(source_path)
+    stem = path.stem  # filename without extension
+    parent = str(path.parent) if path.parent != Path(".") else ""
+
+    # Generate candidate test file paths
+    candidates: list[str] = [
+        f"tests/test_{stem}.py",
+        f"{parent}/test_{stem}.py" if parent else f"test_{stem}.py",
+        f"{parent}/{stem}_test.py" if parent else f"{stem}_test.py",
+        f"{parent}/tests/test_{stem}.py" if parent else f"tests/test_{stem}.py",
+    ]
+
+    # Add path-aware test locations
+    if parent:
+        candidates.append(f"tests/{parent}/test_{stem}.py")
+
+    # Project-specific pattern for little-loops
+    # e.g., scripts/little_loops/foo.py -> scripts/tests/test_foo.py
+    if source_path.startswith("scripts/little_loops/"):
+        candidates.append(f"scripts/tests/test_{stem}.py")
+
+    for candidate in candidates:
+        if Path(candidate).exists():
+            return candidate
+
+    return None
 
 
 def _calculate_period_label(start: date, period_type: str) -> str:
@@ -1100,6 +1202,108 @@ def analyze_regression_clustering(
     )
 
 
+def analyze_test_gaps(
+    issues: list[CompletedIssue],
+    hotspots: HotspotAnalysis,
+) -> TestGapAnalysis:
+    """Correlate bug occurrences with test coverage gaps.
+
+    Args:
+        issues: List of completed issues (unused, for API consistency)
+        hotspots: Pre-computed hotspot analysis
+
+    Returns:
+        TestGapAnalysis with test coverage gap information
+    """
+    # Build map of source files to bug info from hotspots
+    bug_files: dict[str, dict[str, Any]] = {}
+
+    for hotspot in hotspots.file_hotspots:
+        bug_count = hotspot.issue_types.get("BUG", 0)
+        if bug_count > 0:
+            # Filter to only BUG issue IDs
+            bug_ids = [iid for iid in hotspot.issue_ids if iid.startswith("BUG-")]
+            bug_files[hotspot.path] = {
+                "bug_count": bug_count,
+                "bug_ids": bug_ids,
+            }
+
+    if not bug_files:
+        return TestGapAnalysis()
+
+    # Analyze test coverage for each file with bugs
+    gaps: list[TestGap] = []
+    files_with_tests: list[int] = []  # bug counts
+    files_without_tests: list[int] = []  # bug counts
+
+    for source_file, data in bug_files.items():
+        bug_count = data["bug_count"]
+        bug_ids = data["bug_ids"]
+
+        test_file = _find_test_file(source_file)
+        has_test = test_file is not None
+
+        # Calculate gap score: higher = more urgent to add tests
+        # Files without tests get amplified scores
+        if has_test:
+            gap_score = bug_count * 1.0
+            files_with_tests.append(bug_count)
+        else:
+            gap_score = bug_count * 10.0  # Amplify untested files
+            files_without_tests.append(bug_count)
+
+        # Determine priority based on bug count and test presence
+        if not has_test and bug_count >= 5:
+            priority = "critical"
+        elif not has_test and bug_count >= 3:
+            priority = "high"
+        elif not has_test or bug_count >= 4:
+            priority = "medium"
+        else:
+            priority = "low"
+
+        gaps.append(
+            TestGap(
+                source_file=source_file,
+                bug_count=bug_count,
+                bug_ids=bug_ids,
+                has_test_file=has_test,
+                test_file_path=test_file,
+                gap_score=gap_score,
+                priority=priority,
+            )
+        )
+
+    # Sort by gap score descending (highest priority first)
+    gaps.sort(key=lambda g: (-g.gap_score, -g.bug_count))
+
+    # Calculate averages for correlation
+    avg_with_tests = (
+        sum(files_with_tests) / len(files_with_tests) if files_with_tests else 0.0
+    )
+    avg_without_tests = (
+        sum(files_without_tests) / len(files_without_tests)
+        if files_without_tests
+        else 0.0
+    )
+
+    # Identify untested bug magnets (from hotspot analysis)
+    untested_magnets = [
+        h.path for h in hotspots.bug_magnets if _find_test_file(h.path) is None
+    ]
+
+    # Priority test targets: untested files sorted by bug count
+    priority_targets = [g.source_file for g in gaps if not g.has_test_file]
+
+    return TestGapAnalysis(
+        gaps=gaps[:15],  # Top 15
+        untested_bug_magnets=untested_magnets,
+        files_with_tests_avg_bugs=avg_with_tests,
+        files_without_tests_avg_bugs=avg_without_tests,
+        priority_test_targets=priority_targets[:10],
+    )
+
+
 def scan_active_issues(issues_dir: Path) -> list[tuple[Path, str, str, date | None]]:
     """Scan active issue directories.
 
@@ -1257,6 +1461,9 @@ def calculate_analysis(
     # Regression clustering analysis
     regression_analysis = analyze_regression_clustering(completed_issues)
 
+    # Test gap analysis
+    test_gap_analysis = analyze_test_gaps(completed_issues, hotspot_analysis)
+
     # Technical debt metrics
     debt_metrics = _calculate_debt_metrics(completed_issues, active_issues)
 
@@ -1274,6 +1481,7 @@ def calculate_analysis(
         subsystem_health=subsystem_health,
         hotspot_analysis=hotspot_analysis,
         regression_analysis=regression_analysis,
+        test_gap_analysis=test_gap_analysis,
         debt_metrics=debt_metrics,
     )
 
@@ -1470,6 +1678,39 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
                     if len(c.fix_bug_pairs) > 3:
                         chain += " ..."
                     lines.append(f"     Chain: {chain}")
+
+    # Test gap analysis
+    if analysis.test_gap_analysis:
+        tga = analysis.test_gap_analysis
+
+        if tga.gaps:
+            lines.append("")
+            lines.append("Test Gap Correlation")
+            lines.append("-" * 20)
+
+            # Show correlation stats
+            lines.append(f"  Files with tests: avg {tga.files_with_tests_avg_bugs:.1f} bugs")
+            lines.append(
+                f"  Files without tests: avg {tga.files_without_tests_avg_bugs:.1f} bugs"
+            )
+            lines.append("")
+
+            # Show critical gaps
+            critical_gaps = [g for g in tga.gaps if g.priority in ("critical", "high")]
+            if critical_gaps:
+                lines.append("Critical Test Gaps:")
+                for g in critical_gaps[:5]:
+                    test_status = "NO TEST" if not g.has_test_file else g.test_file_path
+                    lines.append(f"  {g.source_file} [{g.priority.upper()}]")
+                    bug_ids_str = ", ".join(g.bug_ids[:3])
+                    lines.append(f"     Bugs: {g.bug_count} ({bug_ids_str})")
+                    lines.append(f"     Test: {test_status}")
+
+        if tga.priority_test_targets:
+            lines.append("")
+            lines.append("Priority Test Targets:")
+            for i, target in enumerate(tga.priority_test_targets[:5], 1):
+                lines.append(f"  {i}. {target}")
 
     # Technical debt
     if analysis.debt_metrics:
@@ -1675,6 +1916,51 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
             lines.append("")
             for f in regression.most_fragile_files:
                 lines.append(f"- `{f}`")
+
+    # Test Gap Analysis
+    if analysis.test_gap_analysis:
+        tga = analysis.test_gap_analysis
+
+        if tga.gaps:
+            lines.append("")
+            lines.append("## Test Gap Correlation")
+            lines.append("")
+            lines.append("Correlating bug occurrences with test coverage gaps:")
+            lines.append("")
+            lines.append("| Metric | Value |")
+            lines.append("|--------|-------|")
+            lines.append(f"| Files with tests | avg {tga.files_with_tests_avg_bugs:.1f} bugs |")
+            lines.append(
+                f"| Files without tests | avg {tga.files_without_tests_avg_bugs:.1f} bugs |"
+            )
+            lines.append("")
+
+            # Critical gaps table
+            critical_gaps = [g for g in tga.gaps if g.priority in ("critical", "high")]
+            if critical_gaps:
+                lines.append("### Critical Test Gaps")
+                lines.append("")
+                lines.append("Files with high bug counts but missing tests:")
+                lines.append("")
+                lines.append("| File | Bugs | Priority | Test Status | Action |")
+                lines.append("|------|------|----------|-------------|--------|")
+                for g in critical_gaps[:10]:
+                    priority_badge = "🔴" if g.priority == "critical" else "🟠"
+                    test_status = f"`{g.test_file_path}`" if g.has_test_file else "NONE"
+                    action = "Review coverage" if g.has_test_file else "Create test file"
+                    lines.append(
+                        f"| `{g.source_file}` | {g.bug_count} | {priority_badge} | "
+                        f"{test_status} | {action} |"
+                    )
+
+        if tga.priority_test_targets:
+            lines.append("")
+            lines.append("### Priority Test Targets")
+            lines.append("")
+            lines.append("Files recommended for new test creation (ordered by bug count):")
+            lines.append("")
+            for target in tga.priority_test_targets[:10]:
+                lines.append(f"- `{target}`")
 
     # Technical Debt
     if analysis.debt_metrics:

@@ -18,9 +18,12 @@ from little_loops.issue_history import (
     HotspotAnalysis,
     RegressionAnalysis,
     RegressionCluster,
+    TestGap,
+    TestGapAnalysis,
     _extract_paths_from_issue,
     analyze_hotspots,
     analyze_regression_clustering,
+    analyze_test_gaps,
     calculate_summary,
     format_summary_json,
     format_summary_text,
@@ -1529,3 +1532,262 @@ class TestAnalyzeRegressionClustering:
         result = analyze_regression_clustering(issues)
         assert "src/fragile1.py" in result.most_fragile_files
         assert "src/fragile2.py" in result.most_fragile_files
+
+
+class TestTestGap:
+    """Tests for TestGap dataclass."""
+
+    def test_to_dict(self) -> None:
+        """Test to_dict serialization."""
+        gap = TestGap(
+            source_file="src/core/processor.py",
+            bug_count=5,
+            bug_ids=["BUG-001", "BUG-002", "BUG-003", "BUG-004", "BUG-005"],
+            has_test_file=False,
+            test_file_path=None,
+            gap_score=50.0,
+            priority="critical",
+        )
+        result = gap.to_dict()
+
+        assert result["source_file"] == "src/core/processor.py"
+        assert result["bug_count"] == 5
+        assert result["has_test_file"] is False
+        assert result["gap_score"] == 50.0
+        assert result["priority"] == "critical"
+
+    def test_to_dict_with_test_file(self) -> None:
+        """Test to_dict with existing test file."""
+        gap = TestGap(
+            source_file="src/utils/helper.py",
+            bug_count=2,
+            bug_ids=["BUG-010", "BUG-011"],
+            has_test_file=True,
+            test_file_path="tests/test_helper.py",
+            gap_score=2.0,
+            priority="low",
+        )
+        result = gap.to_dict()
+
+        assert result["has_test_file"] is True
+        assert result["test_file_path"] == "tests/test_helper.py"
+
+    def test_to_dict_limits_bug_ids(self) -> None:
+        """Test that to_dict limits bug_ids to 10."""
+        gap = TestGap(
+            source_file="src/core.py",
+            bug_count=15,
+            bug_ids=[f"BUG-{i:03d}" for i in range(15)],
+        )
+        result = gap.to_dict()
+
+        assert len(result["bug_ids"]) == 10
+
+
+class TestTestGapAnalysis:
+    """Tests for TestGapAnalysis dataclass."""
+
+    def test_to_dict_empty(self) -> None:
+        """Test to_dict with empty analysis."""
+        analysis = TestGapAnalysis()
+        result = analysis.to_dict()
+
+        assert result["gaps"] == []
+        assert result["untested_bug_magnets"] == []
+        assert result["files_with_tests_avg_bugs"] == 0.0
+        assert result["files_without_tests_avg_bugs"] == 0.0
+        assert result["priority_test_targets"] == []
+
+    def test_to_dict_with_data(self) -> None:
+        """Test to_dict with populated data."""
+        gap = TestGap(
+            source_file="src/core.py",
+            bug_count=3,
+            bug_ids=["BUG-001"],
+            has_test_file=False,
+            gap_score=30.0,
+            priority="high",
+        )
+        analysis = TestGapAnalysis(
+            gaps=[gap],
+            untested_bug_magnets=["src/core.py"],
+            files_with_tests_avg_bugs=1.5,
+            files_without_tests_avg_bugs=4.2,
+            priority_test_targets=["src/core.py"],
+        )
+        result = analysis.to_dict()
+
+        assert len(result["gaps"]) == 1
+        assert result["files_with_tests_avg_bugs"] == 1.5
+        assert result["files_without_tests_avg_bugs"] == 4.2
+
+
+class TestAnalyzeTestGaps:
+    """Tests for analyze_test_gaps function."""
+
+    def test_empty_hotspots(self) -> None:
+        """Test with empty hotspot analysis."""
+        hotspots = HotspotAnalysis()
+        result = analyze_test_gaps([], hotspots)
+
+        assert result.gaps == []
+        assert result.priority_test_targets == []
+
+    def test_no_bugs_in_hotspots(self) -> None:
+        """Test with hotspots that have no bugs."""
+        hotspots = HotspotAnalysis(
+            file_hotspots=[
+                Hotspot(
+                    path="src/feature.py",
+                    issue_count=3,
+                    issue_ids=["ENH-001", "ENH-002", "ENH-003"],
+                    issue_types={"ENH": 3},
+                )
+            ]
+        )
+        result = analyze_test_gaps([], hotspots)
+
+        assert result.gaps == []
+
+    def test_with_bug_hotspots(self) -> None:
+        """Test with hotspots containing bugs."""
+        hotspots = HotspotAnalysis(
+            file_hotspots=[
+                Hotspot(
+                    path="src/problematic.py",
+                    issue_count=5,
+                    issue_ids=["BUG-001", "BUG-002", "BUG-003", "ENH-001", "ENH-002"],
+                    issue_types={"BUG": 3, "ENH": 2},
+                    bug_ratio=0.6,
+                )
+            ],
+            bug_magnets=[
+                Hotspot(
+                    path="src/problematic.py",
+                    issue_count=5,
+                    issue_ids=["BUG-001", "BUG-002", "BUG-003"],
+                    issue_types={"BUG": 3},
+                    bug_ratio=0.6,
+                )
+            ],
+        )
+
+        result = analyze_test_gaps([], hotspots)
+
+        assert len(result.gaps) >= 1
+        assert result.gaps[0].source_file == "src/problematic.py"
+        assert result.gaps[0].bug_count == 3
+        assert result.gaps[0].has_test_file is False  # No test file exists
+        assert "src/problematic.py" in result.untested_bug_magnets
+
+    def test_priority_critical(self) -> None:
+        """Test priority classification for critical (5+ bugs, no test)."""
+        hotspots = HotspotAnalysis(
+            file_hotspots=[
+                Hotspot(
+                    path="src/critical.py",
+                    issue_count=5,
+                    issue_ids=["BUG-001", "BUG-002", "BUG-003", "BUG-004", "BUG-005"],
+                    issue_types={"BUG": 5},
+                )
+            ]
+        )
+        result = analyze_test_gaps([], hotspots)
+
+        assert result.gaps[0].priority == "critical"
+
+    def test_priority_high(self) -> None:
+        """Test priority classification for high (3-4 bugs, no test)."""
+        hotspots = HotspotAnalysis(
+            file_hotspots=[
+                Hotspot(
+                    path="src/high_priority.py",
+                    issue_count=3,
+                    issue_ids=["BUG-001", "BUG-002", "BUG-003"],
+                    issue_types={"BUG": 3},
+                )
+            ]
+        )
+        result = analyze_test_gaps([], hotspots)
+
+        assert result.gaps[0].priority == "high"
+
+    def test_priority_low(self) -> None:
+        """Test priority classification for low (1-2 bugs, no test)."""
+        hotspots = HotspotAnalysis(
+            file_hotspots=[
+                Hotspot(
+                    path="src/low_priority.py",
+                    issue_count=2,
+                    issue_ids=["BUG-001", "BUG-002"],
+                    issue_types={"BUG": 2},
+                )
+            ]
+        )
+        result = analyze_test_gaps([], hotspots)
+
+        assert result.gaps[0].priority == "medium"  # 2 bugs without test is medium
+
+    def test_gap_score_calculation(self) -> None:
+        """Test gap score is higher for untested files."""
+        hotspots = HotspotAnalysis(
+            file_hotspots=[
+                Hotspot(
+                    path="src/untested.py",
+                    issue_count=3,
+                    issue_ids=["BUG-001", "BUG-002", "BUG-003"],
+                    issue_types={"BUG": 3},
+                )
+            ]
+        )
+        result = analyze_test_gaps([], hotspots)
+
+        # Untested files get 10x multiplier
+        assert result.gaps[0].gap_score == 30.0
+
+    def test_averages_calculation(self) -> None:
+        """Test average bug calculation."""
+        hotspots = HotspotAnalysis(
+            file_hotspots=[
+                Hotspot(
+                    path="src/file1.py",
+                    issue_count=4,
+                    issue_ids=["BUG-001", "BUG-002", "BUG-003", "BUG-004"],
+                    issue_types={"BUG": 4},
+                ),
+                Hotspot(
+                    path="src/file2.py",
+                    issue_count=2,
+                    issue_ids=["BUG-005", "BUG-006"],
+                    issue_types={"BUG": 2},
+                ),
+            ]
+        )
+        result = analyze_test_gaps([], hotspots)
+
+        # Both files are untested, so files_without_tests_avg_bugs = (4 + 2) / 2 = 3.0
+        assert result.files_without_tests_avg_bugs == 3.0
+        assert result.files_with_tests_avg_bugs == 0.0
+
+    def test_priority_targets_sorted_by_gap_score(self) -> None:
+        """Test that priority targets are sorted by bug count."""
+        hotspots = HotspotAnalysis(
+            file_hotspots=[
+                Hotspot(
+                    path="src/low.py",
+                    issue_count=1,
+                    issue_ids=["BUG-001"],
+                    issue_types={"BUG": 1},
+                ),
+                Hotspot(
+                    path="src/high.py",
+                    issue_count=5,
+                    issue_ids=["BUG-002", "BUG-003", "BUG-004", "BUG-005", "BUG-006"],
+                    issue_types={"BUG": 5},
+                ),
+            ]
+        )
+        result = analyze_test_gaps([], hotspots)
+
+        # Higher bug count should come first
+        assert result.priority_test_targets[0] == "src/high.py"
