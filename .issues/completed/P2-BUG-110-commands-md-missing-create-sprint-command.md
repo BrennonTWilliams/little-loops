@@ -62,4 +62,21 @@ Create a sprint definition with a curated list of issues.
 
 ## Status
 
-**Open** | Created: 2026-01-23 | Priority: P2
+**Completed** | Created: 2026-01-23 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-24
+- **Status**: Completed
+
+### Changes Made
+- `docs/COMMANDS.md`: Added new "Sprint Management" section with `/ll:create_sprint` documentation (lines 101-113)
+- `docs/COMMANDS.md`: Added `create_sprint` entry to Quick Reference table (line 221)
+
+### Verification Results
+- Documentation is valid markdown
+- Section appears in correct location after Issue Management
+- Arguments match command definition at `.claude/commands/create_sprint.md`

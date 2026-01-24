@@ -98,6 +98,22 @@ Iterate on existing implementation plans with updates.
 
 ---
 
+## Sprint Management
+
+### `/ll:create_sprint`
+Create a sprint definition with a curated list of issues.
+
+**Arguments:**
+- `name` (required): Sprint name (e.g., "sprint-1", "q1-bug-fixes")
+- `description` (optional): Description of the sprint's purpose
+- `issues` (optional): Comma-separated list of issue IDs (e.g., "BUG-001,FEAT-010")
+
+**Interactive Mode:** If issues are not provided, the command will help select issues interactively.
+
+**Output:** Creates `.sprints/<name>.yaml` with issue list and execution options.
+
+---
+
 ## Auditing & Analysis
 
 ### `/ll:audit_architecture`
@@ -202,6 +218,7 @@ Create FSM loop configurations interactively.
 | `handoff` | Generate session handoff prompt |
 | `resume` | Resume from continuation prompt |
 | `create_loop` | Interactive FSM loop creation |
+| `create_sprint` | Create sprint with curated issue list |
 
 ---
 
