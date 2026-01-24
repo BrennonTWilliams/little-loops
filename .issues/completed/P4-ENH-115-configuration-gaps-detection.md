@@ -38,7 +38,7 @@ class ConfigGapsAnalysis:
 
 ```python
 def detect_config_gaps(
-    issues: list[IssueHistory],
+    issues: list[CompletedIssue],
     manual_patterns: ManualPatternAnalysis,
     current_config: dict
 ) -> ConfigGapsAnalysis:
@@ -92,12 +92,12 @@ Configuration Gaps Analysis:
 
 ## Acceptance Criteria
 
-- [ ] `ConfigGap` dataclass captures gap with evidence and suggestions
-- [ ] Analysis reads current configuration to avoid duplicate suggestions
-- [ ] Gap detection covers hooks, skills, and agents
-- [ ] Specific configuration examples provided for each gap
-- [ ] Priority based on frequency and impact
-- [ ] Output integrated into `ll-history analyze` report
+- [x] `ConfigGap` dataclass captures gap with evidence and suggestions
+- [x] Analysis reads current configuration to avoid duplicate suggestions
+- [x] Gap detection covers hooks, skills, and agents
+- [x] Specific configuration examples provided for each gap
+- [x] Priority based on frequency and impact
+- [x] Output integrated into `ll-history analyze` report
 
 ## Impact
 
@@ -122,3 +122,24 @@ None
 ---
 
 **Priority**: P4 | **Created**: 2026-01-23
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_history.py`: Added `ConfigGap` and `ConfigGapsAnalysis` dataclasses
+- `scripts/little_loops/issue_history.py`: Added `detect_config_gaps()` function that reads hooks.json, scans agents/, and skills/
+- `scripts/little_loops/issue_history.py`: Added `config_gaps_analysis` field to `HistoryAnalysis` dataclass
+- `scripts/little_loops/issue_history.py`: Integrated config gaps into `calculate_analysis()` function
+- `scripts/little_loops/issue_history.py`: Added text and markdown output formatting
+- `scripts/tests/test_issue_history.py`: Added 11 tests for new functionality
+
+### Verification Results
+- Tests: PASS (188 passed)
+- Lint: PASS
+- Types: PASS

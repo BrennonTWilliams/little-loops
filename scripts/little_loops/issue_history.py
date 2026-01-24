@@ -37,6 +37,8 @@ __all__ = [
     "RejectionAnalysis",
     "ManualPattern",
     "ManualPatternAnalysis",
+    "ConfigGap",
+    "ConfigGapsAnalysis",
     "AgentOutcome",
     "AgentEffectivenessAnalysis",
     "TechnicalDebtMetrics",
@@ -55,6 +57,7 @@ __all__ = [
     "analyze_test_gaps",
     "analyze_rejection_rates",
     "detect_manual_patterns",
+    "detect_config_gaps",
     "analyze_agent_effectiveness",
     "analyze_complexity_proxy",
     # Formatting functions
@@ -472,6 +475,50 @@ class ManualPatternAnalysis:
 
 
 @dataclass
+class ConfigGap:
+    """A gap in configuration that could address recurring manual work."""
+
+    gap_type: str  # "hook", "skill", "agent"
+    description: str
+    evidence: list[str] = field(default_factory=list)  # issue IDs showing the pattern
+    suggested_config: str = ""  # example configuration
+    priority: str = "medium"  # "high", "medium", "low"
+    pattern_type: str = ""  # links back to ManualPattern.pattern_type
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "gap_type": self.gap_type,
+            "description": self.description,
+            "evidence": self.evidence[:10],
+            "suggested_config": self.suggested_config,
+            "priority": self.priority,
+            "pattern_type": self.pattern_type,
+        }
+
+
+@dataclass
+class ConfigGapsAnalysis:
+    """Analysis of configuration gaps based on manual pattern detection."""
+
+    gaps: list[ConfigGap] = field(default_factory=list)
+    current_hooks: list[str] = field(default_factory=list)
+    current_skills: list[str] = field(default_factory=list)
+    current_agents: list[str] = field(default_factory=list)
+    coverage_score: float = 0.0  # 0-1, how well config covers common needs
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "gaps": [g.to_dict() for g in self.gaps],
+            "current_hooks": self.current_hooks,
+            "current_skills": self.current_skills,
+            "current_agents": self.current_agents,
+            "coverage_score": round(self.coverage_score, 2),
+        }
+
+
+@dataclass
 class AgentOutcome:
     """Metrics for a single agent processing a specific issue type."""
 
@@ -638,6 +685,9 @@ class HistoryAnalysis:
     # Complexity proxy analysis
     complexity_proxy_analysis: ComplexityProxyAnalysis | None = None
 
+    # Configuration gaps analysis
+    config_gaps_analysis: ConfigGapsAnalysis | None = None
+
     # Technical debt
     debt_metrics: TechnicalDebtMetrics | None = None
 
@@ -688,6 +738,9 @@ class HistoryAnalysis:
                 self.complexity_proxy_analysis.to_dict()
                 if self.complexity_proxy_analysis
                 else None
+            ),
+            "config_gaps_analysis": (
+                self.config_gaps_analysis.to_dict() if self.config_gaps_analysis else None
             ),
             "debt_metrics": self.debt_metrics.to_dict() if self.debt_metrics else None,
             "comparison_period": self.comparison_period,
@@ -2033,6 +2086,159 @@ def detect_manual_patterns(issues: list[CompletedIssue]) -> ManualPatternAnalysi
     )
 
 
+# Mapping from manual pattern types to configuration solutions
+_PATTERN_TO_CONFIG: dict[str, dict[str, Any]] = {
+    "test": {
+        "hook_event": "PostToolUse",
+        "description": "Automatic test execution after code changes",
+        "suggested_config": '''hooks/hooks.json:
+  "PostToolUse": [{
+    "matcher": "Edit|Write",
+    "hooks": [{
+      "type": "command",
+      "command": "pytest tests/ -x -q",
+      "timeout": 30000
+    }]
+  }]''',
+    },
+    "lint": {
+        "hook_event": "PreToolUse",
+        "description": "Automatic formatting before file writes",
+        "suggested_config": '''hooks/hooks.json:
+  "PreToolUse": [{
+    "matcher": "Write|Edit",
+    "hooks": [{
+      "type": "command",
+      "command": "ruff format --check .",
+      "timeout": 10000
+    }]
+  }]''',
+    },
+    "type_check": {
+        "hook_event": "PostToolUse",
+        "description": "Type checking after code modifications",
+        "suggested_config": '''hooks/hooks.json:
+  "PostToolUse": [{
+    "matcher": "Edit|Write",
+    "hooks": [{
+      "type": "command",
+      "command": "mypy --fast .",
+      "timeout": 30000
+    }]
+  }]''',
+    },
+    "build": {
+        "hook_event": "PostToolUse",
+        "description": "Build verification after changes",
+        "suggested_config": '''hooks/hooks.json:
+  "PostToolUse": [{
+    "matcher": "Edit|Write",
+    "hooks": [{
+      "type": "command",
+      "command": "npm run build",
+      "timeout": 60000
+    }]
+  }]''',
+    },
+}
+
+
+def detect_config_gaps(
+    manual_pattern_analysis: ManualPatternAnalysis,
+    project_root: Path | None = None,
+) -> ConfigGapsAnalysis:
+    """Detect configuration gaps based on manual pattern analysis.
+
+    Args:
+        manual_pattern_analysis: Results from detect_manual_patterns()
+        project_root: Project root directory (defaults to cwd)
+
+    Returns:
+        ConfigGapsAnalysis with identified gaps and coverage metrics
+    """
+    if project_root is None:
+        project_root = Path.cwd()
+
+    # Discover current configuration
+    current_hooks: list[str] = []
+    current_skills: list[str] = []
+    current_agents: list[str] = []
+
+    # Load hooks configuration
+    hooks_file = project_root / "hooks" / "hooks.json"
+    if hooks_file.exists():
+        try:
+            with open(hooks_file, encoding="utf-8") as f:
+                hooks_data = json.load(f)
+            current_hooks = list(hooks_data.get("hooks", {}).keys())
+        except Exception:
+            pass
+
+    # Scan for agents
+    agents_dir = project_root / "agents"
+    if agents_dir.is_dir():
+        for agent_file in agents_dir.glob("*.md"):
+            current_agents.append(agent_file.stem)
+
+    # Scan for skills
+    skills_dir = project_root / "skills"
+    if skills_dir.is_dir():
+        for skill_dir in skills_dir.iterdir():
+            if skill_dir.is_dir() and (skill_dir / "SKILL.md").exists():
+                current_skills.append(skill_dir.name)
+
+    # Identify gaps from manual patterns
+    gaps: list[ConfigGap] = []
+    covered_patterns = 0
+    recognized_patterns = 0
+
+    for pattern in manual_pattern_analysis.patterns:
+        config_mapping = _PATTERN_TO_CONFIG.get(pattern.pattern_type)
+        if not config_mapping:
+            continue
+
+        recognized_patterns += 1
+        hook_event = config_mapping["hook_event"]
+
+        # Check if hook event is already configured
+        if hook_event in current_hooks:
+            covered_patterns += 1
+            continue
+
+        # Determine priority based on occurrence count
+        if pattern.occurrence_count >= 10:
+            priority = "high"
+        elif pattern.occurrence_count >= 5:
+            priority = "medium"
+        else:
+            priority = "low"
+
+        gap = ConfigGap(
+            gap_type="hook",
+            description=config_mapping["description"],
+            evidence=pattern.affected_issues,
+            suggested_config=config_mapping["suggested_config"],
+            priority=priority,
+            pattern_type=pattern.pattern_type,
+        )
+        gaps.append(gap)
+
+    # Calculate coverage score based on recognized patterns only
+    coverage_score = covered_patterns / recognized_patterns if recognized_patterns > 0 else 1.0
+
+    # Sort gaps by priority (high first)
+    priority_order = {"high": 0, "medium": 1, "low": 2}
+    gaps.sort(key=lambda g: priority_order.get(g.priority, 3))
+
+    return ConfigGapsAnalysis(
+        gaps=gaps,
+        current_hooks=current_hooks,
+        current_skills=current_skills,
+        current_agents=current_agents,
+        coverage_score=coverage_score,
+    )
+
+
 def analyze_agent_effectiveness(issues: list[CompletedIssue]) -> AgentEffectivenessAnalysis:
     """Analyze agent effectiveness across issue types.
 
@@ -2379,6 +2585,7 @@ def calculate_analysis(
     issues_dir: Path | None = None,
     period_type: Literal["weekly", "monthly", "quarterly"] = "monthly",
     compare_days: int | None = None,
+    project_root: Path | None = None,
 ) -> HistoryAnalysis:
     """Calculate comprehensive history analysis.
 
@@ -2387,6 +2594,7 @@ def calculate_analysis(
         issues_dir: Path to .issues/ for active issue scanning
         period_type: Grouping period for trend analysis
         compare_days: Days for comparative analysis (e.g., 30 for 30d comparison)
+        project_root: Project root for config gap analysis (defaults to cwd)
 
     Returns:
         HistoryAnalysis with all metrics
@@ -2446,6 +2654,9 @@ def calculate_analysis(
     # Complexity proxy analysis
     complexity_proxy_analysis = analyze_complexity_proxy(completed_issues, hotspot_analysis)
 
+    # Configuration gaps analysis (depends on manual_pattern_analysis)
+    config_gaps_analysis = detect_config_gaps(manual_pattern_analysis, project_root)
+
     # Technical debt metrics
     debt_metrics = _calculate_debt_metrics(completed_issues, active_issues)
 
@@ -2469,6 +2680,7 @@ def calculate_analysis(
         manual_pattern_analysis=manual_pattern_analysis,
         agent_effectiveness_analysis=agent_effectiveness_analysis,
         complexity_proxy_analysis=complexity_proxy_analysis,
+        config_gaps_analysis=config_gaps_analysis,
         debt_metrics=debt_metrics,
     )
 
@@ -2810,6 +3022,35 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
                 lines.append(f"     Issues: {issues_str}")
                 lines.append(f"     Suggestion: {pattern.suggested_automation}")
                 lines.append(f"     Complexity: {pattern.automation_complexity}")
+
+    # Configuration gaps analysis
+    if analysis.config_gaps_analysis:
+        cga = analysis.config_gaps_analysis
+
+        lines.append("")
+        lines.append("Configuration Gaps Analysis")
+        lines.append("-" * 27)
+        lines.append(f"  Coverage score: {cga.coverage_score * 100:.0f}%")
+        lines.append(f"  Current hooks: {', '.join(cga.current_hooks) or 'none'}")
+        lines.append(f"  Current skills: {len(cga.current_skills)}")
+        lines.append(f"  Current agents: {len(cga.current_agents)}")
+
+        if cga.gaps:
+            lines.append("")
+            lines.append("  Identified Gaps:")
+
+            for i, gap in enumerate(cga.gaps[:5], 1):
+                lines.append("")
+                lines.append(f"  {i}. Missing: {gap.gap_type} for {gap.description}")
+                lines.append(f"     Priority: {gap.priority}")
+                issues_str = ", ".join(gap.evidence[:3])
+                if len(gap.evidence) > 3:
+                    issues_str += ", ..."
+                lines.append(f"     Evidence: {issues_str}")
+                if gap.suggested_config:
+                    lines.append("     Suggested config:")
+                    for config_line in gap.suggested_config.split("\n")[:4]:
+                        lines.append(f"       {config_line}")
 
     # Agent effectiveness analysis
     if analysis.agent_effectiveness_analysis:
@@ -3260,6 +3501,48 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
                 lines.append("")
                 for suggestion in mpa.automation_suggestions[:5]:
                     lines.append(f"- {suggestion}")
+
+    # Configuration Gaps Analysis
+    if analysis.config_gaps_analysis:
+        cga = analysis.config_gaps_analysis
+
+        lines.append("")
+        lines.append("## Configuration Gaps Analysis")
+        lines.append("")
+        lines.append(f"**Coverage score**: {cga.coverage_score * 100:.0f}%")
+        lines.append("")
+        lines.append("### Current Configuration")
+        lines.append("")
+        lines.append(f"- **Hooks**: {', '.join(cga.current_hooks) or 'none'}")
+        lines.append(f"- **Skills**: {len(cga.current_skills)}")
+        lines.append(f"- **Agents**: {len(cga.current_agents)}")
+
+        if cga.gaps:
+            lines.append("")
+            lines.append("### Identified Gaps")
+            lines.append("")
+            lines.append("| Priority | Type | Description | Evidence |")
+            lines.append("|----------|------|-------------|----------|")
+
+            for gap in cga.gaps[:10]:
+                issues_str = ", ".join(gap.evidence[:3])
+                if len(gap.evidence) > 3:
+                    issues_str += "..."
+                lines.append(
+                    f"| {gap.priority} | {gap.gap_type} | {gap.description} | {issues_str} |"
+                )
+
+            lines.append("")
+            lines.append("### Suggested Configurations")
+            lines.append("")
+            for i, gap in enumerate(cga.gaps[:5], 1):
+                if gap.suggested_config:
+                    lines.append(f"**{i}. {gap.description}**")
+                    lines.append("")
+                    lines.append("```json")
+                    lines.append(gap.suggested_config)
+                    lines.append("```")
+                    lines.append("")
 
     # Agent Effectiveness Analysis
     if analysis.agent_effectiveness_analysis:

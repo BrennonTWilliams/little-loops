@@ -17,6 +17,8 @@ from little_loops.issue_history import (
     CompletedIssue,
     ComplexityProxy,
     ComplexityProxyAnalysis,
+    ConfigGap,
+    ConfigGapsAnalysis,
     CouplingAnalysis,
     CouplingPair,
     HistorySummary,
@@ -41,6 +43,7 @@ from little_loops.issue_history import (
     analyze_rejection_rates,
     analyze_test_gaps,
     calculate_summary,
+    detect_config_gaps,
     detect_manual_patterns,
     format_summary_json,
     format_summary_text,
@@ -3107,3 +3110,263 @@ class TestAnalyzeComplexityProxy:
 
         # Median of [1, 2, 3, 4, 10] = 3
         assert result.baseline_days == 3.0
+
+
+class TestConfigGap:
+    """Tests for ConfigGap dataclass."""
+
+    def test_creation(self) -> None:
+        """Test ConfigGap creation with all fields."""
+        gap = ConfigGap(
+            gap_type="hook",
+            description="Automatic test execution",
+            evidence=["BUG-001", "BUG-002"],
+            suggested_config="hooks/hooks.json: {...}",
+            priority="high",
+            pattern_type="test",
+        )
+
+        assert gap.gap_type == "hook"
+        assert gap.description == "Automatic test execution"
+        assert gap.priority == "high"
+        assert gap.pattern_type == "test"
+        assert len(gap.evidence) == 2
+
+    def test_to_dict(self) -> None:
+        """Test ConfigGap serialization."""
+        gap = ConfigGap(
+            gap_type="hook",
+            description="Test execution",
+            evidence=["BUG-001", "BUG-002", "BUG-003"],
+            suggested_config="config here",
+            priority="medium",
+            pattern_type="test",
+        )
+
+        d = gap.to_dict()
+        assert d["gap_type"] == "hook"
+        assert d["priority"] == "medium"
+        assert d["pattern_type"] == "test"
+        assert len(d["evidence"]) == 3
+
+    def test_to_dict_truncates_evidence(self) -> None:
+        """Test that to_dict truncates long evidence lists."""
+        evidence = [f"BUG-{i:03d}" for i in range(20)]
+        gap = ConfigGap(
+            gap_type="hook",
+            description="Test",
+            evidence=evidence,
+        )
+
+        d = gap.to_dict()
+        assert len(d["evidence"]) == 10  # Truncated to 10
+
+
+class TestConfigGapsAnalysis:
+    """Tests for ConfigGapsAnalysis dataclass."""
+
+    def test_creation(self) -> None:
+        """Test ConfigGapsAnalysis creation."""
+        analysis = ConfigGapsAnalysis(
+            gaps=[
+                ConfigGap(
+                    gap_type="hook",
+                    description="Test hook",
+                    priority="high",
+                )
+            ],
+            current_hooks=["SessionStart", "Stop"],
+            current_skills=["skill1"],
+            current_agents=["agent1"],
+            coverage_score=0.65,
+        )
+
+        assert len(analysis.gaps) == 1
+        assert analysis.coverage_score == 0.65
+        assert len(analysis.current_hooks) == 2
+        assert len(analysis.current_skills) == 1
+        assert len(analysis.current_agents) == 1
+
+    def test_to_dict(self) -> None:
+        """Test ConfigGapsAnalysis serialization."""
+        analysis = ConfigGapsAnalysis(
+            gaps=[
+                ConfigGap(
+                    gap_type="hook",
+                    description="Test hook",
+                    priority="high",
+                )
+            ],
+            current_hooks=["SessionStart"],
+            current_skills=["skill1", "skill2"],
+            current_agents=["agent1"],
+            coverage_score=0.666,
+        )
+
+        d = analysis.to_dict()
+        assert d["coverage_score"] == 0.67  # Rounded to 2 decimal places
+        assert len(d["gaps"]) == 1
+        assert len(d["current_hooks"]) == 1
+        assert len(d["current_skills"]) == 2
+
+
+class TestDetectConfigGaps:
+    """Tests for detect_config_gaps function."""
+
+    def test_empty_manual_patterns(self) -> None:
+        """Test detect_config_gaps with empty manual patterns."""
+        mpa = ManualPatternAnalysis()
+        result = detect_config_gaps(mpa)
+
+        # Empty patterns should give full coverage (nothing to cover)
+        assert result.coverage_score == 1.0
+        assert len(result.gaps) == 0
+
+    def test_with_no_config_files(self, tmp_path: Path) -> None:
+        """Test detect_config_gaps when no config files exist."""
+        mpa = ManualPatternAnalysis(
+            patterns=[
+                ManualPattern(
+                    pattern_type="test",
+                    pattern_description="Test execution",
+                    occurrence_count=8,
+                    affected_issues=["BUG-001", "BUG-002"],
+                ),
+            ],
+            total_manual_interventions=8,
+            automatable_count=8,
+        )
+
+        result = detect_config_gaps(mpa, project_root=tmp_path)
+
+        # No hooks, skills, or agents
+        assert len(result.current_hooks) == 0
+        assert len(result.current_skills) == 0
+        assert len(result.current_agents) == 0
+        # Should identify a gap for test
+        assert len(result.gaps) == 1
+        assert result.gaps[0].pattern_type == "test"
+
+    def test_with_existing_hooks(self, tmp_path: Path) -> None:
+        """Test detect_config_gaps recognizes existing hooks."""
+        # Create a hooks.json with PostToolUse hook
+        hooks_dir = tmp_path / "hooks"
+        hooks_dir.mkdir()
+        hooks_file = hooks_dir / "hooks.json"
+        hooks_file.write_text('{"hooks": {"PostToolUse": [], "SessionStart": []}}')
+
+        mpa = ManualPatternAnalysis(
+            patterns=[
+                ManualPattern(
+                    pattern_type="test",  # Maps to PostToolUse
+                    pattern_description="Test execution",
+                    occurrence_count=8,
+                    affected_issues=["BUG-001"],
+                ),
+                ManualPattern(
+                    pattern_type="lint",  # Maps to PreToolUse
+                    pattern_description="Lint fixes",
+                    occurrence_count=5,
+                    affected_issues=["ENH-001"],
+                ),
+            ],
+            total_manual_interventions=13,
+            automatable_count=13,
+        )
+
+        result = detect_config_gaps(mpa, project_root=tmp_path)
+
+        # Should have PostToolUse and SessionStart hooks
+        assert "PostToolUse" in result.current_hooks
+        assert "SessionStart" in result.current_hooks
+        # Only lint should be a gap (test is covered by PostToolUse)
+        assert len(result.gaps) == 1
+        assert result.gaps[0].pattern_type == "lint"
+        # Coverage should be 50% (1 of 2 patterns covered)
+        assert result.coverage_score == 0.5
+
+    def test_priority_assignment(self, tmp_path: Path) -> None:
+        """Test that priority is assigned based on occurrence count."""
+        mpa = ManualPatternAnalysis(
+            patterns=[
+                ManualPattern(
+                    pattern_type="test",
+                    pattern_description="Test execution",
+                    occurrence_count=15,  # >= 10 -> high
+                    affected_issues=["BUG-001"],
+                ),
+                ManualPattern(
+                    pattern_type="lint",
+                    pattern_description="Lint fixes",
+                    occurrence_count=7,  # >= 5 -> medium
+                    affected_issues=["ENH-001"],
+                ),
+                ManualPattern(
+                    pattern_type="type_check",
+                    pattern_description="Type checking",
+                    occurrence_count=3,  # < 5 -> low
+                    affected_issues=["ENH-002"],
+                ),
+            ],
+        )
+
+        result = detect_config_gaps(mpa, project_root=tmp_path)
+
+        # Gaps should be sorted by priority
+        assert len(result.gaps) == 3
+        assert result.gaps[0].priority == "high"
+        assert result.gaps[1].priority == "medium"
+        assert result.gaps[2].priority == "low"
+
+    def test_discovers_agents_and_skills(self, tmp_path: Path) -> None:
+        """Test that detect_config_gaps discovers agents and skills."""
+        # Create agents directory with some agent files
+        agents_dir = tmp_path / "agents"
+        agents_dir.mkdir()
+        (agents_dir / "test-agent.md").write_text("# Test Agent")
+        (agents_dir / "another-agent.md").write_text("# Another Agent")
+
+        # Create skills directory with skill subdirectories
+        skills_dir = tmp_path / "skills"
+        skills_dir.mkdir()
+        skill1_dir = skills_dir / "skill-one"
+        skill1_dir.mkdir()
+        (skill1_dir / "SKILL.md").write_text("# Skill One")
+        skill2_dir = skills_dir / "skill-two"
+        skill2_dir.mkdir()
+        (skill2_dir / "SKILL.md").write_text("# Skill Two")
+        # This one shouldn't be detected (no SKILL.md)
+        skill3_dir = skills_dir / "not-a-skill"
+        skill3_dir.mkdir()
+
+        mpa = ManualPatternAnalysis()
+        result = detect_config_gaps(mpa, project_root=tmp_path)
+
+        assert len(result.current_agents) == 2
+        assert "test-agent" in result.current_agents
+        assert "another-agent" in result.current_agents
+
+        assert len(result.current_skills) == 2
+        assert "skill-one" in result.current_skills
+        assert "skill-two" in result.current_skills
+        assert "not-a-skill" not in result.current_skills
+
+    def test_unrecognized_pattern_type(self, tmp_path: Path) -> None:
+        """Test that unrecognized pattern types don't create gaps."""
+        mpa = ManualPatternAnalysis(
+            patterns=[
+                ManualPattern(
+                    pattern_type="unknown_type",
+                    pattern_description="Unknown pattern",
+                    occurrence_count=10,
+                    affected_issues=["BUG-001"],
+                ),
+            ],
+        )
+
+        result = detect_config_gaps(mpa, project_root=tmp_path)
+
+        # Unknown pattern types should be ignored
+        assert len(result.gaps) == 0
+        # Coverage is 1.0 since there are no recognized patterns to cover
+        assert result.coverage_score == 1.0
