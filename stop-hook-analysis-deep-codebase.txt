@@ -1,0 +1,41 @@
+Root Cause Analysis
+
+  The error "Stop hook error: Failed with non-blocking status code: No stderr output" is caused by the session-cleanup.sh script in the
+  little-loops plugin.
+
+  The Problem
+
+  In /Users/brennon/.claude/plugins/cache/little-loops/ll/1.0.0/hooks/scripts/session-cleanup.sh:
+
+  set -euo pipefail
+
+  # ...
+
+  git worktree list 2>/dev/null | grep .worktrees | awk '{print $1}' | while read -r w; do
+      git worktree remove --force "$w" 2>/dev/null || true
+  done
+
+  Why It Fails
+
+  1. set -o pipefail: Causes the entire pipeline to fail if any command in the pipe fails
+  2. grep .worktrees: Returns exit code 1 when there are no matches (empty .worktrees/ directory)
+  3. No stderr output: The script fails silently without writing error messages to stderr
+  4. Claude interprets exit code 1 as a non-blocking failure
+
+  Verification
+
+  # This exits with code 1 due to grep finding no matches
+  set -euo pipefail; git worktree list 2>/dev/null | grep .worktrees
+
+  The Fix
+
+  The script should handle the case where no worktrees exist. Options:
+
+  1. Add || true after the grep pipeline
+  2. Check if worktrees exist before running the pipeline
+  3. Use grep .worktrees || true
+  4. Change set -euo pipefail to set -e (less strict)
+
+  Would you like me to create an issue file for this bug or propose a fix to the script?
+
+⏺ Ran 1 stop hook                                                                                                                                    ⎿  Stop hook error: Failed with non-blocking status code: No stderr output
