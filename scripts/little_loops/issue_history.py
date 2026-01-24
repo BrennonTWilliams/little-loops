@@ -35,6 +35,8 @@ __all__ = [
     "TestGapAnalysis",
     "RejectionMetrics",
     "RejectionAnalysis",
+    "ManualPattern",
+    "ManualPatternAnalysis",
     "TechnicalDebtMetrics",
     "HistoryAnalysis",
     # Parsing and scanning
@@ -48,6 +50,7 @@ __all__ = [
     "analyze_regression_clustering",
     "analyze_test_gaps",
     "analyze_rejection_rates",
+    "detect_manual_patterns",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",
@@ -373,6 +376,58 @@ class RejectionAnalysis:
 
 
 @dataclass
+class ManualPattern:
+    """A recurring manual activity detected across issues."""
+
+    pattern_type: str  # "test", "lint", "build", "git", "verification"
+    pattern_description: str
+    occurrence_count: int = 0
+    affected_issues: list[str] = field(default_factory=list)  # issue IDs
+    example_commands: list[str] = field(default_factory=list)  # sample commands found
+    suggested_automation: str = ""  # hook, skill, or agent suggestion
+    automation_complexity: str = "simple"  # "trivial", "simple", "moderate"
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "pattern_type": self.pattern_type,
+            "pattern_description": self.pattern_description,
+            "occurrence_count": self.occurrence_count,
+            "affected_issues": self.affected_issues[:10],
+            "example_commands": self.example_commands[:5],
+            "suggested_automation": self.suggested_automation,
+            "automation_complexity": self.automation_complexity,
+        }
+
+
+@dataclass
+class ManualPatternAnalysis:
+    """Analysis of recurring manual activities that could be automated."""
+
+    patterns: list[ManualPattern] = field(default_factory=list)
+    total_manual_interventions: int = 0
+    automatable_count: int = 0
+    automation_suggestions: list[str] = field(default_factory=list)
+
+    @property
+    def automatable_percentage(self) -> float:
+        """Calculate percentage of patterns that are automatable."""
+        if self.total_manual_interventions == 0:
+            return 0.0
+        return self.automatable_count / self.total_manual_interventions * 100
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "patterns": [p.to_dict() for p in self.patterns],
+            "total_manual_interventions": self.total_manual_interventions,
+            "automatable_count": self.automatable_count,
+            "automatable_percentage": round(self.automatable_percentage, 1),
+            "automation_suggestions": self.automation_suggestions[:10],
+        }
+
+
+@dataclass
 class TechnicalDebtMetrics:
     """Technical debt health indicators."""
 
@@ -428,6 +483,9 @@ class HistoryAnalysis:
     # Rejection analysis
     rejection_analysis: RejectionAnalysis | None = None
 
+    # Manual pattern analysis
+    manual_pattern_analysis: ManualPatternAnalysis | None = None
+
     # Technical debt
     debt_metrics: TechnicalDebtMetrics | None = None
 
@@ -464,6 +522,11 @@ class HistoryAnalysis:
             ),
             "rejection_analysis": (
                 self.rejection_analysis.to_dict() if self.rejection_analysis else None
+            ),
+            "manual_pattern_analysis": (
+                self.manual_pattern_analysis.to_dict()
+                if self.manual_pattern_analysis
+                else None
             ),
             "debt_metrics": self.debt_metrics.to_dict() if self.debt_metrics else None,
             "comparison_period": self.comparison_period,
@@ -1524,6 +1587,133 @@ def analyze_rejection_rates(issues: list[CompletedIssue]) -> RejectionAnalysis:
     )
 
 
+# Pattern definitions for manual activity detection
+_MANUAL_PATTERNS: dict[str, dict[str, Any]] = {
+    "test": {
+        "patterns": [
+            r"(?:pytest|python -m pytest|npm test|yarn test|jest|cargo test|go test)",
+            r"(?:python -m unittest|nosetests|tox)",
+        ],
+        "description": "Test execution after code changes",
+        "suggestion": "Add post-edit hook for automatic test runs",
+        "complexity": "trivial",
+    },
+    "lint": {
+        "patterns": [
+            r"(?:ruff check|ruff format|black|isort|flake8|pylint)",
+            r"(?:eslint|prettier|tslint)",
+        ],
+        "description": "Lint/format fixes after implementation",
+        "suggestion": "Add pre-commit hook for auto-formatting",
+        "complexity": "simple",
+    },
+    "type_check": {
+        "patterns": [
+            r"(?:mypy|pyright|python -m mypy)",
+            r"(?:tsc|npx tsc)",
+        ],
+        "description": "Type checking during development",
+        "suggestion": "Add mypy to pre-commit or post-edit hook",
+        "complexity": "simple",
+    },
+    "build": {
+        "patterns": [
+            r"(?:npm run build|yarn build|make|cargo build|go build)",
+            r"(?:python -m build|pip install -e)",
+        ],
+        "description": "Build steps during implementation",
+        "suggestion": "Add build verification to test suite or CI",
+        "complexity": "moderate",
+    },
+    "git": {
+        "patterns": [
+            r"git (?:add|commit|push|pull|checkout|branch)",
+        ],
+        "description": "Git operations during issue resolution",
+        "suggestion": "Use /ll:commit skill for standardized commits",
+        "complexity": "trivial",
+    },
+}
+
+
+def detect_manual_patterns(issues: list[CompletedIssue]) -> ManualPatternAnalysis:
+    """Detect recurring manual activities that could be automated.
+
+    Args:
+        issues: List of completed issues
+
+    Returns:
+        ManualPatternAnalysis with detected patterns
+    """
+    if not issues:
+        return ManualPatternAnalysis()
+
+    # Track pattern occurrences
+    pattern_data: dict[str, dict[str, Any]] = {}
+
+    for pattern_type, config in _MANUAL_PATTERNS.items():
+        pattern_data[pattern_type] = {
+            "count": 0,
+            "issues": [],
+            "commands": [],
+            "config": config,
+        }
+
+    # Scan issue content for patterns
+    for issue in issues:
+        try:
+            content = issue.path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        for pattern_type, config in _MANUAL_PATTERNS.items():
+            for pattern in config["patterns"]:
+                matches = re.findall(pattern, content, re.IGNORECASE)
+                if matches:
+                    data = pattern_data[pattern_type]
+                    data["count"] += len(matches)
+                    if issue.issue_id not in data["issues"]:
+                        data["issues"].append(issue.issue_id)
+                    # Store unique command examples
+                    for match in matches:
+                        if match not in data["commands"]:
+                            data["commands"].append(match)
+
+    # Build ManualPattern objects
+    patterns: list[ManualPattern] = []
+    total_interventions = 0
+    automatable = 0
+
+    for pattern_type, data in pattern_data.items():
+        if data["count"] > 0:
+            config = data["config"]
+            pattern = ManualPattern(
+                pattern_type=pattern_type,
+                pattern_description=config["description"],
+                occurrence_count=data["count"],
+                affected_issues=data["issues"],
+                example_commands=data["commands"][:5],
+                suggested_automation=config["suggestion"],
+                automation_complexity=config["complexity"],
+            )
+            patterns.append(pattern)
+            total_interventions += data["count"]
+            automatable += data["count"]
+
+    # Sort by occurrence count descending
+    patterns.sort(key=lambda p: -p.occurrence_count)
+
+    # Build automation suggestions
+    suggestions = [p.suggested_automation for p in patterns if p.occurrence_count >= 2]
+
+    return ManualPatternAnalysis(
+        patterns=patterns,
+        total_manual_interventions=total_interventions,
+        automatable_count=automatable,
+        automation_suggestions=suggestions[:10],
+    )
+
+
 def scan_active_issues(issues_dir: Path) -> list[tuple[Path, str, str, date | None]]:
     """Scan active issue directories.
 
@@ -1687,6 +1877,9 @@ def calculate_analysis(
     # Rejection rate analysis
     rejection_analysis = analyze_rejection_rates(completed_issues)
 
+    # Manual pattern analysis
+    manual_pattern_analysis = detect_manual_patterns(completed_issues)
+
     # Technical debt metrics
     debt_metrics = _calculate_debt_metrics(completed_issues, active_issues)
 
@@ -1706,6 +1899,7 @@ def calculate_analysis(
         regression_analysis=regression_analysis,
         test_gap_analysis=test_gap_analysis,
         rejection_analysis=rejection_analysis,
+        manual_pattern_analysis=manual_pattern_analysis,
         debt_metrics=debt_metrics,
     )
 
@@ -1990,6 +2184,37 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
                 lines.append("  Common Rejection Reasons:")
                 for reason, count in rej.common_reasons[:5]:
                     lines.append(f'    - "{reason}" ({count})')
+
+    # Manual pattern analysis
+    if analysis.manual_pattern_analysis:
+        mpa = analysis.manual_pattern_analysis
+
+        if mpa.patterns:
+            lines.append("")
+            lines.append("Manual Pattern Analysis")
+            lines.append("-" * 23)
+            lines.append(
+                f"  Total manual interventions: {mpa.total_manual_interventions}"
+            )
+            lines.append(
+                f"  Potentially automatable: {mpa.automatable_percentage:.0f}% "
+                f"({mpa.automatable_count}/{mpa.total_manual_interventions})"
+            )
+            lines.append("")
+            lines.append("  Recurring Patterns:")
+
+            for i, pattern in enumerate(mpa.patterns[:5], 1):
+                lines.append("")
+                lines.append(
+                    f"  {i}. {pattern.pattern_description} "
+                    f"({pattern.occurrence_count} occurrences)"
+                )
+                issues_str = ", ".join(pattern.affected_issues[:3])
+                if len(pattern.affected_issues) > 3:
+                    issues_str += ", ..."
+                lines.append(f"     Issues: {issues_str}")
+                lines.append(f"     Suggestion: {pattern.suggested_automation}")
+                lines.append(f"     Complexity: {pattern.automation_complexity}")
 
     # Technical debt
     if analysis.debt_metrics:
@@ -2295,6 +2520,50 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
                 lines.append("")
                 for reason, count in rej.common_reasons[:5]:
                     lines.append(f'- "{reason}" ({count})')
+
+    # Manual Pattern Analysis
+    if analysis.manual_pattern_analysis:
+        mpa = analysis.manual_pattern_analysis
+
+        if mpa.patterns:
+            lines.append("")
+            lines.append("## Manual Pattern Analysis")
+            lines.append("")
+            lines.append(
+                f"**Total manual interventions detected**: {mpa.total_manual_interventions}"
+            )
+            lines.append(
+                f"**Potentially automatable**: {mpa.automatable_percentage:.0f}% "
+                f"({mpa.automatable_count}/{mpa.total_manual_interventions})"
+            )
+            lines.append("")
+            lines.append("### Recurring Patterns")
+            lines.append("")
+            lines.append(
+                "| Pattern | Occurrences | Affected Issues | Suggestion | Complexity |"
+            )
+            lines.append(
+                "|---------|-------------|-----------------|------------|------------|"
+            )
+
+            for pattern in mpa.patterns[:10]:
+                issues_str = ", ".join(pattern.affected_issues[:3])
+                if len(pattern.affected_issues) > 3:
+                    issues_str += "..."
+                lines.append(
+                    f"| {pattern.pattern_description} | {pattern.occurrence_count} | "
+                    f"{issues_str} | {pattern.suggested_automation} | "
+                    f"{pattern.automation_complexity} |"
+                )
+
+            if mpa.automation_suggestions:
+                lines.append("")
+                lines.append("### Automation Suggestions")
+                lines.append("")
+                lines.append("Based on detected patterns, consider implementing:")
+                lines.append("")
+                for suggestion in mpa.automation_suggestions[:5]:
+                    lines.append(f"- {suggestion}")
 
     # Technical Debt
     if analysis.debt_metrics:

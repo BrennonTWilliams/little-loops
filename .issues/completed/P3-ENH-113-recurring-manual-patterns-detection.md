@@ -83,11 +83,11 @@ Manual Pattern Analysis:
 
 ## Acceptance Criteria
 
-- [ ] `ManualPattern` dataclass captures recurring activities
-- [ ] Detection covers test, lint, build, and verification patterns
-- [ ] Each pattern includes actionable automation suggestion
-- [ ] Complexity rating helps prioritize automation
-- [ ] Output integrated into `ll-history analyze` report
+- [x] `ManualPattern` dataclass captures recurring activities
+- [x] Detection covers test, lint, build, and verification patterns
+- [x] Each pattern includes actionable automation suggestion
+- [x] Complexity rating helps prioritize automation
+- [x] Output integrated into `ll-history analyze` report
 
 ## Impact
 
@@ -112,3 +112,23 @@ None - Can be implemented independently
 ---
 
 **Priority**: P3 | **Created**: 2026-01-23
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_history.py`: Added `ManualPattern` and `ManualPatternAnalysis` dataclasses
+- `scripts/little_loops/issue_history.py`: Added `detect_manual_patterns()` function with pattern detection for test, lint, type_check, build, and git operations
+- `scripts/little_loops/issue_history.py`: Integrated into `HistoryAnalysis` and `calculate_analysis()`
+- `scripts/little_loops/issue_history.py`: Added text and markdown formatting sections
+- `scripts/tests/test_issue_history.py`: Added comprehensive tests for new functionality
+
+### Verification Results
+- Tests: PASS (138 tests)
+- Lint: PASS
+- Types: PASS

@@ -16,6 +16,8 @@ from little_loops.issue_history import (
     HistorySummary,
     Hotspot,
     HotspotAnalysis,
+    ManualPattern,
+    ManualPatternAnalysis,
     RegressionAnalysis,
     RegressionCluster,
     RejectionAnalysis,
@@ -29,6 +31,7 @@ from little_loops.issue_history import (
     analyze_rejection_rates,
     analyze_test_gaps,
     calculate_summary,
+    detect_manual_patterns,
     format_summary_json,
     format_summary_text,
     parse_completed_issue,
@@ -2087,3 +2090,266 @@ class TestAnalyzeRejectionRates:
         assert len(result.common_reasons) > 0
         assert result.common_reasons[0][0] == "duplicate of BUG-100"
         assert result.common_reasons[0][1] == 2
+
+
+class TestManualPattern:
+    """Tests for ManualPattern dataclass."""
+
+    def test_to_dict(self) -> None:
+        """Test to_dict serialization."""
+        pattern = ManualPattern(
+            pattern_type="test",
+            pattern_description="Test execution after code changes",
+            occurrence_count=5,
+            affected_issues=["BUG-001", "BUG-002", "ENH-003"],
+            example_commands=["pytest", "python -m pytest"],
+            suggested_automation="Add post-edit hook for automatic test runs",
+            automation_complexity="trivial",
+        )
+        result = pattern.to_dict()
+
+        assert result["pattern_type"] == "test"
+        assert result["pattern_description"] == "Test execution after code changes"
+        assert result["occurrence_count"] == 5
+        assert len(result["affected_issues"]) == 3
+        assert result["automation_complexity"] == "trivial"
+
+    def test_to_dict_limits_lists(self) -> None:
+        """Test that to_dict limits affected_issues and example_commands."""
+        pattern = ManualPattern(
+            pattern_type="test",
+            pattern_description="Test execution",
+            occurrence_count=15,
+            affected_issues=[f"BUG-{i:03d}" for i in range(15)],
+            example_commands=[f"cmd{i}" for i in range(10)],
+        )
+        result = pattern.to_dict()
+
+        assert len(result["affected_issues"]) == 10
+        assert len(result["example_commands"]) == 5
+
+
+class TestManualPatternAnalysis:
+    """Tests for ManualPatternAnalysis dataclass."""
+
+    def test_to_dict_empty(self) -> None:
+        """Test to_dict with empty analysis."""
+        analysis = ManualPatternAnalysis()
+        result = analysis.to_dict()
+
+        assert result["patterns"] == []
+        assert result["total_manual_interventions"] == 0
+        assert result["automatable_count"] == 0
+        assert result["automatable_percentage"] == 0.0
+
+    def test_automatable_percentage(self) -> None:
+        """Test automatable_percentage calculation."""
+        analysis = ManualPatternAnalysis(
+            total_manual_interventions=100,
+            automatable_count=67,
+        )
+        assert analysis.automatable_percentage == 67.0
+
+    def test_automatable_percentage_zero_total(self) -> None:
+        """Test automatable_percentage with zero total."""
+        analysis = ManualPatternAnalysis(
+            total_manual_interventions=0,
+            automatable_count=0,
+        )
+        assert analysis.automatable_percentage == 0.0
+
+    def test_to_dict_with_patterns(self) -> None:
+        """Test to_dict with patterns."""
+        pattern = ManualPattern(
+            pattern_type="test",
+            pattern_description="Test execution",
+            occurrence_count=5,
+        )
+        analysis = ManualPatternAnalysis(
+            patterns=[pattern],
+            total_manual_interventions=5,
+            automatable_count=5,
+            automation_suggestions=["Add post-edit hook"],
+        )
+        result = analysis.to_dict()
+
+        assert len(result["patterns"]) == 1
+        assert result["total_manual_interventions"] == 5
+        assert result["automatable_percentage"] == 100.0
+
+
+class TestDetectManualPatterns:
+    """Tests for detect_manual_patterns function."""
+
+    def test_empty_issues(self) -> None:
+        """Test with empty list."""
+        result = detect_manual_patterns([])
+        assert result.total_manual_interventions == 0
+        assert result.patterns == []
+
+    def test_detects_pytest(self, tmp_path: Path) -> None:
+        """Test detection of pytest commands."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("""## Changes Made
+
+Ran `pytest tests/` to verify the fix.
+Also executed `python -m pytest -v` for verbose output.
+""")
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+        result = detect_manual_patterns(issues)
+
+        assert result.total_manual_interventions >= 2
+        test_patterns = [p for p in result.patterns if p.pattern_type == "test"]
+        assert len(test_patterns) == 1
+        assert test_patterns[0].occurrence_count >= 2
+        assert "BUG-001" in test_patterns[0].affected_issues
+
+    def test_detects_lint_commands(self, tmp_path: Path) -> None:
+        """Test detection of lint/format commands."""
+        issue_file = tmp_path / "P2-ENH-001.md"
+        issue_file.write_text("""## Implementation
+
+Ran `ruff check scripts/` and `ruff format scripts/` to fix issues.
+""")
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="ENH",
+                priority="P2",
+                issue_id="ENH-001",
+            )
+        ]
+        result = detect_manual_patterns(issues)
+
+        lint_patterns = [p for p in result.patterns if p.pattern_type == "lint"]
+        assert len(lint_patterns) == 1
+        assert lint_patterns[0].occurrence_count >= 2
+
+    def test_detects_multiple_patterns(self, tmp_path: Path) -> None:
+        """Test detection of multiple pattern types."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("""## Implementation
+
+1. Ran `pytest` to identify failing tests
+2. Ran `mypy scripts/` for type checking
+3. Ran `ruff format` to fix formatting
+""")
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+        result = detect_manual_patterns(issues)
+
+        pattern_types = {p.pattern_type for p in result.patterns}
+        assert "test" in pattern_types
+        assert "type_check" in pattern_types
+        assert "lint" in pattern_types
+
+    def test_aggregates_across_issues(self, tmp_path: Path) -> None:
+        """Test pattern aggregation across multiple issues."""
+        issue1 = tmp_path / "P1-BUG-001.md"
+        issue1.write_text("Ran `pytest` to verify.")
+
+        issue2 = tmp_path / "P2-BUG-002.md"
+        issue2.write_text("Executed `pytest tests/` to check.")
+
+        issues = [
+            CompletedIssue(
+                path=issue1,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            ),
+            CompletedIssue(
+                path=issue2,
+                issue_type="BUG",
+                priority="P2",
+                issue_id="BUG-002",
+            ),
+        ]
+        result = detect_manual_patterns(issues)
+
+        test_patterns = [p for p in result.patterns if p.pattern_type == "test"]
+        assert len(test_patterns) == 1
+        assert test_patterns[0].occurrence_count >= 2
+        assert "BUG-001" in test_patterns[0].affected_issues
+        assert "BUG-002" in test_patterns[0].affected_issues
+
+    def test_file_read_error_handled(self, tmp_path: Path) -> None:
+        """Test that file read errors are handled gracefully."""
+        nonexistent = tmp_path / "nonexistent.md"
+        issues = [
+            CompletedIssue(
+                path=nonexistent,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+        # Should not raise
+        result = detect_manual_patterns(issues)
+        assert result.total_manual_interventions == 0
+
+    def test_automation_suggestions_populated(self, tmp_path: Path) -> None:
+        """Test that automation suggestions are populated from patterns."""
+        issue1 = tmp_path / "P1-BUG-001.md"
+        issue1.write_text("Ran pytest and mypy.")
+
+        issue2 = tmp_path / "P1-BUG-002.md"
+        issue2.write_text("Ran pytest and mypy again.")
+
+        issues = [
+            CompletedIssue(
+                path=issue1,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            ),
+            CompletedIssue(
+                path=issue2,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-002",
+            ),
+        ]
+        result = detect_manual_patterns(issues)
+
+        # Should have suggestions for patterns with >= 2 occurrences
+        assert len(result.automation_suggestions) > 0
+
+    def test_patterns_sorted_by_occurrence(self, tmp_path: Path) -> None:
+        """Test that patterns are sorted by occurrence count descending."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("""
+pytest pytest pytest pytest pytest
+mypy mypy
+ruff check
+""")
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+        result = detect_manual_patterns(issues)
+
+        # Patterns should be sorted by occurrence count descending
+        if len(result.patterns) >= 2:
+            for i in range(len(result.patterns) - 1):
+                assert (
+                    result.patterns[i].occurrence_count
+                    >= result.patterns[i + 1].occurrence_count
+                )
