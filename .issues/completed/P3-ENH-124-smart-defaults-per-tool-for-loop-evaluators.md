@@ -69,3 +69,19 @@ Recommended evaluator: JSON path - check `.length == 0` for no errors
 ## Status
 
 **Open** | Created: 2026-01-23 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md`: Added "Tool Evaluator Defaults" reference table with 9 common tools (pytest, mypy, ruff check, ruff format --check, npm test, npx tsc, npx eslint, cargo test, go test). Added detection instructions for matching check commands against tool patterns. Updated evaluator selection questions for Goal, Invariants, and Imperative paradigms to show tool-specific recommendations (e.g., "Exit code (Recommended for pytest)") with rationales.
+
+### Verification Results
+- Tests: PASS (1694 passed, 1 unrelated pre-existing failure)
+- Lint: PASS
+- Types: PASS

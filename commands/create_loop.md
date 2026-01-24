@@ -265,9 +265,50 @@ questions:
 - "What command checks for errors?" (free text via Other)
 - "What command fixes the errors?" (free text via Other)
 
+**Tool Evaluator Defaults:**
+
+When a check command is determined (from presets or custom input), use this table to recommend the appropriate evaluator:
+
+| Tool Pattern | Recommended Evaluator | Rationale |
+|--------------|----------------------|-----------|
+| `pytest` | exit_code | Well-behaved: 0=all pass, 1=failures, 2+=errors |
+| `mypy` | exit_code | Well-behaved: 0=no errors, 1=type errors |
+| `ruff check` | exit_code | Well-behaved: 0=clean, 1=violations |
+| `ruff format --check` | exit_code | Well-behaved: 0=formatted, 1=needs formatting |
+| `npm test` | exit_code | Standard npm behavior |
+| `npx tsc` | exit_code | Well-behaved: 0=no errors |
+| `npx eslint` | exit_code | Well-behaved: 0=clean, 1=violations |
+| `cargo test` | exit_code | Well-behaved: 0=all pass |
+| `go test` | exit_code | Well-behaved: 0=all pass |
+
+**Detection Instructions:**
+1. After the check command is determined, match against the tool patterns above (case-insensitive, partial match)
+2. If a match is found, customize the evaluator question to show the matched tool's recommendation
+3. Modify the first option label: "Exit code (Recommended for {tool})" where {tool} is the matched pattern
+4. Update the description to include the rationale from the table
+5. For custom commands with no pattern match, use the generic "Exit code (Recommended)"
+
 **Evaluator Selection** (ask after check command is determined):
 
+Use the Tool Evaluator Defaults table to customize this question based on the detected tool.
+
 ```yaml
+# Example with mypy detected:
+questions:
+  - question: "How should success be determined for the mypy check?"
+    header: "Evaluator"
+    multiSelect: false
+    options:
+      - label: "Exit code (Recommended for mypy)"
+        description: "Well-behaved: 0=no errors, 1=type errors"
+      - label: "Output contains pattern"
+        description: "Success if output contains specific text"
+      - label: "Output is numeric"
+        description: "Compare numeric output to threshold"
+      - label: "AI interpretation"
+        description: "Let Claude analyze the output"
+
+# Generic template (no tool match):
 questions:
   - question: "How should success be determined for the check command?"
     header: "Evaluator"
@@ -401,14 +442,17 @@ questions:
 
 **Evaluator Selection** (ask for each constraint if user wants custom evaluation):
 
+Use the Tool Evaluator Defaults table (from Goal paradigm section) to customize the evaluator question based on each constraint's check command. For example, if the constraint uses `pytest`, show "Exit code (Recommended for pytest)" with the rationale "Well-behaved: 0=all pass, 1=failures, 2+=errors".
+
 ```yaml
+# Example with pytest constraint:
 questions:
-  - question: "How should success be determined for '[CONSTRAINT_NAME]' check?"
+  - question: "How should success be determined for 'tests-pass' check?"
     header: "Evaluator"
     multiSelect: false
     options:
-      - label: "Exit code (Recommended)"
-        description: "Success if command exits with code 0"
+      - label: "Exit code (Recommended for pytest)"
+        description: "Well-behaved: 0=all pass, 1=failures, 2+=errors"
       - label: "Output contains pattern"
         description: "Success if output contains specific text"
       - label: "Output is numeric"
@@ -577,14 +621,17 @@ questions:
 
 **Evaluator Selection** (ask for the exit condition check):
 
+Use the Tool Evaluator Defaults table (from Goal paradigm section) to customize the evaluator question based on the exit condition check command. For compound commands (e.g., "mypy && ruff && pytest"), show "Exit code (Recommended)" since multiple tools are being combined.
+
 ```yaml
+# Example with "Tests pass" exit condition (pytest):
 questions:
   - question: "How should success be determined for the exit condition?"
     header: "Evaluator"
     multiSelect: false
     options:
-      - label: "Exit code (Recommended)"
-        description: "Success if command exits with code 0"
+      - label: "Exit code (Recommended for pytest)"
+        description: "Well-behaved: 0=all pass, 1=failures, 2+=errors"
       - label: "Output contains pattern"
         description: "Success if output contains specific text"
       - label: "Output is numeric"
