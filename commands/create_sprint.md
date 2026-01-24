@@ -90,6 +90,33 @@ Ensure the sprints directory exists:
 mkdir -p .sprints
 ```
 
+### 4b. Check for Existing Sprint
+
+Before writing, check if a sprint with this name already exists:
+
+Use the Glob tool to check: `.sprints/${SPRINT_NAME}.yaml`
+
+If the file exists, use AskUserQuestion:
+
+```yaml
+questions:
+  - question: "A sprint named '${SPRINT_NAME}' already exists. What would you like to do?"
+    header: "Overwrite"
+    multiSelect: false
+    options:
+      - label: "Overwrite"
+        description: "Replace the existing sprint configuration"
+      - label: "Choose different name"
+        description: "Go back and pick a new name"
+      - label: "Cancel"
+        description: "Abort sprint creation"
+```
+
+**Based on user response:**
+- **"Overwrite"**: Continue to Step 5 (write file)
+- **"Choose different name"**: Return to Step 1 to input a new name
+- **"Cancel"**: Display "Sprint creation cancelled." and stop
+
 ### 5. Create Sprint YAML File
 
 Create the sprint definition at `.sprints/${SPRINT_NAME}.yaml`:
