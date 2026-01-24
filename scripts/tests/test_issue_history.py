@@ -12,6 +12,8 @@ from unittest.mock import patch
 import pytest
 
 from little_loops.issue_history import (
+    AgentEffectivenessAnalysis,
+    AgentOutcome,
     CompletedIssue,
     HistorySummary,
     Hotspot,
@@ -24,8 +26,10 @@ from little_loops.issue_history import (
     RejectionMetrics,
     TestGap,
     TestGapAnalysis,
+    _detect_processing_agent,
     _extract_paths_from_issue,
     _parse_resolution_action,
+    analyze_agent_effectiveness,
     analyze_hotspots,
     analyze_regression_clustering,
     analyze_rejection_rates,
@@ -2353,3 +2357,278 @@ ruff check
                     result.patterns[i].occurrence_count
                     >= result.patterns[i + 1].occurrence_count
                 )
+
+
+class TestAgentOutcome:
+    """Tests for AgentOutcome dataclass."""
+
+    def test_rates_empty(self) -> None:
+        """Test rates with no data."""
+        outcome = AgentOutcome(agent_name="ll-auto", issue_type="BUG")
+        assert outcome.total_count == 0
+        assert outcome.success_rate == 0.0
+
+    def test_rates_calculation(self) -> None:
+        """Test rate calculations."""
+        outcome = AgentOutcome(
+            agent_name="ll-auto",
+            issue_type="BUG",
+            success_count=8,
+            failure_count=1,
+            rejection_count=1,
+        )
+        assert outcome.total_count == 10
+        assert outcome.success_rate == 0.8
+
+    def test_to_dict(self) -> None:
+        """Test serialization."""
+        outcome = AgentOutcome(
+            agent_name="ll-parallel",
+            issue_type="ENH",
+            success_count=5,
+            failure_count=0,
+            rejection_count=0,
+        )
+        result = outcome.to_dict()
+        assert result["agent_name"] == "ll-parallel"
+        assert result["issue_type"] == "ENH"
+        assert result["success_rate"] == 1.0
+
+
+class TestAgentEffectivenessAnalysis:
+    """Tests for AgentEffectivenessAnalysis dataclass."""
+
+    def test_to_dict_empty(self) -> None:
+        """Test serialization with no data."""
+        analysis = AgentEffectivenessAnalysis()
+        result = analysis.to_dict()
+        assert result["outcomes"] == []
+        assert result["best_agent_by_type"] == {}
+        assert result["problematic_combinations"] == []
+
+    def test_to_dict_with_data(self) -> None:
+        """Test serialization with data."""
+        analysis = AgentEffectivenessAnalysis(
+            outcomes=[
+                AgentOutcome("ll-auto", "BUG", success_count=10),
+            ],
+            best_agent_by_type={"BUG": "ll-auto"},
+            problematic_combinations=[("ll-parallel", "FEAT", "40% success")],
+        )
+        result = analysis.to_dict()
+        assert len(result["outcomes"]) == 1
+        assert result["best_agent_by_type"]["BUG"] == "ll-auto"
+
+
+class TestDetectProcessingAgent:
+    """Tests for _detect_processing_agent function."""
+
+    def test_detected_from_discovered_source_parallel(self) -> None:
+        """Test detection from discovered_source field."""
+        result = _detect_processing_agent("", "ll-parallel-blender-agents-debug.log")
+        assert result == "ll-parallel"
+
+    def test_detected_from_discovered_source_auto(self) -> None:
+        """Test detection from discovered_source field."""
+        result = _detect_processing_agent("", "ll-auto-run-2026-01-01.log")
+        assert result == "ll-auto"
+
+    def test_detected_from_log_type_field(self) -> None:
+        """Test detection from Log Type field in content."""
+        content = "**Log Type**: ll-parallel\n"
+        result = _detect_processing_agent(content, None)
+        assert result == "ll-parallel"
+
+    def test_detected_from_tool_field(self) -> None:
+        """Test detection from Tool field in content."""
+        content = "**Tool**: ll-auto\n"
+        result = _detect_processing_agent(content, None)
+        assert result == "ll-auto"
+
+    def test_default_to_manual(self) -> None:
+        """Test default to manual when no indicators."""
+        result = _detect_processing_agent("Regular issue content", None)
+        assert result == "manual"
+
+    def test_discovered_source_takes_priority(self) -> None:
+        """Test that discovered_source is checked first."""
+        content = "**Tool**: ll-auto\n"
+        result = _detect_processing_agent(content, "ll-parallel-debug.log")
+        assert result == "ll-parallel"
+
+
+class TestAnalyzeAgentEffectiveness:
+    """Tests for analyze_agent_effectiveness function."""
+
+    def test_empty_issues(self) -> None:
+        """Test with empty list."""
+        result = analyze_agent_effectiveness([])
+        assert result.outcomes == []
+
+    def test_single_completed_issue(self, tmp_path: Path) -> None:
+        """Test with single completed issue."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text(
+            "**Log Type**: ll-auto\n\n## Resolution\n\n- **Action**: fix\n"
+        )
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+        result = analyze_agent_effectiveness(issues)
+        assert len(result.outcomes) == 1
+        assert result.outcomes[0].agent_name == "ll-auto"
+        assert result.outcomes[0].success_count == 1
+
+    def test_grouped_by_agent_and_type(self, tmp_path: Path) -> None:
+        """Test grouping by agent and type."""
+        issue1 = tmp_path / "P1-BUG-001.md"
+        issue1.write_text("**Tool**: ll-auto\n- **Action**: fix")
+
+        issue2 = tmp_path / "P1-BUG-002.md"
+        issue2.write_text("**Tool**: ll-auto\n- **Action**: fix")
+
+        issue3 = tmp_path / "P1-ENH-001.md"
+        issue3.write_text("**Tool**: ll-auto\n- **Action**: improve")
+
+        issues = [
+            CompletedIssue(
+                path=issue1, issue_type="BUG", priority="P1", issue_id="BUG-001"
+            ),
+            CompletedIssue(
+                path=issue2, issue_type="BUG", priority="P1", issue_id="BUG-002"
+            ),
+            CompletedIssue(
+                path=issue3, issue_type="ENH", priority="P1", issue_id="ENH-001"
+            ),
+        ]
+        result = analyze_agent_effectiveness(issues)
+
+        # Should have 2 outcomes: (ll-auto, BUG) and (ll-auto, ENH)
+        assert len(result.outcomes) == 2
+
+        bug_outcome = next(o for o in result.outcomes if o.issue_type == "BUG")
+        assert bug_outcome.success_count == 2
+
+        enh_outcome = next(o for o in result.outcomes if o.issue_type == "ENH")
+        assert enh_outcome.success_count == 1
+
+    def test_rejection_counted(self, tmp_path: Path) -> None:
+        """Test that rejections are counted correctly."""
+        issue_file = tmp_path / "P1-BUG-001.md"
+        issue_file.write_text("- **Status**: Closed\n- **Reason**: rejected")
+
+        issues = [
+            CompletedIssue(
+                path=issue_file,
+                issue_type="BUG",
+                priority="P1",
+                issue_id="BUG-001",
+            )
+        ]
+        result = analyze_agent_effectiveness(issues)
+        assert result.outcomes[0].rejection_count == 1
+        assert result.outcomes[0].success_count == 0
+
+    def test_best_agent_requires_minimum_samples(self, tmp_path: Path) -> None:
+        """Test that best_agent_by_type requires minimum sample size."""
+        # Create only 2 issues (below threshold of 3)
+        for i in range(2):
+            issue = tmp_path / f"P1-BUG-{i:03d}.md"
+            issue.write_text("**Tool**: ll-auto\n- **Action**: fix")
+
+        issues = [
+            CompletedIssue(
+                path=tmp_path / f"P1-BUG-{i:03d}.md",
+                issue_type="BUG",
+                priority="P1",
+                issue_id=f"BUG-{i:03d}",
+            )
+            for i in range(2)
+        ]
+        result = analyze_agent_effectiveness(issues)
+
+        # Should not have best agent due to low sample size
+        assert "BUG" not in result.best_agent_by_type
+
+    def test_best_agent_with_sufficient_samples(self, tmp_path: Path) -> None:
+        """Test that best_agent_by_type works with sufficient samples."""
+        # Create 3 issues (meets threshold)
+        for i in range(3):
+            issue = tmp_path / f"P1-BUG-{i:03d}.md"
+            issue.write_text("**Tool**: ll-auto\n- **Action**: fix")
+
+        issues = [
+            CompletedIssue(
+                path=tmp_path / f"P1-BUG-{i:03d}.md",
+                issue_type="BUG",
+                priority="P1",
+                issue_id=f"BUG-{i:03d}",
+            )
+            for i in range(3)
+        ]
+        result = analyze_agent_effectiveness(issues)
+
+        # Should have best agent
+        assert result.best_agent_by_type.get("BUG") == "ll-auto"
+
+    def test_problematic_combination_detected(self, tmp_path: Path) -> None:
+        """Test problematic combinations are detected."""
+        # Create 6 issues with 2 success and 4 failures for ll-auto BUG
+        for i in range(6):
+            issue = tmp_path / f"P1-BUG-{i:03d}.md"
+            if i < 2:
+                issue.write_text("**Tool**: ll-auto\n- **Action**: fix")
+            else:
+                issue.write_text(
+                    "**Tool**: ll-auto\n- **Status**: Closed\n- **Reason**: rejected"
+                )
+
+        issues = [
+            CompletedIssue(
+                path=tmp_path / f"P1-BUG-{i:03d}.md",
+                issue_type="BUG",
+                priority="P1",
+                issue_id=f"BUG-{i:03d}",
+            )
+            for i in range(6)
+        ]
+        result = analyze_agent_effectiveness(issues)
+
+        # Should have problematic combination (33% success < 50%)
+        assert len(result.problematic_combinations) == 1
+        assert result.problematic_combinations[0][0] == "ll-auto"
+        assert result.problematic_combinations[0][1] == "BUG"
+
+    def test_multiple_agents(self, tmp_path: Path) -> None:
+        """Test with multiple different agents."""
+        issue1 = tmp_path / "P1-BUG-001.md"
+        issue1.write_text("**Tool**: ll-auto\n- **Action**: fix")
+
+        issue2 = tmp_path / "P1-BUG-002.md"
+        issue2.write_text("**Tool**: ll-parallel\n- **Action**: fix")
+
+        issue3 = tmp_path / "P1-BUG-003.md"
+        issue3.write_text("Regular issue content\n- **Action**: fix")  # manual
+
+        issues = [
+            CompletedIssue(
+                path=issue1, issue_type="BUG", priority="P1", issue_id="BUG-001"
+            ),
+            CompletedIssue(
+                path=issue2, issue_type="BUG", priority="P1", issue_id="BUG-002"
+            ),
+            CompletedIssue(
+                path=issue3, issue_type="BUG", priority="P1", issue_id="BUG-003"
+            ),
+        ]
+        result = analyze_agent_effectiveness(issues)
+
+        # Should have 3 outcomes: (ll-auto, BUG), (ll-parallel, BUG), (manual, BUG)
+        assert len(result.outcomes) == 3
+        agent_names = {o.agent_name for o in result.outcomes}
+        assert agent_names == {"ll-auto", "ll-parallel", "manual"}

@@ -83,12 +83,12 @@ Agent Effectiveness Analysis:
 
 ## Acceptance Criteria
 
-- [ ] `AgentOutcome` dataclass captures per-agent statistics
-- [ ] Analysis groups by agent name and issue type
-- [ ] Success rate calculation accounts for rejections vs failures
-- [ ] Duration tracking shows efficiency differences
-- [ ] Recommendations based on statistical patterns
-- [ ] Output integrated into `ll-history analyze` report
+- [x] `AgentOutcome` dataclass captures per-agent statistics
+- [x] Analysis groups by agent name and issue type
+- [x] Success rate calculation accounts for rejections vs failures
+- [ ] Duration tracking shows efficiency differences (deferred - requires start time capture)
+- [x] Recommendations based on statistical patterns
+- [x] Output integrated into `ll-history analyze` report
 
 ## Impact
 
@@ -113,3 +113,36 @@ None
 ---
 
 **Priority**: P3 | **Created**: 2026-01-23
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-23
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_history.py`:
+  - Added `AgentOutcome` dataclass with success_rate and total_count computed properties (lines 433-465)
+  - Added `AgentEffectivenessAnalysis` dataclass with outcomes, best_agent_by_type, and problematic_combinations (lines 468-482)
+  - Added `agent_effectiveness_analysis` field to `HistoryAnalysis` dataclass (line 545)
+  - Added `_detect_processing_agent()` helper to identify agent from discovered_source, Log Type, or Tool fields (lines 754-797)
+  - Added `analyze_agent_effectiveness()` function that groups by agent/type and identifies best agents and problematic combinations (lines 1826-1912)
+  - Integrated into `calculate_analysis()` (lines 2081-2104)
+  - Added text formatting in `format_analysis_text()` (lines 2421-2456)
+  - Added markdown table formatting in `format_analysis_markdown()` (lines 2807-2845)
+  - Updated `to_dict()` serialization for JSON/YAML output (lines 589-593)
+- `scripts/tests/test_issue_history.py`:
+  - Added 19 unit tests covering dataclasses, agent detection, and analysis function (lines 2362-2635)
+
+### Verification Results
+- Tests: PASS (157 tests in test_issue_history.py, 1632 overall)
+- Lint: PASS
+- Types: PASS
+
+### Implementation Notes
+- Duration tracking deferred - would require capturing issue start times which aren't currently available
+- Agent detection uses heuristics based on discovered_source, **Log Type**, and **Tool** fields
+- Minimum sample size of 3 required for best_agent recommendations
+- Minimum sample size of 5 with <50% success rate to flag problematic combinations

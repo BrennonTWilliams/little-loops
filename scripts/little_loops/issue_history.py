@@ -37,6 +37,8 @@ __all__ = [
     "RejectionAnalysis",
     "ManualPattern",
     "ManualPatternAnalysis",
+    "AgentOutcome",
+    "AgentEffectivenessAnalysis",
     "TechnicalDebtMetrics",
     "HistoryAnalysis",
     # Parsing and scanning
@@ -51,6 +53,7 @@ __all__ = [
     "analyze_test_gaps",
     "analyze_rejection_rates",
     "detect_manual_patterns",
+    "analyze_agent_effectiveness",
     # Formatting functions
     "format_summary_text",
     "format_summary_json",
@@ -428,6 +431,58 @@ class ManualPatternAnalysis:
 
 
 @dataclass
+class AgentOutcome:
+    """Metrics for a single agent processing a specific issue type."""
+
+    agent_name: str
+    issue_type: str
+    success_count: int = 0
+    failure_count: int = 0
+    rejection_count: int = 0
+
+    @property
+    def total_count(self) -> int:
+        """Total issues handled."""
+        return self.success_count + self.failure_count + self.rejection_count
+
+    @property
+    def success_rate(self) -> float:
+        """Calculate success rate."""
+        if self.total_count == 0:
+            return 0.0
+        return self.success_count / self.total_count
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "agent_name": self.agent_name,
+            "issue_type": self.issue_type,
+            "success_count": self.success_count,
+            "failure_count": self.failure_count,
+            "rejection_count": self.rejection_count,
+            "total_count": self.total_count,
+            "success_rate": round(self.success_rate, 3),
+        }
+
+
+@dataclass
+class AgentEffectivenessAnalysis:
+    """Analysis of agent effectiveness across issue types."""
+
+    outcomes: list[AgentOutcome] = field(default_factory=list)
+    best_agent_by_type: dict[str, str] = field(default_factory=dict)
+    problematic_combinations: list[tuple[str, str, str]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for serialization."""
+        return {
+            "outcomes": [o.to_dict() for o in self.outcomes],
+            "best_agent_by_type": self.best_agent_by_type,
+            "problematic_combinations": self.problematic_combinations[:10],
+        }
+
+
+@dataclass
 class TechnicalDebtMetrics:
     """Technical debt health indicators."""
 
@@ -486,6 +541,9 @@ class HistoryAnalysis:
     # Manual pattern analysis
     manual_pattern_analysis: ManualPatternAnalysis | None = None
 
+    # Agent effectiveness analysis
+    agent_effectiveness_analysis: AgentEffectivenessAnalysis | None = None
+
     # Technical debt
     debt_metrics: TechnicalDebtMetrics | None = None
 
@@ -526,6 +584,11 @@ class HistoryAnalysis:
             "manual_pattern_analysis": (
                 self.manual_pattern_analysis.to_dict()
                 if self.manual_pattern_analysis
+                else None
+            ),
+            "agent_effectiveness_analysis": (
+                self.agent_effectiveness_analysis.to_dict()
+                if self.agent_effectiveness_analysis
                 else None
             ),
             "debt_metrics": self.debt_metrics.to_dict() if self.debt_metrics else None,
@@ -686,6 +749,52 @@ def _parse_resolution_action(content: str) -> str:
 
     # Default to completed if no resolution section
     return "completed"
+
+
+def _detect_processing_agent(content: str, discovered_source: str | None = None) -> str:
+    """Detect which processing agent handled an issue.
+
+    Detection strategy (in priority order):
+    1. Check discovered_source field for 'll-parallel' or 'll-auto'
+    2. Check content for '**Log Type**:' field
+    3. Check content for '**Tool**:' field
+    4. Default to 'manual'
+
+    Args:
+        content: Issue file content
+        discovered_source: Optional discovered_source frontmatter value
+
+    Returns:
+        Agent name: 'll-auto', 'll-parallel', or 'manual'
+    """
+    # Check discovered_source first
+    if discovered_source:
+        source_lower = discovered_source.lower()
+        if "ll-parallel" in source_lower:
+            return "ll-parallel"
+        if "ll-auto" in source_lower:
+            return "ll-auto"
+
+    # Check Log Type field
+    log_type_match = re.search(r"\*\*Log Type\*\*:\s*(.+?)(?:\n|$)", content)
+    if log_type_match:
+        log_type = log_type_match.group(1).strip().lower()
+        if "ll-parallel" in log_type:
+            return "ll-parallel"
+        if "ll-auto" in log_type:
+            return "ll-auto"
+
+    # Check Tool field
+    tool_match = re.search(r"\*\*Tool\*\*:\s*(.+?)(?:\n|$)", content)
+    if tool_match:
+        tool = tool_match.group(1).strip().lower()
+        if "ll-parallel" in tool:
+            return "ll-parallel"
+        if "ll-auto" in tool:
+            return "ll-auto"
+
+    # Default to manual
+    return "manual"
 
 
 def scan_completed_issues(completed_dir: Path) -> list[CompletedIssue]:
@@ -1714,6 +1823,95 @@ def detect_manual_patterns(issues: list[CompletedIssue]) -> ManualPatternAnalysi
     )
 
 
+def analyze_agent_effectiveness(issues: list[CompletedIssue]) -> AgentEffectivenessAnalysis:
+    """Analyze agent effectiveness across issue types.
+
+    Groups issues by processing agent and issue type, calculating
+    success/failure/rejection rates for each combination.
+
+    Args:
+        issues: List of completed issues
+
+    Returns:
+        AgentEffectivenessAnalysis with outcomes and recommendations
+    """
+    if not issues:
+        return AgentEffectivenessAnalysis()
+
+    # Track outcomes by (agent, issue_type)
+    outcomes_map: dict[tuple[str, str], AgentOutcome] = {}
+
+    for issue in issues:
+        try:
+            content = issue.path.read_text(encoding="utf-8")
+        except Exception:
+            continue
+
+        # Detect agent (discovered_by may contain source info in some cases)
+        agent = _detect_processing_agent(content, issue.discovered_by)
+
+        # Get resolution outcome
+        resolution = _parse_resolution_action(content)
+
+        # Get or create outcome tracker
+        key = (agent, issue.issue_type)
+        if key not in outcomes_map:
+            outcomes_map[key] = AgentOutcome(
+                agent_name=agent,
+                issue_type=issue.issue_type,
+            )
+
+        outcome = outcomes_map[key]
+
+        # Categorize outcome
+        if resolution == "completed":
+            outcome.success_count += 1
+        elif resolution in ("rejected", "invalid", "duplicate"):
+            outcome.rejection_count += 1
+        else:  # deferred or other
+            outcome.failure_count += 1
+
+    # Build outcomes list
+    outcomes = list(outcomes_map.values())
+
+    # Determine best agent per issue type
+    best_agent_by_type: dict[str, str] = {}
+    type_agents: dict[str, list[AgentOutcome]] = {}
+
+    for outcome in outcomes:
+        if outcome.issue_type not in type_agents:
+            type_agents[outcome.issue_type] = []
+        type_agents[outcome.issue_type].append(outcome)
+
+    for issue_type, agent_outcomes in type_agents.items():
+        # Require minimum sample size
+        significant_outcomes = [o for o in agent_outcomes if o.total_count >= 3]
+        if significant_outcomes:
+            best = max(significant_outcomes, key=lambda o: o.success_rate)
+            best_agent_by_type[issue_type] = best.agent_name
+
+    # Identify problematic combinations (success rate < 50% with >= 5 samples)
+    problematic_combinations: list[tuple[str, str, str]] = []
+    for outcome in outcomes:
+        if outcome.total_count >= 5 and outcome.success_rate < 0.5:
+            reason = (
+                f"{outcome.success_rate * 100:.0f}% success "
+                f"({outcome.success_count}/{outcome.total_count})"
+            )
+            problematic_combinations.append(
+                (outcome.agent_name, outcome.issue_type, reason)
+            )
+
+    # Sort by success rate ascending (worst first)
+    problematic_combinations.sort(key=lambda x: float(x[2].split("%")[0]))
+
+    return AgentEffectivenessAnalysis(
+        outcomes=sorted(outcomes, key=lambda o: (o.agent_name, o.issue_type)),
+        best_agent_by_type=best_agent_by_type,
+        problematic_combinations=problematic_combinations,
+    )
+
+
 def scan_active_issues(issues_dir: Path) -> list[tuple[Path, str, str, date | None]]:
     """Scan active issue directories.
 
@@ -1880,6 +2078,9 @@ def calculate_analysis(
     # Manual pattern analysis
     manual_pattern_analysis = detect_manual_patterns(completed_issues)
 
+    # Agent effectiveness analysis
+    agent_effectiveness_analysis = analyze_agent_effectiveness(completed_issues)
+
     # Technical debt metrics
     debt_metrics = _calculate_debt_metrics(completed_issues, active_issues)
 
@@ -1900,6 +2101,7 @@ def calculate_analysis(
         test_gap_analysis=test_gap_analysis,
         rejection_analysis=rejection_analysis,
         manual_pattern_analysis=manual_pattern_analysis,
+        agent_effectiveness_analysis=agent_effectiveness_analysis,
         debt_metrics=debt_metrics,
     )
 
@@ -2215,6 +2417,43 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
                 lines.append(f"     Issues: {issues_str}")
                 lines.append(f"     Suggestion: {pattern.suggested_automation}")
                 lines.append(f"     Complexity: {pattern.automation_complexity}")
+
+    # Agent effectiveness analysis
+    if analysis.agent_effectiveness_analysis:
+        aea = analysis.agent_effectiveness_analysis
+
+        if aea.outcomes:
+            lines.append("")
+            lines.append("Agent Effectiveness Analysis")
+            lines.append("-" * 28)
+
+            # Group by agent
+            by_agent: dict[str, list[AgentOutcome]] = {}
+            for outcome in aea.outcomes:
+                if outcome.agent_name not in by_agent:
+                    by_agent[outcome.agent_name] = []
+                by_agent[outcome.agent_name].append(outcome)
+
+            for agent in sorted(by_agent.keys()):
+                lines.append(f"  {agent}:")
+                for outcome in sorted(by_agent[agent], key=lambda o: o.issue_type):
+                    rate_pct = outcome.success_rate * 100
+                    flag = " [!]" if outcome.total_count >= 5 and rate_pct < 50 else ""
+                    lines.append(
+                        f"    {outcome.issue_type:5}: {rate_pct:5.1f}% success "
+                        f"({outcome.success_count}/{outcome.total_count}){flag}"
+                    )
+
+            # Recommendations
+            if aea.best_agent_by_type or aea.problematic_combinations:
+                lines.append("")
+                lines.append("  Recommendations:")
+                for issue_type, best_agent in sorted(aea.best_agent_by_type.items()):
+                    lines.append(f"    - {issue_type}: best handled by {best_agent}")
+                for agent, issue_type, reason in aea.problematic_combinations[:3]:
+                    lines.append(
+                        f"    - {agent} underperforms for {issue_type} ({reason})"
+                    )
 
     # Technical debt
     if analysis.debt_metrics:
@@ -2564,6 +2803,46 @@ def format_analysis_markdown(analysis: HistoryAnalysis) -> str:
                 lines.append("")
                 for suggestion in mpa.automation_suggestions[:5]:
                     lines.append(f"- {suggestion}")
+
+    # Agent Effectiveness Analysis
+    if analysis.agent_effectiveness_analysis:
+        aea = analysis.agent_effectiveness_analysis
+
+        if aea.outcomes:
+            lines.append("")
+            lines.append("## Agent Effectiveness Analysis")
+            lines.append("")
+            lines.append(
+                "| Agent | Type | Success Rate | Completed | Rejected | Failed |"
+            )
+            lines.append(
+                "|-------|------|--------------|-----------|----------|--------|"
+            )
+
+            for outcome in sorted(
+                aea.outcomes, key=lambda o: (o.agent_name, o.issue_type)
+            ):
+                rate_pct = outcome.success_rate * 100
+                flag = " ⚠️" if outcome.total_count >= 5 and rate_pct < 50 else ""
+                lines.append(
+                    f"| {outcome.agent_name} | {outcome.issue_type} | "
+                    f"{rate_pct:.1f}%{flag} | {outcome.success_count} | "
+                    f"{outcome.rejection_count} | {outcome.failure_count} |"
+                )
+
+            # Recommendations
+            if aea.best_agent_by_type or aea.problematic_combinations:
+                lines.append("")
+                lines.append("### Recommendations")
+                lines.append("")
+                for issue_type, best_agent in sorted(aea.best_agent_by_type.items()):
+                    lines.append(
+                        f"- **{issue_type}**: Best handled by `{best_agent}`"
+                    )
+                for agent, issue_type, reason in aea.problematic_combinations[:3]:
+                    lines.append(
+                        f"- **{agent}** underperforms for {issue_type} ({reason})"
+                    )
 
     # Technical Debt
     if analysis.debt_metrics:
