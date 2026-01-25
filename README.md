@@ -254,6 +254,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 |---------|-------------|
 | `/ll:init [flags]` | Initialize config for a project (auto-detects type) |
 | `/ll:help` | Show available commands and usage |
+| `/ll:configure [area]` | Interactive configuration editor |
 
 **Init flags:**
 - `--interactive` - Full guided wizard with prompts for each option
@@ -280,6 +281,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `/ll:scan_codebase` | Find new issues |
 | `/ll:capture_issue [input]` | Capture issues from conversation |
 | `/ll:align_issues <category>` | Validate issues against key documents |
+| `/ll:create_sprint [name]` | Create sprint with curated issue list |
 
 ### Documentation & Analysis
 
