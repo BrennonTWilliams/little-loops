@@ -32,7 +32,7 @@ Worktree creation and merge processing can run concurrently, causing transient m
 
 ### Root Cause
 
-The `_on_worker_complete` callback in `orchestrator.py:697` calls `queue_merge(result)` which is asynchronous (runs in the merge coordinator's background thread). Control returns immediately to the orchestrator, allowing the main loop to dispatch new workers.
+The `_on_worker_complete` callback in `orchestrator.py:652` calls `queue_merge(result)` at line 697, which is asynchronous (runs in the merge coordinator's background thread). Control returns immediately to the orchestrator, allowing the main loop to dispatch new workers.
 
 Meanwhile, worktree creation:
 1. Copies `.claude/` directory to the new worktree
@@ -99,4 +99,28 @@ self.merge_coordinator.wait_for_completion(timeout=60)  # Add this
 - type:bug
 
 ## Status
-**Open** | Created: 2026-01-24 | Priority: P2
+**Completed** | Created: 2026-01-24 | Completed: 2026-01-24 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-24
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/parallel/orchestrator.py`: Added `wait_for_completion(timeout=120)` call after `queue_merge()` in `_on_worker_complete()` callback. This ensures merges complete before the callback returns, preventing new worker dispatch while merge is in progress.
+
+### Verification Results
+- Tests: PASS (1845 passed, 1 pre-existing unrelated failure)
+- Lint: PASS
+- Types: PASS
+
+### Implementation Notes
+The fix implements option 2 from the issue: waiting for merge completion before dispatching the next worker. This is cleaner than wrapping worktree creation in `GitLock` because:
+1. It doesn't hold the git lock for extended periods (file copies, model detection)
+2. It matches the existing pattern used for P0 sequential processing
+3. It's a minimal change with clear semantics
+
+The 120-second timeout matches the existing timeout used in `_wait_for_completion()` for final merge processing.

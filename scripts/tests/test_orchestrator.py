@@ -1129,6 +1129,43 @@ class TestOnWorkerComplete:
         assert "BUG-001" in orchestrator.state.timing
         assert orchestrator.state.timing["BUG-001"]["total"] == 15.5
 
+    def test_on_worker_complete_waits_for_merge(
+        self,
+        orchestrator: ParallelOrchestrator,
+    ) -> None:
+        """_on_worker_complete waits for merge completion before returning (BUG-140).
+
+        This prevents race conditions between worktree creation and merge operations
+        by ensuring merges complete before the next worker is dispatched.
+        """
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+            duration=10.0,
+        )
+
+        # Track call order
+        call_order: list[str] = []
+        original_queue_merge = orchestrator.merge_coordinator.queue_merge
+
+        def mock_queue_merge(*args: object, **kwargs: object) -> None:
+            call_order.append("queue_merge")
+            original_queue_merge(*args, **kwargs)
+
+        def mock_wait_for_completion(*args: object, **kwargs: object) -> bool:
+            call_order.append("wait_for_completion")
+            return True
+
+        orchestrator.merge_coordinator.queue_merge = mock_queue_merge  # type: ignore[method-assign]
+        orchestrator.merge_coordinator.wait_for_completion = mock_wait_for_completion  # type: ignore[method-assign]
+
+        orchestrator._on_worker_complete(result)
+
+        # Verify wait_for_completion is called after queue_merge
+        assert call_order == ["queue_merge", "wait_for_completion"]
+
 
 class TestMergeSequential:
     """Tests for _merge_sequential method."""

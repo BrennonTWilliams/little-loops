@@ -695,6 +695,11 @@ class ParallelOrchestrator:
                 if result.corrections:
                     self.state.corrections[result.issue_id] = result.corrections
             self.merge_coordinator.queue_merge(result)
+            # Wait for merge to complete before returning from callback.
+            # This prevents dispatch of next worker while merge is in progress,
+            # avoiding race conditions between worktree creation and merge ops.
+            # (BUG-140: Race condition between worktree creation and merge)
+            self.merge_coordinator.wait_for_completion(timeout=120)
         else:
             self.logger.error(f"{result.issue_id} failed: {result.error}")
             self.queue.mark_failed(result.issue_id)
