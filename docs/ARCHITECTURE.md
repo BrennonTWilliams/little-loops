@@ -496,6 +496,96 @@ flowchart TB
 
 ---
 
+## Sprint Mode (ll-sprint)
+
+Sprint execution uses dependency-aware wave-based scheduling. Issues are grouped into waves where each wave contains issues whose blockers have all completed.
+
+```mermaid
+flowchart TB
+    subgraph Build["Build Phase"]
+        LOAD[Load sprint issues]
+        INFO[Load IssueInfo objects]
+        GRAPH[Build DependencyGraph]
+        WAVES[Calculate execution waves]
+    end
+
+    subgraph Waves["Wave Execution"]
+        W1[Wave 1<br/>No blockers]
+        W2[Wave 2<br/>Blocked by Wave 1]
+        W3[Wave N<br/>Blocked by Wave N-1]
+    end
+
+    subgraph Parallel["ParallelOrchestrator"]
+        ORCH[Execute wave in parallel]
+        WORKERS[Workers process issues]
+        MERGE[Merge results]
+    end
+
+    LOAD --> INFO
+    INFO --> GRAPH
+    GRAPH --> WAVES
+    WAVES --> W1
+    W1 --> ORCH
+    ORCH --> WORKERS
+    WORKERS --> MERGE
+    MERGE --> W2
+    W2 --> ORCH
+    MERGE --> W3
+```
+
+### Sprint Execution Flow
+
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as ll-sprint
+    participant Manager as SprintManager
+    participant Graph as DependencyGraph
+    participant Orch as ParallelOrchestrator
+
+    User->>CLI: ll-sprint run sprint-1
+    CLI->>Manager: Load sprint
+    Manager-->>CLI: Sprint with issues
+
+    CLI->>Manager: load_issue_infos(issues)
+    Manager-->>CLI: List[IssueInfo]
+
+    CLI->>Graph: from_issues(issue_infos)
+    Graph-->>CLI: DependencyGraph
+
+    CLI->>Graph: get_execution_waves()
+    Graph-->>CLI: [[Wave1], [Wave2], ...]
+
+    loop For each wave
+        CLI->>CLI: Log wave issues
+        CLI->>Orch: Execute wave issues
+        Orch-->>CLI: Wave complete
+    end
+
+    CLI-->>User: Sprint complete
+```
+
+### Wave Calculation Example
+
+Given issues with dependencies:
+- `FEAT-001`: No blockers
+- `BUG-001`: No blockers
+- `FEAT-002`: Blocked by FEAT-001
+- `FEAT-003`: Blocked by FEAT-001
+- `FEAT-004`: Blocked by FEAT-002, FEAT-003
+
+The `DependencyGraph.get_execution_waves()` returns:
+
+| Wave | Issues | Reason |
+|------|--------|--------|
+| 1 | FEAT-001, BUG-001 | No blockers |
+| 2 | FEAT-002, FEAT-003 | FEAT-001 completed in Wave 1 |
+| 3 | FEAT-004 | FEAT-002, FEAT-003 completed in Wave 2 |
+
+Issues within each wave execute in parallel. Waves execute sequentially.
+
+---
+
 ## Key Design Decisions
 
 ### Git Worktree Isolation

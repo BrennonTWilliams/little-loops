@@ -449,6 +449,138 @@ Convert text to slug format for filenames.
 
 ---
 
+## little_loops.dependency_graph
+
+Dependency graph construction for issue scheduling based on `Blocked By` relationships.
+
+### DependencyGraph
+
+Represents a directed acyclic graph (DAG) of issue dependencies.
+
+```python
+from little_loops.dependency_graph import DependencyGraph
+from little_loops.issue_parser import find_issues
+from little_loops.config import BRConfig
+from pathlib import Path
+
+config = BRConfig(Path.cwd())
+issues = find_issues(config)
+graph = DependencyGraph.from_issues(issues)
+
+# Get issues ready to process (no active blockers)
+ready = graph.get_ready_issues()
+
+# Get execution waves for parallel processing
+waves = graph.get_execution_waves()
+for i, wave in enumerate(waves, 1):
+    print(f"Wave {i}: {[issue.issue_id for issue in wave]}")
+```
+
+#### Construction
+
+```python
+@classmethod
+def from_issues(
+    cls,
+    issues: list[IssueInfo],
+    completed_ids: set[str] | None = None,
+) -> DependencyGraph
+```
+
+Build graph from list of issues.
+
+**Parameters:**
+- `issues` - List of `IssueInfo` objects with `blocked_by` fields
+- `completed_ids` - Set of completed issue IDs (treated as resolved)
+
+**Returns:** Constructed `DependencyGraph`
+
+#### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `issues` | `dict[str, IssueInfo]` | Mapping of issue ID to `IssueInfo` |
+| `blocked_by` | `dict[str, set[str]]` | Mapping of issue ID to blocker IDs |
+| `blocks` | `dict[str, set[str]]` | Reverse mapping (what each issue blocks) |
+
+#### Methods
+
+##### get_ready_issues
+
+```python
+def get_ready_issues(self, completed: set[str] | None = None) -> list[IssueInfo]
+```
+
+Return issues whose blockers are all completed.
+
+**Parameters:**
+- `completed` - Set of completed issue IDs
+
+**Returns:** List of `IssueInfo` for ready issues, sorted by priority
+
+##### get_execution_waves
+
+```python
+def get_execution_waves(self, completed: set[str] | None = None) -> list[list[IssueInfo]]
+```
+
+Return issues grouped into parallel execution waves.
+
+Wave 1: All issues with no blockers (or blockers already completed)
+Wave 2: Issues whose blockers are all in wave 1
+Wave N: Issues whose blockers are all in waves 1..N-1
+
+**Parameters:**
+- `completed` - Set of already-completed issue IDs
+
+**Returns:** List of waves, each wave is a list of issues that can run in parallel
+
+**Raises:** `ValueError` if graph contains cycles
+
+**Example:**
+```python
+graph = DependencyGraph.from_issues(issues)
+waves = graph.get_execution_waves()
+
+# Wave 1: [FEAT-001, BUG-001]  - no blockers
+# Wave 2: [FEAT-002, FEAT-003] - blocked by FEAT-001
+# Wave 3: [FEAT-004]           - blocked by FEAT-002, FEAT-003
+```
+
+##### topological_sort
+
+```python
+def topological_sort(self) -> list[IssueInfo]
+```
+
+Return issues in dependency order (Kahn's algorithm).
+
+**Returns:** List of `IssueInfo` in topological order
+
+**Raises:** `ValueError` if graph contains cycles
+
+##### has_cycles
+
+```python
+def has_cycles(self) -> bool
+```
+
+Check if the graph contains cycles.
+
+**Returns:** `True` if cycles exist
+
+##### detect_cycles
+
+```python
+def detect_cycles(self) -> list[list[str]]
+```
+
+Find all cycles in the graph using DFS.
+
+**Returns:** List of cycles, each cycle is a list of issue IDs
+
+---
+
 ## little_loops.git_operations
 
 Git utility functions for status checking, work verification, and .gitignore management.
@@ -2610,11 +2742,13 @@ Sprint planning and execution for batch issue processing.
 ```python
 @dataclass
 class SprintOptions:
-    mode: str = "auto"          # "auto" for sequential, "parallel" for concurrent
+    mode: str = "auto"          # DEPRECATED: Execution is now always dependency-aware
     max_iterations: int = 100   # Max Claude iterations per issue
     timeout: int = 3600         # Per-issue timeout in seconds
-    max_workers: int = 4        # Worker count for parallel mode
+    max_workers: int = 4        # Worker count for parallel execution within waves
 ```
+
+**Note**: The `mode` field is deprecated. Sprint execution now always uses dependency-aware wave-based scheduling. Issues are grouped into waves where each wave contains issues whose blockers have all completed, and each wave is executed in parallel.
 
 ### Sprint
 
@@ -2659,6 +2793,7 @@ Manager for sprint CRUD operations.
 | `list_all()` | `list[Sprint]` | List all sprints |
 | `delete(name)` | `bool` | Delete sprint |
 | `validate_issues(issues)` | `dict[str, Path]` | Validate issue IDs exist |
+| `load_issue_infos(issues)` | `list[IssueInfo]` | Load full IssueInfo objects for dependency analysis |
 
 **Example:**
 ```python
