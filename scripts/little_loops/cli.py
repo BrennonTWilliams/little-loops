@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from little_loops.config import BRConfig
+from little_loops.dependency_graph import DependencyGraph
 from little_loops.issue_manager import AutoManager
 from little_loops.logger import Logger
 from little_loops.parallel.orchestrator import ParallelOrchestrator
@@ -1296,13 +1297,13 @@ Examples:
         "--mode",
         choices=["auto", "parallel"],
         default="auto",
-        help="Default execution mode (default: auto)",
+        help="DEPRECATED: Execution is now always dependency-aware (default: auto)",
     )
     create_parser.add_argument(
         "--max-workers",
         type=int,
         default=4,
-        help="Default max workers for parallel mode (default: 4)",
+        help="Max workers for parallel execution within waves (default: 4)",
     )
     create_parser.add_argument(
         "--timeout",
@@ -1317,7 +1318,7 @@ Examples:
     run_parser.add_argument(
         "--parallel",
         action="store_true",
-        help="Execute in parallel mode (overrides sprint default)",
+        help="DEPRECATED: Execution is now always dependency-aware with parallel waves",
     )
     run_parser.add_argument(
         "--dry-run", "-n", action="store_true", help="Show execution plan without running"
@@ -1482,7 +1483,7 @@ def _cmd_sprint_run(
     manager: SprintManager,
     config: BRConfig,
 ) -> int:
-    """Execute a sprint."""
+    """Execute a sprint with dependency-aware scheduling."""
     logger = Logger()
     sprint = manager.load(args.sprint)
     if not sprint:
@@ -1498,40 +1499,78 @@ def _cmd_sprint_run(
         logger.info("Cannot execute sprint with missing issues")
         return 1
 
-    # Determine execution mode
-    parallel = args.parallel or (sprint.options and sprint.options.mode == "parallel")
+    # Load full IssueInfo objects for dependency analysis
+    issue_infos = manager.load_issue_infos(sprint.issues)
+    if not issue_infos:
+        logger.error("No issue files found")
+        return 1
 
+    # Build dependency graph
+    dep_graph = DependencyGraph.from_issues(issue_infos)
+
+    # Detect cycles
+    if dep_graph.has_cycles():
+        cycles = dep_graph.detect_cycles()
+        for cycle in cycles:
+            logger.error(f"Dependency cycle detected: {' -> '.join(cycle)}")
+        return 1
+
+    # Get execution waves
+    try:
+        waves = dep_graph.get_execution_waves()
+    except ValueError as e:
+        logger.error(str(e))
+        return 1
+
+    # Display execution plan
     logger.info(f"Running sprint: {sprint.name}")
-    logger.info(f"  Mode: {'parallel' if parallel else 'sequential'}")
-    logger.info(f"  Issues: {', '.join(sprint.issues)}")
+    logger.info("Dependency analysis:")
+    for i, wave in enumerate(waves, 1):
+        issue_ids = ", ".join(issue.issue_id for issue in wave)
+        logger.info(f"  Wave {i}: {issue_ids}")
 
     if args.dry_run:
         logger.info("\nDry run mode - no changes will be made")
         return 0
 
-    # Build only_ids set for filtering
-    only_ids = set(sprint.issues)
+    # Determine max workers
+    max_workers = args.max_workers or (sprint.options.max_workers if sprint.options else 4)
 
-    if parallel:
-        # Execute via ParallelOrchestrator
-        max_workers = args.max_workers or (sprint.options.max_workers if sprint.options else 4)
+    # Execute wave by wave
+    completed: set[str] = set()
+    failed_waves = 0
 
+    for wave_num, wave in enumerate(waves, 1):
+        wave_ids = [issue.issue_id for issue in wave]
+        logger.info(f"\nProcessing wave {wave_num}: {', '.join(wave_ids)}")
+
+        # Use ParallelOrchestrator for wave execution
+        only_ids = set(wave_ids)
         parallel_config = config.create_parallel_config(
-            max_workers=max_workers,
+            max_workers=min(max_workers, len(wave)),
             only_ids=only_ids,
             dry_run=args.dry_run,
         )
 
         orchestrator = ParallelOrchestrator(parallel_config, config, Path.cwd())
-        return orchestrator.run()
-    else:
-        # Execute via AutoManager
-        auto_manager = AutoManager(
-            config=config,
-            dry_run=args.dry_run,
-            only_ids=only_ids,
-        )
-        return auto_manager.run()
+        result = orchestrator.run()
+
+        # Track completed/failed from this wave
+        if result == 0:
+            completed.update(wave_ids)
+            logger.success(f"Wave {wave_num} completed: {', '.join(wave_ids)}")
+        else:
+            # Some issues failed - continue but track failures
+            failed_waves += 1
+            logger.warning(f"Wave {wave_num} had failures")
+            # Mark all as attempted (orchestrator tracks actual status)
+            completed.update(wave_ids)
+
+    logger.info(f"\nSprint completed: {len(completed)} issues processed")
+    if failed_waves > 0:
+        logger.warning(f"{failed_waves} wave(s) had failures")
+        return 1
+    return 0
 
 
 def main_history() -> int:

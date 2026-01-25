@@ -280,6 +280,12 @@ class TestSprintManager:
         valid = manager.validate_issues(["BUG-001", "FEAT-010"])
         assert valid == {}
 
+    def test_load_issue_infos_without_config(self, tmp_path: Path) -> None:
+        """Loading issue infos without config returns empty list."""
+        manager = SprintManager(sprints_dir=tmp_path, config=None)
+        infos = manager.load_issue_infos(["BUG-001", "FEAT-010"])
+        assert infos == []
+
 
 class TestSprintYAMLFormat:
     """Tests for YAML file format."""

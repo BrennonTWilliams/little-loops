@@ -485,3 +485,122 @@ class TestIntegration:
         # Profile and settings must come before dashboard
         assert ids.index("FEAT-002") < ids.index("FEAT-004")
         assert ids.index("FEAT-003") < ids.index("FEAT-004")
+
+
+class TestGetExecutionWaves:
+    """Tests for get_execution_waves()."""
+
+    def test_single_wave_no_deps(self) -> None:
+        """All issues in one wave when no dependencies."""
+        issues = [
+            make_issue("FEAT-001", priority="P0"),
+            make_issue("FEAT-002", priority="P1"),
+            make_issue("FEAT-003", priority="P2"),
+        ]
+        graph = DependencyGraph.from_issues(issues)
+
+        waves = graph.get_execution_waves()
+
+        assert len(waves) == 1
+        assert len(waves[0]) == 3
+        # Should be sorted by priority
+        assert [i.issue_id for i in waves[0]] == ["FEAT-001", "FEAT-002", "FEAT-003"]
+
+    def test_linear_chain_three_waves(self) -> None:
+        """Linear chain A -> B -> C produces three waves."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"])
+        issue_c = make_issue("FEAT-003", blocked_by=["FEAT-002"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        waves = graph.get_execution_waves()
+
+        assert len(waves) == 3
+        assert waves[0][0].issue_id == "FEAT-001"
+        assert waves[1][0].issue_id == "FEAT-002"
+        assert waves[2][0].issue_id == "FEAT-003"
+
+    def test_diamond_three_waves(self) -> None:
+        """Diamond pattern A -> B,C -> D produces three waves."""
+        issue_a = make_issue("FEAT-001", priority="P0")
+        issue_b = make_issue("FEAT-002", priority="P1", blocked_by=["FEAT-001"])
+        issue_c = make_issue("FEAT-003", priority="P2", blocked_by=["FEAT-001"])
+        issue_d = make_issue("FEAT-004", priority="P0", blocked_by=["FEAT-002", "FEAT-003"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c, issue_d])
+
+        waves = graph.get_execution_waves()
+
+        assert len(waves) == 3
+        # Wave 1: A only
+        assert [i.issue_id for i in waves[0]] == ["FEAT-001"]
+        # Wave 2: B and C (sorted by priority)
+        assert set(i.issue_id for i in waves[1]) == {"FEAT-002", "FEAT-003"}
+        # Wave 3: D only
+        assert [i.issue_id for i in waves[2]] == ["FEAT-004"]
+
+    def test_with_completed_issues(self) -> None:
+        """Completed issues are skipped in wave generation."""
+        issue_a = make_issue("FEAT-001")
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"])
+        issue_c = make_issue("FEAT-003", blocked_by=["FEAT-002"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+
+        # FEAT-001 already completed
+        waves = graph.get_execution_waves(completed={"FEAT-001"})
+
+        assert len(waves) == 2
+        assert waves[0][0].issue_id == "FEAT-002"
+        assert waves[1][0].issue_id == "FEAT-003"
+
+    def test_cycle_raises_value_error(self) -> None:
+        """Cycles raise ValueError."""
+        issue_a = make_issue("FEAT-001", blocked_by=["FEAT-002"])
+        issue_b = make_issue("FEAT-002", blocked_by=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b])
+
+        with pytest.raises(ValueError, match="cycles"):
+            graph.get_execution_waves()
+
+    def test_empty_graph(self) -> None:
+        """Empty graph returns empty waves."""
+        graph = DependencyGraph.from_issues([])
+
+        waves = graph.get_execution_waves()
+
+        assert waves == []
+
+    def test_independent_and_dependent_mixed(self) -> None:
+        """Mix of independent and dependent issues."""
+        # Independent
+        bugfix = make_issue("BUG-001", priority="P0")
+        # Dependent chain
+        feat_a = make_issue("FEAT-001", priority="P1")
+        feat_b = make_issue("FEAT-002", priority="P2", blocked_by=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([bugfix, feat_a, feat_b])
+
+        waves = graph.get_execution_waves()
+
+        assert len(waves) == 2
+        # Wave 1: BUG-001 and FEAT-001 (sorted by priority)
+        wave1_ids = [i.issue_id for i in waves[0]]
+        assert "BUG-001" in wave1_ids
+        assert "FEAT-001" in wave1_ids
+        # Wave 2: FEAT-002
+        assert waves[1][0].issue_id == "FEAT-002"
+
+    def test_all_completed_returns_empty(self) -> None:
+        """All issues completed returns empty waves."""
+        issues = [
+            make_issue("FEAT-001"),
+            make_issue("FEAT-002"),
+        ]
+        graph = DependencyGraph.from_issues(issues)
+
+        waves = graph.get_execution_waves(completed={"FEAT-001", "FEAT-002"})
+
+        assert waves == []

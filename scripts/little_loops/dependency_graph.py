@@ -116,6 +116,55 @@ class DependencyGraph:
         ready.sort(key=lambda x: (x.priority_int, x.issue_id))
         return ready
 
+    def get_execution_waves(self, completed: set[str] | None = None) -> list[list[IssueInfo]]:
+        """Return issues grouped into parallel execution waves.
+
+        Wave 1: All issues with no blockers (or blockers already completed)
+        Wave 2: Issues whose blockers are all in wave 1
+        Wave N: Issues whose blockers are all in waves 1..N-1
+
+        This is similar to topological_sort but groups issues by "level"
+        rather than returning a flat list.
+
+        Args:
+            completed: Set of already-completed issue IDs
+
+        Returns:
+            List of waves, each wave is a list of issues that can run in parallel.
+            Empty list if graph is empty or all issues are completed.
+
+        Raises:
+            ValueError: If graph contains cycles (not a DAG)
+
+        Example:
+            If A blocks B and C, and B and C block D:
+            - Wave 1: [A]
+            - Wave 2: [B, C]
+            - Wave 3: [D]
+        """
+        completed = completed or set()
+        waves: list[list[IssueInfo]] = []
+        processed: set[str] = set(completed)
+
+        while True:
+            # Get issues ready to run (all blockers in processed set)
+            wave = self.get_ready_issues(completed=processed)
+            if not wave:
+                break
+            waves.append(wave)
+            # Mark this wave as processed for next iteration
+            for issue in wave:
+                processed.add(issue.issue_id)
+
+        # Check for cycles - if we have unprocessed issues, there's a cycle
+        remaining = set(self.issues.keys()) - processed
+        if remaining:
+            cycles = self.detect_cycles()
+            cycle_str = ", ".join(" -> ".join(cycle) for cycle in cycles)
+            raise ValueError(f"Dependency graph contains cycles: {cycle_str}")
+
+        return waves
+
     def is_blocked(self, issue_id: str, completed: set[str] | None = None) -> bool:
         """Check if an issue is still blocked.
 

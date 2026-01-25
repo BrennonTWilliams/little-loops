@@ -9,6 +9,7 @@ import yaml
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
+    from little_loops.issue_parser import IssueInfo
 
 
 @dataclass
@@ -16,13 +17,14 @@ class SprintOptions:
     """Execution options for sprint runs.
 
     Attributes:
-        mode: Execution mode - "auto" for sequential, "parallel" for concurrent
+        mode: DEPRECATED - execution is now always dependency-aware with
+              parallel waves. Kept for backwards compatibility.
         max_iterations: Maximum Claude iterations per issue
         timeout: Per-issue timeout in seconds
-        max_workers: Worker count for parallel mode
+        max_workers: Worker count for parallel execution within waves
     """
 
-    mode: str = "auto"  # "auto" for sequential, "parallel" for concurrent
+    mode: str = "auto"  # Deprecated - kept for backwards compatibility
     max_iterations: int = 100
     timeout: int = 3600
     max_workers: int = 4
@@ -273,3 +275,33 @@ class SprintManager:
                 if issue_id in valid:
                     break
         return valid
+
+    def load_issue_infos(self, issues: list[str]) -> list["IssueInfo"]:
+        """Load IssueInfo objects for the given issue IDs.
+
+        Args:
+            issues: List of issue IDs to load
+
+        Returns:
+            List of IssueInfo objects (only for issues that exist)
+        """
+        from little_loops.issue_parser import IssueParser
+
+        if not self.config:
+            return []
+
+        parser = IssueParser(self.config)
+        result: list[IssueInfo] = []
+        for issue_id in issues:
+            for category in ["bugs", "features", "enhancements"]:
+                issue_dir = self.config.get_issue_dir(category)
+                for path in issue_dir.glob(f"*-{issue_id}-*.md"):
+                    try:
+                        info = parser.parse_file(path)
+                        result.append(info)
+                        break
+                    except Exception:
+                        continue
+                if any(i.issue_id == issue_id for i in result):
+                    break
+        return result
