@@ -487,6 +487,49 @@ class TestStashLocalChanges:
         # State file should NOT be reverted (excluded from stash)
         assert state_file.read_text() == '{"modified": true}'
 
+    def test_excludes_claude_context_state_file_from_stash(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should exclude Claude context state file from stash.
+
+        The .claude/ll-context-state.json file is managed by Claude Code and
+        frequently appears as deleted during operations. Stashing it causes
+        unnecessary stash/restore cycling with no benefit to merge operations.
+        """
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Create .claude directory and context state file as tracked
+        claude_dir = temp_git_repo / ".claude"
+        claude_dir.mkdir(exist_ok=True)
+        context_state_file = claude_dir / "ll-context-state.json"
+        context_state_file.write_text('{"session": "initial"}')
+        subprocess.run(["git", "add", ".claude/"], cwd=temp_git_repo, capture_output=True)
+        subprocess.run(
+            ["git", "commit", "-m", "add claude context state"],
+            cwd=temp_git_repo,
+            capture_output=True,
+        )
+
+        # Modify both the context state file and another tracked file
+        context_state_file.write_text('{"session": "modified"}')
+        test_file = temp_git_repo / "test.txt"
+        test_file.write_text("modified content")
+
+        result = coordinator._stash_local_changes()
+
+        # Should stash the test.txt but NOT the context state file
+        assert result is True
+        assert coordinator._stash_active is True
+
+        # test.txt should be reverted (stashed)
+        assert test_file.read_text() == "initial content"
+
+        # Context state file should NOT be reverted (excluded from stash)
+        assert context_state_file.read_text() == '{"session": "modified"}'
+
 
 class TestStashPopFailureTracking:
     """Tests for stash pop failure tracking."""

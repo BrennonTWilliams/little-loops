@@ -133,6 +133,7 @@ class MergeCoordinator:
         1. State file - managed by orchestrator and continuously updated
         2. Lifecycle file moves - issue files being moved to completed/ directory
         3. Files in completed directory - lifecycle-managed files
+        4. Claude Code context state file - managed by Claude Code externally
 
         These exclusions prevent stash pop conflicts after merge, since the merge
         may change HEAD and create conflicts with stashed rename operations.
@@ -181,6 +182,10 @@ class MergeCoordinator:
                 or file_path.startswith("issues/completed/")
             ):
                 self.logger.debug(f"Skipping completed directory file from stash: {file_path}")
+                continue
+            # Skip Claude Code context state file - managed externally
+            if file_path.endswith("ll-context-state.json"):
+                self.logger.debug(f"Skipping Claude context state file from stash: {file_path}")
                 continue
             tracked_changes.append(line)
             files_to_stash.append(file_path)

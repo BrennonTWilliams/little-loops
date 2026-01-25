@@ -95,4 +95,21 @@ if file_path.startswith(".claude/"):
 - type:bug
 
 ## Status
-**Open** | Created: 2026-01-24 | Priority: P3
+**Completed** | Created: 2026-01-24 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-24
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/parallel/merge_coordinator.py`: Added exclusion for `ll-context-state.json` in `_stash_local_changes()` method (lines 186-189). Updated docstring to document the new exclusion.
+- `scripts/tests/test_merge_coordinator.py`: Added `test_excludes_claude_context_state_file_from_stash` test to verify the exclusion works correctly.
+
+### Verification Results
+- Tests: PASS (53/53)
+- Lint: PASS
+- Types: PASS
