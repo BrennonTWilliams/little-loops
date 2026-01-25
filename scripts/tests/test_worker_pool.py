@@ -780,6 +780,175 @@ class TestWorkerPoolWorktreeManagement:
         assert "other-dir" not in cleaned_names
 
 
+class TestActiveWorktreeProtection:
+    """Tests for BUG-142: Prevent cleanup of worktrees in active use."""
+
+    def test_cleanup_worktree_skips_active_worktree(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_cleanup_worktree() should skip worktrees in _active_worktrees set."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker-test-001"
+        worktree_path.mkdir(parents=True)
+
+        # Register as active
+        with worker_pool._process_lock:
+            worker_pool._active_worktrees.add(worktree_path)
+
+        # Attempt cleanup - should skip
+        worker_pool._cleanup_worktree(worktree_path)
+
+        # Worktree should still exist
+        assert worktree_path.exists()
+
+        # Cleanup
+        with worker_pool._process_lock:
+            worker_pool._active_worktrees.discard(worktree_path)
+
+    def test_cleanup_worktree_logs_warning_for_active(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+        mock_logger: MagicMock,
+    ) -> None:
+        """_cleanup_worktree() should log warning when skipping active worktree."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker-test-002"
+        worktree_path.mkdir(parents=True)
+
+        with worker_pool._process_lock:
+            worker_pool._active_worktrees.add(worktree_path)
+
+        worker_pool._cleanup_worktree(worktree_path)
+
+        # Check that warning was logged
+        mock_logger.warning.assert_called()
+        call_args = str(mock_logger.warning.call_args)
+        assert "active use" in call_args.lower()
+
+        with worker_pool._process_lock:
+            worker_pool._active_worktrees.discard(worktree_path)
+
+    def test_cleanup_all_worktrees_skips_active(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+        mock_logger: MagicMock,
+    ) -> None:
+        """cleanup_all_worktrees() should skip worktrees in _active_worktrees."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        worktree_base.mkdir(parents=True, exist_ok=True)
+
+        active_path = worktree_base / "worker-active-001"
+        inactive_path = worktree_base / "worker-inactive-002"
+        active_path.mkdir()
+        inactive_path.mkdir()
+
+        # Mark one as active
+        with worker_pool._process_lock:
+            worker_pool._active_worktrees.add(active_path)
+
+        cleanup_calls: list[Path] = []
+
+        def tracking_cleanup(path: Path) -> None:
+            cleanup_calls.append(path)
+            # Check active worktree logic
+            with worker_pool._process_lock:
+                if path in worker_pool._active_worktrees:
+                    mock_logger.warning(f"Skipping cleanup of {path.name}: worktree is in active use")
+                    return
+            # For inactive, simulate cleanup
+            if path.exists():
+                path.rmdir()
+
+        with patch.object(worker_pool, "_cleanup_worktree", side_effect=tracking_cleanup):
+            worker_pool.cleanup_all_worktrees()
+
+        # Both should have been passed to _cleanup_worktree
+        assert len(cleanup_calls) == 2
+
+        # Active should still exist (skipped by our tracking cleanup)
+        assert active_path.exists()
+
+        # Inactive should be gone
+        assert not inactive_path.exists()
+
+        with worker_pool._process_lock:
+            worker_pool._active_worktrees.discard(active_path)
+
+    def test_process_issue_registers_and_unregisters_worktree(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+    ) -> None:
+        """_process_issue() should register worktree after creation and unregister on completion."""
+        # Track worktree registration during processing
+        worktree_was_registered = [False]
+        captured_worktree_path: list[Path] = []
+
+        def mock_run_claude_with_check(
+            cmd: str, path: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            # During processing, the worktree should be registered
+            with worker_pool._process_lock:
+                for wt in worker_pool._active_worktrees:
+                    if "worker-" in str(wt):
+                        worktree_was_registered[0] = True
+                        captured_worktree_path.append(wt)
+            return subprocess.CompletedProcess([], 0, "## VERDICT: **READY**", "")
+
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(
+                    worker_pool, "_run_claude_command", side_effect=mock_run_claude_with_check
+                ):
+                    with patch.object(
+                        worker_pool, "_get_changed_files", return_value=["src/fix.py"]
+                    ):
+                        with patch.object(
+                            worker_pool, "_detect_main_repo_leaks", return_value=[]
+                        ):
+                            worker_pool._process_issue(mock_issue)
+
+        # Worktree should have been registered during processing
+        assert worktree_was_registered[0] is True
+
+        # After processing completes, worktree should be unregistered
+        with worker_pool._process_lock:
+            # Check that the captured worktree is no longer in active set
+            for wt in captured_worktree_path:
+                assert wt not in worker_pool._active_worktrees
+
+    def test_process_issue_unregisters_worktree_on_exception(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+    ) -> None:
+        """_process_issue() should unregister worktree even when exception occurs."""
+        # Capture the worktree path that gets registered
+        captured_worktree_path: list[Path] = []
+
+        def setup_and_capture(path: Path, branch: str) -> None:
+            # Capture the worktree path being set up
+            captured_worktree_path.append(path)
+
+        with patch.object(worker_pool, "_setup_worktree", side_effect=setup_and_capture):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(
+                    worker_pool, "_run_claude_command", side_effect=Exception("Test error")
+                ):
+                    result = worker_pool._process_issue(mock_issue)
+
+        # After processing (even with exception), worktree should be unregistered
+        with worker_pool._process_lock:
+            for wt in captured_worktree_path:
+                assert wt not in worker_pool._active_worktrees
+
+        # And the result should indicate failure
+        assert result.success is False
+        assert "Test error" in (result.error or "")
+
+
 class TestWorkerPoolHelpers:
     """Tests for helper methods."""
 

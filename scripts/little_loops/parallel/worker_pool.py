@@ -81,6 +81,8 @@ class WorkerPool:
         self._active_workers: dict[str, Future[WorkerResult]] = {}
         # Track active subprocesses for forceful termination on shutdown
         self._active_processes: dict[str, subprocess.Popen[str]] = {}
+        # Track active worktree paths to prevent cleanup while in use (BUG-142)
+        self._active_worktrees: set[Path] = set()
         self._process_lock = threading.Lock()
         # Track callbacks currently executing
         self._pending_callbacks: set[str] = set()
@@ -229,6 +231,10 @@ class WorkerPool:
         try:
             # Step 1: Create worktree with new branch
             self._setup_worktree(worktree_path, branch_name)
+
+            # Register worktree as active to prevent cleanup while in use (BUG-142)
+            with self._process_lock:
+                self._active_worktrees.add(worktree_path)
 
             # Step 2: Run ready_issue validation
             ready_cmd = self.parallel_config.get_ready_command(issue.issue_id)
@@ -412,6 +418,10 @@ class WorkerPool:
                 duration=time.time() - start_time,
                 error=str(e),
             )
+        finally:
+            # Unregister worktree as no longer active (BUG-142)
+            with self._process_lock:
+                self._active_worktrees.discard(worktree_path)
 
     def _setup_worktree(self, worktree_path: Path, branch_name: str) -> None:
         """Create a git worktree with a new branch.
@@ -535,6 +545,14 @@ class WorkerPool:
         """
         if not worktree_path.exists():
             return
+
+        # Skip cleanup if worktree is actively in use by a running worker (BUG-142)
+        with self._process_lock:
+            if worktree_path in self._active_worktrees:
+                self.logger.warning(
+                    f"Skipping cleanup of {worktree_path.name}: worktree is in active use"
+                )
+                return
 
         # Get branch name before removing worktree (worktree operation, no lock needed)
         branch_result = subprocess.run(

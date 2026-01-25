@@ -1,0 +1,71 @@
+---
+discovered_date: 2026-01-24
+discovered_by: capture_issue
+discovered_source: argobots-ll-parallel-debug.log
+discovered_external_repo: /Users/brennon/AIProjects/ai-workspaces/headstorm/Agrobot
+---
+
+# ENH-143: Detect and handle overlapping file modifications in parallel processing
+
+## Summary
+
+When multiple issues modify the same files, merge conflicts are inevitable. The system should detect potential overlaps upfront and either warn, serialize, or provide better conflict resolution.
+
+## Context
+
+Identified from conversation analyzing `argobots-ll-parallel-debug.log`:
+
+**Evidence from log:**
+- ENH-011 modified: `sidebar/index.tsx`, `sidebar/user-profile-menu.tsx`, + 3 others
+- ENH-012 modified: `sidebar/index.tsx`, `sidebar/user-profile-menu.tsx`
+- Both touched the same sidebar files
+- ENH-012 merged first; ENH-011 failed with rebase conflict
+
+```
+error: could not apply 6fdbc5bc... feat(sidebar): add desktop sidebar resize with drag handle
+```
+
+## Current Behavior
+
+1. Issues are dispatched to parallel workers without checking for file overlap
+2. First completion merges successfully
+3. Subsequent completions hit merge conflicts
+4. Retry logic attempts rebase, but manual conflict resolution is often needed
+5. Work is lost or requires manual intervention
+
+## Proposed Solutions
+
+### Option A: Pre-flight overlap detection
+Analyze issue descriptions/scopes before dispatch to identify potential conflicts:
+- Parse file paths mentioned in issues
+- Check for common component/module references
+- Warn or serialize issues with high overlap probability
+
+### Option B: Scope-based serialization
+If issues share the same "scope" (e.g., `sidebar`, `auth`, `api`), serialize them rather than parallelize.
+
+### Option C: Improved conflict resolution
+- Capture the conflicting diff
+- Provide context to Claude about what the other branch changed
+- Attempt intelligent merge resolution
+
+### Option D: Dependency inference
+If issue B modifies files that issue A also modifies, automatically infer a dependency (B blocked-by A).
+
+## Impact
+
+- **Priority**: P3 (Improves success rate, not critical)
+- **Effort**: Medium-High (requires file analysis infrastructure)
+- **Risk**: Low (additive enhancement)
+
+## Related Key Documentation
+
+_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+
+## Labels
+
+`enhancement`, `ll-parallel`, `merge-conflict`, `file-analysis`
+
+---
+
+**Priority**: P3 | **Created**: 2026-01-24
