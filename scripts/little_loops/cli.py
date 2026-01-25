@@ -1410,8 +1410,135 @@ def _cmd_sprint_create(args: argparse.Namespace, manager: SprintManager) -> int:
     return 0
 
 
+def _render_execution_plan(
+    waves: list[list[Any]],
+    dep_graph: DependencyGraph,
+) -> str:
+    """Render execution plan with wave groupings.
+
+    Args:
+        waves: List of execution waves from get_execution_waves()
+        dep_graph: DependencyGraph for looking up blockers
+
+    Returns:
+        Formatted string showing wave structure
+    """
+    if not waves:
+        return ""
+
+    total_issues = sum(len(wave) for wave in waves)
+    lines: list[str] = []
+
+    lines.append("")
+    lines.append("=" * 70)
+    lines.append(f"EXECUTION PLAN ({total_issues} issues, {len(waves)} waves)")
+    lines.append("=" * 70)
+
+    for wave_num, wave in enumerate(waves, 1):
+        lines.append("")
+        if wave_num == 1:
+            parallel_note = "(parallel)" if len(wave) > 1 else ""
+        else:
+            parallel_note = f"(after Wave {wave_num - 1})"
+            if len(wave) > 1:
+                parallel_note += " parallel"
+        lines.append(f"Wave {wave_num} {parallel_note}:".strip())
+
+        for i, issue in enumerate(wave):
+            is_last = i == len(wave) - 1
+            prefix = "  └── " if is_last else "  ├── "
+
+            # Truncate title if too long
+            title = issue.title
+            if len(title) > 45:
+                title = title[:42] + "..."
+
+            lines.append(f"{prefix}{issue.issue_id}: {title} ({issue.priority})")
+
+            # Show blockers for this issue
+            blockers = dep_graph.blocked_by.get(issue.issue_id, set())
+            if blockers:
+                blocker_prefix = "      └── " if is_last else "  │   └── "
+                blockers_str = ", ".join(sorted(blockers))
+                lines.append(f"{blocker_prefix}blocked by: {blockers_str}")
+
+    return "\n".join(lines)
+
+
+def _render_dependency_graph(
+    waves: list[list[Any]],
+    dep_graph: DependencyGraph,
+) -> str:
+    """Render ASCII dependency graph.
+
+    Args:
+        waves: List of execution waves
+        dep_graph: DependencyGraph for looking up relationships
+
+    Returns:
+        Formatted string showing dependency arrows
+    """
+    if not waves or len(waves) <= 1:
+        return ""
+
+    lines: list[str] = []
+    lines.append("")
+    lines.append("=" * 70)
+    lines.append("DEPENDENCY GRAPH")
+    lines.append("=" * 70)
+    lines.append("")
+
+    # Build chains: track which issues block what
+    # Show each independent chain on its own line
+    chains: list[str] = []
+    visited: set[str] = set()
+
+    def build_chain(issue_id: str) -> str:
+        """Recursively build chain string from issue."""
+        if issue_id in visited:
+            return issue_id
+        visited.add(issue_id)
+
+        blocked_issues = sorted(dep_graph.blocks.get(issue_id, set()))
+        if not blocked_issues:
+            return issue_id
+
+        if len(blocked_issues) == 1:
+            return f"{issue_id} ──→ {build_chain(blocked_issues[0])}"
+        else:
+            # Multiple branches - show first inline, note others
+            result = f"{issue_id} ──→ {build_chain(blocked_issues[0])}"
+            for other in blocked_issues[1:]:
+                if other not in visited:
+                    chains.append(f"  {issue_id} ──→ {build_chain(other)}")
+            return result
+
+    # Find root issues (no blockers in this graph)
+    roots: list[str] = []
+    for wave in waves[:1]:  # First wave has roots
+        for issue in wave:
+            roots.append(issue.issue_id)
+
+    for root in roots:
+        if root not in visited:
+            chain = build_chain(root)
+            if chain:
+                chains.insert(0, f"  {chain}")
+
+    # Handle any isolated issues not in chains
+    all_ids = {issue.issue_id for wave in waves for issue in wave}
+    for issue_id in sorted(all_ids - visited):
+        chains.append(f"  {issue_id}")
+
+    lines.extend(chains)
+    lines.append("")
+    lines.append("Legend: ──→ blocks (must complete before)")
+
+    return "\n".join(lines)
+
+
 def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
-    """Show sprint details."""
+    """Show sprint details with dependency visualization."""
     logger = Logger()
     sprint = manager.load(args.sprint)
     if not sprint:
@@ -1422,17 +1549,43 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
     valid = manager.validate_issues(sprint.issues)
     invalid = set(sprint.issues) - set(valid.keys())
 
+    # Load full IssueInfo objects for dependency analysis
+    issue_infos = manager.load_issue_infos(list(valid.keys()))
+    dep_graph: DependencyGraph | None = None
+    waves: list[list[Any]] = []
+    has_cycles = False
+
+    if issue_infos:
+        dep_graph = DependencyGraph.from_issues(issue_infos)
+        has_cycles = dep_graph.has_cycles()
+
+        if not has_cycles:
+            waves = dep_graph.get_execution_waves()
+
     print(f"Sprint: {sprint.name}")
     print(f"Description: {sprint.description or '(none)'}")
     print(f"Created: {sprint.created}")
-    print(f"Issues ({len(sprint.issues)}):")
 
-    for issue_id in sprint.issues:
-        status = "valid" if issue_id in valid else "NOT FOUND"
-        print(f"  - {issue_id} ({status})")
+    # Show execution plan if we have dependency info and no cycles
+    if waves and dep_graph:
+        print(_render_execution_plan(waves, dep_graph))
+        print(_render_dependency_graph(waves, dep_graph))
+    else:
+        # Fallback to simple list if no valid issues or cycles
+        print(f"Issues ({len(sprint.issues)}):")
+        for issue_id in sprint.issues:
+            status = "valid" if issue_id in valid else "NOT FOUND"
+            print(f"  - {issue_id} ({status})")
+
+        # Warn about cycles if detected
+        if has_cycles and dep_graph:
+            cycles = dep_graph.detect_cycles()
+            print("\nWarning: Dependency cycles detected:")
+            for cycle in cycles:
+                print(f"  {' -> '.join(cycle)}")
 
     if sprint.options:
-        print("Options:")
+        print("\nOptions:")
         print(f"  Mode: {sprint.options.mode}")
         print(f"  Max iterations: {sprint.options.max_iterations}")
         print(f"  Timeout: {sprint.options.timeout}s")

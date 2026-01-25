@@ -10,7 +10,7 @@ import argparse
 import sys
 import tempfile
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -766,3 +766,130 @@ class TestSprintArgumentParsing:
         """No command shows help."""
         args = self._parse_sprint_args([])
         assert args.command is None
+
+
+class TestSprintShowDependencyVisualization:
+    """Tests for sprint show dependency visualization."""
+
+    @staticmethod
+    def _make_issue(
+        issue_id: str,
+        priority: str = "P1",
+        title: str = "Test issue",
+        blocked_by: list[str] | None = None,
+    ) -> Any:
+        """Helper to create test IssueInfo objects."""
+        from pathlib import Path
+
+        from little_loops.issue_parser import IssueInfo
+
+        return IssueInfo(
+            path=Path(f"{issue_id.lower()}.md"),
+            issue_type="features",
+            priority=priority,
+            issue_id=issue_id,
+            title=title,
+            blocked_by=blocked_by or [],
+        )
+
+    def test_render_execution_plan_single_wave(self) -> None:
+        """Single wave with multiple parallel issues."""
+        from little_loops.cli import _render_execution_plan
+        from little_loops.dependency_graph import DependencyGraph
+
+        # Create test issues with no dependencies
+        issue1 = self._make_issue("BUG-001", priority="P0", title="Fix crash")
+        issue2 = self._make_issue("FEAT-002", priority="P2", title="Add feature")
+
+        graph = DependencyGraph.from_issues([issue1, issue2])
+        waves = graph.get_execution_waves()
+
+        output = _render_execution_plan(waves, graph)
+
+        assert "EXECUTION PLAN (2 issues, 1 waves)" in output
+        assert "Wave 1 (parallel):" in output
+        assert "BUG-001" in output
+        assert "FEAT-002" in output
+        assert "blocked by" not in output
+
+    def test_render_execution_plan_with_dependencies(self) -> None:
+        """Multiple waves with dependencies."""
+        from little_loops.cli import _render_execution_plan
+        from little_loops.dependency_graph import DependencyGraph
+
+        issue1 = self._make_issue("FEAT-001", priority="P0", title="First feature")
+        issue2 = self._make_issue("BUG-002", priority="P1", title="Bug fix", blocked_by=["FEAT-001"])
+
+        graph = DependencyGraph.from_issues([issue1, issue2])
+        waves = graph.get_execution_waves()
+
+        output = _render_execution_plan(waves, graph)
+
+        assert "2 waves" in output
+        assert "Wave 1" in output
+        assert "Wave 2" in output
+        assert "blocked by: FEAT-001" in output
+
+    def test_render_execution_plan_empty_waves(self) -> None:
+        """Empty waves return empty string."""
+        from little_loops.cli import _render_execution_plan
+        from little_loops.dependency_graph import DependencyGraph
+
+        graph = DependencyGraph()
+        output = _render_execution_plan([], graph)
+
+        assert output == ""
+
+    def test_render_dependency_graph_chain(self) -> None:
+        """Dependency chain A -> B -> C."""
+        from little_loops.cli import _render_dependency_graph
+        from little_loops.dependency_graph import DependencyGraph
+
+        issue_a = self._make_issue("FEAT-001", priority="P0", title="First")
+        issue_b = self._make_issue("FEAT-002", priority="P1", title="Second", blocked_by=["FEAT-001"])
+        issue_c = self._make_issue("FEAT-003", priority="P2", title="Third", blocked_by=["FEAT-002"])
+
+        graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
+        waves = graph.get_execution_waves()
+
+        output = _render_dependency_graph(waves, graph)
+
+        assert "DEPENDENCY GRAPH" in output
+        assert "FEAT-001" in output
+        assert "FEAT-002" in output
+        assert "FEAT-003" in output
+        assert "──→" in output
+        assert "Legend" in output
+
+    def test_render_dependency_graph_single_wave(self) -> None:
+        """Single wave has no dependency graph (returns empty)."""
+        from little_loops.cli import _render_dependency_graph
+        from little_loops.dependency_graph import DependencyGraph
+
+        issue1 = self._make_issue("BUG-001", priority="P0", title="Bug fix")
+        issue2 = self._make_issue("FEAT-002", priority="P2", title="Feature")
+
+        graph = DependencyGraph.from_issues([issue1, issue2])
+        waves = graph.get_execution_waves()
+
+        output = _render_dependency_graph(waves, graph)
+
+        # Single wave means no dependencies to show
+        assert output == ""
+
+    def test_render_execution_plan_title_truncation(self) -> None:
+        """Long titles are truncated."""
+        from little_loops.cli import _render_execution_plan
+        from little_loops.dependency_graph import DependencyGraph
+
+        long_title = "A" * 60  # Very long title
+        issue = self._make_issue("BUG-001", priority="P0", title=long_title)
+
+        graph = DependencyGraph.from_issues([issue])
+        waves = graph.get_execution_waves()
+
+        output = _render_execution_plan(waves, graph)
+
+        # Title should be truncated with ...
+        assert "..." in output
+        assert "A" * 60 not in output

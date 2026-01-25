@@ -132,3 +132,21 @@ None
 ## Status
 
 **Open** | Created: 2026-01-25 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-25
+- **Status**: Completed
+
+### Changes Made
+- scripts/little_loops/cli.py: Added `_render_execution_plan()` and `_render_dependency_graph()` functions
+- scripts/little_loops/cli.py: Enhanced `_cmd_sprint_show()` to display dependency visualization
+- scripts/tests/test_cli.py: Added `TestSprintShowDependencyVisualization` test class with 6 tests
+
+### Verification Results
+- Tests: PASS
+- Lint: PASS
+- Types: PASS
