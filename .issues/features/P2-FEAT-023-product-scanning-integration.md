@@ -290,6 +290,16 @@ None
 
 ---
 
+## Verification Notes
+
+**Verified: 2026-01-24**
+
+- Blocker FEAT-020 (Product Analysis Opt-In Configuration) is now **completed**
+- Remaining blockers: FEAT-021, FEAT-022
+- `commands/scan_product.md` does not exist - issue description remains accurate
+
+---
+
 ## Status
 
 **Open** | Created: 2026-01-06 | Priority: P2
