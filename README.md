@@ -523,6 +523,7 @@ For detailed solutions, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
 For detailed documentation, see:
 
+- [Command Reference](docs/COMMANDS.md) - All slash commands with usage
 - [FSM Loop Guide](docs/generalized-fsm-loop.md) - Automation loop system and authoring paradigms
 - [Session Handoff Guide](docs/SESSION_HANDOFF.md) - Context management and session continuation
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
