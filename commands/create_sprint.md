@@ -27,9 +27,8 @@ Read settings from `.claude/ll-config.json`:
 
 **Sprints settings** (under `sprints`):
 - `sprints_dir`: Directory for sprint definitions (default: `.sprints`)
-- `default_mode`: Default execution mode (default: `auto`)
 - `default_timeout`: Default timeout per issue in seconds (default: `3600`)
-- `default_max_workers`: Default worker count for parallel mode (default: `4`)
+- `default_max_workers`: Default worker count for parallel execution within waves (default: `4`)
 
 ## Process
 
@@ -40,7 +39,6 @@ Read the project configuration from `.claude/ll-config.json` to get sprint setti
 Use the Read tool to read `.claude/ll-config.json`, then extract:
 - `issues.base_dir` - Issues directory (use default `.issues` if not set)
 - `sprints.sprints_dir` - Directory for sprint files (use default `.sprints` if not set)
-- `sprints.default_mode` - Default execution mode (use default `auto` if not set)
 - `sprints.default_timeout` - Default timeout in seconds (use default `3600` if not set)
 - `sprints.default_max_workers` - Default worker count (use default `4` if not set)
 
@@ -206,7 +204,6 @@ issues:
   - FEAT-010
   - FEAT-015
 options:
-  mode: auto  # use the configured default_mode, or "parallel" for concurrent
   timeout: 3600  # use the configured default_timeout
   max_workers: 4  # use the configured default_max_workers
 ```
@@ -217,9 +214,8 @@ options:
 - `created`: ISO 8601 timestamp
 - `issues`: List of issue IDs (validated to exist)
 - `options`: Execution defaults (optional)
-  - `mode`: "auto" for sequential, "parallel" for concurrent
   - `timeout`: Per-issue timeout in seconds
-  - `max_workers`: Worker count for parallel mode
+  - `max_workers`: Worker count for parallel execution within waves
 
 ### 6. Output Confirmation
 
@@ -237,11 +233,8 @@ Display the created sprint:
 ${formatted_issue_list_with_descriptions}
 
 ### Next Steps
-# Execute the sprint sequentially:
+# Execute the sprint (dependency-aware with parallel waves):
 ll-sprint run ${SPRINT_NAME}
-
-# Execute the sprint in parallel:
-ll-sprint run ${SPRINT_NAME} --parallel
 
 # Show sprint details:
 ll-sprint show ${SPRINT_NAME}
@@ -265,23 +258,18 @@ ll-sprint list
 After creating a sprint, users can execute it via:
 
 ```bash
-# Sequential execution (uses ll-auto components)
+# Execute with dependency-aware wave scheduling
 ll-sprint run sprint-1
 
-# Parallel execution (uses ll-parallel components)
-ll-sprint run sprint-1 --parallel
+# With custom max workers
+ll-sprint run sprint-1 --max-workers 8
 
-# With custom options
-ll-sprint run sprint-1 --parallel --workers 8
-
-# Dry run to preview
+# Dry run to preview execution plan
 ll-sprint run sprint-1 --dry-run
 ```
 
 ## Integration
 
-The `ll-sprint` tool reuses existing components:
-- **Sequential mode**: Uses `AutoManager` from `issue_manager.py`
-- **Parallel mode**: Uses `ParallelOrchestrator` from `parallel/orchestrator.py`
+Sprint execution uses `ParallelOrchestrator` from `parallel/orchestrator.py` with dependency-aware wave scheduling. Issues are grouped into waves based on their `blocked_by` dependencies, and each wave is executed in parallel.
 
 Sprint definitions are stored in the configured sprints directory (default: `.sprints/`). Recommended to gitignore for project-specific sprints, or commit for reusable templates.

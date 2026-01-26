@@ -1274,7 +1274,6 @@ def main_sprint() -> int:
 Examples:
   %(prog)s create sprint-1 --issues BUG-001,FEAT-010 --description "Q1 fixes"
   %(prog)s run sprint-1
-  %(prog)s run sprint-1 --parallel
   %(prog)s run sprint-1 --dry-run
   %(prog)s list
   %(prog)s show sprint-1
@@ -1294,12 +1293,6 @@ Examples:
     )
     create_parser.add_argument("--description", "-d", default="", help="Sprint description")
     create_parser.add_argument(
-        "--mode",
-        choices=["auto", "parallel"],
-        default="auto",
-        help="DEPRECATED: Execution is now always dependency-aware (default: auto)",
-    )
-    create_parser.add_argument(
         "--max-workers",
         type=int,
         default=4,
@@ -1315,11 +1308,6 @@ Examples:
     # run subcommand
     run_parser = subparsers.add_parser("run", help="Execute a sprint")
     run_parser.add_argument("sprint", help="Sprint name to execute")
-    run_parser.add_argument(
-        "--parallel",
-        action="store_true",
-        help="DEPRECATED: Execution is now always dependency-aware with parallel waves",
-    )
     run_parser.add_argument(
         "--dry-run", "-n", action="store_true", help="Show execution plan without running"
     )
@@ -1386,7 +1374,6 @@ def _cmd_sprint_create(args: argparse.Namespace, manager: SprintManager) -> int:
         logger.warning(f"Issue IDs not found: {', '.join(sorted(invalid))}")
 
     options = SprintOptions(
-        mode=args.mode,
         max_workers=args.max_workers,
         timeout=args.timeout,
     )
@@ -1401,7 +1388,6 @@ def _cmd_sprint_create(args: argparse.Namespace, manager: SprintManager) -> int:
     logger.success(f"Created sprint: {sprint.name}")
     logger.info(f"  Description: {sprint.description or '(none)'}")
     logger.info(f"  Issues: {', '.join(sprint.issues)}")
-    logger.info(f"  Mode: {sprint.options.mode if sprint.options else 'auto'}")
     logger.info(f"  File: .sprints/{sprint.name}.yaml")
 
     if invalid:
@@ -1586,7 +1572,6 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
 
     if sprint.options:
         print("\nOptions:")
-        print(f"  Mode: {sprint.options.mode}")
         print(f"  Max iterations: {sprint.options.max_iterations}")
         print(f"  Timeout: {sprint.options.timeout}s")
         print(f"  Max workers: {sprint.options.max_workers}")

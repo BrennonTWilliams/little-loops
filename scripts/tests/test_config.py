@@ -261,14 +261,12 @@ class TestSprintsConfig:
         """Test creating SprintsConfig with all fields."""
         data = {
             "sprints_dir": "custom-sprints/",
-            "default_mode": "parallel",
             "default_timeout": 7200,
             "default_max_workers": 8,
         }
         config = SprintsConfig.from_dict(data)
 
         assert config.sprints_dir == "custom-sprints/"
-        assert config.default_mode == "parallel"
         assert config.default_timeout == 7200
         assert config.default_max_workers == 8
 
@@ -277,7 +275,6 @@ class TestSprintsConfig:
         config = SprintsConfig.from_dict({})
 
         assert config.sprints_dir == ".sprints"
-        assert config.default_mode == "auto"
         assert config.default_timeout == 3600
         assert config.default_max_workers == 4
 

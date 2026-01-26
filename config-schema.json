@@ -533,12 +533,6 @@
           "description": "Directory for sprint definitions",
           "default": ".sprints"
         },
-        "default_mode": {
-          "type": "string",
-          "enum": ["auto", "parallel"],
-          "description": "Default execution mode for sprints (auto=sequential, parallel=concurrent)",
-          "default": "auto"
-        },
         "default_timeout": {
           "type": "integer",
           "description": "Default timeout per issue in seconds",
@@ -547,7 +541,7 @@
         },
         "default_max_workers": {
           "type": "integer",
-          "description": "Default worker count for parallel mode",
+          "description": "Default worker count for parallel execution within waves",
           "default": 4,
           "minimum": 1,
           "maximum": 8

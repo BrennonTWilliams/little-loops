@@ -2742,13 +2742,12 @@ Sprint planning and execution for batch issue processing.
 ```python
 @dataclass
 class SprintOptions:
-    mode: str = "auto"          # DEPRECATED: Execution is now always dependency-aware
     max_iterations: int = 100   # Max Claude iterations per issue
     timeout: int = 3600         # Per-issue timeout in seconds
     max_workers: int = 4        # Worker count for parallel execution within waves
 ```
 
-**Note**: The `mode` field is deprecated. Sprint execution now always uses dependency-aware wave-based scheduling. Issues are grouped into waves where each wave contains issues whose blockers have all completed, and each wave is executed in parallel.
+Sprint execution uses dependency-aware wave-based scheduling. Issues are grouped into waves where each wave contains issues whose blockers have all completed, and each wave is executed in parallel.
 
 ### Sprint
 
@@ -2809,7 +2808,7 @@ sprint = manager.create(
     name="week-1",
     issues=["BUG-001", "BUG-002", "FEAT-010"],
     description="First week bug fixes and feature",
-    options=SprintOptions(mode="parallel", max_workers=2),
+    options=SprintOptions(max_workers=2),
 )
 
 # Validate issues exist

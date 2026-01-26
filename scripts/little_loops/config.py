@@ -287,7 +287,6 @@ class SprintsConfig:
     """Sprint management configuration."""
 
     sprints_dir: str = ".sprints"
-    default_mode: str = "auto"
     default_timeout: int = 3600
     default_max_workers: int = 4
 
@@ -296,7 +295,6 @@ class SprintsConfig:
         """Create SprintsConfig from dictionary."""
         return cls(
             sprints_dir=data.get("sprints_dir", ".sprints"),
-            default_mode=data.get("default_mode", "auto"),
             default_timeout=data.get("default_timeout", 3600),
             default_max_workers=data.get("default_max_workers", 4),
         )
@@ -582,7 +580,6 @@ class BRConfig:
             },
             "sprints": {
                 "sprints_dir": self._sprints.sprints_dir,
-                "default_mode": self._sprints.default_mode,
                 "default_timeout": self._sprints.default_timeout,
                 "default_max_workers": self._sprints.default_max_workers,
             },

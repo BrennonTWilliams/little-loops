@@ -674,14 +674,12 @@ class TestSprintArgumentParsing:
         create.add_argument("name")
         create.add_argument("--issues", required=True)
         create.add_argument("--description", "-d", default="")
-        create.add_argument("--mode", choices=["auto", "parallel"], default="auto")
         create.add_argument("--max-workers", type=int, default=4)
         create.add_argument("--timeout", type=int, default=3600)
 
         # run
         run = subparsers.add_parser("run")
         run.add_argument("sprint")
-        run.add_argument("--parallel", action="store_true")
         run.add_argument("--dry-run", "-n", action="store_true")
         run.add_argument("--max-workers", type=int)
         run.add_argument("--timeout", type=int)
@@ -712,8 +710,6 @@ class TestSprintArgumentParsing:
                 "BUG-001,FEAT-010",
                 "--description",
                 "Q1 fixes",
-                "--mode",
-                "parallel",
                 "--max-workers",
                 "8",
             ]
@@ -722,26 +718,24 @@ class TestSprintArgumentParsing:
         assert args.name == "sprint-1"
         assert args.issues == "BUG-001,FEAT-010"
         assert args.description == "Q1 fixes"
-        assert args.mode == "parallel"
         assert args.max_workers == 8
 
     def test_run_command(self) -> None:
         """run subcommand parses correctly."""
         args = self._parse_sprint_args(
-            ["run", "sprint-1", "--parallel", "--dry-run", "--max-workers", "8"]
+            ["run", "sprint-1", "--dry-run", "--max-workers", "8"]
         )
         assert args.command == "run"
         assert args.sprint == "sprint-1"
-        assert args.parallel is True
         assert args.dry_run is True
         assert args.max_workers == 8
 
-    def test_run_sequential(self) -> None:
-        """run without --parallel flag."""
+    def test_run_default(self) -> None:
+        """run with default options."""
         args = self._parse_sprint_args(["run", "sprint-1"])
         assert args.command == "run"
         assert args.sprint == "sprint-1"
-        assert args.parallel is False
+        assert args.dry_run is False
 
     def test_list_command(self) -> None:
         """list subcommand."""

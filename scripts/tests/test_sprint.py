@@ -13,7 +13,6 @@ class TestSprintOptions:
     def test_default_values(self) -> None:
         """Default values are correct."""
         options = SprintOptions()
-        assert options.mode == "auto"
         assert options.max_iterations == 100
         assert options.timeout == 3600
         assert options.max_workers == 4
@@ -21,22 +20,19 @@ class TestSprintOptions:
     def test_custom_values(self) -> None:
         """Custom values are set correctly."""
         options = SprintOptions(
-            mode="parallel",
             max_iterations=200,
             timeout=7200,
             max_workers=8,
         )
-        assert options.mode == "parallel"
         assert options.max_iterations == 200
         assert options.timeout == 7200
         assert options.max_workers == 8
 
     def test_to_dict(self) -> None:
         """Serialization to dict works."""
-        options = SprintOptions(mode="parallel", max_workers=8)
+        options = SprintOptions(max_workers=8)
         data = options.to_dict()
         assert data == {
-            "mode": "parallel",
             "max_iterations": 100,
             "timeout": 3600,
             "max_workers": 8,
@@ -45,13 +41,11 @@ class TestSprintOptions:
     def test_from_dict(self) -> None:
         """Deserialization from dict works."""
         data = {
-            "mode": "parallel",
             "max_iterations": 200,
             "timeout": 7200,
             "max_workers": 8,
         }
         options = SprintOptions.from_dict(data)
-        assert options.mode == "parallel"
         assert options.max_iterations == 200
         assert options.timeout == 7200
         assert options.max_workers == 8
@@ -59,7 +53,6 @@ class TestSprintOptions:
     def test_from_dict_none(self) -> None:
         """None input returns defaults."""
         options = SprintOptions.from_dict(None)
-        assert options.mode == "auto"
         assert options.max_workers == 4
 
 
@@ -81,7 +74,7 @@ class TestSprint:
 
     def test_with_options(self) -> None:
         """Sprint can include options."""
-        options = SprintOptions(mode="parallel")
+        options = SprintOptions(max_workers=8)
         sprint = Sprint(
             name="test-sprint",
             description="Test sprint",
@@ -90,11 +83,11 @@ class TestSprint:
             options=options,
         )
         assert sprint.options is not None
-        assert sprint.options.mode == "parallel"
+        assert sprint.options.max_workers == 8
 
     def test_to_dict(self) -> None:
         """Serialization includes all fields."""
-        options = SprintOptions(mode="parallel", max_workers=8)
+        options = SprintOptions(max_workers=8)
         sprint = Sprint(
             name="test-sprint",
             description="Test",
@@ -106,7 +99,6 @@ class TestSprint:
         assert data["name"] == "test-sprint"
         assert data["description"] == "Test"
         assert data["issues"] == ["BUG-001"]
-        assert data["options"]["mode"] == "parallel"
         assert data["options"]["max_workers"] == 8
 
     def test_to_dict_no_options(self) -> None:
@@ -128,7 +120,6 @@ class TestSprint:
             "issues": ["BUG-001", "FEAT-010"],
             "created": "2026-01-14T00:00:00Z",
             "options": {
-                "mode": "parallel",
                 "max_workers": 8,
             },
         }
@@ -136,7 +127,6 @@ class TestSprint:
         assert sprint.name == "test-sprint"
         assert sprint.issues == ["BUG-001", "FEAT-010"]
         assert sprint.options is not None
-        assert sprint.options.mode == "parallel"
         assert sprint.options.max_workers == 8
 
     def test_from_dict_defaults(self) -> None:
@@ -151,7 +141,6 @@ class TestSprint:
         assert sprint.issues == ["BUG-001"]
         # When no options provided, defaults are applied
         assert sprint.options is not None
-        assert sprint.options.mode == "auto"
         assert sprint.options.max_workers == 4
 
     def test_save_and_load(self, tmp_path: Path) -> None:
@@ -161,7 +150,7 @@ class TestSprint:
             description="Test sprint",
             issues=["BUG-001", "FEAT-010"],
             created="2026-01-14T00:00:00Z",
-            options=SprintOptions(mode="parallel"),
+            options=SprintOptions(max_workers=8),
         )
 
         # Save
@@ -175,7 +164,7 @@ class TestSprint:
         assert loaded.name == "test-sprint"
         assert loaded.issues == ["BUG-001", "FEAT-010"]
         assert loaded.options is not None
-        assert loaded.options.mode == "parallel"
+        assert loaded.options.max_workers == 8
 
     def test_load_nonexistent(self, tmp_path: Path) -> None:
         """Loading non-existent sprint returns None."""
@@ -324,7 +313,7 @@ class TestSprintYAMLFormat:
         """YAML with options includes options section."""
         manager = SprintManager(sprints_dir=tmp_path)
 
-        options = SprintOptions(mode="parallel", max_workers=8)
+        options = SprintOptions(max_workers=8)
         manager.create(
             name="sprint-1",
             issues=["BUG-001"],
@@ -336,5 +325,4 @@ class TestSprintYAMLFormat:
             data = yaml.safe_load(f)
 
         assert "options" in data
-        assert data["options"]["mode"] == "parallel"
         assert data["options"]["max_workers"] == 8

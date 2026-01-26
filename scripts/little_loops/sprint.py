@@ -17,14 +17,11 @@ class SprintOptions:
     """Execution options for sprint runs.
 
     Attributes:
-        mode: DEPRECATED - execution is now always dependency-aware with
-              parallel waves. Kept for backwards compatibility.
         max_iterations: Maximum Claude iterations per issue
         timeout: Per-issue timeout in seconds
         max_workers: Worker count for parallel execution within waves
     """
 
-    mode: str = "auto"  # Deprecated - kept for backwards compatibility
     max_iterations: int = 100
     timeout: int = 3600
     max_workers: int = 4
@@ -32,7 +29,6 @@ class SprintOptions:
     def to_dict(self) -> dict:
         """Convert to dictionary for YAML serialization."""
         return {
-            "mode": self.mode,
             "max_iterations": self.max_iterations,
             "timeout": self.timeout,
             "max_workers": self.max_workers,
@@ -51,7 +47,6 @@ class SprintOptions:
         if data is None:
             return cls()
         return cls(
-            mode=data.get("mode", "auto"),
             max_iterations=data.get("max_iterations", 100),
             timeout=data.get("timeout", 3600),
             max_workers=data.get("max_workers", 4),
@@ -63,14 +58,14 @@ class Sprint:
     """A sprint is a named group of issues to execute together.
 
     Sprints allow planning work in batches and executing them as a unit.
-    They can be executed sequentially (via ll-auto) or in parallel (via ll-parallel).
+    Execution is always dependency-aware with parallel waves.
 
     Attributes:
         name: Sprint identifier (used as filename)
         description: Human-readable purpose
         issues: List of issue IDs (e.g., BUG-001, FEAT-010)
         created: ISO 8601 timestamp of creation
-        options: Execution options (mode, timeout, etc.)
+        options: Execution options (timeout, max_workers, etc.)
     """
 
     name: str
@@ -179,7 +174,6 @@ class SprintManager:
         """
         if self.config is not None:
             return SprintOptions(
-                mode=self.config.sprints.default_mode,
                 timeout=self.config.sprints.default_timeout,
                 max_workers=self.config.sprints.default_max_workers,
             )
