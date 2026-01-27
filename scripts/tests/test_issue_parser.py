@@ -992,6 +992,35 @@ Example format:
         assert info.blocked_by == ["FEAT-001", "FEAT-002"]
         assert info.blocks == ["ENH-005"]
 
+    def test_parse_blocked_by_bold_markdown(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test parsing blockers with bold markdown formatting."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P3-ENH-001-test.md"
+        issue_file.write_text("""# ENH-001: Test Issue
+
+## Summary
+Test description.
+
+## Blocked By
+- **ENH-1000**: Must be completed before this enhancement can proceed.
+- **FEAT-002**: Another dependency
+
+## Labels
+enhancement
+""")
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.blocked_by == ["ENH-1000", "FEAT-002"]
+
     def test_dependency_fields_in_serialization(self) -> None:
         """Test that blocked_by and blocks survive to_dict/from_dict roundtrip."""
         original = IssueInfo(

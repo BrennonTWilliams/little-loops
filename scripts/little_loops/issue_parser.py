@@ -16,7 +16,8 @@ if TYPE_CHECKING:
 
 # Regex pattern for issue IDs in list items
 # Matches: "- FEAT-001", "- BUG-123", "* ENH-005", "- FEAT-001 (some note)"
-ISSUE_ID_PATTERN = re.compile(r"^[-*]\s+([A-Z]+-\d+)", re.MULTILINE)
+# Also handles bold markdown: "- **ENH-1000**: description"
+ISSUE_ID_PATTERN = re.compile(r"^[-*]\s+\*{0,2}([A-Z]+-\d+)", re.MULTILINE)
 
 
 def slugify(text: str) -> str:
