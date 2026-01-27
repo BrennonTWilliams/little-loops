@@ -17,7 +17,7 @@ from typing import Any
 from little_loops.config import BRConfig
 from little_loops.dependency_graph import DependencyGraph
 from little_loops.issue_manager import AutoManager
-from little_loops.logger import Logger
+from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
 from little_loops.sprint import SprintManager, SprintOptions
 
@@ -1677,6 +1677,7 @@ def _cmd_sprint_run(
     # Execute wave by wave
     completed: set[str] = set()
     failed_waves = 0
+    total_duration = 0.0
 
     for wave_num, wave in enumerate(waves, 1):
         wave_ids = [issue.issue_id for issue in wave]
@@ -1690,8 +1691,11 @@ def _cmd_sprint_run(
             dry_run=args.dry_run,
         )
 
-        orchestrator = ParallelOrchestrator(parallel_config, config, Path.cwd())
+        orchestrator = ParallelOrchestrator(
+            parallel_config, config, Path.cwd(), wave_label=f"Wave {wave_num}"
+        )
         result = orchestrator.run()
+        total_duration += orchestrator.execution_duration
 
         # Track completed/failed from this wave
         if result == 0:
@@ -1705,6 +1709,7 @@ def _cmd_sprint_run(
             completed.update(wave_ids)
 
     logger.info(f"\nSprint completed: {len(completed)} issues processed")
+    logger.timing(f"Total execution time: {format_duration(total_duration)}")
     if failed_waves > 0:
         logger.warning(f"{failed_waves} wave(s) had failures")
         return 1

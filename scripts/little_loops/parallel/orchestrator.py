@@ -57,6 +57,7 @@ class ParallelOrchestrator:
         br_config: BRConfig,
         repo_path: Path | None = None,
         verbose: bool = True,
+        wave_label: str | None = None,
     ) -> None:
         """Initialize the orchestrator.
 
@@ -65,11 +66,14 @@ class ParallelOrchestrator:
             br_config: Project configuration
             repo_path: Path to the git repository (default: current directory)
             verbose: Whether to output progress messages
+            wave_label: Optional label for wave-based execution (e.g., "Wave 1")
         """
         self.parallel_config = parallel_config
         self.br_config = br_config
         self.repo_path = repo_path or Path.cwd()
         self.logger = Logger(verbose=verbose)
+        self.wave_label = wave_label
+        self._execution_duration: float = 0.0
 
         # Create shared git lock for serializing main repo operations
         # This prevents index.lock race conditions between workers and merge coordinator
@@ -94,6 +98,11 @@ class ParallelOrchestrator:
         self._issue_info_by_id: dict[str, IssueInfo] = {}
         # Track interrupted issues separately from failures (ENH-036)
         self._interrupted_issues: list[str] = []
+
+    @property
+    def execution_duration(self) -> float:
+        """Return the total execution duration in seconds."""
+        return self._execution_duration
 
     def run(self) -> int:
         """Run the parallel issue processor.
@@ -780,10 +789,14 @@ class ParallelOrchestrator:
             start_time: When processing started
         """
         total_time = time.time() - start_time
+        self._execution_duration = total_time
 
         self.logger.info("")
         self.logger.info("=" * 60)
-        self.logger.info("PARALLEL ISSUE PROCESSING COMPLETE")
+        if self.wave_label:
+            self.logger.info(f"{self.wave_label.upper()} PROCESSING COMPLETE")
+        else:
+            self.logger.info("PARALLEL ISSUE PROCESSING COMPLETE")
         self.logger.info("=" * 60)
         self.logger.info("")
         self.logger.timing(f"Total time: {format_duration(total_time)}")
