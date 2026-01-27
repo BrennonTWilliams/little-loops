@@ -24,7 +24,7 @@ class SprintOptions:
 
     max_iterations: int = 100
     timeout: int = 3600
-    max_workers: int = 4
+    max_workers: int = 3
 
     def to_dict(self) -> dict:
         """Convert to dictionary for YAML serialization."""
@@ -49,7 +49,7 @@ class SprintOptions:
         return cls(
             max_iterations=data.get("max_iterations", 100),
             timeout=data.get("timeout", 3600),
-            max_workers=data.get("max_workers", 4),
+            max_workers=data.get("max_workers", 3),
         )
 
 

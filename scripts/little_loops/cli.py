@@ -1672,7 +1672,7 @@ def _cmd_sprint_run(
         return 0
 
     # Determine max workers
-    max_workers = args.max_workers or (sprint.options.max_workers if sprint.options else 4)
+    max_workers = args.max_workers or (sprint.options.max_workers if sprint.options else 3)
 
     # Execute wave by wave
     completed: set[str] = set()
