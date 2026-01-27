@@ -1683,30 +1683,49 @@ def _cmd_sprint_run(
         wave_ids = [issue.issue_id for issue in wave]
         logger.info(f"\nProcessing wave {wave_num}: {', '.join(wave_ids)}")
 
-        # Use ParallelOrchestrator for wave execution
-        only_ids = set(wave_ids)
-        parallel_config = config.create_parallel_config(
-            max_workers=min(max_workers, len(wave)),
-            only_ids=only_ids,
-            dry_run=args.dry_run,
-        )
+        if len(wave) == 1:
+            # Single issue — process in-place (no worktree overhead)
+            from little_loops.issue_manager import process_issue_inplace
 
-        orchestrator = ParallelOrchestrator(
-            parallel_config, config, Path.cwd(), wave_label=f"Wave {wave_num}"
-        )
-        result = orchestrator.run()
-        total_duration += orchestrator.execution_duration
-
-        # Track completed/failed from this wave
-        if result == 0:
-            completed.update(wave_ids)
-            logger.success(f"Wave {wave_num} completed: {', '.join(wave_ids)}")
+            issue_result = process_issue_inplace(
+                info=wave[0],
+                config=config,
+                logger=logger,
+                dry_run=args.dry_run,
+            )
+            total_duration += issue_result.duration
+            if issue_result.success:
+                completed.update(wave_ids)
+                logger.success(f"Wave {wave_num} completed: {wave_ids[0]}")
+            else:
+                failed_waves += 1
+                completed.update(wave_ids)
+                logger.warning(f"Wave {wave_num} had failures")
         else:
-            # Some issues failed - continue but track failures
-            failed_waves += 1
-            logger.warning(f"Wave {wave_num} had failures")
-            # Mark all as attempted (orchestrator tracks actual status)
-            completed.update(wave_ids)
+            # Multi-issue — use ParallelOrchestrator with worktrees
+            only_ids = set(wave_ids)
+            parallel_config = config.create_parallel_config(
+                max_workers=min(max_workers, len(wave)),
+                only_ids=only_ids,
+                dry_run=args.dry_run,
+            )
+
+            orchestrator = ParallelOrchestrator(
+                parallel_config, config, Path.cwd(), wave_label=f"Wave {wave_num}"
+            )
+            result = orchestrator.run()
+            total_duration += orchestrator.execution_duration
+
+            # Track completed/failed from this wave
+            if result == 0:
+                completed.update(wave_ids)
+                logger.success(f"Wave {wave_num} completed: {', '.join(wave_ids)}")
+            else:
+                # Some issues failed - continue but track failures
+                failed_waves += 1
+                logger.warning(f"Wave {wave_num} had failures")
+                # Mark all as attempted (orchestrator tracks actual status)
+                completed.update(wave_ids)
 
     logger.info(f"\nSprint completed: {len(completed)} issues processed")
     logger.timing(f"Total execution time: {format_duration(total_duration)}")

@@ -12,6 +12,7 @@ import sys
 import time
 from collections.abc import Generator
 from contextlib import contextmanager
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from types import FrameType
@@ -190,6 +191,367 @@ def run_with_continuation(
     )
 
 
+@dataclass
+class IssueProcessingResult:
+    """Result of processing a single issue in-place."""
+
+    success: bool
+    duration: float
+    issue_id: str
+    was_closed: bool = False
+    failure_reason: str = ""
+    corrections: list[str] = field(default_factory=list)
+
+
+def process_issue_inplace(
+    info: IssueInfo,
+    config: BRConfig,
+    logger: Logger,
+    dry_run: bool = False,
+) -> IssueProcessingResult:
+    """Process a single issue through the 3-phase workflow in the current working tree.
+
+    This is the core processing logic extracted from AutoManager._process_issue(),
+    suitable for use outside of AutoManager (e.g., single-issue sprint waves).
+
+    Args:
+        info: Issue information
+        config: Project configuration
+        logger: Logger for output
+        dry_run: If True, only preview what would be done
+
+    Returns:
+        IssueProcessingResult with outcome details
+    """
+    issue_start_time = time.time()
+    corrections: list[str] = []
+
+    logger.header(f"Processing: {info.issue_id} - {info.title}")
+
+    issue_timing: dict[str, float] = {}
+
+    # Track whether we used fallback path resolution for ready_issue.
+    validated_via_fallback = False
+
+    # Phase 1: Ready/verify the issue
+    logger.info(f"Phase 1: Verifying issue {info.issue_id}...")
+    with timed_phase(logger, "Phase 1 (ready_issue)") as phase1_timing:
+        if not dry_run:
+            result = run_claude_command(
+                f"/ll:ready_issue {info.issue_id}",
+                logger,
+                timeout=config.automation.timeout_seconds,
+                stream_output=config.automation.stream_output,
+            )
+            if result.returncode != 0:
+                logger.warning(
+                    "ready_issue command failed to execute, continuing anyway..."
+                )
+            else:
+                # Parse the verdict from the output
+                parsed = parse_ready_issue_output(result.stdout)
+                logger.info(f"ready_issue verdict: {parsed['verdict']}")
+
+                # Validate that ready_issue analyzed the expected file
+                validated_path = parsed.get("validated_file_path")
+                if validated_path:
+                    # Normalize paths for comparison (resolve to absolute)
+                    expected_path = str(info.path.resolve())
+                    # Handle both absolute and relative paths from ready_issue
+                    validated_resolved = Path(validated_path).resolve()
+                    if str(validated_resolved) != expected_path:
+                        # Check if this is a legitimate rename (new file exists,
+                        # old file doesn't) vs a mismatch error
+                        old_file_exists = info.path.exists()
+                        new_file_exists = validated_resolved.exists()
+
+                        if new_file_exists and not old_file_exists:
+                            # ready_issue renamed the file - update tracking
+                            logger.info(
+                                f"Issue file renamed: '{info.path.name}' -> "
+                                f"'{validated_resolved.name}'"
+                            )
+                            info.path = validated_resolved
+                        else:
+                            # Genuine mismatch - attempt fallback with explicit path
+                            logger.warning(
+                                f"Path mismatch: ready_issue validated "
+                                f"'{validated_path}' but expected '{info.path}'"
+                            )
+                            logger.info(
+                                "Attempting fallback: retrying ready_issue "
+                                "with explicit file path..."
+                            )
+
+                            # Compute relative path for the command
+                            relative_path = _compute_relative_path(info.path)
+
+                            # Retry with explicit path
+                            retry_result = run_claude_command(
+                                f"/ll:ready_issue {relative_path}",
+                                logger,
+                                timeout=config.automation.timeout_seconds,
+                                stream_output=config.automation.stream_output,
+                            )
+
+                            if retry_result.returncode != 0:
+                                logger.error(
+                                    f"Fallback ready_issue failed for {info.issue_id}"
+                                )
+                                return IssueProcessingResult(
+                                    success=False,
+                                    duration=time.time() - issue_start_time,
+                                    issue_id=info.issue_id,
+                                    failure_reason="Fallback failed after path mismatch",
+                                )
+
+                            # Re-parse and validate retry output
+                            retry_parsed = parse_ready_issue_output(retry_result.stdout)
+                            retry_validated_path = retry_parsed.get("validated_file_path")
+
+                            if retry_validated_path:
+                                retry_resolved = Path(retry_validated_path).resolve()
+                                if str(retry_resolved) != str(info.path.resolve()):
+                                    logger.error(
+                                        f"Fallback still mismatched: "
+                                        f"got '{retry_validated_path}', "
+                                        f"expected '{info.path}'"
+                                    )
+                                    return IssueProcessingResult(
+                                        success=False,
+                                        duration=time.time() - issue_start_time,
+                                        issue_id=info.issue_id,
+                                        failure_reason="Path mismatch persisted after fallback",
+                                    )
+
+                            # Fallback succeeded - use retry result
+                            logger.info("Fallback succeeded: validated correct file")
+                            parsed = retry_parsed
+                            validated_via_fallback = True
+
+                # Log and store any corrections made
+                if parsed.get("was_corrected"):
+                    logger.info(f"Issue {info.issue_id} was auto-corrected")
+                    phase_corrections = parsed.get("corrections", [])
+                    for correction in phase_corrections:
+                        logger.info(f"  Correction: {correction}")
+                    if phase_corrections:
+                        corrections.extend(phase_corrections)
+
+                # Log any concerns found
+                if parsed["concerns"]:
+                    for concern in parsed["concerns"]:
+                        logger.warning(f"  Concern: {concern}")
+
+                # Handle CLOSE verdict - issue should not be implemented
+                if parsed.get("should_close"):
+                    close_reason = parsed.get("close_reason", "unknown")
+                    logger.info(
+                        f"Issue {info.issue_id} should be closed (reason: {close_reason})"
+                    )
+
+                    # CRITICAL: Skip file operations for invalid references
+                    if close_reason == "invalid_ref":
+                        logger.warning(
+                            f"Skipping {info.issue_id}: invalid reference - "
+                            "no matching issue file exists"
+                        )
+                        return IssueProcessingResult(
+                            success=False,
+                            duration=time.time() - issue_start_time,
+                            issue_id=info.issue_id,
+                            failure_reason=f"Invalid reference: {close_reason}",
+                            corrections=corrections,
+                        )
+
+                    # Also require validated_file_path to match before closing
+                    close_validated_path = parsed.get("validated_file_path")
+                    if not close_validated_path:
+                        logger.warning(
+                            f"Skipping close for {info.issue_id}: "
+                            "ready_issue did not return validated file path"
+                        )
+                        return IssueProcessingResult(
+                            success=False,
+                            duration=time.time() - issue_start_time,
+                            issue_id=info.issue_id,
+                            failure_reason="CLOSE without validated file path",
+                            corrections=corrections,
+                        )
+
+                    if close_issue(
+                        info,
+                        config,
+                        logger,
+                        close_reason,
+                        parsed.get("close_status"),
+                    ):
+                        return IssueProcessingResult(
+                            success=True,
+                            duration=time.time() - issue_start_time,
+                            issue_id=info.issue_id,
+                            was_closed=True,
+                            corrections=corrections,
+                        )
+                    else:
+                        return IssueProcessingResult(
+                            success=False,
+                            duration=time.time() - issue_start_time,
+                            issue_id=info.issue_id,
+                            failure_reason=f"CLOSE failed: {parsed.get('close_status', 'unknown')}",
+                            corrections=corrections,
+                        )
+
+                # Check if issue is NOT READY (and not closeable)
+                if not parsed["is_ready"]:
+                    logger.error(
+                        f"Issue {info.issue_id} is NOT READY for implementation "
+                        f"(verdict: {parsed['verdict']})"
+                    )
+                    return IssueProcessingResult(
+                        success=False,
+                        duration=time.time() - issue_start_time,
+                        issue_id=info.issue_id,
+                        failure_reason=(
+                            f"NOT READY: {parsed['verdict']} - "
+                            f"{len(parsed['concerns'])} concern(s)"
+                        ),
+                        corrections=corrections,
+                    )
+
+                # Log if proceeding with corrected issue
+                if parsed.get("was_corrected"):
+                    logger.success(
+                        f"Issue {info.issue_id} corrected and ready for implementation"
+                    )
+        else:
+            logger.info(f"Would run: /ll:ready_issue {info.issue_id}")
+    issue_timing["ready"] = phase1_timing.get("elapsed", 0.0)
+
+    # Phase 2: Implement the issue (with automatic continuation on context handoff)
+    action = config.get_category_action(info.issue_type)
+    logger.info(f"Phase 2: Implementing {info.issue_id}...")
+    with timed_phase(logger, "Phase 2 (implement)") as phase2_timing:
+        if not dry_run:
+            # Build manage_issue command
+            type_name = info.issue_type.rstrip("s")  # bugs -> bug
+
+            # Use relative path if fallback was used, otherwise use issue_id
+            if validated_via_fallback:
+                issue_arg = _compute_relative_path(info.path)
+            else:
+                issue_arg = info.issue_id
+
+            # Use run_with_continuation to handle context exhaustion
+            result = run_with_continuation(
+                f"/ll:manage_issue {type_name} {action} {issue_arg}",
+                logger,
+                timeout=config.automation.timeout_seconds,
+                stream_output=config.automation.stream_output,
+                max_continuations=config.automation.max_continuations,
+                repo_path=config.repo_path,
+            )
+        else:
+            logger.info(
+                f"Would run: /ll:manage_issue {info.issue_type} {action} {info.issue_id}"
+            )
+            result = subprocess.CompletedProcess(args=[], returncode=0)
+    issue_timing["implement"] = phase2_timing.get("elapsed", 0.0)
+
+    # Handle implementation failure
+    if result.returncode != 0:
+        logger.error(f"Implementation failed for {info.issue_id}")
+
+        failure_reason = ""
+        if not dry_run:
+            # Create new issue for the failure
+            new_issue = create_issue_from_failure(
+                result.stderr or result.stdout or "Unknown error",
+                info,
+                config,
+                logger,
+            )
+            failure_reason = str(new_issue) if new_issue else (
+                result.stderr or result.stdout or "Unknown error"
+            )
+        else:
+            logger.info("Would create new bug issue for this failure")
+
+        return IssueProcessingResult(
+            success=False,
+            duration=time.time() - issue_start_time,
+            issue_id=info.issue_id,
+            failure_reason=failure_reason,
+            corrections=corrections,
+        )
+
+    # Phase 3: Verify completion
+    logger.info(f"Phase 3: Verifying {info.issue_id} completion...")
+    verified = False
+    with timed_phase(logger, "Phase 3 (verify)") as phase3_timing:
+        if not dry_run:
+            verified = verify_issue_completed(info, config, logger)
+
+            # Fallback: Only complete lifecycle if:
+            # 1. Command returned success (returncode 0)
+            # 2. File wasn't moved to completed
+            # 3. There's EVIDENCE of actual work being done (code changes)
+            if not verified and result.returncode == 0:
+                logger.info(
+                    "Command returned success but issue not moved - "
+                    "checking for evidence of work..."
+                )
+
+                # CRITICAL: Verify actual implementation work was done
+                work_done = verify_work_was_done(logger)
+                if work_done:
+                    logger.info("Evidence of code changes found - completing lifecycle...")
+                    verified = complete_issue_lifecycle(info, config, logger)
+                    if verified:
+                        logger.success(
+                            f"Fallback completion succeeded for {info.issue_id}"
+                        )
+                    else:
+                        logger.warning(
+                            f"Fallback completion failed for {info.issue_id}"
+                        )
+                else:
+                    # NO work was done - do NOT mark as completed
+                    logger.error(
+                        f"REFUSING to mark {info.issue_id} as completed: "
+                        "no code changes detected despite returncode 0"
+                    )
+                    logger.error(
+                        "This likely indicates the command was not executed properly. "
+                        "Check command invocation and Claude CLI output."
+                    )
+                    verified = False
+        else:
+            logger.info("Would verify issue moved to completed")
+            verified = True  # In dry run, assume success
+    issue_timing["verify"] = phase3_timing.get("elapsed", 0.0)
+
+    # Record timing
+    total_issue_time = time.time() - issue_start_time
+    issue_timing["total"] = total_issue_time
+    logger.timing(f"Total processing time: {format_duration(total_issue_time)}")
+
+    if verified:
+        logger.success(f"Completed: {info.issue_id}")
+    else:
+        logger.warning(f"Issue {info.issue_id} was attempted but verification failed")
+        logger.info(
+            "This issue will be skipped on future runs (check logs above for details)"
+        )
+
+    return IssueProcessingResult(
+        success=verified,
+        duration=total_issue_time,
+        issue_id=info.issue_id,
+        corrections=corrections,
+    )
+
+
 class AutoManager:
     """Automated issue manager for sequential processing.
 
@@ -346,325 +708,32 @@ class AutoManager:
     def _process_issue(self, info: IssueInfo) -> bool:
         """Process a single issue through the workflow.
 
+        Delegates to process_issue_inplace() and maps the result back
+        to state manager calls.
+
         Args:
             info: Issue information
 
         Returns:
             True if processing succeeded
         """
-        issue_start_time = time.time()
-
-        self.logger.header(f"Processing: {info.issue_id} - {info.title}")
-
-        # Mark as attempted and update current (single save)
+        # Pre-processing state updates (before delegating)
         self.state_manager.mark_attempted(info.issue_id, save=False)
         self.state_manager.update_current(str(info.path), "processing")
 
-        issue_timing: dict[str, float] = {}
+        result = process_issue_inplace(info, self.config, self.logger, self.dry_run)
 
-        # Track whether we used fallback path resolution for ready_issue.
-        # If True, manage_issue should use the relative path instead of issue_id.
-        validated_via_fallback = False
-
-        # Phase 1: Ready/verify the issue
-        self.logger.info(f"Phase 1: Verifying issue {info.issue_id}...")
-        with timed_phase(self.logger, "Phase 1 (ready_issue)") as phase1_timing:
-            if not self.dry_run:
-                result = run_claude_command(
-                    f"/ll:ready_issue {info.issue_id}",
-                    self.logger,
-                    timeout=self.config.automation.timeout_seconds,
-                    stream_output=self.config.automation.stream_output,
-                )
-                if result.returncode != 0:
-                    self.logger.warning(
-                        "ready_issue command failed to execute, continuing anyway..."
-                    )
-                else:
-                    # Parse the verdict from the output
-                    parsed = parse_ready_issue_output(result.stdout)
-                    self.logger.info(f"ready_issue verdict: {parsed['verdict']}")
-
-                    # Validate that ready_issue analyzed the expected file
-                    validated_path = parsed.get("validated_file_path")
-                    if validated_path:
-                        # Normalize paths for comparison (resolve to absolute)
-                        expected_path = str(info.path.resolve())
-                        # Handle both absolute and relative paths from ready_issue
-                        validated_resolved = Path(validated_path).resolve()
-                        if str(validated_resolved) != expected_path:
-                            # Check if this is a legitimate rename (new file exists,
-                            # old file doesn't) vs a mismatch error
-                            old_file_exists = info.path.exists()
-                            new_file_exists = validated_resolved.exists()
-
-                            if new_file_exists and not old_file_exists:
-                                # ready_issue renamed the file - update tracking
-                                self.logger.info(
-                                    f"Issue file renamed: '{info.path.name}' -> "
-                                    f"'{validated_resolved.name}'"
-                                )
-                                info.path = validated_resolved
-                                # Update state manager with new path
-                                self.state_manager.update_current(
-                                    str(validated_resolved), "processing"
-                                )
-                            else:
-                                # Genuine mismatch - attempt fallback with explicit path
-                                self.logger.warning(
-                                    f"Path mismatch: ready_issue validated "
-                                    f"'{validated_path}' but expected '{info.path}'"
-                                )
-                                self.logger.info(
-                                    "Attempting fallback: retrying ready_issue "
-                                    "with explicit file path..."
-                                )
-
-                                # Compute relative path for the command
-                                relative_path = _compute_relative_path(info.path)
-
-                                # Retry with explicit path
-                                retry_result = run_claude_command(
-                                    f"/ll:ready_issue {relative_path}",
-                                    self.logger,
-                                    timeout=self.config.automation.timeout_seconds,
-                                    stream_output=self.config.automation.stream_output,
-                                )
-
-                                if retry_result.returncode != 0:
-                                    self.logger.error(
-                                        f"Fallback ready_issue failed for {info.issue_id}"
-                                    )
-                                    self.state_manager.mark_failed(
-                                        info.issue_id,
-                                        "Fallback failed after path mismatch",
-                                    )
-                                    return False
-
-                                # Re-parse and validate retry output
-                                retry_parsed = parse_ready_issue_output(retry_result.stdout)
-                                retry_validated_path = retry_parsed.get("validated_file_path")
-
-                                if retry_validated_path:
-                                    retry_resolved = Path(retry_validated_path).resolve()
-                                    if str(retry_resolved) != str(info.path.resolve()):
-                                        self.logger.error(
-                                            f"Fallback still mismatched: "
-                                            f"got '{retry_validated_path}', "
-                                            f"expected '{info.path}'"
-                                        )
-                                        self.state_manager.mark_failed(
-                                            info.issue_id,
-                                            "Path mismatch persisted after fallback",
-                                        )
-                                        return False
-
-                                # Fallback succeeded - use retry result
-                                self.logger.info("Fallback succeeded: validated correct file")
-                                parsed = retry_parsed
-                                validated_via_fallback = True
-
-                    # Log and store any corrections made
-                    if parsed.get("was_corrected"):
-                        self.logger.info(f"Issue {info.issue_id} was auto-corrected")
-                        corrections = parsed.get("corrections", [])
-                        for correction in corrections:
-                            self.logger.info(f"  Correction: {correction}")
-                        # Store corrections in state for pattern analysis
-                        if corrections:
-                            self.state_manager.record_corrections(info.issue_id, corrections)
-
-                    # Log any concerns found
-                    if parsed["concerns"]:
-                        for concern in parsed["concerns"]:
-                            self.logger.warning(f"  Concern: {concern}")
-
-                    # Handle CLOSE verdict - issue should not be implemented
-                    if parsed.get("should_close"):
-                        close_reason = parsed.get("close_reason", "unknown")
-                        self.logger.info(
-                            f"Issue {info.issue_id} should be closed (reason: {close_reason})"
-                        )
-
-                        # CRITICAL: Skip file operations for invalid references
-                        # When close_reason is "invalid_ref", the issue ID doesn't map to
-                        # any real file, so we must NOT attempt to close the file from
-                        # the queue mapping (which could be an unrelated valid issue)
-                        if close_reason == "invalid_ref":
-                            self.logger.warning(
-                                f"Skipping {info.issue_id}: invalid reference - "
-                                "no matching issue file exists"
-                            )
-                            self.state_manager.mark_failed(
-                                info.issue_id,
-                                f"Invalid reference: {close_reason}",
-                            )
-                            return False
-
-                        # Also require validated_file_path to match before closing
-                        # This prevents closing wrong files when queue mapping is stale
-                        close_validated_path = parsed.get("validated_file_path")
-                        if not close_validated_path:
-                            self.logger.warning(
-                                f"Skipping close for {info.issue_id}: "
-                                "ready_issue did not return validated file path"
-                            )
-                            self.state_manager.mark_failed(
-                                info.issue_id,
-                                "CLOSE without validated file path",
-                            )
-                            return False
-
-                        if close_issue(
-                            info,
-                            self.config,
-                            self.logger,
-                            close_reason,
-                            parsed.get("close_status"),
-                        ):
-                            self.state_manager.mark_completed(info.issue_id)
-                            return True
-                        else:
-                            self.state_manager.mark_failed(
-                                info.issue_id,
-                                f"CLOSE failed: {parsed.get('close_status', 'unknown')}",
-                            )
-                            return False
-
-                    # Check if issue is NOT READY (and not closeable)
-                    if not parsed["is_ready"]:
-                        self.logger.error(
-                            f"Issue {info.issue_id} is NOT READY for implementation "
-                            f"(verdict: {parsed['verdict']})"
-                        )
-                        # Record in failed_issues with reason
-                        self.state_manager.mark_failed(
-                            info.issue_id,
-                            f"NOT READY: {parsed['verdict']} - {len(parsed['concerns'])} concern(s)",
-                        )
-                        return False
-
-                    # Log if proceeding with corrected issue
-                    if parsed.get("was_corrected"):
-                        self.logger.success(
-                            f"Issue {info.issue_id} corrected and ready for implementation"
-                        )
-            else:
-                self.logger.info(f"Would run: /ll:ready_issue {info.issue_id}")
-        issue_timing["ready"] = phase1_timing.get("elapsed", 0.0)
-
-        # Phase 2: Implement the issue (with automatic continuation on context handoff)
-        action = self.config.get_category_action(info.issue_type)
-        self.logger.info(f"Phase 2: Implementing {info.issue_id}...")
-        with timed_phase(self.logger, "Phase 2 (implement)") as phase2_timing:
-            if not self.dry_run:
-                # Build manage_issue command
-                # Use category name that matches the directory (bugs -> bug, features -> feature)
-                type_name = info.issue_type.rstrip("s")  # bugs -> bug
-
-                # Use relative path if fallback was used (BUG-010 fix), otherwise use issue_id.
-                # When ready_issue fallback succeeds with an explicit path, the original
-                # issue_id may not match the external repo's naming convention.
-                if validated_via_fallback:
-                    issue_arg = _compute_relative_path(info.path)
-                else:
-                    issue_arg = info.issue_id
-
-                # Use run_with_continuation to handle context exhaustion
-                result = run_with_continuation(
-                    f"/ll:manage_issue {type_name} {action} {issue_arg}",
-                    self.logger,
-                    timeout=self.config.automation.timeout_seconds,
-                    stream_output=self.config.automation.stream_output,
-                    max_continuations=self.config.automation.max_continuations,
-                    repo_path=self.config.repo_path,
-                )
-            else:
-                self.logger.info(
-                    f"Would run: /ll:manage_issue {info.issue_type} {action} {info.issue_id}"
-                )
-                result = subprocess.CompletedProcess(args=[], returncode=0)
-        issue_timing["implement"] = phase2_timing.get("elapsed", 0.0)
-
-        # Handle implementation failure
-        if result.returncode != 0:
-            self.logger.error(f"Implementation failed for {info.issue_id}")
-
-            if not self.dry_run:
-                # Create new issue for the failure
-                new_issue = create_issue_from_failure(
-                    result.stderr or result.stdout or "Unknown error",
-                    info,
-                    self.config,
-                    self.logger,
-                )
-                if new_issue:
-                    self.state_manager.mark_failed(info.issue_id, str(new_issue))
-                else:
-                    self.state_manager.mark_failed(
-                        info.issue_id, result.stderr or result.stdout or "Unknown error"
-                    )
-            else:
-                self.logger.info("Would create new bug issue for this failure")
-
-            return False
-
-        # Phase 3: Verify completion
-        self.logger.info(f"Phase 3: Verifying {info.issue_id} completion...")
-        verified = False
-        with timed_phase(self.logger, "Phase 3 (verify)") as phase3_timing:
-            if not self.dry_run:
-                verified = verify_issue_completed(info, self.config, self.logger)
-
-                # Fallback: Only complete lifecycle if:
-                # 1. Command returned success (returncode 0)
-                # 2. File wasn't moved to completed
-                # 3. There's EVIDENCE of actual work being done (code changes)
-                if not verified and result.returncode == 0:
-                    self.logger.info(
-                        "Command returned success but issue not moved - checking for evidence of work..."
-                    )
-
-                    # CRITICAL: Verify actual implementation work was done
-                    work_done = verify_work_was_done(self.logger)
-                    if work_done:
-                        self.logger.info("Evidence of code changes found - completing lifecycle...")
-                        verified = complete_issue_lifecycle(info, self.config, self.logger)
-                        if verified:
-                            self.logger.success(
-                                f"Fallback completion succeeded for {info.issue_id}"
-                            )
-                        else:
-                            self.logger.warning(f"Fallback completion failed for {info.issue_id}")
-                    else:
-                        # NO work was done - do NOT mark as completed
-                        self.logger.error(
-                            f"REFUSING to mark {info.issue_id} as completed: "
-                            "no code changes detected despite returncode 0"
-                        )
-                        self.logger.error(
-                            "This likely indicates the command was not executed properly. "
-                            "Check command invocation and Claude CLI output."
-                        )
-                        verified = False
-            else:
-                self.logger.info("Would verify issue moved to completed")
-                verified = True  # In dry run, assume success
-        issue_timing["verify"] = phase3_timing.get("elapsed", 0.0)
-
-        # Record timing
-        total_issue_time = time.time() - issue_start_time
-        issue_timing["total"] = total_issue_time
-        self.logger.timing(f"Total processing time: {format_duration(total_issue_time)}")
-
-        # Update state - only mark as completed if verification succeeded
-        if verified:
-            self.state_manager.mark_completed(info.issue_id, issue_timing)
-            self.logger.success(f"Completed: {info.issue_id}")
-        else:
-            self.logger.warning(f"Issue {info.issue_id} was attempted but verification failed")
-            self.logger.info(
-                "This issue will be skipped on future runs (check logs above for details)"
+        # Map result back to state tracking
+        if result.was_closed:
+            self.state_manager.mark_completed(info.issue_id)
+        elif result.success:
+            self.state_manager.mark_completed(
+                info.issue_id, {"total": result.duration}
             )
+        elif result.failure_reason:
+            self.state_manager.mark_failed(info.issue_id, result.failure_reason)
 
-        return verified
+        if result.corrections:
+            self.state_manager.record_corrections(info.issue_id, result.corrections)
+
+        return result.success
