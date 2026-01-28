@@ -10,7 +10,7 @@ Development workflow toolkit for Claude Code with issue management, code quality
 
 little-loops is a Claude Code plugin that provides a complete development workflow toolkit. It includes:
 
-- **27 slash commands** for development workflows
+- **28 slash commands** for development workflows
 - **8 specialized agents** for codebase analysis
 - **Automation scripts** for autonomous issue processing
 - **Configuration system** for project customization

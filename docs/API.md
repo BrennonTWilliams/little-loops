@@ -1560,13 +1560,13 @@ Entry point for `ll-auto` command. Sequential automated issue management.
 
 **Returns:** Exit code
 
-### main_parallel
+### main_loop
 
 ```python
-def main_parallel() -> int
+def main_loop() -> int
 ```
 
-Entry point for `ll-parallel` command. Parallel issue management with git worktrees.
+Entry point for `ll-loop` command. FSM-based automation loop execution.
 
 **Returns:** Exit code
 
