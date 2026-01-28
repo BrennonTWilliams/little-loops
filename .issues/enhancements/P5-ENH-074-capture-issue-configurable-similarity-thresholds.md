@@ -11,7 +11,7 @@ The `/ll:capture_issue` command uses hardcoded Jaccard similarity thresholds (0.
 
 ## Current Behavior
 
-Lines 137-140 define fixed thresholds:
+Lines 156-158 define fixed thresholds:
 ```markdown
 - Score >= 0.8 = exact duplicate
 - Score 0.5-0.8 = similar issue
@@ -71,6 +71,16 @@ Update `capture_issue.md` to reference:
 
 ---
 
+## Verification Notes
+
+**Verified: 2026-01-28**
+
+- Thresholds are now at lines 156-158 (previously 137-140, file has been restructured)
+- Values remain hardcoded at 0.8 for exact duplicate, 0.5 for similar issue
+- Issue description otherwise remains accurate
+
+---
+
 ## Status
 
-**Open** | Created: 2025-01-15 | Priority: P5
+**Open** | Created: 2025-01-15 | Verified: 2026-01-28 | Priority: P5

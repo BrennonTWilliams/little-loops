@@ -206,3 +206,28 @@ None
 ## Status
 
 **Won't Do** | Created: 2026-01-12 | Closed: 2026-01-18 | Priority: P2
+
+---
+
+## Reopened
+
+- **Date**: 2026-01-28
+- **By**: capture_issue
+- **Reason**: Issue recurred or was not fully resolved
+
+### New Findings
+
+The previous "Won't Do" resolution stated that "a separate CLI command already exists for executing sequences of issues with dependency awareness." However, this creates an inconsistency:
+
+1. `ll-auto` is the primary/simplest entry point for users
+2. `ll-sprint` and `ll-parallel` both use `DependencyGraph` to respect dependencies
+3. `ll-auto` ignoring dependencies means it can attempt work that cannot succeed
+4. Users who mark dependencies expect them to be honored
+
+The "use a different tool" answer is insufficient - `ll-auto` should behave consistently with the rest of the toolset.
+
+---
+
+## Status (Updated)
+
+**Open** | Reopened: 2026-01-28 | Priority: P2

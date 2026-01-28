@@ -270,13 +270,12 @@ When product analysis is enabled:
 
 ## Dependencies
 
-- FEAT-020: Product Analysis Opt-In Configuration
+- FEAT-020: Product Analysis Opt-In Configuration ✅ (completed)
 - FEAT-021: Goals/Vision Ingestion Mechanism
 - FEAT-022: Product Analyzer Agent
 
 ## Blocked By
 
-- FEAT-020
 - FEAT-021
 - FEAT-022
 
@@ -297,6 +296,13 @@ None
 - Blocker FEAT-020 (Product Analysis Opt-In Configuration) is now **completed**
 - Remaining blockers: FEAT-021, FEAT-022
 - `commands/scan_product.md` does not exist - issue description remains accurate
+
+---
+
+**Verified: 2026-01-28**
+
+- All verification findings confirmed; issue remains accurate
+- Updated blocker list to reflect FEAT-020 completion
 
 ---
 

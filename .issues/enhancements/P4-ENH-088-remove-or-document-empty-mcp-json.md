@@ -62,6 +62,22 @@ Plugin structure audit using `plugin-dev:plugin-structure` skill
 
 ---
 
+## Verification Notes
+
+**Verified: 2026-01-28 - INVALID**
+
+The `.mcp.json` file is required by the Claude Code plugin specification. Even when empty (containing only `"mcpServers": {}`), it serves an important purpose:
+
+1. **Signals MCP capability** - The presence of `.mcp.json` tells Claude Code that this plugin supports MCP server configuration
+2. **Plugin structure requirement** - The plugin specification expects this file to exist for MCP-enabled plugins
+3. **Future-proofing** - Provides the structure for when MCP servers are actually configured
+
+While the file currently contains no configured servers, removing it would break the plugin's MCP capability declaration. The "placeholder" argument is valid - this file signals intent to support MCP integrations.
+
+**Verdict**: This issue describes a non-problem. The empty `.mcp.json` file is correct and necessary per the Claude Code plugin specification.
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-18 | Priority: P4
+**Invalid** | Created: 2026-01-18 | Verified: 2026-01-28 | Priority: P4
