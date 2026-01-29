@@ -1454,7 +1454,12 @@ Closed - Already Fixed"""
                             "_detect_main_repo_leaks",
                             return_value=[],
                         ):
-                            result = worker_pool._process_issue(mock_issue)
+                            with patch.object(
+                                worker_pool,
+                                "_update_branch_base",
+                                return_value=(True, ""),
+                            ):
+                                result = worker_pool._process_issue(mock_issue)
 
         assert result.success is True
         assert result.changed_files == ["src/fix.py"]
@@ -1518,7 +1523,12 @@ Closed - Already Fixed"""
                                 "_cleanup_leaked_files",
                                 side_effect=mock_cleanup,
                             ):
-                                result = worker_pool._process_issue(mock_issue)
+                                with patch.object(
+                                    worker_pool,
+                                    "_update_branch_base",
+                                    return_value=(True, ""),
+                                ):
+                                    result = worker_pool._process_issue(mock_issue)
 
         assert cleanup_called[0] is True
         assert result.leaked_files == ["thoughts/notes.md"]
@@ -1562,7 +1572,12 @@ CORRECTED
                             "_detect_main_repo_leaks",
                             return_value=[],
                         ):
-                            result = worker_pool._process_issue(mock_issue)
+                            with patch.object(
+                                worker_pool,
+                                "_update_branch_base",
+                                return_value=(True, ""),
+                            ):
+                                result = worker_pool._process_issue(mock_issue)
 
         assert result.success is True
         assert result.was_corrected is True

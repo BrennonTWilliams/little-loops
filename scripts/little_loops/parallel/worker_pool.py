@@ -394,6 +394,23 @@ class WorkerPool:
                     stderr=manage_result.stderr,
                 )
 
+            # Step 9: Update branch base before merge (BUG-180)
+            # Fetch origin/main and rebase to ensure branch is based on latest main
+            base_updated, base_error = self._update_branch_base(worktree_path, issue.issue_id)
+            if not base_updated:
+                return WorkerResult(
+                    issue_id=issue.issue_id,
+                    success=False,
+                    branch_name=branch_name,
+                    worktree_path=worktree_path,
+                    changed_files=changed_files,
+                    leaked_files=leaked_files,
+                    duration=time.time() - start_time,
+                    error=base_error,
+                    stdout=manage_result.stdout,
+                    stderr=manage_result.stderr,
+                )
+
             return WorkerResult(
                 issue_id=issue.issue_id,
                 success=True,
@@ -720,6 +737,54 @@ class WorkerPool:
             return []
 
         return [f.strip() for f in result.stdout.strip().split("\n") if f.strip()]
+
+    def _update_branch_base(self, worktree_path: Path, issue_id: str) -> tuple[bool, str]:
+        """Fetch origin/main and rebase worker branch onto it.
+
+        This ensures the worker branch is based on the latest main before
+        merge coordination, preventing conflicts when main advances during
+        sprint execution (BUG-180).
+
+        Args:
+            worktree_path: Path to the worker's worktree
+            issue_id: Issue ID for logging
+
+        Returns:
+            Tuple of (success, error_message)
+        """
+        # Fetch latest main from origin
+        fetch_result = subprocess.run(
+            ["git", "fetch", "origin", "main"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+
+        if fetch_result.returncode != 0:
+            return False, f"Failed to fetch origin/main: {fetch_result.stderr}"
+
+        # Rebase current branch onto origin/main
+        rebase_result = subprocess.run(
+            ["git", "rebase", "origin/main"],
+            cwd=worktree_path,
+            capture_output=True,
+            text=True,
+            timeout=120,
+        )
+
+        if rebase_result.returncode != 0:
+            # Abort the failed rebase
+            subprocess.run(
+                ["git", "rebase", "--abort"],
+                cwd=worktree_path,
+                capture_output=True,
+                timeout=10,
+            )
+            return False, f"Failed to rebase onto origin/main: {rebase_result.stderr}"
+
+        self.logger.info(f"[{issue_id}] Rebased branch onto origin/main")
+        return True, ""
 
     def _verify_work_was_done(
         self, changed_files: list[str], issue_id: str, issue_filename: str = ""

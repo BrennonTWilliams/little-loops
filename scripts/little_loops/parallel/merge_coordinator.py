@@ -977,9 +977,20 @@ class MergeCoordinator:
                 if stash_result.returncode != 0:
                     self.logger.warning(f"Failed to stash worktree changes: {stash_result.stderr}")
 
-            # Rebase the branch onto current main
+            # Fetch latest main before rebase (BUG-180)
+            # Use origin/main if fetch succeeds, fall back to main if no remote
+            fetch_result = subprocess.run(
+                ["git", "fetch", "origin", "main"],
+                cwd=result.worktree_path,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            rebase_target = "origin/main" if fetch_result.returncode == 0 else "main"
+
+            # Rebase the branch onto latest main (BUG-180)
             rebase_result = subprocess.run(
-                ["git", "rebase", "main"],
+                ["git", "rebase", rebase_target],
                 cwd=result.worktree_path,
                 capture_output=True,
                 text=True,
