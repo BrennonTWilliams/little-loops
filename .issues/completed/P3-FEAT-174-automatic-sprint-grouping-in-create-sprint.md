@@ -104,3 +104,22 @@ All test coverage enhancements
 ## Status
 
 **Open** | Created: 2026-01-28 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-28
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_sprint.md`: Added Section 1.5 "Suggest Sprint Groupings (Optional)" with three sub-steps:
+  - Step 1.5.1: Scan Active Issues - Glob patterns to find and parse issues
+  - Step 1.5.2: Generate Grouping Suggestions - Four strategies (priority, type, parallelizable, theme)
+  - Step 1.5.3: Present Suggestions - AskUserQuestion with grouping options
+- `commands/create_sprint.md`: Updated Step 2 to check if issues were pre-filled from grouping selection
+
+### Verification Results
+- Types: PASS
+- Lint: Pre-existing unrelated error in test file (not touched)

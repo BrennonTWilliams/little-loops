@@ -121,11 +121,130 @@ questions:
 - **"Enter different name"**: Prompt for new name and re-validate
 - **"Use original anyway"**: Continue with original name (warn about potential issues)
 
+### 1.5 Suggest Sprint Groupings (Optional)
+
+**SKIP this section if:**
+- The `issues` argument was provided (user already specified issues)
+
+When no issues are specified, analyze active issues and suggest natural sprint groupings:
+
+#### Step 1.5.1: Scan Active Issues
+
+Use Glob to find all active issues:
+- Pattern: `{issues.base_dir}/bugs/*.md`
+- Pattern: `{issues.base_dir}/features/*.md`
+- Pattern: `{issues.base_dir}/enhancements/*.md`
+
+For each issue file found, extract:
+- **Priority**: From filename prefix (P0, P1, P2, P3, P4, P5)
+- **Type**: From directory (bugs, features, enhancements)
+- **ID**: From filename (e.g., BUG-001, FEAT-042)
+- **Title**: From first `# ` heading in file content
+- **Blocked By**: From `## Blocked By` section (if exists)
+
+Store parsed issues in a list for analysis.
+
+#### Step 1.5.2: Generate Grouping Suggestions
+
+Analyze the parsed issues and generate 2-4 distinct groupings. Skip any grouping with fewer than 2 issues.
+
+**Grouping Strategy 1: Priority Cluster (Critical)**
+- Name: `critical-fixes`
+- Description: "All P0-P1 priority issues"
+- Criteria: All issues with priority P0 or P1
+- Only suggest if 2+ issues match
+
+**Grouping Strategy 2: Type Cluster**
+- Name: `bug-fixes`, `feature-work`, or `enhancements`
+- Description: "All active [bugs/features/enhancements]"
+- Criteria: All issues of the most populous type
+- Only suggest if 3+ issues match
+
+**Grouping Strategy 3: Parallelizable Issues**
+- Name: `parallel-ready`
+- Description: "Issues with no blockers (can run in parallel)"
+- Criteria: Issues with no `Blocked By` entries
+- Only suggest if 3+ issues match
+
+**Grouping Strategy 4: Theme Cluster**
+- Detect themes by matching keywords in issue titles (case-insensitive):
+  - Keywords containing "test" → Name: `test-coverage`, Description: "Test coverage improvements"
+  - Keywords: "performance", "speed", "slow", "fast", "optimize" → Name: `performance`, Description: "Performance-related issues"
+  - Keywords: "security", "auth", "permission", "access" → Name: `security`, Description: "Security-related issues"
+  - Keywords: "doc", "readme", "comment" → Name: `documentation`, Description: "Documentation improvements"
+- Only suggest if 2+ issues match a theme
+- Only include the largest theme cluster
+
+**Scoring & Selection:**
+- Prioritize groupings by distinctiveness (issues not in other groupings)
+- Select top 3-4 groupings with size >= 2
+- Always include "Select manually" as the last option
+
+#### Step 1.5.3: Present Suggestions
+
+If at least one suggestion was generated, present them using AskUserQuestion:
+
+```yaml
+questions:
+  - question: "Based on ${total_active_issues} active issues, here are suggested sprint groupings. Select one or choose to select manually:"
+    header: "Sprint"
+    multiSelect: false
+    options:
+      - label: "${grouping_1_name} (${grouping_1_count} issues)"
+        description: "${grouping_1_description}: ${first_3_issue_ids}..."
+      - label: "${grouping_2_name} (${grouping_2_count} issues)"
+        description: "${grouping_2_description}: ${first_3_issue_ids}..."
+      - label: "Select manually"
+        description: "Skip suggestions and choose issues yourself"
+```
+
+**Example output:**
+```
+Based on 23 active issues, here are suggested sprint groupings:
+
+1. critical-fixes (4 issues)
+   All P0-P1 priority issues: BUG-001, BUG-015, FEAT-040...
+
+2. bug-fixes (8 issues)
+   All active bugs: BUG-001, BUG-015, BUG-023...
+
+3. parallel-ready (12 issues)
+   Issues with no blockers: ENH-004, ENH-146, ENH-147...
+
+4. Select manually
+   Skip suggestions and choose issues yourself
+```
+
+**Based on user response:**
+- **Grouping selected**:
+  - Set `SPRINT_ISSUES` to the comma-separated issue IDs in that grouping
+  - If `SPRINT_NAME` is empty or was a default placeholder, prompt to use the grouping name:
+    ```yaml
+    questions:
+      - question: "Use suggested sprint name '${grouping_name}' or enter your own?"
+        header: "Name"
+        multiSelect: false
+        options:
+          - label: "Use '${grouping_name}' (Recommended)"
+            description: "Auto-generated name based on grouping type"
+          - label: "Enter different name"
+            description: "Provide your own sprint name"
+    ```
+  - Skip to Step 3 (Validate Issues Exist)
+- **"Select manually"**: Continue to Step 2 (original interactive flow)
+
+**If no suggestions could be generated** (fewer than 2 issues total or no groupings meet minimum size):
+- Display: "Not enough active issues for automatic groupings. Proceeding to manual selection."
+- Continue to Step 2
+
+---
+
 ### 2. Gather Issue List
 
-If `issues` argument was provided, use it directly.
+**If `SPRINT_ISSUES` is already populated** (from `--issues` argument OR from grouping selection in Step 1.5):
+- Skip this step and proceed to Step 3
 
-If `issues` was NOT provided, help the user select issues interactively:
+If `SPRINT_ISSUES` is NOT populated and no grouping was selected, help the user select issues interactively:
 
 #### Option A: Scan and Select
 
