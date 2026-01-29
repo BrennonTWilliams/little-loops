@@ -57,8 +57,8 @@ class SprintState:
 ## Files to Modify
 
 - `scripts/little_loops/sprint.py` - Add SprintState dataclass and persistence
-- `scripts/little_loops/cli.py:1284-1336` - Add --resume argument
-- `scripts/little_loops/cli.py:1619-1735` - Integrate state into run logic
+- `scripts/little_loops/cli.py:1308-1320` - Add --resume argument to run subparser
+- `scripts/little_loops/cli.py:1619-1738` - Integrate state into `_cmd_sprint_run()` logic
 
 ## Impact
 
@@ -80,6 +80,18 @@ class SprintState:
 
 ---
 
+## Verification Notes
+
+**Verified: 2026-01-29**
+
+- Confirmed: No `SprintState` or state persistence exists in sprint code
+- ll-auto uses `StateManager` at `issue_manager.py:592`
+- ll-parallel uses `OrchestratorState` in `parallel/types.py`
+- Sprint run function is at `cli.py:1619-1738` (updated from original reference)
+- Issue description remains accurate
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-29 | Priority: P2
+**Open** | Created: 2026-01-29 | Verified: 2026-01-29 | Priority: P2

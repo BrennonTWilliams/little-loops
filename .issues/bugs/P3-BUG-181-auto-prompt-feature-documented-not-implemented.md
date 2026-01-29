@@ -89,6 +89,21 @@ Alternatively, if this feature is not planned for implementation:
 
 ---
 
+## Verification Notes
+
+**Verified: 2026-01-29**
+
+- **Correction**: The issue incorrectly stated "No `UserPromptSubmit` hook is registered in `hooks/hooks.json`" - this is **FALSE**
+- `hooks/hooks.json:15-25` DOES register a `UserPromptSubmit` hook calling `user-prompt-check.sh`
+- However, this hook only checks for config file existence, NOT prompt optimization
+- The core claim remains **VALID**: No actual prompt optimization is performed
+- `hooks/prompts/optimize-prompt-hook.md` does NOT exist
+- No clarity scoring or prompt enhancement logic exists
+
+**Updated claim**: A `UserPromptSubmit` hook exists but performs config checking only, not prompt optimization.
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-29 | Priority: P3
+**Open** | Created: 2026-01-29 | Verified: 2026-01-29 | Priority: P3

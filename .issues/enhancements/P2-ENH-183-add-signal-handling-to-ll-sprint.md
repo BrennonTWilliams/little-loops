@@ -79,7 +79,7 @@ signal.signal(signal.SIGTERM, _signal_handler)
 
 | Category | Document | Relevance |
 |----------|----------|-----------|
-| reference | scripts/little_loops/issue_manager.py:601-604 | Signal handler pattern |
+| reference | scripts/little_loops/issue_manager.py:598-599 | Signal handler pattern |
 | audit | docs/CLI-TOOLS-AUDIT.md | Source of this issue |
 
 ## Labels
@@ -88,6 +88,17 @@ signal.signal(signal.SIGTERM, _signal_handler)
 
 ---
 
+## Verification Notes
+
+**Verified: 2026-01-29**
+
+- Confirmed: No signal handling in `_cmd_sprint_run()` at `cli.py:1619-1738`
+- ll-auto has signal handlers at `issue_manager.py:598-599` (corrected from 601-604)
+- ll-parallel has signal handlers in `orchestrator.py`
+- Issue description remains accurate
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-29 | Priority: P2
+**Open** | Created: 2026-01-29 | Verified: 2026-01-29 | Priority: P2

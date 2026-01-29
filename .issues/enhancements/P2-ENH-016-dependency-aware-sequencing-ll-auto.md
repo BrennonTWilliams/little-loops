@@ -228,6 +228,18 @@ The "use a different tool" answer is insufficient - `ll-auto` should behave cons
 
 ---
 
+## Verification Notes (2026-01-29)
+
+**Verified**: Issue accurately describes current state.
+
+- `DependencyGraph` is NOT imported in `issue_manager.py` (ll-auto)
+- ll-auto still uses `find_highest_priority_issue()` which ignores `Blocked By`
+- ll-sprint DOES use `DependencyGraph.from_issues()` at `cli.py:1647`
+- ll-parallel DOES use dependency-aware scheduling
+- The inconsistency remains: ll-auto ignores dependencies while other tools respect them
+
+---
+
 ## Status (Updated)
 
-**Open** | Reopened: 2026-01-28 | Priority: P2
+**Open** | Reopened: 2026-01-28 | Verified: 2026-01-29 | Priority: P2
