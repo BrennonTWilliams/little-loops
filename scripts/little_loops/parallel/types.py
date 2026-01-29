@@ -292,7 +292,7 @@ class ParallelConfig:
     priority_filter: list[str] = field(default_factory=lambda: ["P0", "P1", "P2", "P3", "P4", "P5"])
     max_issues: int = 0
     dry_run: bool = False
-    timeout_per_issue: int = 7200
+    timeout_per_issue: int = 3600
     orchestrator_timeout: int = 0  # 0 = use timeout_per_issue * max_workers
     stream_subprocess_output: bool = False
     show_model: bool = False  # Make API call to verify model on worktree setup

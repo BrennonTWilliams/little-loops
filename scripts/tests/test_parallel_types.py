@@ -721,7 +721,7 @@ class TestParallelConfig:
         assert config.priority_filter == ["P0", "P1", "P2", "P3", "P4", "P5"]
         assert config.max_issues == 0
         assert config.dry_run is False
-        assert config.timeout_per_issue == 7200
+        assert config.timeout_per_issue == 3600
         assert config.orchestrator_timeout == 0
         assert config.stream_subprocess_output is False
         assert config.show_model is False

@@ -79,4 +79,31 @@ If aligning defaults:
 
 ## Status
 
-**Open** | Created: 2026-01-29 | Priority: P4
+**Completed** | Created: 2026-01-29 | Completed: 2026-01-29 | Priority: P4
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/parallel/types.py`: Changed `ParallelConfig.timeout_per_issue` default from 7200 to 3600
+- `config-schema.json`: Updated `parallel.timeout_per_issue` default from 7200 to 3600
+- `scripts/tests/test_parallel_types.py`: Updated test assertion to match new default
+
+### Verification Results
+
+- Tests: PASS (101 related tests)
+- Lint: PASS
+- Types: PASS
+
+### Implementation Approach
+
+Selected Option A (align to 3600s) as recommended:
+- All three CLI tools now share the same 1-hour default timeout
+- Users can override with `--timeout/-t` for longer operations
+- Faster feedback on stuck issues
