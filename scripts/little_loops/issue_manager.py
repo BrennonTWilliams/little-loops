@@ -18,6 +18,7 @@ from pathlib import Path
 from types import FrameType
 
 from little_loops.config import BRConfig
+from little_loops.dependency_graph import DependencyGraph
 from little_loops.git_operations import check_git_status, verify_work_was_done
 from little_loops.issue_lifecycle import (
     close_issue,
@@ -25,7 +26,7 @@ from little_loops.issue_lifecycle import (
     create_issue_from_failure,
     verify_issue_completed,
 )
-from little_loops.issue_parser import IssueInfo, IssueParser, find_highest_priority_issue
+from little_loops.issue_parser import IssueInfo, IssueParser, find_issues
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.output_parsing import parse_ready_issue_output
 from little_loops.state import ProcessingState, StateManager
@@ -592,6 +593,16 @@ class AutoManager:
         self.state_manager = StateManager(config.get_state_file(), self.logger)
         self.parser = IssueParser(config)
 
+        # Build dependency graph for dependency-aware sequencing (ENH-016)
+        all_issues = find_issues(self.config, self.category)
+        self.dep_graph = DependencyGraph.from_issues(all_issues)
+
+        # Warn about any cycles
+        if self.dep_graph.has_cycles():
+            cycles = self.dep_graph.detect_cycles()
+            for cycle in cycles:
+                self.logger.warning(f"Dependency cycle detected: {' -> '.join(cycle)}")
+
         self.processed_count = 0
         self._shutdown_requested = False
 
@@ -602,6 +613,63 @@ class AutoManager:
         """Handle shutdown signals gracefully."""
         self._shutdown_requested = True
         self.logger.warning(f"Received signal {signum}, shutting down gracefully...")
+
+    def _get_next_issue(self) -> IssueInfo | None:
+        """Get next issue respecting dependencies.
+
+        Returns the highest priority issue whose blockers have all been
+        completed. If no ready issues exist but blocked issues remain,
+        logs warnings about what is blocking progress.
+
+        Returns:
+            Next IssueInfo to process, or None if no ready issues
+        """
+        # Get completed issues from state
+        completed = set(self.state_manager.state.completed_issues)
+
+        # Combine skip_ids from state and CLI argument
+        skip_ids = self.state_manager.state.attempted_issues | self.skip_ids
+
+        # Get issues that are ready (blockers satisfied)
+        ready_issues = self.dep_graph.get_ready_issues(completed)
+
+        # Filter by skip_ids, only_ids
+        candidates = [
+            i for i in ready_issues
+            if i.issue_id not in skip_ids
+            and (self.only_ids is None or i.issue_id in self.only_ids)
+        ]
+
+        if candidates:
+            return candidates[0]  # Already sorted by priority in get_ready_issues()
+
+        # No ready candidates - check if there are blocked issues remaining
+        all_in_graph = set(self.dep_graph.issues.keys())
+        remaining = all_in_graph - completed - skip_ids
+        if self.only_ids is not None:
+            remaining = remaining & self.only_ids
+
+        if remaining:
+            self._log_blocked_issues(remaining, completed)
+
+        return None
+
+    def _log_blocked_issues(self, remaining: set[str], completed: set[str]) -> None:
+        """Log information about blocked issues when processing stalls.
+
+        Args:
+            remaining: Set of issue IDs that haven't been processed
+            completed: Set of completed issue IDs
+        """
+        blocked_count = 0
+        for issue_id in sorted(remaining):
+            blockers = self.dep_graph.get_blocking_issues(issue_id, completed)
+            if blockers:
+                blocked_count += 1
+                self.logger.info(f"  {issue_id} blocked by: {', '.join(sorted(blockers))}")
+
+        if blocked_count > 0:
+            self.logger.warning(f"{blocked_count} issue(s) remain blocked - check dependencies")
 
     def run(self) -> int:
         """Run the automation loop.
@@ -636,11 +704,7 @@ class AutoManager:
                     self.logger.info(f"Reached max issues limit: {self.max_issues}")
                     break
 
-                # Combine skip_ids from state and CLI argument
-                skip_ids = self.state_manager.state.attempted_issues | self.skip_ids
-                info = find_highest_priority_issue(
-                    self.config, self.category, skip_ids, self.only_ids
-                )
+                info = self._get_next_issue()
                 if not info:
                     self.logger.success("No more issues to process!")
                     break

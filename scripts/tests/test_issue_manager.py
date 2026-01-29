@@ -458,3 +458,173 @@ READY
         assert "BUG-1" not in manage_cmd, (
             f"manage_issue should NOT use stale ID 'BUG-1', got: {manage_cmd}"
         )
+
+
+class TestDependencyAwareSequencing:
+    """Tests for dependency-aware issue selection in AutoManager (ENH-016)."""
+
+    @pytest.fixture
+    def temp_project_with_deps(self, temp_project_dir: Path) -> Path:
+        """Set up project with issues that have dependencies."""
+        import json
+
+        # Create .claude directory with config
+        claude_dir = temp_project_dir / ".claude"
+        claude_dir.mkdir(exist_ok=True)
+
+        config_content = {
+            "project": {"name": "test-project"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "features": {
+                        "prefix": "FEAT",
+                        "dir": "features",
+                        "action": "implement",
+                    }
+                },
+                "completed_dir": "completed",
+            },
+            "automation": {
+                "timeout_seconds": 60,
+                "state_file": ".auto-manage-state.json",
+            },
+        }
+        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+
+        # Create issues directory
+        issues_dir = temp_project_dir / ".issues" / "features"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir()
+
+        # Create FEAT-001 (no dependencies)
+        (issues_dir / "P1-FEAT-001-first-feature.md").write_text(
+            "# FEAT-001: First Feature\n\n## Summary\nFirst\n"
+        )
+
+        # Create FEAT-002 (blocked by FEAT-001)
+        (issues_dir / "P1-FEAT-002-second-feature.md").write_text(
+            "# FEAT-002: Second Feature\n\n## Summary\nSecond\n\n## Blocked By\n\n- FEAT-001\n"
+        )
+
+        return temp_project_dir
+
+    def test_dependency_graph_built_on_init(self, temp_project_with_deps: Path) -> None:
+        """Test that AutoManager builds dependency graph on initialization."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_deps)
+        manager = AutoManager(config, dry_run=True)
+
+        assert hasattr(manager, "dep_graph")
+        assert len(manager.dep_graph) == 2
+        assert "FEAT-001" in manager.dep_graph
+        assert "FEAT-002" in manager.dep_graph
+
+    def test_blocked_issue_not_selected_first(self, temp_project_with_deps: Path) -> None:
+        """Test that blocked issue is not selected before its blocker."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_deps)
+        manager = AutoManager(config, dry_run=True)
+
+        # First issue selected should be FEAT-001 (not blocked)
+        info = manager._get_next_issue()
+        assert info is not None
+        assert info.issue_id == "FEAT-001"
+
+    def test_blocked_issue_selected_after_blocker_completed(
+        self, temp_project_with_deps: Path
+    ) -> None:
+        """Test that blocked issue becomes available after blocker completes."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_deps)
+        manager = AutoManager(config, dry_run=True)
+
+        # Mark FEAT-001 as completed
+        manager.state_manager.state.completed_issues.append("FEAT-001")
+
+        # Now FEAT-002 should be selected
+        info = manager._get_next_issue()
+        assert info is not None
+        assert info.issue_id == "FEAT-002"
+
+    def test_no_issue_when_all_blocked(self, temp_project_with_deps: Path) -> None:
+        """Test that None is returned when all remaining issues are blocked."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_deps)
+        manager = AutoManager(config, dry_run=True)
+
+        # Mark FEAT-001 as attempted (skip) but not completed
+        manager.state_manager.state.attempted_issues.add("FEAT-001")
+
+        # FEAT-002 is blocked by FEAT-001, which is not completed
+        # So no issues should be available
+        info = manager._get_next_issue()
+        assert info is None
+
+    @pytest.fixture
+    def temp_project_with_cycle(self, temp_project_dir: Path) -> Path:
+        """Set up project with issues that have a dependency cycle."""
+        import json
+
+        # Create .claude directory with config
+        claude_dir = temp_project_dir / ".claude"
+        claude_dir.mkdir(exist_ok=True)
+
+        config_content = {
+            "project": {"name": "test-project"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "features": {
+                        "prefix": "FEAT",
+                        "dir": "features",
+                        "action": "implement",
+                    }
+                },
+                "completed_dir": "completed",
+            },
+            "automation": {
+                "timeout_seconds": 60,
+                "state_file": ".auto-manage-state.json",
+            },
+        }
+        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+
+        # Create issues directory
+        issues_dir = temp_project_dir / ".issues" / "features"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir()
+
+        # Create FEAT-001 (blocked by FEAT-002) - circular!
+        (issues_dir / "P1-FEAT-001-first-feature.md").write_text(
+            "# FEAT-001: First Feature\n\n## Summary\nFirst\n\n## Blocked By\n\n- FEAT-002\n"
+        )
+
+        # Create FEAT-002 (blocked by FEAT-001) - circular!
+        (issues_dir / "P1-FEAT-002-second-feature.md").write_text(
+            "# FEAT-002: Second Feature\n\n## Summary\nSecond\n\n## Blocked By\n\n- FEAT-001\n"
+        )
+
+        return temp_project_dir
+
+    def test_cycle_detected_on_init(
+        self, temp_project_with_cycle: Path, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Test that dependency cycles are detected and warned about on init."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+
+        config = BRConfig(temp_project_with_cycle)
+        _manager = AutoManager(config, dry_run=True)
+
+        captured = capsys.readouterr()
+        # Check that cycle warning was printed
+        assert "Dependency cycle detected" in captured.out or "cycle" in captured.out.lower()

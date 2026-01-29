@@ -240,6 +240,36 @@ The "use a different tool" answer is insufficient - `ll-auto` should behave cons
 
 ---
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_manager.py`: Added `DependencyGraph` import and build in `AutoManager.__init__()`
+- `scripts/little_loops/issue_manager.py`: Added `_get_next_issue()` method that respects `Blocked By` relationships
+- `scripts/little_loops/issue_manager.py`: Added `_log_blocked_issues()` method to report blocked issues when stalled
+- `scripts/little_loops/issue_manager.py`: Updated main loop to use `_get_next_issue()` instead of `find_highest_priority_issue()`
+- `scripts/tests/test_issue_manager.py`: Added `TestDependencyAwareSequencing` class with 5 integration tests
+
+### Acceptance Criteria Met
+- [x] `DependencyGraph` built on `AutoManager` startup
+- [x] `_get_next_issue()` method respects dependencies
+- [x] Completed issues from state are used to determine "ready" status
+- [x] Cycles detected and logged as warnings
+- [x] When no ready issues remain, blocked issues are listed with their blockers
+- [x] Integration test: issues processed in correct dependency order
+- [x] Integration test: blocked issues become ready after blockers complete
+- [x] No regression: priority ordering still applies among ready issues
+
+### Verification Results
+- Tests: PASS (15/15 tests in test_issue_manager.py)
+- Lint: PASS
+- Types: PASS
+
+---
+
 ## Status (Updated)
 
-**Open** | Reopened: 2026-01-28 | Verified: 2026-01-29 | Priority: P2
+**Completed** | Reopened: 2026-01-28 | Verified: 2026-01-29 | Completed: 2026-01-29 | Priority: P2
