@@ -520,6 +520,26 @@
           "type": "boolean",
           "description": "Include business value scoring in issues",
           "default": true
+        },
+        "goals_discovery": {
+          "type": "object",
+          "description": "Settings for auto-discovering product goals from documentation",
+          "properties": {
+            "max_files": {
+              "type": "integer",
+              "description": "Maximum markdown files to analyze for goal discovery",
+              "default": 5,
+              "minimum": 1,
+              "maximum": 20
+            },
+            "required_files": {
+              "type": "array",
+              "description": "Files that must exist for discovery (warning if missing)",
+              "items": {"type": "string"},
+              "default": ["README.md"]
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

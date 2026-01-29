@@ -301,17 +301,18 @@ When product analysis is enabled during `/ll:init`:
 
 ## Acceptance Criteria
 
-- [ ] `goals_parser.py` module created with `ProductGoals.from_file()` method
-- [ ] Unit tests for `goals_parser.py`:
-  - [ ] Parse valid ll-goals.md with all fields
-  - [ ] Parse minimal ll-goals.md (only required fields)
-  - [ ] Handle missing file gracefully (return None)
-  - [ ] Handle malformed YAML frontmatter
-  - [ ] Handle missing frontmatter
-- [ ] `validate_goals()` function returns appropriate warnings
-- [ ] Template file `templates/ll-goals-template.md` created
-- [ ] `/ll:init` creates goals file when product enabled (interactive mode)
-- [ ] Auto-discovery extracts persona and priorities from README.md
+- [x] `goals_parser.py` module created with `ProductGoals.from_file()` method
+- [x] Unit tests for `goals_parser.py`:
+  - [x] Parse valid ll-goals.md with all fields
+  - [x] Parse minimal ll-goals.md (only required fields)
+  - [x] Handle missing file gracefully (return None)
+  - [x] Handle malformed YAML frontmatter
+  - [x] Handle missing frontmatter
+- [x] `validate_goals()` function returns appropriate warnings
+- [x] Template file `templates/ll-goals-template.md` created (done in FEAT-020)
+- [x] `/ll:init` creates goals file when product enabled (interactive mode)
+- [x] Auto-discovery extracts persona and priorities from README.md
+- [x] Config schema updated with `goals_discovery` settings (max_files, required_files)
 
 ## Impact
 
@@ -341,14 +342,36 @@ When product analysis is enabled during `/ll:init`:
 
 ## Verification Notes
 
-**Verified: 2026-01-24**
+**Verified: 2026-01-29**
 
-- Blocker FEAT-020 (Product Analysis Opt-In Configuration) is now **completed**
+- Blocker FEAT-020 (Product Analysis Opt-In Configuration) is **completed** (2026-01-22)
 - This feature is now **unblocked** and ready for implementation
-- `goals_parser.py` does not exist - issue description remains accurate
+- Template file `templates/ll-goals-template.md` already exists (created in FEAT-020)
+- `goals_parser.py` does not exist - primary deliverable remains to be implemented
+- Config schema has `product.goals_file` but not `goals_discovery` settings yet
+- Auto-discovery logic not yet implemented in `/ll:init`
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/goals_parser.py`: Created new module with `Persona`, `Priority`, and `ProductGoals` dataclasses, plus `validate_goals()` function
+- `scripts/tests/test_goals_parser.py`: Added 27 comprehensive unit tests covering all acceptance criteria
+- `config-schema.json`: Added `goals_discovery` settings with `max_files` and `required_files` properties
+- `commands/init.md`: Updated to include goals auto-discovery flow in interactive and non-interactive modes
+
+### Verification Results
+- Tests: PASS (27/27)
+- Lint: PASS
+- Types: PASS
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-01-06 | Priority: P2
+**Completed** | Created: 2026-01-06 | Completed: 2026-01-29 | Priority: P2

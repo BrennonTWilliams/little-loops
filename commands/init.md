@@ -365,9 +365,105 @@ questions:
 ```
 
 **If "Yes, enable" selected:**
+
+**Step 4a: Goals Discovery (Interactive Mode)**
+
+In interactive mode, offer auto-discovery from existing documentation:
+
+```yaml
+questions:
+  - header: "Goals"
+    question: "How would you like to set up product goals?"
+    options:
+      - label: "Auto-discover from docs (Recommended)"
+        description: "Extract goals from README.md and other documentation"
+      - label: "Start from template"
+        description: "Create blank goals file to fill in manually"
+    multiSelect: false
+```
+
+**If "Auto-discover from docs" selected:**
+
+1. **Scan documentation files** (max 5 by default):
+   - README.md (required - warn if missing)
+   - CLAUDE.md or .claude/CLAUDE.md
+   - docs/README.md
+   - CONTRIBUTING.md
+   - Any additional .md files in root
+
+2. **Extract product context using LLM analysis**:
+   Read the documentation files and extract:
+   - Project purpose and vision
+   - Target users/audience
+   - Key goals or priorities mentioned
+   - Explicit non-goals or scope limitations
+
+3. **Generate `.claude/ll-goals.md`**:
+   - Populate YAML frontmatter with extracted persona and priorities
+   - Fill markdown sections with discovered content
+   - Mark uncertain fields with `[NEEDS REVIEW]` placeholder
+
+4. **Present findings for confirmation**:
+   ```
+   I analyzed your project documentation and extracted these product goals:
+
+   Primary User: [Extracted persona name] - [Role description]
+
+   Priorities I identified:
+   1. [Priority 1 name]
+   2. [Priority 2 name]
+
+   Does this look correct?
+   ```
+
+   Use AskUserQuestion:
+   ```yaml
+   questions:
+     - header: "Confirm"
+       question: "I extracted these goals from your docs. Accept them?"
+       options:
+         - label: "Yes, looks good"
+           description: "Save the extracted goals"
+         - label: "No, let me edit"
+           description: "Open the goals file for manual editing"
+       multiSelect: false
+   ```
+
+5. **Warn if incomplete**:
+   ```
+   ⚠ Product goals auto-generated from documentation.
+   Review and update: .claude/ll-goals.md
+
+   Extracted:
+   ✓ Primary persona: [Name]
+   ✓ Priorities: [N] identified
+   ⚠ Pain points: Not found in docs (please add manually)
+   ```
+
+**If "Start from template" selected:**
+
 1. Create `.claude/ll-goals.md` from the goals template. Read the template content from `templates/ll-goals-template.md` (relative to the little-loops plugin directory) and write it to `.claude/ll-goals.md` in the user's project.
 
-2. Add to configuration:
+**Step 4b: Goals Discovery (Non-Interactive Mode with --yes)**
+
+When `--yes` flag is set (non-interactive), automatically attempt goal discovery:
+
+1. **Scan for README.md** - If missing, warn but continue
+2. **Analyze documentation** using LLM to extract:
+   - Project purpose
+   - Target users
+   - Key priorities
+3. **Generate `.claude/ll-goals.md`** with extracted content
+4. **Mark uncertain sections** with `[NEEDS REVIEW]`
+5. **Display warning**:
+   ```
+   ⚠ Product goals auto-generated from documentation.
+   Review and update: .claude/ll-goals.md
+   ```
+
+**Configuration:**
+
+Add to configuration:
 ```json
 {
   "product": {
@@ -384,6 +480,8 @@ questions:
 - Only include `product` section if enabled
 - `analyze_user_impact` and `analyze_business_value` default to `true` and can be omitted
 - The goals file location can be customized via `goals_file` property
+- `goals_discovery.max_files` controls how many docs to scan (default: 5)
+- `goals_discovery.required_files` lists files that must exist (default: `["README.md"]`)
 
 **After completing Round 4, proceed to Round 5 (Advanced Settings).**
 
