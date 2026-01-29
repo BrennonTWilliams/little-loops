@@ -10,8 +10,10 @@ Provides command-line interfaces for automated issue management:
 from __future__ import annotations
 
 import argparse
+import signal
 import sys
 from pathlib import Path
+from types import FrameType
 from typing import Any
 
 from little_loops.config import BRConfig
@@ -20,6 +22,24 @@ from little_loops.issue_manager import AutoManager
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
 from little_loops.sprint import SprintManager, SprintOptions, SprintState
+
+# Module-level shutdown flag for ll-sprint signal handling (ENH-183)
+_sprint_shutdown_requested: bool = False
+
+
+def _sprint_signal_handler(signum: int, frame: FrameType | None) -> None:
+    """Handle shutdown signals gracefully for ll-sprint.
+
+    First signal: Set shutdown flag for graceful exit after current wave.
+    Second signal: Force immediate exit.
+    """
+    global _sprint_shutdown_requested
+    if _sprint_shutdown_requested:
+        # Second signal - force exit
+        print("\nForce shutdown requested", file=sys.stderr)
+        sys.exit(1)
+    _sprint_shutdown_requested = True
+    print("\nShutdown requested, will exit after current wave...", file=sys.stderr)
 
 
 def main_auto() -> int:
@@ -1672,6 +1692,13 @@ def _cmd_sprint_run(
     from datetime import datetime
 
     logger = Logger()
+
+    # Setup signal handlers for graceful shutdown (ENH-183)
+    global _sprint_shutdown_requested
+    _sprint_shutdown_requested = False  # Reset in case of multiple runs
+    signal.signal(signal.SIGINT, _sprint_signal_handler)
+    signal.signal(signal.SIGTERM, _sprint_signal_handler)
+
     sprint = manager.load(args.sprint)
     if not sprint:
         logger.error(f"Sprint not found: {args.sprint}")
@@ -1772,6 +1799,12 @@ def _cmd_sprint_run(
     total_waves = len(waves)
 
     for wave_num, wave in enumerate(waves, 1):
+        # Check for shutdown request (ENH-183)
+        if _sprint_shutdown_requested:
+            logger.warning("Shutdown requested - saving state and exiting")
+            _save_sprint_state(state, logger)
+            return 1
+
         # Skip already-completed waves when resuming
         if wave_num < start_wave:
             continue
@@ -1805,6 +1838,10 @@ def _cmd_sprint_run(
             _save_sprint_state(state, logger)
             if wave_num < total_waves:
                 logger.info(f"Continuing to wave {wave_num + 1}/{total_waves}...")
+                # Check for shutdown before next wave (ENH-183)
+                if _sprint_shutdown_requested:
+                    logger.warning("Shutdown requested - exiting after wave completion")
+                    return 1
         else:
             # Multi-issue — use ParallelOrchestrator with worktrees
             only_ids = set(wave_ids)
@@ -1838,6 +1875,10 @@ def _cmd_sprint_run(
             _save_sprint_state(state, logger)
             if wave_num < total_waves:
                 logger.info(f"Continuing to wave {wave_num + 1}/{total_waves}...")
+                # Check for shutdown before next wave (ENH-183)
+                if _sprint_shutdown_requested:
+                    logger.warning("Shutdown requested - exiting after wave completion")
+                    return 1
 
     wave_word = "wave" if len(waves) == 1 else "waves"
     logger.info(f"\nSprint completed: {len(completed)} issues processed ({len(waves)} {wave_word})")

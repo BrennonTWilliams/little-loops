@@ -460,3 +460,38 @@ class TestSprintState:
         assert restored.current_wave == state.current_wave
         assert restored.completed_issues == state.completed_issues
         assert restored.failed_issues == state.failed_issues
+
+
+class TestSprintSignalHandler:
+    """Tests for sprint signal handling (ENH-183)."""
+
+    def test_signal_handler_sets_flag(self) -> None:
+        """First signal sets shutdown flag."""
+        import signal
+
+        from little_loops import cli
+
+        # Reset state
+        cli._sprint_shutdown_requested = False
+
+        # Call handler (simulating SIGINT)
+        cli._sprint_signal_handler(signal.SIGINT, None)
+
+        assert cli._sprint_shutdown_requested is True
+
+    def test_signal_handler_second_signal_exits(self) -> None:
+        """Second signal raises SystemExit."""
+        import signal
+
+        import pytest
+
+        from little_loops import cli
+
+        # Set flag as if first signal received
+        cli._sprint_shutdown_requested = True
+
+        # Second signal should exit
+        with pytest.raises(SystemExit) as exc_info:
+            cli._sprint_signal_handler(signal.SIGINT, None)
+
+        assert exc_info.value.code == 1

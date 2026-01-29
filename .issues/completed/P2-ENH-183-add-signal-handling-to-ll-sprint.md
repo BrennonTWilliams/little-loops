@@ -15,7 +15,7 @@ ll-sprint lacks signal handlers for SIGINT/SIGTERM, causing abrupt termination t
 Identified from CLI Tools Audit (docs/CLI-TOOLS-AUDIT.md):
 - Consistency Matrix shows ll-sprint has "❌ None" for Signal Handling (35% score)
 - Listed as "High Priority" standardization opportunity
-- ll-auto implements handlers at `issue_manager.py:601-604`
+- ll-auto implements handlers at `issue_manager.py:609-615`
 - ll-parallel implements handlers with proper cleanup
 
 ## Current Behavior
@@ -62,7 +62,7 @@ signal.signal(signal.SIGTERM, _signal_handler)
 
 ## Files to Modify
 
-- `scripts/little_loops/cli.py:1619-1735` - Add signal handlers to sprint run
+- `scripts/little_loops/cli.py:1666-1851` - Add signal handlers to sprint run
 
 ## Dependencies
 
@@ -79,7 +79,7 @@ signal.signal(signal.SIGTERM, _signal_handler)
 
 | Category | Document | Relevance |
 |----------|----------|-----------|
-| reference | scripts/little_loops/issue_manager.py:598-599 | Signal handler pattern |
+| reference | scripts/little_loops/issue_manager.py:609-615 | Signal handler pattern |
 | audit | docs/CLI-TOOLS-AUDIT.md | Source of this issue |
 
 ## Labels
@@ -92,13 +92,41 @@ signal.signal(signal.SIGTERM, _signal_handler)
 
 **Verified: 2026-01-29**
 
-- Confirmed: No signal handling in `_cmd_sprint_run()` at `cli.py:1619-1738`
-- ll-auto has signal handlers at `issue_manager.py:598-599` (corrected from 601-604)
+- Confirmed: No signal handling in `_cmd_sprint_run()` at `cli.py:1666-1851`
+- ll-auto has signal handlers at `issue_manager.py:609-615`
 - ll-parallel has signal handlers in `orchestrator.py`
 - Issue description remains accurate
 
 ---
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli.py`: Added module-level `_sprint_shutdown_requested` flag and `_sprint_signal_handler()` function
+- `scripts/little_loops/cli.py`: Registered SIGINT/SIGTERM handlers in `_cmd_sprint_run()`
+- `scripts/little_loops/cli.py`: Added shutdown checks between waves in the execution loop
+- `scripts/tests/test_sprint.py`: Added unit tests for signal handler behavior
+
+### Implementation Details
+- First Ctrl+C sets shutdown flag and logs message, allowing current wave to complete
+- Second Ctrl+C forces immediate exit with code 1
+- State is automatically saved per-wave (already implemented), preserved for resume
+- Follows ll-auto pattern (simple module-level handler, no handler restoration needed)
+
+### Verification Results
+- Tests: PASS (2 new signal handler tests + 1881 existing tests pass)
+- Lint: PASS
+- Types: PASS
+
+### Commits
+- See git log for commit details
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-29 | Verified: 2026-01-29 | Priority: P2
+**Completed** | Created: 2026-01-29 | Verified: 2026-01-29 | Completed: 2026-01-29 | Priority: P2
