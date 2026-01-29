@@ -1,10 +1,11 @@
 """Tests for sprint module."""
 
+import json
 from pathlib import Path
 
 import yaml
 
-from little_loops.sprint import Sprint, SprintManager, SprintOptions
+from little_loops.sprint import Sprint, SprintManager, SprintOptions, SprintState
 
 
 class TestSprintOptions:
@@ -326,3 +327,136 @@ class TestSprintYAMLFormat:
 
         assert "options" in data
         assert data["options"]["max_workers"] == 8
+
+
+class TestSprintState:
+    """Tests for SprintState dataclass."""
+
+    def test_default_values(self) -> None:
+        """SprintState has correct default values."""
+        state = SprintState()
+
+        assert state.sprint_name == ""
+        assert state.current_wave == 0
+        assert state.completed_issues == []
+        assert state.failed_issues == {}
+        assert state.timing == {}
+        assert state.started_at == ""
+        assert state.last_checkpoint == ""
+
+    def test_to_dict(self) -> None:
+        """Test serialization to dictionary."""
+        state = SprintState(
+            sprint_name="test-sprint",
+            current_wave=2,
+            completed_issues=["BUG-001", "FEAT-002"],
+            failed_issues={"BUG-003": "Timeout"},
+            timing={"BUG-001": {"total": 120.5}},
+            started_at="2026-01-29T10:00:00",
+            last_checkpoint="2026-01-29T10:30:00",
+        )
+
+        result = state.to_dict()
+
+        assert result["sprint_name"] == "test-sprint"
+        assert result["current_wave"] == 2
+        assert result["completed_issues"] == ["BUG-001", "FEAT-002"]
+        assert result["failed_issues"] == {"BUG-003": "Timeout"}
+        assert result["timing"] == {"BUG-001": {"total": 120.5}}
+        assert result["started_at"] == "2026-01-29T10:00:00"
+        assert result["last_checkpoint"] == "2026-01-29T10:30:00"
+
+    def test_to_dict_json_serializable(self) -> None:
+        """Test that to_dict output is JSON serializable."""
+        state = SprintState(
+            sprint_name="test",
+            current_wave=1,
+            completed_issues=["A"],
+        )
+
+        result = state.to_dict()
+        # Should not raise
+        json.dumps(result)
+
+    def test_from_dict(self) -> None:
+        """Test deserialization from dictionary."""
+        data = {
+            "sprint_name": "my-sprint",
+            "current_wave": 3,
+            "completed_issues": ["FEAT-001"],
+            "failed_issues": {"FEAT-002": "Error"},
+            "timing": {"FEAT-001": {"ready": 10.0}},
+            "started_at": "2026-01-29T09:00:00",
+            "last_checkpoint": "2026-01-29T09:45:00",
+        }
+
+        state = SprintState.from_dict(data)
+
+        assert state.sprint_name == "my-sprint"
+        assert state.current_wave == 3
+        assert state.completed_issues == ["FEAT-001"]
+        assert state.failed_issues == {"FEAT-002": "Error"}
+        assert state.timing == {"FEAT-001": {"ready": 10.0}}
+        assert state.started_at == "2026-01-29T09:00:00"
+        assert state.last_checkpoint == "2026-01-29T09:45:00"
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test from_dict with missing keys uses defaults."""
+        data = {"sprint_name": "partial"}
+
+        state = SprintState.from_dict(data)
+
+        assert state.sprint_name == "partial"
+        assert state.current_wave == 0
+        assert state.completed_issues == []
+        assert state.failed_issues == {}
+        assert state.timing == {}
+        assert state.started_at == ""
+        assert state.last_checkpoint == ""
+
+    def test_roundtrip_serialization(self) -> None:
+        """Test roundtrip through to_dict and from_dict."""
+        original = SprintState(
+            sprint_name="roundtrip-test",
+            current_wave=2,
+            completed_issues=["A", "B"],
+            failed_issues={"C": "error"},
+            timing={"A": {"total": 50.0}},
+            started_at="2026-01-29T08:00:00",
+            last_checkpoint="2026-01-29T08:30:00",
+        )
+
+        restored = SprintState.from_dict(original.to_dict())
+
+        assert restored.sprint_name == original.sprint_name
+        assert restored.current_wave == original.current_wave
+        assert restored.completed_issues == original.completed_issues
+        assert restored.failed_issues == original.failed_issues
+        assert restored.timing == original.timing
+        assert restored.started_at == original.started_at
+        assert restored.last_checkpoint == original.last_checkpoint
+
+    def test_file_roundtrip(self, tmp_path: Path) -> None:
+        """Test roundtrip through JSON file."""
+        state = SprintState(
+            sprint_name="file-test",
+            current_wave=1,
+            completed_issues=["BUG-001"],
+            failed_issues={"BUG-002": "Failed"},
+            timing={"BUG-001": {"total": 100.0}},
+            started_at="2026-01-29T10:00:00",
+            last_checkpoint="2026-01-29T10:05:00",
+        )
+
+        # Write to file
+        state_file = tmp_path / ".sprint-state.json"
+        state_file.write_text(json.dumps(state.to_dict(), indent=2))
+
+        # Read back
+        data = json.loads(state_file.read_text())
+        restored = SprintState.from_dict(data)
+
+        assert restored.sprint_name == state.sprint_name
+        assert restored.current_wave == state.current_wave
+        assert restored.completed_issues == state.completed_issues
+        assert restored.failed_issues == state.failed_issues

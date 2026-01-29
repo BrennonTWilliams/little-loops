@@ -58,7 +58,7 @@ class SprintState:
 
 - `scripts/little_loops/sprint.py` - Add SprintState dataclass and persistence
 - `scripts/little_loops/cli.py:1308-1320` - Add --resume argument to run subparser
-- `scripts/little_loops/cli.py:1619-1738` - Integrate state into `_cmd_sprint_run()` logic
+- `scripts/little_loops/cli.py:1619-1741` - Integrate state into `_cmd_sprint_run()` logic
 
 ## Impact
 
@@ -70,8 +70,8 @@ class SprintState:
 
 | Category | Document | Relevance |
 |----------|----------|-----------|
-| reference | scripts/little_loops/state.py | StateManager pattern to follow |
-| reference | scripts/little_loops/parallel/types.py | OrchestratorState pattern |
+| reference | scripts/little_loops/state.py:76 | StateManager pattern to follow |
+| reference | scripts/little_loops/parallel/types.py:176 | OrchestratorState pattern |
 | audit | docs/CLI-TOOLS-AUDIT.md | Source of this issue |
 
 ## Labels
@@ -82,16 +82,43 @@ class SprintState:
 
 ## Verification Notes
 
-**Verified: 2026-01-29**
+**Verified: 2026-01-29** (updated by ready_issue)
 
 - Confirmed: No `SprintState` or state persistence exists in sprint code
-- ll-auto uses `StateManager` at `issue_manager.py:592`
-- ll-parallel uses `OrchestratorState` in `parallel/types.py`
-- Sprint run function is at `cli.py:1619-1738` (updated from original reference)
+- ll-auto uses `StateManager` at `state.py:76` (not issue_manager.py)
+- ll-parallel uses `OrchestratorState` in `parallel/types.py:176`
+- Sprint run function is at `cli.py:1619-1741`
+- Run subparser definition is at `cli.py:1308-1320`
 - Issue description remains accurate
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/sprint.py`: Added `SprintState` dataclass with `to_dict()` and `from_dict()` methods for JSON serialization
+- `scripts/little_loops/cli.py`: Added `--resume/-r` flag to sprint run subparser
+- `scripts/little_loops/cli.py`: Added helper functions `_get_sprint_state_file()`, `_load_sprint_state()`, `_save_sprint_state()`, `_cleanup_sprint_state()`
+- `scripts/little_loops/cli.py`: Updated `_cmd_sprint_run()` to track state, skip completed waves on resume, and clean up on success
+- `scripts/tests/test_sprint.py`: Added `TestSprintState` test class with 7 tests
+
+### Verification Results
+- Tests: PASS (1879 passed, 1 pre-existing unrelated failure)
+- Lint: PASS
+- Types: PASS
+
+### Features Implemented
+- State persists to `.sprint-state.json` after each wave completion
+- `--resume/-r` flag loads existing state and continues from the first incomplete wave
+- State file is cleaned up on successful completion (no failures)
+- Mismatch detection when resuming with a different sprint name
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-01-29 | Verified: 2026-01-29 | Priority: P2
+**Completed** | Created: 2026-01-29 | Verified: 2026-01-29 | Completed: 2026-01-29 | Priority: P2

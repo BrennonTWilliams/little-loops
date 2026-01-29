@@ -1,9 +1,9 @@
 """Sprint and sequence management for issue execution."""
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -50,6 +50,61 @@ class SprintOptions:
             max_iterations=data.get("max_iterations", 100),
             timeout=data.get("timeout", 3600),
             max_workers=data.get("max_workers", 2),
+        )
+
+
+@dataclass
+class SprintState:
+    """Persistent state for sprint execution.
+
+    Enables resume capability after interruption by tracking:
+    - Sprint name being executed
+    - Current wave number
+    - Completed issues
+    - Failed issues with reasons
+    - Timing information
+
+    Attributes:
+        sprint_name: Name of the sprint being executed
+        current_wave: Wave number currently being processed (1-indexed)
+        completed_issues: List of completed issue IDs
+        failed_issues: Mapping of issue ID to failure reason
+        timing: Per-issue timing breakdown
+        started_at: ISO 8601 timestamp when sprint started
+        last_checkpoint: ISO 8601 timestamp of last state save
+    """
+
+    sprint_name: str = ""
+    current_wave: int = 0
+    completed_issues: list[str] = field(default_factory=list)
+    failed_issues: dict[str, str] = field(default_factory=dict)
+    timing: dict[str, dict[str, float]] = field(default_factory=dict)
+    started_at: str = ""
+    last_checkpoint: str = ""
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert state to dictionary for JSON serialization."""
+        return {
+            "sprint_name": self.sprint_name,
+            "current_wave": self.current_wave,
+            "completed_issues": self.completed_issues,
+            "failed_issues": self.failed_issues,
+            "timing": self.timing,
+            "started_at": self.started_at,
+            "last_checkpoint": self.last_checkpoint,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "SprintState":
+        """Create state from dictionary (JSON deserialization)."""
+        return cls(
+            sprint_name=data.get("sprint_name", ""),
+            current_wave=data.get("current_wave", 0),
+            completed_issues=data.get("completed_issues", []),
+            failed_issues=data.get("failed_issues", {}),
+            timing=data.get("timing", {}),
+            started_at=data.get("started_at", ""),
+            last_checkpoint=data.get("last_checkpoint", ""),
         )
 
 

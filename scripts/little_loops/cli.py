@@ -19,7 +19,7 @@ from little_loops.dependency_graph import DependencyGraph
 from little_loops.issue_manager import AutoManager
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
-from little_loops.sprint import SprintManager, SprintOptions
+from little_loops.sprint import SprintManager, SprintOptions, SprintState
 
 
 def main_auto() -> int:
@@ -1318,6 +1318,12 @@ Examples:
     )
     run_parser.add_argument("--timeout", type=int, help="Override timeout in seconds")
     run_parser.add_argument("--config", type=Path, default=None, help="Path to project root")
+    run_parser.add_argument(
+        "--resume",
+        "-r",
+        action="store_true",
+        help="Resume from previous checkpoint",
+    )
 
     # list subcommand
     list_parser = subparsers.add_parser("list", help="List all sprints")
@@ -1616,12 +1622,55 @@ def _cmd_sprint_delete(args: argparse.Namespace, manager: SprintManager) -> int:
     return 0
 
 
+def _get_sprint_state_file() -> Path:
+    """Get path to sprint state file."""
+    return Path.cwd() / ".sprint-state.json"
+
+
+def _load_sprint_state(logger: Logger) -> SprintState | None:
+    """Load sprint state from file."""
+    import json
+
+    state_file = _get_sprint_state_file()
+    if not state_file.exists():
+        return None
+    try:
+        data = json.loads(state_file.read_text())
+        state = SprintState.from_dict(data)
+        logger.info(f"State loaded from {state_file}")
+        return state
+    except (json.JSONDecodeError, KeyError) as e:
+        logger.warning(f"Failed to load state: {e}")
+        return None
+
+
+def _save_sprint_state(state: SprintState, logger: Logger) -> None:
+    """Save sprint state to file."""
+    import json
+    from datetime import datetime
+
+    state.last_checkpoint = datetime.now().isoformat()
+    state_file = _get_sprint_state_file()
+    state_file.write_text(json.dumps(state.to_dict(), indent=2))
+    logger.info(f"State saved to {state_file}")
+
+
+def _cleanup_sprint_state(logger: Logger) -> None:
+    """Remove sprint state file."""
+    state_file = _get_sprint_state_file()
+    if state_file.exists():
+        state_file.unlink()
+        logger.info("Sprint state file cleaned up")
+
+
 def _cmd_sprint_run(
     args: argparse.Namespace,
     manager: SprintManager,
     config: BRConfig,
 ) -> int:
     """Execute a sprint with dependency-aware scheduling."""
+    from datetime import datetime
+
     logger = Logger()
     sprint = manager.load(args.sprint)
     if not sprint:
@@ -1671,17 +1720,64 @@ def _cmd_sprint_run(
         logger.info("\nDry run mode - no changes will be made")
         return 0
 
+    # Initialize or load state
+    state: SprintState
+    start_wave = 1
+
+    if args.resume:
+        loaded_state = _load_sprint_state(logger)
+        if loaded_state and loaded_state.sprint_name == args.sprint:
+            state = loaded_state
+            # Find first incomplete wave by checking completed issues
+            completed_set = set(state.completed_issues)
+            for i, wave in enumerate(waves, 1):
+                wave_issue_ids = {issue.issue_id for issue in wave}
+                if not wave_issue_ids.issubset(completed_set):
+                    start_wave = i
+                    break
+            else:
+                # All waves completed
+                logger.info("Sprint already completed - nothing to resume")
+                _cleanup_sprint_state(logger)
+                return 0
+            logger.info(f"Resuming from wave {start_wave}/{len(waves)}")
+            logger.info(f"  Previously completed: {len(state.completed_issues)} issues")
+        else:
+            if loaded_state:
+                logger.warning(
+                    f"State file is for sprint '{loaded_state.sprint_name}', "
+                    f"not '{args.sprint}' - starting fresh"
+                )
+            else:
+                logger.warning("No valid state found - starting fresh")
+            state = SprintState(
+                sprint_name=args.sprint,
+                started_at=datetime.now().isoformat(),
+            )
+    else:
+        # Fresh start - delete any old state
+        _cleanup_sprint_state(logger)
+        state = SprintState(
+            sprint_name=args.sprint,
+            started_at=datetime.now().isoformat(),
+        )
+
     # Determine max workers
     max_workers = args.max_workers or (sprint.options.max_workers if sprint.options else 2)
 
     # Execute wave by wave
-    completed: set[str] = set()
+    completed: set[str] = set(state.completed_issues)
     failed_waves = 0
     total_duration = 0.0
     total_waves = len(waves)
 
     for wave_num, wave in enumerate(waves, 1):
+        # Skip already-completed waves when resuming
+        if wave_num < start_wave:
+            continue
+
         wave_ids = [issue.issue_id for issue in wave]
+        state.current_wave = wave_num
         logger.info(f"\nProcessing wave {wave_num}/{total_waves}: {', '.join(wave_ids)}")
 
         if len(wave) == 1:
@@ -1697,11 +1793,16 @@ def _cmd_sprint_run(
             total_duration += issue_result.duration
             if issue_result.success:
                 completed.update(wave_ids)
+                state.completed_issues.extend(wave_ids)
+                state.timing[wave_ids[0]] = {"total": issue_result.duration}
                 logger.success(f"Wave {wave_num}/{total_waves} completed: {wave_ids[0]}")
             else:
                 failed_waves += 1
                 completed.update(wave_ids)
+                state.completed_issues.extend(wave_ids)
+                state.failed_issues[wave_ids[0]] = "Issue processing failed"
                 logger.warning(f"Wave {wave_num}/{total_waves} had failures")
+            _save_sprint_state(state, logger)
             if wave_num < total_waves:
                 logger.info(f"Continuing to wave {wave_num + 1}/{total_waves}...")
         else:
@@ -1722,13 +1823,19 @@ def _cmd_sprint_run(
             # Track completed/failed from this wave
             if result == 0:
                 completed.update(wave_ids)
+                state.completed_issues.extend(wave_ids)
+                for issue_id in wave_ids:
+                    state.timing[issue_id] = {"total": orchestrator.execution_duration / len(wave)}
                 logger.success(f"Wave {wave_num}/{total_waves} completed: {', '.join(wave_ids)}")
             else:
                 # Some issues failed - continue but track failures
                 failed_waves += 1
-                logger.warning(f"Wave {wave_num}/{total_waves} had failures")
-                # Mark all as attempted (orchestrator tracks actual status)
                 completed.update(wave_ids)
+                state.completed_issues.extend(wave_ids)
+                for issue_id in wave_ids:
+                    state.failed_issues[issue_id] = "Wave execution had failures"
+                logger.warning(f"Wave {wave_num}/{total_waves} had failures")
+            _save_sprint_state(state, logger)
             if wave_num < total_waves:
                 logger.info(f"Continuing to wave {wave_num + 1}/{total_waves}...")
 
@@ -1738,6 +1845,9 @@ def _cmd_sprint_run(
     if failed_waves > 0:
         logger.warning(f"{failed_waves} wave(s) had failures")
         return 1
+
+    # Clean up state on successful completion
+    _cleanup_sprint_state(logger)
     return 0
 
 
