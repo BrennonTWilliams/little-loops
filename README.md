@@ -281,7 +281,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `/ll:scan_codebase` | Find new issues |
 | `/ll:capture_issue [input]` | Capture issues from conversation |
 | `/ll:align_issues <category>` | Validate issues against key documents |
-| `/ll:create_sprint [name]` | Create sprint with curated issue list |
+| `/ll:create_sprint [name] [--issues]` | Create sprint (explicit or auto-suggested) |
 
 ### Documentation & Analysis
 

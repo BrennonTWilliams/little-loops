@@ -108,7 +108,12 @@ Create a sprint definition with a curated list of issues.
 - `description` (optional): Description of the sprint's purpose
 - `issues` (optional): Comma-separated list of issue IDs (e.g., "BUG-001,FEAT-010")
 
-**Interactive Mode:** If issues are not provided, the command will help select issues interactively.
+**Modes:**
+- **Explicit**: Pass `--issues "BUG-001,FEAT-010"` to create a sprint with specific issues
+- **Auto-Grouping**: When `issues` is omitted, suggests natural sprint groupings:
+  - Priority cluster (P0-P1 critical), type cluster (bugs/features/enhancements)
+  - Parallelizable (no blockers), theme cluster (test, performance, security)
+- **Manual Selection**: Choose "Select manually" to pick issues interactively
 
 **Output:** Creates `.sprints/<name>.yaml` with issue list and execution options.
 
