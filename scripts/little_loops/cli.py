@@ -341,11 +341,12 @@ def main_messages() -> int:
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  %(prog)s                      # Last 100 messages to file
-  %(prog)s -n 50                # Last 50 messages
-  %(prog)s --since 2026-01-01   # Messages since date
-  %(prog)s -o output.jsonl      # Custom output path
-  %(prog)s --stdout             # Print to terminal
+  %(prog)s                              # Last 100 messages to file
+  %(prog)s -n 50                        # Last 50 messages
+  %(prog)s --since 2026-01-01           # Messages since date
+  %(prog)s -o output.jsonl              # Custom output path
+  %(prog)s --stdout                     # Print to terminal
+  %(prog)s --include-response-context   # Include response metadata
 """,
     )
     parser.add_argument(
@@ -387,6 +388,11 @@ Examples:
         action="store_true",
         help="Print verbose progress information",
     )
+    parser.add_argument(
+        "--include-response-context",
+        action="store_true",
+        help="Include metadata from assistant responses (tools used, files modified)",
+    )
 
     args = parser.parse_args()
 
@@ -427,6 +433,7 @@ Examples:
         limit=args.limit,
         since=since,
         include_agent_sessions=not args.exclude_agents,
+        include_response_context=args.include_response_context,
     )
 
     if not messages:

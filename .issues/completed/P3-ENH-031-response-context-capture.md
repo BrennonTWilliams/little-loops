@@ -76,7 +76,7 @@ Add `response_metadata` field to extracted messages:
 
 ### 3. Parsing Requirements
 
-Modify `scripts/little_loops/messages.py` to:
+Modify `scripts/little_loops/user_messages.py` to:
 
 1. **Parse full conversation turns**:
    ```python
@@ -206,9 +206,9 @@ file_workflows:
 
 | Component | Path |
 |-----------|------|
-| Module | `scripts/little_loops/messages.py` (enhance) |
-| CLI | `scripts/little_loops/messages_cli.py` (add flag) |
-| Tests | `scripts/tests/test_messages.py` (add response tests) |
+| Module | `scripts/little_loops/user_messages.py` (enhance) |
+| CLI | `scripts/little_loops/cli.py` (main_messages function - add flag) |
+| Tests | `scripts/tests/test_user_messages.py` (add response tests) |
 
 ## Current Behavior
 
@@ -258,3 +258,28 @@ None. This is an enhancement to improve analysis accuracy.
 ## Status
 
 **Open** | Created: 2026-01-12 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/user_messages.py`: Added `ResponseMetadata` dataclass, `_extract_response_metadata()`, `_detect_completion_status()`, `_detect_error_message()`, `_parse_user_record()`, and `_extract_messages_with_context()` helper functions. Extended `UserMessage` with optional `response_metadata` field. Added `include_response_context` parameter to `extract_user_messages()`.
+- `scripts/little_loops/cli.py`: Added `--include-response-context` flag to `main_messages()` function and updated CLI examples.
+- `scripts/tests/test_user_messages.py`: Added comprehensive tests for `ResponseMetadata`, `_extract_response_metadata`, `_detect_completion_status`, `_detect_error_message`, and `extract_user_messages` with response context.
+
+### Verification Results
+
+- Tests: PASS (54 tests)
+- Lint: PASS
+- Types: PASS
+
+### Notes
+
+- `follow_up_suggested` field was not implemented (complex NLP, deferred)
+- `--redact-paths` option was not implemented (mentioned as future consideration in issue)
