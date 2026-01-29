@@ -5,7 +5,7 @@ allowed-tools:
 arguments:
   - name: name
     description: Sprint name (e.g., "sprint-1", "q1-bug-fixes")
-    required: true
+    required: false
   - name: description
     description: Optional description of the sprint's purpose
     required: false
