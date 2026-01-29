@@ -1678,10 +1678,11 @@ def _cmd_sprint_run(
     completed: set[str] = set()
     failed_waves = 0
     total_duration = 0.0
+    total_waves = len(waves)
 
     for wave_num, wave in enumerate(waves, 1):
         wave_ids = [issue.issue_id for issue in wave]
-        logger.info(f"\nProcessing wave {wave_num}: {', '.join(wave_ids)}")
+        logger.info(f"\nProcessing wave {wave_num}/{total_waves}: {', '.join(wave_ids)}")
 
         if len(wave) == 1:
             # Single issue — process in-place (no worktree overhead)
@@ -1696,11 +1697,13 @@ def _cmd_sprint_run(
             total_duration += issue_result.duration
             if issue_result.success:
                 completed.update(wave_ids)
-                logger.success(f"Wave {wave_num} completed: {wave_ids[0]}")
+                logger.success(f"Wave {wave_num}/{total_waves} completed: {wave_ids[0]}")
             else:
                 failed_waves += 1
                 completed.update(wave_ids)
-                logger.warning(f"Wave {wave_num} had failures")
+                logger.warning(f"Wave {wave_num}/{total_waves} had failures")
+            if wave_num < total_waves:
+                logger.info(f"Continuing to wave {wave_num + 1}/{total_waves}...")
         else:
             # Multi-issue — use ParallelOrchestrator with worktrees
             only_ids = set(wave_ids)
@@ -1711,7 +1714,7 @@ def _cmd_sprint_run(
             )
 
             orchestrator = ParallelOrchestrator(
-                parallel_config, config, Path.cwd(), wave_label=f"Wave {wave_num}"
+                parallel_config, config, Path.cwd(), wave_label=f"Wave {wave_num}/{total_waves}"
             )
             result = orchestrator.run()
             total_duration += orchestrator.execution_duration
@@ -1719,15 +1722,18 @@ def _cmd_sprint_run(
             # Track completed/failed from this wave
             if result == 0:
                 completed.update(wave_ids)
-                logger.success(f"Wave {wave_num} completed: {', '.join(wave_ids)}")
+                logger.success(f"Wave {wave_num}/{total_waves} completed: {', '.join(wave_ids)}")
             else:
                 # Some issues failed - continue but track failures
                 failed_waves += 1
-                logger.warning(f"Wave {wave_num} had failures")
+                logger.warning(f"Wave {wave_num}/{total_waves} had failures")
                 # Mark all as attempted (orchestrator tracks actual status)
                 completed.update(wave_ids)
+            if wave_num < total_waves:
+                logger.info(f"Continuing to wave {wave_num + 1}/{total_waves}...")
 
-    logger.info(f"\nSprint completed: {len(completed)} issues processed")
+    wave_word = "wave" if len(waves) == 1 else "waves"
+    logger.info(f"\nSprint completed: {len(completed)} issues processed ({len(waves)} {wave_word})")
     logger.timing(f"Total execution time: {format_duration(total_duration)}")
     if failed_waves > 0:
         logger.warning(f"{failed_waves} wave(s) had failures")

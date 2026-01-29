@@ -49,4 +49,23 @@ _No documents linked. Run `/ll:align_issues` to discover relevant docs._
 
 ## Status
 
-**Open** | Created: 2026-01-28 | Priority: P3
+**Completed** | Created: 2026-01-28 | Completed: 2026-01-29 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli.py`: Updated wave messages to include "X/Y" format (e.g., "Wave 1/3") for wave start, completion, and failure messages
+- Added "Continuing to wave X/Y..." message between waves to indicate more work remains
+- Updated ParallelOrchestrator wave_label to include total count
+- Updated sprint completion message to include wave count (e.g., "3 issues processed (2 waves)")
+
+### Verification Results
+- Tests: PASS (1863 passed, 5 pre-existing failures unrelated to this change)
+- Lint: PASS (1 pre-existing warning unrelated to this change)
+- Types: PASS
