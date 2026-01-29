@@ -8,6 +8,8 @@ import pytest
 from little_loops.config import BRConfig
 from little_loops.sprint import SprintManager
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def sprint_project(tmp_path: Path) -> BRConfig:

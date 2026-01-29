@@ -43,6 +43,12 @@ ll-parallel --help
 # Run all tests
 pytest scripts/tests/
 
+# Run only unit tests (fast, excludes integration tests)
+pytest -m "not integration" scripts/tests/
+
+# Run only integration tests
+pytest -m integration scripts/tests/
+
 # Run with coverage
 pytest scripts/tests/ --cov=little_loops --cov-report=html
 

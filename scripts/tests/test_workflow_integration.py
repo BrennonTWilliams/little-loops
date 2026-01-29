@@ -18,6 +18,8 @@ import pytest
 if TYPE_CHECKING:
     pass
 
+pytestmark = pytest.mark.integration
+
 
 class TestSequentialWorkflowIntegration:
     """Integration tests for sequential issue processing (AutoManager)."""

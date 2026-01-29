@@ -13,6 +13,8 @@ import pytest
 from little_loops.parallel.merge_coordinator import MergeCoordinator
 from little_loops.parallel.types import MergeRequest, MergeStatus, ParallelConfig, WorkerResult
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def temp_git_repo() -> Generator[Path, None, None]:

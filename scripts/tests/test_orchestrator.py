@@ -35,6 +35,8 @@ from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.orchestrator import ParallelOrchestrator
 from little_loops.parallel.types import OrchestratorState, ParallelConfig, WorkerResult
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def mock_logger() -> MagicMock:

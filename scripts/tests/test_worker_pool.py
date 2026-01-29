@@ -30,6 +30,8 @@ from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import ParallelConfig, WorkerResult
 from little_loops.parallel.worker_pool import WorkerPool
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def mock_logger() -> MagicMock:

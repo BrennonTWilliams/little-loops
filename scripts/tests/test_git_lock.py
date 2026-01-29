@@ -13,6 +13,8 @@ import pytest
 
 from little_loops.parallel.git_lock import GitLock
 
+pytestmark = pytest.mark.integration
+
 
 @pytest.fixture
 def mock_logger() -> MagicMock:

@@ -10,6 +10,8 @@ import pytest
 
 from little_loops.git_operations import get_untracked_files
 
+pytestmark = pytest.mark.integration
+
 
 class TestGetUntrackedFiles:
     """Tests for get_untracked_files function."""
