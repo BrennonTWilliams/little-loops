@@ -52,35 +52,57 @@ Personal development preferences for this project.
 
 ## Implementation Notes
 
-- Load `ll.local.md` after `ll-config.json` in the SessionStart hook
+- Load `ll.local.md` after `ll-config.json` in `hooks/scripts/session-start.sh`
 - Parse YAML frontmatter using existing patterns
 - Log when local overrides are applied (for debugging)
 - Document the feature in CLAUDE.md
 
 ## Acceptance Criteria
 
-- [ ] `.claude/ll.local.md` is loaded when present
-- [ ] Settings merge correctly with `ll-config.json`
-- [ ] `.gitignore` template includes `.claude/ll.local.md`
-- [ ] Documentation updated with usage examples
-- [ ] SessionStart hook shows when local overrides are active
+- [x] `.claude/ll.local.md` is loaded when present
+- [x] Settings merge correctly with `ll-config.json`
+- [x] `.gitignore` template includes `.claude/ll.local.md`
+- [x] Documentation updated with usage examples
+- [x] SessionStart hook shows when local overrides are active
 
 ## Related
 
 - `.claude/settings.local.json` - Similar pattern for Claude Code plugin settings
-- `hooks/session-start/` - Where config loading occurs
+- `hooks/scripts/session-start.sh` - Where config loading occurs
 
 ---
 
 ## Verification Notes
 
-**Verified: 2026-01-18**
+**Verified: 2026-01-29**
 
-- No blockers identified
+- Corrected path references: `hooks/session-start/` → `hooks/scripts/session-start.sh`
+- Confirmed `.claude/ll-config.json` exists as primary config
+- Confirmed `.claude/settings.local.json` pattern exists (gitignored)
+- Confirmed `.gitignore` needs `.claude/ll.local.md` added (acceptance criterion)
 - Ready for implementation
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-01-16 | Priority: P3
+**Completed** | Created: 2026-01-16 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+- `hooks/scripts/session-start.sh`: Added Python-based YAML frontmatter parsing and deep merge logic to load and apply local overrides from `.claude/ll.local.md`
+- `.gitignore`: Added `.claude/ll.local.md` to gitignore (user-specific, not committed)
+- `.claude/CLAUDE.md`: Added "Local Settings Override" documentation section with usage examples and merge behavior
+
+### Verification Results
+- Bash syntax: PASS
+- Lint: PASS
+- Types: PASS
+- Manual testing: PASS (local overrides applied correctly, arrays replace, deep merge works)

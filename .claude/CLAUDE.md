@@ -8,7 +8,27 @@ Development workflow toolkit for Claude Code with issue management, code quality
 - **Plugin manifest**: `plugin.json`
 - **Config schema**: `config-schema.json`
 - **Project config**: `.claude/ll-config.json` (read this for project-specific settings)
+- **Local overrides**: `.claude/ll.local.md` (user-specific, gitignored)
 - **Hooks**: `hooks/hooks.json`
+
+### Local Settings Override
+
+Create `.claude/ll.local.md` to override settings for your local environment without modifying shared config:
+
+```markdown
+---
+project:
+  test_cmd: "python -m pytest scripts/tests/ -v --tb=short"
+scan:
+  focus_dirs: ["scripts/", "my-experimental-dir/"]
+---
+
+# Local Settings Notes
+
+Personal development preferences.
+```
+
+**Merge behavior**: Nested objects are deep merged, arrays replace (not append), explicit `null` removes a setting.
 
 ## Key Directories
 
