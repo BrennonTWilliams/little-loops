@@ -1,0 +1,103 @@
+# Demo Repository Catalog
+# Master catalog of GitHub repositories evaluated as demo candidates for little-loops
+
+catalog:
+  - repo: "ixartz/Next-js-Boilerplate"
+    url: "https://github.com/ixartz/Next-js-Boilerplate"
+    added_date: "2026-01-27"
+    scores:
+      visual_ui_layer: 8
+      test_coverage: 9
+      code_quality: 9
+      feature_expansion: 7
+      documentation: 8
+      project_size: 7
+      build_simplicity: 5
+      license_fork: 4
+      ecosystem_fit: 5
+      demo_narrative: 6
+    total_score: 68
+    verdict: "Excellent candidate — use it"
+    notes: |
+      Comprehensive Next.js 15 boilerplate with App Router, TypeScript, and Tailwind CSS.
+      Excellent test coverage (Vitest, Playwright E2E, Storybook). Strong code quality tooling
+      (ESLint, Prettier, Husky, Commitlint). Requires Node 22+, Clerk API keys, and database
+      setup which lowers build simplicity. Mainstream stack with active maintenance.
+    tags:
+      - nextjs
+      - typescript
+      - tailwind
+      - boilerplate
+      - fullstack
+    language: TypeScript
+    stars: 12600
+    license: MIT
+
+  - repo: "hanstanawi/react-ts-starter-template"
+    url: "https://github.com/hanstanawi/react-ts-starter-template"
+    added_date: "2026-01-27"
+    scores:
+      visual_ui_layer: 7
+      test_coverage: 6
+      code_quality: 7
+      feature_expansion: 7
+      documentation: 6
+      project_size: 5
+      build_simplicity: 7
+      license_fork: 4
+      ecosystem_fit: 5
+      demo_narrative: 5
+    total_score: 59
+    verdict: "Good candidate — minor gaps to work around"
+    notes: |
+      Clean React + TypeScript starter with Vite and TailwindCSS. Simpler setup than
+      Next.js alternatives - just pnpm install and run. Has Jest + Testing Library
+      for unit tests but lacks E2E testing. Good code quality tooling (ESLint, Prettier,
+      Husky). Smaller footprint makes it easier to demo in real-time.
+    tags:
+      - react
+      - typescript
+      - vite
+      - tailwind
+      - boilerplate
+    language: TypeScript
+    stars: 300
+    license: MIT
+
+  - repo: "thecodingmachine/react-native-boilerplate"
+    url: "https://github.com/thecodingmachine/react-native-boilerplate"
+    added_date: "2026-01-27"
+    scores:
+      visual_ui_layer: 7
+      test_coverage: 5
+      code_quality: 7
+      feature_expansion: 6
+      documentation: 7
+      project_size: 6
+      build_simplicity: 3
+      license_fork: 4
+      ecosystem_fit: 4
+      demo_narrative: 4
+    total_score: 53
+    verdict: "Good candidate — minor gaps to work around"
+    notes: |
+      Professional React Native boilerplate from TheCodingMachine agency. Well-documented
+      architecture with TypeScript support. Lower build simplicity score due to React Native
+      environment setup (iOS/Android SDKs required). Mobile demo may be harder to showcase
+      in live settings. Good choice for mobile-focused demos but requires more setup time.
+    tags:
+      - react-native
+      - typescript
+      - mobile
+      - ios
+      - android
+      - boilerplate
+    language: TypeScript
+    stars: 5500
+    license: MIT
+
+metadata:
+  last_updated: "2026-01-27T18:55:00Z"
+  total_evaluated: 3
+  total_in_catalog: 3
+  average_score: 60.0
