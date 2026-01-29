@@ -15,7 +15,7 @@ class TestSprintOptions:
         options = SprintOptions()
         assert options.max_iterations == 100
         assert options.timeout == 3600
-        assert options.max_workers == 4
+        assert options.max_workers == 2
 
     def test_custom_values(self) -> None:
         """Custom values are set correctly."""
@@ -53,7 +53,7 @@ class TestSprintOptions:
     def test_from_dict_none(self) -> None:
         """None input returns defaults."""
         options = SprintOptions.from_dict(None)
-        assert options.max_workers == 4
+        assert options.max_workers == 2
 
 
 class TestSprint:
@@ -141,7 +141,7 @@ class TestSprint:
         assert sprint.issues == ["BUG-001"]
         # When no options provided, defaults are applied
         assert sprint.options is not None
-        assert sprint.options.max_workers == 4
+        assert sprint.options.max_workers == 2
 
     def test_save_and_load(self, tmp_path: Path) -> None:
         """Save and load round-trip works."""

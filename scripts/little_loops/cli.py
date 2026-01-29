@@ -1295,8 +1295,8 @@ Examples:
     create_parser.add_argument(
         "--max-workers",
         type=int,
-        default=4,
-        help="Max workers for parallel execution within waves (default: 4)",
+        default=2,
+        help="Max workers for parallel execution within waves (default: 2)",
     )
     create_parser.add_argument(
         "--timeout",
@@ -1672,7 +1672,7 @@ def _cmd_sprint_run(
         return 0
 
     # Determine max workers
-    max_workers = args.max_workers or (sprint.options.max_workers if sprint.options else 3)
+    max_workers = args.max_workers or (sprint.options.max_workers if sprint.options else 2)
 
     # Execute wave by wave
     completed: set[str] = set()
