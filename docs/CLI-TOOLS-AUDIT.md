@@ -125,14 +125,14 @@ This audit analyzes three CLI tools for quality and consistency:
 | Argument | ll-auto | ll-parallel | ll-sprint |
 |----------|---------|-------------|-----------|
 | `--dry-run/-n` | ✅ | ✅ | ✅ (run only) |
-| `--resume/-r` | ✅ | ✅ | ❌ |
+| `--resume/-r` | ✅ | ✅ | ✅ (run only) |
 | `--max-issues/-m` | ✅ | ✅ | ❌ |
 | `--only` | ✅ | ✅ | Uses `--issues` |
-| `--skip` | ✅ | ✅ | ❌ |
+| `--skip` | ✅ | ✅ | ✅ |
 | `--config` | ✅ | ✅ | ✅ (partial) |
 | `--quiet/-q` | ❌ | ✅ | ❌ |
-| `--timeout` | ❌ | ✅ `-t` | ✅ (no short) |
-| `--workers` | ❌ | ✅ `-w` | `--max-workers` |
+| `--timeout/-t` | ❌ | ✅ | ✅ |
+| `--workers/-w` | ❌ | ✅ | ✅ (`--max-workers`) |
 
 ---
 
@@ -162,10 +162,10 @@ This audit analyzes three CLI tools for quality and consistency:
 
 ### Medium Priority
 
-3. **Standardize Argument Flags**
-   - Add `-t` short flag for `--timeout` in sprint
-   - Add `-w` short flag for `--max-workers` in sprint
-   - Consider adding `--skip` to sprint
+3. **~~Standardize Argument Flags~~** ✅ (Completed in ENH-184)
+   - ~~Add `-t` short flag for `--timeout` in sprint~~
+   - ~~Add `-w` short flag for `--max-workers` in sprint~~
+   - ~~Consider adding `--skip` to sprint~~
    - Files: `cli.py:1284-1336`
 
 4. **Add Error Handling Wrapper to Sprint**

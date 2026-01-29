@@ -1332,16 +1332,24 @@ Examples:
     )
     create_parser.add_argument("--description", "-d", default="", help="Sprint description")
     create_parser.add_argument(
+        "-w",
         "--max-workers",
         type=int,
         default=2,
         help="Max workers for parallel execution within waves (default: 2)",
     )
     create_parser.add_argument(
+        "-t",
         "--timeout",
         type=int,
         default=3600,
         help="Default timeout in seconds (default: 3600)",
+    )
+    create_parser.add_argument(
+        "--skip",
+        type=str,
+        default=None,
+        help="Comma-separated list of issue IDs to exclude from sprint (e.g., BUG-003,FEAT-004)",
     )
 
     # run subcommand
@@ -1351,17 +1359,24 @@ Examples:
         "--dry-run", "-n", action="store_true", help="Show execution plan without running"
     )
     run_parser.add_argument(
+        "-w",
         "--max-workers",
         type=int,
         help="Override max workers for parallel mode",
     )
-    run_parser.add_argument("--timeout", type=int, help="Override timeout in seconds")
+    run_parser.add_argument("-t", "--timeout", type=int, help="Override timeout in seconds")
     run_parser.add_argument("--config", type=Path, default=None, help="Path to project root")
     run_parser.add_argument(
         "--resume",
         "-r",
         action="store_true",
         help="Resume from previous checkpoint",
+    )
+    run_parser.add_argument(
+        "--skip",
+        type=str,
+        default=None,
+        help="Comma-separated list of issue IDs to skip during execution (e.g., BUG-003,FEAT-004)",
     )
 
     # list subcommand
@@ -1410,6 +1425,15 @@ def _cmd_sprint_create(args: argparse.Namespace, manager: SprintManager) -> int:
     """Create a new sprint."""
     logger = Logger()
     issues = [i.strip().upper() for i in args.issues.split(",")]
+
+    # Apply skip filter if provided
+    if args.skip:
+        skip_ids = {s.strip().upper() for s in args.skip.split(",")}
+        original_count = len(issues)
+        issues = [i for i in issues if i not in skip_ids]
+        skipped = original_count - len(issues)
+        if skipped > 0:
+            logger.info(f"Skipping {skipped} issue(s): {', '.join(sorted(skip_ids & set(issues) | skip_ids))}")
 
     # Validate issues exist
     valid = manager.validate_issues(issues)
@@ -1723,9 +1747,19 @@ def _cmd_sprint_run(
         logger.error(f"Sprint not found: {args.sprint}")
         return 1
 
+    # Apply skip filter if provided
+    issues_to_process = list(sprint.issues)
+    if args.skip:
+        skip_ids = {s.strip().upper() for s in args.skip.split(",")}
+        original_count = len(issues_to_process)
+        issues_to_process = [i for i in issues_to_process if i not in skip_ids]
+        skipped = original_count - len(issues_to_process)
+        if skipped > 0:
+            logger.info(f"Skipping {skipped} issue(s): {', '.join(sorted(skip_ids))}")
+
     # Validate issues exist
-    valid = manager.validate_issues(sprint.issues)
-    invalid = set(sprint.issues) - set(valid.keys())
+    valid = manager.validate_issues(issues_to_process)
+    invalid = set(issues_to_process) - set(valid.keys())
 
     if invalid:
         logger.error(f"Issue IDs not found: {', '.join(sorted(invalid))}")
@@ -1733,7 +1767,7 @@ def _cmd_sprint_run(
         return 1
 
     # Load full IssueInfo objects for dependency analysis
-    issue_infos = manager.load_issue_infos(sprint.issues)
+    issue_infos = manager.load_issue_infos(issues_to_process)
     if not issue_infos:
         logger.error("No issue files found")
         return 1

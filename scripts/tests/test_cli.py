@@ -674,16 +674,19 @@ class TestSprintArgumentParsing:
         create.add_argument("name")
         create.add_argument("--issues", required=True)
         create.add_argument("--description", "-d", default="")
-        create.add_argument("--max-workers", type=int, default=4)
-        create.add_argument("--timeout", type=int, default=3600)
+        create.add_argument("-w", "--max-workers", type=int, default=4)
+        create.add_argument("-t", "--timeout", type=int, default=3600)
+        create.add_argument("--skip", type=str, default=None)
 
         # run
         run = subparsers.add_parser("run")
         run.add_argument("sprint")
         run.add_argument("--dry-run", "-n", action="store_true")
-        run.add_argument("--max-workers", type=int)
-        run.add_argument("--timeout", type=int)
+        run.add_argument("-w", "--max-workers", type=int)
+        run.add_argument("-t", "--timeout", type=int)
         run.add_argument("--config", type=Path)
+        run.add_argument("--resume", "-r", action="store_true")
+        run.add_argument("--skip", type=str, default=None)
 
         # list
         list_parser = subparsers.add_parser("list")
@@ -760,6 +763,42 @@ class TestSprintArgumentParsing:
         """No command shows help."""
         args = self._parse_sprint_args([])
         assert args.command is None
+
+    def test_create_with_short_flags(self) -> None:
+        """create subcommand accepts short flags for --max-workers and --timeout."""
+        args = self._parse_sprint_args(
+            ["create", "sprint-1", "--issues", "BUG-001", "-w", "4", "-t", "1800"]
+        )
+        assert args.command == "create"
+        assert args.max_workers == 4
+        assert args.timeout == 1800
+
+    def test_run_with_short_flags(self) -> None:
+        """run subcommand accepts short flags for --max-workers and --timeout."""
+        args = self._parse_sprint_args(["run", "sprint-1", "-w", "4", "-t", "1800"])
+        assert args.command == "run"
+        assert args.max_workers == 4
+        assert args.timeout == 1800
+
+    def test_create_with_skip(self) -> None:
+        """create subcommand accepts --skip to exclude issues."""
+        args = self._parse_sprint_args(
+            ["create", "sprint-1", "--issues", "BUG-001,BUG-002", "--skip", "BUG-002"]
+        )
+        assert args.command == "create"
+        assert args.skip == "BUG-002"
+
+    def test_run_with_skip(self) -> None:
+        """run subcommand accepts --skip to exclude issues."""
+        args = self._parse_sprint_args(["run", "sprint-1", "--skip", "BUG-002,BUG-003"])
+        assert args.command == "run"
+        assert args.skip == "BUG-002,BUG-003"
+
+    def test_run_with_resume(self) -> None:
+        """run subcommand accepts --resume/-r."""
+        args = self._parse_sprint_args(["run", "sprint-1", "-r"])
+        assert args.command == "run"
+        assert args.resume is True
 
 
 class TestSprintShowDependencyVisualization:

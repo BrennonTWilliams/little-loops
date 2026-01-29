@@ -21,10 +21,10 @@ Identified from CLI Tools Audit (docs/CLI-TOOLS-AUDIT.md):
 | Argument | ll-auto | ll-parallel | ll-sprint |
 |----------|---------|-------------|-----------|
 | `--timeout` | ❌ | ✅ `-t` | ✅ (no short) |
-| `--workers` | ❌ | ✅ `-w` | `--max-workers` |
+| `--workers` | ❌ | ✅ `-w` | `--max-workers` (no short) |
 | `--skip` | ✅ | ✅ | ❌ |
 | `--only` | ✅ | ✅ | Uses `--issues` |
-| `--resume` | ✅ `-r` | ✅ `-r` | ❌ |
+| `--resume` | ✅ `-r` | ✅ `-r` | ✅ `-r` |
 | `--quiet` | ❌ | ✅ `-q` | ❌ |
 
 ## Expected Behavior
@@ -34,7 +34,7 @@ Consistent flags across all three tools:
 - `--max-workers/-w` - Consistent naming (prefer `--max-workers` for clarity)
 - `--skip` - Available in all tools for excluding issues
 - `--only` - Consistent naming across tools (not `--issues`)
-- `--resume/-r` - Available in all tools (requires ENH-182 for sprint)
+- `--resume/-r` - Already available in all tools
 - `--quiet/-q` - Available in all tools (see ENH-189)
 
 ## Proposed Solution
@@ -61,7 +61,11 @@ parser.add_argument("--skip", nargs="*", help="Issues to skip")
 
 ## Files to Modify
 
-- `scripts/little_loops/cli.py:1284-1336` - Sprint argument definitions
+- `scripts/little_loops/cli.py:1300-1381` - Sprint argument definitions (main_sprint function)
+
+## Anchor
+
+`def main_sprint()` - Function containing all sprint CLI argument definitions
 
 ## Impact
 
@@ -83,4 +87,26 @@ parser.add_argument("--skip", nargs="*", help="Issues to skip")
 
 ## Status
 
-**Open** | Created: 2026-01-29 | Priority: P3
+**Completed** | Created: 2026-01-29 | Completed: 2026-01-29 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+
+- `scripts/little_loops/cli.py`: Added `-t` short flag for `--timeout` in ll-sprint create/run
+- `scripts/little_loops/cli.py`: Added `-w` short flag for `--max-workers` in ll-sprint create/run
+- `scripts/little_loops/cli.py`: Added `--skip` argument to ll-sprint create/run subcommands
+- `scripts/tests/test_cli.py`: Updated test helper and added 5 new tests for short flags and skip
+- `docs/CLI-TOOLS-AUDIT.md`: Updated argument comparison table to reflect new consistency
+
+### Verification Results
+
+- Tests: PASS (12/12 sprint argument tests)
+- Lint: PASS (ruff check)
+- Types: PASS (mypy)
