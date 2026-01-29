@@ -288,7 +288,7 @@ class SprintsConfig:
 
     sprints_dir: str = ".sprints"
     default_timeout: int = 3600
-    default_max_workers: int = 3
+    default_max_workers: int = 2
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> SprintsConfig:
@@ -296,7 +296,7 @@ class SprintsConfig:
         return cls(
             sprints_dir=data.get("sprints_dir", ".sprints"),
             default_timeout=data.get("default_timeout", 3600),
-            default_max_workers=data.get("default_max_workers", 3),
+            default_max_workers=data.get("default_max_workers", 2),
         )
 
 

@@ -276,7 +276,7 @@ class TestSprintsConfig:
 
         assert config.sprints_dir == ".sprints"
         assert config.default_timeout == 3600
-        assert config.default_max_workers == 4
+        assert config.default_max_workers == 2
 
 
 class TestBRConfig:
