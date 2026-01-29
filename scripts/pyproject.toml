@@ -58,6 +58,7 @@ dev = [
     "pytest>=7.0",
     "pytest-cov>=4.0",
     "hypothesis>=6.0",
+    "mutmut>=3.0",
     "ruff>=0.1.0",
     "mypy>=1.0",
 ]
@@ -117,3 +118,8 @@ exclude_lines = [
     "if TYPE_CHECKING:",
 ]
 fail_under = 80
+
+[tool.mutmut]
+paths_to_mutate = ["little_loops/"]
+pytest_add_cli_args_test_selection = ["tests/"]
+pytest_add_cli_args = ["-x", "-q"]

@@ -59,6 +59,32 @@ pytest scripts/tests/test_config.py
 pytest scripts/tests/ -v
 ```
 
+### Mutation Testing
+
+Mutation testing verifies test assertion quality by introducing artificial bugs (mutants) into source code and checking that tests fail. A surviving mutant means the test suite didn't catch the mutation.
+
+```bash
+# Run mutation testing (slow - can take hours for full codebase)
+cd scripts
+mutmut run
+
+# View results summary
+mutmut results
+
+# Show specific surviving mutant details
+mutmut show 42
+
+# Apply a mutation to see what it looks like
+mutmut apply 42
+```
+
+Mutation testing is slow and not included in regular test runs. Use it to:
+- Identify tests with weak assertions
+- Verify critical code has quality tests
+- Find untested code paths
+
+Configuration is in `scripts/pyproject.toml` under `[tool.mutmut]`.
+
 ### Code Quality
 
 ```bash
