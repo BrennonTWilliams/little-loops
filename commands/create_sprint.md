@@ -44,7 +44,7 @@ Use the Read tool to read `.claude/ll-config.json`, then extract:
 
 Store these values for use in subsequent steps.
 
-### 1. Validate and Parse Inputs
+### 1. Parse Inputs and Determine Validation Path
 
 Parse the provided arguments:
 
@@ -52,12 +52,27 @@ Parse the provided arguments:
 SPRINT_NAME="${name}"
 SPRINT_DESC="${description:-}"
 SPRINT_ISSUES="${issues:-}"
+DEFERRED_VALIDATION=false
 ```
 
-**Validate sprint name:**
-- Must be non-empty
-- Should use lowercase letters, numbers, and hyphens only
-- Suggest format: `sprint-N`, `q1-features`, `bug-fixes-week-1`
+**Determine validation path based on provided arguments:**
+
+**If name is provided (non-empty):**
+- Set `RUN_VALIDATION=true`
+- Proceed to validate the name immediately (see validation rules below)
+
+**If issues are provided but no name:**
+- Set `RUN_VALIDATION=true`
+- Set `FORCE_NAME_PROMPT=true` (will prompt for name after validation section)
+
+**If both name and issues are empty:**
+- Set `DEFERRED_VALIDATION=true`
+- Set `RUN_VALIDATION=false`
+- Skip validation and proceed to Step 1.5 (Auto-grouping)
+
+---
+
+**Name Validation (only if RUN_VALIDATION=true):**
 
 **Validation rules:**
 1. Must be non-empty
@@ -80,25 +95,6 @@ SPRINT_ISSUES="${issues:-}"
 | `--test--` | Leading/trailing hyphens | `test` |
 | `Q1_bugs` | Uppercase and underscore | `q1-bugs` |
 | `my..sprint` | Invalid characters | `my-sprint` |
-| `` (empty) | Empty name | Prompt user to provide name |
-
-**If name is empty**, use AskUserQuestion to prompt for a name:
-
-```yaml
-questions:
-  - question: "Sprint name is required. What should the sprint be called?"
-    header: "Name"
-    multiSelect: false
-    options:
-      - label: "sprint-1"
-        description: "Default sequential name"
-      - label: "q1-features"
-        description: "Quarterly feature sprint"
-      - label: "bug-fixes"
-        description: "Bug fix sprint"
-```
-
-Then re-validate the provided name.
 
 **If name is invalid (non-empty but fails validation)**, use AskUserQuestion:
 
@@ -121,10 +117,11 @@ questions:
 - **"Enter different name"**: Prompt for new name and re-validate
 - **"Use original anyway"**: Continue with original name (warn about potential issues)
 
-### 1.5 Suggest Sprint Groupings (Optional)
+### 1.5 Suggest Sprint Groupings (Auto-Grouping)
 
 **SKIP this section if:**
 - The `issues` argument was provided (user already specified issues)
+- `DEFERRED_VALIDATION` is false (name was validated in Step 1)
 
 When no issues are specified, analyze active issues and suggest natural sprint groupings:
 
@@ -218,31 +215,73 @@ Based on 23 active issues, here are suggested sprint groupings:
 **Based on user response:**
 - **Grouping selected**:
   - Set `SPRINT_ISSUES` to the comma-separated issue IDs in that grouping
-  - If `SPRINT_NAME` is empty or was a default placeholder, prompt to use the grouping name:
+  - If `SPRINT_NAME` is empty, prompt to use the grouping name:
     ```yaml
     questions:
-      - question: "Use suggested sprint name '${grouping_name}' or enter your own?"
+      - question: "Use suggested sprint name '${grouping_name}' or customize?"
         header: "Name"
         multiSelect: false
         options:
           - label: "Use '${grouping_name}' (Recommended)"
             description: "Auto-generated name based on grouping type"
-          - label: "Enter different name"
-            description: "Provide your own sprint name"
+          - label: "Customize name"
+            description: "Keep issues but enter your own sprint name"
     ```
-  - Skip to Step 3 (Validate Issues Exist)
-- **"Select manually"**: Continue to Step 2 (original interactive flow)
+    - If user selects "Use '${grouping_name}'": Set `SPRINT_NAME` to the grouping name
+    - If user selects "Customize name": Prompt for custom name and validate using Step 2 logic
+  - Skip to Step 4 (Validate Issues Exist)
+- **"Select manually"**:
+  - If `SPRINT_NAME` is still empty: Proceed to Step 2 (Fallback Name Validation)
+  - Otherwise: Proceed to Step 3 (Gather Issue List)
 
 **If no suggestions could be generated** (fewer than 2 issues total or no groupings meet minimum size):
 - Display: "Not enough active issues for automatic groupings. Proceeding to manual selection."
-- Continue to Step 2
+- If `SPRINT_NAME` is empty: Proceed to Step 2 (Fallback Name Validation)
+- Otherwise: Proceed to Step 3 (Gather Issue List)
 
 ---
 
-### 2. Gather Issue List
+### 2. Fallback Name Validation
+
+**SKIP this section if:**
+- `SPRINT_NAME` is already populated (validated in Step 1 or set from grouping selection)
+
+**Purpose**: Handle cases where auto-grouping was skipped or user selected "Select manually" without a name.
+
+**If `SPRINT_NAME` is still empty**, use AskUserQuestion to prompt for a name:
+
+```yaml
+questions:
+  - question: "Sprint name is required. What should the sprint be called?"
+    header: "Name"
+    multiSelect: false
+    options:
+      - label: "sprint-1"
+        description: "Default sequential name"
+      - label: "q1-features"
+        description: "Quarterly feature sprint"
+      - label: "bug-fixes"
+        description: "Bug fix sprint"
+```
+
+Then validate the provided name using the same validation rules from Step 1:
+
+**Validation rules:**
+1. Must be non-empty
+2. Must match pattern: `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` (or single char `^[a-z0-9]$`)
+3. No consecutive hyphens (`--`)
+4. No leading or trailing hyphens
+
+**If invalid**, generate suggested correction and prompt using the same logic as Step 1.
+
+Once validated, proceed to Step 3.
+
+---
+
+### 3. Gather Issue List
 
 **If `SPRINT_ISSUES` is already populated** (from `--issues` argument OR from grouping selection in Step 1.5):
-- Skip this step and proceed to Step 3
+- Skip this step and proceed to Step 4
 
 If `SPRINT_ISSUES` is NOT populated and no grouping was selected, help the user select issues interactively:
 
@@ -263,7 +302,7 @@ If selecting from active issues:
 2. Parse and group by category/priority
 3. Present organized list for selection
 
-### 3. Validate Issues Exist
+### 4. Validate Issues Exist
 
 For each issue ID in the list, use the Glob tool to verify it exists:
 - Pattern: `{issues.base_dir}/**/*-[ISSUE-ID]-*.md` (substitute the actual issue ID, using the configured issues directory)
@@ -274,7 +313,7 @@ If a pattern returns no results, the issue is missing. Report any missing issues
 - Remove missing issues from list
 - Cancel and fix the list
 
-### 4. Create Sprint Directory (if needed)
+### 5. Create Sprint Directory (if needed)
 
 Ensure the configured sprints directory exists:
 
@@ -282,7 +321,7 @@ Ensure the configured sprints directory exists:
 mkdir -p {sprints.sprints_dir}  # using the configured sprints directory
 ```
 
-### 4b. Check for Existing Sprint
+### 5b. Check for Existing Sprint
 
 Before writing, check if a sprint with this name already exists:
 
@@ -305,11 +344,11 @@ questions:
 ```
 
 **Based on user response:**
-- **"Overwrite"**: Continue to Step 5 (write file)
-- **"Choose different name"**: Return to Step 1 to input a new name
+- **"Overwrite"**: Continue to Step 6 (write file)
+- **"Choose different name"**: Return to Step 2 to input a new name
 - **"Cancel"**: Display "Sprint creation cancelled." and stop
 
-### 5. Create Sprint YAML File
+### 6. Create Sprint YAML File
 
 Create the sprint definition at `{sprints.sprints_dir}/${SPRINT_NAME}.yaml` (using the configured sprints directory):
 
@@ -336,7 +375,7 @@ options:
   - `timeout`: Per-issue timeout in seconds
   - `max_workers`: Worker count for parallel execution within waves
 
-### 6. Output Confirmation
+### 7. Output Confirmation
 
 Display the created sprint:
 
