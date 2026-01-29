@@ -50,7 +50,7 @@ The `/ll:issue_size_review` skill should:
 
 ## Proposed Solution
 
-Create a new skill at `skills/issue_size_review.md` with the following workflow:
+Create a new skill at `skills/issue-size-review/SKILL.md` with the following workflow:
 
 ### Phase 1: Discovery
 - Find all active issues (not in completed/)
@@ -116,3 +116,24 @@ For approved decompositions:
 ## Status
 
 **Open** | Created: 2026-01-28 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-28
+- **Status**: Completed
+
+### Changes Made
+- `skills/issue-size-review/SKILL.md`: Created new skill with 5-phase workflow (discovery, size assessment, decomposition proposal, user approval, execution)
+
+### Implementation Details
+- Skill uses heuristic scoring (0-11 points) based on: file count, section complexity, multiple concerns, dependency mentions, word count
+- Issues scoring ≥5 points are candidates for decomposition
+- Uses AskUserQuestion for user approval before any changes
+- Creates child issues with parent reference and moves parent to completed/ with decomposition note
+
+### Verification Results
+- YAML frontmatter: PASS
+- Skill structure: PASS (follows existing skill patterns)
