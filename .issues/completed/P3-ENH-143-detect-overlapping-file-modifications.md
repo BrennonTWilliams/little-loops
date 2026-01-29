@@ -77,6 +77,48 @@ _No documents linked. Run `/ll:align_issues` to discover relevant docs._
 
 ---
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/parallel/file_hints.py`: New module for extracting file path hints from issue content using regex patterns
+- `scripts/little_loops/parallel/overlap_detector.py`: New module for detecting overlapping file modifications between parallel issues
+- `scripts/little_loops/parallel/orchestrator.py`: Integrated overlap detection into dispatch logic with deferral and re-queuing
+- `scripts/little_loops/parallel/types.py`: Added `overlap_detection` and `serialize_overlapping` config options
+- `scripts/little_loops/parallel/__init__.py`: Exported new modules
+- `scripts/little_loops/config.py`: Added overlap detection parameters to `create_parallel_config`
+- `scripts/little_loops/cli.py`: Added `--overlap-detection` and `--warn-only` CLI flags
+- `scripts/tests/test_file_hints.py`: Comprehensive tests for file hint extraction
+- `scripts/tests/test_overlap_detector.py`: Comprehensive tests for overlap detection
+
+### Implementation
+Implemented Option A (Pre-flight overlap detection) combined with Option D (Dependency inference for serialization):
+
+1. **FileHintExtractor** extracts file paths, directories, and scopes from issue content
+2. **OverlapDetector** tracks active issue scopes and detects conflicts before dispatch
+3. When overlap is detected with `--overlap-detection`:
+   - If `serialize_overlapping=True` (default): Issue is deferred and re-queued after overlapping issues complete
+   - If `--warn-only`: Just logs a warning and continues
+
+### Usage
+```bash
+# Enable overlap detection (defer overlapping issues)
+ll-parallel --overlap-detection
+
+# Enable overlap detection but only warn (don't defer)
+ll-parallel --overlap-detection --warn-only
+```
+
+### Verification Results
+- Tests: PASS (48/48 new tests pass, 1983/1984 total)
+- Lint: PASS
+- Types: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-24 | Priority: P3
+**Completed** | Created: 2026-01-24 | Priority: P3

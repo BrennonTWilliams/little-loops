@@ -9,11 +9,15 @@ Components:
     WorkerPool: ThreadPoolExecutor-based worker management
     MergeCoordinator: Sequential merge queue with conflict handling
     ParallelOrchestrator: Main controller coordinating all components
+    FileHints: Extracted file hints for overlap detection
+    OverlapDetector: Detects overlapping file modifications between issues
 """
 
+from little_loops.parallel.file_hints import FileHints, extract_file_hints
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.merge_coordinator import MergeCoordinator
 from little_loops.parallel.orchestrator import ParallelOrchestrator
+from little_loops.parallel.overlap_detector import OverlapDetector, OverlapResult
 from little_loops.parallel.priority_queue import IssuePriorityQueue
 from little_loops.parallel.types import (
     MergeRequest,
@@ -26,15 +30,19 @@ from little_loops.parallel.types import (
 from little_loops.parallel.worker_pool import WorkerPool
 
 __all__ = [
+    "FileHints",
     "GitLock",
     "IssuePriorityQueue",
     "MergeCoordinator",
     "MergeRequest",
     "MergeStatus",
     "OrchestratorState",
+    "OverlapDetector",
+    "OverlapResult",
     "ParallelConfig",
     "ParallelOrchestrator",
     "QueuedIssue",
     "WorkerPool",
     "WorkerResult",
+    "extract_file_hints",
 ]

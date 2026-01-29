@@ -465,6 +465,8 @@ class BRConfig:
         merge_pending: bool = False,
         clean_start: bool = False,
         ignore_pending: bool = False,
+        overlap_detection: bool = False,
+        serialize_overlapping: bool = True,
     ) -> ParallelConfig:
         """Create a ParallelConfig from BRConfig settings with optional overrides.
 
@@ -481,6 +483,8 @@ class BRConfig:
             merge_pending: Attempt to merge pending worktrees (default: False)
             clean_start: Remove all worktrees without checking (default: False)
             ignore_pending: Report pending work but continue (default: False)
+            overlap_detection: Enable pre-flight overlap detection (default: False)
+            serialize_overlapping: If True, defer overlapping issues; if False, just warn
 
         Returns:
             ParallelConfig configured from BRConfig
@@ -511,6 +515,8 @@ class BRConfig:
             merge_pending=merge_pending,
             clean_start=clean_start,
             ignore_pending=ignore_pending,
+            overlap_detection=overlap_detection,
+            serialize_overlapping=serialize_overlapping,
         )
 
     @property

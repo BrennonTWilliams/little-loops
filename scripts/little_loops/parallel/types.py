@@ -312,6 +312,9 @@ class ParallelConfig:
     merge_pending: bool = False  # Attempt to merge pending worktrees
     clean_start: bool = False  # Remove all worktrees without checking
     ignore_pending: bool = False  # Report pending work but continue
+    # Overlap detection settings (ENH-143)
+    overlap_detection: bool = False  # Enable pre-flight overlap detection
+    serialize_overlapping: bool = True  # If True, defer overlapping issues; if False, just warn
 
     def get_ready_command(self, issue_id: str) -> str:
         """Build the ready_issue command string.
@@ -368,6 +371,8 @@ class ParallelConfig:
             "merge_pending": self.merge_pending,
             "clean_start": self.clean_start,
             "ignore_pending": self.ignore_pending,
+            "overlap_detection": self.overlap_detection,
+            "serialize_overlapping": self.serialize_overlapping,
         }
 
     @classmethod
@@ -400,4 +405,6 @@ class ParallelConfig:
             merge_pending=data.get("merge_pending", False),
             clean_start=data.get("clean_start", False),
             ignore_pending=data.get("ignore_pending", False),
+            overlap_detection=data.get("overlap_detection", False),
+            serialize_overlapping=data.get("serialize_overlapping", True),
         )

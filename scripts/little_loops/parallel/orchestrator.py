@@ -19,6 +19,7 @@ from little_loops.issue_parser import IssueInfo
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.merge_coordinator import MergeCoordinator
+from little_loops.parallel.overlap_detector import OverlapDetector
 from little_loops.parallel.priority_queue import IssuePriorityQueue
 from little_loops.parallel.types import (
     OrchestratorState,
@@ -98,6 +99,13 @@ class ParallelOrchestrator:
         self._issue_info_by_id: dict[str, IssueInfo] = {}
         # Track interrupted issues separately from failures (ENH-036)
         self._interrupted_issues: list[str] = []
+
+        # Overlap detection (ENH-143)
+        self.overlap_detector: OverlapDetector | None = (
+            OverlapDetector() if parallel_config.overlap_detection else None
+        )
+        # Track deferred issues for re-check after active issues complete
+        self._deferred_issues: list[IssueInfo] = []
 
     @property
     def execution_duration(self) -> float:
@@ -655,6 +663,25 @@ class ParallelOrchestrator:
         Args:
             issue: Issue to process
         """
+        # Check for overlaps if enabled (ENH-143)
+        if self.overlap_detector:
+            overlap = self.overlap_detector.check_overlap(issue)
+            if overlap:
+                if self.parallel_config.serialize_overlapping:
+                    self.logger.warning(
+                        f"Deferring {issue.issue_id} - overlaps with {overlap.overlapping_issues}"
+                    )
+                    # Track for re-check when active issues complete
+                    self._deferred_issues.append(issue)
+                    return
+                else:
+                    self.logger.warning(
+                        f"Warning: {issue.issue_id} may conflict with {overlap.overlapping_issues}"
+                    )
+
+            # Register as active before dispatch
+            self.overlap_detector.register_issue(issue)
+
         self.logger.info(f"Dispatching {issue.issue_id} to worker pool")
         self.worker_pool.submit(issue, self._on_worker_complete)
 
@@ -664,6 +691,12 @@ class ParallelOrchestrator:
         Args:
             result: Result from the worker
         """
+        # Unregister from overlap tracking (ENH-143)
+        if self.overlap_detector:
+            self.overlap_detector.unregister_issue(result.issue_id)
+            # Re-queue deferred issues that were waiting on this one
+            self._requeue_deferred_issues()
+
         # Handle interrupted workers (not counted as failed) - ENH-036
         if result.interrupted:
             self.logger.info(f"{result.issue_id} was interrupted during shutdown (can retry)")
@@ -717,6 +750,26 @@ class ParallelOrchestrator:
         self.state.timing[result.issue_id] = {
             "total": result.duration,
         }
+
+    def _requeue_deferred_issues(self) -> None:
+        """Re-queue deferred issues that no longer have overlaps (ENH-143)."""
+        if not self._deferred_issues:
+            return
+
+        # Check each deferred issue for remaining overlaps
+        still_deferred = []
+        for issue in self._deferred_issues:
+            if self.overlap_detector:
+                overlap = self.overlap_detector.check_overlap(issue)
+                if overlap:
+                    # Still has overlaps, keep deferred
+                    still_deferred.append(issue)
+                else:
+                    # No more overlaps, add back to queue
+                    self.logger.info(f"Re-queuing {issue.issue_id} - no longer overlapping")
+                    self.queue.add(issue)
+
+        self._deferred_issues = still_deferred
 
     def _merge_sequential(self, result: WorkerResult) -> None:
         """Merge a sequential (P0) result immediately.

@@ -257,6 +257,16 @@ Examples:
         default=None,
         help="Path to project root",
     )
+    parser.add_argument(
+        "--overlap-detection",
+        action="store_true",
+        help="Enable pre-flight overlap detection to reduce merge conflicts (ENH-143)",
+    )
+    parser.add_argument(
+        "--warn-only",
+        action="store_true",
+        help="With --overlap-detection, warn about overlaps instead of serializing",
+    )
 
     args = parser.parse_args()
 
@@ -298,6 +308,8 @@ Examples:
         merge_pending=args.merge_pending,
         clean_start=args.clean_start,
         ignore_pending=args.ignore_pending,
+        overlap_detection=args.overlap_detection,
+        serialize_overlapping=not args.warn_only,
     )
 
     # Delete state file if not resuming
