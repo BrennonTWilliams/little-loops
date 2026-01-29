@@ -1,0 +1,12 @@
+name: test-loop
+initial: start
+states:
+  start:
+    action: test
+    on_success: done
+    on_failure: done
+  done:
+    terminal: true
+  orphan:
+    action: unreachable
+    next: done

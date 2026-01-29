@@ -8,7 +8,6 @@ Tests cover:
 
 from __future__ import annotations
 
-import tempfile
 from pathlib import Path
 
 import pytest
@@ -27,6 +26,12 @@ from little_loops.fsm.validation import (
     load_and_validate,
     validate_fsm,
 )
+
+
+@pytest.fixture
+def fsm_fixtures() -> Path:
+    """Path to FSM fixture files."""
+    return Path(__file__).parent / "fixtures" / "fsm"
 
 
 def make_state(
@@ -1037,164 +1042,62 @@ class TestEvaluatorValidation:
 class TestLoadAndValidate:
     """Tests for load_and_validate function."""
 
-    def test_load_valid_yaml(self) -> None:
+    def test_load_valid_yaml(self, fsm_fixtures: Path) -> None:
         """Load valid YAML file."""
-        yaml_content = """
-name: test-loop
-initial: check
-states:
-  check:
-    action: pytest
-    on_success: done
-    on_failure: done
-  done:
-    terminal: true
-"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
-
-        try:
-            fsm = load_and_validate(path)
-            assert fsm.name == "test-loop"
-            assert fsm.initial == "check"
-            assert len(fsm.states) == 2
-        finally:
-            path.unlink()
+        fixture_path = fsm_fixtures / "valid-loop.yaml"
+        fsm = load_and_validate(fixture_path)
+        assert fsm.name == "test-loop"
+        assert fsm.initial == "check"
+        assert len(fsm.states) == 2
 
     def test_file_not_found(self) -> None:
         """FileNotFoundError for missing file."""
         with pytest.raises(FileNotFoundError):
             load_and_validate(Path("/nonexistent/path.yaml"))
 
-    def test_missing_required_fields(self) -> None:
+    def test_missing_required_fields(self, fsm_fixtures: Path) -> None:
         """ValueError for missing required fields."""
-        yaml_content = """
-name: incomplete
-# missing initial and states
-"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fixture_path = fsm_fixtures / "incomplete-loop.yaml"
+        with pytest.raises(ValueError, match="missing required fields"):
+            load_and_validate(fixture_path)
 
-        try:
-            with pytest.raises(ValueError, match="missing required fields"):
-                load_and_validate(path)
-        finally:
-            path.unlink()
-
-    def test_validation_errors_raised(self) -> None:
+    def test_validation_errors_raised(self, fsm_fixtures: Path) -> None:
         """ValueError for validation failures."""
-        yaml_content = """
-name: invalid-loop
-initial: nonexistent
-states:
-  done:
-    terminal: true
-"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fixture_path = fsm_fixtures / "invalid-initial-state.yaml"
+        with pytest.raises(ValueError, match="validation failed"):
+            load_and_validate(fixture_path)
 
-        try:
-            with pytest.raises(ValueError, match="validation failed"):
-                load_and_validate(path)
-        finally:
-            path.unlink()
-
-    def test_invalid_yaml_syntax(self) -> None:
+    def test_invalid_yaml_syntax(self, fsm_fixtures: Path) -> None:
         """Invalid YAML syntax raises yaml.YAMLError."""
-        yaml_content = """
-name: test
-initial: [unclosed bracket
-states:
-  done:
-    terminal: true
-"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fixture_path = fsm_fixtures / "invalid-yaml-syntax.yaml"
+        with pytest.raises(yaml.YAMLError):
+            load_and_validate(fixture_path)
 
-        try:
-            with pytest.raises(yaml.YAMLError):
-                load_and_validate(path)
-        finally:
-            path.unlink()
-
-    def test_non_dict_yaml_root(self) -> None:
+    def test_non_dict_yaml_root(self, fsm_fixtures: Path) -> None:
         """Non-dict YAML root raises ValueError."""
-        yaml_content = "- item1\n- item2\n"  # list, not dict
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fixture_path = fsm_fixtures / "non-dict-root.yaml"
+        with pytest.raises(ValueError, match="must contain a YAML mapping"):
+            load_and_validate(fixture_path)
 
-        try:
-            with pytest.raises(ValueError, match="must contain a YAML mapping"):
-                load_and_validate(path)
-        finally:
-            path.unlink()
-
-    def test_warnings_logged_not_raised(self) -> None:
+    def test_warnings_logged_not_raised(self, fsm_fixtures: Path) -> None:
         """Warnings are logged but don't raise exceptions."""
-        yaml_content = """
-name: test-loop
-initial: start
-states:
-  start:
-    action: test
-    on_success: done
-    on_failure: done
-  done:
-    terminal: true
-  orphan:
-    action: unreachable
-    next: done
-"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fixture_path = fsm_fixtures / "loop-with-unreachable-state.yaml"
+        # Should not raise despite unreachable state warning
+        fsm = load_and_validate(fixture_path)
+        assert fsm.name == "test-loop"
+        assert "orphan" in fsm.states
 
-        try:
-            # Should not raise despite unreachable state warning
-            fsm = load_and_validate(path)
-            assert fsm.name == "test-loop"
-            assert "orphan" in fsm.states
-        finally:
-            path.unlink()
-
-    def test_missing_name_field(self) -> None:
+    def test_missing_name_field(self, fsm_fixtures: Path) -> None:
         """Missing 'name' field raises ValueError."""
-        yaml_content = """
-initial: start
-states:
-  start:
-    terminal: true
-"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
+        fixture_path = fsm_fixtures / "missing-name.yaml"
+        with pytest.raises(ValueError, match="missing required fields.*name"):
+            load_and_validate(fixture_path)
 
-        try:
-            with pytest.raises(ValueError, match="missing required fields.*name"):
-                load_and_validate(path)
-        finally:
-            path.unlink()
-
-    def test_missing_states_field(self) -> None:
+    def test_missing_states_field(self, fsm_fixtures: Path) -> None:
         """Missing 'states' field raises ValueError."""
-        yaml_content = """
-name: test
-initial: start
-"""
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
-            f.write(yaml_content)
-            path = Path(f.name)
-
-        try:
-            with pytest.raises(ValueError, match="missing required fields.*states"):
-                load_and_validate(path)
-        finally:
-            path.unlink()
+        fixture_path = fsm_fixtures / "missing-states.yaml"
+        with pytest.raises(ValueError, match="missing required fields.*states"):
+            load_and_validate(fixture_path)
 
 
 class TestValidationError:

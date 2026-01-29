@@ -176,13 +176,13 @@ states:
 
 ## Acceptance Criteria
 
-- [ ] Create `scripts/tests/fixtures/` directory structure
-- [ ] Add fixture helper functions to conftest.py
-- [ ] Extract 5+ complex issue fixtures
-- [ ] Extract 5+ complex FSM fixtures
-- [ ] Update 10+ tests to use fixtures
-- [ ] All tests still pass after refactoring
-- [ ] Tests are more readable than before
+- [x] Create `scripts/tests/fixtures/` directory structure
+- [x] Add fixture helper functions to conftest.py
+- [x] Extract 5+ complex issue fixtures (13 created)
+- [x] Extract 5+ complex FSM fixtures (8 created)
+- [x] Update 10+ tests to use fixtures (22 tests updated)
+- [x] All tests still pass after refactoring
+- [x] Tests are more readable than before
 
 ## Related Key Documentation
 
@@ -198,4 +198,24 @@ states:
 
 ## Status
 
-**Open** | Created: 2026-01-28 | Priority: P3
+**Completed** | Created: 2026-01-28 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+- `scripts/tests/fixtures/issues/` - Created 13 issue markdown fixture files
+- `scripts/tests/fixtures/fsm/` - Created 8 FSM YAML fixture files
+- `scripts/tests/conftest.py` - Added fixture helper functions (fixtures_dir, issue_fixtures, fsm_fixtures, load_fixture)
+- `scripts/tests/test_issue_parser.py` - Updated 14 tests to use fixtures
+- `scripts/tests/test_fsm_schema.py` - Updated 8 tests to use fixtures
+
+### Verification Results
+- Tests: PASS (135 passed)
+- Lint: PASS
+- Types: PASS

@@ -1,0 +1,4 @@
+initial: start
+states:
+  start:
+    terminal: true

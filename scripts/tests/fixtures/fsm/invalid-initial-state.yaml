@@ -1,0 +1,5 @@
+name: invalid-loop
+initial: nonexistent
+states:
+  done:
+    terminal: true

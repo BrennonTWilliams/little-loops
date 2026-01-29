@@ -10,6 +10,47 @@ from typing import Any
 
 import pytest
 
+# =============================================================================
+# Fixture File Helpers
+# =============================================================================
+
+
+@pytest.fixture
+def fixtures_dir() -> Path:
+    """Path to test fixtures directory."""
+    return Path(__file__).parent / "fixtures"
+
+
+@pytest.fixture
+def issue_fixtures(fixtures_dir: Path) -> Path:
+    """Path to issue fixture files."""
+    return fixtures_dir / "issues"
+
+
+@pytest.fixture
+def fsm_fixtures(fixtures_dir: Path) -> Path:
+    """Path to FSM fixture files."""
+    return fixtures_dir / "fsm"
+
+
+def load_fixture(fixtures_dir: Path, *path_parts: str) -> str:
+    """Load fixture file content by path parts.
+
+    Args:
+        fixtures_dir: Base fixtures directory path.
+        path_parts: Path components relative to fixtures_dir.
+
+    Returns:
+        Content of the fixture file as a string.
+    """
+    fixture_path = fixtures_dir.joinpath(*path_parts)
+    return fixture_path.read_text()
+
+
+# =============================================================================
+# Project Directory Fixtures
+# =============================================================================
+
 
 @pytest.fixture
 def temp_project_dir() -> Generator[Path, None, None]:

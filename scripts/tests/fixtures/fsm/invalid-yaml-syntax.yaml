@@ -1,0 +1,5 @@
+name: test
+initial: [unclosed bracket
+states:
+  done:
+    terminal: true

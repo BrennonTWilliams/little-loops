@@ -1,0 +1,9 @@
+name: test-loop
+initial: check
+states:
+  check:
+    action: pytest
+    on_success: done
+    on_failure: done
+  done:
+    terminal: true

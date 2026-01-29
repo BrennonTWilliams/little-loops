@@ -17,6 +17,12 @@ from little_loops.issue_parser import (
 )
 
 
+def load_fixture(fixtures_dir: Path, *path_parts: str) -> str:
+    """Load fixture file content by path parts."""
+    fixture_path = fixtures_dir.joinpath(*path_parts)
+    return fixture_path.read_text()
+
+
 class TestSlugify:
     """Tests for the slugify function."""
 
@@ -384,7 +390,10 @@ class TestIssueParser:
         assert info.issue_type == "bugs"
 
     def test_parse_discovered_by_from_frontmatter(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test parsing discovered_by from YAML frontmatter."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -394,18 +403,7 @@ class TestIssueParser:
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
-        issue_file.write_text("""---
-discovered_commit: abc123
-discovered_branch: main
-discovered_date: 2026-01-20
-discovered_by: scan_codebase
----
-
-# BUG-001: Test Issue
-
-## Summary
-Test description.
-""")
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-frontmatter.md"))
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -413,7 +411,10 @@ Test description.
         assert info.discovered_by == "scan_codebase"
 
     def test_parse_no_frontmatter(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test parsing issue without frontmatter."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -423,11 +424,7 @@ Test description.
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
-        issue_file.write_text("""# BUG-001: Test Issue
-
-## Summary
-Test description.
-""")
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-no-frontmatter.md"))
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -435,7 +432,10 @@ Test description.
         assert info.discovered_by is None
 
     def test_parse_frontmatter_null_discovered_by(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test parsing frontmatter with null discovered_by."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -445,16 +445,7 @@ Test description.
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
-        issue_file.write_text("""---
-discovered_commit: abc123
-discovered_by: null
----
-
-# BUG-001: Test Issue
-
-## Summary
-Test.
-""")
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-null-discovered-by.md"))
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -462,7 +453,10 @@ Test.
         assert info.discovered_by is None
 
     def test_parse_frontmatter_only_discovered_by(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test parsing frontmatter with only discovered_by field."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -472,15 +466,7 @@ Test.
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
-        issue_file.write_text("""---
-discovered_by: audit_architecture
----
-
-# BUG-001: Test Issue
-
-## Summary
-Test.
-""")
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-only-discovered-by.md"))
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -764,7 +750,10 @@ class TestDependencyParsing:
     """Tests for dependency parsing in IssueParser."""
 
     def test_parse_blocked_by_single(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test parsing single blocker."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -774,17 +763,7 @@ class TestDependencyParsing:
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P1-BUG-001-test.md"
-        issue_file.write_text("""# BUG-001: Test Issue
-
-## Summary
-Test description.
-
-## Blocked By
-- FEAT-001
-
-## Labels
-bug
-""")
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-blocked-by.md"))
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -793,7 +772,10 @@ bug
         assert info.blocks == []
 
     def test_parse_blocked_by_multiple(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test parsing multiple blockers."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -803,16 +785,9 @@ bug
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P1-BUG-002-test.md"
-        issue_file.write_text("""# BUG-002: Test Issue
-
-## Blocked By
-- FEAT-001
-- FEAT-002
-- ENH-003
-
-## Blocks
-- BUG-010
-""")
+        issue_file.write_text(
+            load_fixture(fixtures_dir, "issues", "bug-with-multiple-blockers.md")
+        )
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -821,7 +796,10 @@ bug
         assert info.blocks == ["BUG-010"]
 
     def test_parse_blocked_by_empty(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test parsing when no Blocked By section exists."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -831,11 +809,7 @@ bug
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P1-BUG-003-test.md"
-        issue_file.write_text("""# BUG-003: Test Issue
-
-## Summary
-No dependencies here.
-""")
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-no-dependencies.md"))
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -844,7 +818,10 @@ No dependencies here.
         assert info.blocks == []
 
     def test_parse_blocked_by_with_none_text(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test parsing section with 'None' text instead of list."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -854,16 +831,7 @@ No dependencies here.
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P1-BUG-004-test.md"
-        issue_file.write_text("""# BUG-004: Test Issue
-
-## Blocked By
-
-None
-
-## Blocks
-
-None - this is standalone
-""")
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-none-blockers.md"))
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -872,7 +840,10 @@ None - this is standalone
         assert info.blocks == []
 
     def test_parse_blocks_section(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test parsing ## Blocks section."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -882,16 +853,9 @@ None - this is standalone
         features_dir = temp_project_dir / ".issues" / "features"
         features_dir.mkdir(parents=True)
         issue_file = features_dir / "P0-FEAT-001-test.md"
-        issue_file.write_text("""# FEAT-001: Foundation Feature
-
-## Summary
-This feature enables other work.
-
-## Blocks
-- FEAT-002
-- FEAT-003
-- ENH-001
-""")
+        issue_file.write_text(
+            load_fixture(fixtures_dir, "issues", "feature-with-blocks-section.md")
+        )
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -900,7 +864,10 @@ This feature enables other work.
         assert info.blocks == ["FEAT-002", "FEAT-003", "ENH-001"]
 
     def test_parse_skips_code_fenced_sections(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test that sections inside code fences are ignored."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -910,26 +877,7 @@ This feature enables other work.
         features_dir = temp_project_dir / ".issues" / "features"
         features_dir.mkdir(parents=True)
         issue_file = features_dir / "P2-FEAT-005-test.md"
-        issue_file.write_text("""# FEAT-005: Test Feature
-
-## Summary
-
-Example format:
-
-```markdown
-## Blocked By
-- FAKE-001
-- FAKE-002
-```
-
-## Blocked By
-
-- REAL-001
-
-## Blocks
-
-- REAL-002
-""")
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "feature-with-code-fence.md"))
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -939,7 +887,10 @@ Example format:
         assert info.blocks == ["REAL-002"]
 
     def test_parse_with_asterisk_bullets(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test parsing with asterisk-style bullets."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -949,15 +900,9 @@ Example format:
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P1-BUG-006-test.md"
-        issue_file.write_text("""# BUG-006: Test Issue
-
-## Blocked By
-* FEAT-001
-* FEAT-002
-
-## Blocks
-* BUG-010
-""")
+        issue_file.write_text(
+            load_fixture(fixtures_dir, "issues", "bug-with-asterisk-bullets.md")
+        )
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -966,7 +911,10 @@ Example format:
         assert info.blocks == ["BUG-010"]
 
     def test_parse_with_trailing_text(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test parsing items with trailing descriptions."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -976,15 +924,7 @@ Example format:
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P1-BUG-007-test.md"
-        issue_file.write_text("""# BUG-007: Test Issue
-
-## Blocked By
-- FEAT-001: Database migration feature
-- FEAT-002 (authentication update)
-
-## Blocks
-- ENH-005 - performance improvements
-""")
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-trailing-text.md"))
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -993,7 +933,10 @@ Example format:
         assert info.blocks == ["ENH-005"]
 
     def test_parse_blocked_by_bold_markdown(
-        self, temp_project_dir: Path, sample_config: dict[str, Any]
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
     ) -> None:
         """Test parsing blockers with bold markdown formatting."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
@@ -1003,18 +946,7 @@ Example format:
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P3-ENH-001-test.md"
-        issue_file.write_text("""# ENH-001: Test Issue
-
-## Summary
-Test description.
-
-## Blocked By
-- **ENH-1000**: Must be completed before this enhancement can proceed.
-- **FEAT-002**: Another dependency
-
-## Labels
-enhancement
-""")
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-bold-deps.md"))
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
