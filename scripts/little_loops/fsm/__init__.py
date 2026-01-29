@@ -63,9 +63,17 @@ Public exports:
     HandoffHandler: Handle context handoff signals
     HandoffBehavior: Enum for handoff behaviors (pause/spawn/terminate)
     HandoffResult: Result from handling a handoff signal
+
+    # Concurrency Control
+    ScopeLock: Dataclass representing a scope lock
+    LockManager: Manager for acquiring/releasing scope locks
 """
 
 from little_loops.fsm.compilers import compile_paradigm
+from little_loops.fsm.concurrency import (
+    LockManager,
+    ScopeLock,
+)
 from little_loops.fsm.evaluators import (
     DEFAULT_LLM_PROMPT,
     DEFAULT_LLM_SCHEMA,
@@ -142,10 +150,12 @@ __all__ = [
     "InterpolationContext",
     "InterpolationError",
     "LLMConfig",
+    "LockManager",
     "LoopState",
     "PersistentExecutor",
     "RouteConfig",
     "STOP_SIGNAL",
+    "ScopeLock",
     "SignalDetector",
     "SignalPattern",
     "StateConfig",

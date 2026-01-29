@@ -475,6 +475,7 @@ def main_loop() -> int:
     import yaml
 
     from little_loops.fsm.compilers import compile_paradigm
+    from little_loops.fsm.concurrency import LockManager
     from little_loops.fsm.persistence import (
         PersistentExecutor,
         StatePersistence,
@@ -543,6 +544,9 @@ Examples:
         "--background", "-b", action="store_true", help="Run as daemon (not yet implemented)"
     )
     run_parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress output")
+    run_parser.add_argument(
+        "--queue", action="store_true", help="Wait for conflicting loops to finish"
+    )
 
     # Compile subcommand
     compile_parser = subparsers.add_parser("compile", help="Compile paradigm to FSM")
@@ -766,9 +770,36 @@ Examples:
         if getattr(args, "background", False):
             logger.warning("Background mode not yet implemented, running in foreground")
 
-        # Execute
-        executor = PersistentExecutor(fsm)
-        return run_foreground(executor, fsm)
+        # Scope-based locking
+        lock_manager = LockManager()
+        scope = fsm.scope or ["."]
+
+        if not lock_manager.acquire(fsm.name, scope):
+            conflict = lock_manager.find_conflict(scope)
+            if conflict and getattr(args, "queue", False):
+                logger.info(f"Waiting for conflicting loop '{conflict.loop_name}' to finish...")
+                if not lock_manager.wait_for_scope(scope, timeout=3600):
+                    logger.error("Timeout waiting for scope to become available")
+                    return 1
+                # Re-acquire after waiting
+                if not lock_manager.acquire(fsm.name, scope):
+                    logger.error("Failed to acquire lock after waiting")
+                    return 1
+            elif conflict:
+                logger.error(f"Scope conflict with running loop: {conflict.loop_name}")
+                logger.info(f"  Conflicting scope: {conflict.scope}")
+                logger.info("  Use --queue to wait for it to finish")
+                return 1
+            else:
+                # Unexpected: find_conflict returned None but acquire failed
+                logger.error("Failed to acquire scope lock (unknown reason)")
+                return 1
+
+        try:
+            executor = PersistentExecutor(fsm)
+            return run_foreground(executor, fsm)
+        finally:
+            lock_manager.release(fsm.name)
 
     def cmd_compile() -> int:
         """Compile paradigm YAML to FSM."""

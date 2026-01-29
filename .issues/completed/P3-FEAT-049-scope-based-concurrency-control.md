@@ -403,3 +403,29 @@ class TestLockManager:
 ## Status
 
 **Open** | Created: 2026-01-13 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/concurrency.py` [CREATED]: `ScopeLock` dataclass and `LockManager` class
+- `scripts/little_loops/fsm/__init__.py` [MODIFIED]: Export `ScopeLock` and `LockManager`
+- `scripts/little_loops/cli.py` [MODIFIED]: Add `--queue` flag and scope-based lock management to `ll-loop run`
+- `scripts/tests/test_concurrency.py` [CREATED]: 24 tests for concurrency control
+
+### Verification Results
+- Tests: PASS (24/24 new tests pass)
+- Lint: PASS
+- Types: PASS
+
+### Implementation Notes
+- Lock files stored in `.loops/.running/<name>.lock`
+- Stale locks from dead processes automatically cleaned up
+- Empty scope defaults to `["."]` (whole project)
+- Lock released in `finally` block for error/interrupt safety
+- Integrated at CLI layer (wraps `PersistentExecutor.run()`) rather than creating separate `LockedExecutor` class
