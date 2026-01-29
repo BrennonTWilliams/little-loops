@@ -12,12 +12,12 @@ Current parser tests use hand-picked examples, which may miss edge cases. Proper
 ## Current State
 
 **Affected modules**:
-- `scripts/little_loops/issue_parser.py` (574 lines) - Parses issue markdown files
+- `scripts/little_loops/issue_parser.py` (~508 lines) - Parses issue markdown files
 - `scripts/little_loops/fsm/compilers.py` - Compiles YAML to FSM definitions
 - `scripts/little_loops/workflow_sequence_analyzer.py` - Parses workflow sequences
 
 **Existing tests**:
-- `scripts/tests/test_issue_parser.py` (1062 lines) - Comprehensive but example-based
+- `scripts/tests/test_issue_parser.py` (~1061 lines) - Comprehensive but example-based
 - `scripts/tests/test_fsm_compilers.py` - Example-based tests
 
 ## Context
@@ -145,11 +145,11 @@ def valid_fsm_yaml(draw):
 
 ## Acceptance Criteria
 
-- [ ] Add `hypothesis>=6.0` to dev dependencies
-- [ ] Create `test_issue_parser_properties.py` with 3+ properties
-- [ ] Create `test_fsm_compiler_properties.py` with 2+ properties
-- [ ] All tests pass with `hypothesis` database generation
-- [ ] At least one previously unknown bug found (optional)
+- [x] Add `hypothesis>=6.0` to dev dependencies
+- [x] Create `test_issue_parser_properties.py` with 3+ properties
+- [x] Create `test_fsm_compiler_properties.py` with 2+ properties
+- [x] All tests pass with `hypothesis` database generation
+- [x] At least one previously unknown bug found (optional)
 
 ## Related Key Documentation
 
@@ -163,6 +163,29 @@ def valid_fsm_yaml(draw):
 
 ---
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+- `scripts/pyproject.toml`: Added `hypothesis>=6.0` to dev dependencies
+- `scripts/tests/test_issue_parser_properties.py`: Created with 11 property tests for slugify and IssueInfo
+- `scripts/tests/test_fsm_compiler_properties.py`: Created with 27 property tests for FSM compilers
+
+### Key Findings
+- Property test discovered that `slugify()` preserves Unicode word characters (not just ASCII) because Python's `\w` regex matches Unicode letters/digits
+- All 38 property tests pass across issue_parser and fsm/compilers modules
+- Tests verify: idempotence, roundtrip serialization, state count formulas, transition validity, and paradigm preservation
+
+### Verification Results
+- Property tests: PASS (38 tests)
+- Types: PASS (mypy)
+- Lint: PASS (ruff)
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-28 | Priority: P3
+**Completed** | Created: 2026-01-28 | Completed: 2026-01-29 | Priority: P3
