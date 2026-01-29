@@ -104,6 +104,42 @@ Alternatively, if this feature is not planned for implementation:
 
 ---
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-01-29
+- **Status**: Completed
+
+### Changes Made
+
+1. **Created `hooks/prompts/optimize-prompt-hook.md`** (new file)
+   - Hook prompt that instructs Claude how to optimize vague prompts
+   - Supports quick mode (project docs) and thorough mode (agent)
+   - Handles confirmation flow and automatic application
+
+2. **Updated `hooks/scripts/user-prompt-check.sh`** (modified)
+   - Added config reading for `prompt_optimization` settings
+   - Implemented bypass pattern detection (`*`, `/`, `#`, `?`, short prompts)
+   - Outputs hook prompt to stderr with exit code 2 when optimization enabled
+   - Preserves existing config existence check
+
+### How It Works
+
+1. `UserPromptSubmit` hook receives user prompt via stdin JSON
+2. Script reads `prompt_optimization.enabled` from config
+3. If enabled, checks bypass patterns - exits silently if bypassed
+4. If not bypassed, substitutes variables into hook prompt template
+5. Outputs hook prompt to stderr with exit 2 (Claude feedback)
+6. Claude follows hook prompt instructions to enhance vague prompts
+
+### Verification Results
+- shellcheck: PASS
+- Bypass patterns tested: PASS (slash, asterisk, hash, question, short)
+- Optimization trigger tested: PASS (exit 2 with hook prompt output)
+- Types: PASS (no Python changes)
+
+---
+
 ## Status
 
-**Open** | Created: 2026-01-29 | Verified: 2026-01-29 | Priority: P3
+**Completed** | Created: 2026-01-29 | Verified: 2026-01-29 | Fixed: 2026-01-29 | Priority: P3
