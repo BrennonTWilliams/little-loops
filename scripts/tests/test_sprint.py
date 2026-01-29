@@ -2,6 +2,7 @@
 
 import json
 from pathlib import Path
+from typing import Any
 
 import yaml
 
@@ -495,3 +496,180 @@ class TestSprintSignalHandler:
             cli._sprint_signal_handler(signal.SIGINT, None)
 
         assert exc_info.value.code == 1
+
+
+class TestSprintErrorHandling:
+    """Tests for _cmd_sprint_run error handling wrapper (ENH-185)."""
+
+    @staticmethod
+    def _setup_test_project(tmp_path: Path) -> tuple[Path, Any, Any]:
+        """Set up a test project with config, issues, and sprint."""
+        from little_loops.config import BRConfig
+        from little_loops.sprint import SprintManager
+
+        # Create directory structure
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+
+        for category in ["bugs", "features", "enhancements", "completed"]:
+            (issues_dir / category).mkdir()
+
+        # Create config
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+
+        config_file = config_dir / "ll-config.json"
+        config_data = {
+            "project": {
+                "name": "test-project",
+                "src_dir": "src/",
+                "test_cmd": "pytest",
+                "lint_cmd": "ruff check",
+            },
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                    "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
+                },
+                "completed_dir": "completed",
+            },
+        }
+
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        # Create sample issue
+        (issues_dir / "bugs" / "P1-BUG-001-test-bug.md").write_text(
+            "# BUG-001: Test Bug\n\n## Summary\nFix this bug."
+        )
+
+        # Create sprint file
+        sprints_dir = tmp_path / "sprints"
+        sprints_dir.mkdir()
+        sprint_file = sprints_dir / "test.yaml"
+        sprint_file.write_text(
+            """name: test-sprint
+issues:
+  - BUG-001
+"""
+        )
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=sprints_dir, config=config)
+
+        return sprints_dir, config, manager
+
+    def test_keyboard_interrupt_returns_130(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """KeyboardInterrupt during wave processing returns exit code 130."""
+        import argparse
+
+        from little_loops import cli
+
+        sprints_dir, config, manager = self._setup_test_project(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="test",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=1,
+        )
+
+        # Mock process_issue_inplace to raise KeyboardInterrupt
+        def raise_keyboard_interrupt(*args: Any, **kwargs: Any) -> None:
+            raise KeyboardInterrupt()
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            raise_keyboard_interrupt,
+        )
+
+        # Change to tmp_path so state file is created there
+        monkeypatch.chdir(tmp_path)
+
+        # Reset shutdown flag
+        cli._sprint_shutdown_requested = False
+
+        # Run and check exit code
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 130
+
+    def test_unexpected_exception_returns_1(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """Unexpected exception during wave processing returns exit code 1."""
+        import argparse
+
+        from little_loops import cli
+
+        sprints_dir, config, manager = self._setup_test_project(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="test",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=1,
+        )
+
+        # Mock process_issue_inplace to raise RuntimeError
+        def raise_runtime_error(*args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("Unexpected test error")
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            raise_runtime_error,
+        )
+
+        # Change to tmp_path so state file is created there
+        monkeypatch.chdir(tmp_path)
+
+        # Reset shutdown flag
+        cli._sprint_shutdown_requested = False
+
+        # Run and check exit code
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 1
+
+    def test_exception_saves_state(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """Exception during processing saves state before exit."""
+        import argparse
+
+        from little_loops import cli
+
+        sprints_dir, config, manager = self._setup_test_project(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="test",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=1,
+        )
+
+        # Mock process_issue_inplace to raise RuntimeError
+        def raise_runtime_error(*args: Any, **kwargs: Any) -> None:
+            raise RuntimeError("Test error for state save")
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            raise_runtime_error,
+        )
+
+        # Change to tmp_path so state file is created there
+        monkeypatch.chdir(tmp_path)
+
+        # Reset shutdown flag
+        cli._sprint_shutdown_requested = False
+
+        # Run the function
+        cli._cmd_sprint_run(args, manager, config)
+
+        # Check that state file was created
+        state_file = tmp_path / ".sprint-state.json"
+        assert state_file.exists(), "State file should be saved on exception"
+
+        # Verify state content
+        state_data = json.loads(state_file.read_text())
+        assert state_data["sprint_name"] == "test"
+        assert "last_checkpoint" in state_data

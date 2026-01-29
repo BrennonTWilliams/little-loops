@@ -1842,107 +1842,131 @@ def _cmd_sprint_run(
             started_at=datetime.now().isoformat(),
         )
 
-    # Determine max workers
-    max_workers = args.max_workers or (sprint.options.max_workers if sprint.options else 2)
+    # Track exit status for error handling (ENH-185)
+    exit_code = 0
 
-    # Execute wave by wave
-    completed: set[str] = set(state.completed_issues)
-    failed_waves = 0
-    total_duration = 0.0
-    total_waves = len(waves)
+    try:
+        # Determine max workers
+        max_workers = args.max_workers or (sprint.options.max_workers if sprint.options else 2)
 
-    for wave_num, wave in enumerate(waves, 1):
-        # Check for shutdown request (ENH-183)
-        if _sprint_shutdown_requested:
-            logger.warning("Shutdown requested - saving state and exiting")
-            _save_sprint_state(state, logger)
-            return 1
+        # Execute wave by wave
+        completed: set[str] = set(state.completed_issues)
+        failed_waves = 0
+        total_duration = 0.0
+        total_waves = len(waves)
 
-        # Skip already-completed waves when resuming
-        if wave_num < start_wave:
-            continue
+        for wave_num, wave in enumerate(waves, 1):
+            # Check for shutdown request (ENH-183)
+            if _sprint_shutdown_requested:
+                logger.warning("Shutdown requested - saving state and exiting")
+                _save_sprint_state(state, logger)
+                exit_code = 1
+                return exit_code
 
-        wave_ids = [issue.issue_id for issue in wave]
-        state.current_wave = wave_num
-        logger.info(f"\nProcessing wave {wave_num}/{total_waves}: {', '.join(wave_ids)}")
+            # Skip already-completed waves when resuming
+            if wave_num < start_wave:
+                continue
 
-        if len(wave) == 1:
-            # Single issue — process in-place (no worktree overhead)
-            from little_loops.issue_manager import process_issue_inplace
+            wave_ids = [issue.issue_id for issue in wave]
+            state.current_wave = wave_num
+            logger.info(f"\nProcessing wave {wave_num}/{total_waves}: {', '.join(wave_ids)}")
 
-            issue_result = process_issue_inplace(
-                info=wave[0],
-                config=config,
-                logger=logger,
-                dry_run=args.dry_run,
-            )
-            total_duration += issue_result.duration
-            if issue_result.success:
-                completed.update(wave_ids)
-                state.completed_issues.extend(wave_ids)
-                state.timing[wave_ids[0]] = {"total": issue_result.duration}
-                logger.success(f"Wave {wave_num}/{total_waves} completed: {wave_ids[0]}")
+            if len(wave) == 1:
+                # Single issue — process in-place (no worktree overhead)
+                from little_loops.issue_manager import process_issue_inplace
+
+                issue_result = process_issue_inplace(
+                    info=wave[0],
+                    config=config,
+                    logger=logger,
+                    dry_run=args.dry_run,
+                )
+                total_duration += issue_result.duration
+                if issue_result.success:
+                    completed.update(wave_ids)
+                    state.completed_issues.extend(wave_ids)
+                    state.timing[wave_ids[0]] = {"total": issue_result.duration}
+                    logger.success(f"Wave {wave_num}/{total_waves} completed: {wave_ids[0]}")
+                else:
+                    failed_waves += 1
+                    completed.update(wave_ids)
+                    state.completed_issues.extend(wave_ids)
+                    state.failed_issues[wave_ids[0]] = "Issue processing failed"
+                    logger.warning(f"Wave {wave_num}/{total_waves} had failures")
+                _save_sprint_state(state, logger)
+                if wave_num < total_waves:
+                    logger.info(f"Continuing to wave {wave_num + 1}/{total_waves}...")
+                    # Check for shutdown before next wave (ENH-183)
+                    if _sprint_shutdown_requested:
+                        logger.warning("Shutdown requested - exiting after wave completion")
+                        exit_code = 1
+                        return exit_code
             else:
-                failed_waves += 1
-                completed.update(wave_ids)
-                state.completed_issues.extend(wave_ids)
-                state.failed_issues[wave_ids[0]] = "Issue processing failed"
-                logger.warning(f"Wave {wave_num}/{total_waves} had failures")
-            _save_sprint_state(state, logger)
-            if wave_num < total_waves:
-                logger.info(f"Continuing to wave {wave_num + 1}/{total_waves}...")
-                # Check for shutdown before next wave (ENH-183)
-                if _sprint_shutdown_requested:
-                    logger.warning("Shutdown requested - exiting after wave completion")
-                    return 1
+                # Multi-issue — use ParallelOrchestrator with worktrees
+                only_ids = set(wave_ids)
+                parallel_config = config.create_parallel_config(
+                    max_workers=min(max_workers, len(wave)),
+                    only_ids=only_ids,
+                    dry_run=args.dry_run,
+                )
+
+                orchestrator = ParallelOrchestrator(
+                    parallel_config, config, Path.cwd(), wave_label=f"Wave {wave_num}/{total_waves}"
+                )
+                result = orchestrator.run()
+                total_duration += orchestrator.execution_duration
+
+                # Track completed/failed from this wave
+                if result == 0:
+                    completed.update(wave_ids)
+                    state.completed_issues.extend(wave_ids)
+                    for issue_id in wave_ids:
+                        state.timing[issue_id] = {"total": orchestrator.execution_duration / len(wave)}
+                    logger.success(f"Wave {wave_num}/{total_waves} completed: {', '.join(wave_ids)}")
+                else:
+                    # Some issues failed - continue but track failures
+                    failed_waves += 1
+                    completed.update(wave_ids)
+                    state.completed_issues.extend(wave_ids)
+                    for issue_id in wave_ids:
+                        state.failed_issues[issue_id] = "Wave execution had failures"
+                    logger.warning(f"Wave {wave_num}/{total_waves} had failures")
+                _save_sprint_state(state, logger)
+                if wave_num < total_waves:
+                    logger.info(f"Continuing to wave {wave_num + 1}/{total_waves}...")
+                    # Check for shutdown before next wave (ENH-183)
+                    if _sprint_shutdown_requested:
+                        logger.warning("Shutdown requested - exiting after wave completion")
+                        exit_code = 1
+                        return exit_code
+
+        wave_word = "wave" if len(waves) == 1 else "waves"
+        logger.info(f"\nSprint completed: {len(completed)} issues processed ({len(waves)} {wave_word})")
+        logger.timing(f"Total execution time: {format_duration(total_duration)}")
+        if failed_waves > 0:
+            logger.warning(f"{failed_waves} wave(s) had failures")
+            exit_code = 1
         else:
-            # Multi-issue — use ParallelOrchestrator with worktrees
-            only_ids = set(wave_ids)
-            parallel_config = config.create_parallel_config(
-                max_workers=min(max_workers, len(wave)),
-                only_ids=only_ids,
-                dry_run=args.dry_run,
-            )
+            # Clean up state on successful completion
+            _cleanup_sprint_state(logger)
 
-            orchestrator = ParallelOrchestrator(
-                parallel_config, config, Path.cwd(), wave_label=f"Wave {wave_num}/{total_waves}"
-            )
-            result = orchestrator.run()
-            total_duration += orchestrator.execution_duration
+    except KeyboardInterrupt:
+        # Belt-and-suspenders with signal handler (ENH-185)
+        logger.warning("Sprint interrupted by user (KeyboardInterrupt)")
+        exit_code = 130
 
-            # Track completed/failed from this wave
-            if result == 0:
-                completed.update(wave_ids)
-                state.completed_issues.extend(wave_ids)
-                for issue_id in wave_ids:
-                    state.timing[issue_id] = {"total": orchestrator.execution_duration / len(wave)}
-                logger.success(f"Wave {wave_num}/{total_waves} completed: {', '.join(wave_ids)}")
-            else:
-                # Some issues failed - continue but track failures
-                failed_waves += 1
-                completed.update(wave_ids)
-                state.completed_issues.extend(wave_ids)
-                for issue_id in wave_ids:
-                    state.failed_issues[issue_id] = "Wave execution had failures"
-                logger.warning(f"Wave {wave_num}/{total_waves} had failures")
+    except Exception as e:
+        # Catch unexpected exceptions (ENH-185)
+        logger.error(f"Sprint failed unexpectedly: {e}")
+        exit_code = 1
+
+    finally:
+        # Guaranteed state save on any non-success exit (ENH-185)
+        if exit_code != 0:
             _save_sprint_state(state, logger)
-            if wave_num < total_waves:
-                logger.info(f"Continuing to wave {wave_num + 1}/{total_waves}...")
-                # Check for shutdown before next wave (ENH-183)
-                if _sprint_shutdown_requested:
-                    logger.warning("Shutdown requested - exiting after wave completion")
-                    return 1
+            logger.info("State saved before exit")
 
-    wave_word = "wave" if len(waves) == 1 else "waves"
-    logger.info(f"\nSprint completed: {len(completed)} issues processed ({len(waves)} {wave_word})")
-    logger.timing(f"Total execution time: {format_duration(total_duration)}")
-    if failed_waves > 0:
-        logger.warning(f"{failed_waves} wave(s) had failures")
-        return 1
-
-    # Clean up state on successful completion
-    _cleanup_sprint_state(logger)
-    return 0
+    return exit_code
 
 
 def main_history() -> int:
