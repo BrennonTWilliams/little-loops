@@ -12,6 +12,7 @@ Common issues and solutions for little-loops.
 - [Priority and Filtering](#priority-and-filtering)
 - [Merge Conflicts](#merge-conflicts)
 - [Slash Command Issues](#slash-command-issues)
+- [Hook Debugging](#hook-debugging)
 - [Diagnostic Commands](#diagnostic-commands)
 
 ---
@@ -662,6 +663,243 @@ For comprehensive documentation, see [Session Handoff Guide](SESSION_HANDOFF.md)
 2. Look for closure notes in the file
 3. Review git log for any commits
 4. Run with verbose output to see reasoning
+
+---
+
+## Hook Debugging
+
+### Hook not executing
+
+**Symptom**: Expected hook behavior not occurring (context warnings, duplicate checks, etc.)
+
+**Cause**: Hook disabled, missing dependencies, or execution errors
+
+**Solution**:
+1. Check hooks are registered in `hooks/hooks.json`
+2. Verify hook script is executable:
+   ```bash
+   chmod +x hooks/scripts/context-monitor.sh
+   chmod +x hooks/scripts/check-duplicate-issue-id.sh
+   chmod +x hooks/scripts/user-prompt-check.sh
+   chmod +x hooks/scripts/precompact-state.sh
+   ```
+3. Check `jq` is installed (required by most hooks):
+   ```bash
+   which jq || brew install jq  # macOS
+   which jq || apt install jq   # Linux
+   ```
+
+### Hook timeout errors
+
+**Symptom**: "Hook exceeded timeout" or hook execution aborted
+
+**Cause**: Lock acquisition timeout or slow file operations
+
+**Solution**:
+1. Check for stale lock files:
+   ```bash
+   find .claude -name "*.lock" -o -name "*.lock.lock"
+   rm -rf .claude/*.lock .claude/*.lock.lock
+   ```
+2. Verify hooks complete quickly (should be <1s normally):
+   ```bash
+   time bash hooks/scripts/context-monitor.sh < test-input.json
+   ```
+3. Check hook timeout settings in `hooks/hooks.json`
+
+### State file corruption
+
+**Symptom**: Hook crashes with JSON parse errors
+
+**Cause**: Interrupted write operation or concurrent access bug
+
+**Solution**:
+1. Check state file is valid JSON:
+   ```bash
+   jq empty .claude/ll-context-state.json 2>&1
+   jq empty .claude/ll-precompact-state.json 2>&1
+   ```
+2. Delete corrupted state files (they'll be recreated):
+   ```bash
+   rm .claude/ll-context-state.json
+   rm .claude/ll-precompact-state.json
+   ```
+3. Verify `atomic_write_json` is being used (check hook scripts source `lib/common.sh`)
+
+### Lock files not cleaned up
+
+**Symptom**: Stale `.lock` files preventing hook execution
+
+**Cause**: Hook process killed before cleanup or trap failure
+
+**Solution**:
+1. Remove all lock files:
+   ```bash
+   # Clean up hook lock files
+   rm -rf .claude/.*.lock
+   rm -rf .claude/.*.lock.lock
+   rm -rf .issues/.*.lock
+   rm -rf .issues/.*.lock.lock
+   ```
+2. Check for hung processes:
+   ```bash
+   ps aux | grep -E '(context-monitor|check-duplicate|user-prompt-check|precompact)'
+   ```
+3. Lock files should auto-expire (4s timeout for most hooks)
+
+### Duplicate issue ID not detected
+
+**Symptom**: Multiple issues created with same ID despite hook
+
+**Cause**: Race condition or hook not running on Write tool
+
+**Solution**:
+1. Verify hook is registered for PreToolUse:
+   ```bash
+   grep -A5 "check-duplicate-issue-id" hooks/hooks.json
+   ```
+2. Test hook manually:
+   ```bash
+   echo '{"tool_name":"Write","tool_input":{"file_path":".issues/bugs/P2-BUG-001-test.md"}}' | \
+     bash hooks/scripts/check-duplicate-issue-id.sh
+   ```
+3. Check if lock acquisition is timing out (reduce concurrent writes)
+
+### Context monitor not updating
+
+**Symptom**: Token counts not increasing or warnings not appearing
+
+**Cause**: Hook not running, state file issues, or disabled
+
+**Solution**:
+1. Enable context monitoring in config:
+   ```json
+   {
+     "context_monitor": {
+       "enabled": true
+     }
+   }
+   ```
+2. Check state file is updating:
+   ```bash
+   watch -n 1 'cat .claude/ll-context-state.json | jq .estimated_tokens'
+   ```
+3. Verify PostToolUse hook is running:
+   ```bash
+   # Add this to context-monitor.sh temporarily for debugging
+   echo "Hook triggered at $(date)" >> /tmp/hook-debug.log
+   ```
+4. Test hook manually:
+   ```bash
+   echo '{"tool_name":"Read","tool_response":{"content":"test\n"}}' | \
+     bash hooks/scripts/context-monitor.sh
+   ```
+
+### User prompt optimization not working
+
+**Symptom**: Prompts not being optimized despite enabled setting
+
+**Cause**: Bypass patterns matching or template file missing
+
+**Solution**:
+1. Check prompt doesn't start with bypass prefix (default: `*`):
+   ```json
+   {
+     "prompt_optimization": {
+       "bypass_prefix": "*"
+     }
+   }
+   ```
+2. Verify template file exists:
+   ```bash
+   ls -la hooks/prompts/optimize-prompt-hook.md
+   ```
+3. Test hook with a sample prompt:
+   ```bash
+   echo '{"prompt":"implement user authentication system"}' | \
+     bash hooks/scripts/user-prompt-check.sh
+   ```
+
+### Testing individual hooks
+
+**Manual hook testing**:
+
+```bash
+# Test context-monitor.sh
+echo '{
+  "tool_name": "Read",
+  "tool_response": {"content": "line1\nline2\nline3\n"}
+}' | bash hooks/scripts/context-monitor.sh
+
+# Test check-duplicate-issue-id.sh
+echo '{
+  "tool_name": "Write",
+  "tool_input": {"file_path": ".issues/bugs/P2-BUG-999-test.md"}
+}' | bash hooks/scripts/check-duplicate-issue-id.sh
+
+# Test user-prompt-check.sh
+echo '{
+  "prompt": "add authentication to the app"
+}' | bash hooks/scripts/user-prompt-check.sh
+
+# Test precompact-state.sh
+echo '{
+  "transcript_path": "/tmp/test.jsonl"
+}' | bash hooks/scripts/precompact-state.sh
+```
+
+### Hook integration tests
+
+Run the full integration test suite:
+
+```bash
+# Run all hook integration tests
+python -m pytest scripts/tests/test_hooks_integration.py -v
+
+# Run specific test class
+python -m pytest scripts/tests/test_hooks_integration.py::TestContextMonitor -v
+
+# Run with detailed output
+python -m pytest scripts/tests/test_hooks_integration.py -v -s
+```
+
+### Common lock issues
+
+**Symptom**: "Failed to acquire lock" or timeout errors
+
+**Debugging**:
+1. Check if `flock` is available:
+   ```bash
+   which flock || echo "Using mkdir-based fallback locks"
+   ```
+2. Verify lock timeout settings (in hook scripts):
+   - context-monitor.sh: 4s timeout
+   - check-duplicate-issue-id.sh: 3s timeout
+   - precompact-state.sh: 3s timeout
+3. Monitor lock files during operation:
+   ```bash
+   watch -n 0.1 'find .claude .issues -name "*.lock*" 2>/dev/null'
+   ```
+
+### Special character handling
+
+**Symptom**: Prompts with special characters cause errors or injection
+
+**Verification**:
+1. Test with special characters:
+   ```bash
+   echo '{"prompt":"test with $VAR and $(cmd) and & chars"}' | \
+     bash hooks/scripts/user-prompt-check.sh
+   ```
+2. Check for sed usage (should use bash parameter expansion instead):
+   ```bash
+   grep -n "sed" hooks/scripts/*.sh
+   # Should only appear in comments, not active code
+   ```
+3. Run integration tests:
+   ```bash
+   python -m pytest scripts/tests/test_hooks_integration.py::TestUserPromptCheck -v
+   ```
 
 ---
 
