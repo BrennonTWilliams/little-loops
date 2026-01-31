@@ -101,7 +101,7 @@ class IssueInfo:
     def priority_int(self) -> int:
         """Convert priority to integer for comparison (lower = higher priority)."""
         # Support P0-P5 priorities
-        match = re.match(r"P(\d+)", self.priority)
+        match = re.match(r"^P(\d+)$", self.priority)
         if match:
             return int(match.group(1))
         return 99  # Unknown priority sorts last

@@ -150,7 +150,7 @@ class TestBuildCompletionResolution:
         assert "## Resolution" in result
         assert "**Action**: fix" in result
         assert "**Status**: Completed (automated fallback)" in result
-        assert "### Changes Made" in result
+        assert "### Files Changed" in result
         assert "### Verification Results" in result
         assert "### Commits" in result
 
