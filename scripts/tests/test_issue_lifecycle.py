@@ -22,12 +22,14 @@ import pytest
 
 from little_loops.config import BRConfig
 from little_loops.issue_lifecycle import (
+    FailureType,
     _build_closure_resolution,
     _build_completion_resolution,
     _cleanup_stale_source,
     _commit_issue_completion,
     _move_issue_to_completed,
     _prepare_issue_content,
+    classify_failure,
     close_issue,
     complete_issue_lifecycle,
     create_issue_from_failure,
@@ -701,6 +703,109 @@ class TestCreateIssueFromFailure:
 
         assert result is not None
         assert "P1-BUG-" in result.name
+
+
+# =============================================================================
+# Tests: Failure Classification
+# =============================================================================
+
+
+class TestClassifyFailure:
+    """Tests for classify_failure function."""
+
+    @pytest.mark.parametrize(
+        ("error_output", "expected_type", "expected_reason_contains"),
+        [
+            # API quota/rate limit patterns
+            (
+                "Error: You're out of extra usage · resets 2pm",
+                "TRANSIENT",
+                "quota",
+            ),
+            ("Rate limit exceeded. Please retry after 60s", "TRANSIENT", "quota"),
+            ("Error 429: Too many requests", "TRANSIENT", "quota"),
+            ("API quota exceeded for model", "TRANSIENT", "quota"),
+            ("ResourceExhausted: quota limit reached", "TRANSIENT", "quota"),
+            # Network/connectivity patterns
+            ("Connection refused: localhost:8080", "TRANSIENT", "network"),
+            ("Error: Connection timeout after 30s", "TRANSIENT", "network"),
+            ("DNS resolution failed for api.example.com", "TRANSIENT", "network"),
+            ("503 Service Unavailable", "TRANSIENT", "network"),
+            ("502 Bad Gateway", "TRANSIENT", "network"),
+            ("Error: ECONNREFUSED", "TRANSIENT", "network"),
+            # Timeout patterns
+            ("Command timed out after 3600 seconds", "TRANSIENT", "timeout"),
+            ("Operation timed out waiting for response", "TRANSIENT", "timeout"),
+            ("Deadline exceeded for RPC call", "TRANSIENT", "timeout"),
+            # Resource patterns
+            ("Error: No space left on device", "TRANSIENT", "resource"),
+            ("Out of memory while processing", "TRANSIENT", "resource"),
+            ("Too many open files", "TRANSIENT", "resource"),
+            # Real failure patterns
+            ("SyntaxError: unexpected token at line 42", "REAL", "implementation"),
+            (
+                "FAILED tests/test_foo.py::test_bar - AssertionError",
+                "REAL",
+                "implementation",
+            ),
+            ("ValueError: Invalid input provided", "REAL", "implementation"),
+            ("TypeError: 'NoneType' has no attribute 'foo'", "REAL", "implementation"),
+            ("ModuleNotFoundError: No module named 'missing'", "REAL", "implementation"),
+        ],
+    )
+    def test_classify_failure_patterns(
+        self, error_output: str, expected_type: str, expected_reason_contains: str
+    ) -> None:
+        """Test that failure patterns are classified correctly."""
+        from little_loops.issue_lifecycle import FailureType, classify_failure
+
+        failure_type, reason = classify_failure(error_output, 1)
+        expected = FailureType[expected_type]
+        assert failure_type == expected, f"Expected {expected} for: {error_output[:50]}"
+        assert (
+            expected_reason_contains in reason.lower()
+        ), f"Expected '{expected_reason_contains}' in: {reason}"
+
+    def test_classify_failure_case_insensitive(self) -> None:
+        """Test that pattern matching is case insensitive."""
+        from little_loops.issue_lifecycle import FailureType, classify_failure
+
+        # Uppercase
+        failure_type, _ = classify_failure("RATE LIMIT EXCEEDED", 1)
+        assert failure_type == FailureType.TRANSIENT
+
+        # Mixed case
+        failure_type, _ = classify_failure("Connection Timeout occurred", 1)
+        assert failure_type == FailureType.TRANSIENT
+
+    def test_classify_failure_empty_output(self) -> None:
+        """Test classification of empty error output."""
+        from little_loops.issue_lifecycle import FailureType, classify_failure
+
+        failure_type, reason = classify_failure("", 1)
+        assert failure_type == FailureType.REAL
+        assert "implementation" in reason.lower()
+
+    def test_classify_failure_unknown_error(self) -> None:
+        """Test classification of unknown error types."""
+        from little_loops.issue_lifecycle import FailureType, classify_failure
+
+        failure_type, reason = classify_failure("Some random error message", 1)
+        assert failure_type == FailureType.REAL
+        assert "implementation" in reason.lower()
+
+    def test_classify_failure_multiline_output(self) -> None:
+        """Test pattern matching works on multiline output."""
+        from little_loops.issue_lifecycle import FailureType, classify_failure
+
+        error_output = """Some context here
+Traceback (most recent call last):
+  File "test.py", line 10
+Error: You're out of extra usage · resets 2pm
+More context after"""
+
+        failure_type, _ = classify_failure(error_output, 1)
+        assert failure_type == FailureType.TRANSIENT
 
 
 # =============================================================================

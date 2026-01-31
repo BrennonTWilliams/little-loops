@@ -21,6 +21,8 @@ from little_loops.config import BRConfig
 from little_loops.dependency_graph import DependencyGraph
 from little_loops.git_operations import check_git_status, verify_work_was_done
 from little_loops.issue_lifecycle import (
+    FailureType,
+    classify_failure,
     close_issue,
     complete_issue_lifecycle,
     create_issue_from_failure,
@@ -461,20 +463,37 @@ def process_issue_inplace(
 
     # Handle implementation failure
     if result.returncode != 0:
+        error_output = result.stderr or result.stdout or "Unknown error"
+        failure_type, failure_reason_text = classify_failure(error_output, result.returncode)
+
+        if failure_type == FailureType.TRANSIENT:
+            # Transient failure - log but don't create bug issue
+            logger.warning(f"Transient failure for {info.issue_id}: {failure_reason_text}")
+            logger.warning("Not creating bug issue - this is a temporary error")
+            logger.info("Error output (first 500 chars):")
+            logger.info(error_output[:500])
+
+            return IssueProcessingResult(
+                success=False,
+                duration=time.time() - issue_start_time,
+                issue_id=info.issue_id,
+                failure_reason=f"Transient: {failure_reason_text}",
+                corrections=corrections,
+            )
+
+        # Real failure - create issue as before
         logger.error(f"Implementation failed for {info.issue_id}")
 
         failure_reason = ""
         if not dry_run:
             # Create new issue for the failure
             new_issue = create_issue_from_failure(
-                result.stderr or result.stdout or "Unknown error",
+                error_output,
                 info,
                 config,
                 logger,
             )
-            failure_reason = str(new_issue) if new_issue else (
-                result.stderr or result.stdout or "Unknown error"
-            )
+            failure_reason = str(new_issue) if new_issue else error_output
         else:
             logger.info("Would create new bug issue for this failure")
 

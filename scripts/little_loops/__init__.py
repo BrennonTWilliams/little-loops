@@ -12,6 +12,8 @@ from little_loops.git_operations import (
     verify_work_was_done,
 )
 from little_loops.issue_lifecycle import (
+    FailureType,
+    classify_failure,
     close_issue,
     complete_issue_lifecycle,
     create_issue_from_failure,
@@ -28,6 +30,8 @@ __all__ = [
     "filter_excluded_files",
     "verify_work_was_done",
     # issue_lifecycle
+    "FailureType",
+    "classify_failure",
     "close_issue",
     "complete_issue_lifecycle",
     "create_issue_from_failure",

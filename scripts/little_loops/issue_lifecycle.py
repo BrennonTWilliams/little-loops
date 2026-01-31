@@ -2,6 +2,9 @@
 
 Provides functions for closing, completing, and verifying issue completion,
 as well as creating new issues from implementation failures.
+
+Also provides failure classification to distinguish transient errors
+(API quota, network issues, timeouts) from real implementation failures.
 """
 
 from __future__ import annotations
@@ -9,11 +12,109 @@ from __future__ import annotations
 import re
 import subprocess
 from datetime import datetime
+from enum import Enum
 from pathlib import Path
 
 from little_loops.config import BRConfig
 from little_loops.issue_parser import IssueInfo, get_next_issue_number, slugify
 from little_loops.logger import Logger
+
+# =============================================================================
+# Failure Classification
+# =============================================================================
+
+
+class FailureType(Enum):
+    """Classification of command failure types.
+
+    Used to distinguish between transient errors that should not
+    create bug issues and real implementation failures that should.
+    """
+
+    TRANSIENT = "transient"  # Temporary error, don't create issue
+    REAL = "real"  # Actual bug/error, create issue
+
+
+def classify_failure(error_output: str, returncode: int) -> tuple[FailureType, str]:
+    """Classify a command failure as transient or real.
+
+    Examines error output for patterns indicating transient failures
+    (API quota, network errors, timeouts) vs real implementation failures.
+
+    Args:
+        error_output: stderr or stdout from failed command
+        returncode: Process exit code (available for future use)
+
+    Returns:
+        Tuple of (failure_type, reason) where reason explains the classification
+    """
+    error_lower = error_output.lower()
+
+    # API quota/rate limit patterns
+    quota_patterns = [
+        "out of extra usage",
+        "rate limit",
+        "quota exceeded",
+        "too many requests",
+        "api limit",
+        "usage limit",
+        "429",  # HTTP Too Many Requests
+        "resource exhausted",
+        "resourceexhausted",  # No space variant (gRPC style)
+    ]
+    if any(pattern in error_lower for pattern in quota_patterns):
+        return (FailureType.TRANSIENT, "API quota or rate limit exceeded")
+
+    # Network/connectivity patterns
+    # Note: Use word boundaries where needed to avoid false positives
+    # (e.g., "enotfound" shouldn't match "ModuleNotFoundError")
+    network_patterns = [
+        "connection refused",
+        "connection timeout",
+        "network error",
+        "dns resolution",
+        "connection reset",
+        "service unavailable",
+        "502 bad gateway",
+        "503 service unavailable",
+        "504 gateway timeout",
+    ]
+    if any(pattern in error_lower for pattern in network_patterns):
+        return (FailureType.TRANSIENT, "Network or connectivity error")
+
+    # Check for Node.js-style error codes with word boundary awareness
+    # These are typically at word boundaries (e.g., "Error: ECONNREFUSED")
+    if re.search(r"\beconnrefused\b", error_lower):
+        return (FailureType.TRANSIENT, "Network or connectivity error")
+    if re.search(r"\benotfound\b", error_lower):
+        return (FailureType.TRANSIENT, "Network or connectivity error")
+    if re.search(r"\betimedout\b", error_lower):
+        return (FailureType.TRANSIENT, "Network or connectivity error")
+
+    # Timeout patterns
+    timeout_patterns = [
+        "timeout",
+        "timed out",
+        "deadline exceeded",
+        "operation timed out",
+    ]
+    if any(pattern in error_lower for pattern in timeout_patterns):
+        return (FailureType.TRANSIENT, "Command timeout")
+
+    # Resource/system transient patterns
+    resource_patterns = [
+        "disk full",
+        "no space left",
+        "resource temporarily unavailable",
+        "too many open files",
+        "memory allocation failed",
+        "out of memory",
+    ]
+    if any(pattern in error_lower for pattern in resource_patterns):
+        return (FailureType.TRANSIENT, "System resource error")
+
+    # Default: treat as real failure
+    return (FailureType.REAL, "Implementation error")
 
 # =============================================================================
 # Content Manipulation Helpers
