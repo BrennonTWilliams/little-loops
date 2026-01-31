@@ -79,24 +79,29 @@ fi
 
 # All checks passed - output the optimization hook prompt
 # The hook prompt file uses {{VARIABLE}} placeholders that we substitute
-HOOK_PROMPT_FILE="${CLAUDE_PLUGIN_ROOT:-$(dirname "$0")/..}/prompts/optimize-prompt-hook.md"
 
-if [ -f "$HOOK_PROMPT_FILE" ]; then
-    # Read hook prompt and substitute variables
-    HOOK_CONTENT=$(cat "$HOOK_PROMPT_FILE")
+# Resolve script directory explicitly
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+HOOK_PROMPT_FILE="${CLAUDE_PLUGIN_ROOT:-$SCRIPT_DIR/..}/prompts/optimize-prompt-hook.md"
 
-    # Escape special characters in user prompt for sed
-    ESCAPED_PROMPT=$(printf '%s\n' "$USER_PROMPT" | sed 's/[&/\]/\\&/g')
-
-    # Substitute placeholders
-    HOOK_CONTENT="${HOOK_CONTENT//\{\{USER_PROMPT\}\}/$ESCAPED_PROMPT}"
-    HOOK_CONTENT="${HOOK_CONTENT//\{\{MODE\}\}/$MODE}"
-    HOOK_CONTENT="${HOOK_CONTENT//\{\{CONFIRM\}\}/$CONFIRM}"
-
-    # Output to stderr with exit 2 to ensure it reaches Claude
-    # Reference: https://github.com/anthropics/claude-code/issues/11224
-    echo "$HOOK_CONTENT" >&2
-    exit 2
+# Validate file exists
+if [ ! -f "$HOOK_PROMPT_FILE" ]; then
+    # Template missing - exit gracefully
+    exit 0
 fi
+
+# Read hook prompt and substitute variables
+HOOK_CONTENT=$(cat "$HOOK_PROMPT_FILE")
+
+# Direct bash substitution (no escaping needed for parameter expansion)
+# Bash parameter expansion doesn't interpret special characters like sed does
+HOOK_CONTENT="${HOOK_CONTENT//\{\{USER_PROMPT\}\}/$USER_PROMPT}"
+HOOK_CONTENT="${HOOK_CONTENT//\{\{MODE\}\}/$MODE}"
+HOOK_CONTENT="${HOOK_CONTENT//\{\{CONFIRM\}\}/$CONFIRM}"
+
+# Output to stderr with exit 2 to ensure it reaches Claude
+# Reference: https://github.com/anthropics/claude-code/issues/11224
+echo "$HOOK_CONTENT" >&2
+exit 2
 
 exit 0

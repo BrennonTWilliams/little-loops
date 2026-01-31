@@ -9,6 +9,10 @@
 
 set -euo pipefail
 
+# Source shared utilities library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+
 # Allow JSON response function
 allow_response() {
     echo '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"allow"}}'
@@ -81,14 +85,29 @@ if [[ -f "$FILE_PATH" ]]; then
     allow_response
 fi
 
+# Acquire advisory lock for duplicate check (3s timeout)
+# This reduces race condition window but doesn't eliminate it completely
+ISSUE_LOCK="${ISSUES_DIR}/.issue-id.lock"
+if ! acquire_lock "$ISSUE_LOCK" 3; then
+    # Timeout - fail open (allow operation)
+    # Better to allow potential duplicate than block user
+    allow_response
+fi
+
 # Search for existing files with the same issue ID
-# Use word boundary matching to avoid BUG-001 matching BUG-0010
-EXISTING=$(find "$ISSUES_DIR" -name "*.md" -type f 2>/dev/null | while read -r f; do
-    BASENAME=$(basename "$f")
-    if echo "$BASENAME" | grep -qE "[-_]${ISSUE_ID}[-_.]"; then
-        echo "$f"
-    fi
-done | head -1)
+# Use null-terminated find to handle filenames with newlines
+EXISTING=$(find "$ISSUES_DIR" -name "*.md" -type f -print0 2>/dev/null | \
+    while IFS= read -r -d '' f; do
+        BASENAME=$(basename "$f")
+        # Use word boundary matching to avoid BUG-001 matching BUG-0010
+        if echo "$BASENAME" | grep -qE "(^|[-_])${ISSUE_ID}([-_.]|$)"; then
+            printf '%s' "$f"
+            break
+        fi
+    done)
+
+# Release lock
+release_lock "$ISSUE_LOCK"
 
 if [[ -n "$EXISTING" ]]; then
     # Duplicate found - deny the operation

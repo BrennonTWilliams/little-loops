@@ -9,6 +9,10 @@
 
 set -euo pipefail
 
+# Source shared utilities library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+
 # Read JSON input from stdin
 INPUT=$(cat)
 
@@ -49,9 +53,14 @@ if [ -f "$CONTEXT_STATE_FILE" ]; then
         '. + {context_state_at_compact: $ctx}')
 fi
 
-# Look for active plan files to note in state
-ACTIVE_PLANS=$(find thoughts/shared/plans -name "*.md" -mtime -1 2>/dev/null | head -5 | jq -R -s 'split("\n") | map(select(length > 0))' || echo '[]')
-PRECOMPACT_STATE=$(echo "$PRECOMPACT_STATE" | jq --argjson plans "$ACTIVE_PLANS" '. + {recent_plan_files: $plans}')
+# Look for active plan files to note in state (validate path exists first)
+PLANS_DIR="thoughts/shared/plans"
+if [ -d "$PLANS_DIR" ]; then
+    ACTIVE_PLANS=$(find "$PLANS_DIR" -name "*.md" -mtime -1 2>/dev/null | head -5 | jq -R -s 'split("\n") | map(select(length > 0))' || echo '[]')
+    PRECOMPACT_STATE=$(echo "$PRECOMPACT_STATE" | jq --argjson plans "$ACTIVE_PLANS" '. + {recent_plan_files: $plans}')
+else
+    PRECOMPACT_STATE=$(echo "$PRECOMPACT_STATE" | jq '. + {recent_plan_files: []}')
+fi
 
 # Look for continue prompt to preserve
 CONTINUE_PROMPT=".claude/ll-continue-prompt.md"
@@ -59,8 +68,15 @@ if [ -f "$CONTINUE_PROMPT" ]; then
     PRECOMPACT_STATE=$(echo "$PRECOMPACT_STATE" | jq '. + {continue_prompt_exists: true}')
 fi
 
-# Write precompact state file
-echo "$PRECOMPACT_STATE" > "$PRECOMPACT_STATE_FILE"
+# Write precompact state file atomically with locking
+STATE_LOCK="${PRECOMPACT_STATE_FILE}.lock"
+if acquire_lock "$STATE_LOCK" 3; then
+    atomic_write_json "$PRECOMPACT_STATE_FILE" "$PRECOMPACT_STATE"
+    release_lock "$STATE_LOCK"
+else
+    # Lock timeout - best effort write even if lock fails
+    atomic_write_json "$PRECOMPACT_STATE_FILE" "$PRECOMPACT_STATE" || true
+fi
 
 # Output feedback to help Claude resume after compaction
 echo "[ll] Task state preserved before context compaction. Check .claude/ll-precompact-state.json if resuming work." >&2

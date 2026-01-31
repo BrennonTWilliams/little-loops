@@ -85,7 +85,13 @@ if local_file.exists():
 # No local overrides, output base config
 if config_file.exists():
     print("[little-loops] Config loaded:", str(config_file), file=sys.stderr)
-    print(config_file.read_text()[:4000])  # Limit output size
+    config_text = config_file.read_text()
+
+    # Warn if very large
+    if len(config_text) > 5000:
+        print(f"[little-loops] Warning: Large config ({len(config_text)} chars)", file=sys.stderr)
+
+    print(config_text)  # Full output
 else:
     print("[little-loops] Warning: No config found. Run /ll:init to create one.", file=sys.stderr)
 PYTHON

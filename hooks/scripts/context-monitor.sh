@@ -9,6 +9,10 @@
 
 set -euo pipefail
 
+# Source shared utilities library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+
 # Read JSON input from stdin
 INPUT=$(cat)
 
@@ -113,27 +117,8 @@ estimate_tokens() {
     echo "${tokens%.*}"
 }
 
-# Get file modification time as epoch seconds (cross-platform)
-get_mtime() {
-    local file="$1"
-    # Try macOS syntax first
-    if stat -f %m "$file" 2>/dev/null; then
-        return 0
-    fi
-    # Fall back to Linux syntax
-    stat -c %Y "$file" 2>/dev/null
-}
-
-# Parse ISO 8601 date to epoch seconds (cross-platform)
-parse_iso_date() {
-    local iso_date="$1"
-    # Try macOS syntax first (use TZ=UTC since ISO dates are in UTC)
-    if TZ=UTC date -j -f "%Y-%m-%dT%H:%M:%SZ" "$iso_date" +%s 2>/dev/null; then
-        return 0
-    fi
-    # Fall back to Linux syntax (handles Z suffix natively as UTC)
-    date -d "$iso_date" +%s 2>/dev/null
-}
+# Note: get_mtime and parse_iso_date are now provided by lib/common.sh
+# as get_mtime() and to_epoch() respectively
 
 # Initialize or read state file
 read_state() {
@@ -158,11 +143,10 @@ EOF
     fi
 }
 
-# Write state file atomically
+# Write state file atomically (now uses lib/common.sh)
 write_state() {
     local state="$1"
-    mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null || true
-    echo "$state" > "$STATE_FILE"
+    atomic_write_json "$STATE_FILE" "$state"
 }
 
 # Main logic
@@ -174,6 +158,13 @@ main() {
 
     # Estimate tokens for this tool call
     TOKENS=$(estimate_tokens "$TOOL_NAME" "$TOOL_RESPONSE")
+
+    # Acquire lock for state file read-modify-write (4s timeout, hook timeout is 5s)
+    STATE_LOCK="${STATE_FILE}.lock"
+    if ! acquire_lock "$STATE_LOCK" 4; then
+        # Timeout - exit gracefully without blocking
+        exit 0
+    fi
 
     # Read current state
     STATE=$(read_state)
@@ -215,6 +206,7 @@ main() {
         # Skip if handoff already complete
         if [ "$HANDOFF_COMPLETE" = "true" ]; then
             write_state "$NEW_STATE"
+            release_lock "$STATE_LOCK"
             exit 0
         fi
 
@@ -222,13 +214,15 @@ main() {
         HANDOFF_FILE=".claude/ll-continue-prompt.md"
         if [ -f "$HANDOFF_FILE" ]; then
             PROMPT_MTIME=$(get_mtime "$HANDOFF_FILE")
-            THRESHOLD_EPOCH=$(parse_iso_date "$THRESHOLD_CROSSED_AT")
+            THRESHOLD_EPOCH=$(to_epoch "$THRESHOLD_CROSSED_AT")
 
-            if [ -n "$PROMPT_MTIME" ] && [ -n "$THRESHOLD_EPOCH" ] && \
-               [ "$PROMPT_MTIME" -gt "$THRESHOLD_EPOCH" ] 2>/dev/null; then
+            # Validate both values are non-zero before comparison
+            if [ "$PROMPT_MTIME" -gt 0 ] && [ "$THRESHOLD_EPOCH" -gt 0 ] && \
+               [ "$PROMPT_MTIME" -gt "$THRESHOLD_EPOCH" ]; then
                 # Handoff complete - mark it and stop reminding
                 NEW_STATE=$(echo "$NEW_STATE" | jq '.handoff_complete = true')
                 write_state "$NEW_STATE"
+                release_lock "$STATE_LOCK"
                 exit 0
             fi
         fi
@@ -236,13 +230,19 @@ main() {
         # Handoff not complete - output reminder to Claude
         # Use exit 2 with stderr to ensure feedback reaches Claude in non-interactive mode
         # Reference: https://github.com/anthropics/claude-code/issues/11224
-        write_state "$NEW_STATE"
+        if ! write_state "$NEW_STATE"; then
+            # State write failed - release lock and exit
+            release_lock "$STATE_LOCK"
+            exit 0
+        fi
+        release_lock "$STATE_LOCK"
         echo "[ll] Context ~${USAGE_PERCENT}% used (${NEW_TOKENS}/${CONTEXT_LIMIT} tokens estimated). Run /ll:handoff to preserve your work before context exhaustion." >&2
         exit 2
     fi
 
     # Write updated state (no output needed)
     write_state "$NEW_STATE"
+    release_lock "$STATE_LOCK"
     exit 0
 }
 

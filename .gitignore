@@ -44,6 +44,10 @@ tmp/
 temp/
 *.tmp
 
+# Lock files (hook system)
+**/.*.lock
+**/.*.lock.lock
+
 # Claude Code
 .claude/settings.local.json
 .claude/ll.local.md
@@ -61,3 +65,4 @@ scripts/.parallel-manage-state.json
 
 # ll-parallel artifacts
 .worktrees/
+*-state.json
