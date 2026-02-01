@@ -145,7 +145,7 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
         tools:
           - /ll:check_code types      # Check tool (first)
           - /ll:manage_issue bug fix  # Fix tool (second, optional)
-        max_iterations: 20            # Optional, defaults to 50
+        max_iterations: 50            # Optional, defaults to 50 (examples show 20 for brevity)
         name: "my-goal"               # Optional, auto-generated from goal
         evaluator:                    # Optional evaluator config
           type: output_contains
@@ -406,7 +406,7 @@ def compile_imperative(spec: dict[str, Any]) -> FSMLoop:
           evaluator:               # Optional evaluator for exit condition
             type: output_contains
             pattern: "Success"
-        max_iterations: 20
+        max_iterations: 50            # Optional, defaults to 50 (examples show 20 for brevity)
         backoff: 2  # Seconds between iterations
 
     Args:

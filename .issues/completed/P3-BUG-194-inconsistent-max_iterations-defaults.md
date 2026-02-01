@@ -56,3 +56,20 @@ Approach 1 (simpler): Update documentation to clarify 50 is the universal defaul
 
 ## Related Issues
 None
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md`: Added clarification notes to goal paradigm and template mode max_iterations questions, explaining that "(Recommended)" values are suggestions for explicit specification and the actual runtime default is 50
+- `commands/create_loop.md`: Updated imperative paradigm template and examples to show `max_iterations: 50  # Default if omitted` instead of 20
+- `scripts/little_loops/fsm/compilers.py`: Updated docstring examples in `compile_goal()` and `compile_imperative()` to clarify that example values (20) are for brevity and actual default is 50
+
+### Verification Results
+- Tests: PASS (2124 passed)
+- Lint: PASS (no new errors in modified files)

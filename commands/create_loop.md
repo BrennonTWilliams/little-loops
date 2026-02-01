@@ -178,6 +178,8 @@ questions:
         description: "Quick fixes only"
       - label: "50"
         description: "For complex issues"
+
+> **Note**: Your selection will be explicitly set in the generated YAML. If omitted later, the default is 50.
 ```
 
 **If "Custom path" selected for source dir**: Ask for path via Other option.
@@ -259,6 +261,8 @@ questions:
         description: "For more complex issues"
       - label: "50"
         description: "For large codebases"
+
+> **Note**: The runtime default is 50 for all paradigms. These options are suggested starting points to explicitly specify in your YAML based on your use case.
 ```
 
 **If "Custom check" was selected**, ask for the commands:
@@ -667,7 +671,7 @@ until:
     target: <number>         # For output_numeric only
   # Include action_type only if not using default heuristic:
   action_type: "prompt|slash_command|shell"  # Optional for the until: check
-max_iterations: 20
+max_iterations: 50  # Default if omitted
 backoff: 2
 ```
 
@@ -682,7 +686,7 @@ steps:
   - "mypy src/"
 until:
   check: "mypy src/ && ruff check src/ && pytest"
-max_iterations: 20
+max_iterations: 50  # Default if omitted
 backoff: 2
 ```
 
