@@ -779,7 +779,7 @@ Examples:
             "name": fsm.name,
             "paradigm": fsm.paradigm,
             "initial": fsm.initial,
-            "states": {name: _state_to_dict(state) for name, state in fsm.states.items()},
+            "states": {name: state.to_dict() for name, state in fsm.states.items()},
             "max_iterations": fsm.max_iterations,
         }
         if fsm.context:
@@ -796,47 +796,6 @@ Examples:
 
         logger.success(f"Compiled to: {output_path}")
         return 0
-
-    def _state_to_dict(state) -> dict:
-        """Convert StateConfig to dict for YAML output."""
-        d: dict = {}
-        if state.action:
-            d["action"] = state.action
-        if state.evaluate:
-            d["evaluate"] = {"type": state.evaluate.type}
-            if state.evaluate.target is not None:
-                d["evaluate"]["target"] = state.evaluate.target
-            if state.evaluate.tolerance is not None:
-                d["evaluate"]["tolerance"] = state.evaluate.tolerance
-            if state.evaluate.previous is not None:
-                d["evaluate"]["previous"] = state.evaluate.previous
-            if state.evaluate.operator is not None:
-                d["evaluate"]["operator"] = state.evaluate.operator
-            if state.evaluate.pattern is not None:
-                d["evaluate"]["pattern"] = state.evaluate.pattern
-            if state.evaluate.path is not None:
-                d["evaluate"]["path"] = state.evaluate.path
-        if state.on_success:
-            d["on_success"] = state.on_success
-        if state.on_failure:
-            d["on_failure"] = state.on_failure
-        if state.on_error:
-            d["on_error"] = state.on_error
-        if state.next:
-            d["next"] = state.next
-        if state.route:
-            d["route"] = state.route.routes
-            if state.route.default:
-                d["route"]["_"] = state.route.default
-        if state.terminal:
-            d["terminal"] = True
-        if state.capture:
-            d["capture"] = state.capture
-        if state.timeout:
-            d["timeout"] = state.timeout
-        if state.on_maintain:
-            d["on_maintain"] = state.on_maintain
-        return d
 
     def cmd_validate(loop_name: str) -> int:
         """Validate a loop definition."""

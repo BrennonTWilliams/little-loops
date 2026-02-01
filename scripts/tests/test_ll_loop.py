@@ -570,63 +570,18 @@ class TestHistoryTail:
 
 
 class TestStateToDict:
-    """Tests for _state_to_dict helper function using real StateConfig objects."""
-
-    def _state_to_dict(self, state: StateConfig) -> dict[str, Any]:
-        """Re-implement _state_to_dict logic for testing.
-
-        This mirrors the implementation in cli.py to verify behavior.
-        The actual function is nested inside main_loop() so cannot be imported.
-        """
-        d: dict[str, Any] = {}
-        if state.action:
-            d["action"] = state.action
-        if state.evaluate:
-            d["evaluate"] = {"type": state.evaluate.type}
-            if state.evaluate.target is not None:
-                d["evaluate"]["target"] = state.evaluate.target
-            if state.evaluate.tolerance is not None:
-                d["evaluate"]["tolerance"] = state.evaluate.tolerance
-            if state.evaluate.previous is not None:
-                d["evaluate"]["previous"] = state.evaluate.previous
-            if state.evaluate.operator is not None:
-                d["evaluate"]["operator"] = state.evaluate.operator
-            if state.evaluate.pattern is not None:
-                d["evaluate"]["pattern"] = state.evaluate.pattern
-            if state.evaluate.path is not None:
-                d["evaluate"]["path"] = state.evaluate.path
-        if state.on_success:
-            d["on_success"] = state.on_success
-        if state.on_failure:
-            d["on_failure"] = state.on_failure
-        if state.on_error:
-            d["on_error"] = state.on_error
-        if state.next:
-            d["next"] = state.next
-        if state.route:
-            d["route"] = dict(state.route.routes)
-            if state.route.default:
-                d["route"]["_"] = state.route.default
-        if state.terminal:
-            d["terminal"] = True
-        if state.capture:
-            d["capture"] = state.capture
-        if state.timeout:
-            d["timeout"] = state.timeout
-        if state.on_maintain:
-            d["on_maintain"] = state.on_maintain
-        return d
+    """Tests for StateConfig.to_dict() method using real StateConfig objects."""
 
     def test_simple_state_with_action(self) -> None:
         """Convert state with action and on_success."""
         state = make_test_state(action="echo hello", on_success="done")
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result == {"action": "echo hello", "on_success": "done"}
 
     def test_terminal_state(self) -> None:
         """Convert terminal state to dict."""
         state = make_test_state(terminal=True)
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result == {"terminal": True}
 
     def test_state_with_failure_routing(self) -> None:
@@ -636,7 +591,7 @@ class TestStateToDict:
             on_success="done",
             on_failure="fix",
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result == {
             "action": "pytest",
             "on_success": "done",
@@ -650,7 +605,7 @@ class TestStateToDict:
             on_success="done",
             on_error="handle_error",
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result == {
             "action": "risky_command",
             "on_success": "done",
@@ -660,7 +615,7 @@ class TestStateToDict:
     def test_state_with_next(self) -> None:
         """Convert state with unconditional next."""
         state = make_test_state(action="echo step", next="next_state")
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result == {"action": "echo step", "next": "next_state"}
 
     def test_state_with_evaluate_exit_code(self) -> None:
@@ -671,7 +626,7 @@ class TestStateToDict:
             on_success="done",
             on_failure="fix",
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result == {
             "action": "pytest",
             "evaluate": {"type": "exit_code"},
@@ -691,7 +646,7 @@ class TestStateToDict:
             on_success="done",
             on_failure="fix",
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result == {
             "action": "wc -l errors.log",
             "evaluate": {
@@ -716,7 +671,7 @@ class TestStateToDict:
             on_success="done",
             on_failure="fix",
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result["evaluate"]["type"] == "convergence"
         assert result["evaluate"]["target"] == 0
         assert result["evaluate"]["tolerance"] == 0.1
@@ -733,7 +688,7 @@ class TestStateToDict:
             on_success="fix",
             on_failure="done",
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result["evaluate"]["type"] == "output_contains"
         assert result["evaluate"]["pattern"] == "ERROR"
 
@@ -749,7 +704,7 @@ class TestStateToDict:
             on_success="done",
             on_failure="retry",
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result["evaluate"]["type"] == "output_json"
         assert result["evaluate"]["path"] == ".status"
         assert result["evaluate"]["target"] == "healthy"
@@ -764,7 +719,7 @@ class TestStateToDict:
                 default="error_state",
             ),
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result["route"] == {
             "success": "done",
             "failure": "retry",
@@ -778,7 +733,7 @@ class TestStateToDict:
             action="check",
             route=RouteConfig(routes={"pass": "done", "fail": "fix"}),
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result["route"] == {"pass": "done", "fail": "fix"}
         assert "_" not in result["route"]
 
@@ -789,7 +744,7 @@ class TestStateToDict:
             capture="error_count",
             on_success="check",
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result["capture"] == "error_count"
 
     def test_state_with_timeout(self) -> None:
@@ -799,7 +754,7 @@ class TestStateToDict:
             timeout=300,
             on_success="done",
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result["timeout"] == 300
 
     def test_state_with_on_maintain(self) -> None:
@@ -809,7 +764,7 @@ class TestStateToDict:
             on_maintain="monitor",
             on_success="done",
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert result["on_maintain"] == "monitor"
 
     def test_all_fields_populated(self) -> None:
@@ -827,7 +782,7 @@ class TestStateToDict:
             capture="result",
             timeout=60,
         )
-        result = self._state_to_dict(state)
+        result = state.to_dict()
         assert "action" in result
         assert "evaluate" in result
         assert "on_success" in result
