@@ -43,7 +43,7 @@ The `product-analyzer` skill bridges this gap by:
 
 ### 1. Skill Definition
 
-Create `skills/product-analyzer.md`:
+Create `skills/product-analyzer/SKILL.md` (following the project's skills directory structure pattern):
 
 ```markdown
 ---
@@ -179,7 +179,7 @@ Prevent misuse:
 
 ## Location
 
-- **New File**: `skills/product-analyzer.md`
+- **New File**: `skills/product-analyzer/SKILL.md` (following the skills directory structure pattern)
 - **Used By**: `commands/scan_product.md` (dedicated product scanning command)
 
 ## Current Behavior
@@ -196,7 +196,7 @@ When product analysis is enabled:
 
 ## Acceptance Criteria
 
-- [ ] Skill file `skills/product-analyzer.md` created with complete prompt
+- [ ] Skill file `skills/product-analyzer/SKILL.md` created with complete prompt
 - [ ] Skill returns empty result when `product.enabled: false`
 - [ ] Skill returns empty result when `ll-goals.md` doesn't exist
 - [ ] Skill output follows structured YAML format with required fields
@@ -217,8 +217,10 @@ When product analysis is enabled:
 
 ## Blocked By
 
-- FEAT-020
-- FEAT-021
+- ~~FEAT-020~~ (completed 2026-01-22)
+- ~~FEAT-021~~ (completed 2026-01-29)
+
+**Status**: All blockers completed - issue is now ready for implementation
 
 ## Blocks
 
@@ -244,8 +246,42 @@ When product analysis is enabled:
 - Terminology is consistently "skill" throughout this issue
 - FEAT-023 updated to use "skill" terminology (previously had inconsistent "agent" references)
 
+**Verified: 2026-02-01**
+
+- Both dependencies completed: FEAT-020 (2026-01-22) and FEAT-021 (2026-01-29)
+- `skills/product-analyzer/SKILL.md` does not exist - ready for implementation
+- Config schema has `product.enabled` configuration from FEAT-020
+- Goals file mechanism exists from FEAT-021
+- Path corrected to follow skills directory structure pattern
+
+---
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+- `skills/product-analyzer/SKILL.md` - Created new skill for product-level analysis
+
+### Verification Results
+- Tests: PASS (2109 tests passed)
+- Lint: PASS (pre-existing issues only)
+- Types: PASS (no issues found)
+
+### Acceptance Criteria Met
+- [x] Skill file `skills/product-analyzer/SKILL.md` created with complete prompt
+- [x] Skill returns empty result when `product.enabled: false` (Guardrails section)
+- [x] Skill returns empty result when `ll-goals.md` doesn't exist (Guardrails section)
+- [x] Skill output follows structured YAML format with required fields (Output Format section)
+- [x] Findings include file:line evidence references (evidence field in output schema)
+- [x] Deduplication check against existing issues defined (Deduplication Check section)
+
 ---
 
 ## Status
 
-**Open** | Created: 2026-01-06 | Priority: P1
+**Completed** | Created: 2026-01-06 | Priority: P1
