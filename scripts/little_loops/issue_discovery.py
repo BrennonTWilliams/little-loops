@@ -543,9 +543,7 @@ def detect_regression_or_duplicate(
         return MatchClassification.UNVERIFIED, evidence
 
     # Check if any of those files were modified since the fix
-    modified_files, related_commits = _get_files_modified_since_commit(
-        fix_commit, files_changed
-    )
+    modified_files, related_commits = _get_files_modified_since_commit(fix_commit, files_changed)
     evidence.files_modified_since_fix = modified_files
     evidence.related_commits = related_commits
 
@@ -679,9 +677,7 @@ def find_existing_issue(
             if adjusted_score > best_match.match_score:
                 # Determine classification
                 if is_completed:
-                    classification, evidence = detect_regression_or_duplicate(
-                        config, issue_path
-                    )
+                    classification, evidence = detect_regression_or_duplicate(config, issue_path)
                 else:
                     classification = MatchClassification.DUPLICATE
                     evidence = None
@@ -729,7 +725,9 @@ def _build_reopen_section(
         classification_line = "- **Classification**: Regression (fix was broken by later changes)"
     elif classification == MatchClassification.INVALID_FIX:
         section_header = "## Reopened (Invalid Fix)"
-        classification_line = "- **Classification**: Invalid Fix (original fix never resolved the issue)"
+        classification_line = (
+            "- **Classification**: Invalid Fix (original fix never resolved the issue)"
+        )
     else:
         section_header = "## Reopened"
         classification_line = ""
@@ -739,11 +737,17 @@ def _build_reopen_section(
     if regression_evidence:
         evidence_lines = []
         if regression_evidence.fix_commit_sha:
-            evidence_lines.append(f"- **Original Fix Commit**: {regression_evidence.fix_commit_sha}")
+            evidence_lines.append(
+                f"- **Original Fix Commit**: {regression_evidence.fix_commit_sha}"
+            )
         if not regression_evidence.fix_commit_exists:
-            evidence_lines.append("- **Fix Status**: Fix commit not found in history (possibly never merged)")
+            evidence_lines.append(
+                "- **Fix Status**: Fix commit not found in history (possibly never merged)"
+            )
         if regression_evidence.files_modified_since_fix:
-            files_list = ", ".join(f"`{f}`" for f in regression_evidence.files_modified_since_fix[:5])
+            files_list = ", ".join(
+                f"`{f}`" for f in regression_evidence.files_modified_since_fix[:5]
+            )
             evidence_lines.append(f"- **Files Modified Since Fix**: {files_list}")
         if regression_evidence.related_commits:
             commits_list = ", ".join(regression_evidence.related_commits[:5])

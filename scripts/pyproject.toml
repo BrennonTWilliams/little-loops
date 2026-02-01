@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "little-loops"
-version = "1.0.0"
+version = "1.1.0"
 description = "Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing"
 readme = "../README.md"
 license = "MIT"
@@ -23,7 +23,7 @@ keywords = [
     "automation"
 ]
 classifiers = [
-    "Development Status :: 4 - Beta",
+    "Development Status :: 5 - Production/Stable",
     "Environment :: Console",
     "Intended Audience :: Developers",
     "License :: OSI Approved :: MIT License",

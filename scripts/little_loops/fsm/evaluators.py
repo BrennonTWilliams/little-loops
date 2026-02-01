@@ -468,7 +468,7 @@ def evaluate_llm_structured(
     llm_result: dict[str, Any] | None = None
     for block in response.content:
         if block.type == "tool_use" and block.name == "evaluate":
-            llm_result = block.input  # type: ignore[assignment]
+            llm_result = block.input
             break
 
     if llm_result is None:

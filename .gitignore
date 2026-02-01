@@ -57,6 +57,7 @@ temp/
 __pycache__/
 *.py[cod]
 *.egg-info/
+.hypothesis/
 
 # Runtime state files
 scripts/.parallel-manage-state.json

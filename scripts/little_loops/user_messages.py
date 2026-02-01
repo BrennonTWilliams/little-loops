@@ -205,7 +205,8 @@ def _detect_error_message(content: list) -> str | None:
                 # Extract the line containing the error
                 for line in text.split("\n"):
                     if "error" in line.lower() or "failed" in line.lower():
-                        return line.strip()[:200]  # Limit length
+                        result = line.strip()[:200]  # Limit length
+                        return result if isinstance(result, str) else None
     return None
 
 
@@ -289,11 +290,7 @@ def extract_user_messages(
                             continue
 
                 # Process records, pairing user messages with their responses
-                messages.extend(
-                    _extract_messages_with_context(
-                        all_records, jsonl_file, since
-                    )
-                )
+                messages.extend(_extract_messages_with_context(all_records, jsonl_file, since))
             else:
                 # Original behavior: stream through file
                 with open(jsonl_file, encoding="utf-8") as f:

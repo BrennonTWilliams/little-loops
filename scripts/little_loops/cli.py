@@ -1244,7 +1244,9 @@ Examples:
         else:
             # Limit iterations for simulation safety (cap at 20 unless overridden)
             if fsm.max_iterations > 20:
-                logger.info(f"Limiting simulation to 20 iterations (loop config: {fsm.max_iterations})")
+                logger.info(
+                    f"Limiting simulation to 20 iterations (loop config: {fsm.max_iterations})"
+                )
                 fsm.max_iterations = 20
 
         # Create simulation runner
@@ -1464,7 +1466,9 @@ def _cmd_sprint_create(args: argparse.Namespace, manager: SprintManager) -> int:
         issues = [i for i in issues if i not in skip_ids]
         skipped = original_count - len(issues)
         if skipped > 0:
-            logger.info(f"Skipping {skipped} issue(s): {', '.join(sorted(skip_ids & set(issues) | skip_ids))}")
+            logger.info(
+                f"Skipping {skipped} issue(s): {', '.join(sorted(skip_ids & set(issues) | skip_ids))}"
+            )
 
     # Validate issues exist
     valid = manager.validate_issues(issues)
@@ -1952,8 +1956,12 @@ def _cmd_sprint_run(
                     completed.update(wave_ids)
                     state.completed_issues.extend(wave_ids)
                     for issue_id in wave_ids:
-                        state.timing[issue_id] = {"total": orchestrator.execution_duration / len(wave)}
-                    logger.success(f"Wave {wave_num}/{total_waves} completed: {', '.join(wave_ids)}")
+                        state.timing[issue_id] = {
+                            "total": orchestrator.execution_duration / len(wave)
+                        }
+                    logger.success(
+                        f"Wave {wave_num}/{total_waves} completed: {', '.join(wave_ids)}"
+                    )
                 else:
                     # Some issues failed - continue but track failures
                     failed_waves += 1
@@ -1972,7 +1980,9 @@ def _cmd_sprint_run(
                         return exit_code
 
         wave_word = "wave" if len(waves) == 1 else "waves"
-        logger.info(f"\nSprint completed: {len(completed)} issues processed ({len(waves)} {wave_word})")
+        logger.info(
+            f"\nSprint completed: {len(completed)} issues processed ({len(waves)} {wave_word})"
+        )
         logger.timing(f"Total execution time: {format_duration(total_duration)}")
         if failed_waves > 0:
             logger.warning(f"{failed_waves} wave(s) had failures")

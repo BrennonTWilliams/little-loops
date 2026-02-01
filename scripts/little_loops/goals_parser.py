@@ -185,9 +185,7 @@ def validate_goals(goals: ProductGoals) -> list[str]:
     if not goals.priorities:
         warnings.append("No priorities defined - cannot assess goal alignment")
     elif len(goals.priorities) > 5:
-        warnings.append(
-            "More than 5 priorities defined - consider focusing on top priorities"
-        )
+        warnings.append("More than 5 priorities defined - consider focusing on top priorities")
 
     if "[NEEDS REVIEW]" in goals.raw_content:
         warnings.append("File contains [NEEDS REVIEW] placeholders - please update")

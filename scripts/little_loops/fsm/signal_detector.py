@@ -112,9 +112,7 @@ class SignalDetector:
             List of all detected signals
         """
         return [
-            signal
-            for pattern in self.patterns
-            if (signal := pattern.search(output)) is not None
+            signal for pattern in self.patterns if (signal := pattern.search(output)) is not None
         ]
 
     def detect_first(self, output: str) -> DetectedSignal | None:

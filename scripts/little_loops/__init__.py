@@ -21,7 +21,7 @@ from little_loops.issue_lifecycle import (
 )
 from little_loops.issue_manager import AutoManager
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __all__ = [
     "BRConfig",
     # git_operations

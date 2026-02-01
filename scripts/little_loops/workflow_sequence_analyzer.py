@@ -46,9 +46,7 @@ __all__ = [
 ]
 
 # Module-level compiled regex patterns
-FILE_PATTERN = re.compile(
-    r"[\w./-]+\.(?:md|py|json|yaml|yml|js|ts|tsx|jsx|sh|toml)", re.IGNORECASE
-)
+FILE_PATTERN = re.compile(r"[\w./-]+\.(?:md|py|json|yaml|yml|js|ts|tsx|jsx|sh|toml)", re.IGNORECASE)
 PHASE_PATTERN = re.compile(r"phase[- ]?\d+", re.IGNORECASE)
 MODULE_PATTERN = re.compile(r"module[- ]?\d+", re.IGNORECASE)
 COMMAND_PATTERN = re.compile(r"/[\w:-]+")
@@ -604,7 +602,8 @@ def _get_message_category(msg_uuid: str, patterns: dict[str, Any]) -> str | None
     for category_info in patterns.get("category_distribution", []):
         for example in category_info.get("example_messages", []):
             if example.get("uuid") == msg_uuid:
-                return category_info.get("category")
+                category = category_info.get("category")
+                return category if isinstance(category, str) else None
     return None
 
 

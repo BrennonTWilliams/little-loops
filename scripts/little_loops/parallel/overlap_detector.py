@@ -124,7 +124,9 @@ class OverlapDetector:
 
             if result.has_overlap:
                 overlap_desc = (
-                    result.overlapping_files if result.overlapping_files else "scope/directory overlap"
+                    result.overlapping_files
+                    if result.overlapping_files
+                    else "scope/directory overlap"
                 )
                 logger.info(
                     f"{issue.issue_id} overlaps with {result.overlapping_issues}: {overlap_desc}"

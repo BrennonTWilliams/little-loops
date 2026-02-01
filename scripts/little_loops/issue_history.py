@@ -93,9 +93,7 @@ class CompletedIssue:
             "priority": self.priority,
             "issue_id": self.issue_id,
             "discovered_by": self.discovered_by,
-            "discovered_date": (
-                self.discovered_date.isoformat() if self.discovered_date else None
-            ),
+            "discovered_date": (self.discovered_date.isoformat() if self.discovered_date else None),
             "completed_date": (self.completed_date.isoformat() if self.completed_date else None),
         }
 
@@ -781,9 +779,7 @@ class HistoryAnalysis:
                 else None
             ),
             "complexity_proxy_analysis": (
-                self.complexity_proxy_analysis.to_dict()
-                if self.complexity_proxy_analysis
-                else None
+                self.complexity_proxy_analysis.to_dict() if self.complexity_proxy_analysis else None
             ),
             "config_gaps_analysis": (
                 self.config_gaps_analysis.to_dict() if self.config_gaps_analysis else None
@@ -2255,7 +2251,7 @@ _PATTERN_TO_CONFIG: dict[str, dict[str, Any]] = {
     "test": {
         "hook_event": "PostToolUse",
         "description": "Automatic test execution after code changes",
-        "suggested_config": '''hooks/hooks.json:
+        "suggested_config": """hooks/hooks.json:
   "PostToolUse": [{
     "matcher": "Edit|Write",
     "hooks": [{
@@ -2263,12 +2259,12 @@ _PATTERN_TO_CONFIG: dict[str, dict[str, Any]] = {
       "command": "pytest tests/ -x -q",
       "timeout": 30000
     }]
-  }]''',
+  }]""",
     },
     "lint": {
         "hook_event": "PreToolUse",
         "description": "Automatic formatting before file writes",
-        "suggested_config": '''hooks/hooks.json:
+        "suggested_config": """hooks/hooks.json:
   "PreToolUse": [{
     "matcher": "Write|Edit",
     "hooks": [{
@@ -2276,12 +2272,12 @@ _PATTERN_TO_CONFIG: dict[str, dict[str, Any]] = {
       "command": "ruff format --check .",
       "timeout": 10000
     }]
-  }]''',
+  }]""",
     },
     "type_check": {
         "hook_event": "PostToolUse",
         "description": "Type checking after code modifications",
-        "suggested_config": '''hooks/hooks.json:
+        "suggested_config": """hooks/hooks.json:
   "PostToolUse": [{
     "matcher": "Edit|Write",
     "hooks": [{
@@ -2289,12 +2285,12 @@ _PATTERN_TO_CONFIG: dict[str, dict[str, Any]] = {
       "command": "mypy --fast .",
       "timeout": 30000
     }]
-  }]''',
+  }]""",
     },
     "build": {
         "hook_event": "PostToolUse",
         "description": "Build verification after changes",
-        "suggested_config": '''hooks/hooks.json:
+        "suggested_config": """hooks/hooks.json:
   "PostToolUse": [{
     "matcher": "Edit|Write",
     "hooks": [{
@@ -2302,7 +2298,7 @@ _PATTERN_TO_CONFIG: dict[str, dict[str, Any]] = {
       "command": "npm run build",
       "timeout": 60000
     }]
-  }]''',
+  }]""",
     },
 }
 
@@ -3276,9 +3272,15 @@ def format_analysis_text(analysis: HistoryAnalysis) -> str:
                     else "LOW"
                 )
                 lines.append(f"  {i}. {cp.path}")
-                lines.append(f"     Avg: {cp.avg_resolution_days:.1f} days ({cp.comparison_to_baseline})")
-                lines.append(f"     Median: {cp.median_resolution_days:.1f} days, Issues: {cp.issue_count}")
-                lines.append(f"     Slowest: {cp.slowest_issue[0]} ({cp.slowest_issue[1]:.1f} days)")
+                lines.append(
+                    f"     Avg: {cp.avg_resolution_days:.1f} days ({cp.comparison_to_baseline})"
+                )
+                lines.append(
+                    f"     Median: {cp.median_resolution_days:.1f} days, Issues: {cp.issue_count}"
+                )
+                lines.append(
+                    f"     Slowest: {cp.slowest_issue[0]} ({cp.slowest_issue[1]:.1f} days)"
+                )
                 lines.append(f"     Complexity score: {cp.complexity_score:.2f} [{score_label}]")
 
         if cpa.directory_complexity:

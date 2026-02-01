@@ -247,9 +247,7 @@ def process_issue_inplace(
                 stream_output=config.automation.stream_output,
             )
             if result.returncode != 0:
-                logger.warning(
-                    "ready_issue command failed to execute, continuing anyway..."
-                )
+                logger.warning("ready_issue command failed to execute, continuing anyway...")
             else:
                 # Parse the verdict from the output
                 parsed = parse_ready_issue_output(result.stdout)
@@ -298,9 +296,7 @@ def process_issue_inplace(
                             )
 
                             if retry_result.returncode != 0:
-                                logger.error(
-                                    f"Fallback ready_issue failed for {info.issue_id}"
-                                )
+                                logger.error(f"Fallback ready_issue failed for {info.issue_id}")
                                 return IssueProcessingResult(
                                     success=False,
                                     duration=time.time() - issue_start_time,
@@ -349,9 +345,7 @@ def process_issue_inplace(
                 # Handle CLOSE verdict - issue should not be implemented
                 if parsed.get("should_close"):
                     close_reason = parsed.get("close_reason", "unknown")
-                    logger.info(
-                        f"Issue {info.issue_id} should be closed (reason: {close_reason})"
-                    )
+                    logger.info(f"Issue {info.issue_id} should be closed (reason: {close_reason})")
 
                     # CRITICAL: Skip file operations for invalid references
                     if close_reason == "invalid_ref":
@@ -416,17 +410,14 @@ def process_issue_inplace(
                         duration=time.time() - issue_start_time,
                         issue_id=info.issue_id,
                         failure_reason=(
-                            f"NOT READY: {parsed['verdict']} - "
-                            f"{len(parsed['concerns'])} concern(s)"
+                            f"NOT READY: {parsed['verdict']} - {len(parsed['concerns'])} concern(s)"
                         ),
                         corrections=corrections,
                     )
 
                 # Log if proceeding with corrected issue
                 if parsed.get("was_corrected"):
-                    logger.success(
-                        f"Issue {info.issue_id} corrected and ready for implementation"
-                    )
+                    logger.success(f"Issue {info.issue_id} corrected and ready for implementation")
         else:
             logger.info(f"Would run: /ll:ready_issue {info.issue_id}")
     issue_timing["ready"] = phase1_timing.get("elapsed", 0.0)
@@ -455,9 +446,7 @@ def process_issue_inplace(
                 repo_path=config.repo_path,
             )
         else:
-            logger.info(
-                f"Would run: /ll:manage_issue {info.issue_type} {action} {info.issue_id}"
-            )
+            logger.info(f"Would run: /ll:manage_issue {info.issue_type} {action} {info.issue_id}")
             result = subprocess.CompletedProcess(args=[], returncode=0)
     issue_timing["implement"] = phase2_timing.get("elapsed", 0.0)
 
@@ -528,13 +517,9 @@ def process_issue_inplace(
                     logger.info("Evidence of code changes found - completing lifecycle...")
                     verified = complete_issue_lifecycle(info, config, logger)
                     if verified:
-                        logger.success(
-                            f"Fallback completion succeeded for {info.issue_id}"
-                        )
+                        logger.success(f"Fallback completion succeeded for {info.issue_id}")
                     else:
-                        logger.warning(
-                            f"Fallback completion failed for {info.issue_id}"
-                        )
+                        logger.warning(f"Fallback completion failed for {info.issue_id}")
                 else:
                     # NO work was done - do NOT mark as completed
                     logger.error(
@@ -560,9 +545,7 @@ def process_issue_inplace(
         logger.success(f"Completed: {info.issue_id}")
     else:
         logger.warning(f"Issue {info.issue_id} was attempted but verification failed")
-        logger.info(
-            "This issue will be skipped on future runs (check logs above for details)"
-        )
+        logger.info("This issue will be skipped on future runs (check logs above for details)")
 
     return IssueProcessingResult(
         success=verified,
@@ -654,9 +637,9 @@ class AutoManager:
 
         # Filter by skip_ids, only_ids
         candidates = [
-            i for i in ready_issues
-            if i.issue_id not in skip_ids
-            and (self.only_ids is None or i.issue_id in self.only_ids)
+            i
+            for i in ready_issues
+            if i.issue_id not in skip_ids and (self.only_ids is None or i.issue_id in self.only_ids)
         ]
 
         if candidates:
@@ -810,9 +793,7 @@ class AutoManager:
         if result.was_closed:
             self.state_manager.mark_completed(info.issue_id)
         elif result.success:
-            self.state_manager.mark_completed(
-                info.issue_id, {"total": result.duration}
-            )
+            self.state_manager.mark_completed(info.issue_id, {"total": result.duration})
         elif result.failure_reason:
             self.state_manager.mark_failed(info.issue_id, result.failure_reason)
 

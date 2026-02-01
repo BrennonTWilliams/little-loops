@@ -116,6 +116,7 @@ def classify_failure(error_output: str, returncode: int) -> tuple[FailureType, s
     # Default: treat as real failure
     return (FailureType.REAL, "Implementation error")
 
+
 # =============================================================================
 # Content Manipulation Helpers
 # =============================================================================
