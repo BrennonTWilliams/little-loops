@@ -44,3 +44,26 @@ The field exists and is functional but completely undocumented in the command wi
 
 ## Related Issues
 None
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md`: Added `on_handoff` field documentation in the "Advanced State Configuration" section (after `action_type`)
+
+### Documentation Added
+- Field description explaining what `on_handoff` does (configures behavior when context handoff signals are detected)
+- All three values documented: `pause` (default), `spawn`, `terminate`
+- "When to use" guidance for each option
+- Two YAML examples showing practical usage
+- Note that most users can omit this field (default behavior is appropriate)
+
+### Verification Results
+- Documentation follows existing pattern for `action_type` section
+- File is valid markdown
+- Lint check passed

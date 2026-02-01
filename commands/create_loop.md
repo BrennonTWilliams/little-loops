@@ -1128,6 +1128,47 @@ max_iterations: 5
 
 **Most users can omit this field** - the default heuristic covers the common case where slash commands start with `/` and shell commands don't.
 
+#### on_handoff (Optional)
+
+The `on_handoff` field configures loop behavior when context handoff signals are detected during execution. Context handoff occurs when a slash command needs more context than available in the current session.
+
+**Values:**
+- `pause` (default) - Pause loop execution when handoff detected, requiring manual resume
+- `spawn` - Automatically spawn a new continuation session to continue loop execution
+- `terminate` - Terminate the loop when handoff detected
+
+**When to use:**
+- **pause** (default): For loops where you want manual control before continuing after a context handoff
+- **spawn**: For automated loops that should continue seamlessly across context boundaries (e.g., long-running quality gates)
+- **terminate**: For loops where context handoff indicates an unrecoverable state
+
+**Example - Spawn continuation sessions:**
+```yaml
+paradigm: goal
+name: "automated-quality-fix"
+goal: "All quality checks pass"
+tools:
+  - "pytest && mypy src/ && ruff check src/"
+  - "/ll:manage_issue bug fix"
+max_iterations: 20
+on_handoff: "spawn"  # Automatically continue in new session if context runs out
+```
+
+**Example - Terminate on handoff:**
+```yaml
+paradigm: invariants
+name: "quick-check-guardian"
+constraints:
+  - name: "types"
+    check: "mypy src/"
+    fix: "/ll:manage_issue bug fix"
+maintain: false
+max_iterations: 10
+on_handoff: "terminate"  # Stop if we run out of context
+```
+
+**Most users can omit this field** - the default `pause` behavior is appropriate for most interactive use cases.
+
 ---
 
 ## Examples
