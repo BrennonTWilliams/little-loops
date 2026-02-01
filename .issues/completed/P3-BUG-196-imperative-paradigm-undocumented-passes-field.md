@@ -7,7 +7,17 @@ BUG
 P3
 
 ## Status
-OPEN
+RESOLVED
+
+## Resolution
+
+The `passes` field has been removed from the `/ll:create_loop` command documentation templates. The field was vestigial - it appeared in YAML examples but was never read or used by the `compile_imperative()` function in `scripts/little_loops/fsm/compilers.py`.
+
+**Changes made:**
+- Removed `passes: true` from imperative paradigm template at `commands/create_loop.md:656`
+- Removed `passes: true` from example at `commands/create_loop.md:678`
+
+The FSM behavior remains unchanged: successful evaluation transitions to `done`, failure transitions back to `step_0`. This behavior is hardcoded in the compiler and does not require a configuration field.
 
 ## Description
 
@@ -64,6 +74,22 @@ Either:
 
 ## Actual Behavior
 The field appears in the template but is never explained or configurable.
+
+## Verification Notes
+
+**Verified: 2026-02-01**
+
+The `passes` field is **completely unused** by the imperative paradigm compiler. The `compile_imperative()` function in `scripts/little_loops/fsm/compilers.py:387-469`:
+
+1. Reads `spec["until"]["check"]` (line 433)
+2. Reads `spec["until"].get("evaluator")` (line 436)
+3. **Never reads** `spec["until"].get("passes")`
+
+The FSM is compiled with `on_success="done"` and `on_failure="step_0"` regardless of the `passes` value. The `passes: true` in the template is vestigial documentation that has no effect on the compiled FSM.
+
+**Resolution**: The `passes` field should be removed from the YAML template documentation since it serves no functional purpose. The behavior is hardcoded: successful evaluation transitions to `done`, failure transitions back to `step_0`.
+
+---
 
 ## Related Issues
 None

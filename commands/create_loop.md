@@ -653,7 +653,6 @@ steps:
   - "<step-3>"
 until:
   check: "<exit-condition-command>"
-  passes: true
   # Include evaluator only if not using default (exit_code):
   evaluator:                 # Optional for exit condition
     type: "<output_contains|output_numeric|llm_structured>"
@@ -675,7 +674,6 @@ steps:
   - "mypy src/"
 until:
   check: "mypy src/ && ruff check src/ && pytest"
-  passes: true
 max_iterations: 20
 backoff: 2
 ```
