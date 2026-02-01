@@ -270,14 +270,13 @@ When product analysis is enabled:
 
 ## Dependencies
 
-- FEAT-020: Product Analysis Opt-In Configuration ✅ (completed)
-- FEAT-021: Goals/Vision Ingestion Mechanism
-- FEAT-022: Product Analyzer Agent
+- FEAT-020: Product Analysis Opt-In Configuration ✅ (completed 2026-01-22)
+- FEAT-021: Goals/Vision Ingestion Mechanism ✅ (completed 2026-01-29)
+- FEAT-022: Product Analyzer Skill ✅ (completed 2026-02-01)
 
 ## Blocked By
 
-- FEAT-021
-- FEAT-022
+None (all dependencies completed)
 
 ## Blocks
 
@@ -309,10 +308,38 @@ None
 **Verified: 2026-02-01**
 
 - Fixed terminology: changed "agent" references to "skill" (lines 64, 68, 71, 105)
-- Now consistently references "product-analyzer skill" and uses Skill tool instead of Task tool
+- Now consistently references "product-analyzer skill" and uses Skill tool instead of Task agent
+
+---
+
+**Verified: 2026-02-01**
+
+- All dependencies are now complete:
+  - FEAT-020 (Product Analysis Opt-In Configuration) - completed 2026-01-22
+  - FEAT-021 (Goals/Vision Ingestion Mechanism) - completed 2026-01-29
+  - FEAT-022 (Product Analyzer Skill) - completed 2026-02-01
+- `skills/product-analyzer/SKILL.md` exists - skill is implemented
+- `commands/scan_product.md` does not exist - primary deliverable ready for implementation
+- Issue is now unblocked and ready for implementation
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2025-02-01
+- **Status**: Completed
+
+### Changes Made
+- `commands/scan_product.md`: Created new command file with complete product scanning workflow
+
+### Verification Results
+- YAML frontmatter validation: PASS
+- Type checking: PASS (mypy on scripts/little_loops/)
+- Tests: PASS (pytest scripts/tests/)
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-01-06 | Priority: P2
+**Completed** | Created: 2026-01-06 | Priority: P2
