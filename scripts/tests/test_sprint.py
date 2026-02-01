@@ -575,6 +575,7 @@ issues:
             resume=False,
             skip=None,
             max_workers=1,
+            quiet=False,
         )
 
         # Mock process_issue_inplace to raise KeyboardInterrupt
@@ -610,6 +611,7 @@ issues:
             resume=False,
             skip=None,
             max_workers=1,
+            quiet=False,
         )
 
         # Mock process_issue_inplace to raise RuntimeError
@@ -645,6 +647,7 @@ issues:
             resume=False,
             skip=None,
             max_workers=1,
+            quiet=False,
         )
 
         # Mock process_issue_inplace to raise RuntimeError

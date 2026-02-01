@@ -316,6 +316,7 @@ issues:
             resume=False,
             skip=None,
             max_workers=2,
+            quiet=False,
         )
 
         result = cli._cmd_sprint_run(args, manager, config)
@@ -381,6 +382,7 @@ issues:
             resume=False,
             skip=None,
             max_workers=4,
+            quiet=False,
         )
 
         result = cli._cmd_sprint_run(args, manager, config)
@@ -483,6 +485,7 @@ issues:
             resume=False,
             skip=None,
             max_workers=3,
+            quiet=False,
         )
 
         result = cli._cmd_sprint_run(args, manager, config)
@@ -534,6 +537,7 @@ issues:
             resume=False,
             skip=None,
             max_workers=1,
+            quiet=False,
         )
 
         result = cli._cmd_sprint_run(args, manager, config)
@@ -640,6 +644,7 @@ issues:
             resume=True,  # Resume from existing state
             skip=None,
             max_workers=1,
+            quiet=False,
         )
 
         result = cli._cmd_sprint_run(args, manager, config)
@@ -712,6 +717,7 @@ issues:
             resume=False,
             skip=None,
             max_workers=1,
+            quiet=False,
         )
 
         result = cli._cmd_sprint_run(args, manager, config)
@@ -897,6 +903,7 @@ issues:
             resume=False,
             skip=None,
             max_workers=1,
+            quiet=False,
         )
 
         result = cli._cmd_sprint_run(args, manager, config)
@@ -959,6 +966,7 @@ issues:
             resume=False,
             skip="BUG-001",  # Skip the only issue
             max_workers=1,
+            quiet=False,
         )
 
         result = cli._cmd_sprint_run(args, manager, config)
@@ -1032,6 +1040,7 @@ issues:
             resume=False,
             skip=None,
             max_workers=1,
+            quiet=False,
         )
 
         result = cli._cmd_sprint_run(args, manager, config)
@@ -1067,6 +1076,7 @@ issues:
             resume=False,
             skip=None,
             max_workers=1,
+            quiet=False,
         )
 
         result = cli._cmd_sprint_run(args, manager, config)
