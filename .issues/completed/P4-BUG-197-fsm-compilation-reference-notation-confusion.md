@@ -7,7 +7,22 @@ BUG
 P4
 
 ## Status
-OPEN
+COMPLETED
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md`: Added notation legend explaining arrow notation (→) and its mapping to YAML syntax
+
+### Verification Results
+- Documentation: PASS (markdown renders correctly)
+- No code changes required
 
 ## Description
 

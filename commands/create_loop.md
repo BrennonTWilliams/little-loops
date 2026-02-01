@@ -696,6 +696,26 @@ backoff: 2
 
 Each paradigm compiles to a specific FSM structure. Use this reference when generating the FSM preview in Step 4.
 
+> **Notation Legend:**
+> - `→` (arrow) means "transitions to" (conceptual representation)
+> - `on_success → done` is equivalent to YAML: `on_success: done`
+> - `route[target] → done` represents a routing table entry: `route: { target: done }`
+> - `[terminal]` marks a state that ends the loop
+>
+> **Two YAML syntaxes for routing:**
+> 1. **Shorthand** (for standard success/failure/error verdicts):
+>    ```yaml
+>    on_success: "done"
+>    on_failure: "fix"
+>    ```
+> 2. **Full routing table** (for custom verdicts):
+>    ```yaml
+>    route:
+>      target: "done"
+>      progress: "apply"
+>      _: "done"  # default
+>    ```
+
 ### Goal Paradigm → FSM
 ```
 States: evaluate, fix, done
