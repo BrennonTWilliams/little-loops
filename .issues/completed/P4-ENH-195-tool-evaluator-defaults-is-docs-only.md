@@ -50,3 +50,19 @@ Option 1 (add disclaimer) is simpler and sufficient. The current approach of let
 
 ## Related Issues
 None
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md`: Added disclaimer note clarifying the "Tool Evaluator Defaults" table provides guidance for the AI during the wizard flow, not implemented code
+- `commands/create_loop.md`: Added clarification to "Detection Instructions" section to indicate these are instructions for the AI executing the wizard
+
+### Verification Results
+- Documentation changes are accurate and clear
+- No code changes required

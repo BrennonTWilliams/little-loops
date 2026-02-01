@@ -271,6 +271,8 @@ questions:
 
 **Tool Evaluator Defaults:**
 
+> **Note**: This table provides guidance for the AI during the interactive wizard flow. There is no separate code-based automatic tool detection - the AI uses this table to customize question wording based on the check command you provide. You should select the appropriate evaluator type for your specific tools.
+
 When a check command is determined (from presets or custom input), use this table to recommend the appropriate evaluator:
 
 | Tool Pattern | Recommended Evaluator | Rationale |
@@ -285,7 +287,10 @@ When a check command is determined (from presets or custom input), use this tabl
 | `cargo test` | exit_code | Well-behaved: 0=all pass |
 | `go test` | exit_code | Well-behaved: 0=all pass |
 
-**Detection Instructions:**
+**Detection Instructions:** (for the AI executing this wizard)
+
+> These instructions guide the AI's behavior during the wizard flow to customize questions based on the detected tool pattern.
+
 1. After the check command is determined, match against the tool patterns above (case-insensitive, partial match)
 2. If a match is found, customize the evaluator question to show the matched tool's recommendation
 3. Modify the first option label: "Exit code (Recommended for {tool})" where {tool} is the matched pattern
