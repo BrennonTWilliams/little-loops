@@ -19,9 +19,9 @@ Identified from CLI Tools Audit (docs/CLI-TOOLS-AUDIT.md):
 ## Current Behavior
 
 Each tool in `cli.py` defines its own arguments:
-- `main_auto()` at lines 25-112
-- `main_parallel()` at lines 115-299
-- `main_sprint()` at lines 1261-1361
+- `main_auto()` at lines 45-132
+- `main_parallel()` at lines 135-314
+- `main_sprint()` at lines 1333-1432
 
 Common arguments repeated:
 - `--dry-run/-n` - All three tools
@@ -139,3 +139,50 @@ def main_sprint():
 ## Status
 
 **Open** | Created: 2026-01-29 | Priority: P4
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+
+**Created**:
+- `scripts/little_loops/cli_args.py` - Shared CLI argument definitions module with:
+  - `add_dry_run_arg()` - Adds --dry-run/-n flag
+  - `add_resume_arg()` - Adds --resume/-r flag
+  - `add_config_arg()` - Adds --config path argument
+  - `add_only_arg()` - Adds --only issue filter argument
+  - `add_skip_arg()` - Adds --skip issue filter argument (with custom help text option)
+  - `add_max_workers_arg()` - Adds --max-workers/-w argument (with configurable default)
+  - `add_timeout_arg()` - Adds --timeout/-t argument (with configurable default)
+  - `add_quiet_arg()` - Adds --quiet/-q flag
+  - `add_max_issues_arg()` - Adds --max-issues/-m argument
+  - `parse_issue_ids()` - Utility function for parsing comma-separated issue IDs
+  - `add_common_auto_args()` - Adds all common arguments for ll-auto
+  - `add_common_parallel_args()` - Adds all common arguments for parallel tools
+
+- `scripts/tests/test_cli_args.py` - Comprehensive test coverage with 23 tests
+
+**Modified**:
+- `scripts/little_loops/cli.py`:
+  - Updated `main_auto()` to use `add_common_auto_args()` and `parse_issue_ids()`
+  - Updated `main_parallel()` to use individual shared arg functions
+  - Updated `main_sprint()` subcommands to use shared arg functions
+  - Replaced inline comma-separated parsing with `parse_issue_ids()` utility
+
+### Benefits
+- Reduced code duplication across CLI entry points
+- Consistent argument help text across tools
+- Centralized argument definitions for easier maintenance
+- Comprehensive test coverage for argument handling
+
+### Verification Results
+- All 23 new cli_args tests: PASS
+- All 70 existing CLI tests: PASS
+- All 54 sprint tests: PASS
+- Lint: PASS
+- Type checking: PASS

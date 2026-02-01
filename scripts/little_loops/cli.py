@@ -16,6 +16,19 @@ from pathlib import Path
 from types import FrameType
 from typing import Any
 
+from little_loops.cli_args import (
+    add_common_auto_args,
+    add_config_arg,
+    add_dry_run_arg,
+    add_max_issues_arg,
+    add_max_workers_arg,
+    add_only_arg,
+    add_quiet_arg,
+    add_resume_arg,
+    add_skip_arg,
+    add_timeout_arg,
+    parse_issue_ids,
+)
 from little_loops.config import BRConfig
 from little_loops.dependency_graph import DependencyGraph
 from little_loops.issue_manager import AutoManager
@@ -65,49 +78,16 @@ Examples:
 """,
     )
 
-    parser.add_argument(
-        "--resume",
-        "-r",
-        action="store_true",
-        help="Resume from previous checkpoint",
-    )
-    parser.add_argument(
-        "--dry-run",
-        "-n",
-        action="store_true",
-        help="Show what would be done without making changes",
-    )
-    parser.add_argument(
-        "--max-issues",
-        "-m",
-        type=int,
-        default=0,
-        help="Limit number of issues to process (0 = unlimited)",
-    )
+    # Add common arguments from shared module
+    add_common_auto_args(parser)
+
+    # Add tool-specific arguments
     parser.add_argument(
         "--category",
         "-c",
         type=str,
         default=None,
         help="Filter to specific category (bugs, features, enhancements)",
-    )
-    parser.add_argument(
-        "--only",
-        type=str,
-        default=None,
-        help="Comma-separated list of issue IDs to process (e.g., BUG-001,FEAT-002)",
-    )
-    parser.add_argument(
-        "--skip",
-        type=str,
-        default=None,
-        help="Comma-separated list of issue IDs to skip (e.g., BUG-003,FEAT-004)",
-    )
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=None,
-        help="Path to project root (default: current directory)",
     )
 
     args = parser.parse_args()
@@ -116,8 +96,8 @@ Examples:
     config = BRConfig(project_root)
 
     # Parse issue ID filters
-    only_ids = {i.strip().upper() for i in args.only.split(",")} if args.only else None
-    skip_ids = {i.strip().upper() for i in args.skip.split(",")} if args.skip else None
+    only_ids = parse_issue_ids(args.only)
+    skip_ids = parse_issue_ids(args.skip)
 
     manager = AutoManager(
         config=config,
@@ -156,6 +136,7 @@ Examples:
 """,
     )
 
+    # Parallel-specific arguments (--workers, not --max-workers)
     parser.add_argument(
         "--workers",
         "-w",
@@ -171,42 +152,10 @@ Examples:
         help="Comma-separated priorities to process (default: all)",
     )
     parser.add_argument(
-        "--max-issues",
-        "-m",
-        type=int,
-        default=0,
-        help="Maximum issues to process (0 = unlimited)",
-    )
-    parser.add_argument(
         "--worktree-base",
         type=Path,
         default=None,
         help="Base directory for git worktrees",
-    )
-    parser.add_argument(
-        "--dry-run",
-        "-n",
-        action="store_true",
-        help="Preview without making changes",
-    )
-    parser.add_argument(
-        "--resume",
-        "-r",
-        action="store_true",
-        help="Resume from previous state",
-    )
-    parser.add_argument(
-        "--timeout",
-        "-t",
-        type=int,
-        default=None,
-        help="Timeout per issue in seconds",
-    )
-    parser.add_argument(
-        "--quiet",
-        "-q",
-        action="store_true",
-        help="Suppress progress output",
     )
     parser.add_argument(
         "--cleanup",
@@ -240,24 +189,6 @@ Examples:
         help="Make API call to verify and display model on worktree setup",
     )
     parser.add_argument(
-        "--only",
-        type=str,
-        default=None,
-        help="Comma-separated list of issue IDs to process (e.g., BUG-001,FEAT-002)",
-    )
-    parser.add_argument(
-        "--skip",
-        type=str,
-        default=None,
-        help="Comma-separated list of issue IDs to skip (e.g., BUG-003,FEAT-004)",
-    )
-    parser.add_argument(
-        "--config",
-        type=Path,
-        default=None,
-        help="Path to project root",
-    )
-    parser.add_argument(
         "--overlap-detection",
         action="store_true",
         help="Enable pre-flight overlap detection to reduce merge conflicts (ENH-143)",
@@ -266,6 +197,23 @@ Examples:
         "--warn-only",
         action="store_true",
         help="With --overlap-detection, warn about overlaps instead of serializing",
+    )
+
+    # Add common arguments from shared module
+    add_dry_run_arg(parser)
+    add_resume_arg(parser)
+    add_timeout_arg(parser)
+    add_quiet_arg(parser)
+    add_only_arg(parser)
+    add_skip_arg(parser)
+
+    # Add max-issues and config individually (different help text needed)
+    add_max_issues_arg(parser)
+    parser.add_argument(
+        "--config",
+        type=Path,
+        default=None,
+        help="Path to project root",
     )
 
     args = parser.parse_args()
@@ -291,8 +239,8 @@ Examples:
     )
 
     # Parse issue ID filters
-    only_ids = {i.strip().upper() for i in args.only.split(",")} if args.only else None
-    skip_ids = {i.strip().upper() for i in args.skip.split(",")} if args.skip else None
+    only_ids = parse_issue_ids(args.only)
+    skip_ids = parse_issue_ids(args.skip)
 
     # Create parallel config with CLI overrides
     parallel_config = config.create_parallel_config(
@@ -1364,52 +1312,24 @@ Examples:
         help="Comma-separated issue IDs (e.g., BUG-001,FEAT-010)",
     )
     create_parser.add_argument("--description", "-d", default="", help="Sprint description")
-    create_parser.add_argument(
-        "-w",
-        "--max-workers",
-        type=int,
-        default=2,
-        help="Max workers for parallel execution within waves (default: 2)",
-    )
-    create_parser.add_argument(
-        "-t",
-        "--timeout",
-        type=int,
-        default=3600,
-        help="Default timeout in seconds (default: 3600)",
-    )
-    create_parser.add_argument(
-        "--skip",
-        type=str,
-        default=None,
-        help="Comma-separated list of issue IDs to exclude from sprint (e.g., BUG-003,FEAT-004)",
+    add_max_workers_arg(create_parser, default=2)
+    add_timeout_arg(create_parser, default=3600)
+    add_skip_arg(
+        create_parser,
+        help_text="Comma-separated list of issue IDs to exclude from sprint (e.g., BUG-003,FEAT-004)",
     )
 
     # run subcommand
     run_parser = subparsers.add_parser("run", help="Execute a sprint")
     run_parser.add_argument("sprint", help="Sprint name to execute")
-    run_parser.add_argument(
-        "--dry-run", "-n", action="store_true", help="Show execution plan without running"
-    )
-    run_parser.add_argument(
-        "-w",
-        "--max-workers",
-        type=int,
-        help="Override max workers for parallel mode",
-    )
-    run_parser.add_argument("-t", "--timeout", type=int, help="Override timeout in seconds")
-    run_parser.add_argument("--config", type=Path, default=None, help="Path to project root")
-    run_parser.add_argument(
-        "--resume",
-        "-r",
-        action="store_true",
-        help="Resume from previous checkpoint",
-    )
-    run_parser.add_argument(
-        "--skip",
-        type=str,
-        default=None,
-        help="Comma-separated list of issue IDs to skip during execution (e.g., BUG-003,FEAT-004)",
+    add_dry_run_arg(run_parser)
+    add_max_workers_arg(run_parser)
+    add_timeout_arg(run_parser)
+    add_config_arg(run_parser)
+    add_resume_arg(run_parser)
+    add_skip_arg(
+        run_parser,
+        help_text="Comma-separated list of issue IDs to skip during execution (e.g., BUG-003,FEAT-004)",
     )
 
     # list subcommand
@@ -1421,7 +1341,7 @@ Examples:
     # show subcommand
     show_parser = subparsers.add_parser("show", help="Show sprint details")
     show_parser.add_argument("sprint", help="Sprint name to show")
-    show_parser.add_argument("--config", type=Path, default=None, help="Path to project root")
+    add_config_arg(show_parser)
 
     # delete subcommand
     delete_parser = subparsers.add_parser("delete", help="Delete a sprint")
@@ -1460,8 +1380,8 @@ def _cmd_sprint_create(args: argparse.Namespace, manager: SprintManager) -> int:
     issues = [i.strip().upper() for i in args.issues.split(",")]
 
     # Apply skip filter if provided
-    if args.skip:
-        skip_ids = {s.strip().upper() for s in args.skip.split(",")}
+    skip_ids = parse_issue_ids(args.skip)
+    if skip_ids:
         original_count = len(issues)
         issues = [i for i in issues if i not in skip_ids]
         skipped = original_count - len(issues)
@@ -1784,8 +1704,8 @@ def _cmd_sprint_run(
 
     # Apply skip filter if provided
     issues_to_process = list(sprint.issues)
-    if args.skip:
-        skip_ids = {s.strip().upper() for s in args.skip.split(",")}
+    skip_ids = parse_issue_ids(args.skip)
+    if skip_ids:
         original_count = len(issues_to_process)
         issues_to_process = [i for i in issues_to_process if i not in skip_ids]
         skipped = original_count - len(issues_to_process)
