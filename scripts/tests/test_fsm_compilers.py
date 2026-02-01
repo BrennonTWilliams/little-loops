@@ -151,19 +151,19 @@ class TestGoalCompiler:
     def test_goal_missing_goal_raises(self) -> None:
         """Missing goal field raises ValueError."""
         spec = {"paradigm": "goal", "tools": ["cmd"]}
-        with pytest.raises(ValueError, match="requires 'goal' field"):
+        with pytest.raises(ValueError, match="Goal paradigm requires"):
             compile_goal(spec)
 
     def test_goal_missing_tools_raises(self) -> None:
         """Missing tools field raises ValueError."""
         spec = {"paradigm": "goal", "goal": "Test"}
-        with pytest.raises(ValueError, match="requires 'tools' field"):
+        with pytest.raises(ValueError, match="Goal paradigm requires"):
             compile_goal(spec)
 
     def test_goal_empty_tools_raises(self) -> None:
         """Empty tools list raises ValueError."""
         spec = {"paradigm": "goal", "goal": "Test", "tools": []}
-        with pytest.raises(ValueError, match="requires 'tools' field"):
+        with pytest.raises(ValueError, match="'tools' requires at least one tool"):
             compile_goal(spec)
 
     def test_goal_with_backoff(self) -> None:
@@ -458,19 +458,19 @@ class TestInvariantsCompiler:
     def test_invariants_missing_name_raises(self) -> None:
         """Missing name raises ValueError."""
         spec = {"paradigm": "invariants", "constraints": []}
-        with pytest.raises(ValueError, match="requires 'name' field"):
+        with pytest.raises(ValueError, match="Invariants paradigm requires"):
             compile_invariants(spec)
 
     def test_invariants_missing_constraints_raises(self) -> None:
         """Missing constraints raises ValueError."""
         spec = {"paradigm": "invariants", "name": "test"}
-        with pytest.raises(ValueError, match="requires 'constraints' field"):
+        with pytest.raises(ValueError, match="Invariants paradigm requires"):
             compile_invariants(spec)
 
     def test_invariants_empty_constraints_raises(self) -> None:
         """Empty constraints list raises ValueError."""
         spec = {"paradigm": "invariants", "name": "test", "constraints": []}
-        with pytest.raises(ValueError, match="requires 'constraints' field"):
+        with pytest.raises(ValueError, match="'constraints' requires at least one constraint"):
             compile_invariants(spec)
 
     def test_constraint_missing_name_raises(self) -> None:
@@ -625,13 +625,13 @@ class TestImperativeCompiler:
     def test_imperative_missing_name_raises(self) -> None:
         """Missing name raises ValueError."""
         spec = {"paradigm": "imperative", "steps": ["cmd"], "until": {"check": "x"}}
-        with pytest.raises(ValueError, match="requires 'name' field"):
+        with pytest.raises(ValueError, match="Imperative paradigm requires"):
             compile_imperative(spec)
 
     def test_imperative_missing_steps_raises(self) -> None:
         """Missing steps raises ValueError."""
         spec = {"paradigm": "imperative", "name": "test", "until": {"check": "x"}}
-        with pytest.raises(ValueError, match="requires 'steps' field"):
+        with pytest.raises(ValueError, match="Imperative paradigm requires"):
             compile_imperative(spec)
 
     def test_imperative_empty_steps_raises(self) -> None:
@@ -642,13 +642,13 @@ class TestImperativeCompiler:
             "steps": [],
             "until": {"check": "x"},
         }
-        with pytest.raises(ValueError, match="requires 'steps' field"):
+        with pytest.raises(ValueError, match="'steps' requires at least one step"):
             compile_imperative(spec)
 
     def test_imperative_missing_until_raises(self) -> None:
         """Missing until raises ValueError."""
         spec = {"paradigm": "imperative", "name": "test", "steps": ["cmd"]}
-        with pytest.raises(ValueError, match="requires 'until' field"):
+        with pytest.raises(ValueError, match="Imperative paradigm requires"):
             compile_imperative(spec)
 
     def test_until_missing_check_raises(self) -> None:

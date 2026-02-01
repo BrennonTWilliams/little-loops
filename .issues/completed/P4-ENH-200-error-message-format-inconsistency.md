@@ -7,7 +7,7 @@ ENH
 P4
 
 ## Status
-OPEN
+COMPLETED
 
 ## Description
 
@@ -80,3 +80,37 @@ The current approach is fine - all errors are clear. This is a very minor incons
 
 ## Related Issues
 None
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/compilers.py`: Standardized all paradigm validators (Goal, Invariants, Imperative) to use batch validation format listing all missing fields together, matching the Convergence paradigm pattern
+- `scripts/tests/test_fsm_compilers.py`: Updated test match patterns to use prefix matching for batch error messages
+
+### Error Format Before/After
+
+**Goal paradigm:**
+- Before: `Goal paradigm requires 'goal' field` / `Goal paradigm requires 'tools' field with at least one tool`
+- After: `Goal paradigm requires: goal, tools` / `Goal paradigm 'tools' requires at least one tool`
+
+**Invariants paradigm:**
+- Before: `Invariants paradigm requires 'name' field` / `Invariants paradigm requires 'constraints' field with at least one constraint`
+- After: `Invariants paradigm requires: name, constraints` / `Invariants paradigm 'constraints' requires at least one constraint`
+
+**Imperative paradigm:**
+- Before: `Imperative paradigm requires 'name' field` / `Imperative paradigm requires 'steps' field with at least one step`
+- After: `Imperative paradigm requires: name, steps, until` / `Imperative paradigm 'steps' requires at least one step`
+
+**Convergence paradigm:** (unchanged - already used the batch format)
+- `Convergence paradigm requires: name, check, toward, using`
+
+### Verification Results
+- Tests: PASS (67/67 tests in test_fsm_compilers.py)
+- Lint: PASS (compilers.py and test_fsm_compilers.py)
+- Types: PASS (mypy on scripts/little_loops/)

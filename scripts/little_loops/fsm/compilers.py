@@ -161,10 +161,13 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
         ValueError: If required fields are missing
     """
     # Validate required fields
-    if "goal" not in spec:
-        raise ValueError("Goal paradigm requires 'goal' field")
-    if "tools" not in spec or not spec["tools"]:
-        raise ValueError("Goal paradigm requires 'tools' field with at least one tool")
+    required = ["goal", "tools"]
+    missing = [f for f in required if f not in spec]
+    if missing:
+        raise ValueError(f"Goal paradigm requires: {', '.join(missing)}")
+
+    if "tools" in spec and not spec["tools"]:
+        raise ValueError("Goal paradigm 'tools' requires at least one tool")
 
     goal = spec["goal"]
     tools = spec["tools"]
@@ -320,12 +323,13 @@ def compile_invariants(spec: dict[str, Any]) -> FSMLoop:
         ValueError: If required fields are missing or constraint is invalid
     """
     # Validate required fields
-    if "name" not in spec:
-        raise ValueError("Invariants paradigm requires 'name' field")
-    if "constraints" not in spec or not spec["constraints"]:
-        raise ValueError(
-            "Invariants paradigm requires 'constraints' field with at least one constraint"
-        )
+    required = ["name", "constraints"]
+    missing = [f for f in required if f not in spec]
+    if missing:
+        raise ValueError(f"Invariants paradigm requires: {', '.join(missing)}")
+
+    if "constraints" in spec and not spec["constraints"]:
+        raise ValueError("Invariants paradigm 'constraints' requires at least one constraint")
 
     name = spec["name"]
     constraints = spec["constraints"]
@@ -419,12 +423,14 @@ def compile_imperative(spec: dict[str, Any]) -> FSMLoop:
         ValueError: If required fields are missing
     """
     # Validate required fields
-    if "name" not in spec:
-        raise ValueError("Imperative paradigm requires 'name' field")
-    if "steps" not in spec or not spec["steps"]:
-        raise ValueError("Imperative paradigm requires 'steps' field with at least one step")
-    if "until" not in spec:
-        raise ValueError("Imperative paradigm requires 'until' field")
+    required = ["name", "steps", "until"]
+    missing = [f for f in required if f not in spec]
+    if missing:
+        raise ValueError(f"Imperative paradigm requires: {', '.join(missing)}")
+
+    if "steps" in spec and not spec["steps"]:
+        raise ValueError("Imperative paradigm 'steps' requires at least one step")
+
     if "check" not in spec["until"]:
         raise ValueError("Imperative paradigm 'until' requires 'check' field")
 
