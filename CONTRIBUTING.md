@@ -107,9 +107,10 @@ little-loops/
 ├── commands/             # Slash command templates (*.md)
 ├── agents/               # 8 agent definitions (*.md)
 ├── hooks/                # Lifecycle hooks
-├── skills/               # 4 skill definitions
+├── skills/               # 5 skill definitions
 │   ├── analyze-history/
 │   ├── capture-issue/
+│   ├── issue-size-review/
 │   ├── issue-workflow/
 │   └── workflow-automation-proposer/
 ├── templates/            # Project-type config templates

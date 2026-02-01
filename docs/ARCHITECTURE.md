@@ -61,7 +61,7 @@ flowchart TB
 little-loops/
 ├── plugin.json              # Plugin manifest
 ├── config-schema.json       # JSON Schema for validation
-├── commands/                # 27 slash command templates
+├── commands/                # 28 slash command templates
 │   ├── init.md
 │   ├── help.md
 │   ├── check_code.md
@@ -89,10 +89,12 @@ little-loops/
 │       ├── session-cleanup.sh
 │       ├── session-start.sh
 │       └── user-prompt-check.sh
-├── skills/                  # 4 skill definitions
+├── skills/                  # 5 skill definitions
 │   ├── analyze-history/
 │   │   └── SKILL.md
 │   ├── capture-issue/
+│   │   └── SKILL.md
+│   ├── issue-size-review/
 │   │   └── SKILL.md
 │   ├── issue-workflow/
 │   │   └── SKILL.md

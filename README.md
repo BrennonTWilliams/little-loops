@@ -539,7 +539,7 @@ little-loops/
 ├── plugin.json           # Plugin manifest
 ├── config-schema.json    # Configuration schema
 ├── README.md             # This file
-├── commands/             # Slash command templates (27 commands)
+├── commands/             # Slash command templates (28 commands)
 ├── agents/               # Agent definitions (8 agents)
 ├── hooks/                # Lifecycle hooks and validation scripts
 ├── templates/            # Project type config templates
