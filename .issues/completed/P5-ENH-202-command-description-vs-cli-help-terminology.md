@@ -58,3 +58,17 @@ If standardizing for consistency:
 
 ## Related Issues
 None
+
+
+---
+
+## Resolution
+
+- **Status**: Closed - Won't Do
+- **Closed**: 2026-02-01
+- **Reason**: wont_do
+- **Closure**: Automated (ready_issue validation)
+
+### Closure Notes
+Issue was automatically closed during validation.
+The issue was determined to be invalid, already resolved, or not actionable.

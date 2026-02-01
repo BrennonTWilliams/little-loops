@@ -1,0 +1,67 @@
+# OS files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+
+# Editor/IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.project
+.settings/
+
+# Logs
+*.log
+logs/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Dependencies
+node_modules/
+
+# Build artifacts
+dist/
+build/
+*.tgz
+
+# Test coverage
+coverage/
+coverage.json
+.coverage
+.nyc_output/
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+
+# Lock files (hook system)
+**/.*.lock
+**/.*.lock.lock
+
+# Claude Code
+.claude/settings.local.json
+.claude/ll.local.md
+.mcp.json
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Runtime state files
+scripts/.parallel-manage-state.json
+.auto-manage-state.json
+.parallel-manage-state.json
+
+# ll-parallel artifacts
+.worktrees/
