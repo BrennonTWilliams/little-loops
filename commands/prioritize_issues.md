@@ -56,6 +56,10 @@ For each unprioritized issue:
 2. **Assess priority** based on:
    - **User impact**: How many users affected?
    - **Business impact**: Revenue, reputation, compliance?
+   - **Product fields** (if present in frontmatter):
+     - `business_value`: high/medium/low from frontmatter
+     - `goal_alignment`: Strategic priority connection
+     - `persona_impact`: Which users are affected
    - **Technical debt**: Blocking other work?
    - **Effort**: Quick win vs. major undertaking?
 

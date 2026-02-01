@@ -245,15 +245,58 @@ None (enhances existing issue types)
 
 ## Verification Notes
 
-**Verified: 2026-01-24**
+**Verified: 2026-01-24** | **Re-verified: 2026-02-01**
 
-- Blocker FEAT-020 (Product Analysis Opt-In Configuration) is now **completed**
-- Blocker ENH-025 (Universal discovered_by Field) is now **completed**
-- Remaining blockers: FEAT-021, FEAT-022
+- All blockers now **completed**:
+  - FEAT-020 (Product Analysis Opt-In Configuration) - Completed
+  - FEAT-021 (Goals/Vision Ingestion Mechanism) - Completed 2026-01-29
+  - FEAT-022 (Product Analyzer Skill) - Completed
+  - ENH-025 (Universal discovered_by Field) - Completed 2026-01-20
 - Issue description remains accurate
+- scan_product.md command already includes product fields in issue template
+- issue_parser.py needs ProductImpact class and parsing logic
+- manage_issue.md and prioritize_issues.md need to handle product fields
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_parser.py`:
+  - Added `ProductImpact` dataclass with `goal_alignment`, `persona_impact`, `business_value`, `user_benefit` fields
+  - Added `product_impact` field to `IssueInfo` dataclass (optional)
+  - Added `_parse_product_impact()` method to extract product fields from frontmatter
+  - Updated `parse_file()` to parse product impact from frontmatter
+  - Updated `to_dict()` and `from_dict()` serialization methods
+- `scripts/tests/test_issue_parser.py`:
+  - Added ProductImpact to imports
+  - Added 6 new tests for product_impact field (default None, with values, to_dict, from_dict, roundtrip)
+  - Added 3 new fixture-based tests for parsing product impact from frontmatter
+- `scripts/tests/test_issue_parser_properties.py`:
+  - Added ProductImpact to imports
+  - Added `TestProductImpactProperties` class with 4 property-based tests
+  - Added `TestIssueInfoWithProductImpactProperties` class with 2 property-based tests
+- `scripts/tests/fixtures/issues/`:
+  - Created `bug-with-product-impact.md` fixture
+  - Created `bug-no-product-impact.md` fixture
+  - Created `bug-null-product-fields.md` fixture
+- `commands/manage_issue.md`:
+  - Updated final report template to include product impact section when present
+  - Added note to display product impact during issue review
+- `commands/prioritize_issues.md`:
+  - Updated priority assessment section to consider product fields when present
+
+### Verification Results
+- Tests: PASS (66 tests in test_issue_parser.py, 17 tests in test_issue_parser_properties.py)
+- Lint: PASS (ruff check scripts/)
+- Types: PASS (mypy scripts/little_loops/)
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-01-06 | Priority: P2
+**Completed** | Created: 2026-01-06 | Verified: 2026-02-01 | Completed: 2026-02-01 | Priority: P2

@@ -74,6 +74,51 @@ def get_next_issue_number(config: BRConfig, category: str | None = None) -> int:
 
 
 @dataclass
+class ProductImpact:
+    """Product impact assessment for an issue.
+
+    Attributes:
+        goal_alignment: ID of the strategic priority this supports
+        persona_impact: ID of the persona affected
+        business_value: Business value assessment (high|medium|low)
+        user_benefit: Description of how this helps the target user
+    """
+
+    goal_alignment: str | None = None
+    persona_impact: str | None = None
+    business_value: str | None = None  # high|medium|low
+    user_benefit: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "goal_alignment": self.goal_alignment,
+            "persona_impact": self.persona_impact,
+            "business_value": self.business_value,
+            "user_benefit": self.user_benefit,
+        }
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any] | None) -> ProductImpact | None:
+        """Create ProductImpact from dictionary.
+
+        Args:
+            data: Dictionary with product impact fields, or None
+
+        Returns:
+            ProductImpact instance or None if data is None/empty
+        """
+        if not data:
+            return None
+        return cls(
+            goal_alignment=data.get("goal_alignment"),
+            persona_impact=data.get("persona_impact"),
+            business_value=data.get("business_value"),
+            user_benefit=data.get("user_benefit"),
+        )
+
+
+@dataclass
 class IssueInfo:
     """Parsed information from an issue file.
 
@@ -86,6 +131,7 @@ class IssueInfo:
         blocked_by: List of issue IDs that block this issue
         blocks: List of issue IDs that this issue blocks
         discovered_by: Source command/workflow that created this issue
+        product_impact: Product impact assessment (optional)
     """
 
     path: Path
@@ -96,6 +142,7 @@ class IssueInfo:
     blocked_by: list[str] = field(default_factory=list)
     blocks: list[str] = field(default_factory=list)
     discovered_by: str | None = None
+    product_impact: ProductImpact | None = None
 
     @property
     def priority_int(self) -> int:
@@ -117,6 +164,9 @@ class IssueInfo:
             "blocked_by": self.blocked_by,
             "blocks": self.blocks,
             "discovered_by": self.discovered_by,
+            "product_impact": (
+                self.product_impact.to_dict() if self.product_impact else None
+            ),
         }
 
     @classmethod
@@ -131,6 +181,7 @@ class IssueInfo:
             blocked_by=data.get("blocked_by", []),
             blocks=data.get("blocks", []),
             discovered_by=data.get("discovered_by"),
+            product_impact=ProductImpact.from_dict(data.get("product_impact")),
         )
 
 
@@ -175,9 +226,10 @@ class IssueParser:
         # Read content once for all content-based parsing
         content = self._read_content(issue_path)
 
-        # Parse frontmatter for discovered_by
+        # Parse frontmatter for discovered_by and product impact
         frontmatter = self._parse_frontmatter(content)
         discovered_by = frontmatter.get("discovered_by")
+        product_impact = self._parse_product_impact(frontmatter)
 
         # Parse title and dependencies from file content
         title = self._parse_title_from_content(content, issue_path)
@@ -193,6 +245,7 @@ class IssueParser:
             blocked_by=blocked_by,
             blocks=blocks,
             discovered_by=discovered_by,
+            product_impact=product_impact,
         )
 
     def _parse_priority(self, filename: str) -> str:
@@ -430,6 +483,27 @@ class IssueParser:
             List of issue IDs that this issue blocks
         """
         return self._parse_section_items(content, "Blocks")
+
+    def _parse_product_impact(self, frontmatter: dict[str, Any]) -> ProductImpact | None:
+        """Extract product impact from frontmatter.
+
+        Args:
+            frontmatter: Dictionary of frontmatter fields
+
+        Returns:
+            ProductImpact instance if any product fields are present, None otherwise
+        """
+        # Check if any product fields are present
+        product_fields = ("goal_alignment", "persona_impact", "business_value", "user_benefit")
+        if not any(frontmatter.get(key) for key in product_fields):
+            return None
+
+        return ProductImpact(
+            goal_alignment=frontmatter.get("goal_alignment"),
+            persona_impact=frontmatter.get("persona_impact"),
+            business_value=frontmatter.get("business_value"),
+            user_benefit=frontmatter.get("user_benefit"),
+        )
 
 
 def find_issues(

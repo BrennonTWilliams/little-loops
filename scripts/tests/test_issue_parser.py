@@ -10,6 +10,7 @@ from little_loops.config import BRConfig
 from little_loops.issue_parser import (
     IssueInfo,
     IssueParser,
+    ProductImpact,
     find_highest_priority_issue,
     find_issues,
     get_next_issue_number,
@@ -205,6 +206,112 @@ class TestIssueInfo:
         }
         info = IssueInfo.from_dict(data)
         assert info.discovered_by is None
+
+    def test_product_impact_default_none(self) -> None:
+        """Test product_impact defaults to None."""
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="bugs",
+            priority="P0",
+            issue_id="BUG-001",
+            title="Test",
+        )
+        assert info.product_impact is None
+
+    def test_product_impact_with_values(self) -> None:
+        """Test product_impact can be set with values."""
+        impact = ProductImpact(
+            goal_alignment="automation",
+            persona_impact="developer",
+            business_value="high",
+            user_benefit="Faster processing",
+        )
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="bugs",
+            priority="P0",
+            issue_id="BUG-001",
+            title="Test",
+            product_impact=impact,
+        )
+        assert info.product_impact is not None
+        assert info.product_impact.goal_alignment == "automation"
+        assert info.product_impact.persona_impact == "developer"
+        assert info.product_impact.business_value == "high"
+        assert info.product_impact.user_benefit == "Faster processing"
+
+    def test_product_impact_in_to_dict(self) -> None:
+        """Test product_impact appears in to_dict."""
+        impact = ProductImpact(
+            goal_alignment="ux",
+            persona_impact="end_user",
+            business_value="medium",
+        )
+        info = IssueInfo(
+            path=Path("test.md"),
+            issue_type="bugs",
+            priority="P0",
+            issue_id="BUG-001",
+            title="Test",
+            product_impact=impact,
+        )
+        data = info.to_dict()
+        assert data["product_impact"] is not None
+        assert data["product_impact"]["goal_alignment"] == "ux"
+
+    def test_product_impact_from_dict(self) -> None:
+        """Test product_impact is restored from dict."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "bugs",
+            "priority": "P1",
+            "issue_id": "BUG-200",
+            "title": "Test Issue",
+            "discovered_by": "scan_product",
+            "product_impact": {
+                "goal_alignment": "performance",
+                "persona_impact": "admin",
+                "business_value": "high",
+                "user_benefit": "Faster reports",
+            },
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.product_impact is not None
+        assert info.product_impact.goal_alignment == "performance"
+
+    def test_product_impact_from_dict_missing(self) -> None:
+        """Test from_dict defaults to None for missing product_impact."""
+        data = {
+            "path": "/test/path.md",
+            "issue_type": "bugs",
+            "priority": "P1",
+            "issue_id": "BUG-200",
+            "title": "Legacy Issue",
+        }
+        info = IssueInfo.from_dict(data)
+        assert info.product_impact is None
+
+    def test_product_impact_roundtrip(self) -> None:
+        """Test product_impact survives roundtrip through to_dict/from_dict."""
+        original = IssueInfo(
+            path=Path("/test/path.md"),
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-100",
+            title="Test",
+            product_impact=ProductImpact(
+                goal_alignment="security",
+                persona_impact="admin",
+                business_value="high",
+                user_benefit="Better protection",
+            ),
+        )
+        restored = IssueInfo.from_dict(original.to_dict())
+        assert restored.product_impact is not None
+        assert restored.product_impact.goal_alignment == "security"
+        assert restored.product_impact.persona_impact == "admin"
+        assert restored.product_impact.business_value == "high"
+        assert restored.product_impact.user_benefit == "Better protection"
 
 
 class TestIssueParser:
@@ -472,6 +579,74 @@ class TestIssueParser:
         info = parser.parse_file(issue_file)
 
         assert info.discovered_by == "audit_architecture"
+
+    def test_parse_product_impact_from_frontmatter(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
+    ) -> None:
+        """Test parsing product_impact from YAML frontmatter."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-001-test.md"
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-product-impact.md"))
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.product_impact is not None
+        assert info.product_impact.goal_alignment == "automation"
+        assert info.product_impact.persona_impact == "developer"
+        assert info.product_impact.business_value == "high"
+        assert info.product_impact.user_benefit == "Faster issue processing"
+
+    def test_parse_no_product_impact(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
+    ) -> None:
+        """Test parsing issue without product impact."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-002-test.md"
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-no-product-impact.md"))
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        assert info.product_impact is None
+
+    def test_parse_product_impact_null_values(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        fixtures_dir: Path,
+    ) -> None:
+        """Test parsing frontmatter with null product fields."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-003-test.md"
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-null-product-fields.md"))
+
+        parser = IssueParser(config)
+        info = parser.parse_file(issue_file)
+
+        # When all fields are null, product_impact should be None
+        assert info.product_impact is None
 
 
 class TestGetNextIssueNumber:

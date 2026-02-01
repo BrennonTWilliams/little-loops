@@ -545,6 +545,13 @@ ISSUE MANAGED: {ISSUE_ID} - {action}
 - Priority: {priority}
 - Title: {title}
 - Action: {action}
+{if product_impact exists:}
+## PRODUCT IMPACT
+- Goal Alignment: {goal_alignment}
+- Persona Impact: {persona_impact}
+- Business Value: {business_value}
+- User Benefit: {user_benefit}
+{endif}
 
 ## PLAN
 - File: thoughts/shared/plans/{plan-file}.md
@@ -570,6 +577,8 @@ ISSUE MANAGED: {ISSUE_ID} - {action}
 
 ================================================================================
 ```
+
+**Display Note**: When reviewing an issue file during implementation, check for and display product impact fields if present in the frontmatter. These provide business context for prioritization decisions.
 
 ---
 
