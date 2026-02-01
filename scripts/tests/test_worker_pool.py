@@ -26,6 +26,7 @@ from unittest.mock import MagicMock, Mock, patch
 import pytest
 
 from little_loops.config import BRConfig
+from little_loops.fsm.schema import DEFAULT_LLM_MODEL
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.types import ParallelConfig, WorkerResult
 from little_loops.parallel.worker_pool import WorkerPool
@@ -1279,7 +1280,7 @@ class TestWorkerPoolModelDetection:
         worktree_path = temp_repo_with_config / ".worktrees" / "worker"
 
         json_response = json.dumps(
-            {"result": "ok", "modelUsage": {"claude-sonnet-4-20250514": {"input": 10}}}
+            {"result": "ok", "modelUsage": {DEFAULT_LLM_MODEL: {"input": 10}}}
         )
 
         with patch("subprocess.run") as mock_run:
@@ -1287,7 +1288,7 @@ class TestWorkerPoolModelDetection:
 
             model = worker_pool._detect_worktree_model_via_api(worktree_path)
 
-        assert model == "claude-sonnet-4-20250514"
+        assert model == DEFAULT_LLM_MODEL
 
     def test_detect_model_returns_none_on_error(
         self,

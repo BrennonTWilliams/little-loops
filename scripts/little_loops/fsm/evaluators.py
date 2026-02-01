@@ -23,6 +23,8 @@ import re
 from dataclasses import dataclass
 from typing import Any
 
+from little_loops.fsm.schema import DEFAULT_LLM_MODEL
+
 # Optional import for LLM evaluator
 try:
     import anthropic
@@ -388,7 +390,7 @@ def evaluate_llm_structured(
     schema: dict[str, Any] | None = None,
     min_confidence: float = 0.5,
     uncertain_suffix: bool = False,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_LLM_MODEL,
     max_tokens: int = 256,
     timeout: int = 30,
 ) -> EvaluationResult:

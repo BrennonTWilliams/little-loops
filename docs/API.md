@@ -2523,7 +2523,7 @@ LLM evaluation configuration.
 @dataclass
 class LLMConfig:
     enabled: bool = True
-    model: str = "claude-sonnet-4-20250514"
+    model: str = DEFAULT_LLM_MODEL  # Default from schema.py
     max_tokens: int = 256
     timeout: int = 30
 ```
@@ -2658,7 +2658,7 @@ def evaluate_llm_structured(
     schema: dict | None = None,
     min_confidence: float = 0.5,
     uncertain_suffix: bool = False,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_LLM_MODEL,  # Default from schema.py
     max_tokens: int = 256,
     timeout: int = 30,
 ) -> EvaluationResult

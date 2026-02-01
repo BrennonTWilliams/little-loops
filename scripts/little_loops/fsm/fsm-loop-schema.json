@@ -256,7 +256,7 @@
         },
         "model": {
           "type": "string",
-          "description": "Model identifier for LLM calls",
+          "description": "Model identifier for LLM calls (default: DEFAULT_LLM_MODEL from schema.py)",
           "default": "claude-sonnet-4-20250514"
         },
         "max_tokens": {

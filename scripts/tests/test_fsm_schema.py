@@ -14,6 +14,7 @@ import pytest
 import yaml
 
 from little_loops.fsm.schema import (
+    DEFAULT_LLM_MODEL,
     EvaluateConfig,
     FSMLoop,
     LLMConfig,
@@ -366,7 +367,7 @@ class TestLLMConfig:
         config = LLMConfig()
 
         assert config.enabled is True
-        assert config.model == "claude-sonnet-4-20250514"
+        assert config.model == DEFAULT_LLM_MODEL
         assert config.max_tokens == 256
         assert config.timeout == 30
 

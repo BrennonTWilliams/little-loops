@@ -11,6 +11,7 @@ Public exports:
     EvaluateConfig: Evaluator configuration
     RouteConfig: Routing table configuration
     LLMConfig: LLM evaluation settings
+    DEFAULT_LLM_MODEL: Default LLM model identifier
 
     # Validation
     ValidationError: Structured validation error
@@ -111,6 +112,7 @@ from little_loops.fsm.persistence import (
     list_running_loops,
 )
 from little_loops.fsm.schema import (
+    DEFAULT_LLM_MODEL,
     EvaluateConfig,
     FSMLoop,
     LLMConfig,
@@ -134,6 +136,7 @@ from little_loops.fsm.validation import (
 __all__ = [
     "ActionResult",
     "ActionRunner",
+    "DEFAULT_LLM_MODEL",
     "DEFAULT_LLM_PROMPT",
     "DEFAULT_LLM_SCHEMA",
     "DetectedSignal",

@@ -411,7 +411,7 @@ maintain: boolean               # Restart after completion
 
 # LLM Evaluation Settings
 llm:
-  model: string                 # Model for LLM evaluation (default: claude-sonnet-4-20250514)
+  model: string                 # Model for LLM evaluation (default: DEFAULT_LLM_MODEL from schema.py)
   max_tokens: integer           # Max tokens for evaluation (default: 256)
   timeout: number               # Timeout for LLM calls in seconds (default: 30)
 ```
@@ -756,7 +756,7 @@ def evaluate_llm_structured(
     schema: dict,
     min_confidence: float = 0.5,
     uncertain_suffix: bool = False,
-    model: str = "claude-sonnet-4-20250514",
+    model: str = DEFAULT_LLM_MODEL,  # Default from schema.py
     max_tokens: int = 256,
 ) -> dict:
     """
@@ -1133,7 +1133,7 @@ name: "safe-refactor"
 initial: "analyze"
 
 llm:
-  model: "claude-sonnet-4-20250514"
+  model: "${DEFAULT_LLM_MODEL}"  # Uses default from schema.py
 
 states:
   analyze:

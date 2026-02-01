@@ -17,6 +17,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any, Literal
 
+# Default LLM model for structured evaluation
+DEFAULT_LLM_MODEL: str = "claude-sonnet-4-20250514"
+
 
 @dataclass
 class EvaluateConfig:
@@ -296,7 +299,7 @@ class LLMConfig:
     """
 
     enabled: bool = True
-    model: str = "claude-sonnet-4-20250514"
+    model: str = DEFAULT_LLM_MODEL
     max_tokens: int = 256
     timeout: int = 30
 
@@ -306,7 +309,7 @@ class LLMConfig:
 
         if not self.enabled:
             result["enabled"] = self.enabled
-        if self.model != "claude-sonnet-4-20250514":
+        if self.model != DEFAULT_LLM_MODEL:
             result["model"] = self.model
         if self.max_tokens != 256:
             result["max_tokens"] = self.max_tokens
@@ -320,7 +323,7 @@ class LLMConfig:
         """Create from dictionary (JSON/YAML deserialization)."""
         return cls(
             enabled=data.get("enabled", True),
-            model=data.get("model", "claude-sonnet-4-20250514"),
+            model=data.get("model", DEFAULT_LLM_MODEL),
             max_tokens=data.get("max_tokens", 256),
             timeout=data.get("timeout", 30),
         )
