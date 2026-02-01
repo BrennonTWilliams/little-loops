@@ -58,7 +58,14 @@ Capture issues from conversation or natural language description.
 **Arguments:** `input` (optional) - natural language description
 
 ### `/ll:scan_codebase`
-Scan codebase to identify bugs, enhancements, and features.
+Scan codebase to identify bugs, enhancements, and features (technical analysis).
+
+### `/ll:scan_product`
+Scan codebase for product-focused issues based on goals document (requires `product.enabled: true`).
+
+**Prerequisites:**
+- Product analysis enabled in config
+- Goals file exists (`.claude/ll-goals.md` by default)
 
 ### `/ll:prioritize_issues`
 Analyze issues and assign priority levels (P0-P5).
@@ -205,7 +212,8 @@ Create FSM loop configurations interactively.
 | `run_tests` | Execute test suites |
 | `find_dead_code` | Identify unused code |
 | `capture_issue` | Capture issues from conversation or description |
-| `scan_codebase` | Find issues in code |
+| `scan_codebase` | Find issues in code (technical analysis) |
+| `scan_product` | Find issues in code (product-focused analysis) |
 | `prioritize_issues` | Assign P0-P5 priorities |
 | `ready_issue` | Validate and fix issue files |
 | `verify_issues` | Check issues against code |
@@ -237,7 +245,8 @@ Create FSM loop configurations interactively.
 /ll:check_code
 
 # Find and fix issues automatically
-/ll:scan_codebase
+/ll:scan_codebase            # Technical analysis
+/ll:scan_product             # Product analysis (if enabled)
 /ll:normalize_issues
 /ll:prioritize_issues
 /ll:manage_issue bug fix

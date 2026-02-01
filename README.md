@@ -10,9 +10,9 @@ Development workflow toolkit for Claude Code with issue management, code quality
 
 little-loops is a Claude Code plugin that provides a complete development workflow toolkit. It includes:
 
-- **28 slash commands** for development workflows
+- **29 slash commands** for development workflows
 - **8 specialized agents** for codebase analysis
-- **5 skills** for specialized workflows (issue management, history analysis, etc.)
+- **6 skills** for specialized workflows (issue management, history analysis, product analysis, etc.)
 - **Automation scripts** for autonomous issue processing
 - **Configuration system** for project customization
 
@@ -247,6 +247,28 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `manage_command` | `manage_issue {{issue_type}} {{action}} {{issue_id}}` | Manage command template |
 | `worktree_copy_files` | `[".claude/settings.local.json", ".env"]` | Files to copy to worktrees |
 
+#### `product`
+
+Product analysis configuration for `/ll:scan_product`:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable product-focused issue analysis |
+| `goals_file` | `.claude/ll-goals.md` | Path to product goals/vision document |
+| `analyze_user_impact` | `true` | Include user impact assessment in issues |
+| `analyze_business_value` | `true` | Include business value scoring in issues |
+
+To enable product scanning, set `product.enabled: true` and create a goals file with your product vision, personas, and strategic priorities.
+
+#### `scan`
+
+Codebase scanning configuration:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `focus_dirs` | `["src/"]` | Directories to scan |
+| `exclude_patterns` | Standard patterns | Paths to exclude from scanning |
+
 ## Commands
 
 ### Setup & Help
@@ -279,7 +301,8 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `/ll:prioritize_issues` | Assign priorities to issues |
 | `/ll:verify_issues` | Verify issues against codebase |
 | `/ll:normalize_issues` | Fix invalid issue filenames |
-| `/ll:scan_codebase` | Find new issues |
+| `/ll:scan_codebase` | Find new issues (technical) |
+| `/ll:scan_product` | Find new issues (product-focused) |
 | `/ll:capture_issue [input]` | Capture issues from conversation |
 | `/ll:align_issues <category>` | Validate issues against key documents |
 | `/ll:create_sprint [name] [--issues]` | Create sprint (explicit or auto-suggested) |
@@ -325,6 +348,19 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `prompt-optimizer` | Codebase context for prompt enhancement |
 | `web-search-researcher` | Research web information |
 | `workflow-pattern-analyzer` | Analyze workflow patterns and dependencies |
+
+## Skills
+
+Specialized workflows invoked via the Skill tool:
+
+| Skill | Description |
+|-------|-------------|
+| `product-analyzer` | Analyze codebase against product goals to identify feature gaps, UX improvements, and business value opportunities |
+| `capture-issue` | Capture issues from conversation context or natural language descriptions with duplicate detection |
+| `codebase-analyzer` | Understand code behavior with detailed implementation analysis and data flow tracing |
+| `codebase-locator` | Find files related to specific features or topics across the codebase |
+| `codebase-pattern-finder` | Find concrete code examples and patterns to model after |
+| `workflow-pattern-analyzer` | Analyze workflow patterns and dependencies for automation |
 
 ## CLI Tools
 
@@ -540,8 +576,9 @@ little-loops/
 ├── plugin.json           # Plugin manifest
 ├── config-schema.json    # Configuration schema
 ├── README.md             # This file
-├── commands/             # Slash command templates (28 commands)
+├── commands/             # Slash command templates (29 commands)
 ├── agents/               # Agent definitions (8 agents)
+├── skills/               # Skill definitions (6 skills)
 ├── hooks/                # Lifecycle hooks and validation scripts
 ├── templates/            # Project type config templates
 │   ├── python-generic.json
