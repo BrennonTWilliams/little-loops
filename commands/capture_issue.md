@@ -19,6 +19,8 @@ This command uses project configuration from `.claude/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Completed dir**: `{{config.issues.completed_dir}}`
 - **Template style**: `{{config.issues.capture_template}}` (full or minimal)
+- **Exact duplicate threshold**: `{{config.issues.duplicate_detection.exact_threshold}}` (default: 0.8)
+- **Similar issue threshold**: `{{config.issues.duplicate_detection.similar_threshold}}` (default: 0.5)
 
 ## Arguments
 
@@ -153,9 +155,9 @@ For each existing issue file:
 **Scoring:**
 - Extract significant words (3+ chars, excluding common words like "the", "and", "for")
 - Calculate Jaccard similarity: `intersection / union` of word sets
-- Score >= 0.8 = exact duplicate
-- Score 0.5-0.8 = similar issue
-- Score < 0.5 = likely new issue
+- Score >= {{config.issues.duplicate_detection.exact_threshold}} = exact duplicate
+- Score {{config.issues.duplicate_detection.similar_threshold}}-{{config.issues.duplicate_detection.exact_threshold}} = similar issue
+- Score < {{config.issues.duplicate_detection.similar_threshold}} = likely new issue
 
 #### Search Completed Issues
 
@@ -165,13 +167,13 @@ Search in `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`:
 ls -la {{config.issues.base_dir}}/{{config.issues.completed_dir}}/*.md 2>/dev/null || true
 ```
 
-Apply same scoring. If a completed issue has score >= 0.5, it's a candidate for reopening.
+Apply same scoring. If a completed issue has score >= {{config.issues.duplicate_detection.similar_threshold}}, it's a candidate for reopening.
 
 ### Phase 3: Handle Duplicates/Similar Issues
 
 Based on duplicate detection results, take appropriate action:
 
-#### If Exact Duplicate Found (score >= 0.8)
+#### If Exact Duplicate Found (score >= {{config.issues.duplicate_detection.exact_threshold}})
 
 ```markdown
 ## Duplicate Detected
@@ -212,7 +214,7 @@ questions:
     multiSelect: false
 ```
 
-#### If Similar Issue Found (score 0.5-0.8)
+#### If Similar Issue Found (score {{config.issues.duplicate_detection.similar_threshold}}-{{config.issues.duplicate_detection.exact_threshold}})
 
 ```markdown
 ## Similar Issue Found
@@ -253,7 +255,7 @@ questions:
     multiSelect: false
 ```
 
-#### If Completed Issue Should Reopen (completed + score >= 0.5)
+#### If Completed Issue Should Reopen (completed + score >= {{config.issues.duplicate_detection.similar_threshold}})
 
 ```markdown
 ## Completed Issue May Need Reopening
@@ -293,7 +295,7 @@ questions:
     multiSelect: false
 ```
 
-#### If No Match Found (score < 0.5)
+#### If No Match Found (score < {{config.issues.duplicate_detection.similar_threshold}})
 
 Proceed directly to issue creation without user confirmation.
 

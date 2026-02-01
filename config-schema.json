@@ -112,6 +112,27 @@
           "enum": ["full", "minimal"],
           "description": "Default template style for captured issues (full includes all sections, minimal includes only Summary, Context, and footer)",
           "default": "full"
+        },
+        "duplicate_detection": {
+          "type": "object",
+          "description": "Duplicate detection settings for issue capture",
+          "properties": {
+            "exact_threshold": {
+              "type": "number",
+              "description": "Jaccard similarity threshold for exact duplicates",
+              "default": 0.8,
+              "minimum": 0.5,
+              "maximum": 1.0
+            },
+            "similar_threshold": {
+              "type": "number",
+              "description": "Jaccard similarity threshold for similar issues",
+              "default": 0.5,
+              "minimum": 0.1,
+              "maximum": 0.9
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

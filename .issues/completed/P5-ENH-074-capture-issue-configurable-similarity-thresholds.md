@@ -84,3 +84,18 @@ Update `capture_issue.md` to reference:
 ## Status
 
 **Open** | Created: 2025-01-15 | Verified: 2026-01-28 | Priority: P5
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+- `config-schema.json`: Added `duplicate_detection` object under `issues` with `exact_threshold` (default: 0.8) and `similar_threshold` (default: 0.5) properties
+- `commands/capture_issue.md`: Updated all threshold references to use `{{config.issues.duplicate_detection.exact_threshold}}` and `{{config.issues.duplicate_detection.similar_threshold}}`
+
+### Verification Results
+- Schema JSON: Validated with json.tool
