@@ -48,3 +48,24 @@ Most users don't need this field since the default heuristic works (leading `/` 
 
 ## Related Issues
 None
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md`: Added "Advanced State Configuration" subsection to Quick Reference (lines 1088-1129) documenting the `action_type` field with values, usage guidance, and examples
+- `commands/create_loop.md`: Added inline `action_type` documentation to Goal paradigm YAML template (line 386)
+- `commands/create_loop.md`: Added inline `action_type` documentation to Invariants paradigm YAML template (line 484)
+- `commands/create_loop.md`: Added inline `action_type` documentation to Convergence paradigm YAML template (line 575)
+- `commands/create_loop.md`: Added inline `action_type` documentation to Imperative paradigm YAML template (line 669)
+
+### Verification Results
+- Documentation now includes 12 references to `action_type` field
+- Quick Reference section explains when and why to use `action_type`
+- YAML templates show `action_type` as optional with clear comments
+- No wizard question added (as noted in issue, most users don't need it)

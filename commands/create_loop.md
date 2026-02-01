@@ -382,6 +382,8 @@ evaluator:                 # Optional - omit for exit_code default
   pattern: "<pattern>"     # For output_contains only
   operator: "<eq|lt|gt>"   # For output_numeric only
   target: <number>         # For output_numeric only
+# Include action_type only if not using default heuristic:
+action_type: "prompt|slash_command|shell"  # Optional - defaults to heuristic (/ = slash_command)
 ```
 
 **Example for "Type errors + Lint errors":**
@@ -478,6 +480,8 @@ constraints:
       pattern: "<pattern>"   # For output_contains only
       operator: "<eq|lt|gt>" # For output_numeric only
       target: <number>       # For output_numeric only
+    # Include action_type only if not using default heuristic:
+    action_type: "prompt|slash_command|shell"  # Optional per-constraint
   - name: "<constraint-2-name>"
     check: "<check-command>"
     fix: "<fix-command>"
@@ -567,6 +571,8 @@ check: "<metric-command>"
 toward: <target-value>
 using: "<fix-action>"
 tolerance: 0
+# Include action_type only if not using default heuristic:
+action_type: "prompt|slash_command|shell"  # Optional - for the using: action
 max_iterations: 50
 ```
 
@@ -659,6 +665,8 @@ until:
     pattern: "<pattern>"     # For output_contains only
     operator: "<eq|lt|gt>"   # For output_numeric only
     target: <number>         # For output_numeric only
+  # Include action_type only if not using default heuristic:
+  action_type: "prompt|slash_command|shell"  # Optional for the until: check
 max_iterations: 20
 backoff: 2
 ```
@@ -1076,6 +1084,49 @@ using: "/ll:manage_issue feature implement"
 tolerance: 1
 max_iterations: 20
 ```
+
+### Advanced State Configuration
+
+#### action_type (Optional)
+
+The `action_type` field explicitly controls how an action is executed. In most cases, you can omit this field and the default heuristic works correctly.
+
+**Values:**
+- `prompt` - Execute action as a Claude prompt via Claude CLI
+- `slash_command` - Execute action as a Claude slash command via Claude CLI
+- `shell` - Execute action as a bash shell command
+- (omit) - Uses heuristic: actions starting with `/` are slash commands, others are shell commands
+
+**When to use:**
+- **Plain prompts**: You want to send a plain prompt to Claude (not a slash command) that doesn't start with `/`
+- **Explicit shell commands**: You have a command starting with `/` that should run in shell (not via Claude CLI)
+- **Clarity**: You want to explicitly document the execution type in the YAML
+
+**Example - Plain prompt (no leading `/`):**
+```yaml
+paradigm: goal
+name: "fix-with-plain-prompt"
+goal: "Code is clean"
+tools:
+  - "ruff check src/"
+  - "Please fix all lint errors in the src/ directory"
+action_type: "prompt"  # Explicitly mark as prompt since it doesn't start with /
+max_iterations: 10
+```
+
+**Example - Shell command starting with `/`:**
+```yaml
+paradigm: goal
+name: "run-specific-script"
+goal: "Script succeeds"
+tools:
+  - "/usr/local/bin/check.sh"
+  - "/usr/local/bin/fix.sh"
+action_type: "shell"  # Run via shell, not Claude CLI, despite leading /
+max_iterations: 5
+```
+
+**Most users can omit this field** - the default heuristic covers the common case where slash commands start with `/` and shell commands don't.
 
 ---
 
