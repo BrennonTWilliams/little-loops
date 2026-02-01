@@ -106,13 +106,21 @@ little-loops/
 ├── config-schema.json    # Configuration JSON Schema
 ├── commands/             # Slash command templates (*.md)
 ├── agents/               # 8 agent definitions (*.md)
+│   ├── codebase-analyzer.md
+│   ├── codebase-locator.md
+│   ├── codebase-pattern-finder.md
+│   ├── consistency-checker.md
+│   ├── plugin-config-auditor.md
+│   ├── prompt-optimizer.md
+│   ├── web-search-researcher.md
+│   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── skills/               # 5 skill definitions
-│   ├── analyze-history/
-│   ├── capture-issue/
-│   ├── issue-size-review/
-│   ├── issue-workflow/
-│   └── workflow-automation-proposer/
+├── skills/               # 5 skill definitions (user-invocable workflows)
+│   ├── analyze-history/     # Analyze issue history and trends
+│   ├── capture-issue/       # Capture issues from conversation
+│   ├── issue-size-review/   # Evaluate issue complexity
+│   ├── issue-workflow/      # Issue lifecycle quick reference
+│   └── workflow-automation-proposer/  # Propose automations from patterns
 ├── templates/            # Project-type config templates
 ├── docs/                 # Documentation
 │   ├── TROUBLESHOOTING.md  # Common issues and solutions

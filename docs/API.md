@@ -581,6 +581,321 @@ Find all cycles in the graph using DFS.
 
 ---
 
+## little_loops.goals_parser
+
+Product goals configuration for issue prioritization.
+
+### ProductGoals
+
+Main configuration class for product goals.
+
+```python
+@dataclass
+class ProductGoals:
+    """Product goals for issue prioritization."""
+    personas: dict[str, PersonaGoals] | None = None
+    priorities: dict[str, PriorityGoals] | None = None
+```
+
+### PersonaGoals
+
+Configuration for persona-based goal prioritization.
+
+```python
+@dataclass
+class PersonaGoals:
+    """Goals for a specific persona."""
+    persona: str
+    description: str
+    priorities: list[str]
+```
+
+### PriorityGoals
+
+Configuration for priority-based goal categorization.
+
+```python
+@dataclass
+class PriorityGoals:
+    """Goals for a specific priority level."""
+    priority: str  # P0-P5
+    description: str
+    categories: list[str]  # Issue types to prioritize
+```
+
+### validate_goals
+
+```python
+def validate_goals(goals: ProductGoals) -> list[str]
+```
+
+Validate product goals configuration.
+
+**Parameters:**
+- `goals` - ProductGoals instance to validate
+
+**Returns:** List of validation error messages (empty if valid)
+
+**Example:**
+```python
+from little_loops.goals_parser import ProductGoals, validate_goals
+
+goals = ProductGoals(
+    personas={
+        "end-user": PersonaGoals(
+            persona="end-user",
+            description="End user of the product",
+            priorities=["usability", "performance", "reliability"]
+        )
+    }
+)
+
+errors = validate_goals(goals)
+if errors:
+    for error in errors:
+        print(f"Validation error: {error}")
+```
+
+---
+
+## little_loops.issue_discovery
+
+Issue discovery, duplicate detection, and regression analysis.
+
+### Public Functions (7)
+
+| Function | Purpose |
+|----------|---------|
+| `find_duplicate_issues()` | Find existing issues matching criteria |
+| `detect_regression()` | Check if completed issue has regressed |
+| `update_existing_issue()` | Update existing issue with new findings |
+| `search_issues_by_similarity()` | Find semantically similar issues |
+| `check_file_references()` | Check if issues reference same files |
+| `find_related_issues()` | Find issues with shared blockers |
+| `classify_match_type()` | Classify the type of match found |
+
+### Classes
+
+#### MatchClassification
+
+Type of duplicate match found.
+
+```python
+@dataclass
+class MatchClassification:
+    """Classification of a duplicate match."""
+    match_type: Literal["exact", "similar", "related", "none"]
+    confidence: float  # 0.0-1.0
+    reason: str
+```
+
+#### RegressionEvidence
+
+Evidence of a regression.
+
+```python
+@dataclass
+class RegressionEvidence:
+    """Evidence that a previously completed issue has regressed."""
+    issue_id: str
+    completed_at: str
+    regression_detected: bool
+    evidence: list[str]
+    confidence: float
+```
+
+#### FindingMatch
+
+Match result with metadata.
+
+```python
+@dataclass
+class FindingMatch:
+    """Result of matching a new issue against existing issues."""
+    issue_id: str
+    match_type: MatchClassification
+    similarity_score: float
+    shared_files: list[str]
+    shared_keywords: list[str]
+```
+
+### Example
+
+```python
+from little_loops.issue_discovery import (
+    find_duplicate_issues,
+    detect_regression,
+    search_issues_by_similarity,
+)
+from little_loops.issue_parser import IssueInfo
+from little_loops.config import BRConfig
+from pathlib import Path
+
+config = BRConfig(Path.cwd())
+
+# Check for duplicates
+new_issue = IssueInfo(
+    path=Path(".issues/bugs/P1-BUG-100-test.md"),
+    issue_type="bugs",
+    priority="P1",
+    issue_id="BUG-100",
+    title="Fix authentication bug"
+)
+
+duplicates = find_duplicate_issues(new_issue, config)
+for dup in duplicates:
+    print(f"Potential duplicate: {dup.issue_id} ({dup.match_type.match_type})")
+
+# Check for regressions
+regression = detect_regression("BUG-050", config)
+if regression.regression_detected:
+    print(f"Regression detected: {regression.evidence}")
+```
+
+---
+
+## little_loops.issue_history
+
+Analysis of completed issues for project health insights.
+
+### Public Functions (11)
+
+| Function | Purpose |
+|----------|---------|
+| `load_completed_issues()` | Load all completed issues from disk |
+| `compute_history_summary()` | Generate summary statistics |
+| `analyze_hotspots()` | Find files/components with most issues |
+| `analyze_coupling()` | Find issue correlation patterns |
+| `compute_velocity()` | Calculate issues per time period |
+| `analyze_type_distribution()` | Breakdown by issue type |
+| `analyze_priority_distribution()` | Breakdown by priority |
+| `cluster_regressions()` | Group related regressions |
+| `get_trend_data()` | Time series data for trends |
+| `generate_velocity_report()` | Human-readable velocity report |
+| `compute_failure_classification()` | Categorize failure types |
+
+### Data Classes (19)
+
+#### CompletedIssue
+
+Parsed completed issue.
+
+```python
+@dataclass
+class CompletedIssue:
+    """A parsed completed issue."""
+    issue_id: str
+    issue_type: str  # bug, feature, enhancement
+    priority: str  # P0-P5
+    title: str
+    completed_at: str  # ISO timestamp
+    file_path: Path
+    blockers: list[str]
+    blocks: list[str]
+    tags: list[str]
+```
+
+#### HistorySummary
+
+Overall statistics.
+
+```python
+@dataclass
+class HistorySummary:
+    """Summary of completed issues."""
+    total_count: int
+    date_range: tuple[str, str]
+    velocity: float  # issues per day
+    type_distribution: dict[str, int]
+    priority_distribution: dict[str, int]
+```
+
+#### Hotspot
+
+Files with frequent issues.
+
+```python
+@dataclass
+class Hotspot:
+    """A file or component with frequent issues."""
+    file_path: str
+    issue_count: int
+    issue_types: dict[str, int]
+    last_issue_date: str
+```
+
+#### CouplingPair
+
+Correlated issues.
+
+```python
+@dataclass
+class CouplingPair:
+    """Two issues that are frequently blocked/blocking together."""
+    issue_a: str
+    issue_b: str
+    correlation_score: float
+    shared_files: list[str]
+```
+
+#### VelocityMetrics
+
+Throughput measurements.
+
+```python
+@dataclass
+class VelocityMetrics:
+    """Velocity metrics over time."""
+    overall_velocity: float  # issues/day
+    weekly_velocity: float
+    monthly_velocity: float
+    trend: Literal["improving", "stable", "declining"]
+```
+
+#### TrendDataPoint
+
+Time series data.
+
+```python
+@dataclass
+class TrendDataPoint:
+    """A single data point in a trend series."""
+    date: str
+    count: int
+    cumulative: int
+```
+
+### Example
+
+```python
+from little_loops.issue_history import (
+    load_completed_issues,
+    compute_history_summary,
+    analyze_hotspots,
+    generate_velocity_report,
+)
+from pathlib import Path
+
+# Load and analyze
+completed_dir = Path(".issues/completed")
+issues = load_completed_issues(completed_dir)
+summary = compute_history_summary(issues)
+
+print(f"Completed: {summary.total_count}")
+print(f"Velocity: {summary.velocity:.2f} issues/day")
+
+# Find problematic files
+hotspots = analyze_hotspots(issues, min_issues=3)
+for hotspot in hotspots[:5]:
+    print(f"{hotspot.file_path}: {hotspot.issue_count} issues")
+
+# Generate human-readable report
+report = generate_velocity_report(issues)
+print(report)
+```
+
+---
+
 ## little_loops.git_operations
 
 Git utility functions for status checking, work verification, and .gitignore management.

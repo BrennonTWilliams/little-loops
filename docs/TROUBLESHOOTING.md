@@ -462,11 +462,26 @@ grep state_file .claude/ll-config.json
      }
    }
    ```
-2. Increase threshold for later warnings: `"auto_handoff_threshold": 85`
-3. Check token breakdown in state file:
+
+2. **Tool-specific costs** (hardcoded in `hooks/scripts/context-monitor.sh`):
+
+   | Tool | Cost | Formula |
+   |------|------|---------|
+   | `Read` | 10 per line | `lines × read_per_line` |
+   | `Grep` | 5 per line | `output_lines × 5` |
+   | `Glob` | 20 per file | `file_count × 20` |
+   | `Bash` | 0.3 per char | `chars × bash_output_per_char` |
+   | `Write`/`Edit` | 300 | `tool_call_base × 3` |
+   | `Task` | 2000 | Fixed overhead |
+   | `WebFetch` | 1500 | Fixed overhead |
+   | `WebSearch` | 1000 | Fixed overhead |
+
+3. Increase threshold for later warnings: `"auto_handoff_threshold": 85`
+4. Check token breakdown in state file:
    ```bash
    cat .claude/ll-context-state.json | jq '.breakdown'
    ```
+5. For custom tuning, edit `hooks/scripts/context-monitor.sh` lines 56-118
 
 For comprehensive documentation, see [Session Handoff Guide](SESSION_HANDOFF.md).
 
