@@ -7,7 +7,17 @@ ENH
 P5
 
 ## Status
-OPEN
+CLOSED
+
+## Resolution
+Closed - Won't Do
+
+The issue correctly identified that the current behavior is working as intended:
+- Schema allows `paradigm: None` for flexibility (hand-authored FSM files)
+- `/ll:create_loop` always sets paradigm (correct for generated files)
+- Executor handles missing paradigm gracefully (defaults to "fsm" in compile_paradigm)
+
+No action required.
 
 ## Description
 
