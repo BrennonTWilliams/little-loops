@@ -61,14 +61,14 @@ Check product analysis is enabled:
 Read and parse the goals file:
 - Extract persona definition
 - Extract strategic priorities
-- Load full markdown content for agent context
+- Load full markdown content for skill context
 
 ### 3. Run Product Analysis
 
-Spawn the product-analyzer agent:
+Invoke the product-analyzer skill:
 
 ```
-Use Task tool with subagent_type="product-analyzer"
+Use Skill tool with skill="product-analyzer"
 
 Prompt: Perform comprehensive product analysis:
 
@@ -102,7 +102,7 @@ Read and internalize: {{config.product.goals_file}}
 
 ### 4. Process Findings
 
-For each finding from the agent:
+For each finding from the skill:
 
 1. **Deduplicate** against existing issues in `.issues/`
 2. **Classify** as FEAT-XXX or ENH-XXX based on finding type
@@ -303,6 +303,13 @@ None
 
 - All verification findings confirmed; issue remains accurate
 - Updated blocker list to reflect FEAT-020 completion
+
+---
+
+**Verified: 2026-02-01**
+
+- Fixed terminology: changed "agent" references to "skill" (lines 64, 68, 71, 105)
+- Now consistently references "product-analyzer skill" and uses Skill tool instead of Task tool
 
 ---
 

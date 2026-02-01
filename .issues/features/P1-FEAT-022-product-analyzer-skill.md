@@ -239,6 +239,11 @@ When product analysis is enabled:
 - Remaining blocker: FEAT-021 (Goals/Vision Ingestion Mechanism)
 - `skills/product-analyzer.md` does not exist - issue description remains accurate
 
+**Verified: 2026-02-01**
+
+- Terminology is consistently "skill" throughout this issue
+- FEAT-023 updated to use "skill" terminology (previously had inconsistent "agent" references)
+
 ---
 
 ## Status
