@@ -982,12 +982,32 @@ If confirmed:
    ll-loop test <name>
    ```
 
-   Display the test output directly. The test command provides:
-   - Check command and exit code
-   - Output preview
-   - Evaluator type and verdict
-   - Would-transition target
-   - Success indicator or warning with specific issues
+   Display the test output directly. Example output:
+
+   ```
+   ## Test Iteration: my-loop
+
+   State: check
+   Action: mypy src/
+
+   Exit code: 1
+   Output:
+   Found 3 errors in 1 file (checked 5 source files)
+
+   Evaluator: exit_code (default)
+   Verdict: FAILURE
+
+   Would transition: check → fix
+
+   ✓ Loop appears to be configured correctly
+   ```
+
+   The test command validates your loop configuration by running one iteration:
+   - Shows the state and action being tested
+   - Displays exit code and output (truncated if long)
+   - Reports evaluator type and verdict
+   - Indicates what transition would occur
+   - Uses ✓ when structure is valid, ⚠ when errors are detected
 
    Continue to the success report regardless of test result.
 

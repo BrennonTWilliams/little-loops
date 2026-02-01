@@ -7,20 +7,23 @@ BUG
 P4
 
 ## Status
-OPEN
+COMPLETED
+
+## Anchor
+cmd_test in cli.py
 
 ## Description
 
 The `/ll:create_loop` command documentation describes the `ll-loop test` output format in one way, but the actual CLI implementation produces different output.
 
-**Documentation describes (lines 955-962):**
+**Documentation describes (lines 985-990):**
 - Check command and exit code
 - Output preview
 - Evaluator type and verdict
 - Would-transition target
 - Success indicator or warning with specific issues
 
-**Actual CLI implementation (`cli.py:1064-1212`):**
+**Actual CLI implementation (`cli.py:1097-1212`):**
 - Uses unicode symbols (✓, ✗, ⚠)
 - Has different formatting
 - Shows more technical details (truncated output, stderr preview)
@@ -46,7 +49,7 @@ Would transition: check → fix
 ```
 
 **Evidence:**
-- `commands/create_loop.md:955-962` - Documented test output format
+- `commands/create_loop.md:985-990` - Documented test output format
 - `scripts/little_loops/cli.py:1097-1212` - Actual test implementation
 
 **Impact:**
@@ -70,3 +73,20 @@ Update the documentation to show an actual example output, or remove the detaile
 
 ## Related Issues
 None
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md`: Replaced generic bullet list description (lines 985-990) with actual example output matching CLI implementation
+- Added example code block showing real `ll-loop test` output format
+- Updated description to clarify Unicode symbols (✓, ⚠) and truncation behavior
+
+### Verification Results
+- Tests: PASS (7/7 test_test tests passed)
+- Documentation: Updated to match actual CLI output format at `cli.py:1097-1212`
