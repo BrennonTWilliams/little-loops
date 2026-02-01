@@ -571,6 +571,7 @@ class AutoManager:
         category: str | None = None,
         only_ids: set[str] | None = None,
         skip_ids: set[str] | None = None,
+        verbose: bool = True,
     ) -> None:
         """Initialize the auto manager.
 
@@ -582,6 +583,7 @@ class AutoManager:
             category: Optional category to filter (e.g., "bugs")
             only_ids: If provided, only process these issue IDs
             skip_ids: Issue IDs to skip (in addition to attempted issues)
+            verbose: Whether to output progress messages
         """
         self.config = config
         self.dry_run = dry_run
@@ -591,7 +593,7 @@ class AutoManager:
         self.only_ids = only_ids
         self.skip_ids = skip_ids or set()
 
-        self.logger = Logger(verbose=True)
+        self.logger = Logger(verbose=verbose)
         self.state_manager = StateManager(config.get_state_file(), self.logger)
         self.parser = IssueParser(config)
 

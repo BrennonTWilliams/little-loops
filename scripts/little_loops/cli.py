@@ -107,6 +107,7 @@ Examples:
         category=args.category,
         only_ids=only_ids,
         skip_ids=skip_ids,
+        verbose=not args.quiet,
     )
 
     return manager.run()
@@ -1327,6 +1328,7 @@ Examples:
     add_timeout_arg(run_parser)
     add_config_arg(run_parser)
     add_resume_arg(run_parser)
+    add_quiet_arg(run_parser)
     add_skip_arg(
         run_parser,
         help_text="Comma-separated list of issue IDs to skip during execution (e.g., BUG-003,FEAT-004)",
@@ -1689,7 +1691,7 @@ def _cmd_sprint_run(
     """Execute a sprint with dependency-aware scheduling."""
     from datetime import datetime
 
-    logger = Logger()
+    logger = Logger(verbose=not args.quiet)
 
     # Setup signal handlers for graceful shutdown (ENH-183)
     global _sprint_shutdown_requested

@@ -162,11 +162,12 @@ def parse_issue_ids(value: str | None) -> set[str] | None:
 def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     """Add arguments common to ll-auto command.
 
-    Adds: --resume, --dry-run, --max-issues, --only, --skip, --config
+    Adds: --resume, --dry-run, --max-issues, --quiet, --only, --skip, --config
     """
     add_resume_arg(parser)
     add_dry_run_arg(parser)
     add_max_issues_arg(parser)
+    add_quiet_arg(parser)
     add_only_arg(parser)
     add_skip_arg(parser)
     add_config_arg(parser)

@@ -373,6 +373,57 @@ class TestMainAutoIntegration:
             assert call_kwargs["resume"] is True
             assert call_kwargs["category"] == "bugs"
 
+    def test_main_auto_quiet_flag_passed_to_manager(self, temp_project: Path) -> None:
+        """main_auto passes quiet flag as verbose=False to AutoManager."""
+        with patch("little_loops.cli.AutoManager") as mock_manager_cls:
+            mock_manager = MagicMock()
+            mock_manager.run.return_value = 0
+            mock_manager_cls.return_value = mock_manager
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-auto",
+                    "--quiet",
+                    "--config",
+                    str(temp_project),
+                ],
+            ):
+                from little_loops.cli import main_auto
+
+                result = main_auto()
+
+            assert result == 0
+            mock_manager_cls.assert_called_once()
+            call_kwargs = mock_manager_cls.call_args.kwargs
+            assert call_kwargs["verbose"] is False  # --quiet means verbose=False
+
+    def test_main_auto_without_quiet_flag_passed_to_manager(self, temp_project: Path) -> None:
+        """main_auto without --quiet passes verbose=True to AutoManager (default)."""
+        with patch("little_loops.cli.AutoManager") as mock_manager_cls:
+            mock_manager = MagicMock()
+            mock_manager.run.return_value = 0
+            mock_manager_cls.return_value = mock_manager
+
+            with patch.object(
+                sys,
+                "argv",
+                [
+                    "ll-auto",
+                    "--config",
+                    str(temp_project),
+                ],
+            ):
+                from little_loops.cli import main_auto
+
+                result = main_auto()
+
+            assert result == 0
+            mock_manager_cls.assert_called_once()
+            call_kwargs = mock_manager_cls.call_args.kwargs
+            assert call_kwargs["verbose"] is True  # default is verbose
+
 
 class TestMainParallelIntegration:
     """Integration tests for main_parallel entry point."""
@@ -686,6 +737,7 @@ class TestSprintArgumentParsing:
         run.add_argument("-t", "--timeout", type=int)
         run.add_argument("--config", type=Path)
         run.add_argument("--resume", "-r", action="store_true")
+        run.add_argument("--quiet", "-q", action="store_true")
         run.add_argument("--skip", type=str, default=None)
 
         # list
@@ -798,6 +850,35 @@ class TestSprintArgumentParsing:
         """run subcommand accepts --resume/-r."""
         args = self._parse_sprint_args(["run", "sprint-1", "-r"])
         assert args.command == "run"
+        assert args.resume is True
+
+    def test_run_with_quiet(self) -> None:
+        """run subcommand accepts --quiet/-q."""
+        args = self._parse_sprint_args(["run", "sprint-1", "--quiet"])
+        assert args.command == "run"
+        assert args.quiet is True
+
+    def test_run_with_quiet_short_flag(self) -> None:
+        """run subcommand accepts -q short flag."""
+        args = self._parse_sprint_args(["run", "sprint-1", "-q"])
+        assert args.command == "run"
+        assert args.quiet is True
+
+    def test_run_without_quiet_default(self) -> None:
+        """run subcommand defaults quiet to False."""
+        args = self._parse_sprint_args(["run", "sprint-1"])
+        assert args.command == "run"
+        assert args.quiet is False
+
+    def test_run_with_quiet_and_other_flags(self) -> None:
+        """run subcommand combines --quiet with other flags."""
+        args = self._parse_sprint_args(
+            ["run", "sprint-1", "-q", "--dry-run", "-w", "4", "-r"]
+        )
+        assert args.command == "run"
+        assert args.quiet is True
+        assert args.dry_run is True
+        assert args.max_workers == 4
         assert args.resume is True
 
 

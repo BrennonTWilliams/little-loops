@@ -628,3 +628,130 @@ class TestDependencyAwareSequencing:
         captured = capsys.readouterr()
         # Check that cycle warning was printed
         assert "Dependency cycle detected" in captured.out or "cycle" in captured.out.lower()
+
+
+class TestAutoManagerQuietMode:
+    """Tests for AutoManager quiet/verbose mode (ENH-188)."""
+
+    def test_auto_manager_verbose_false_creates_quiet_logger(
+        self, temp_project_dir: Path
+    ) -> None:
+        """Test AutoManager with verbose=False creates quiet logger."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+        import json
+
+        # Create minimal config
+        claude_dir = temp_project_dir / ".claude"
+        claude_dir.mkdir(exist_ok=True)
+        config_content = {
+            "project": {"name": "test-project"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "features": {
+                        "prefix": "FEAT",
+                        "dir": "features",
+                        "action": "implement",
+                    }
+                },
+                "completed_dir": "completed",
+            },
+            "automation": {
+                "timeout_seconds": 60,
+                "state_file": ".auto-manage-state.json",
+            },
+        }
+        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+
+        # Create issues directory
+        issues_dir = temp_project_dir / ".issues" / "features"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir()
+
+        config = BRConfig(temp_project_dir)
+        manager = AutoManager(config, verbose=False)
+
+        assert manager.logger.verbose is False
+
+    def test_auto_manager_verbose_true_creates_verbose_logger(
+        self, temp_project_dir: Path
+    ) -> None:
+        """Test AutoManager with verbose=True creates verbose logger (default)."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+        import json
+
+        # Create minimal config
+        claude_dir = temp_project_dir / ".claude"
+        claude_dir.mkdir(exist_ok=True)
+        config_content = {
+            "project": {"name": "test-project"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "features": {
+                        "prefix": "FEAT",
+                        "dir": "features",
+                        "action": "implement",
+                    }
+                },
+                "completed_dir": "completed",
+            },
+            "automation": {
+                "timeout_seconds": 60,
+                "state_file": ".auto-manage-state.json",
+            },
+        }
+        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+
+        # Create issues directory
+        issues_dir = temp_project_dir / ".issues" / "features"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir()
+
+        config = BRConfig(temp_project_dir)
+        manager = AutoManager(config)  # Use default verbose=True
+
+        assert manager.logger.verbose is True
+
+    def test_auto_manager_explicit_verbose_true(
+        self, temp_project_dir: Path
+    ) -> None:
+        """Test AutoManager with explicit verbose=True."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+        import json
+
+        # Create minimal config
+        claude_dir = temp_project_dir / ".claude"
+        claude_dir.mkdir(exist_ok=True)
+        config_content = {
+            "project": {"name": "test-project"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "features": {
+                        "prefix": "FEAT",
+                        "dir": "features",
+                        "action": "implement",
+                    }
+                },
+                "completed_dir": "completed",
+            },
+            "automation": {
+                "timeout_seconds": 60,
+                "state_file": ".auto-manage-state.json",
+            },
+        }
+        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+
+        # Create issues directory
+        issues_dir = temp_project_dir / ".issues" / "features"
+        issues_dir.mkdir(parents=True)
+        (temp_project_dir / ".issues" / "completed").mkdir()
+
+        config = BRConfig(temp_project_dir)
+        manager = AutoManager(config, verbose=True)
+
+        assert manager.logger.verbose is True
