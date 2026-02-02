@@ -1485,25 +1485,34 @@ class TestMainLoopAdditionalCoverage:
                 max_iterations=50,
             )
 
-            # Patch load_and_validate in the cli module where it's imported
-            with patch("little_loops.cli.load_and_validate", return_value=mock_fsm):
+            # Patch at actual source module paths (cli.py imports these locally)
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
                 with patch(
-                    "little_loops.cli.PersistentExecutor"
+                    "little_loops.fsm.persistence.PersistentExecutor"
                 ) as mock_exec:
                     mock_executor = MagicMock()
-                    mock_executor.run.return_value = MagicMock(
-                        iterations=1, terminated_by="terminal"
-                    )
+                    # Create a proper mock result with all required attributes
+                    mock_result = MagicMock()
+                    mock_result.iterations = 1
+                    mock_result.terminated_by = "terminal"
+                    mock_result.final_state = "start"
+                    mock_result.duration_ms = 100
+                    mock_executor.run.return_value = mock_result
                     mock_exec.return_value = mock_executor
 
                     # Call with loop name directly (no "run" subcommand)
                     with patch.object(
                         sys, "argv", ["ll-loop", "test-loop"]
                     ):
-                        with patch("pathlib.Path.cwd", return_value=Path(tmpdir)):
+                        # Change to temp directory so resolve_loop_path works
+                        import os
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(tmpdir)
                             from little_loops.cli import main_loop
-
                             result = main_loop()
+                        finally:
+                            os.chdir(original_cwd)
 
             assert result == 0
 
@@ -1532,23 +1541,32 @@ class TestMainLoopAdditionalCoverage:
                 max_iterations=50,
             )
 
-            with patch("little_loops.cli.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
                 with patch(
-                    "little_loops.cli.PersistentExecutor"
+                    "little_loops.fsm.persistence.PersistentExecutor"
                 ) as mock_exec:
                     mock_executor = MagicMock()
-                    mock_executor.run.return_value = MagicMock(
-                        iterations=1, terminated_by="terminal"
-                    )
+                    # Create a proper mock result with all required attributes
+                    mock_result = MagicMock()
+                    mock_result.iterations = 1
+                    mock_result.terminated_by = "terminal"
+                    mock_result.final_state = "start"
+                    mock_result.duration_ms = 100
+                    mock_executor.run.return_value = mock_result
                     mock_exec.return_value = mock_executor
 
                     with patch.object(
                         sys, "argv", ["ll-loop", "run", "test-loop"]
                     ):
-                        with patch("pathlib.Path.cwd", return_value=Path(tmpdir)):
+                        # Change to temp directory so resolve_loop_path works
+                        import os
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(tmpdir)
                             from little_loops.cli import main_loop
-
                             result = main_loop()
+                        finally:
+                            os.chdir(original_cwd)
 
             assert result == 0
 
@@ -1587,14 +1605,19 @@ states:
                 max_iterations=50,
             )
 
-            with patch("little_loops.cli.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
                 with patch.object(
                     sys, "argv", ["ll-loop", "run", "test-loop", "--dry-run"]
                 ):
-                    with patch("pathlib.Path.cwd", return_value=Path(tmpdir)):
+                    # Change to temp directory so resolve_loop_path works
+                    import os
+                    original_cwd = os.getcwd()
+                    try:
+                        os.chdir(tmpdir)
                         from little_loops.cli import main_loop
-
                         result = main_loop()
+                    finally:
+                        os.chdir(original_cwd)
 
             captured = capsys.readouterr()
             assert result == 0
@@ -1622,14 +1645,18 @@ states:
                 max_iterations=50,
             )
 
-            with patch("little_loops.cli.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
                 with patch(
-                    "little_loops.cli.PersistentExecutor"
+                    "little_loops.fsm.persistence.PersistentExecutor"
                 ) as mock_exec:
                     mock_executor = MagicMock()
-                    mock_executor.run.return_value = MagicMock(
-                        iterations=1, terminated_by="terminal"
-                    )
+                    # Create a proper mock result with all required attributes
+                    mock_result = MagicMock()
+                    mock_result.iterations = 1
+                    mock_result.terminated_by = "terminal"
+                    mock_result.final_state = "start"
+                    mock_result.duration_ms = 100
+                    mock_executor.run.return_value = mock_result
                     mock_exec.return_value = mock_executor
 
                     with patch.object(
@@ -1637,10 +1664,15 @@ states:
                         "argv",
                         ["ll-loop", "run", "test-loop", "--max-iterations", "5"],
                     ):
-                        with patch("pathlib.Path.cwd", return_value=Path(tmpdir)):
+                        # Change to temp directory so resolve_loop_path works
+                        import os
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(tmpdir)
                             from little_loops.cli import main_loop
-
                             result = main_loop()
+                        finally:
+                            os.chdir(original_cwd)
 
             assert result == 0
 
@@ -1666,39 +1698,60 @@ states:
                 max_iterations=50,
             )
 
-            with patch("little_loops.cli.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
                 with patch(
-                    "little_loops.cli.PersistentExecutor"
+                    "little_loops.fsm.persistence.PersistentExecutor"
                 ) as mock_exec:
                     mock_executor = MagicMock()
-                    mock_executor.run.return_value = MagicMock(
-                        iterations=1, terminated_by="terminal"
-                    )
+                    # Create a proper mock result with all required attributes
+                    mock_result = MagicMock()
+                    mock_result.iterations = 1
+                    mock_result.terminated_by = "terminal"
+                    mock_result.final_state = "start"
+                    mock_result.duration_ms = 100
+                    mock_executor.run.return_value = mock_result
                     mock_exec.return_value = mock_executor
 
                     with patch.object(
                         sys, "argv", ["ll-loop", "run", "test-loop", "--no-llm"]
                     ):
-                        with patch("pathlib.Path.cwd", return_value=Path(tmpdir)):
+                        # Change to temp directory so resolve_loop_path works
+                        import os
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(tmpdir)
                             from little_loops.cli import main_loop
-
                             result = main_loop()
+                        finally:
+                            os.chdir(original_cwd)
 
             assert result == 0
 
     def test_stop_command(self) -> None:
         """main_loop stop command stops running loop."""
         with tempfile.TemporaryDirectory() as tmpdir:
-            with patch("little_loops.cli.LockManager") as mock_lock_mgr:
-                mock_lock_mgr.return_value = MagicMock()
+            # Mock StatePersistence to return a running state
+            from little_loops.fsm.persistence import StatePersistence
+            mock_state = MagicMock()
+            mock_state.status = "running"
+
+            with patch("little_loops.fsm.persistence.StatePersistence") as mock_sp_cls:
+                mock_sp = MagicMock()
+                mock_sp.load_state.return_value = mock_state
+                mock_sp_cls.return_value = mock_sp
 
                 with patch.object(
                     sys, "argv", ["ll-loop", "stop", "test-loop"]
                 ):
-                    with patch("pathlib.Path.cwd", return_value=Path(tmpdir)):
+                    # Change to temp directory so resolve_loop_path works
+                    import os
+                    original_cwd = os.getcwd()
+                    try:
+                        os.chdir(tmpdir)
                         from little_loops.cli import main_loop
-
                         result = main_loop()
+                    finally:
+                        os.chdir(original_cwd)
 
             assert result == 0
 
@@ -1724,23 +1777,34 @@ states:
                 max_iterations=50,
             )
 
-            with patch("little_loops.cli.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
                 with patch(
-                    "little_loops.cli.PersistentExecutor"
+                    "little_loops.fsm.persistence.PersistentExecutor"
                 ) as mock_exec:
                     mock_executor = MagicMock()
-                    mock_executor.run.return_value = MagicMock(
-                        iterations=1, terminated_by="terminal"
-                    )
+                    # Create a proper mock result with all required attributes
+                    mock_result = MagicMock()
+                    mock_result.iterations = 1
+                    mock_result.terminated_by = "terminal"
+                    mock_result.final_state = "start"
+                    mock_result.duration_ms = 100
+                    mock_executor.run.return_value = mock_result
+                    # resume() returns the same type of result
+                    mock_executor.resume.return_value = mock_result
                     mock_exec.return_value = mock_executor
 
                     with patch.object(
                         sys, "argv", ["ll-loop", "resume", "test-loop"]
                     ):
-                        with patch("pathlib.Path.cwd", return_value=Path(tmpdir)):
+                        # Change to temp directory so resolve_loop_path works
+                        import os
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(tmpdir)
                             from little_loops.cli import main_loop
-
                             result = main_loop()
+                        finally:
+                            os.chdir(original_cwd)
 
             assert result == 0
 
@@ -1755,16 +1819,21 @@ states:
                 "name: test\ninitial: start\nstates:\n  start:\n    terminal: true"
             )
 
-            with patch("little_loops.cli.get_loop_history", return_value=[]):
+            with patch("little_loops.fsm.persistence.get_loop_history", return_value=[]):
                 with patch.object(
                     sys,
                     "argv",
                     ["ll-loop", "history", "test-loop", "--tail", "10"],
                 ):
-                    with patch("pathlib.Path.cwd", return_value=Path(tmpdir)):
+                    # Change to temp directory so resolve_loop_path works
+                    import os
+                    original_cwd = os.getcwd()
+                    try:
+                        os.chdir(tmpdir)
                         from little_loops.cli import main_loop
-
                         result = main_loop()
+                    finally:
+                        os.chdir(original_cwd)
 
             assert result == 0
 
@@ -1790,23 +1859,32 @@ states:
                 max_iterations=50,
             )
 
-            with patch("little_loops.cli.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
                 with patch(
-                    "little_loops.cli.PersistentExecutor"
+                    "little_loops.fsm.persistence.PersistentExecutor"
                 ) as mock_exec:
                     mock_executor = MagicMock()
-                    mock_executor.run.return_value = MagicMock(
-                        iterations=1, terminated_by="terminal"
-                    )
+                    # Create a proper mock result with all required attributes
+                    mock_result = MagicMock()
+                    mock_result.iterations = 1
+                    mock_result.terminated_by = "terminal"
+                    mock_result.final_state = "start"
+                    mock_result.duration_ms = 100
+                    mock_executor.run.return_value = mock_result
                     mock_exec.return_value = mock_executor
 
                     with patch.object(
                         sys, "argv", ["ll-loop", "test", "test-loop"]
                     ):
-                        with patch("pathlib.Path.cwd", return_value=Path(tmpdir)):
+                        # Change to temp directory so resolve_loop_path works
+                        import os
+                        original_cwd = os.getcwd()
+                        try:
+                            os.chdir(tmpdir)
                             from little_loops.cli import main_loop
-
                             result = main_loop()
+                        finally:
+                            os.chdir(original_cwd)
 
             assert result == 0
 
@@ -2040,33 +2118,72 @@ Completed
             )
             yield project
 
-    def _make_mock_summary(self) -> MagicMock:
-        """Create a mock summary object."""
-        mock = MagicMock()
-        mock.total_issues = 0
-        mock.by_type = {}
-        mock.by_priority = {}
-        mock.by_category = {}
-        return mock
+    def _make_mock_summary(self) -> "HistorySummary":
+        """Create a mock summary object matching HistorySummary dataclass."""
+        from datetime import date
+        from little_loops.issue_history import HistorySummary
 
-    def _make_mock_analysis(self) -> MagicMock:
-        """Create a mock analysis object."""
-        mock = MagicMock()
-        mock.generated_date = "2026-02-01"
-        mock.total_completed = 0
-        mock.total_active = 0
-        mock.date_range_start = None
-        mock.date_range_end = None
-        mock.period_metrics = []
-        mock.subsystem_health = []
-        mock.hotspot_analysis = None
-        mock.coupling_analysis = None
-        mock.summary = MagicMock()
-        mock.summary.velocity = 0
-        mock.summary.velocity_trend = "stable"
-        mock.summary.bug_ratio_trend = "stable"
-        mock.summary.type_counts = {}
-        return mock
+        return HistorySummary(
+            total_count=0,
+            type_counts={},
+            priority_counts={},
+            discovery_counts={},
+            earliest_date=None,
+            latest_date=None,
+        )
+
+    def _make_mock_analysis(self) -> "HistoryAnalysis":
+        """Create a mock analysis object matching HistoryAnalysis dataclass."""
+        from datetime import date
+        from little_loops.issue_history import (
+            HistoryAnalysis,
+            HistorySummary,
+            HotspotAnalysis,
+            CouplingAnalysis,
+            RegressionAnalysis,
+            TestGapAnalysis,
+            RejectionAnalysis,
+            ManualPatternAnalysis,
+            AgentEffectivenessAnalysis,
+            ComplexityProxyAnalysis,
+            ConfigGapsAnalysis,
+            CrossCuttingAnalysis,
+            TechnicalDebtMetrics,
+        )
+
+        return HistoryAnalysis(
+            generated_date=date(2026, 2, 1),
+            total_completed=0,
+            total_active=0,
+            date_range_start=None,
+            date_range_end=None,
+            summary=HistorySummary(
+                total_count=0,
+                type_counts={},
+                priority_counts={},
+                discovery_counts={},
+                earliest_date=None,
+                latest_date=None,
+            ),
+            period_metrics=[],
+            velocity_trend="stable",
+            bug_ratio_trend="stable",
+            subsystem_health=[],
+            hotspot_analysis=HotspotAnalysis(),
+            coupling_analysis=CouplingAnalysis(),
+            regression_analysis=RegressionAnalysis(),
+            test_gap_analysis=TestGapAnalysis(),
+            rejection_analysis=RejectionAnalysis(),
+            manual_pattern_analysis=ManualPatternAnalysis(),
+            agent_effectiveness_analysis=AgentEffectivenessAnalysis(),
+            complexity_proxy_analysis=ComplexityProxyAnalysis(),
+            config_gaps_analysis=ConfigGapsAnalysis(),
+            cross_cutting_analysis=CrossCuttingAnalysis(),
+            debt_metrics=TechnicalDebtMetrics(),
+            comparison_period=None,
+            previous_period=None,
+            current_period=None,
+        )
 
     def test_summary_command_default_output(self, history_project: Path) -> None:
         """ll-history summary outputs formatted text by default."""
