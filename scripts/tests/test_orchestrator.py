@@ -1450,3 +1450,435 @@ class TestProcessParallel:
         call_args = orchestrator.worker_pool.submit.call_args  # type: ignore[attr-defined]
         assert call_args[0][0] == mock_issue
         assert call_args[0][1] == orchestrator._on_worker_complete
+
+
+class TestShutdownHandling:
+    """Tests for graceful shutdown signal handling edge cases."""
+
+    def test_signal_handler_idempotent(
+        self, orchestrator: ParallelOrchestrator
+    ) -> None:
+        """_signal_handler is idempotent - can be called multiple times."""
+        orchestrator._signal_handler(signal.SIGINT, None)
+        orchestrator._signal_handler(signal.SIGTERM, None)
+
+        assert orchestrator._shutdown_requested is True
+        # Should only propagate once (worker_pool.set_shutdown_requested called once)
+        assert orchestrator.worker_pool.set_shutdown_requested.call_count == 1  # type: ignore[attr-defined]
+
+    def test_shutdown_with_active_workers(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """Shutdown during active worker execution waits for completion."""
+        orchestrator.queue.empty.return_value = False  # type: ignore[attr-defined]
+        orchestrator.queue.add_many.return_value = 1  # type: ignore[attr-defined]
+        orchestrator.worker_pool.active_count = 2  # type: ignore[misc]
+        orchestrator.merge_coordinator.pending_count = 0  # type: ignore[misc]
+
+        # Set shutdown after scan
+        def set_shutdown(*args: object, **kwargs: object) -> list[MagicMock]:
+            orchestrator._shutdown_requested = True
+            return [mock_issue]
+
+        with patch.object(orchestrator, "_scan_issues", side_effect=set_shutdown):
+            with patch.object(orchestrator, "_wait_for_completion"):
+                with patch.object(orchestrator, "_report_results"):
+                    exit_code = orchestrator._execute()
+
+        assert exit_code == 0
+
+
+class TestWorkerPoolEdgeCases:
+    """Tests for worker pool edge cases."""
+
+    def test_process_sequential_waits_indefinitely(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """_process_sequential waits for workers to become available."""
+        mock_issue.priority = "P0"
+
+        # Simulate workers that never finish
+        type(orchestrator.worker_pool).active_count = property(lambda self: 999)  # type: ignore[method-assign,assignment]
+
+        mock_future: Future[WorkerResult] = Future()
+        orchestrator.worker_pool.submit.return_value = mock_future  # type: ignore[attr-defined]
+
+        timeout_reached = [False]
+
+        def mock_wait(*args: object, **kwargs: object) -> Future[WorkerResult]:
+            timeout_reached[0] = True
+            raise TimeoutError("Timeout")
+
+        mock_future.result = mock_wait
+
+        with patch("time.sleep"):
+            try:
+                orchestrator._process_sequential(mock_issue)
+            except TimeoutError:
+                pass
+
+        assert timeout_reached[0]
+
+    def test_wait_for_completion_terminates_on_timeout(
+        self, orchestrator: ParallelOrchestrator
+    ) -> None:
+        """_wait_for_completion terminates all processes on timeout."""
+        orchestrator.parallel_config.orchestrator_timeout = 1
+
+        type(orchestrator.worker_pool).active_count = property(lambda self: 1)  # type: ignore[method-assign,assignment]
+        orchestrator.merge_coordinator.merged_ids = []  # type: ignore[misc]
+        orchestrator.merge_coordinator.failed_merges = []  # type: ignore[misc,assignment]
+
+        with patch("time.time") as mock_time:
+            mock_time.side_effect = [0, 0.5, 1.5, 2.5]
+            with patch("time.sleep"):
+                orchestrator._wait_for_completion()
+
+        orchestrator.worker_pool.terminate_all_processes.assert_called_once()  # type: ignore[attr-defined]
+
+    def test_wait_for_completion_waits_for_merges(
+        self, orchestrator: ParallelOrchestrator
+    ) -> None:
+        """_wait_for_completion waits for pending merges after workers."""
+        type(orchestrator.worker_pool).active_count = property(lambda self: 0)  # type: ignore[method-assign,assignment]
+
+        # Merge coordinator has pending merges
+        merge_completed = [False]
+
+        def mock_wait(*args: object, **kwargs: object) -> bool:
+            merge_completed[0] = True
+            return True
+
+        orchestrator.merge_coordinator.wait_for_completion = mock_wait  # type: ignore[method-assign]
+        orchestrator.merge_coordinator.merged_ids = ["BUG-001"]  # type: ignore[misc]
+        orchestrator.merge_coordinator.failed_merges = []  # type: ignore[misc,assignment]
+
+        with patch.object(orchestrator, "_complete_issue_lifecycle_if_needed"):
+            orchestrator._wait_for_completion()
+
+        assert merge_completed[0]
+
+
+class TestOverlapDetection:
+    """Tests for overlap detection and deferred issue handling (ENH-143)."""
+
+    def test_process_parallel_checks_overlap_when_enabled(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """_process_parallel checks for overlaps when detection enabled."""
+        orchestrator.parallel_config.overlap_detection = True
+        orchestrator.parallel_config.serialize_overlapping = True
+
+        # Create mock overlap detector
+        mock_detector = MagicMock()
+        mock_detector.check_overlap.return_value = []  # No overlap
+        orchestrator.overlap_detector = mock_detector
+
+        orchestrator._process_parallel(mock_issue)
+
+        # Should check overlap
+        mock_detector.check_overlap.assert_called_once_with(mock_issue)
+
+    def test_process_parallel_defers_overlapping_issues(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """_process_parallel defers overlapping issues when configured."""
+        orchestrator.parallel_config.overlap_detection = True
+        orchestrator.parallel_config.serialize_overlapping = True
+
+        mock_detector = MagicMock()
+        mock_detector.check_overlap.return_value = ["BUG-001"]  # Has overlap
+        orchestrator.overlap_detector = mock_detector
+
+        orchestrator._process_parallel(mock_issue)
+
+        # Should defer the issue (not submit)
+        orchestrator.worker_pool.submit.assert_not_called()  # type: ignore[attr-defined]
+        assert len(orchestrator._deferred_issues) == 1
+
+    def test_process_parallel_registers_with_detector(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """_process_parallel registers issue with overlap detector."""
+        orchestrator.parallel_config.overlap_detection = True
+        orchestrator.parallel_config.serialize_overlapping = False
+
+        mock_detector = MagicMock()
+        mock_detector.check_overlap.return_value = []  # No overlap
+        orchestrator.overlap_detector = mock_detector
+
+        orchestrator._process_parallel(mock_issue)
+
+        # Should register with detector
+        mock_detector.register_issue.assert_called_once_with(mock_issue)
+
+    def test_on_worker_complete_unregisters_from_detector(
+        self, orchestrator: ParallelOrchestrator
+    ) -> None:
+        """_on_worker_complete unregisters issue from overlap detector."""
+        orchestrator.parallel_config.overlap_detection = True
+        mock_detector = MagicMock()
+        orchestrator.overlap_detector = mock_detector
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        mock_detector.unregister_issue.assert_called_once_with("BUG-001")
+
+    def test_on_worker_complete_requeues_deferred_issues(
+        self, orchestrator: ParallelOrchestrator
+    ) -> None:
+        """_on_worker_complete re-queues issues that were waiting on this one."""
+        orchestrator.parallel_config.overlap_detection = True
+        mock_detector = MagicMock()
+        mock_detector.get_waiting_on.return_value = ["BUG-002"]
+        orchestrator.overlap_detector = mock_detector
+
+        # Add a deferred issue
+        mock_deferred = MagicMock(spec=IssueInfo)
+        mock_deferred.issue_id = "BUG-002"
+        orchestrator._deferred_issues.append(mock_deferred)
+
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+        )
+
+        with patch.object(orchestrator, "_process_parallel"):
+            orchestrator._on_worker_complete(result)
+
+        # Should re-queue the deferred issue
+        mock_detector.get_waiting_on.assert_called_once_with("BUG-001")
+
+
+class TestInterruptedWorkers:
+    """Tests for interrupted worker handling (ENH-036)."""
+
+    def test_on_worker_complete_tracks_interrupted(
+        self, orchestrator: ParallelOrchestrator
+    ) -> None:
+        """_on_worker_complete tracks interrupted workers separately."""
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=False,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+            interrupted=True,
+            error="Worker interrupted",
+        )
+
+        orchestrator._on_worker_complete(result)
+
+        # Should track in interrupted list, not mark as failed
+        assert "BUG-001" in orchestrator._interrupted_issues
+        orchestrator.queue.mark_failed.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_on_worker_complete_interrupted_with_close_verdict(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """_on_worker_complete handles interrupted + close verdict combo."""
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=False,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+            interrupted=True,
+            should_close=True,
+            close_reason="interrupted",
+        )
+
+        orchestrator._issue_info_by_id["BUG-001"] = mock_issue
+
+        with patch("little_loops.issue_lifecycle.close_issue", return_value=True):
+            orchestrator._on_worker_complete(result)
+
+        # Interrupted workers with close verdict should be marked completed
+        orchestrator.queue.mark_completed.assert_called_once_with("BUG-001")  # type: ignore[attr-defined]
+
+
+class TestExecuteLoop:
+    """Tests for main execution loop dispatch logic."""
+
+    def test_execute_dispatches_when_workers_available(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """_execute dispatches issues when workers available."""
+        from little_loops.parallel.types import QueuedIssue
+
+        # Create a QueuedIssue wrapper
+        queued = QueuedIssue(priority=1, issue_info=mock_issue)
+
+        orchestrator.queue.empty.return_value = False  # type: ignore[attr-defined]
+        orchestrator.queue.add_many.return_value = 1  # type: ignore[attr-defined]
+        orchestrator.queue.get.return_value = queued  # type: ignore[attr-defined]
+        orchestrator.worker_pool.active_count = 0  # type: ignore[misc]
+        orchestrator.merge_coordinator.pending_count = 0  # type: ignore[misc]
+
+        with patch.object(orchestrator, "_scan_issues", return_value=[mock_issue]):
+            with patch.object(orchestrator, "_process_parallel"):
+                with patch.object(orchestrator, "_wait_for_completion"):
+                    with patch.object(orchestrator, "_report_results"):
+                        # Set shutdown after one iteration
+                        def set_shutdown(*args: object) -> bool:
+                            orchestrator._shutdown_requested = True
+                            return False
+
+                        orchestrator.queue.empty.side_effect = set_shutdown  # type: ignore[attr-defined]
+
+                        orchestrator._execute()
+
+        # Should have submitted the issue
+        orchestrator.queue.get.assert_called_once_with(block=False)  # type: ignore[attr-defined]
+
+    def test_execute_skips_dispatch_when_no_workers(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """_execute skips dispatch when all workers busy."""
+        orchestrator.queue.empty.return_value = False  # type: ignore[attr-defined]
+        orchestrator.queue.add_many.return_value = 1  # type: ignore[attr-defined]
+        orchestrator.worker_pool.active_count = 2  # type: ignore[misc]  # All busy
+        orchestrator.merge_coordinator.pending_count = 0  # type: ignore[misc]
+
+        with patch.object(orchestrator, "_scan_issues", return_value=[mock_issue]):
+            with patch.object(orchestrator, "_wait_for_completion"):
+                with patch.object(orchestrator, "_report_results"):
+                    # Set shutdown after one iteration
+                    def set_shutdown(*args: object) -> bool:
+                        orchestrator._shutdown_requested = True
+                        return False
+
+                    orchestrator.queue.empty.side_effect = set_shutdown  # type: ignore[attr-defined]
+
+                    orchestrator._execute()
+
+        # Should not call get() when no workers available
+        orchestrator.queue.get.assert_not_called()  # type: ignore[attr-defined]
+
+    def test_execute_saves_state_periodically(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """_execute saves state during execution loop."""
+        from little_loops.parallel.types import QueuedIssue
+
+        queued = QueuedIssue(priority=1, issue_info=mock_issue)
+
+        orchestrator.queue.empty.return_value = False  # type: ignore[attr-defined]
+        orchestrator.queue.add_many.return_value = 1  # type: ignore[attr-defined]
+        orchestrator.queue.get.return_value = queued  # type: ignore[attr-defined]
+        orchestrator.worker_pool.active_count = 0  # type: ignore[misc]
+        orchestrator.merge_coordinator.pending_count = 0  # type: ignore[misc]
+
+        with patch.object(orchestrator, "_scan_issues", return_value=[mock_issue]):
+            with patch.object(orchestrator, "_process_parallel"):
+                with patch.object(orchestrator, "_save_state") as mock_save:
+                    with patch.object(orchestrator, "_wait_for_completion"):
+                        with patch.object(orchestrator, "_report_results"):
+                            # Set shutdown after one iteration
+                            def set_shutdown(*args: object) -> bool:
+                                orchestrator._shutdown_requested = True
+                                return False
+
+                            orchestrator.queue.empty.side_effect = set_shutdown  # type: ignore[attr-defined]
+
+                            orchestrator._execute()
+
+        # State should be saved during execution
+        assert mock_save.called
+
+    def test_execute_respects_max_issues_limit(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """_execute stops after processing max_issues."""
+        from little_loops.parallel.types import QueuedIssue
+
+        orchestrator.parallel_config.max_issues = 2
+
+        # Create 5 issues
+        mock_issues = [MagicMock(spec=IssueInfo) for _ in range(5)]
+        for i, m in enumerate(mock_issues):
+            m.issue_id = f"BUG-{i:03d}"
+            m.priority = "P1"
+
+        # Wrap in QueuedIssue
+        queued_issues = [QueuedIssue(priority=1, issue_info=m) for m in mock_issues]
+
+        orchestrator.queue.empty.return_value = False  # type: ignore[attr-defined]
+        orchestrator.queue.add_many.return_value = 5  # type: ignore[attr-defined]
+
+        # Track processed count
+        processed = []
+
+        def mock_process(issue: MagicMock) -> None:
+            processed.append(issue.issue_id)
+            if len(processed) >= 2:
+                orchestrator._shutdown_requested = True
+
+        orchestrator.queue.get.side_effect = queued_issues  # type: ignore[attr-defined]
+        orchestrator.worker_pool.active_count = 0  # type: ignore[misc]
+        orchestrator.merge_coordinator.pending_count = 0  # type: ignore[misc]
+
+        with patch.object(orchestrator, "_scan_issues", return_value=mock_issues):
+            with patch.object(orchestrator, "_process_parallel", side_effect=mock_process):
+                with patch.object(orchestrator, "_wait_for_completion"):
+                    with patch.object(orchestrator, "_report_results"):
+                        orchestrator._execute()
+
+        # Should have processed exactly 2 issues
+        assert len(processed) == 2
+
+    def test_execute_dispatches_p0_sequential(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """_execute dispatches P0 issues sequentially when configured."""
+        from little_loops.parallel.types import QueuedIssue
+
+        mock_issue.priority = "P0"
+        orchestrator.parallel_config.p0_sequential = True
+
+        queued = QueuedIssue(priority=0, issue_info=mock_issue)
+
+        orchestrator.queue.empty.return_value = False  # type: ignore[attr-defined]
+        orchestrator.queue.add_many.return_value = 1  # type: ignore[attr-defined]
+        orchestrator.queue.get.return_value = queued  # type: ignore[attr-defined]
+        orchestrator.worker_pool.active_count = 0  # type: ignore[misc]
+        orchestrator.merge_coordinator.pending_count = 0  # type: ignore[misc]
+
+        with patch.object(orchestrator, "_scan_issues", return_value=[mock_issue]):
+            with patch.object(orchestrator, "_process_sequential"):
+                with patch.object(orchestrator, "_wait_for_completion"):
+                    with patch.object(orchestrator, "_report_results"):
+                        # Set shutdown after one iteration
+                        def set_shutdown(*args: object) -> bool:
+                            orchestrator._shutdown_requested = True
+                            return False
+
+                        orchestrator.queue.empty.side_effect = set_shutdown  # type: ignore[attr-defined]
+
+                        orchestrator._execute()
+
+        # P0 should go through sequential path
+        orchestrator.queue.get.assert_called_once_with(block=False)  # type: ignore[attr-defined]
+
+    def test_execute_completes_when_all_done(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """_execute completes when queue empty, no workers, no pending merges."""
+        orchestrator.queue.empty.return_value = True  # type: ignore[attr-defined]
+        orchestrator.queue.add_many.return_value = 0  # type: ignore[attr-defined]
+        orchestrator.worker_pool.active_count = 0  # type: ignore[misc]
+        orchestrator.merge_coordinator.pending_count = 0  # type: ignore[misc]
+
+        with patch.object(orchestrator, "_scan_issues", return_value=[mock_issue]):
+            with patch.object(orchestrator, "_wait_for_completion"):
+                with patch.object(orchestrator, "_report_results"):
+                    exit_code = orchestrator._execute()
+
+        assert exit_code == 0

@@ -25,7 +25,7 @@ The orchestrator module (scripts/little_loops/parallel/orchestrator.py) has 74% 
 - [ ] All existing tests continue to pass
 
 ## Implementation Notes
-- Reference: scripts/tests/parallel/test_orchestrator.py (existing tests)
+- Reference: scripts/tests/test_orchestrator.py (existing tests)
 - Signal handling tests require subprocess/fork testing
 - Consider using threading/async tests for concurrent scenarios
 - Test with temporary directories and worktrees
@@ -35,7 +35,7 @@ P1 - High: orchestrator is the brain of parallel execution; untested paths can c
 
 ## Related Files
 - scripts/little_loops/parallel/orchestrator.py (source)
-- scripts/tests/parallel/test_orchestrator.py (existing tests)
+- scripts/tests/test_orchestrator.py (existing tests)
 - scripts/pyproject.toml (coverage threshold: 80%)
 
 ## Audit Source
