@@ -115,7 +115,7 @@ class TestRunClaudeCommand:
 
                     from little_loops.issue_manager import run_claude_command
 
-                    with pytest.raises(subprocess.TimeoutExpired):
+                    with pytest.raises(subprocess.TimeoutExpired, match="/ll:test"):
                         run_claude_command(
                             "/ll:test",
                             mock_logger,

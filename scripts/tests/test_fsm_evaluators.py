@@ -192,19 +192,19 @@ class TestExtractJsonPath:
     def test_missing_key_raises(self) -> None:
         """Missing key raises KeyError."""
         data = {"name": "test"}
-        with pytest.raises(KeyError):
+        with pytest.raises(KeyError, match="missing"):
             _extract_json_path(data, "missing")
 
     def test_missing_nested_key_raises(self) -> None:
         """Missing nested key raises KeyError."""
         data = {"a": {"b": 1}}
-        with pytest.raises(KeyError):
+        with pytest.raises(KeyError, match=r"a\.c"):
             _extract_json_path(data, "a.c")
 
     def test_array_index_out_of_range(self) -> None:
         """Array index out of range raises KeyError."""
         data = {"items": ["a", "b"]}
-        with pytest.raises(KeyError):
+        with pytest.raises(KeyError, match=r"items\.5"):
             _extract_json_path(data, "items.5")
 
 

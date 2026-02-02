@@ -1053,7 +1053,7 @@ class TestLoadAndValidate:
 
     def test_file_not_found(self) -> None:
         """FileNotFoundError for missing file."""
-        with pytest.raises(FileNotFoundError):
+        with pytest.raises(FileNotFoundError, match="FSM file not found"):
             load_and_validate(Path("/nonexistent/path.yaml"))
 
     def test_missing_required_fields(self, fsm_fixtures: Path) -> None:
@@ -1071,7 +1071,7 @@ class TestLoadAndValidate:
     def test_invalid_yaml_syntax(self, fsm_fixtures: Path) -> None:
         """Invalid YAML syntax raises yaml.YAMLError."""
         fixture_path = fsm_fixtures / "invalid-yaml-syntax.yaml"
-        with pytest.raises(yaml.YAMLError):
+        with pytest.raises(yaml.YAMLError, match="parsing"):
             load_and_validate(fixture_path)
 
     def test_non_dict_yaml_root(self, fsm_fixtures: Path) -> None:

@@ -95,7 +95,7 @@ class TestContextManager:
 
     def test_exit_releases_lock_on_exception(self, git_lock: GitLock) -> None:
         """__exit__ releases lock even when exception raised."""
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match="test error"):
             with git_lock:
                 raise ValueError("test error")
 
@@ -334,7 +334,7 @@ class TestTimeoutHandling:
 
         with patch("subprocess.run", side_effect=always_timeout):
             with patch("time.sleep"):
-                with pytest.raises(subprocess.TimeoutExpired):
+                with pytest.raises(subprocess.TimeoutExpired, match="git"):
                     git_lock.run(["status"], cwd=temp_cwd)
 
     def test_timeout_logs_retry(

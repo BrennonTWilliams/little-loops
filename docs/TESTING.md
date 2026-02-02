@@ -279,6 +279,69 @@ def test_error_when_no_previous_state(self) -> None:
         template.render(executor)
 ```
 
+#### Exception Message Validation Best Practices
+
+When testing exception handling, validate **both** the exception type AND the error message. This ensures error messages remain helpful and prevents regressions.
+
+**Good: Validate exception type and message**
+
+```python
+# User-facing errors should include context
+with pytest.raises(FileNotFoundError, match="FSM file not found"):
+    load_and_validate(Path("/missing/path.yaml"))
+
+# Internal errors should include debugging info
+with pytest.raises(KeyError, match=r"items\.5"):
+    _extract_json_path(data, "items.5")
+```
+
+**Avoid: Only checking exception type**
+
+```python
+# This allows error messages to become unhelpful over time
+with pytest.raises(ValueError):
+    some_function()
+```
+
+**Error Message Quality Criteria**
+
+Good error messages should:
+
+1. **Explain what went wrong** - Be specific about the failure
+2. **Include relevant context** - Paths, values, names involved
+3. **Suggest how to fix** (when possible) - What the user should do
+4. **Use consistent style** - Similar errors follow similar patterns
+
+**Examples of well-tested exceptions**
+
+```python
+# User-facing: FSM validation errors
+def test_missing_required_fields(self) -> None:
+    """ValueError for missing required fields."""
+    fixture_path = fsm_fixtures / "incomplete-loop.yaml"
+    with pytest.raises(ValueError, match="missing required fields"):
+        load_and_validate(fixture_path)
+
+# User-facing: File not found
+def test_file_not_found(self) -> None:
+    """FileNotFoundError for missing file."""
+    with pytest.raises(FileNotFoundError, match="FSM file not found"):
+        load_and_validate(Path("/nonexistent/path.yaml"))
+
+# Internal: JSON path extraction
+def test_missing_key_raises(self) -> None:
+    """Missing key raises KeyError with path context."""
+    data = {"name": "test"}
+    with pytest.raises(KeyError, match="missing"):
+        _extract_json_path(data, "missing")
+
+# Timeout errors include command context
+def test_timeout_releases_lock(self) -> None:
+    """Timeout includes command in error message."""
+    with pytest.raises(subprocess.TimeoutExpired, match="git"):
+        git_lock.run(["status"], cwd=temp_cwd)
+```
+
 ### Testing Output with `capsys`
 
 ```python
