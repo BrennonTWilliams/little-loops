@@ -27,8 +27,10 @@ from pathlib import Path
 __all__ = [
     "UserMessage",
     "ResponseMetadata",
+    "CommandRecord",
     "get_project_folder",
     "extract_user_messages",
+    "extract_commands",
     "save_messages",
 ]
 
@@ -99,6 +101,42 @@ class ResponseMetadata:
             "files_modified": self.files_modified,
             "completion_status": self.completion_status,
             "error_message": self.error_message,
+        }
+
+
+@dataclass
+class CommandRecord:
+    """Extracted CLI command from assistant tool_use.
+
+    Attributes:
+        content: The command string that was executed
+        timestamp: When the command was issued
+        session_id: Claude Code session identifier
+        uuid: Unique record identifier
+        tool: Tool name (e.g., "Bash")
+        cwd: Working directory when command was issued
+        git_branch: Git branch active when command was issued
+    """
+
+    content: str
+    timestamp: datetime
+    session_id: str
+    uuid: str
+    tool: str
+    cwd: str | None = None
+    git_branch: str | None = None
+
+    def to_dict(self) -> dict[str, object]:
+        """Convert to dictionary for JSON serialization."""
+        return {
+            "type": "command",
+            "content": self.content,
+            "timestamp": self.timestamp.isoformat(),
+            "session_id": self.session_id,
+            "uuid": self.uuid,
+            "tool": self.tool,
+            "cwd": self.cwd,
+            "git_branch": self.git_branch,
         }
 
 
@@ -387,6 +425,143 @@ def extract_user_messages(
         messages = messages[:limit]
 
     return messages
+
+
+def extract_commands(
+    project_folder: Path,
+    limit: int | None = None,
+    since: datetime | None = None,
+    include_agent_sessions: bool = True,
+    tools: list[str] | None = None,
+) -> list[CommandRecord]:
+    """Extract CLI commands from assistant tool_use messages.
+
+    Parses assistant messages for tool_use blocks and extracts command strings.
+
+    Args:
+        project_folder: Path to Claude project folder
+        limit: Maximum number of commands to return
+        since: Only include commands after this datetime
+        include_agent_sessions: Whether to include agent-*.jsonl files
+        tools: Filter to specific tools (default: ["Bash"])
+
+    Returns:
+        Commands sorted by timestamp, most recent first.
+    """
+    if tools is None:
+        tools = ["Bash"]
+
+    commands: list[CommandRecord] = []
+
+    # Find all JSONL files
+    pattern = "*.jsonl"
+    jsonl_files = list(project_folder.glob(pattern))
+
+    for jsonl_file in jsonl_files:
+        # Skip agent sessions if requested
+        if not include_agent_sessions and jsonl_file.name.startswith("agent-"):
+            continue
+
+        try:
+            with open(jsonl_file, encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    try:
+                        record = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+
+                    cmds = _parse_command_record(record, jsonl_file, since, tools)
+                    commands.extend(cmds)
+
+        except OSError:
+            # Skip files that can't be read
+            continue
+
+    # Sort by timestamp, most recent first
+    commands.sort(key=lambda c: c.timestamp, reverse=True)
+
+    # Apply limit
+    if limit is not None:
+        commands = commands[:limit]
+
+    return commands
+
+
+def _parse_command_record(
+    record: dict,
+    jsonl_file: Path,
+    since: datetime | None,
+    tools: list[str],
+) -> list[CommandRecord]:
+    """Parse CLI commands from an assistant record.
+
+    Args:
+        record: The JSON record from JSONL
+        jsonl_file: Source file (for fallback timestamp)
+        since: Filter for commands after this datetime
+        tools: Tool names to extract (e.g., ["Bash"])
+
+    Returns:
+        List of CommandRecord for each matching tool_use block
+    """
+    # Filter for assistant messages only
+    if record.get("type") != "assistant":
+        return []
+
+    message_data = record.get("message", {})
+    content = message_data.get("content", [])
+
+    if not isinstance(content, list):
+        return []
+
+    # Parse timestamp
+    timestamp_str = record.get("timestamp", "")
+    try:
+        timestamp_str = timestamp_str.replace("Z", "+00:00")
+        timestamp = datetime.fromisoformat(timestamp_str)
+        if timestamp.tzinfo is not None:
+            timestamp = timestamp.replace(tzinfo=None)
+    except (ValueError, AttributeError):
+        timestamp = datetime.fromtimestamp(jsonl_file.stat().st_mtime)
+
+    # Apply since filter
+    if since and timestamp < since:
+        return []
+
+    commands: list[CommandRecord] = []
+
+    for block in content:
+        if not isinstance(block, dict):
+            continue
+        if block.get("type") != "tool_use":
+            continue
+
+        tool_name = block.get("name", "")
+        if tool_name not in tools:
+            continue
+
+        tool_input = block.get("input", {})
+        command_str = tool_input.get("command", "")
+        if not command_str:
+            continue
+
+        commands.append(
+            CommandRecord(
+                content=command_str,
+                timestamp=timestamp,
+                session_id=record.get("sessionId", ""),
+                uuid=record.get("uuid", ""),
+                tool=tool_name,
+                cwd=record.get("cwd"),
+                git_branch=record.get("gitBranch"),
+            )
+        )
+
+    return commands
 
 
 def _parse_user_record(

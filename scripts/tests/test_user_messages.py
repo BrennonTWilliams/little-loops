@@ -18,11 +18,13 @@ from typing import TYPE_CHECKING
 import pytest
 
 from little_loops.user_messages import (
+    CommandRecord,
     ResponseMetadata,
     UserMessage,
     _detect_completion_status,
     _detect_error_message,
     _extract_response_metadata,
+    extract_commands,
     extract_user_messages,
     get_project_folder,
     print_messages_to_stdout,
@@ -1046,3 +1048,347 @@ class TestExtractUserMessagesWithResponseContext:
         )
 
         assert len(messages) == 3
+
+
+class TestCommandRecord:
+    """Tests for CommandRecord dataclass."""
+
+    def test_to_dict_basic(self) -> None:
+        """to_dict() returns correct dictionary structure with type field."""
+        cmd = CommandRecord(
+            content="python -m pytest",
+            timestamp=datetime(2026, 1, 10, 12, 0, 0),
+            session_id="session-123",
+            uuid="uuid-456",
+            tool="Bash",
+        )
+        result = cmd.to_dict()
+
+        assert result["type"] == "command"
+        assert result["content"] == "python -m pytest"
+        assert result["timestamp"] == "2026-01-10T12:00:00"
+        assert result["session_id"] == "session-123"
+        assert result["uuid"] == "uuid-456"
+        assert result["tool"] == "Bash"
+        assert result["cwd"] is None
+        assert result["git_branch"] is None
+
+    def test_to_dict_with_optional_fields(self) -> None:
+        """to_dict() includes optional fields when set."""
+        cmd = CommandRecord(
+            content="git status",
+            timestamp=datetime(2026, 1, 10, 12, 0, 0),
+            session_id="session-123",
+            uuid="uuid-456",
+            tool="Bash",
+            cwd="/path/to/project",
+            git_branch="main",
+        )
+        result = cmd.to_dict()
+
+        assert result["cwd"] == "/path/to/project"
+        assert result["git_branch"] == "main"
+
+
+class TestExtractCommands:
+    """Tests for extract_commands function."""
+
+    @pytest.fixture
+    def temp_project_folder(self) -> Generator[Path, None, None]:
+        """Create a temporary project folder with test JSONL files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            yield Path(tmpdir)
+
+    def _write_jsonl(self, path: Path, records: list[dict]) -> None:
+        """Helper to write JSONL file."""
+        with open(path, "w", encoding="utf-8") as f:
+            for record in records:
+                f.write(json.dumps(record) + "\n")
+
+    def test_extracts_bash_commands(self, temp_project_folder: Path) -> None:
+        """Extracts Bash commands from assistant tool_use."""
+        records = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Bash",
+                            "input": {"command": "python -m pytest"},
+                        },
+                    ]
+                },
+                "timestamp": "2026-01-10T12:00:00Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-1",
+            },
+        ]
+        self._write_jsonl(temp_project_folder / "session.jsonl", records)
+
+        commands = extract_commands(temp_project_folder)
+
+        assert len(commands) == 1
+        assert commands[0].content == "python -m pytest"
+        assert commands[0].tool == "Bash"
+
+    def test_filters_non_assistant_messages(self, temp_project_folder: Path) -> None:
+        """Ignores user messages."""
+        records = [
+            {
+                "type": "user",
+                "message": {"content": "Run tests"},
+                "timestamp": "2026-01-10T12:00:00Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-1",
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "pytest"}},
+                    ]
+                },
+                "timestamp": "2026-01-10T12:00:01Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-2",
+            },
+        ]
+        self._write_jsonl(temp_project_folder / "session.jsonl", records)
+
+        commands = extract_commands(temp_project_folder)
+
+        assert len(commands) == 1
+        assert commands[0].content == "pytest"
+
+    def test_extracts_multiple_commands_from_one_message(
+        self, temp_project_folder: Path
+    ) -> None:
+        """Extracts multiple Bash commands from single assistant message."""
+        records = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "git status"}},
+                        {"type": "text", "text": "Checking status..."},
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "git diff"}},
+                    ]
+                },
+                "timestamp": "2026-01-10T12:00:00Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-1",
+            },
+        ]
+        self._write_jsonl(temp_project_folder / "session.jsonl", records)
+
+        commands = extract_commands(temp_project_folder)
+
+        assert len(commands) == 2
+
+    def test_filters_by_tool_name(self, temp_project_folder: Path) -> None:
+        """Only extracts commands from specified tools."""
+        records = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "pytest"}},
+                        {"type": "tool_use", "name": "Read", "input": {"file_path": "/foo.py"}},
+                        {"type": "tool_use", "name": "Edit", "input": {"file_path": "/bar.py"}},
+                    ]
+                },
+                "timestamp": "2026-01-10T12:00:00Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-1",
+            },
+        ]
+        self._write_jsonl(temp_project_folder / "session.jsonl", records)
+
+        commands = extract_commands(temp_project_folder, tools=["Bash"])
+
+        assert len(commands) == 1
+        assert commands[0].tool == "Bash"
+
+    def test_respects_limit(self, temp_project_folder: Path) -> None:
+        """Respects the limit parameter."""
+        records = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "input": {"command": f"cmd{i}"}},
+                    ]
+                },
+                "timestamp": f"2026-01-10T12:{i:02d}:00Z",
+                "sessionId": "sess-1",
+                "uuid": f"uuid-{i}",
+            }
+            for i in range(10)
+        ]
+        self._write_jsonl(temp_project_folder / "session.jsonl", records)
+
+        commands = extract_commands(temp_project_folder, limit=3)
+
+        assert len(commands) == 3
+
+    def test_respects_since_filter(self, temp_project_folder: Path) -> None:
+        """Filters commands by since datetime."""
+        records = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "old_cmd"}},
+                    ]
+                },
+                "timestamp": "2026-01-01T12:00:00Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-1",
+            },
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "new_cmd"}},
+                    ]
+                },
+                "timestamp": "2026-01-10T12:00:00Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-2",
+            },
+        ]
+        self._write_jsonl(temp_project_folder / "session.jsonl", records)
+
+        since = datetime(2026, 1, 5, 0, 0, 0)
+        commands = extract_commands(temp_project_folder, since=since)
+
+        assert len(commands) == 1
+        assert commands[0].content == "new_cmd"
+
+    def test_skips_empty_commands(self, temp_project_folder: Path) -> None:
+        """Skips tool_use blocks without command input."""
+        records = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "input": {}},
+                        {"type": "tool_use", "name": "Bash", "input": {"command": ""}},
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "valid"}},
+                    ]
+                },
+                "timestamp": "2026-01-10T12:00:00Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-1",
+            },
+        ]
+        self._write_jsonl(temp_project_folder / "session.jsonl", records)
+
+        commands = extract_commands(temp_project_folder)
+
+        assert len(commands) == 1
+        assert commands[0].content == "valid"
+
+    def test_excludes_agent_sessions_when_requested(
+        self, temp_project_folder: Path
+    ) -> None:
+        """Excludes agent-*.jsonl files when include_agent_sessions=False."""
+        user_records = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "user_cmd"}},
+                    ]
+                },
+                "timestamp": "2026-01-10T12:00:00Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-1",
+            },
+        ]
+        agent_records = [
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {"type": "tool_use", "name": "Bash", "input": {"command": "agent_cmd"}},
+                    ]
+                },
+                "timestamp": "2026-01-10T12:01:00Z",
+                "sessionId": "agent-sess",
+                "uuid": "uuid-2",
+            },
+        ]
+        self._write_jsonl(temp_project_folder / "session.jsonl", user_records)
+        self._write_jsonl(temp_project_folder / "agent-session.jsonl", agent_records)
+
+        commands = extract_commands(temp_project_folder, include_agent_sessions=False)
+
+        assert len(commands) == 1
+        assert commands[0].content == "user_cmd"
+
+
+class TestMessagesArgumentParsingWithCommands:
+    """Tests for ll-messages argument parsing including command flags."""
+
+    def _parse_messages_args(self, args: list[str]) -> argparse.Namespace:
+        """Parse arguments using the same parser as main_messages."""
+        parser = argparse.ArgumentParser()
+        parser.add_argument("-n", "--limit", type=int, default=100)
+        parser.add_argument("--since", type=str)
+        parser.add_argument("-o", "--output", type=Path)
+        parser.add_argument("--cwd", type=Path)
+        parser.add_argument("--exclude-agents", action="store_true")
+        parser.add_argument("--stdout", action="store_true")
+        parser.add_argument("-v", "--verbose", action="store_true")
+        parser.add_argument("--include-response-context", action="store_true")
+        parser.add_argument("--include-commands", action="store_true")
+        parser.add_argument("--commands-only", action="store_true")
+        parser.add_argument("--tools", type=str, default="Bash")
+        return parser.parse_args(args)
+
+    def test_include_commands_default(self) -> None:
+        """--include-commands defaults to False."""
+        args = self._parse_messages_args([])
+        assert args.include_commands is False
+
+    def test_include_commands_flag(self) -> None:
+        """--include-commands flag."""
+        args = self._parse_messages_args(["--include-commands"])
+        assert args.include_commands is True
+
+    def test_commands_only_default(self) -> None:
+        """--commands-only defaults to False."""
+        args = self._parse_messages_args([])
+        assert args.commands_only is False
+
+    def test_commands_only_flag(self) -> None:
+        """--commands-only flag."""
+        args = self._parse_messages_args(["--commands-only"])
+        assert args.commands_only is True
+
+    def test_tools_default(self) -> None:
+        """--tools defaults to Bash."""
+        args = self._parse_messages_args([])
+        assert args.tools == "Bash"
+
+    def test_tools_custom(self) -> None:
+        """--tools accepts custom value."""
+        args = self._parse_messages_args(["--tools", "Bash,Read"])
+        assert args.tools == "Bash,Read"
+
+    def test_combined_command_flags(self) -> None:
+        """Multiple command flags work together correctly."""
+        args = self._parse_messages_args(
+            [
+                "--include-commands",
+                "--tools",
+                "Bash,Task",
+                "-n",
+                "50",
+            ]
+        )
+        assert args.include_commands is True
+        assert args.tools == "Bash,Task"
+        assert args.limit == 50

@@ -288,13 +288,15 @@ def main_messages() -> int:
     Returns:
         Exit code (0 = success)
     """
+    import json
     from datetime import datetime
 
     from little_loops.user_messages import (
+        CommandRecord,
+        UserMessage,
+        extract_commands,
         extract_user_messages,
         get_project_folder,
-        print_messages_to_stdout,
-        save_messages,
     )
 
     parser = argparse.ArgumentParser(
@@ -308,6 +310,8 @@ Examples:
   %(prog)s -o output.jsonl              # Custom output path
   %(prog)s --stdout                     # Print to terminal
   %(prog)s --include-response-context   # Include response metadata
+  %(prog)s --include-commands           # Include CLI commands
+  %(prog)s --commands-only              # Extract only CLI commands
 """,
     )
     parser.add_argument(
@@ -354,6 +358,22 @@ Examples:
         action="store_true",
         help="Include metadata from assistant responses (tools used, files modified)",
     )
+    parser.add_argument(
+        "--include-commands",
+        action="store_true",
+        help="Include CLI commands (Bash) alongside user messages",
+    )
+    parser.add_argument(
+        "--commands-only",
+        action="store_true",
+        help="Extract only CLI commands, no user messages",
+    )
+    parser.add_argument(
+        "--tools",
+        type=str,
+        default="Bash",
+        help="Comma-separated list of tools to extract commands from (default: Bash)",
+    )
 
     args = parser.parse_args()
 
@@ -388,29 +408,82 @@ Examples:
     if since:
         logger.info(f"Since: {since}")
 
-    # Extract messages
-    messages = extract_user_messages(
-        project_folder=project_folder,
-        limit=args.limit,
-        since=since,
-        include_agent_sessions=not args.exclude_agents,
-        include_response_context=args.include_response_context,
-    )
+    # Parse tools list
+    tools_list = [t.strip() for t in args.tools.split(",")]
 
-    if not messages:
-        logger.warning("No user messages found")
+    # Extract data based on flags
+    messages: list[UserMessage] = []
+    commands: list[CommandRecord] = []
+
+    if not args.commands_only:
+        messages = extract_user_messages(
+            project_folder=project_folder,
+            limit=None,  # Apply limit after merging
+            since=since,
+            include_agent_sessions=not args.exclude_agents,
+            include_response_context=args.include_response_context,
+        )
+
+    if args.include_commands or args.commands_only:
+        commands = extract_commands(
+            project_folder=project_folder,
+            limit=None,  # Apply limit after merging
+            since=since,
+            include_agent_sessions=not args.exclude_agents,
+            tools=tools_list,
+        )
+
+    if not messages and not commands:
+        logger.warning("No user messages or commands found")
         return 0
 
-    logger.info(f"Found {len(messages)} messages")
+    # Merge and sort by timestamp
+    combined: list[UserMessage | CommandRecord] = []
+    combined.extend(messages)
+    combined.extend(commands)
+    combined.sort(key=lambda x: x.timestamp, reverse=True)
 
-    # Output messages
+    # Apply limit
+    if args.limit is not None:
+        combined = combined[: args.limit]
+
+    msg_count = len([x for x in combined if isinstance(x, UserMessage)])
+    cmd_count = len([x for x in combined if isinstance(x, CommandRecord)])
+    logger.info(f"Found {msg_count} messages, {cmd_count} commands")
+
+    # Output
     if args.stdout:
-        print_messages_to_stdout(messages)
+        for item in combined:
+            print(json.dumps(item.to_dict()))
     else:
-        output_path = save_messages(messages, args.output)
-        logger.success(f"Saved {len(messages)} messages to: {output_path}")
+        output_path = _save_combined(combined, args.output)
+        logger.success(f"Saved {len(combined)} records to: {output_path}")
 
     return 0
+
+
+def _save_combined(
+    items: list,
+    output_path: Path | None = None,
+) -> Path:
+    """Save combined messages and commands to JSONL file."""
+    import json
+    from datetime import datetime
+
+    if output_path is None:
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        output_dir = Path.cwd() / ".claude"
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / f"user-messages-{timestamp}.jsonl"
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+
+    with open(output_path, "w", encoding="utf-8") as f:
+        for item in items:
+            f.write(json.dumps(item.to_dict()) + "\n")
+
+    return output_path
 
 
 def main_loop() -> int:

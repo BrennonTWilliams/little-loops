@@ -519,14 +519,28 @@ class TestMainMessagesIntegration:
 
     def test_main_messages_default_args(self) -> None:
         """main_messages with default arguments extracts messages."""
+        from datetime import datetime
+
+        from little_loops.user_messages import UserMessage
+
         with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
             mock_get_folder.return_value = Path("/mock/project")
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = [
-                    {"content": "Test message 1", "timestamp": "2026-01-01T00:00:00"},
-                    {"content": "Test message 2", "timestamp": "2026-01-01T01:00:00"},
+                    UserMessage(
+                        content="Test message 1",
+                        timestamp=datetime(2026, 1, 1, 0, 0, 0),
+                        session_id="sess-1",
+                        uuid="uuid-1",
+                    ),
+                    UserMessage(
+                        content="Test message 2",
+                        timestamp=datetime(2026, 1, 1, 1, 0, 0),
+                        session_id="sess-1",
+                        uuid="uuid-2",
+                    ),
                 ]
-                with patch("little_loops.user_messages.save_messages") as mock_save:
+                with patch("little_loops.cli._save_combined") as mock_save:
                     mock_save.return_value = Path("/output/user-messages-123.jsonl")
 
                     with patch.object(sys, "argv", ["ll-messages"]):
@@ -553,7 +567,8 @@ class TestMainMessagesIntegration:
             assert result == 0
             mock_extract.assert_called_once()
             call_kwargs = mock_extract.call_args.kwargs
-            assert call_kwargs["limit"] == 50
+            # Note: limit is now None because limit is applied after merging
+            assert call_kwargs["limit"] is None
 
     def test_main_messages_with_since_date(self) -> None:
         """main_messages parses --since date correctly."""
@@ -574,22 +589,32 @@ class TestMainMessagesIntegration:
             call_kwargs = mock_extract.call_args.kwargs
             assert call_kwargs["since"] == datetime(2026, 1, 1)
 
-    def test_main_messages_with_stdout(self) -> None:
+    def test_main_messages_with_stdout(self, capsys: pytest.CaptureFixture) -> None:
         """main_messages outputs to stdout with --stdout flag."""
+        from datetime import datetime
+
+        from little_loops.user_messages import UserMessage
+
         with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
             mock_get_folder.return_value = Path("/mock/project")
             with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = [
-                    {"content": "Test", "timestamp": "2026-01-01T00:00:00"}
+                    UserMessage(
+                        content="Test",
+                        timestamp=datetime(2026, 1, 1, 0, 0, 0),
+                        session_id="sess-1",
+                        uuid="uuid-1",
+                    )
                 ]
-                with patch("little_loops.user_messages.print_messages_to_stdout") as mock_print:
-                    with patch.object(sys, "argv", ["ll-messages", "--stdout"]):
-                        from little_loops.cli import main_messages
 
-                        result = main_messages()
+                with patch.object(sys, "argv", ["ll-messages", "--stdout"]):
+                    from little_loops.cli import main_messages
+
+                    result = main_messages()
 
             assert result == 0
-            mock_print.assert_called_once()
+            captured = capsys.readouterr()
+            assert "Test" in captured.out
 
     def test_main_messages_no_project_folder(self) -> None:
         """main_messages returns error when project folder not found."""
@@ -1320,6 +1345,10 @@ class TestMainMessagesAdditionalCoverage:
 
     def test_output_path_argument(self) -> None:
         """main_messages uses custom output path from --output."""
+        from datetime import datetime
+
+        from little_loops.user_messages import UserMessage
+
         with patch(
             "little_loops.user_messages.get_project_folder"
         ) as mock_get_folder:
@@ -1328,11 +1357,14 @@ class TestMainMessagesAdditionalCoverage:
                 "little_loops.user_messages.extract_user_messages"
             ) as mock_extract:
                 mock_extract.return_value = [
-                    {"content": "Test", "timestamp": "2026-01-01T00:00:00"}
+                    UserMessage(
+                        content="Test",
+                        timestamp=datetime(2026, 1, 1, 0, 0, 0),
+                        session_id="sess-1",
+                        uuid="uuid-1",
+                    )
                 ]
-                with patch(
-                    "little_loops.user_messages.save_messages"
-                ) as mock_save:
+                with patch("little_loops.cli._save_combined") as mock_save:
                     mock_save.return_value = Path("/custom/output.jsonl")
 
                     with patch.object(

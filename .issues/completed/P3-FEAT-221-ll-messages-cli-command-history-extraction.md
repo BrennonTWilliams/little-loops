@@ -141,3 +141,22 @@ The extraction should:
 ---
 
 **Priority**: P3 | **Created**: 2026-02-02
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-02
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/user_messages.py`: Added `CommandRecord` dataclass and `extract_commands()` function
+- `scripts/little_loops/cli.py`: Added `--include-commands`, `--commands-only`, `--tools` CLI flags and `_save_combined()` helper
+- `scripts/tests/test_user_messages.py`: Added `TestCommandRecord`, `TestExtractCommands`, and `TestMessagesArgumentParsingWithCommands` test classes
+- `scripts/tests/test_cli.py`: Updated integration tests for new CLI behavior
+
+### Verification Results
+- Tests: PASS (2334 passed)
+- Lint: PASS
+- Types: PASS
