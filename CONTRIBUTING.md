@@ -3,6 +3,7 @@
 Thank you for your interest in contributing to little-loops! This document provides guidelines and instructions for contributing.
 
 > **Related Documentation:**
+> - [Testing Guide](docs/TESTING.md) - Comprehensive testing patterns and conventions
 > - [Architecture Overview](docs/ARCHITECTURE.md) - System design and component relationships
 > - [API Reference](docs/API.md) - Python module documentation
 > - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions

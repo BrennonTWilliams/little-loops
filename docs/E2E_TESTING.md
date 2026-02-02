@@ -2,6 +2,10 @@
 
 This guide covers the end-to-end (E2E) test suite for little-loops CLI workflows.
 
+> **Related Documentation:**
+> - [Testing Guide](TESTING.md) - Comprehensive testing patterns and conventions
+> - [Contributing Guide](../CONTRIBUTING.md) - Development setup and guidelines
+
 ## Overview
 
 The E2E test suite validates complete CLI workflows from invocation to completion. Unlike unit tests that test individual components, E2E tests invoke actual CLI commands and validate the entire user journey.
