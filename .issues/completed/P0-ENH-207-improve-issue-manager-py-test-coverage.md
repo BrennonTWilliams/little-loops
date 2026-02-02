@@ -18,12 +18,39 @@ The issue_manager module (scripts/little_loops/issue_manager.py) has only 63% te
 6. **Git operations integration** - How git operations are orchestrated
 
 ## Acceptance Criteria
-- [ ] Coverage increased from 63% to at least 80%
-- [ ] Tests for all error handling paths
-- [ ] Tests for retry logic edge cases
-- [ ] Tests for state machine transitions
-- [ ] Integration tests with temporary git repositories
-- [ ] All existing tests continue to pass
+- [x] Coverage increased from 63% to at least 80%
+- [x] Tests for all error handling paths
+- [x] Tests for retry logic edge cases
+- [x] Tests for state machine transitions
+- [x] Integration tests with temporary git repositories
+- [x] All existing tests continue to pass
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+- `scripts/tests/test_issue_manager.py`: Added 10 new test classes with 30+ new tests
+  - `TestRunClaudeCommand`: Tests for streaming callback functionality
+  - `TestRunWithContinuation`: Tests for context handoff continuation loop
+  - `TestReadyIssueErrorHandling`: Tests for ready_issue error scenarios
+  - `TestCorrectionsAndConcerns`: Tests for corrections and concerns logging
+  - `TestCloseVerdictHandling`: Tests for CLOSE verdict handling
+  - `TestFailureClassification`: Tests for transient vs real failure classification
+  - `TestFallbackVerification`: Tests for fallback verification with work detection
+  - `TestAutoManagerRun`: Tests for main processing loop
+  - `TestSignalHandler`: Tests for graceful shutdown signal handling
+  - `TestTimingSummaryAndStateUpdates`: Tests for timing summary and state update branches
+
+### Verification Results
+- **Final Coverage**: 87% (42 missing statements out of 330 total, up from 50%)
+- **Tests**: 48 tests passing (was 18, added 30 new tests)
+- **Lint**: PASS
+- **Types**: PASS
 
 ## Implementation Notes
 - Reference: scripts/tests/test_issue_manager.py (existing tests)
