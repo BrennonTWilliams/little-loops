@@ -35,12 +35,12 @@ While unit tests exist for individual components, there are no true end-to-end t
    - Loop can be resumed after interruption
 
 ## Acceptance Criteria
-- [ ] At least 5 end-to-end workflow tests covering the above scenarios
-- [ ] Tests use temporary git repositories for isolation
-- [ ] Tests exercise actual CLI entry points (not just Python APIs)
-- [ ] Tests validate both success and failure paths
-- [ ] Tests are marked with @pytest.mark.integration
-- [ ] Documentation added for running E2E tests
+- [x] At least 5 end-to-end workflow tests covering the above scenarios
+- [x] Tests use temporary git repositories for isolation
+- [x] Tests exercise actual CLI entry points (not just Python APIs)
+- [x] Tests validate both success and failure paths
+- [x] Tests are marked with @pytest.mark.integration
+- [x] Documentation added for running E2E tests
 
 ## Implementation Notes
 - Use pytest's tmpdir fixture for temporary test directories
@@ -64,3 +64,33 @@ P1 - High: E2E tests catch integration issues that unit tests miss; critical for
 
 ## Audit Source
 Test Coverage Audit - 2026-02-01
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-01
+- **Status**: Completed
+
+### Changes Made
+- **scripts/tests/test_cli_e2e.py** (NEW): Created end-to-end CLI workflow tests with 11 test cases
+  - `TestIssueCreationWorkflow`: Tests issue file format and listing (2 tests)
+  - `TestSprintPlanningWorkflow`: Tests sprint creation and validation (2 tests)
+  - `TestSequentialExecutionWorkflow`: Tests ll-auto command (3 tests)
+  - `TestParallelExecutionWorkflow`: Tests ll-parallel command (2 tests)
+  - `TestLoopExecutionWorkflow`: Tests ll-loop command (2 tests)
+- **docs/E2E_TESTING.md** (NEW): Documentation for running E2E tests
+- **thoughts/shared/plans/2026-02-01-FEAT-210-management.md** (NEW): Implementation plan
+
+### Key Features
+- Tests use temporary git repositories for complete isolation
+- Tests invoke actual CLI entry point functions (main_auto, main_parallel, main_loop)
+- Tests are marked with `@pytest.mark.integration` marker
+- Base fixture class `E2ETestFixture` provides reusable test infrastructure
+- Subprocess calls are mocked to prevent actual Claude CLI execution
+
+### Verification Results
+- Tests: 11 passed
+- Lint: PASS
+- Types: Not run (test files excluded from type checking)
