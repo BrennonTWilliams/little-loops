@@ -4,9 +4,10 @@
 The issue_manager module (scripts/little_loops/issue_manager.py) has only 63% test coverage with 122 missing statements. This module contains core sequential processing logic and is critical to the automation workflow.
 
 ## Current State
-- Coverage: 63% (122 missing statements)
+- Coverage: 50% (165 missing statements out of 330 total)
 - Location: scripts/little_loops/issue_manager.py
 - Impact: Core sequential processing may have untested edge cases
+- Missing lines: 108-117, 148-189, 250, 271-275, 299-300, 314-319, 333-338, 342-343, 347-394, 404-408, 420-422, 437, 449-450, 455-489, 509-536, 547-548, 618-619, 654, 684-730, 734-774, 796, 799-800, 803
 
 ## Targets for Improvement
 1. **Sequential processing workflow** - The main issue processing loop

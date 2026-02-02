@@ -1,764 +1,123 @@
-"""Tests for little_loops.issue_manager module."""
+# ENH-207: Improve issue_manager.py test coverage from 50% to 80%+ - Implementation Plan
+
+## Issue Reference
+- **File**: `.issues/enhancements/P0-ENH-207-improve-issue-manager-py-test-coverage.md`
+- **Type**: enhancement
+- **Priority**: P0
+- **Action**: improve
+
+## Current State Analysis
+
+The `issue_manager.py` module (`scripts/little_loops/issue_manager.py`) provides the core sequential issue processing automation for the little-loops system. It implements a 3-phase workflow (ready_issue, implement, verify) with state persistence for resume capability, dependency-aware sequencing, and comprehensive error handling.
+
+### Current Coverage
+- **Coverage**: 50% (165 missing statements out of 330 total)
+- **Location**: `scripts/little_loops/issue_manager.py`
+- **Test file**: `scripts/tests/test_issue_manager.py` (757 lines, 18 tests)
+
+### Key Discoveries from Research
+
+**Currently Uncovered Code Paths** (by line ranges):
+- **Lines 108-117**: `run_claude_command` logging callback
+- **Lines 148-189**: `run_with_continuation` - entire continuation loop
+- **Line 250**: ready_issue failure warning
+- **Lines 271-275**: Path rename handling
+- **Lines 299-300**: Fallback failure
+- **Lines 314-319**: Persistent path mismatch
+- **Lines 333-338**: Corrections logging
+- **Lines 342-343**: Concerns logging
+- **Lines 347-394**: CLOSE verdict handling
+- **Lines 404-408**: NOT READY handling
+- **Lines 420-422**: Dry run logging
+- **Line 437**: Issue arg selection
+- **Lines 449-450**: Dry run result
+- **Lines 455-489**: Implementation failure handling (transient vs real)
+- **Lines 509-536**: Fallback verification (work detection)
+- **Lines 547-548**: Verification failure warning
+- **Lines 618-619**: Signal handler
+- **Line 654**: only_ids filtering
+- **Lines 684-730**: `run()` method main loop
+- **Lines 734-774**: Timing summary logging
+- **Lines 796, 799-800, 803**: State update conditions
+
+### Patterns to Follow (from codebase research)
+
+1. **subprocess.run mocking** - Used in `test_git_operations.py`, `test_issue_lifecycle.py`, `test_git_lock.py`
+2. **Parametrized tests** - Used in `test_git_lock.py`, `test_issue_lifecycle.py`
+3. **Temporary git repos** - Used in `test_merge_coordinator.py`
+4. **Streaming callback testing** - Used in `test_subprocess_utils.py`
+5. **Failure classification** - Used in `test_issue_lifecycle.py`
+
+### Dependencies and Integration Points
+
+**Internal modules**:
+- `config.py`: BRConfig
+- `dependency_graph.py`: DependencyGraph
+- `git_operations.py`: check_git_status, verify_work_was_done
+- `issue_lifecycle.py`: close_issue, complete_issue_lifecycle, create_issue_from_failure, classify_failure, verify_issue_completed
+- `issue_parser.py`: IssueInfo, IssueParser, find_issues
+- `logger.py`: Logger
+- `parallel/output_parsing.py`: parse_ready_issue_output
+- `state.py`: ProcessingState, StateManager
+- `subprocess_utils.py`: run_claude_command, detect_context_handoff, read_continuation_prompt
+
+## Desired End State
+
+Coverage increased from 50% to at least 80% with tests for:
+1. Sequential processing workflow
+2. Error handling and retry logic
+3. State management
+4. Edge cases
+5. Work verification
+6. Git operations integration
+
+### How to Verify
+- Run: `python -m pytest scripts/tests/test_issue_manager.py --cov=scripts/little_loops/issue_manager --cov-report=term-missing`
+- Coverage should be >= 80%
+- All existing tests should pass
+
+## What We're NOT Doing
+
+- Not changing the production code - only adding tests
+- Not refactoring the module structure
+- Not adding new features
+- Not modifying other modules' tests
+
+## Problem Analysis
+
+The current test coverage is low because:
+1. Many error handling paths are not tested
+2. The continuation workflow is completely untested
+3. CLOSE verdict handling is not tested
+4. Failure classification (transient vs real) is not tested
+5. Fallback verification is not tested
+6. Signal handling is not tested
+7. The main `run()` loop is not tested end-to-end
+
+## Solution Approach
+
+Add targeted test cases for each uncovered code path, using patterns from the existing codebase:
+- Use `subprocess.run` patching for Claude CLI commands
+- Use parametrized tests for similar scenarios
+- Use mock fixtures for complex dependencies
+- Test error paths explicitly
 
-from __future__ import annotations
+## Implementation Phases
 
-from pathlib import Path
-from unittest.mock import MagicMock, patch
+### Phase 1: Test `run_claude_command` function (lines 108-117)
 
-import pytest
+#### Overview
+Test the logging callback functionality in `run_claude_command`.
 
-from little_loops.config import BRConfig
-from little_loops.issue_manager import AutoManager
-from little_loops.issue_parser import IssueInfo
+#### Changes Required
 
+**File**: `scripts/tests/test_issue_manager.py`
 
-class TestPathRenameHandling:
-    """Tests for handling issue file renames during ready_issue."""
+Add new test class:
 
-    @pytest.fixture
-    def mock_config(self, temp_project_dir: Path) -> BRConfig:
-        """Create a mock BRConfig for testing."""
-        config = MagicMock(spec=BRConfig)
-        config.project_root = temp_project_dir
-        config.automation = MagicMock()
-        config.automation.timeout_seconds = 60
-        config.automation.stream_output = False
-        config.automation.state_file = ".auto-manage-state.json"
-        return config
-
-    @pytest.fixture
-    def mock_issue_info(self, temp_project_dir: Path) -> IssueInfo:
-        """Create a mock IssueInfo for testing."""
-        issues_dir = temp_project_dir / ".issues" / "enhancements"
-        issues_dir.mkdir(parents=True)
-        old_path = issues_dir / "P3-ENH-341-extract-prometheus-adapter.md"
-        old_path.write_text("# ENH-341: Extract Prometheus Adapter\n")
-        return IssueInfo(
-            path=old_path,
-            issue_type="enhancements",
-            priority="P3",
-            issue_id="ENH-341",
-            title="Extract Prometheus Adapter",
-        )
-
-    def test_path_rename_updates_tracking(
-        self, temp_project_dir: Path, mock_config: BRConfig, mock_issue_info: IssueInfo
-    ) -> None:
-        """Test that legitimate file renames update tracking instead of failing."""
-        # Setup: Create the new file path (simulating ready_issue renaming)
-        new_path = mock_issue_info.path.parent / "P3-ENH-341-refactor-metrics-module.md"
-        new_path.write_text("# ENH-341: Refactor Metrics Module\n")
-        # Remove the old file to simulate a rename
-        mock_issue_info.path.unlink()
-
-        # Mock the ready_issue output
-        mock_output = f"""
-## VERDICT
-CORRECTED
-
-## VALIDATED_FILE
-{new_path}
-
-## CORRECTIONS_MADE
-- Title changed from 'Extract Prometheus Adapter' to 'Refactor Metrics Module'
-"""
-        mock_result = MagicMock()
-        mock_result.returncode = 0
-        mock_result.stdout = mock_output
-
-        with (
-            patch("little_loops.issue_manager.run_claude_command", return_value=mock_result),
-            patch("little_loops.issue_manager.check_git_status", return_value=([], [])),
-        ):
-            _manager = AutoManager(mock_config, dry_run=False)
-            # Access the internal method for testing path handling
-            # We need to mock the subprocess call and check if path is updated
-
-            # Store original path
-            original_path = mock_issue_info.path
-
-            # Simulate the parsing and path update logic
-            from little_loops.parallel.output_parsing import parse_ready_issue_output
-
-            parsed = parse_ready_issue_output(mock_output)
-
-            validated_path = parsed.get("validated_file_path")
-            assert validated_path is not None
-
-            validated_resolved = Path(validated_path).resolve()
-            expected_path = str(original_path.resolve())
-
-            # Verify paths are different
-            assert str(validated_resolved) != expected_path
-
-            # Verify the new file exists and old doesn't
-            assert validated_resolved.exists()
-            assert not original_path.exists()
-
-            # This is the key assertion: in this scenario, the manager
-            # should update info.path rather than failing
-            # The actual update happens in _process_issue, so we verify
-            # the conditions that would trigger the update
-
-    def test_path_mismatch_fails_when_both_exist(
-        self, temp_project_dir: Path, mock_config: BRConfig, mock_issue_info: IssueInfo
-    ) -> None:
-        """Test that genuine path mismatches fail when both files exist."""
-        # Setup: Create a different file that ready_issue claims to validate
-        different_path = mock_issue_info.path.parent / "P3-ENH-999-different-issue.md"
-        different_path.write_text("# ENH-999: Different Issue\n")
-
-        # Both old and new paths exist - this is a genuine mismatch
-        assert mock_issue_info.path.exists()
-        assert different_path.exists()
-
-        # Verify this would be detected as a mismatch
-        validated_resolved = different_path.resolve()
-        expected_path = str(mock_issue_info.path.resolve())
-
-        assert str(validated_resolved) != expected_path
-        # When both exist, it's NOT a rename, so should fail
-
-    def test_path_mismatch_fails_when_neither_exist(
-        self, temp_project_dir: Path, mock_config: BRConfig
-    ) -> None:
-        """Test that path mismatches fail when neither file exists."""
-        issues_dir = temp_project_dir / ".issues" / "enhancements"
-        issues_dir.mkdir(parents=True)
-
-        # Create paths that don't exist
-        old_path = issues_dir / "P3-ENH-341-nonexistent-old.md"
-        new_path = issues_dir / "P3-ENH-341-nonexistent-new.md"
-
-        # Neither file exists
-        assert not old_path.exists()
-        assert not new_path.exists()
-
-        # This should be treated as a failure, not a rename
-
-    def test_path_rename_detection_with_absolute_vs_relative(
-        self, temp_project_dir: Path, mock_config: BRConfig, mock_issue_info: IssueInfo
-    ) -> None:
-        """Test that path comparison works with mixed absolute/relative paths."""
-        # Setup: Create the new file
-        new_path = mock_issue_info.path.parent / "P3-ENH-341-refactor-metrics-module.md"
-        new_path.write_text("# ENH-341: Refactor Metrics Module\n")
-        mock_issue_info.path.unlink()
-
-        # Test with relative path in output (as Claude often returns)
-        relative_path = f".issues/enhancements/{new_path.name}"
-
-        mock_output = f"""
-## VERDICT
-CORRECTED
-
-## VALIDATED_FILE
-{relative_path}
-"""
-        from little_loops.parallel.output_parsing import parse_ready_issue_output
-
-        parsed = parse_ready_issue_output(mock_output)
-        validated_path = parsed.get("validated_file_path")
-        assert validated_path is not None, "validated_file_path should be present"
-
-        # Path.resolve() should handle relative paths correctly
-        validated_resolved = Path(validated_path).resolve()
-
-        # The resolved path should match when we're in the right directory
-        # This verifies Path.resolve() works for comparison
-        assert validated_resolved.name == new_path.name
-
-
-class TestAutoManagerIntegration:
-    """Integration tests for AutoManager path handling."""
-
-    @pytest.fixture
-    def setup_project(self, temp_project_dir: Path) -> tuple[Path, Path]:
-        """Set up a minimal project structure."""
-        # Create .claude directory with config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
-
-        config_content = {
-            "project": {"name": "test-project"},
-            "issues": {
-                "base_dir": ".issues",
-                "categories": {
-                    "enhancements": {
-                        "prefix": "ENH",
-                        "dir": "enhancements",
-                        "action": "improve",
-                    }
-                },
-                "completed_dir": "completed",
-            },
-            "automation": {
-                "timeout_seconds": 60,
-                "state_file": ".auto-manage-state.json",
-            },
-        }
-
-        import json
-
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
-
-        # Create issues directory
-        issues_dir = temp_project_dir / ".issues" / "enhancements"
-        issues_dir.mkdir(parents=True)
-        (temp_project_dir / ".issues" / "completed").mkdir()
-
-        return temp_project_dir, issues_dir
-
-
-class TestPathMismatchFallback:
-    """Tests for path mismatch fallback resolution."""
-
-    def test_compute_relative_path_from_cwd(self, temp_project_dir: Path) -> None:
-        """Test _compute_relative_path computes correct relative path."""
-        from little_loops.issue_manager import _compute_relative_path
-
-        issues_dir = temp_project_dir / ".issues" / "enhancements"
-        issues_dir.mkdir(parents=True)
-        issue_file = issues_dir / "P1-ENH-341-test-issue.md"
-        issue_file.write_text("# Test Issue\n")
-
-        # Compute relative path from project root
-        relative = _compute_relative_path(issue_file, temp_project_dir)
-        assert relative == ".issues/enhancements/P1-ENH-341-test-issue.md"
-
-    def test_compute_relative_path_falls_back_to_absolute(self, temp_project_dir: Path) -> None:
-        """Test _compute_relative_path returns absolute if not relative to base."""
-        from little_loops.issue_manager import _compute_relative_path
-
-        # Use a path outside the base directory
-        other_path = Path("/tmp/some/other/path.md")
-        result = _compute_relative_path(other_path, temp_project_dir)
-        assert result == str(other_path)
-
-    def test_fallback_succeeds_when_retry_validates_correct_file(
-        self, temp_project_dir: Path
-    ) -> None:
-        """Test that fallback retry with explicit path succeeds."""
-        from little_loops.parallel.output_parsing import parse_ready_issue_output
-
-        issues_dir = temp_project_dir / ".issues" / "enhancements"
-        issues_dir.mkdir(parents=True)
-
-        # Create the correct file (what ll-auto expects)
-        correct_file = issues_dir / "P1-ENH-341-correct-issue.md"
-        correct_file.write_text("# ENH-341: Correct Issue\n")
-
-        # Create a wrong file (what ready_issue mistakenly finds)
-        wrong_file = issues_dir / "P1-ENH-001-wrong-issue.md"
-        wrong_file.write_text("# ENH-001: Wrong Issue\n")
-
-        # First call output (returns wrong file)
-        first_output = f"""
-## VERDICT
-READY
-
-## VALIDATED_FILE
-{wrong_file}
-"""
-        # Retry call output (returns correct file)
-        retry_output = f"""
-## VERDICT
-READY
-
-## VALIDATED_FILE
-{correct_file}
-"""
-        # Parse both outputs
-        first_parsed = parse_ready_issue_output(first_output)
-        retry_parsed = parse_ready_issue_output(retry_output)
-
-        # Verify first call returned wrong file
-        assert first_parsed["validated_file_path"] == str(wrong_file)
-        assert Path(first_parsed["validated_file_path"]).resolve() != correct_file.resolve()
-
-        # Verify retry returned correct file
-        assert retry_parsed["validated_file_path"] == str(correct_file)
-        assert Path(retry_parsed["validated_file_path"]).resolve() == correct_file.resolve()
-
-    def test_fallback_fails_when_retry_still_mismatched(self, temp_project_dir: Path) -> None:
-        """Test that persistent mismatch after fallback properly fails."""
-        from little_loops.parallel.output_parsing import parse_ready_issue_output
-
-        issues_dir = temp_project_dir / ".issues" / "enhancements"
-        issues_dir.mkdir(parents=True)
-
-        # Create expected and wrong files
-        expected_file = issues_dir / "P1-ENH-341-expected.md"
-        expected_file.write_text("# ENH-341: Expected\n")
-
-        wrong_file = issues_dir / "P1-ENH-999-wrong.md"
-        wrong_file.write_text("# ENH-999: Wrong\n")
-
-        # Both calls return wrong file
-        output = f"""
-## VERDICT
-READY
-
-## VALIDATED_FILE
-{wrong_file}
-"""
-        parsed = parse_ready_issue_output(output)
-
-        # Verify mismatch would be detected
-        validated_resolved = Path(parsed["validated_file_path"]).resolve()
-        assert validated_resolved != expected_file.resolve()
-
-    def test_path_detection_in_ready_issue_command(self) -> None:
-        """Test that ready_issue bash can distinguish paths from IDs.
-
-        This is a unit test for the bash logic - verifying the patterns
-        that distinguish file paths from issue IDs.
-        """
-        # Test patterns that should be detected as file paths
-        path_inputs = [
-            ".issues/enhancements/P1-ENH-341-test.md",  # relative path with /
-            "/absolute/path/to/file.md",  # absolute path
-            "P1-BUG-001-test.md",  # filename ending in .md
-        ]
-
-        # Test patterns that should be detected as issue IDs
-        id_inputs = [
-            "BUG-001",
-            "ENH-341",
-            "FEAT-042",
-        ]
-
-        # Verify path patterns (contains "/" or ends with ".md")
-        for path in path_inputs:
-            is_path = "/" in path or path.endswith(".md")
-            assert is_path, f"'{path}' should be detected as path"
-
-        # Verify ID patterns (no "/" and doesn't end with ".md")
-        for issue_id in id_inputs:
-            is_path = "/" in issue_id or issue_id.endswith(".md")
-            assert not is_path, f"'{issue_id}' should be detected as ID"
-
-    def test_manage_issue_uses_path_after_fallback(self, temp_project_dir: Path) -> None:
-        """Test that manage_issue uses relative path after fallback, not stale issue_id.
-
-        This tests the BUG-010 fix: when ready_issue fallback succeeds with an explicit
-        path, the subsequent manage_issue command should use that path instead of the
-        original abstract issue_id which may not match the target repo's naming.
-        """
-        from unittest.mock import MagicMock
-
-        from little_loops.config import BRConfig
-        from little_loops.issue_manager import AutoManager, _compute_relative_path
-        from little_loops.issue_parser import IssueInfo
-
-        # Setup project structure
-        issues_dir = temp_project_dir / ".issues" / "bugs"
-        issues_dir.mkdir(parents=True)
-        (temp_project_dir / ".issues" / "completed").mkdir(parents=True)
-
-        # Create the actual issue file with external repo naming convention
-        actual_file = issues_dir / "P1-DOC-001-fix-layer-count.md"
-        actual_file.write_text("# DOC-001: Fix Layer Count\n\n## Summary\nTest issue\n")
-
-        # Create a different file that initial ready_issue might match
-        wrong_file = issues_dir / "P3-BUG-001-old-issue.md"
-        wrong_file.write_text("# BUG-001: Old Issue\n")
-
-        # Create IssueInfo with abstract ID that doesn't match filename
-        info = IssueInfo(
-            path=actual_file,
-            issue_type="bugs",
-            priority="P1",
-            issue_id="BUG-1",  # Abstract ID from queue
-            title="Fix Layer Count",
-        )
-
-        # Expected relative path for the fallback
-        expected_relative_path = _compute_relative_path(actual_file, temp_project_dir)
-
-        # Mock ready_issue outputs
-        first_output = f"""
-## VERDICT
-READY
-
-## VALIDATED_FILE
-{wrong_file}
-"""
-        retry_output = f"""
-## VERDICT
-READY
-
-## VALIDATED_FILE
-{actual_file}
-"""
-
-        # Track calls to run_claude_command and run_with_continuation
-        call_history: list[tuple[str, str]] = []
-
-        def mock_run_claude(command: str, *args, **kwargs) -> MagicMock:
-            call_history.append(("run_claude_command", command))
-            result = MagicMock()
-            result.returncode = 0
-            if "ready_issue" in command:
-                if expected_relative_path in command:
-                    result.stdout = retry_output
-                else:
-                    result.stdout = first_output
-            return result
-
-        def mock_run_with_continuation(command: str, *args, **kwargs) -> MagicMock:
-            call_history.append(("run_with_continuation", command))
-            result = MagicMock()
-            result.returncode = 0
-            result.stdout = "## RESULT\n- Status: COMPLETED"
-            result.stderr = ""
-            return result
-
-        # Create mock config
-        mock_config = MagicMock(spec=BRConfig)
-        mock_config.repo_path = temp_project_dir
-        mock_config.automation = MagicMock()
-        mock_config.automation.timeout_seconds = 60
-        mock_config.automation.stream_output = False
-        mock_config.automation.max_continuations = 3
-        mock_config.get_category_action.return_value = "fix"
-        mock_config.get_state_file.return_value = temp_project_dir / ".auto-state.json"
-
-        with (
-            patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run_claude),
-            patch(
-                "little_loops.issue_manager.run_with_continuation",
-                side_effect=mock_run_with_continuation,
-            ),
-            patch("little_loops.issue_manager.check_git_status", return_value=False),
-            patch("little_loops.issue_manager.verify_issue_completed", return_value=True),
-        ):
-            manager = AutoManager(mock_config, dry_run=False)
-            manager._process_issue(info)
-
-        # Verify the sequence of calls
-        assert len(call_history) >= 3, f"Expected at least 3 calls, got {len(call_history)}"
-
-        # First call: ready_issue with abstract ID
-        assert call_history[0][0] == "run_claude_command"
-        assert "/ll:ready_issue BUG-1" in call_history[0][1]
-
-        # Second call: ready_issue fallback with explicit path
-        assert call_history[1][0] == "run_claude_command"
-        assert expected_relative_path in call_history[1][1]
-
-        # Third call: manage_issue should use the path, NOT the stale BUG-1
-        assert call_history[2][0] == "run_with_continuation"
-        manage_cmd = call_history[2][1]
-        assert "manage_issue" in manage_cmd
-        # The key assertion: must use path, not stale ID
-        assert expected_relative_path in manage_cmd, (
-            f"Expected manage_issue to use '{expected_relative_path}', got: {manage_cmd}"
-        )
-        assert "BUG-1" not in manage_cmd, (
-            f"manage_issue should NOT use stale ID 'BUG-1', got: {manage_cmd}"
-        )
-
-
-class TestDependencyAwareSequencing:
-    """Tests for dependency-aware issue selection in AutoManager (ENH-016)."""
-
-    @pytest.fixture
-    def temp_project_with_deps(self, temp_project_dir: Path) -> Path:
-        """Set up project with issues that have dependencies."""
-        import json
-
-        # Create .claude directory with config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
-
-        config_content = {
-            "project": {"name": "test-project"},
-            "issues": {
-                "base_dir": ".issues",
-                "categories": {
-                    "features": {
-                        "prefix": "FEAT",
-                        "dir": "features",
-                        "action": "implement",
-                    }
-                },
-                "completed_dir": "completed",
-            },
-            "automation": {
-                "timeout_seconds": 60,
-                "state_file": ".auto-manage-state.json",
-            },
-        }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
-
-        # Create issues directory
-        issues_dir = temp_project_dir / ".issues" / "features"
-        issues_dir.mkdir(parents=True)
-        (temp_project_dir / ".issues" / "completed").mkdir()
-
-        # Create FEAT-001 (no dependencies)
-        (issues_dir / "P1-FEAT-001-first-feature.md").write_text(
-            "# FEAT-001: First Feature\n\n## Summary\nFirst\n"
-        )
-
-        # Create FEAT-002 (blocked by FEAT-001)
-        (issues_dir / "P1-FEAT-002-second-feature.md").write_text(
-            "# FEAT-002: Second Feature\n\n## Summary\nSecond\n\n## Blocked By\n\n- FEAT-001\n"
-        )
-
-        return temp_project_dir
-
-    def test_dependency_graph_built_on_init(self, temp_project_with_deps: Path) -> None:
-        """Test that AutoManager builds dependency graph on initialization."""
-        from little_loops.config import BRConfig
-        from little_loops.issue_manager import AutoManager
-
-        config = BRConfig(temp_project_with_deps)
-        manager = AutoManager(config, dry_run=True)
-
-        assert hasattr(manager, "dep_graph")
-        assert len(manager.dep_graph) == 2
-        assert "FEAT-001" in manager.dep_graph
-        assert "FEAT-002" in manager.dep_graph
-
-    def test_blocked_issue_not_selected_first(self, temp_project_with_deps: Path) -> None:
-        """Test that blocked issue is not selected before its blocker."""
-        from little_loops.config import BRConfig
-        from little_loops.issue_manager import AutoManager
-
-        config = BRConfig(temp_project_with_deps)
-        manager = AutoManager(config, dry_run=True)
-
-        # First issue selected should be FEAT-001 (not blocked)
-        info = manager._get_next_issue()
-        assert info is not None
-        assert info.issue_id == "FEAT-001"
-
-    def test_blocked_issue_selected_after_blocker_completed(
-        self, temp_project_with_deps: Path
-    ) -> None:
-        """Test that blocked issue becomes available after blocker completes."""
-        from little_loops.config import BRConfig
-        from little_loops.issue_manager import AutoManager
-
-        config = BRConfig(temp_project_with_deps)
-        manager = AutoManager(config, dry_run=True)
-
-        # Mark FEAT-001 as completed
-        manager.state_manager.state.completed_issues.append("FEAT-001")
-
-        # Now FEAT-002 should be selected
-        info = manager._get_next_issue()
-        assert info is not None
-        assert info.issue_id == "FEAT-002"
-
-    def test_no_issue_when_all_blocked(self, temp_project_with_deps: Path) -> None:
-        """Test that None is returned when all remaining issues are blocked."""
-        from little_loops.config import BRConfig
-        from little_loops.issue_manager import AutoManager
-
-        config = BRConfig(temp_project_with_deps)
-        manager = AutoManager(config, dry_run=True)
-
-        # Mark FEAT-001 as attempted (skip) but not completed
-        manager.state_manager.state.attempted_issues.add("FEAT-001")
-
-        # FEAT-002 is blocked by FEAT-001, which is not completed
-        # So no issues should be available
-        info = manager._get_next_issue()
-        assert info is None
-
-    @pytest.fixture
-    def temp_project_with_cycle(self, temp_project_dir: Path) -> Path:
-        """Set up project with issues that have a dependency cycle."""
-        import json
-
-        # Create .claude directory with config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
-
-        config_content = {
-            "project": {"name": "test-project"},
-            "issues": {
-                "base_dir": ".issues",
-                "categories": {
-                    "features": {
-                        "prefix": "FEAT",
-                        "dir": "features",
-                        "action": "implement",
-                    }
-                },
-                "completed_dir": "completed",
-            },
-            "automation": {
-                "timeout_seconds": 60,
-                "state_file": ".auto-manage-state.json",
-            },
-        }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
-
-        # Create issues directory
-        issues_dir = temp_project_dir / ".issues" / "features"
-        issues_dir.mkdir(parents=True)
-        (temp_project_dir / ".issues" / "completed").mkdir()
-
-        # Create FEAT-001 (blocked by FEAT-002) - circular!
-        (issues_dir / "P1-FEAT-001-first-feature.md").write_text(
-            "# FEAT-001: First Feature\n\n## Summary\nFirst\n\n## Blocked By\n\n- FEAT-002\n"
-        )
-
-        # Create FEAT-002 (blocked by FEAT-001) - circular!
-        (issues_dir / "P1-FEAT-002-second-feature.md").write_text(
-            "# FEAT-002: Second Feature\n\n## Summary\nSecond\n\n## Blocked By\n\n- FEAT-001\n"
-        )
-
-        return temp_project_dir
-
-    def test_cycle_detected_on_init(
-        self, temp_project_with_cycle: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
-        """Test that dependency cycles are detected and warned about on init."""
-        from little_loops.config import BRConfig
-        from little_loops.issue_manager import AutoManager
-
-        config = BRConfig(temp_project_with_cycle)
-        _manager = AutoManager(config, dry_run=True)
-
-        captured = capsys.readouterr()
-        # Check that cycle warning was printed
-        assert "Dependency cycle detected" in captured.out or "cycle" in captured.out.lower()
-
-
-class TestAutoManagerQuietMode:
-    """Tests for AutoManager quiet/verbose mode (ENH-188)."""
-
-    def test_auto_manager_verbose_false_creates_quiet_logger(
-        self, temp_project_dir: Path
-    ) -> None:
-        """Test AutoManager with verbose=False creates quiet logger."""
-        from little_loops.config import BRConfig
-        from little_loops.issue_manager import AutoManager
-        import json
-
-        # Create minimal config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
-        config_content = {
-            "project": {"name": "test-project"},
-            "issues": {
-                "base_dir": ".issues",
-                "categories": {
-                    "features": {
-                        "prefix": "FEAT",
-                        "dir": "features",
-                        "action": "implement",
-                    }
-                },
-                "completed_dir": "completed",
-            },
-            "automation": {
-                "timeout_seconds": 60,
-                "state_file": ".auto-manage-state.json",
-            },
-        }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
-
-        # Create issues directory
-        issues_dir = temp_project_dir / ".issues" / "features"
-        issues_dir.mkdir(parents=True)
-        (temp_project_dir / ".issues" / "completed").mkdir()
-
-        config = BRConfig(temp_project_dir)
-        manager = AutoManager(config, verbose=False)
-
-        assert manager.logger.verbose is False
-
-    def test_auto_manager_verbose_true_creates_verbose_logger(
-        self, temp_project_dir: Path
-    ) -> None:
-        """Test AutoManager with verbose=True creates verbose logger (default)."""
-        from little_loops.config import BRConfig
-        from little_loops.issue_manager import AutoManager
-        import json
-
-        # Create minimal config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
-        config_content = {
-            "project": {"name": "test-project"},
-            "issues": {
-                "base_dir": ".issues",
-                "categories": {
-                    "features": {
-                        "prefix": "FEAT",
-                        "dir": "features",
-                        "action": "implement",
-                    }
-                },
-                "completed_dir": "completed",
-            },
-            "automation": {
-                "timeout_seconds": 60,
-                "state_file": ".auto-manage-state.json",
-            },
-        }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
-
-        # Create issues directory
-        issues_dir = temp_project_dir / ".issues" / "features"
-        issues_dir.mkdir(parents=True)
-        (temp_project_dir / ".issues" / "completed").mkdir()
-
-        config = BRConfig(temp_project_dir)
-        manager = AutoManager(config)  # Use default verbose=True
-
-        assert manager.logger.verbose is True
-
-    def test_auto_manager_explicit_verbose_true(
-        self, temp_project_dir: Path
-    ) -> None:
-        """Test AutoManager with explicit verbose=True."""
-        from little_loops.config import BRConfig
-        from little_loops.issue_manager import AutoManager
-        import json
-
-        # Create minimal config
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir(exist_ok=True)
-        config_content = {
-            "project": {"name": "test-project"},
-            "issues": {
-                "base_dir": ".issues",
-                "categories": {
-                    "features": {
-                        "prefix": "FEAT",
-                        "dir": "features",
-                        "action": "implement",
-                    }
-                },
-                "completed_dir": "completed",
-            },
-            "automation": {
-                "timeout_seconds": 60,
-                "state_file": ".auto-manage-state.json",
-            },
-        }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
-
-        # Create issues directory
-        issues_dir = temp_project_dir / ".issues" / "features"
-        issues_dir.mkdir(parents=True)
-        (temp_project_dir / ".issues" / "completed").mkdir()
-
-        config = BRConfig(temp_project_dir)
-        manager = AutoManager(config, verbose=True)
-
-        assert manager.logger.verbose is True
-
-
+```python
 class TestRunClaudeCommand:
-    """Tests for run_claude_command function (ENH-207)."""
+    """Tests for run_claude_command function."""
 
     @pytest.fixture
     def mock_logger(self, temp_project_dir: Path) -> MagicMock:
@@ -819,10 +178,30 @@ class TestRunClaudeCommand:
             run_claude_command("test command", mock_logger, stream_output=False)
 
             assert not callback_passed
+```
 
+#### Success Criteria
 
+**Automated Verification**:
+- [ ] Tests pass: `python -m pytest scripts/tests/test_issue_manager.py::TestRunClaudeCommand -v`
+- [ ] Coverage increases: Lines 108-117 covered
+
+---
+
+### Phase 2: Test `run_with_continuation` function (lines 148-189)
+
+#### Overview
+Test the context handoff continuation loop.
+
+#### Changes Required
+
+**File**: `scripts/tests/test_issue_manager.py`
+
+Add test class:
+
+```python
 class TestRunWithContinuation:
-    """Tests for run_with_continuation context handoff handling (ENH-207)."""
+    """Tests for run_with_continuation context handoff handling."""
 
     def test_returns_immediately_when_no_handoff(self, temp_project_dir: Path) -> None:
         """Test that function returns normally when no CONTEXT_HANDOFF detected."""
@@ -918,10 +297,30 @@ class TestRunWithContinuation:
 
         # Should stop after handoff with no prompt
         mock_logger.warning.assert_called()
+```
 
+#### Success Criteria
 
+**Automated Verification**:
+- [ ] Tests pass: `python -m pytest scripts/tests/test_issue_manager.py::TestRunWithContinuation -v`
+- [ ] Coverage increases: Lines 148-189 covered
+
+---
+
+### Phase 3: Test error handling in Phase 1 (ready_issue)
+
+#### Overview
+Test various error scenarios in the ready_issue phase.
+
+#### Changes Required
+
+**File**: `scripts/tests/test_issue_manager.py`
+
+Add test class:
+
+```python
 class TestReadyIssueErrorHandling:
-    """Tests for error handling during ready_issue phase (ENH-207)."""
+    """Tests for error handling during ready_issue phase."""
 
     @pytest.fixture
     def mock_config(self, temp_project_dir: Path) -> BRConfig:
@@ -968,13 +367,10 @@ class TestReadyIssueErrorHandling:
 
         with patch("little_loops.issue_manager.run_claude_command", return_value=mock_result):
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
-                with patch("little_loops.issue_manager.run_with_continuation") as mock_impl:
-                    mock_impl.return_value = MagicMock(returncode=0, stdout="", stderr="")
-                    with patch("little_loops.issue_manager.verify_issue_completed", return_value=True):
-                        result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+                result = process_issue_inplace(sample_issue, mock_config, mock_logger)
 
-        # Should continue (not crash) - verify implementation was called
-        mock_impl.assert_called_once()
+        # Should continue (not crash) but return success=False since no ready output
+        mock_logger.warning.assert_called()
 
     def test_fallback_ready_issue_failure_returns_error(
         self, mock_config: BRConfig, sample_issue: IssueInfo
@@ -1044,10 +440,28 @@ READY
 
         assert not result.success
         assert "Path mismatch persisted" in result.failure_reason
+```
 
+#### Success Criteria
 
+**Automated Verification**:
+- [ ] Tests pass: `python -m pytest scripts/tests/test_issue_manager.py::TestReadyIssueErrorHandling -v`
+- [ ] Coverage increases: Lines 250, 271-275, 299-300, 314-319 covered
+
+---
+
+### Phase 4: Test corrections and concerns logging (lines 333-343)
+
+#### Overview
+Test that corrections and concerns from ready_issue are logged.
+
+#### Changes Required
+
+**File**: `scripts/tests/test_issue_manager.py`
+
+```python
 class TestCorrectionsAndConcerns:
-    """Tests for corrections and concerns handling (ENH-207)."""
+    """Tests for corrections and concerns handling."""
 
     @pytest.fixture
     def mock_config(self, temp_project_dir: Path) -> BRConfig:
@@ -1113,6 +527,7 @@ true
             result = process_issue_inplace(sample_issue, mock_config, mock_logger)
 
         assert result.corrections == ["Fixed title", "Added description"]
+        mock_logger.info.assert_called()
 
     def test_concerns_are_logged(
         self, mock_config: BRConfig, sample_issue: IssueInfo
@@ -1148,10 +563,28 @@ READY
 
         # Verify warnings were called
         assert any("Concern" in str(call) for call in mock_logger.warning.call_args_list)
+```
 
+#### Success Criteria
 
+**Automated Verification**:
+- [ ] Tests pass: `python -m pytest scripts/tests/test_issue_manager.py::TestCorrectionsAndConcerns -v`
+- [ ] Coverage increases: Lines 333-338, 342-343 covered
+
+---
+
+### Phase 5: Test CLOSE verdict handling (lines 347-394)
+
+#### Overview
+Test that CLOSE verdict is handled correctly.
+
+#### Changes Required
+
+**File**: `scripts/tests/test_issue_manager.py`
+
+```python
 class TestCloseVerdictHandling:
-    """Tests for CLOSE verdict handling in ready_issue phase (ENH-207)."""
+    """Tests for CLOSE verdict handling in ready_issue phase."""
 
     @pytest.fixture
     def mock_config(self, temp_project_dir: Path) -> BRConfig:
@@ -1302,10 +735,28 @@ NOT_READY
 
         assert not result.success
         assert "NOT READY" in result.failure_reason
+```
 
+#### Success Criteria
 
+**Automated Verification**:
+- [ ] Tests pass: `python -m pytest scripts/tests/test_issue_manager.py::TestCloseVerdictHandling -v`
+- [ ] Coverage increases: Lines 347-394, 404-408 covered
+
+---
+
+### Phase 6: Test failure classification (lines 455-489)
+
+#### Overview
+Test that implementation failures are classified as transient vs real.
+
+#### Changes Required
+
+**File**: `scripts/tests/test_issue_manager.py`
+
+```python
 class TestFailureClassification:
-    """Tests for implementation failure classification (ENH-207)."""
+    """Tests for implementation failure classification."""
 
     @pytest.fixture
     def mock_config(self, temp_project_dir: Path) -> BRConfig:
@@ -1393,10 +844,28 @@ class TestFailureClassification:
                     with patch("little_loops.issue_manager.create_issue_from_failure", return_value=sample_issue.path):
                         result = process_issue_inplace(sample_issue, mock_config, mock_logger)
                         assert not result.success
+```
 
+#### Success Criteria
 
+**Automated Verification**:
+- [ ] Tests pass: `python -m pytest scripts/tests/test_issue_manager.py::TestFailureClassification -v`
+- [ ] Coverage increases: Lines 455-489 covered
+
+---
+
+### Phase 7: Test fallback verification (lines 509-536)
+
+#### Overview
+Test that fallback verification detects work and completes lifecycle.
+
+#### Changes Required
+
+**File**: `scripts/tests/test_issue_manager.py`
+
+```python
 class TestFallbackVerification:
-    """Tests for fallback verification when issue not moved (ENH-207)."""
+    """Tests for fallback verification when issue not moved."""
 
     @pytest.fixture
     def mock_config(self, temp_project_dir: Path) -> BRConfig:
@@ -1480,10 +949,28 @@ class TestFallbackVerification:
 
         assert not result.success
         mock_logger.error.assert_called()
+```
 
+#### Success Criteria
 
+**Automated Verification**:
+- [ ] Tests pass: `python -m pytest scripts/tests/test_issue_manager.py::TestFallbackVerification -v`
+- [ ] Coverage increases: Lines 509-536, 547-548 covered
+
+---
+
+### Phase 8: Test AutoManager.run() method (lines 684-730)
+
+#### Overview
+Test the main processing loop.
+
+#### Changes Required
+
+**File**: `scripts/tests/test_issue_manager.py`
+
+```python
 class TestAutoManagerRun:
-    """Tests for AutoManager.run() main loop (ENH-207)."""
+    """Tests for AutoManager.run() main loop."""
 
     @pytest.fixture
     def full_project(self, temp_project_dir: Path) -> Path:
@@ -1599,50 +1086,28 @@ class TestAutoManagerRun:
 
         # Should only process BUG-003
         mock_process.assert_called_once()
+```
 
+#### Success Criteria
 
-class TestSignalHandler:
-    """Tests for graceful shutdown signal handling (ENH-207)."""
+**Automated Verification**:
+- [ ] Tests pass: `python -m pytest scripts/tests/test_issue_manager.py::TestAutoManagerRun -v`
+- [ ] Coverage increases: Lines 654, 684-730 covered
 
-    def test_signal_handler_sets_shutdown_flag(self, temp_project_dir: Path) -> None:
-        """Test that signal handler sets _shutdown_requested flag."""
-        from little_loops.config import BRConfig
-        from little_loops.issue_manager import AutoManager
-        import json
+---
 
-        # Setup
-        claude_dir = temp_project_dir / ".claude"
-        claude_dir.mkdir()
-        config_content = {
-            "project": {"name": "test"},
-            "issues": {
-                "base_dir": ".issues",
-                "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
-                "completed_dir": "completed",
-            },
-            "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
-        }
-        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+### Phase 9: Test timing summary and state updates (lines 734-774, 796, 799-800, 803)
 
-        issues_dir = temp_project_dir / ".issues" / "bugs"
-        issues_dir.mkdir(parents=True)
+#### Overview
+Test timing summary logging and state update branches.
 
-        config = BRConfig(temp_project_dir)
-        manager = AutoManager(config, dry_run=True)
+#### Changes Required
 
-        # Initially not shutdown
-        assert manager._shutdown_requested is False
+**File**: `scripts/tests/test_issue_manager.py`
 
-        # Simulate signal handler call
-        import signal
-        manager._signal_handler(signal.SIGINT, None)
-
-        # Flag should be set
-        assert manager._shutdown_requested is True
-
-
+```python
 class TestTimingSummaryAndStateUpdates:
-    """Tests for timing summary and state update conditions (ENH-207)."""
+    """Tests for timing summary and state update conditions."""
 
     def test_timing_summary_logged(self, temp_project_dir: Path) -> None:
         """Test that timing summary is logged with aggregate stats."""
@@ -1753,4 +1218,97 @@ class TestTimingSummaryAndStateUpdates:
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
                 manager = AutoManager(config, dry_run=False)
                 manager._process_issue(manager._get_next_issue())
+```
 
+#### Success Criteria
+
+**Automated Verification**:
+- [ ] Tests pass: `python -m pytest scripts/tests/test_issue_manager.py::TestTimingSummaryAndStateUpdates -v`
+- [ ] Coverage increases: Lines 734-774, 796, 799-800, 803 covered
+
+---
+
+### Phase 10: Test signal handler (lines 618-619)
+
+#### Overview
+Test graceful shutdown signal handling.
+
+#### Changes Required
+
+**File**: `scripts/tests/test_issue_manager.py`
+
+```python
+class TestSignalHandler:
+    """Tests for graceful shutdown signal handling."""
+
+    def test_signal_handler_sets_shutdown_flag(self, temp_project_dir: Path) -> None:
+        """Test that signal handler sets _shutdown_requested flag."""
+        from little_loops.config import BRConfig
+        from little_loops.issue_manager import AutoManager
+        import json
+
+        # Setup
+        claude_dir = temp_project_dir / ".claude"
+        claude_dir.mkdir()
+        config_content = {
+            "project": {"name": "test"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
+                "completed_dir": "completed",
+            },
+            "automation": {"timeout_seconds": 60, "state_file": ".state.json"},
+        }
+        (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
+
+        issues_dir = temp_project_dir / ".issues" / "bugs"
+        issues_dir.mkdir(parents=True)
+
+        config = BRConfig(temp_project_dir)
+        manager = AutoManager(config, dry_run=True)
+
+        # Initially not shutdown
+        assert manager._shutdown_requested is False
+
+        # Simulate signal handler call
+        import signal
+        manager._signal_handler(signal.SIGINT, None)
+
+        # Flag should be set
+        assert manager._shutdown_requested is True
+```
+
+#### Success Criteria
+
+**Automated Verification**:
+- [ ] Tests pass: `python -m pytest scripts/tests/test_issue_manager.py::TestSignalHandler -v`
+- [ ] Coverage increases: Lines 618-619 covered
+
+---
+
+## Testing Strategy
+
+### Test Organization
+- Group tests by functionality (10 new test classes)
+- Use descriptive test names following `test_<verb>_<noun>` pattern
+- Apply parametrization for similar test cases
+
+### Test Patterns Used
+1. **subprocess.run mocking** - For Claude CLI commands
+2. **Parametrized tests** - For failure classification
+3. **Mock fixtures** - For config, logger, issues
+4. **Callback capture** - For streaming tests
+5. **State verification** - For state update tests
+
+### Coverage Goals
+- Target: 80%+ coverage (from current 50%)
+- Focus on all uncovered line ranges identified
+- Test error paths explicitly
+
+## References
+
+- Original issue: `.issues/enhancements/P0-ENH-207-improve-issue-manager-py-test-coverage.md`
+- Source file: `scripts/little_loops/issue_manager.py`
+- Test file: `scripts/tests/test_issue_manager.py`
+- Coverage config: `scripts/pyproject.toml` (lines 104-120)
+- Similar patterns: `scripts/tests/test_issue_lifecycle.py:716-767` (failure classification)
