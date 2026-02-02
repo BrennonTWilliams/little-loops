@@ -46,9 +46,12 @@ While property-based tests with Hypothesis exist, no dedicated fuzz testing targ
 P3 - Low: Fuzz testing is valuable for robustness but not critical; can be addressed after higher-priority coverage gaps.
 
 ## Related Files
-- scripts/little_loops/parsers/issue_parser.py (target)
-- scripts/little_loops/parsers/goals_parser.py (target)
+- scripts/little_loops/issue_parser.py (target)
+- scripts/little_loops/goals_parser.py (target)
 - scripts/little_loops/fsm/schema.py (loop config parsing)
+
+## Verification Notes
+Verified 2026-02-01 - All referenced files exist. Note: parsers are directly in scripts/little_loops/, not in a parsers/ subdirectory.
 
 ## Audit Source
 Test Coverage Audit - 2026-02-01

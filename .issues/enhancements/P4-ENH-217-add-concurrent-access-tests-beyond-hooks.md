@@ -48,10 +48,13 @@ The hooks system has concurrent access tests (test_hooks_integration.py), but ot
 P4 - Nice-to-have: Thread safety is important but the current usage pattern (mostly single-threaded) makes this lower priority.
 
 ## Related Files
-- scripts/little_loops/state_manager.py (target)
+- scripts/little_loops/state.py (state manager - target)
 - scripts/little_loops/issue_manager.py (target)
-- scripts/little_loops/orchestrator.py (target)
+- scripts/little_loops/parallel/orchestrator.py (target)
 - scripts/tests/test_hooks_integration.py (reference pattern)
+
+## Verification Notes
+Verified 2026-02-01 - All referenced files exist at correct paths. Note: state manager is scripts/little_loops/state.py, not state_manager.py. Orchestrator is in scripts/little_loops/parallel/ directory.
 
 ## Audit Source
 Test Coverage Audit - 2026-02-01

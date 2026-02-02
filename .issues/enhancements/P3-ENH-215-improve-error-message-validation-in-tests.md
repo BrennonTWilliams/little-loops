@@ -44,7 +44,13 @@ P3 - Low: Error message validation improves quality but is not critical; can be 
 ## Related Files
 - scripts/tests/ (all test files with exception handling)
 - scripts/little_loops/cli.py (user-facing errors)
+- scripts/little_loops/issue_manager.py (processing error messages)
+- scripts/little_loops/parallel/merge_coordinator.py (merge error messages)
+- scripts/little_loops/parallel/orchestrator.py (orchestration error messages)
 - docs/TESTING.md (document pattern)
+
+## Verification Notes
+Verified 2026-02-01 - All referenced files exist at correct paths. Note: merge_coordinator.py is in scripts/little_loops/parallel/ directory.
 
 ## Audit Source
 Test Coverage Audit - 2026-02-01
