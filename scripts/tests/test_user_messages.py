@@ -890,6 +890,90 @@ class TestExtractUserMessagesWithResponseContext:
         assert messages[1].response_metadata is not None
         assert "/first.py" in messages[1].response_metadata.files_read
 
+    def test_aggregates_multiple_assistant_turns(
+        self, temp_project_folder: Path
+    ) -> None:
+        """Aggregates metadata from all assistant turns until next user message."""
+        records = [
+            {
+                "type": "user",
+                "message": {"content": "Make changes to multiple files"},
+                "timestamp": "2026-01-10T12:00:00Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-1",
+            },
+            # First assistant turn - reads file
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Read",
+                            "input": {"file_path": "/file_a.py"},
+                        },
+                    ]
+                },
+                "timestamp": "2026-01-10T12:00:01Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-2",
+            },
+            # Second assistant turn - edits file
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Edit",
+                            "input": {"file_path": "/file_a.py"},
+                        },
+                    ]
+                },
+                "timestamp": "2026-01-10T12:00:02Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-3",
+            },
+            # Third assistant turn - reads another file and completes
+            {
+                "type": "assistant",
+                "message": {
+                    "content": [
+                        {
+                            "type": "tool_use",
+                            "name": "Read",
+                            "input": {"file_path": "/file_b.py"},
+                        },
+                        {"type": "text", "text": "Done!"},
+                    ]
+                },
+                "timestamp": "2026-01-10T12:00:03Z",
+                "sessionId": "sess-1",
+                "uuid": "uuid-4",
+            },
+        ]
+        self._write_jsonl(temp_project_folder / "session.jsonl", records)
+
+        messages = extract_user_messages(
+            temp_project_folder, include_response_context=True
+        )
+
+        assert len(messages) == 1
+        assert messages[0].response_metadata is not None
+        # Should aggregate Read count = 2 (file_a + file_b)
+        tools = {
+            t["tool"]: t["count"] for t in messages[0].response_metadata.tools_used
+        }
+        assert tools.get("Read") == 2
+        assert tools.get("Edit") == 1
+        # Should include both files read (deduplicated and sorted)
+        assert "/file_a.py" in messages[0].response_metadata.files_read
+        assert "/file_b.py" in messages[0].response_metadata.files_read
+        # Should include edited file
+        assert "/file_a.py" in messages[0].response_metadata.files_modified
+        # Completion status from final response
+        assert messages[0].response_metadata.completion_status == "success"
+
     def test_handles_user_message_without_response(
         self, temp_project_folder: Path
     ) -> None:
