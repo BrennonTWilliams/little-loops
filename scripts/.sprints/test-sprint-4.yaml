@@ -1,0 +1,9 @@
+name: test-sprint-4
+description: ''
+created: '2026-02-02T00:04:45.551628+00:00'
+issues:
+- BUG-001
+options:
+  max_iterations: 100
+  timeout: 3600
+  max_workers: 2
