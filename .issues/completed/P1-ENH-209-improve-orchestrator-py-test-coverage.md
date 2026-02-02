@@ -17,12 +17,26 @@ The orchestrator module (scripts/little_loops/parallel/orchestrator.py) has 74% 
 6. **Orchestration flows** - Complete end-to-end parallel runs
 
 ## Acceptance Criteria
-- [ ] Coverage increased from 74% to at least 80%
-- [ ] Tests for signal handling (SIGINT/SIGTERM)
-- [ ] Tests for worker pool edge cases (empty, full, worker failures)
-- [ ] Tests for concurrent state access
-- [ ] Integration tests for complete orchestration flows
-- [ ] All existing tests continue to pass
+- [x] Coverage increased from 74% to at least 80%
+- [x] Tests for signal handling (SIGINT/SIGTERM)
+- [x] Tests for worker pool edge cases (empty, full, worker failures)
+- [x] Tests for concurrent state access
+- [x] Integration tests for complete orchestration flows
+- [x] All existing tests continue to pass
+
+## Resolution
+**Status**: Completed (2026-02-01)
+
+- Coverage increased from 74% to **81%** (exceeds 80% target)
+- Fix commit: `56e42d1` - "test(enhancement): improve orchestrator.py test coverage with new test classes (ENH-209)"
+- Added 5 new test classes:
+  - `TestShutdownHandling`: signal handler idempotency and shutdown during active work
+  - `TestWorkerPoolEdgeCases`: worker wait behavior, timeout handling, merge waiting
+  - `TestOverlapDetection`: overlap detection, deferral, re-queueing, and unregistration
+  - `TestInterruptedWorkers`: interrupted worker tracking and close verdict handling
+  - `TestExecuteLoop`: dispatch logic, state saving, max_issues limit, P0 sequential
+
+**Verification Notes**: Verified 2026-02-01 - Coverage confirmed at 81%. All acceptance criteria met.
 
 ## Implementation Notes
 - Reference: scripts/tests/test_orchestrator.py (existing tests)
