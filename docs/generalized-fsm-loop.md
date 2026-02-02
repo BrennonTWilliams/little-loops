@@ -1854,6 +1854,32 @@ The command uses `AskUserQuestion` with various patterns:
 
 ---
 
+## Related Skills
+
+### `/ll:loop-suggester`
+Analyzes user message history from `ll-messages` output to automatically suggest FSM loop configurations. Instead of manually identifying patterns and using `/ll:create_loop`, this skill detects repeated workflows and generates ready-to-use loop YAML.
+
+**When to use:**
+- You want to discover automation opportunities from your existing work patterns
+- You have repetitive check-fix-verify cycles you'd like to automate
+- You're unsure which paradigm fits your workflow
+
+**Example workflow:**
+```bash
+# Extract recent messages with tool usage metadata
+ll-messages --include-response-context -n 200 -o messages.jsonl
+
+# Invoke the skill to analyze and suggest loops
+/ll:loop-suggester messages.jsonl
+
+# Review suggestions in .claude/loop-suggestions/
+# Copy promising yaml_config to .loops/ and validate
+```
+
+See `skills/loop-suggester/SKILL.md` for full documentation.
+
+---
+
 ## Future Considerations
 
 - **Context handoff integration** - Executor can detect `CONTEXT_HANDOFF:` signals from slash commands and spawn continuation sessions, preserving loop state transparently. Initial implementation may simply terminate.

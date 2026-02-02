@@ -198,6 +198,29 @@ Create FSM loop configurations interactively.
 
 **See also:** `docs/generalized-fsm-loop.md` for paradigm details.
 
+### `/ll:loop-suggester`
+Analyze user message history to suggest FSM loop configurations automatically.
+
+**Arguments:**
+- `file` (optional): Path to ll-messages JSONL file (runs extraction if omitted)
+
+**Features:**
+- Detects repeated tool sequences (check-fix cycles, multi-constraint patterns)
+- Maps patterns to appropriate paradigms (goal, invariants, convergence, imperative)
+- Generates ready-to-use loop YAML with confidence scores
+- Outputs to `.claude/loop-suggestions/`
+
+**Usage:**
+```bash
+# Analyze recent messages (auto-extracts)
+/ll:loop-suggester
+
+# Analyze specific JSONL file
+/ll:loop-suggester messages.jsonl
+```
+
+**Trigger keywords:** "suggest loops", "loop from history", "automate workflow"
+
 ---
 
 ## Quick Reference
@@ -231,6 +254,7 @@ Create FSM loop configurations interactively.
 | `handoff` | Generate session handoff prompt |
 | `resume` | Resume from continuation prompt |
 | `create_loop` | Interactive FSM loop creation |
+| `loop-suggester` | Suggest loops from message history |
 | `create_sprint` | Create sprint with curated issue list |
 
 ---
