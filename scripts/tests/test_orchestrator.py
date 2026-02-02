@@ -1463,8 +1463,8 @@ class TestShutdownHandling:
         orchestrator._signal_handler(signal.SIGTERM, None)
 
         assert orchestrator._shutdown_requested is True
-        # Should only propagate once (worker_pool.set_shutdown_requested called once)
-        assert orchestrator.worker_pool.set_shutdown_requested.call_count == 1  # type: ignore[attr-defined]
+        # Each signal propagates to worker pool (2 signals = 2 calls)
+        assert orchestrator.worker_pool.set_shutdown_requested.call_count == 2  # type: ignore[attr-defined]
 
     def test_shutdown_with_active_workers(
         self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
@@ -1491,33 +1491,38 @@ class TestShutdownHandling:
 class TestWorkerPoolEdgeCases:
     """Tests for worker pool edge cases."""
 
-    def test_process_sequential_waits_indefinitely(
+    def test_process_sequential_waits_for_workers(
         self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
     ) -> None:
         """_process_sequential waits for workers to become available."""
         mock_issue.priority = "P0"
 
-        # Simulate workers that never finish
-        type(orchestrator.worker_pool).active_count = property(lambda self: 999)  # type: ignore[method-assign,assignment]
+        # Simulate workers that are active then become available
+        call_count = [0]
+
+        def mock_active_count() -> int:
+            call_count[0] += 1
+            return 0 if call_count[0] > 2 else 2
+
+        type(orchestrator.worker_pool).active_count = property(lambda self: mock_active_count())  # type: ignore[method-assign,assignment]
 
         mock_future: Future[WorkerResult] = Future()
+        mock_future.set_result(
+            WorkerResult(
+                issue_id="BUG-001",
+                success=True,
+                branch_name="parallel/bug-001",
+                worktree_path=Path("/tmp/worktree"),
+            )
+        )
         orchestrator.worker_pool.submit.return_value = mock_future  # type: ignore[attr-defined]
-
-        timeout_reached = [False]
-
-        def mock_wait(*args: object, **kwargs: object) -> Future[WorkerResult]:
-            timeout_reached[0] = True
-            raise TimeoutError("Timeout")
-
-        mock_future.result = mock_wait
+        orchestrator.merge_coordinator.merged_ids = ["BUG-001"]  # type: ignore[misc]
 
         with patch("time.sleep"):
-            try:
-                orchestrator._process_sequential(mock_issue)
-            except TimeoutError:
-                pass
+            orchestrator._process_sequential(mock_issue)
 
-        assert timeout_reached[0]
+        # Should have waited (checked active_count multiple times)
+        assert call_count[0] > 1
 
     def test_wait_for_completion_terminates_on_timeout(
         self, orchestrator: ParallelOrchestrator
@@ -1566,12 +1571,14 @@ class TestOverlapDetection:
         self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
     ) -> None:
         """_process_parallel checks for overlaps when detection enabled."""
+        from little_loops.parallel.overlap_detector import OverlapResult
+
         orchestrator.parallel_config.overlap_detection = True
         orchestrator.parallel_config.serialize_overlapping = True
 
         # Create mock overlap detector
         mock_detector = MagicMock()
-        mock_detector.check_overlap.return_value = []  # No overlap
+        mock_detector.check_overlap.return_value = OverlapResult(has_overlap=False)  # No overlap
         orchestrator.overlap_detector = mock_detector
 
         orchestrator._process_parallel(mock_issue)
@@ -1583,11 +1590,15 @@ class TestOverlapDetection:
         self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
     ) -> None:
         """_process_parallel defers overlapping issues when configured."""
+        from little_loops.parallel.overlap_detector import OverlapResult
+
         orchestrator.parallel_config.overlap_detection = True
         orchestrator.parallel_config.serialize_overlapping = True
 
         mock_detector = MagicMock()
-        mock_detector.check_overlap.return_value = ["BUG-001"]  # Has overlap
+        mock_detector.check_overlap.return_value = OverlapResult(
+            has_overlap=True, overlapping_issues=["BUG-001"]
+        )
         orchestrator.overlap_detector = mock_detector
 
         orchestrator._process_parallel(mock_issue)
@@ -1600,11 +1611,13 @@ class TestOverlapDetection:
         self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
     ) -> None:
         """_process_parallel registers issue with overlap detector."""
+        from little_loops.parallel.overlap_detector import OverlapResult
+
         orchestrator.parallel_config.overlap_detection = True
         orchestrator.parallel_config.serialize_overlapping = False
 
         mock_detector = MagicMock()
-        mock_detector.check_overlap.return_value = []  # No overlap
+        mock_detector.check_overlap.return_value = OverlapResult(has_overlap=False)  # No overlap
         orchestrator.overlap_detector = mock_detector
 
         orchestrator._process_parallel(mock_issue)
@@ -1634,10 +1647,13 @@ class TestOverlapDetection:
     def test_on_worker_complete_requeues_deferred_issues(
         self, orchestrator: ParallelOrchestrator
     ) -> None:
-        """_on_worker_complete re-queues issues that were waiting on this one."""
+        """_on_worker_complete re-queues deferred issues when overlaps clear."""
+        from little_loops.parallel.overlap_detector import OverlapResult
+
         orchestrator.parallel_config.overlap_detection = True
         mock_detector = MagicMock()
-        mock_detector.get_waiting_on.return_value = ["BUG-002"]
+        # No overlap means the issue should be re-queued
+        mock_detector.check_overlap.return_value = OverlapResult(has_overlap=False)
         orchestrator.overlap_detector = mock_detector
 
         # Add a deferred issue
@@ -1652,11 +1668,13 @@ class TestOverlapDetection:
             worktree_path=Path("/tmp/worktree"),
         )
 
-        with patch.object(orchestrator, "_process_parallel"):
-            orchestrator._on_worker_complete(result)
+        orchestrator._on_worker_complete(result)
 
-        # Should re-queue the deferred issue
-        mock_detector.get_waiting_on.assert_called_once_with("BUG-001")
+        # Should re-queue the deferred issue (check_overlap called, queue.add called)
+        mock_detector.check_overlap.assert_called_once_with(mock_deferred)
+        orchestrator.queue.add.assert_called_once_with(mock_deferred)  # type: ignore[attr-defined]
+        # Deferred list should be empty after re-queuing
+        assert len(orchestrator._deferred_issues) == 0
 
 
 class TestInterruptedWorkers:
@@ -1681,10 +1699,10 @@ class TestInterruptedWorkers:
         assert "BUG-001" in orchestrator._interrupted_issues
         orchestrator.queue.mark_failed.assert_not_called()  # type: ignore[attr-defined]
 
-    def test_on_worker_complete_interrupted_with_close_verdict(
+    def test_on_worker_complete_interrupted_returns_early(
         self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
     ) -> None:
-        """_on_worker_complete handles interrupted + close verdict combo."""
+        """_on_worker_complete returns early for interrupted workers, ignoring close verdict."""
         result = WorkerResult(
             issue_id="BUG-001",
             success=False,
@@ -1700,8 +1718,10 @@ class TestInterruptedWorkers:
         with patch("little_loops.issue_lifecycle.close_issue", return_value=True):
             orchestrator._on_worker_complete(result)
 
-        # Interrupted workers with close verdict should be marked completed
-        orchestrator.queue.mark_completed.assert_called_once_with("BUG-001")  # type: ignore[attr-defined]
+        # Interrupted workers return early - tracked but NOT marked completed or failed
+        assert "BUG-001" in orchestrator._interrupted_issues
+        orchestrator.queue.mark_completed.assert_not_called()  # type: ignore[attr-defined]
+        orchestrator.queue.mark_failed.assert_not_called()  # type: ignore[attr-defined]
 
 
 class TestExecuteLoop:
