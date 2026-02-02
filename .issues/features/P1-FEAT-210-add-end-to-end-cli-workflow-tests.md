@@ -4,8 +4,8 @@
 While unit tests exist for individual components, there are no true end-to-end tests that exercise complete CLI workflows from invocation to completion. E2E tests would validate the entire user journey.
 
 ## Current State
-- Unit tests: ~2,156 tests across 45 test files
-- E2E tests: None
+- Unit tests: 2,279 tests across 44 test files
+- E2E tests: None (only unit tests with @pytest.mark.integration on one file)
 - Gap: No validation of complete user workflows
 
 ## Proposed Workflows to Test
@@ -47,6 +47,12 @@ While unit tests exist for individual components, there are no true end-to-end t
 - Consider using subprocess to invoke actual CLI commands
 - Use CliRunner from Click for Click command testing
 - E2E tests should be in scripts/tests/integration/ or marked separately
+
+## Labels
+testing, cli, integration, quality
+
+## Status
+Ready
 
 ## Priority
 P1 - High: E2E tests catch integration issues that unit tests miss; critical for user-facing reliability.
