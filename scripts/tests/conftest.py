@@ -212,3 +212,84 @@ def sample_ready_issue_output_close() -> str:
 
 The reported issue has already been resolved in a previous commit.
 """
+
+
+# =============================================================================
+# FSM Loop Test Fixtures
+# =============================================================================
+
+
+@pytest.fixture
+def temp_project(tmp_path: Path) -> Path:
+    """Create a temporary project directory for loop tests."""
+    project_dir = tmp_path / "test_project"
+    project_dir.mkdir()
+    (project_dir / ".loops").mkdir()
+    return project_dir
+
+
+@pytest.fixture
+def valid_loop_file(temp_project: Path) -> Path:
+    """Create a valid loop YAML file for testing."""
+    loop_file = temp_project / ".loops" / "valid-loop.yaml"
+    loop_content = """
+name: test-loop
+initial: start
+states:
+  start:
+    action: echo "hello"
+    on_success: done
+  done:
+    terminal: true
+"""
+    loop_file.write_text(loop_content)
+    return loop_file
+
+
+@pytest.fixture
+def invalid_loop_file(temp_project: Path) -> Path:
+    """Create an invalid loop YAML file for testing."""
+    loop_file = temp_project / ".loops" / "invalid-loop.yaml"
+    loop_content = """
+name: test-loop
+initial: nonexistent
+states:
+  start:
+    action: echo "hello"
+    on_success: done
+  done:
+    terminal: true
+"""
+    loop_file.write_text(loop_content)
+    return loop_file
+
+
+@pytest.fixture
+def loops_dir(tmp_path: Path) -> Path:
+    """Create a .loops directory with test loop files."""
+    loops_dir = tmp_path / ".loops"
+    loops_dir.mkdir()
+    (loops_dir / "loop1.yaml").write_text("name: loop1\ninitial: start\nstates:\n  start:\n    terminal: true")
+    (loops_dir / "loop2.yaml").write_text("name: loop2\ninitial: start\nstates:\n  start:\n    terminal: true")
+    return loops_dir
+
+
+@pytest.fixture
+def events_file(tmp_path: Path) -> Path:
+    """Create an events JSONL file for history tests."""
+    events_path = tmp_path / "events.jsonl"
+    events = [
+        '{"timestamp": "2025-01-01T00:00:00", "state": "start", "action": "echo test"}',
+        '{"timestamp": "2025-01-01T00:01:00", "state": "done", "action": ""}',
+    ]
+    events_path.write_text("\n".join(events))
+    return events_path
+
+
+@pytest.fixture
+def many_events_file(tmp_path: Path) -> Path:
+    """Create an events JSONL file with 10 events for tail tests."""
+    events_path = tmp_path / "events.jsonl"
+    events = [f'{{"timestamp": "2025-01-01T00:0{i}:00", "state": "state{i}", "action": "action{i}"}}' for i in range(10)]
+    events_path.write_text("\n".join(events))
+    return events_path
