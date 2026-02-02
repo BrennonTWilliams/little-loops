@@ -872,8 +872,17 @@ class TestRunWithContinuation:
                 return first_result
             return second_result
 
+        # detect_context_handoff should return True first, then False
+        handoff_responses = [True, False]
+        handoff_index = [0]
+
+        def mock_handoff(stdout: str) -> bool:
+            idx = handoff_index[0]
+            handoff_index[0] += 1
+            return handoff_responses[idx] if idx < len(handoff_responses) else False
+
         with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
-            with patch("little_loops.issue_manager.detect_context_handoff", return_value=True):
+            with patch("little_loops.issue_manager.detect_context_handoff", side_effect=mock_handoff):
                 with patch("little_loops.issue_manager.read_continuation_prompt", return_value=continuation_prompt):
                     result = run_with_continuation("test command", mock_logger, max_continuations=3)
 
