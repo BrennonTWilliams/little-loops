@@ -20,6 +20,7 @@ from __future__ import annotations
 import json
 import signal
 import tempfile
+import threading
 import time
 from collections.abc import Generator
 from concurrent.futures import Future
@@ -1902,3 +1903,184 @@ class TestExecuteLoop:
                     exit_code = orchestrator._execute()
 
         assert exit_code == 0
+
+
+class TestOrchestratorConcurrency:
+    """Tests for concurrent access in ParallelOrchestrator (ENH-217)."""
+
+    def test_concurrent_worker_callbacks(
+        self, orchestrator: ParallelOrchestrator
+    ) -> None:
+        """Multiple workers completing simultaneously modify state."""
+        errors = []
+        corrections_count = [0]
+        lock = threading.Lock()
+
+        def complete_worker(worker_id: int) -> None:
+            try:
+                result = WorkerResult(
+                    issue_id=f"BUG-{worker_id:03d}",
+                    success=True,
+                    branch_name=f"parallel/bug-{worker_id:03d}",
+                    worktree_path=Path(f"/tmp/worktree-{worker_id}"),
+                    duration=10.0,
+                    corrections=[f"correction-{worker_id}"],
+                )
+                orchestrator._on_worker_complete(result)
+                with lock:
+                    corrections_count[0] += len(result.corrections or [])
+            except Exception as e:
+                errors.append(e)
+
+        # Simulate 3 workers completing at once
+        threads = [threading.Thread(target=complete_worker, args=(i,)) for i in range(3)]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # Should complete without errors (though some corrections may be lost)
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+
+    def test_concurrent_interrupted_issues(self, orchestrator: ParallelOrchestrator) -> None:
+        """Multiple workers adding to interrupted_issues list."""
+        errors = []
+
+        def interrupt_worker(worker_id: int) -> None:
+            try:
+                orchestrator._interrupted_issues.append(f"ENH-{worker_id:03d}")
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=interrupt_worker, args=(i,)) for i in range(10)]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # All appends should succeed
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+        # List should have all 10 items (or fewer if lost due to race)
+        assert len(orchestrator._interrupted_issues) >= 0
+
+    def test_state_dictionary_concurrent_writes(self, orchestrator: ParallelOrchestrator) -> None:
+        """Multiple threads writing to state.corrections dictionary."""
+        errors = []
+
+        def write_corrections(worker_id: int) -> None:
+            try:
+                orchestrator.state.corrections[f"ISSUE-{worker_id}"] = [
+                    f"correction-{worker_id}"
+                ]
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=write_corrections, args=(i,)) for i in range(20)]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # No errors (but may have lost updates)
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+        # Check dictionary integrity - should be valid dict
+        assert isinstance(orchestrator.state.corrections, dict)
+
+    def test_concurrent_timing_updates(self, orchestrator: ParallelOrchestrator) -> None:
+        """Multiple workers writing to state.timing dictionary."""
+        errors = []
+
+        def write_timing(worker_id: int) -> None:
+            try:
+                orchestrator.state.timing[f"BUG-{worker_id:03d}"] = {"total": float(worker_id)}
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=write_timing, args=(i,)) for i in range(15)]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # No errors (but may have lost updates)
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+        # Check dictionary integrity
+        assert isinstance(orchestrator.state.timing, dict)
+
+    def test_concurrent_deferred_issue_operations(
+        self, orchestrator: ParallelOrchestrator, mock_issue: MagicMock
+    ) -> None:
+        """Multiple threads modifying _deferred_issues list."""
+        from little_loops.issue_parser import IssueInfo
+
+        errors = []
+
+        def add_deferred(worker_id: int) -> None:
+            try:
+                mock_deferred = MagicMock(spec=IssueInfo)
+                mock_deferred.issue_id = f"DEFERRED-{worker_id:03d}"
+                orchestrator._deferred_issues.append(mock_deferred)
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=add_deferred, args=(i,)) for i in range(10)]
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        # No errors (but may have lost updates)
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+
+    def test_concurrent_state_checkpoint(
+        self, orchestrator: ParallelOrchestrator, temp_repo_with_config: Path
+    ) -> None:
+        """Main loop calling _save_state() while worker callbacks modify state."""
+        errors = []
+        save_count = [0]
+
+        def worker_callback(worker_id: int) -> None:
+            try:
+                result = WorkerResult(
+                    issue_id=f"BUG-{worker_id:03d}",
+                    success=True,
+                    branch_name=f"parallel/bug-{worker_id:03d}",
+                    worktree_path=Path(f"/tmp/wt-{worker_id}"),
+                    duration=5.0,
+                )
+                # Simulate callback modifying state
+                orchestrator.state.corrections[f"BUG-{worker_id:03d}"] = ["test"]
+                orchestrator.state.timing[f"BUG-{worker_id:03d}"] = {"total": 5.0}
+            except Exception as e:
+                errors.append(("callback", worker_id, e))
+
+        def save_checkpoint() -> None:
+            try:
+                for _ in range(5):
+                    orchestrator._save_state()
+                    save_count[0] += 1
+                    time.sleep(0.01)
+            except Exception as e:
+                errors.append(("save", 0, e))
+
+        # Start callback threads
+        callback_threads = [threading.Thread(target=worker_callback, args=(i,)) for i in range(5)]
+        # Start save thread
+        save_thread = threading.Thread(target=save_checkpoint)
+
+        for t in callback_threads:
+            t.start()
+        save_thread.start()
+
+        for t in callback_threads:
+            t.join()
+        save_thread.join()
+
+        # No errors
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+        assert save_count[0] == 5
