@@ -4,7 +4,7 @@
 pytest-benchmark is installed in the development environment but unused. Performance benchmarking would establish baselines and catch performance regressions.
 
 ## Current State
-- pytest-benchmark: Installed but unused
+- pytest-benchmark: Not installed (needs to be added to dev dependencies)
 - Performance tests: None
 - Performance tracking: No baseline measurements
 
@@ -49,8 +49,12 @@ pytest-benchmark is installed in the development environment but unused. Perform
 P2 - Medium: Performance tracking is valuable but not critical; nice-to-have for long-term health.
 
 ## Related Files
-- scripts/pyproject.toml (pytest-benchmark already configured)
+- scripts/pyproject.toml (add pytest-benchmark to dev dependencies)
 - scripts/tests/ (test structure)
 
 ## Audit Source
 Test Coverage Audit - 2026-02-01
+
+## Verification Notes
+- **Verified**: 2026-02-05
+- **Correction**: Original issue incorrectly stated pytest-benchmark was installed. Verified against pyproject.toml - pytest-benchmark is not in dev dependencies and needs to be added as part of this enhancement.
