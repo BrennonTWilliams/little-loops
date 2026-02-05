@@ -1,6 +1,5 @@
 """Tests for signal_detector module."""
 
-
 from little_loops.fsm.signal_detector import (
     ERROR_SIGNAL,
     HANDOFF_SIGNAL,

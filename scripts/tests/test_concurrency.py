@@ -312,9 +312,7 @@ class TestPathOverlap:
         # One overlap is enough
         assert manager._scopes_overlap([str(src), str(docs)], [str(tests), str(src)])
 
-    def test_scopes_no_overlap_all_disjoint(
-        self, manager: LockManager, tmp_path: Path
-    ) -> None:
+    def test_scopes_no_overlap_all_disjoint(self, manager: LockManager, tmp_path: Path) -> None:
         """Scopes don't overlap if all paths are disjoint."""
         src = tmp_path / "src"
         tests = tmp_path / "tests"

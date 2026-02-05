@@ -95,14 +95,10 @@ def issue_filename(draw: st.DrawFn) -> str:
     - Extremely long names
     """
     # Random structure
-    structure = draw(
-        st.sampled_from(["standard", "no_priority", "only_id", "malformed"])
-    )
+    structure = draw(st.sampled_from(["standard", "no_priority", "only_id", "malformed"]))
 
     if structure == "standard":
-        priority = draw(
-            st.sampled_from(["P0", "P1", "P2", "P3", "P4", "P5", "PX", "P999"])
-        )
+        priority = draw(st.sampled_from(["P0", "P1", "P2", "P3", "P4", "P5", "PX", "P999"]))
         issue_type = draw(st.sampled_from(["BUG", "FEAT", "ENH", "XXX"]))
         number = draw(st.integers(min_value=0, max_value=9999))
         title = draw(st.text(min_size=0, max_size=100))
@@ -167,9 +163,7 @@ class TestIssueParserFuzz:
         deadline=None,
         suppress_health_check=list(HealthCheck),
     )
-    def test_parse_with_various_filenames(
-        self, filename: str, content: str
-    ) -> None:
+    def test_parse_with_various_filenames(self, filename: str, content: str) -> None:
         """Filename parsing should handle malformed names gracefully."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Sanitize filename for filesystem
@@ -230,12 +224,8 @@ class TestIssueParserFuzz:
 
     @pytest.mark.slow
     @given(
-        blocked_by=st.lists(
-            st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=100
-        ),
-        blocks=st.lists(
-            st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=100
-        ),
+        blocked_by=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=100),
+        blocks=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=100),
     )
     @settings(max_examples=200)
     def test_dependency_parsing_handles_lists(

@@ -76,12 +76,8 @@ class TestIssueInfoProperties:
         priority=st.sampled_from(["P0", "P1", "P2", "P3", "P4", "P5"]),
         issue_id=st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True),
         title=st.text(min_size=1, max_size=200),
-        blocked_by=st.lists(
-            st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5
-        ),
-        blocks=st.lists(
-            st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5
-        ),
+        blocked_by=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
+        blocks=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
         discovered_by=st.one_of(st.none(), st.text(min_size=1, max_size=50)),
     )
     @settings(max_examples=200)
@@ -281,12 +277,8 @@ class TestIssueInfoWithProductImpactProperties:
         priority=st.sampled_from(["P0", "P1", "P2", "P3", "P4", "P5"]),
         issue_id=st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True),
         title=st.text(min_size=1, max_size=200),
-        blocked_by=st.lists(
-            st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5
-        ),
-        blocks=st.lists(
-            st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5
-        ),
+        blocked_by=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
+        blocks=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
         discovered_by=st.one_of(st.none(), st.text(min_size=1, max_size=50)),
         goal_alignment=st.one_of(st.none(), st.text(min_size=1, max_size=50)),
         persona_impact=st.one_of(st.none(), st.text(min_size=1, max_size=50)),
@@ -349,12 +341,8 @@ class TestIssueInfoWithProductImpactProperties:
         priority=st.sampled_from(["P0", "P1", "P2", "P3", "P4", "P5"]),
         issue_id=st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True),
         title=st.text(min_size=1, max_size=200),
-        blocked_by=st.lists(
-            st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5
-        ),
-        blocks=st.lists(
-            st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5
-        ),
+        blocked_by=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
+        blocks=st.lists(st.from_regex(r"[A-Z]{2,4}-\d{1,4}", fullmatch=True), max_size=5),
         discovered_by=st.one_of(st.none(), st.text(min_size=1, max_size=50)),
     )
     @settings(max_examples=200)

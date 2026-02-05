@@ -5,6 +5,7 @@ Tests cover:
 - parse_issue_ids() utility function
 - Help text generation
 """
+
 import argparse
 from pathlib import Path
 
@@ -198,14 +199,20 @@ class TestAddCommonAutoArgs:
         """Adds resume, dry-run, max-issues, only, skip, config."""
         parser = argparse.ArgumentParser()
         add_common_auto_args(parser)
-        args = parser.parse_args([
-            "--resume",
-            "--dry-run",
-            "--max-issues", "5",
-            "--only", "BUG-001",
-            "--skip", "BUG-002",
-            "--config", "/path",
-        ])
+        args = parser.parse_args(
+            [
+                "--resume",
+                "--dry-run",
+                "--max-issues",
+                "5",
+                "--only",
+                "BUG-001",
+                "--skip",
+                "BUG-002",
+                "--config",
+                "/path",
+            ]
+        )
         assert args.resume is True
         assert args.dry_run is True
         assert args.max_issues == 5
@@ -221,16 +228,23 @@ class TestAddCommonParallelArgs:
         """Adds dry-run, resume, max-workers, timeout, quiet, only, skip, config."""
         parser = argparse.ArgumentParser()
         add_common_parallel_args(parser)
-        args = parser.parse_args([
-            "--dry-run",
-            "--resume",
-            "--max-workers", "3",
-            "--timeout", "1800",
-            "--quiet",
-            "--only", "BUG-001",
-            "--skip", "BUG-002",
-            "--config", "/path",
-        ])
+        args = parser.parse_args(
+            [
+                "--dry-run",
+                "--resume",
+                "--max-workers",
+                "3",
+                "--timeout",
+                "1800",
+                "--quiet",
+                "--only",
+                "BUG-001",
+                "--skip",
+                "BUG-002",
+                "--config",
+                "/path",
+            ]
+        )
         assert args.dry_run is True
         assert args.resume is True
         assert args.max_workers == 3

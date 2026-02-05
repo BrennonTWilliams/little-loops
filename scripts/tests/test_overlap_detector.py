@@ -1,9 +1,7 @@
 """Tests for overlap detector."""
 
 from pathlib import Path
-from unittest.mock import MagicMock, Mock, patch
-
-import pytest
+from unittest.mock import Mock
 
 from little_loops.issue_parser import IssueInfo
 from little_loops.parallel.overlap_detector import OverlapDetector, OverlapResult
@@ -85,7 +83,7 @@ class TestOverlapDetector:
         issue2 = make_issue("ENH-002", "Changes to sidebar component")
 
         detector.register_issue(issue1)
-        result = detector.check_overlap(issue2)
+        detector.check_overlap(issue2)
 
         # Note: This depends on whether "sidebar" is extracted from "Changes to sidebar component"
         # The scope pattern requires "scope:" or similar prefix

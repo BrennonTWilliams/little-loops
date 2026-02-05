@@ -88,9 +88,7 @@ class TestQueuedIssue:
         assert queued.issue_info == sample_issue_info
         assert queued.timestamp == timestamp
 
-    def test_timestamp_defaults_to_current_time(
-        self, sample_issue_info: IssueInfo
-    ) -> None:
+    def test_timestamp_defaults_to_current_time(self, sample_issue_info: IssueInfo) -> None:
         """QueuedIssue timestamp defaults to current time."""
         before = time.time()
         queued = QueuedIssue(priority=1, issue_info=sample_issue_info)
@@ -109,9 +107,7 @@ class TestQueuedIssue:
         assert p0_queued < p1_queued
         assert not p1_queued < p0_queued
 
-    def test_lt_same_priority_uses_timestamp(
-        self, sample_issue_info: IssueInfo
-    ) -> None:
+    def test_lt_same_priority_uses_timestamp(self, sample_issue_info: IssueInfo) -> None:
         """Same priority uses timestamp for ordering (FIFO)."""
         earlier = QueuedIssue(priority=1, issue_info=sample_issue_info, timestamp=100.0)
         later = QueuedIssue(priority=1, issue_info=sample_issue_info, timestamp=200.0)
@@ -119,9 +115,7 @@ class TestQueuedIssue:
         assert earlier < later
         assert not later < earlier
 
-    def test_lt_same_priority_same_timestamp(
-        self, sample_issue_info: IssueInfo
-    ) -> None:
+    def test_lt_same_priority_same_timestamp(self, sample_issue_info: IssueInfo) -> None:
         """Same priority and timestamp compares as not less than."""
         q1 = QueuedIssue(priority=1, issue_info=sample_issue_info, timestamp=100.0)
         q2 = QueuedIssue(priority=1, issue_info=sample_issue_info, timestamp=100.0)
@@ -393,9 +387,7 @@ class TestMergeStatus:
 class TestMergeRequest:
     """Tests for MergeRequest dataclass."""
 
-    def test_creation_with_required_fields(
-        self, sample_worker_result: WorkerResult
-    ) -> None:
+    def test_creation_with_required_fields(self, sample_worker_result: WorkerResult) -> None:
         """MergeRequest can be created with only worker_result."""
         before = time.time()
         request = MergeRequest(worker_result=sample_worker_result)
@@ -407,9 +399,7 @@ class TestMergeRequest:
         assert request.error is None
         assert before <= request.queued_at <= after
 
-    def test_creation_with_all_fields(
-        self, sample_worker_result: WorkerResult
-    ) -> None:
+    def test_creation_with_all_fields(self, sample_worker_result: WorkerResult) -> None:
         """MergeRequest can be created with all fields."""
         request = MergeRequest(
             worker_result=sample_worker_result,
@@ -442,9 +432,7 @@ class TestMergeRequest:
         assert result["queued_at"] == 500.0
         assert result["worker_result"]["issue_id"] == "BUG-001"
 
-    def test_to_dict_status_serialized_as_value(
-        self, sample_worker_result: WorkerResult
-    ) -> None:
+    def test_to_dict_status_serialized_as_value(self, sample_worker_result: WorkerResult) -> None:
         """Status enum is serialized as its string value."""
         request = MergeRequest(
             worker_result=sample_worker_result,

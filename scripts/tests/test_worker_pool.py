@@ -858,7 +858,9 @@ class TestActiveWorktreeProtection:
             # Check active worktree logic
             with worker_pool._process_lock:
                 if path in worker_pool._active_worktrees:
-                    mock_logger.warning(f"Skipping cleanup of {path.name}: worktree is in active use")
+                    mock_logger.warning(
+                        f"Skipping cleanup of {path.name}: worktree is in active use"
+                    )
                     return
             # For inactive, simulate cleanup
             if path.exists():
@@ -908,9 +910,7 @@ class TestActiveWorktreeProtection:
                     with patch.object(
                         worker_pool, "_get_changed_files", return_value=["src/fix.py"]
                     ):
-                        with patch.object(
-                            worker_pool, "_detect_main_repo_leaks", return_value=[]
-                        ):
+                        with patch.object(worker_pool, "_detect_main_repo_leaks", return_value=[]):
                             worker_pool._process_issue(mock_issue)
 
         # Worktree should have been registered during processing

@@ -1287,9 +1287,7 @@ class TestLifecycleCommitEdgeCases:
         # Mock git status to return empty
         def mock_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             if "status" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, returncode=0, stdout="", stderr=""
-                )
+                return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
             return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
 
         with patch.object(coordinator._git_lock, "run", side_effect=mock_run):
@@ -1725,7 +1723,6 @@ class TestThreadLifecycle:
         temp_git_repo: Path,
     ) -> None:
         """Should wait for merge loop to complete when wait=True."""
-        import time
 
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
         coordinator.start()
@@ -1813,10 +1810,7 @@ class TestIsIndexError:
     ) -> None:
         """Should detect 'need to resolve your current index first' error."""
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
-        assert (
-            coordinator._is_index_error("you need to resolve your current index first")
-            is True
-        )
+        assert coordinator._is_index_error("you need to resolve your current index first") is True
 
     def test_detects_partial_commit_during_merge_error(
         self,
@@ -1827,10 +1821,7 @@ class TestIsIndexError:
         """Should detect 'cannot do a partial commit during a merge' error."""
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
         assert (
-            coordinator._is_index_error(
-                "fatal: cannot do a partial commit during a merge"
-            )
-            is True
+            coordinator._is_index_error("fatal: cannot do a partial commit during a merge") is True
         )
 
     def test_detects_not_concluded_merge_error(
@@ -1841,10 +1832,7 @@ class TestIsIndexError:
     ) -> None:
         """Should detect 'you have not concluded your merge' error."""
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
-        assert (
-            coordinator._is_index_error("error: you have not concluded your merge")
-            is True
-        )
+        assert coordinator._is_index_error("error: you have not concluded your merge") is True
 
     def test_does_not_match_unrelated_error(
         self,
@@ -2103,9 +2091,7 @@ class TestGitOperationFailures:
         test_file.write_text("modified")
 
         # Mock git_lock.run to fail stash
-        def mock_run(
-            cmd: list[str], **kwargs: object
-        ) -> subprocess.CompletedProcess[str]:
+        def mock_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             if "stash" in cmd:
                 return subprocess.CompletedProcess(
                     cmd, returncode=1, stdout="", stderr="stash failed"
@@ -2233,13 +2219,9 @@ class TestGitOperationFailures:
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
 
         # Mock to fail
-        def mock_run(
-            cmd: list[str], **kwargs: object
-        ) -> subprocess.CompletedProcess[str]:
+        def mock_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
             if "reset" in cmd and "--hard" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, returncode=1, stderr="reset failed"
-                )
+                return subprocess.CompletedProcess(cmd, returncode=1, stderr="reset failed")
             return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
 
         with patch.object(coordinator._git_lock, "run", side_effect=mock_run):
@@ -2331,9 +2313,7 @@ class TestLifecycleFileMoveEdgeCases:
         """Should handle rename entry with malformed parts after splitting."""
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
         # Malformed parts after split - returns False
-        assert (
-            coordinator._is_lifecycle_file_move("R  weird -> format -> here") is False
-        )
+        assert coordinator._is_lifecycle_file_move("R  weird -> format -> here") is False
 
 
 class TestCleanupWorktreeFallback:

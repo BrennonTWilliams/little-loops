@@ -1456,9 +1456,7 @@ class TestProcessParallel:
 class TestShutdownHandling:
     """Tests for graceful shutdown signal handling edge cases."""
 
-    def test_signal_handler_idempotent(
-        self, orchestrator: ParallelOrchestrator
-    ) -> None:
+    def test_signal_handler_idempotent(self, orchestrator: ParallelOrchestrator) -> None:
         """_signal_handler is idempotent - can be called multiple times."""
         orchestrator._signal_handler(signal.SIGINT, None)
         orchestrator._signal_handler(signal.SIGTERM, None)
@@ -1542,9 +1540,7 @@ class TestWorkerPoolEdgeCases:
 
         orchestrator.worker_pool.terminate_all_processes.assert_called_once()  # type: ignore[attr-defined]
 
-    def test_wait_for_completion_waits_for_merges(
-        self, orchestrator: ParallelOrchestrator
-    ) -> None:
+    def test_wait_for_completion_waits_for_merges(self, orchestrator: ParallelOrchestrator) -> None:
         """_wait_for_completion waits for pending merges after workers."""
         type(orchestrator.worker_pool).active_count = property(lambda self: 0)  # type: ignore[method-assign,assignment]
 
@@ -1908,9 +1904,7 @@ class TestExecuteLoop:
 class TestOrchestratorConcurrency:
     """Tests for concurrent access in ParallelOrchestrator (ENH-217)."""
 
-    def test_concurrent_worker_callbacks(
-        self, orchestrator: ParallelOrchestrator
-    ) -> None:
+    def test_concurrent_worker_callbacks(self, orchestrator: ParallelOrchestrator) -> None:
         """Multiple workers completing simultaneously modify state."""
         errors = []
         corrections_count = [0]
@@ -1971,9 +1965,7 @@ class TestOrchestratorConcurrency:
 
         def write_corrections(worker_id: int) -> None:
             try:
-                orchestrator.state.corrections[f"ISSUE-{worker_id}"] = [
-                    f"correction-{worker_id}"
-                ]
+                orchestrator.state.corrections[f"ISSUE-{worker_id}"] = [f"correction-{worker_id}"]
             except Exception as e:
                 errors.append(e)
 
@@ -2046,7 +2038,8 @@ class TestOrchestratorConcurrency:
 
         def worker_callback(worker_id: int) -> None:
             try:
-                result = WorkerResult(
+                # Create WorkerResult to verify it doesn't raise during state modification
+                _ = WorkerResult(
                     issue_id=f"BUG-{worker_id:03d}",
                     success=True,
                     branch_name=f"parallel/bug-{worker_id:03d}",

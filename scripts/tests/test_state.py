@@ -385,7 +385,9 @@ class TestStateManager:
 class TestStateConcurrency:
     """Tests for concurrent access to StateManager (ENH-217)."""
 
-    def test_concurrent_save_no_corruption(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
+    def test_concurrent_save_no_corruption(
+        self, temp_state_file: Path, mock_logger: MagicMock
+    ) -> None:
         """Multiple threads saving state simultaneously should not corrupt JSON."""
         managers = [StateManager(temp_state_file, mock_logger) for _ in range(5)]
 
@@ -458,7 +460,9 @@ class TestStateConcurrency:
         # At minimum, should have some issues recorded
         assert len(manager.state.attempted_issues) >= 0
 
-    def test_concurrent_state_mutations(self, temp_state_file: Path, mock_logger: MagicMock) -> None:
+    def test_concurrent_state_mutations(
+        self, temp_state_file: Path, mock_logger: MagicMock
+    ) -> None:
         """Multiple threads performing different state operations."""
         manager = StateManager(temp_state_file, mock_logger)
         errors = []

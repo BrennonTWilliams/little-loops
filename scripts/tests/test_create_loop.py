@@ -277,7 +277,9 @@ class TestInvariantsParadigmGeneration:
         spec = {
             "paradigm": "invariants",
             "name": "continuous-quality",
-            "constraints": [{"name": "lint", "check": "ruff check src/", "fix": "ruff check --fix src/"}],
+            "constraints": [
+                {"name": "lint", "check": "ruff check src/", "fix": "ruff check --fix src/"}
+            ],
             "maintain": True,
             "max_iterations": 100,
         }
@@ -292,7 +294,9 @@ class TestInvariantsParadigmGeneration:
         spec = {
             "paradigm": "invariants",
             "name": "one-shot-quality",
-            "constraints": [{"name": "lint", "check": "ruff check src/", "fix": "ruff check --fix src/"}],
+            "constraints": [
+                {"name": "lint", "check": "ruff check src/", "fix": "ruff check --fix src/"}
+            ],
             "maintain": False,
         }
         fsm = compile_paradigm(spec)
@@ -642,7 +646,9 @@ max_iterations: 10
 
         assert result == 0
 
-    def test_valid_invariants_loop_file(self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_valid_invariants_loop_file(
+        self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Valid invariants loop file passes ll-loop validate."""
         loop_content = """
 paradigm: invariants
@@ -664,7 +670,9 @@ max_iterations: 20
 
         assert result == 0
 
-    def test_valid_convergence_loop_file(self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_valid_convergence_loop_file(
+        self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Valid convergence loop file passes ll-loop validate."""
         loop_content = """
 paradigm: convergence
@@ -685,7 +693,9 @@ max_iterations: 20
 
         assert result == 0
 
-    def test_valid_imperative_loop_file(self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_valid_imperative_loop_file(
+        self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Valid imperative loop file passes ll-loop validate."""
         loop_content = """
 paradigm: imperative

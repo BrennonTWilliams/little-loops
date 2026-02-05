@@ -5,8 +5,6 @@ Tests concurrent access, special character handling, and race conditions.
 
 import json
 import subprocess
-import tempfile
-import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
@@ -160,7 +158,7 @@ class TestUserPromptCheck:
             "Multi\nline\nprompt",
             "Prompt with `backticks` and $(subshell)",
             "Prompt with ; semicolon && and ||",
-            'Prompt with "quotes" and \'apostrophes\'',
+            "Prompt with \"quotes\" and 'apostrophes'",
         ],
     )
     def test_special_characters_no_injection(
@@ -208,9 +206,7 @@ class TestDuplicateIssueId:
     @pytest.fixture
     def hook_script(self) -> Path:
         """Path to check-duplicate-issue-id.sh."""
-        return (
-            Path(__file__).parent.parent.parent / "hooks/scripts/check-duplicate-issue-id.sh"
-        )
+        return Path(__file__).parent.parent.parent / "hooks/scripts/check-duplicate-issue-id.sh"
 
     def test_concurrent_duplicate_detection(self, hook_script: Path, tmp_path: Path):
         """Test duplicate check with concurrent Write attempts."""

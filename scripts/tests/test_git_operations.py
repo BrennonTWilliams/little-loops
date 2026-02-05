@@ -186,9 +186,7 @@ class TestGetUntrackedFiles:
         ],
         ids=["empty", "single", "multiple", "quoted", "modified_only"],
     )
-    def test_various_outputs(
-        self, tmp_path: Path, stdout: str, expected: list[str]
-    ) -> None:
+    def test_various_outputs(self, tmp_path: Path, stdout: str, expected: list[str]) -> None:
         """Parametrized test for various git output scenarios."""
         with patch("little_loops.git_operations.subprocess.run") as mock_run:
             mock_run.return_value = subprocess.CompletedProcess(

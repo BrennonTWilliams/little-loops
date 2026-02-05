@@ -60,7 +60,7 @@ class TestProductGoals:
     @pytest.fixture
     def valid_goals_content(self) -> str:
         """Valid goals file content."""
-        return '''---
+        return """---
 version: "1.0"
 persona:
   id: developer
@@ -78,12 +78,12 @@ priorities:
 ## About This Project
 
 A tool to help developers work faster.
-'''
+"""
 
     @pytest.fixture
     def minimal_goals_content(self) -> str:
         """Minimal valid goals file content."""
-        return '''---
+        return """---
 version: "1.0"
 persona:
   id: user
@@ -95,7 +95,7 @@ priorities:
 ---
 
 # Vision
-'''
+"""
 
     @pytest.fixture
     def temp_dir(self) -> Generator[Path, None, None]:
@@ -121,9 +121,7 @@ priorities:
         assert goals.priorities[1].name == "Reduce build times"
         assert "# Product Vision" in goals.raw_content
 
-    def test_from_file_minimal(
-        self, temp_dir: Path, minimal_goals_content: str
-    ) -> None:
+    def test_from_file_minimal(self, temp_dir: Path, minimal_goals_content: str) -> None:
         """Test parsing minimal ll-goals.md with only required fields."""
         goals_file = temp_dir / "ll-goals.md"
         goals_file.write_text(minimal_goals_content)
@@ -211,9 +209,7 @@ persona:
 
         assert goals is None
 
-    def test_is_valid_true(
-        self, temp_dir: Path, valid_goals_content: str
-    ) -> None:
+    def test_is_valid_true(self, temp_dir: Path, valid_goals_content: str) -> None:
         """Test is_valid returns True for complete goals."""
         goals_file = temp_dir / "ll-goals.md"
         goals_file.write_text(valid_goals_content)

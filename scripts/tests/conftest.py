@@ -269,8 +269,12 @@ def loops_dir(tmp_path: Path) -> Path:
     """Create a .loops directory with test loop files."""
     loops_dir = tmp_path / ".loops"
     loops_dir.mkdir()
-    (loops_dir / "loop1.yaml").write_text("name: loop1\ninitial: start\nstates:\n  start:\n    terminal: true")
-    (loops_dir / "loop2.yaml").write_text("name: loop2\ninitial: start\nstates:\n  start:\n    terminal: true")
+    (loops_dir / "loop1.yaml").write_text(
+        "name: loop1\ninitial: start\nstates:\n  start:\n    terminal: true"
+    )
+    (loops_dir / "loop2.yaml").write_text(
+        "name: loop2\ninitial: start\nstates:\n  start:\n    terminal: true"
+    )
     return loops_dir
 
 
@@ -290,6 +294,9 @@ def events_file(tmp_path: Path) -> Path:
 def many_events_file(tmp_path: Path) -> Path:
     """Create an events JSONL file with 10 events for tail tests."""
     events_path = tmp_path / "events.jsonl"
-    events = [f'{{"timestamp": "2025-01-01T00:0{i}:00", "state": "state{i}", "action": "action{i}"}}' for i in range(10)]
+    events = [
+        f'{{"timestamp": "2025-01-01T00:0{i}:00", "state": "state{i}", "action": "action{i}"}}'
+        for i in range(10)
+    ]
     events_path.write_text("\n".join(events))
     return events_path

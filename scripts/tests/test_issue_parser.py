@@ -960,9 +960,7 @@ class TestDependencyParsing:
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P1-BUG-002-test.md"
-        issue_file.write_text(
-            load_fixture(fixtures_dir, "issues", "bug-with-multiple-blockers.md")
-        )
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-multiple-blockers.md"))
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
@@ -1075,9 +1073,7 @@ class TestDependencyParsing:
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
         issue_file = bugs_dir / "P1-BUG-006-test.md"
-        issue_file.write_text(
-            load_fixture(fixtures_dir, "issues", "bug-with-asterisk-bullets.md")
-        )
+        issue_file.write_text(load_fixture(fixtures_dir, "issues", "bug-with-asterisk-bullets.md"))
 
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)

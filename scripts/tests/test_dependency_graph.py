@@ -536,7 +536,7 @@ class TestGetExecutionWaves:
         # Wave 1: A only
         assert [i.issue_id for i in waves[0]] == ["FEAT-001"]
         # Wave 2: B and C (sorted by priority)
-        assert set(i.issue_id for i in waves[1]) == {"FEAT-002", "FEAT-003"}
+        assert {i.issue_id for i in waves[1]} == {"FEAT-002", "FEAT-003"}
         # Wave 3: D only
         assert [i.issue_id for i in waves[2]] == ["FEAT-004"]
 

@@ -912,9 +912,7 @@ An old issue that was fixed before fix tracking was added.
         """Test that evidence is populated from issue content."""
         config = BRConfig(temp_project_dir)
 
-        classification, evidence = detect_regression_or_duplicate(
-            config, completed_issue_with_fix
-        )
+        classification, evidence = detect_regression_or_duplicate(config, completed_issue_with_fix)
 
         # Fix commit SHA should be extracted from the issue content
         assert evidence.fix_commit_sha == "abc123def456789"

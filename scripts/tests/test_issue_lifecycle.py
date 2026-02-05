@@ -757,18 +757,16 @@ class TestClassifyFailure:
         self, error_output: str, expected_type: str, expected_reason_contains: str
     ) -> None:
         """Test that failure patterns are classified correctly."""
-        from little_loops.issue_lifecycle import FailureType, classify_failure
 
         failure_type, reason = classify_failure(error_output, 1)
         expected = FailureType[expected_type]
         assert failure_type == expected, f"Expected {expected} for: {error_output[:50]}"
-        assert (
-            expected_reason_contains in reason.lower()
-        ), f"Expected '{expected_reason_contains}' in: {reason}"
+        assert expected_reason_contains in reason.lower(), (
+            f"Expected '{expected_reason_contains}' in: {reason}"
+        )
 
     def test_classify_failure_case_insensitive(self) -> None:
         """Test that pattern matching is case insensitive."""
-        from little_loops.issue_lifecycle import FailureType, classify_failure
 
         # Uppercase
         failure_type, _ = classify_failure("RATE LIMIT EXCEEDED", 1)
@@ -780,7 +778,6 @@ class TestClassifyFailure:
 
     def test_classify_failure_empty_output(self) -> None:
         """Test classification of empty error output."""
-        from little_loops.issue_lifecycle import FailureType, classify_failure
 
         failure_type, reason = classify_failure("", 1)
         assert failure_type == FailureType.REAL
@@ -788,7 +785,6 @@ class TestClassifyFailure:
 
     def test_classify_failure_unknown_error(self) -> None:
         """Test classification of unknown error types."""
-        from little_loops.issue_lifecycle import FailureType, classify_failure
 
         failure_type, reason = classify_failure("Some random error message", 1)
         assert failure_type == FailureType.REAL
@@ -796,7 +792,6 @@ class TestClassifyFailure:
 
     def test_classify_failure_multiline_output(self) -> None:
         """Test pattern matching works on multiline output."""
-        from little_loops.issue_lifecycle import FailureType, classify_failure
 
         error_output = """Some context here
 Traceback (most recent call last):

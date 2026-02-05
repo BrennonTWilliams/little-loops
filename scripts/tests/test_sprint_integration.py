@@ -205,8 +205,7 @@ class TestMultiWaveExecution:
 
         # FEAT-001: Blocked by BUG-001 (Wave 2)
         (issues_dir / "features" / "P2-FEAT-001-feature-one.md").write_text(
-            "# FEAT-001: Feature One\n\n## Summary\nDepends on BUG-001.\n\n"
-            "## Blocked By\n- BUG-001"
+            "# FEAT-001: Feature One\n\n## Summary\nDepends on BUG-001.\n\n## Blocked By\n- BUG-001"
         )
 
         # FEAT-002: Blocked by BUG-002 and FEAT-001 (Wave 3)
@@ -280,9 +279,7 @@ issues:
             executed_issues.append(info.issue_id)
             from little_loops.issue_manager import IssueProcessingResult
 
-            return IssueProcessingResult(
-                success=True, duration=1.0, issue_id=info.issue_id
-            )
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
             "little_loops.issue_manager.process_issue_inplace",
@@ -350,9 +347,7 @@ issues:
         def mock_process_inplace(info: Any, **kwargs: Any) -> Any:
             from little_loops.issue_manager import IssueProcessingResult
 
-            return IssueProcessingResult(
-                success=True, duration=1.0, issue_id=info.issue_id
-            )
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
             "little_loops.issue_manager.process_issue_inplace",
@@ -511,9 +506,7 @@ issues:
         def mock_process_fail(info: Any, **kwargs: Any) -> Any:
             from little_loops.issue_manager import IssueProcessingResult
 
-            return IssueProcessingResult(
-                success=False, duration=1.0, issue_id=info.issue_id
-            )
+            return IssueProcessingResult(success=False, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
             "little_loops.issue_manager.process_issue_inplace",
@@ -590,8 +583,7 @@ issues:
             "# BUG-001: First\n\n## Summary\nFirst issue."
         )
         (issues_dir / "bugs" / "P1-BUG-002-second.md").write_text(
-            "# BUG-002: Second\n\n## Summary\nSecond issue.\n\n"
-            "## Blocked By\n- BUG-001"
+            "# BUG-002: Second\n\n## Summary\nSecond issue.\n\n## Blocked By\n- BUG-001"
         )
 
         sprints_dir = tmp_path / ".sprints"
@@ -616,9 +608,7 @@ issues:
             started_at="2026-01-29T10:00:00",
             last_checkpoint="2026-01-29T10:05:00",
         )
-        (tmp_path / ".sprint-state.json").write_text(
-            json.dumps(existing_state.to_dict(), indent=2)
-        )
+        (tmp_path / ".sprint-state.json").write_text(json.dumps(existing_state.to_dict(), indent=2))
 
         executed_issues: list[str] = []
 
@@ -626,9 +616,7 @@ issues:
             executed_issues.append(info.issue_id)
             from little_loops.issue_manager import IssueProcessingResult
 
-            return IssueProcessingResult(
-                success=True, duration=1.0, issue_id=info.issue_id
-            )
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
             "little_loops.issue_manager.process_issue_inplace",
@@ -871,9 +859,7 @@ issues:
             inplace_called.append(info.issue_id)
             from little_loops.issue_manager import IssueProcessingResult
 
-            return IssueProcessingResult(
-                success=True, duration=1.0, issue_id=info.issue_id
-            )
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
             "little_loops.issue_manager.process_issue_inplace",
@@ -1022,9 +1008,7 @@ issues:
             inplace_called.append(info.issue_id)
             from little_loops.issue_manager import IssueProcessingResult
 
-            return IssueProcessingResult(
-                success=True, duration=1.0, issue_id=info.issue_id
-            )
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
             "little_loops.issue_manager.process_issue_inplace",

@@ -19,6 +19,8 @@ import pytest
 if TYPE_CHECKING:
     from collections.abc import Generator
 
+    from little_loops.issue_history import HistoryAnalysis, HistorySummary
+
 
 class TestAutoArgumentParsing:
     """Tests for ll-auto (main_auto) argument parsing."""
@@ -803,9 +805,7 @@ class TestSprintArgumentParsing:
 
     def test_run_command(self) -> None:
         """run subcommand parses correctly."""
-        args = self._parse_sprint_args(
-            ["run", "sprint-1", "--dry-run", "--max-workers", "8"]
-        )
+        args = self._parse_sprint_args(["run", "sprint-1", "--dry-run", "--max-workers", "8"])
         assert args.command == "run"
         assert args.sprint == "sprint-1"
         assert args.dry_run is True
@@ -898,9 +898,7 @@ class TestSprintArgumentParsing:
 
     def test_run_with_quiet_and_other_flags(self) -> None:
         """run subcommand combines --quiet with other flags."""
-        args = self._parse_sprint_args(
-            ["run", "sprint-1", "-q", "--dry-run", "-w", "4", "-r"]
-        )
+        args = self._parse_sprint_args(["run", "sprint-1", "-q", "--dry-run", "-w", "4", "-r"])
         assert args.command == "run"
         assert args.quiet is True
         assert args.dry_run is True
@@ -958,7 +956,9 @@ class TestSprintShowDependencyVisualization:
         from little_loops.dependency_graph import DependencyGraph
 
         issue1 = self._make_issue("FEAT-001", priority="P0", title="First feature")
-        issue2 = self._make_issue("BUG-002", priority="P1", title="Bug fix", blocked_by=["FEAT-001"])
+        issue2 = self._make_issue(
+            "BUG-002", priority="P1", title="Bug fix", blocked_by=["FEAT-001"]
+        )
 
         graph = DependencyGraph.from_issues([issue1, issue2])
         waves = graph.get_execution_waves()
@@ -986,8 +986,12 @@ class TestSprintShowDependencyVisualization:
         from little_loops.dependency_graph import DependencyGraph
 
         issue_a = self._make_issue("FEAT-001", priority="P0", title="First")
-        issue_b = self._make_issue("FEAT-002", priority="P1", title="Second", blocked_by=["FEAT-001"])
-        issue_c = self._make_issue("FEAT-003", priority="P2", title="Third", blocked_by=["FEAT-002"])
+        issue_b = self._make_issue(
+            "FEAT-002", priority="P1", title="Second", blocked_by=["FEAT-001"]
+        )
+        issue_c = self._make_issue(
+            "FEAT-003", priority="P2", title="Third", blocked_by=["FEAT-002"]
+        )
 
         graph = DependencyGraph.from_issues([issue_a, issue_b, issue_c])
         waves = graph.get_execution_waves()
@@ -1056,9 +1060,7 @@ class TestMainAutoAdditionalCoverage:
                 "project": {"name": "test"},
                 "issues": {
                     "base_dir": ".issues",
-                    "categories": {
-                        "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}
-                    },
+                    "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
                     "completed_dir": "completed",
                     "priorities": ["P0", "P1", "P2"],
                 },
@@ -1149,9 +1151,7 @@ class TestMainAutoAdditionalCoverage:
             mock_manager.run.return_value = 1  # Non-zero exit
             mock_manager_cls.return_value = mock_manager
 
-            with patch.object(
-                sys, "argv", ["ll-auto", "--config", str(temp_project)]
-            ):
+            with patch.object(sys, "argv", ["ll-auto", "--config", str(temp_project)]):
                 from little_loops.cli import main_auto
 
                 result = main_auto()
@@ -1175,9 +1175,7 @@ class TestMainParallelAdditionalCoverage:
                 "project": {"name": "test"},
                 "issues": {
                     "base_dir": ".issues",
-                    "categories": {
-                        "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}
-                    },
+                    "categories": {"bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"}},
                     "completed_dir": "completed",
                     "priorities": ["P0", "P1", "P2"],
                 },
@@ -1193,13 +1191,9 @@ class TestMainParallelAdditionalCoverage:
             issues_dir.mkdir(parents=True)
             yield project
 
-    def test_priority_filter_parsed_to_uppercase_list(
-        self, temp_project: Path
-    ) -> None:
+    def test_priority_filter_parsed_to_uppercase_list(self, temp_project: Path) -> None:
         """main_parallel parses priority string to uppercase list."""
-        with patch(
-            "little_loops.parallel.ParallelOrchestrator"
-        ) as mock_orch_cls:
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.run.return_value = 0
             mock_orch_cls.return_value = mock_orch
@@ -1215,18 +1209,13 @@ class TestMainParallelAdditionalCoverage:
 
             assert result == 0
             # Verify create_parallel_config was called with uppercase priorities
-            from little_loops.cli import BRConfig
-
-            config = BRConfig(temp_project)
             # The priority_filter should be ["P1", "P2"]
             call_kwargs = mock_orch_cls.call_args.kwargs
             assert "parallel_config" in call_kwargs or result == 0
 
     def test_merge_pending_flag_passed_to_config(self, temp_project: Path) -> None:
         """main_parallel passes --merge-pending to parallel config."""
-        with patch(
-            "little_loops.parallel.ParallelOrchestrator"
-        ) as mock_orch_cls:
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.run.return_value = 0
             mock_orch_cls.return_value = mock_orch
@@ -1244,9 +1233,7 @@ class TestMainParallelAdditionalCoverage:
 
     def test_overlap_detection_flag_passed(self, temp_project: Path) -> None:
         """main_parallel passes --overlap-detection to config."""
-        with patch(
-            "little_loops.parallel.ParallelOrchestrator"
-        ) as mock_orch_cls:
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.run.return_value = 0
             mock_orch_cls.return_value = mock_orch
@@ -1262,13 +1249,9 @@ class TestMainParallelAdditionalCoverage:
 
             assert result == 0
 
-    def test_warn_only_flag_sets_serialize_overlapping_false(
-        self, temp_project: Path
-    ) -> None:
+    def test_warn_only_flag_sets_serialize_overlapping_false(self, temp_project: Path) -> None:
         """main_parallel --warn-only sets serialize_overlapping=False."""
-        with patch(
-            "little_loops.parallel.ParallelOrchestrator"
-        ) as mock_orch_cls:
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.run.return_value = 0
             mock_orch_cls.return_value = mock_orch
@@ -1296,16 +1279,12 @@ class TestMainParallelAdditionalCoverage:
         state_file = temp_project / ".parallel-state.json"
         state_file.write_text('{"test": "data"}')
 
-        with patch(
-            "little_loops.parallel.ParallelOrchestrator"
-        ) as mock_orch_cls:
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.run.return_value = 0
             mock_orch_cls.return_value = mock_orch
 
-            with patch.object(
-                sys, "argv", ["ll-parallel", "--config", str(temp_project)]
-            ):
+            with patch.object(sys, "argv", ["ll-parallel", "--config", str(temp_project)]):
                 from little_loops.cli import main_parallel
 
                 result = main_parallel()
@@ -1319,9 +1298,7 @@ class TestMainParallelAdditionalCoverage:
         state_file = temp_project / ".parallel-state.json"
         state_file.write_text('{"test": "data"}')
 
-        with patch(
-            "little_loops.parallel.ParallelOrchestrator"
-        ) as mock_orch_cls:
+        with patch("little_loops.parallel.ParallelOrchestrator") as mock_orch_cls:
             mock_orch = MagicMock()
             mock_orch.run.return_value = 0
             mock_orch_cls.return_value = mock_orch
@@ -1349,13 +1326,9 @@ class TestMainMessagesAdditionalCoverage:
 
         from little_loops.user_messages import UserMessage
 
-        with patch(
-            "little_loops.user_messages.get_project_folder"
-        ) as mock_get_folder:
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
             mock_get_folder.return_value = Path("/mock/project")
-            with patch(
-                "little_loops.user_messages.extract_user_messages"
-            ) as mock_extract:
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = [
                     UserMessage(
                         content="Test",
@@ -1383,18 +1356,12 @@ class TestMainMessagesAdditionalCoverage:
 
     def test_cwd_working_directory_override(self) -> None:
         """main_messages uses --cwd for project folder lookup."""
-        with patch(
-            "little_loops.user_messages.get_project_folder"
-        ) as mock_get_folder:
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
             mock_get_folder.return_value = Path("/mock/project")
-            with patch(
-                "little_loops.user_messages.extract_user_messages"
-            ) as mock_extract:
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []
 
-                with patch.object(
-                    sys, "argv", ["ll-messages", "--cwd", "/custom/cwd"]
-                ):
+                with patch.object(sys, "argv", ["ll-messages", "--cwd", "/custom/cwd"]):
                     from little_loops.cli import main_messages
 
                     result = main_messages()
@@ -1404,13 +1371,9 @@ class TestMainMessagesAdditionalCoverage:
 
     def test_exclude_agents_flag(self) -> None:
         """main_messages passes include_agent_sessions=False when --exclude-agents."""
-        with patch(
-            "little_loops.user_messages.get_project_folder"
-        ) as mock_get_folder:
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
             mock_get_folder.return_value = Path("/mock/project")
-            with patch(
-                "little_loops.user_messages.extract_user_messages"
-            ) as mock_extract:
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []
 
                 with patch.object(sys, "argv", ["ll-messages", "--exclude-agents"]):
@@ -1424,18 +1387,12 @@ class TestMainMessagesAdditionalCoverage:
 
     def test_include_response_context_flag(self) -> None:
         """main_messages passes include_response_context=True when flag set."""
-        with patch(
-            "little_loops.user_messages.get_project_folder"
-        ) as mock_get_folder:
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
             mock_get_folder.return_value = Path("/mock/project")
-            with patch(
-                "little_loops.user_messages.extract_user_messages"
-            ) as mock_extract:
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []
 
-                with patch.object(
-                    sys, "argv", ["ll-messages", "--include-response-context"]
-                ):
+                with patch.object(sys, "argv", ["ll-messages", "--include-response-context"]):
                     from little_loops.cli import main_messages
 
                     result = main_messages()
@@ -1446,13 +1403,9 @@ class TestMainMessagesAdditionalCoverage:
 
     def test_empty_messages_returns_zero(self) -> None:
         """main_messages returns 0 when no messages found (with warning)."""
-        with patch(
-            "little_loops.user_messages.get_project_folder"
-        ) as mock_get_folder:
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
             mock_get_folder.return_value = Path("/mock/project")
-            with patch(
-                "little_loops.user_messages.extract_user_messages"
-            ) as mock_extract:
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []  # Empty list
 
                 with patch.object(sys, "argv", ["ll-messages"]):
@@ -1462,21 +1415,13 @@ class TestMainMessagesAdditionalCoverage:
 
             assert result == 0  # Early return at line 402
 
-    def test_verbose_logging_flag(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_verbose_logging_flag(self, capsys: pytest.CaptureFixture[str]) -> None:
         """main_messages creates Logger with verbose=True when --verbose set."""
-        with patch(
-            "little_loops.user_messages.get_project_folder"
-        ) as mock_get_folder:
+        with patch("little_loops.user_messages.get_project_folder") as mock_get_folder:
             mock_get_folder.return_value = Path("/mock/project")
-            with patch(
-                "little_loops.user_messages.extract_user_messages"
-            ) as mock_extract:
+            with patch("little_loops.user_messages.extract_user_messages") as mock_extract:
                 mock_extract.return_value = []
-                with patch(
-                    "little_loops.user_messages.save_messages"
-                ) as mock_save:
+                with patch("little_loops.user_messages.save_messages") as mock_save:
                     mock_save.return_value = Path("/output.jsonl")
 
                     with patch.object(sys, "argv", ["ll-messages", "--verbose"]):
@@ -1487,9 +1432,7 @@ class TestMainMessagesAdditionalCoverage:
             captured = capsys.readouterr()
             assert result == 0
             # Verbose output should include progress messages
-            assert (
-                "Project folder:" in captured.out or "Limit:" in captured.out
-            )
+            assert "Project folder:" in captured.out or "Limit:" in captured.out
 
 
 class TestMainLoopAdditionalCoverage:
@@ -1500,9 +1443,7 @@ class TestMainLoopAdditionalCoverage:
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
             loops_dir.mkdir()
-            (
-                loops_dir / "test-loop.fsm.yaml"
-            ).write_text(
+            (loops_dir / "test-loop.fsm.yaml").write_text(
                 "name: test\ninitial: start\nstates:\n  start:\n    terminal: true"
             )
 
@@ -1519,9 +1460,7 @@ class TestMainLoopAdditionalCoverage:
 
             # Patch at actual source module paths (cli.py imports these locally)
             with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
-                with patch(
-                    "little_loops.fsm.persistence.PersistentExecutor"
-                ) as mock_exec:
+                with patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec:
                     mock_executor = MagicMock()
                     # Create a proper mock result with all required attributes
                     mock_result = MagicMock()
@@ -1533,15 +1472,15 @@ class TestMainLoopAdditionalCoverage:
                     mock_exec.return_value = mock_executor
 
                     # Call with loop name directly (no "run" subcommand)
-                    with patch.object(
-                        sys, "argv", ["ll-loop", "test-loop"]
-                    ):
+                    with patch.object(sys, "argv", ["ll-loop", "test-loop"]):
                         # Change to temp directory so resolve_loop_path works
                         import os
+
                         original_cwd = os.getcwd()
                         try:
                             os.chdir(tmpdir)
                             from little_loops.cli import main_loop
+
                             result = main_loop()
                         finally:
                             os.chdir(original_cwd)
@@ -1556,9 +1495,7 @@ class TestMainLoopAdditionalCoverage:
 
             # Create both files
             (loops_dir / "test-loop.yaml").write_text("name: paradigm")
-            (
-                loops_dir / "test-loop.fsm.yaml"
-            ).write_text(
+            (loops_dir / "test-loop.fsm.yaml").write_text(
                 "name: compiled\ninitial: start\nstates:\n  start:\n    terminal: true"
             )
 
@@ -1574,9 +1511,7 @@ class TestMainLoopAdditionalCoverage:
             )
 
             with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
-                with patch(
-                    "little_loops.fsm.persistence.PersistentExecutor"
-                ) as mock_exec:
+                with patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec:
                     mock_executor = MagicMock()
                     # Create a proper mock result with all required attributes
                     mock_result = MagicMock()
@@ -1587,24 +1522,22 @@ class TestMainLoopAdditionalCoverage:
                     mock_executor.run.return_value = mock_result
                     mock_exec.return_value = mock_executor
 
-                    with patch.object(
-                        sys, "argv", ["ll-loop", "run", "test-loop"]
-                    ):
+                    with patch.object(sys, "argv", ["ll-loop", "run", "test-loop"]):
                         # Change to temp directory so resolve_loop_path works
                         import os
+
                         original_cwd = os.getcwd()
                         try:
                             os.chdir(tmpdir)
                             from little_loops.cli import main_loop
+
                             result = main_loop()
                         finally:
                             os.chdir(original_cwd)
 
             assert result == 0
 
-    def test_dry_run_prints_execution_plan(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_dry_run_prints_execution_plan(self, capsys: pytest.CaptureFixture[str]) -> None:
         """main_loop --dry-run prints execution plan and exits."""
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
@@ -1629,24 +1562,22 @@ states:
                 paradigm="test",
                 initial="start",
                 states={
-                    "start": StateConfig(
-                        action='echo "test"', on_success="done"
-                    ),
+                    "start": StateConfig(action='echo "test"', on_success="done"),
                     "done": StateConfig(terminal=True),
                 },
                 max_iterations=50,
             )
 
             with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
-                with patch.object(
-                    sys, "argv", ["ll-loop", "run", "test-loop", "--dry-run"]
-                ):
+                with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--dry-run"]):
                     # Change to temp directory so resolve_loop_path works
                     import os
+
                     original_cwd = os.getcwd()
                     try:
                         os.chdir(tmpdir)
                         from little_loops.cli import main_loop
+
                         result = main_loop()
                     finally:
                         os.chdir(original_cwd)
@@ -1660,9 +1591,7 @@ states:
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
             loops_dir.mkdir()
-            (
-                loops_dir / "test-loop.fsm.yaml"
-            ).write_text(
+            (loops_dir / "test-loop.fsm.yaml").write_text(
                 "name: test\ninitial: start\nstates:\n  start:\n    terminal: true"
             )
 
@@ -1678,9 +1607,7 @@ states:
             )
 
             with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
-                with patch(
-                    "little_loops.fsm.persistence.PersistentExecutor"
-                ) as mock_exec:
+                with patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec:
                     mock_executor = MagicMock()
                     # Create a proper mock result with all required attributes
                     mock_result = MagicMock()
@@ -1698,10 +1625,12 @@ states:
                     ):
                         # Change to temp directory so resolve_loop_path works
                         import os
+
                         original_cwd = os.getcwd()
                         try:
                             os.chdir(tmpdir)
                             from little_loops.cli import main_loop
+
                             result = main_loop()
                         finally:
                             os.chdir(original_cwd)
@@ -1713,9 +1642,7 @@ states:
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
             loops_dir.mkdir()
-            (
-                loops_dir / "test-loop.fsm.yaml"
-            ).write_text(
+            (loops_dir / "test-loop.fsm.yaml").write_text(
                 "name: test\ninitial: start\nstates:\n  start:\n    terminal: true"
             )
 
@@ -1731,9 +1658,7 @@ states:
             )
 
             with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
-                with patch(
-                    "little_loops.fsm.persistence.PersistentExecutor"
-                ) as mock_exec:
+                with patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec:
                     mock_executor = MagicMock()
                     # Create a proper mock result with all required attributes
                     mock_result = MagicMock()
@@ -1744,15 +1669,15 @@ states:
                     mock_executor.run.return_value = mock_result
                     mock_exec.return_value = mock_executor
 
-                    with patch.object(
-                        sys, "argv", ["ll-loop", "run", "test-loop", "--no-llm"]
-                    ):
+                    with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--no-llm"]):
                         # Change to temp directory so resolve_loop_path works
                         import os
+
                         original_cwd = os.getcwd()
                         try:
                             os.chdir(tmpdir)
                             from little_loops.cli import main_loop
+
                             result = main_loop()
                         finally:
                             os.chdir(original_cwd)
@@ -1763,7 +1688,6 @@ states:
         """main_loop stop command stops running loop."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Mock StatePersistence to return a running state
-            from little_loops.fsm.persistence import StatePersistence
             mock_state = MagicMock()
             mock_state.status = "running"
 
@@ -1772,15 +1696,15 @@ states:
                 mock_sp.load_state.return_value = mock_state
                 mock_sp_cls.return_value = mock_sp
 
-                with patch.object(
-                    sys, "argv", ["ll-loop", "stop", "test-loop"]
-                ):
+                with patch.object(sys, "argv", ["ll-loop", "stop", "test-loop"]):
                     # Change to temp directory so resolve_loop_path works
                     import os
+
                     original_cwd = os.getcwd()
                     try:
                         os.chdir(tmpdir)
                         from little_loops.cli import main_loop
+
                         result = main_loop()
                     finally:
                         os.chdir(original_cwd)
@@ -1792,9 +1716,7 @@ states:
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
             loops_dir.mkdir()
-            (
-                loops_dir / "test-loop.fsm.yaml"
-            ).write_text(
+            (loops_dir / "test-loop.fsm.yaml").write_text(
                 "name: test\ninitial: start\nstates:\n  start:\n    terminal: true"
             )
 
@@ -1810,9 +1732,7 @@ states:
             )
 
             with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
-                with patch(
-                    "little_loops.fsm.persistence.PersistentExecutor"
-                ) as mock_exec:
+                with patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec:
                     mock_executor = MagicMock()
                     # Create a proper mock result with all required attributes
                     mock_result = MagicMock()
@@ -1825,15 +1745,15 @@ states:
                     mock_executor.resume.return_value = mock_result
                     mock_exec.return_value = mock_executor
 
-                    with patch.object(
-                        sys, "argv", ["ll-loop", "resume", "test-loop"]
-                    ):
+                    with patch.object(sys, "argv", ["ll-loop", "resume", "test-loop"]):
                         # Change to temp directory so resolve_loop_path works
                         import os
+
                         original_cwd = os.getcwd()
                         try:
                             os.chdir(tmpdir)
                             from little_loops.cli import main_loop
+
                             result = main_loop()
                         finally:
                             os.chdir(original_cwd)
@@ -1845,9 +1765,7 @@ states:
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
             loops_dir.mkdir()
-            (
-                loops_dir / "test-loop.fsm.yaml"
-            ).write_text(
+            (loops_dir / "test-loop.fsm.yaml").write_text(
                 "name: test\ninitial: start\nstates:\n  start:\n    terminal: true"
             )
 
@@ -1859,10 +1777,12 @@ states:
                 ):
                     # Change to temp directory so resolve_loop_path works
                     import os
+
                     original_cwd = os.getcwd()
                     try:
                         os.chdir(tmpdir)
                         from little_loops.cli import main_loop
+
                         result = main_loop()
                     finally:
                         os.chdir(original_cwd)
@@ -1874,9 +1794,7 @@ states:
         with tempfile.TemporaryDirectory() as tmpdir:
             loops_dir = Path(tmpdir) / ".loops"
             loops_dir.mkdir()
-            (
-                loops_dir / "test-loop.fsm.yaml"
-            ).write_text(
+            (loops_dir / "test-loop.fsm.yaml").write_text(
                 "name: test\ninitial: start\nstates:\n  start:\n    terminal: true"
             )
 
@@ -1892,9 +1810,7 @@ states:
             )
 
             with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
-                with patch(
-                    "little_loops.fsm.persistence.PersistentExecutor"
-                ) as mock_exec:
+                with patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec:
                     mock_executor = MagicMock()
                     # Create a proper mock result with all required attributes
                     mock_result = MagicMock()
@@ -1905,15 +1821,15 @@ states:
                     mock_executor.run.return_value = mock_result
                     mock_exec.return_value = mock_executor
 
-                    with patch.object(
-                        sys, "argv", ["ll-loop", "test", "test-loop"]
-                    ):
+                    with patch.object(sys, "argv", ["ll-loop", "test", "test-loop"]):
                         # Change to temp directory so resolve_loop_path works
                         import os
+
                         original_cwd = os.getcwd()
                         try:
                             os.chdir(tmpdir)
                             from little_loops.cli import main_loop
+
                             result = main_loop()
                         finally:
                             os.chdir(original_cwd)
@@ -1956,12 +1872,12 @@ class TestMainSprintAdditionalCoverage:
                 (issues_dir / category).mkdir(parents=True)
 
             # Create sample issues
-            (
-                issues_dir / "bugs" / "P0-BUG-001-test-bug.md"
-            ).write_text("# BUG-001: Test Bug\n\nFix this bug.")
-            (
-                issues_dir / "features" / "P1-FEAT-010-test-feature.md"
-            ).write_text("# FEAT-010: Test Feature\n\nAdd this feature.")
+            (issues_dir / "bugs" / "P0-BUG-001-test-bug.md").write_text(
+                "# BUG-001: Test Bug\n\nFix this bug."
+            )
+            (issues_dir / "features" / "P1-FEAT-010-test-feature.md").write_text(
+                "# FEAT-010: Test Feature\n\nAdd this feature."
+            )
 
             # Create .sprints directory
             (project / ".sprints").mkdir()
@@ -2081,6 +1997,7 @@ class TestSprintSignalHandler:
     def setup_class(cls) -> None:
         """Import once at class level to access signal handler."""
         import little_loops.cli as cli_module
+
         cls.cli_module = cli_module
 
     def setup_method(self) -> None:
@@ -2135,9 +2052,7 @@ class TestMainHistoryCoverage:
             completed_dir.mkdir(parents=True)
 
             # Create sample completed issue
-            (
-                completed_dir / "P1-BUG-001-fixed-bug.md"
-            ).write_text(
+            (completed_dir / "P1-BUG-001-fixed-bug.md").write_text(
                 """
 # BUG-001: Fixed Bug
 
@@ -2150,9 +2065,8 @@ Completed
             )
             yield project
 
-    def _make_mock_summary(self) -> "HistorySummary":
+    def _make_mock_summary(self) -> HistorySummary:
         """Create a mock summary object matching HistorySummary dataclass."""
-        from datetime import date
         from little_loops.issue_history import HistorySummary
 
         return HistorySummary(
@@ -2164,23 +2078,24 @@ Completed
             latest_date=None,
         )
 
-    def _make_mock_analysis(self) -> "HistoryAnalysis":
+    def _make_mock_analysis(self) -> HistoryAnalysis:
         """Create a mock analysis object matching HistoryAnalysis dataclass."""
         from datetime import date
+
         from little_loops.issue_history import (
-            HistoryAnalysis,
-            HistorySummary,
-            HotspotAnalysis,
-            CouplingAnalysis,
-            RegressionAnalysis,
-            TestGapAnalysis,
-            RejectionAnalysis,
-            ManualPatternAnalysis,
             AgentEffectivenessAnalysis,
             ComplexityProxyAnalysis,
             ConfigGapsAnalysis,
+            CouplingAnalysis,
             CrossCuttingAnalysis,
+            HistoryAnalysis,
+            HistorySummary,
+            HotspotAnalysis,
+            ManualPatternAnalysis,
+            RegressionAnalysis,
+            RejectionAnalysis,
             TechnicalDebtMetrics,
+            TestGapAnalysis,
         )
 
         return HistoryAnalysis(
@@ -2219,12 +2134,10 @@ Completed
 
     def test_summary_command_default_output(self, history_project: Path) -> None:
         """ll-history summary outputs formatted text by default."""
-        from little_loops.cli import main_history
         from little_loops import issue_history
+        from little_loops.cli import main_history
 
-        with patch.object(
-            issue_history, "scan_completed_issues", return_value=[]
-        ):
+        with patch.object(issue_history, "scan_completed_issues", return_value=[]):
             with patch.object(
                 issue_history,
                 "calculate_summary",
@@ -2238,12 +2151,10 @@ Completed
 
     def test_summary_json_flag(self, history_project: Path) -> None:
         """ll-history summary --json outputs JSON format."""
-        from little_loops.cli import main_history
         from little_loops import issue_history
+        from little_loops.cli import main_history
 
-        with patch.object(
-            issue_history, "scan_completed_issues", return_value=[]
-        ):
+        with patch.object(issue_history, "scan_completed_issues", return_value=[]):
             with patch.object(
                 issue_history,
                 "calculate_summary",
@@ -2257,12 +2168,10 @@ Completed
 
     def test_summary_directory_argument(self) -> None:
         """ll-history summary --directory uses custom issues directory."""
-        from little_loops.cli import main_history
         from little_loops import issue_history
+        from little_loops.cli import main_history
 
-        with patch.object(
-            issue_history, "scan_completed_issues", return_value=[]
-        ):
+        with patch.object(issue_history, "scan_completed_issues", return_value=[]):
             with patch.object(
                 issue_history,
                 "calculate_summary",
@@ -2277,12 +2186,10 @@ Completed
 
     def test_analyze_command_default_format(self, history_project: Path) -> None:
         """ll-history analyze defaults to text format."""
-        from little_loops.cli import main_history
         from little_loops import issue_history
+        from little_loops.cli import main_history
 
-        with patch.object(
-            issue_history, "scan_completed_issues", return_value=[]
-        ):
+        with patch.object(issue_history, "scan_completed_issues", return_value=[]):
             with patch.object(
                 issue_history, "calculate_analysis", return_value=self._make_mock_analysis()
             ):
@@ -2294,31 +2201,25 @@ Completed
 
     def test_analyze_format_json(self, history_project: Path) -> None:
         """ll-history analyze --format json outputs JSON."""
-        from little_loops.cli import main_history
         from little_loops import issue_history
+        from little_loops.cli import main_history
 
-        with patch.object(
-            issue_history, "scan_completed_issues", return_value=[]
-        ):
+        with patch.object(issue_history, "scan_completed_issues", return_value=[]):
             with patch.object(
                 issue_history, "calculate_analysis", return_value=self._make_mock_analysis()
             ):
                 with patch("pathlib.Path.cwd", return_value=history_project):
-                    with patch.object(
-                        sys, "argv", ["ll-history", "analyze", "--format", "json"]
-                    ):
+                    with patch.object(sys, "argv", ["ll-history", "analyze", "--format", "json"]):
                         result = main_history()
 
         assert result == 0
 
     def test_analyze_format_markdown(self, history_project: Path) -> None:
         """ll-history analyze --format markdown outputs Markdown."""
-        from little_loops.cli import main_history
         from little_loops import issue_history
+        from little_loops.cli import main_history
 
-        with patch.object(
-            issue_history, "scan_completed_issues", return_value=[]
-        ):
+        with patch.object(issue_history, "scan_completed_issues", return_value=[]):
             with patch.object(
                 issue_history, "calculate_analysis", return_value=self._make_mock_analysis()
             ):
@@ -2332,32 +2233,26 @@ Completed
 
     def test_analyze_format_yaml(self, history_project: Path) -> None:
         """ll-history analyze --format yaml outputs YAML."""
-        from little_loops.cli import main_history
         from little_loops import issue_history
+        from little_loops.cli import main_history
 
-        with patch.object(
-            issue_history, "scan_completed_issues", return_value=[]
-        ):
+        with patch.object(issue_history, "scan_completed_issues", return_value=[]):
             with patch.object(
                 issue_history, "calculate_analysis", return_value=self._make_mock_analysis()
             ):
                 with patch("pathlib.Path.cwd", return_value=history_project):
-                    with patch.object(
-                        sys, "argv", ["ll-history", "analyze", "--format", "yaml"]
-                    ):
+                    with patch.object(sys, "argv", ["ll-history", "analyze", "--format", "yaml"]):
                         result = main_history()
 
         assert result == 0
 
     def test_analyze_period_choices(self, history_project: Path) -> None:
         """ll-history analyze --period accepts weekly/monthly/quarterly."""
-        from little_loops.cli import main_history
         from little_loops import issue_history
+        from little_loops.cli import main_history
 
         for period in ["weekly", "monthly", "quarterly"]:
-            with patch.object(
-                issue_history, "scan_completed_issues", return_value=[]
-            ):
+            with patch.object(issue_history, "scan_completed_issues", return_value=[]):
                 with patch.object(
                     issue_history, "calculate_analysis", return_value=self._make_mock_analysis()
                 ):
@@ -2371,19 +2266,15 @@ Completed
 
     def test_analyze_compare_argument(self, history_project: Path) -> None:
         """ll-history analyze --compare compares last N days."""
-        from little_loops.cli import main_history
         from little_loops import issue_history
+        from little_loops.cli import main_history
 
-        with patch.object(
-            issue_history, "scan_completed_issues", return_value=[]
-        ):
+        with patch.object(issue_history, "scan_completed_issues", return_value=[]):
             with patch.object(
                 issue_history, "calculate_analysis", return_value=self._make_mock_analysis()
             ):
                 with patch("pathlib.Path.cwd", return_value=history_project):
-                    with patch.object(
-                        sys, "argv", ["ll-history", "analyze", "--compare", "30"]
-                    ):
+                    with patch.object(sys, "argv", ["ll-history", "analyze", "--compare", "30"]):
                         result = main_history()
 
         assert result == 0

@@ -1,7 +1,5 @@
 """Tests for file hint extraction."""
 
-import pytest
-
 from little_loops.parallel.file_hints import (
     FileHints,
     _directories_overlap,

@@ -129,14 +129,10 @@ class E2ETestFixture:
 
         # Bug issues
         (issues_base / "bugs" / "P1-BUG-001-test-bug.md").write_text(
-            "# BUG-001: Test Bug\n\n"
-            "## Summary\nA test bug for E2E testing.\n\n"
-            "## Status\nReady"
+            "# BUG-001: Test Bug\n\n## Summary\nA test bug for E2E testing.\n\n## Status\nReady"
         )
         (issues_base / "bugs" / "P2-BUG-002-another-bug.md").write_text(
-            "# BUG-002: Another Bug\n\n"
-            "## Summary\nAnother test bug.\n\n"
-            "## Status\nReady"
+            "# BUG-002: Another Bug\n\n## Summary\nAnother test bug.\n\n## Status\nReady"
         )
 
         # Feature issues
@@ -148,9 +144,7 @@ class E2ETestFixture:
 
         # Enhancement issues
         (issues_base / "enhancements" / "P2-ENH-001-test-enhancement.md").write_text(
-            "# ENH-001: Test Enhancement\n\n"
-            "## Summary\nA test enhancement.\n\n"
-            "## Status\nReady"
+            "# ENH-001: Test Enhancement\n\n## Summary\nA test enhancement.\n\n## Status\nReady"
         )
 
     def run_cli_command(

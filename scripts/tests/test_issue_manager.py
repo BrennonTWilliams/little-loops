@@ -200,7 +200,6 @@ class TestAutoManagerIntegration:
             },
         }
 
-
         (claude_dir / "ll-config.json").write_text(json.dumps(config_content))
 
         # Create issues directory
@@ -632,9 +631,7 @@ class TestDependencyAwareSequencing:
 class TestAutoManagerQuietMode:
     """Tests for AutoManager quiet/verbose mode (ENH-188)."""
 
-    def test_auto_manager_verbose_false_creates_quiet_logger(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_auto_manager_verbose_false_creates_quiet_logger(self, temp_project_dir: Path) -> None:
         """Test AutoManager with verbose=False creates quiet logger."""
         from little_loops.config import BRConfig
         from little_loops.issue_manager import AutoManager
@@ -672,9 +669,7 @@ class TestAutoManagerQuietMode:
 
         assert manager.logger.verbose is False
 
-    def test_auto_manager_verbose_true_creates_verbose_logger(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_auto_manager_verbose_true_creates_verbose_logger(self, temp_project_dir: Path) -> None:
         """Test AutoManager with verbose=True creates verbose logger (default)."""
         from little_loops.config import BRConfig
         from little_loops.issue_manager import AutoManager
@@ -712,9 +707,7 @@ class TestAutoManagerQuietMode:
 
         assert manager.logger.verbose is True
 
-    def test_auto_manager_explicit_verbose_true(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_auto_manager_explicit_verbose_true(self, temp_project_dir: Path) -> None:
         """Test AutoManager with explicit verbose=True."""
         from little_loops.config import BRConfig
         from little_loops.issue_manager import AutoManager
@@ -878,8 +871,13 @@ class TestRunWithContinuation:
             return handoff_responses[idx] if idx < len(handoff_responses) else False
 
         with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
-            with patch("little_loops.issue_manager.detect_context_handoff", side_effect=mock_handoff):
-                with patch("little_loops.issue_manager.read_continuation_prompt", return_value=continuation_prompt):
+            with patch(
+                "little_loops.issue_manager.detect_context_handoff", side_effect=mock_handoff
+            ):
+                with patch(
+                    "little_loops.issue_manager.read_continuation_prompt",
+                    return_value=continuation_prompt,
+                ):
                     result = run_with_continuation("test command", mock_logger, max_continuations=3)
 
         assert call_count[0] == 2  # Initial + 1 continuation
@@ -899,7 +897,9 @@ class TestRunWithContinuation:
 
         with patch("little_loops.issue_manager.run_claude_command", return_value=handoff_result):
             with patch("little_loops.issue_manager.detect_context_handoff", return_value=True):
-                with patch("little_loops.issue_manager.read_continuation_prompt", return_value="# Prompt"):
+                with patch(
+                    "little_loops.issue_manager.read_continuation_prompt", return_value="# Prompt"
+                ):
                     result = run_with_continuation("test", mock_logger, max_continuations=2)
 
         # Should run initial + 2 continuations = 3 total
@@ -919,7 +919,7 @@ class TestRunWithContinuation:
         with patch("little_loops.issue_manager.run_claude_command", return_value=handoff_result):
             with patch("little_loops.issue_manager.detect_context_handoff", return_value=True):
                 with patch("little_loops.issue_manager.read_continuation_prompt", return_value=""):
-                    result = run_with_continuation("test", mock_logger)
+                    run_with_continuation("test", mock_logger)
 
         # Should stop after handoff with no prompt
         mock_logger.warning.assert_called()
@@ -975,8 +975,10 @@ class TestReadyIssueErrorHandling:
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
                 with patch("little_loops.issue_manager.run_with_continuation") as mock_impl:
                     mock_impl.return_value = MagicMock(returncode=0, stdout="", stderr="")
-                    with patch("little_loops.issue_manager.verify_issue_completed", return_value=True):
-                        result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+                    with patch(
+                        "little_loops.issue_manager.verify_issue_completed", return_value=True
+                    ):
+                        process_issue_inplace(sample_issue, mock_config, mock_logger)
 
         # Should continue (not crash) - verify implementation was called
         mock_impl.assert_called_once()
@@ -1119,9 +1121,7 @@ true
 
         assert result.corrections == ["Fixed title", "Added description"]
 
-    def test_concerns_are_logged(
-        self, mock_config: BRConfig, sample_issue: IssueInfo
-    ) -> None:
+    def test_concerns_are_logged(self, mock_config: BRConfig, sample_issue: IssueInfo) -> None:
         """Test that concerns from ready_issue are logged as warnings."""
         from little_loops.issue_manager import process_issue_inplace
 
@@ -1149,7 +1149,7 @@ READY
             patch("little_loops.issue_manager.verify_issue_completed", return_value=True),
         ):
             mock_impl.return_value = MagicMock(returncode=0, stdout="", stderr="")
-            result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+            process_issue_inplace(sample_issue, mock_config, mock_logger)
 
         # Verify warnings were called
         assert any("Concern" in str(call) for call in mock_logger.warning.call_args_list)
@@ -1391,13 +1391,18 @@ class TestFailureClassification:
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
                 if expected_transient:
                     # Transient: should NOT create bug issue
-                    with patch("little_loops.issue_manager.create_issue_from_failure") as mock_create:
+                    with patch(
+                        "little_loops.issue_manager.create_issue_from_failure"
+                    ) as mock_create:
                         result = process_issue_inplace(sample_issue, mock_config, mock_logger)
                         mock_create.assert_not_called()
                         assert "Transient" in result.failure_reason
                 else:
                     # Real failure: should create bug issue
-                    with patch("little_loops.issue_manager.create_issue_from_failure", return_value=sample_issue.path):
+                    with patch(
+                        "little_loops.issue_manager.create_issue_from_failure",
+                        return_value=sample_issue.path,
+                    ):
                         result = process_issue_inplace(sample_issue, mock_config, mock_logger)
                         assert not result.success
 
@@ -1454,10 +1459,16 @@ class TestFallbackVerification:
         impl_result.stderr = ""
 
         with patch("little_loops.issue_manager.run_claude_command", return_value=ready_result):
-            with patch("little_loops.issue_manager.run_with_continuation", return_value=impl_result):
+            with patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ):
                 with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
-                    with patch("little_loops.issue_manager.verify_work_was_done", return_value=True):
-                        with patch("little_loops.issue_manager.complete_issue_lifecycle", return_value=True):
+                    with patch(
+                        "little_loops.issue_manager.verify_work_was_done", return_value=True
+                    ):
+                        with patch(
+                            "little_loops.issue_manager.complete_issue_lifecycle", return_value=True
+                        ):
                             result = process_issue_inplace(sample_issue, mock_config, mock_logger)
 
         assert result.success
@@ -1480,9 +1491,13 @@ class TestFallbackVerification:
         impl_result.stderr = ""
 
         with patch("little_loops.issue_manager.run_claude_command", return_value=ready_result):
-            with patch("little_loops.issue_manager.run_with_continuation", return_value=impl_result):
+            with patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ):
                 with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
-                    with patch("little_loops.issue_manager.verify_work_was_done", return_value=False):
+                    with patch(
+                        "little_loops.issue_manager.verify_work_was_done", return_value=False
+                    ):
                         result = process_issue_inplace(sample_issue, mock_config, mock_logger)
 
         assert not result.success
@@ -1563,7 +1578,9 @@ class TestAutoManagerRun:
         # Create multiple issues
         issues_dir = full_project / ".issues" / "bugs"
         for i in range(2, 6):
-            (issues_dir / f"P1-BUG-{i:03d}-test.md").write_text(f"# BUG-{i}: Test\n\n## Summary\nTest")
+            (issues_dir / f"P1-BUG-{i:03d}-test.md").write_text(
+                f"# BUG-{i}: Test\n\n## Summary\nTest"
+            )
 
         config = BRConfig(full_project)
 
@@ -1576,7 +1593,7 @@ class TestAutoManagerRun:
             )
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
                 manager = AutoManager(config, dry_run=False, max_issues=2)
-                exit_code = manager.run()
+                manager.run()
 
         assert manager.processed_count == 2
 
@@ -1601,7 +1618,7 @@ class TestAutoManagerRun:
             )
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
                 manager = AutoManager(config, dry_run=False, only_ids={"BUG-003"})
-                exit_code = manager.run()
+                manager.run()
 
         # Should only process BUG-003
         mock_process.assert_called_once()
@@ -1640,6 +1657,7 @@ class TestSignalHandler:
 
         # Simulate signal handler call
         import signal
+
         manager._signal_handler(signal.SIGINT, None)
 
         # Flag should be set
@@ -1757,7 +1775,9 @@ class TestTimingSummaryAndStateUpdates:
             corrections=["Fixed title"],
         )
 
-        with patch("little_loops.issue_manager.process_issue_inplace", return_value=with_corrections_result):
+        with patch(
+            "little_loops.issue_manager.process_issue_inplace", return_value=with_corrections_result
+        ):
             with patch("little_loops.issue_manager.check_git_status", return_value=False):
                 manager = AutoManager(config, dry_run=False)
                 manager._process_issue(manager._get_next_issue())
@@ -1807,9 +1827,7 @@ class TestIssueManagerConcurrency:
 
         return temp_project_dir
 
-    def test_concurrent_get_next_issue_no_duplicates(
-        self, temp_project_with_issues: Path
-    ) -> None:
+    def test_concurrent_get_next_issue_no_duplicates(self, temp_project_with_issues: Path) -> None:
         """Multiple threads calling _get_next_issue should not get duplicates."""
         config = BRConfig(temp_project_with_issues)
         manager = AutoManager(config, dry_run=True)
@@ -1837,9 +1855,7 @@ class TestIssueManagerConcurrency:
         # Document: if duplicates exist, this shows race condition
         assert len(unique_ids) <= len(results)
 
-    def test_concurrent_state_file_access(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_concurrent_state_file_access(self, temp_project_dir: Path) -> None:
         """Multiple managers accessing same state file."""
 
         # Setup
@@ -1884,9 +1900,7 @@ class TestIssueManagerConcurrency:
         # Current behavior: last write wins, potential JSON corruption
         assert len(errors) >= 0  # Document whatever happens
 
-    def test_concurrent_state_modifications(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_concurrent_state_modifications(self, temp_project_dir: Path) -> None:
         """Multiple threads modifying state simultaneously."""
 
         # Setup
@@ -1929,9 +1943,7 @@ class TestIssueManagerConcurrency:
         # No crashes (though updates may be lost)
         assert len(errors) == 0, f"Errors occurred: {errors}"
 
-    def test_concurrent_dependency_queries(
-        self, temp_project_with_issues: Path
-    ) -> None:
+    def test_concurrent_dependency_queries(self, temp_project_with_issues: Path) -> None:
         """Multiple threads querying dependency graph."""
         config = BRConfig(temp_project_with_issues)
         manager = AutoManager(config, dry_run=True)
@@ -1957,4 +1969,3 @@ class TestIssueManagerConcurrency:
         # All queries should succeed (graph is read-only after init)
         assert len(errors) == 0, f"Errors occurred: {errors}"
         assert query_count[0] == 100
-

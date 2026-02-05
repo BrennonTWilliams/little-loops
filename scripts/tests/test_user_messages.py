@@ -684,7 +684,10 @@ class TestDetectErrorMessage:
     def test_extracts_error_line(self) -> None:
         """Extracts error message line."""
         content = [
-            {"type": "text", "text": "I tried to run the command.\nError: File not found\nPlease check the path."}
+            {
+                "type": "text",
+                "text": "I tried to run the command.\nError: File not found\nPlease check the path.",
+            }
         ]
         result = _detect_error_message(content)
         assert result is not None
@@ -693,7 +696,10 @@ class TestDetectErrorMessage:
     def test_extracts_failed_line(self) -> None:
         """Extracts failed message line."""
         content = [
-            {"type": "text", "text": "Running tests...\nFailed: Test case xyz\nSee output for details."}
+            {
+                "type": "text",
+                "text": "Running tests...\nFailed: Test case xyz\nSee output for details.",
+            }
         ]
         result = _detect_error_message(content)
         assert result is not None
@@ -766,9 +772,7 @@ class TestExtractUserMessagesWithResponseContext:
             for record in records:
                 f.write(json.dumps(record) + "\n")
 
-    def test_includes_response_metadata_when_enabled(
-        self, temp_project_folder: Path
-    ) -> None:
+    def test_includes_response_metadata_when_enabled(self, temp_project_folder: Path) -> None:
         """Response metadata is included when flag is True."""
         records = [
             {
@@ -793,17 +797,13 @@ class TestExtractUserMessagesWithResponseContext:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(
-            temp_project_folder, include_response_context=True
-        )
+        messages = extract_user_messages(temp_project_folder, include_response_context=True)
 
         assert len(messages) == 1
         assert messages[0].response_metadata is not None
         assert "/main.py" in messages[0].response_metadata.files_modified
 
-    def test_excludes_response_metadata_by_default(
-        self, temp_project_folder: Path
-    ) -> None:
+    def test_excludes_response_metadata_by_default(self, temp_project_folder: Path) -> None:
         """Response metadata is not included by default."""
         records = [
             {
@@ -832,9 +832,7 @@ class TestExtractUserMessagesWithResponseContext:
         assert len(messages) == 1
         assert messages[0].response_metadata is None
 
-    def test_handles_multiple_user_messages(
-        self, temp_project_folder: Path
-    ) -> None:
+    def test_handles_multiple_user_messages(self, temp_project_folder: Path) -> None:
         """Handles multiple user messages with their respective responses."""
         records = [
             {
@@ -878,9 +876,7 @@ class TestExtractUserMessagesWithResponseContext:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(
-            temp_project_folder, include_response_context=True
-        )
+        messages = extract_user_messages(temp_project_folder, include_response_context=True)
 
         assert len(messages) == 2
         # Most recent first
@@ -892,9 +888,7 @@ class TestExtractUserMessagesWithResponseContext:
         assert messages[1].response_metadata is not None
         assert "/first.py" in messages[1].response_metadata.files_read
 
-    def test_aggregates_multiple_assistant_turns(
-        self, temp_project_folder: Path
-    ) -> None:
+    def test_aggregates_multiple_assistant_turns(self, temp_project_folder: Path) -> None:
         """Aggregates metadata from all assistant turns until next user message."""
         records = [
             {
@@ -956,16 +950,12 @@ class TestExtractUserMessagesWithResponseContext:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(
-            temp_project_folder, include_response_context=True
-        )
+        messages = extract_user_messages(temp_project_folder, include_response_context=True)
 
         assert len(messages) == 1
         assert messages[0].response_metadata is not None
         # Should aggregate Read count = 2 (file_a + file_b)
-        tools = {
-            t["tool"]: t["count"] for t in messages[0].response_metadata.tools_used
-        }
+        tools = {t["tool"]: t["count"] for t in messages[0].response_metadata.tools_used}
         assert tools.get("Read") == 2
         assert tools.get("Edit") == 1
         # Should include both files read (deduplicated and sorted)
@@ -976,9 +966,7 @@ class TestExtractUserMessagesWithResponseContext:
         # Completion status from final response
         assert messages[0].response_metadata.completion_status == "success"
 
-    def test_handles_user_message_without_response(
-        self, temp_project_folder: Path
-    ) -> None:
+    def test_handles_user_message_without_response(self, temp_project_folder: Path) -> None:
         """Handles user message at end of file without response."""
         records = [
             {
@@ -990,9 +978,7 @@ class TestExtractUserMessagesWithResponseContext:
             },
             {
                 "type": "assistant",
-                "message": {
-                    "content": [{"type": "text", "text": "Answer"}]
-                },
+                "message": {"content": [{"type": "text", "text": "Answer"}]},
                 "timestamp": "2026-01-10T12:00:01Z",
                 "sessionId": "sess-1",
                 "uuid": "uuid-2",
@@ -1007,9 +993,7 @@ class TestExtractUserMessagesWithResponseContext:
         ]
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
-        messages = extract_user_messages(
-            temp_project_folder, include_response_context=True
-        )
+        messages = extract_user_messages(temp_project_folder, include_response_context=True)
 
         assert len(messages) == 2
         # Most recent first - the one without response
@@ -1019,28 +1003,28 @@ class TestExtractUserMessagesWithResponseContext:
         assert messages[1].content == "First question"
         assert messages[1].response_metadata is not None
 
-    def test_respects_limit_with_response_context(
-        self, temp_project_folder: Path
-    ) -> None:
+    def test_respects_limit_with_response_context(self, temp_project_folder: Path) -> None:
         """Respects limit parameter when include_response_context is True."""
         records = []
         for i in range(10):
-            records.extend([
-                {
-                    "type": "user",
-                    "message": {"content": f"Message {i}"},
-                    "timestamp": f"2026-01-10T12:{i:02d}:00Z",
-                    "sessionId": "sess-1",
-                    "uuid": f"uuid-user-{i}",
-                },
-                {
-                    "type": "assistant",
-                    "message": {"content": [{"type": "text", "text": f"Response {i}"}]},
-                    "timestamp": f"2026-01-10T12:{i:02d}:01Z",
-                    "sessionId": "sess-1",
-                    "uuid": f"uuid-asst-{i}",
-                },
-            ])
+            records.extend(
+                [
+                    {
+                        "type": "user",
+                        "message": {"content": f"Message {i}"},
+                        "timestamp": f"2026-01-10T12:{i:02d}:00Z",
+                        "sessionId": "sess-1",
+                        "uuid": f"uuid-user-{i}",
+                    },
+                    {
+                        "type": "assistant",
+                        "message": {"content": [{"type": "text", "text": f"Response {i}"}]},
+                        "timestamp": f"2026-01-10T12:{i:02d}:01Z",
+                        "sessionId": "sess-1",
+                        "uuid": f"uuid-asst-{i}",
+                    },
+                ]
+            )
         self._write_jsonl(temp_project_folder / "session.jsonl", records)
 
         messages = extract_user_messages(
@@ -1161,9 +1145,7 @@ class TestExtractCommands:
         assert len(commands) == 1
         assert commands[0].content == "pytest"
 
-    def test_extracts_multiple_commands_from_one_message(
-        self, temp_project_folder: Path
-    ) -> None:
+    def test_extracts_multiple_commands_from_one_message(self, temp_project_folder: Path) -> None:
         """Extracts multiple Bash commands from single assistant message."""
         records = [
             {
@@ -1290,9 +1272,7 @@ class TestExtractCommands:
         assert len(commands) == 1
         assert commands[0].content == "valid"
 
-    def test_excludes_agent_sessions_when_requested(
-        self, temp_project_folder: Path
-    ) -> None:
+    def test_excludes_agent_sessions_when_requested(self, temp_project_folder: Path) -> None:
         """Excludes agent-*.jsonl files when include_agent_sessions=False."""
         user_records = [
             {

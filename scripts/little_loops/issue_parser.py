@@ -164,9 +164,7 @@ class IssueInfo:
             "blocked_by": self.blocked_by,
             "blocks": self.blocks,
             "discovered_by": self.discovered_by,
-            "product_impact": (
-                self.product_impact.to_dict() if self.product_impact else None
-            ),
+            "product_impact": (self.product_impact.to_dict() if self.product_impact else None),
         }
 
     @classmethod

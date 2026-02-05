@@ -240,9 +240,7 @@ class TestGoalsParserFuzz:
         filename=st.text(min_size=1, max_size=100),
     )
     @settings(max_examples=200, deadline=None)
-    def test_from_file_with_various_content(
-        self, content: str, filename: str
-    ) -> None:
+    def test_from_file_with_various_content(self, content: str, filename: str) -> None:
         """File parsing should handle various file contents gracefully."""
         with tempfile.TemporaryDirectory() as tmpdir:
             # Sanitize filename

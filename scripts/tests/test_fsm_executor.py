@@ -1864,8 +1864,7 @@ class TestSimulationActionRunner:
         """Alternating scenario returns 1, 0, 1, 0..."""
         runner = SimulationActionRunner(scenario="alternating")
         results = [
-            runner.run("cmd", timeout=60, is_slash_command=False).exit_code
-            for _ in range(4)
+            runner.run("cmd", timeout=60, is_slash_command=False).exit_code for _ in range(4)
         ]
         assert results == [1, 0, 1, 0]
 
