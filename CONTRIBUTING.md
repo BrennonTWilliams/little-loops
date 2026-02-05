@@ -116,7 +116,7 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── skills/               # 5 skill definitions (user-invocable workflows)
+├── skills/               # 8 skill definitions (user-invocable workflows)
 │   ├── analyze-history/     # Analyze issue history and trends
 │   ├── capture-issue/       # Capture issues from conversation
 │   ├── issue-size-review/   # Evaluate issue complexity

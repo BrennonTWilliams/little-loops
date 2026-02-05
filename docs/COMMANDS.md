@@ -57,6 +57,11 @@ Capture issues from conversation or natural language description.
 
 **Arguments:** `input` (optional) - natural language description
 
+### `/ll:refine_issue`
+Refine issue files through interactive Q&A to improve quality before validation or implementation.
+
+**Arguments:** `issue_id` (optional)
+
 ### `/ll:scan_codebase`
 Scan codebase to identify bugs, enhancements, and features (technical analysis).
 
@@ -89,6 +94,11 @@ Validate active issues against key documents for relevance and alignment.
 
 ### `/ll:normalize_issues`
 Find and fix issue filenames lacking valid IDs (BUG-001, etc.).
+
+### `/ll:sync_issues`
+Sync local issues with GitHub Issues (push/pull/status).
+
+**Arguments:** `mode` (optional) - `push`, `pull`, or `status`
 
 ### `/ll:manage_issue`
 Autonomously manage issues - plan, implement, verify, complete.
@@ -235,6 +245,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 | `run_tests` | Execute test suites |
 | `find_dead_code` | Identify unused code |
 | `capture_issue` | Capture issues from conversation or description |
+| `refine_issue` | Refine issue files through interactive Q&A |
 | `scan_codebase` | Find issues in code (technical analysis) |
 | `scan_product` | Find issues in code (product-focused analysis) |
 | `prioritize_issues` | Assign P0-P5 priorities |
@@ -242,6 +253,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 | `verify_issues` | Check issues against code |
 | `align_issues` | Validate issues against key documents |
 | `normalize_issues` | Fix issue filenames lacking valid IDs |
+| `sync_issues` | Sync local issues with GitHub Issues |
 | `manage_issue` | Full issue lifecycle management |
 | `iterate_plan` | Update implementation plans |
 | `audit_architecture` | Analyze code structure |
