@@ -50,6 +50,7 @@ ll-parallel = "little_loops.cli:main_parallel"
 ll-messages = "little_loops.cli:main_messages"
 ll-loop = "little_loops.cli:main_loop"
 ll-sprint = "little_loops.cli:main_sprint"
+ll-sync = "little_loops.cli:main_sync"
 ll-workflows = "little_loops.workflow_sequence_analyzer:main"
 ll-history = "little_loops.cli:main_history"
 

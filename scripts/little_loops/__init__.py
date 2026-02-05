@@ -20,6 +20,7 @@ from little_loops.issue_lifecycle import (
     verify_issue_completed,
 )
 from little_loops.issue_manager import AutoManager
+from little_loops.sync import GitHubSyncManager, SyncResult, SyncStatus
 
 __version__ = "1.1.0"
 __all__ = [
@@ -38,4 +39,8 @@ __all__ = [
     "verify_issue_completed",
     # issue_manager
     "AutoManager",
+    # sync
+    "GitHubSyncManager",
+    "SyncResult",
+    "SyncStatus",
 ]
