@@ -29,6 +29,9 @@ cd little-loops
 
 ```bash
 pip install -e "./scripts[dev]"
+
+# For full development with LLM features (e.g., ll-sync):
+pip install -e "./scripts[dev,llm]"
 ```
 
 3. Verify installation:
@@ -90,20 +93,21 @@ Configuration is in `scripts/pyproject.toml` under `[tool.mutmut]`.
 
 ```bash
 # Run linter
-ruff check scripts/little_loops/
+ruff check scripts/
 
 # Run type checker
 mypy scripts/little_loops/
 
 # Auto-format code
-ruff format scripts/little_loops/
+ruff format scripts/
 ```
 
 ## Project Structure
 
 ```
 little-loops/
-├── plugin.json           # Plugin manifest
+├── .claude-plugin/
+│   └── plugin.json       # Plugin manifest
 ├── config-schema.json    # Configuration JSON Schema
 ├── commands/             # Slash command templates (*.md)
 ├── agents/               # 8 agent definitions (*.md)
@@ -117,42 +121,58 @@ little-loops/
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
 ├── skills/               # 8 skill definitions (user-invocable workflows)
-│   ├── analyze-history/     # Analyze issue history and trends
-│   ├── capture-issue/       # Capture issues from conversation
-│   ├── issue-size-review/   # Evaluate issue complexity
-│   ├── issue-workflow/      # Issue lifecycle quick reference
-│   └── workflow-automation-proposer/  # Propose automations from patterns
+│   ├── analyze-history/              # Analyze issue history and trends
+│   ├── capture-issue/                # Capture issues from conversation
+│   ├── issue-size-review/            # Evaluate issue complexity
+│   ├── issue-workflow/               # Issue lifecycle quick reference
+│   ├── loop-suggester/               # Suggest FSM loops from message history
+│   ├── product-analyzer/             # Analyze codebase against product goals
+│   ├── sync-issues/                  # Sync issues with GitHub Issues
+│   └── workflow-automation-proposer/ # Propose automations from patterns
 ├── templates/            # Project-type config templates
 ├── docs/                 # Documentation
-│   ├── TROUBLESHOOTING.md  # Common issues and solutions
-│   ├── ARCHITECTURE.md     # System design diagrams
-│   ├── SESSION_HANDOFF.md  # Context management guide
-│   ├── generalized-fsm-loop.md  # FSM loop system
-│   └── API.md              # Python API reference
+│   ├── API.md                           # Python API reference
+│   ├── ARCHITECTURE.md                  # System design diagrams
+│   ├── CLI-TOOLS-AUDIT.md               # CLI tools audit
+│   ├── COMMANDS.md                      # Command reference
+│   ├── E2E_TESTING.md                   # End-to-end testing guide
+│   ├── SESSION_HANDOFF.md               # Context management guide
+│   ├── TESTING.md                       # Testing patterns and conventions
+│   ├── TROUBLESHOOTING.md              # Common issues and solutions
+│   ├── claude-cli-integration-mechanics.md
+│   ├── demo-repo-rubric.md
+│   └── generalized-fsm-loop.md         # FSM loop system
 └── scripts/              # Python CLI tools
     ├── pyproject.toml    # Package configuration
     ├── tests/            # Test suite
     └── little_loops/     # Main package
-        ├── cli.py        # CLI entry points (ll-auto, ll-parallel, ll-messages, ll-loop)
-        ├── config.py     # Configuration management
-        ├── state.py      # State persistence
+        ├── cli.py        # CLI entry points (ll-auto, ll-parallel, ll-messages,
+        │                 #   ll-loop, ll-sprint, ll-sync, ll-history)
+        ├── cli_args.py          # Argument parsing
+        ├── config.py            # Configuration management
+        ├── state.py             # State persistence
         ├── issue_manager.py
         ├── issue_parser.py
-        ├── issue_discovery.py  # Issue discovery and deduplication
+        ├── issue_discovery.py   # Issue discovery and deduplication
         ├── issue_lifecycle.py
-        ├── issue_history.py         # Issue history and statistics
+        ├── issue_history.py     # Issue history and statistics
         ├── git_operations.py
         ├── work_verification.py
-        ├── sprint.py                # Sprint planning and execution
+        ├── sprint.py            # Sprint planning and execution
+        ├── sync.py              # GitHub Issues sync
+        ├── goals_parser.py      # Goals file parsing
         ├── subprocess_utils.py
         ├── logger.py
         ├── logo.py              # CLI logo display
         ├── dependency_graph.py  # Dependency graph construction
         ├── user_messages.py     # User message extraction
+        ├── workflow_sequence_analyzer.py  # Workflow analysis (ll-workflows)
         ├── fsm/                  # FSM loop system
         │   ├── __init__.py
         │   ├── schema.py
+        │   ├── fsm-loop-schema.json
         │   ├── compilers.py
+        │   ├── concurrency.py
         │   ├── evaluators.py
         │   ├── executor.py
         │   ├── interpolation.py
@@ -167,6 +187,8 @@ little-loops/
             ├── priority_queue.py
             ├── output_parsing.py
             ├── git_lock.py
+            ├── file_hints.py
+            ├── overlap_detector.py
             └── types.py
 ```
 
@@ -214,7 +236,7 @@ test(config): add tests for configuration merging
 1. Create a feature branch from `main`
 2. Make your changes
 3. Ensure tests pass: `pytest scripts/tests/`
-4. Ensure code quality: `ruff check scripts/little_loops/ && mypy scripts/little_loops/`
+4. Ensure code quality: `ruff check scripts/ && mypy scripts/little_loops/`
 5. Update documentation if needed
 6. Submit a pull request
 
@@ -252,6 +274,33 @@ Agents are defined as Markdown files in `agents/`:
 
 [System prompt and instructions for the agent]
 ```
+
+## Adding Skills
+
+Skills are defined as directories in `skills/`, each containing a `SKILL.md` file:
+
+```
+skills/
+└── my-skill/
+    └── SKILL.md
+```
+
+The `SKILL.md` file uses YAML frontmatter for metadata, followed by the skill instructions:
+
+```markdown
+---
+description: |
+  Brief description of what the skill does.
+
+  Trigger keywords: "keyword1", "keyword2", "keyword3"
+---
+
+# Skill Name
+
+[Skill instructions and usage documentation]
+```
+
+Skills are user-invocable workflows that activate based on trigger keywords or explicit invocation. Prefer creating skills over agents for new functionality (see development preferences in CLAUDE.md).
 
 ## Code Style
 
