@@ -120,12 +120,13 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── skills/               # 8 skill definitions (user-invocable workflows)
+├── skills/               # 9 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── capture-issue/                # Capture issues from conversation
 │   ├── issue-size-review/            # Evaluate issue complexity
 │   ├── issue-workflow/               # Issue lifecycle quick reference
 │   ├── loop-suggester/               # Suggest FSM loops from message history
+│   ├── open-pr/                      # Create PRs with generated descriptions
 │   ├── product-analyzer/             # Analyze codebase against product goals
 │   ├── sync-issues/                  # Sync issues with GitHub Issues
 │   └── workflow-automation-proposer/ # Propose automations from patterns
