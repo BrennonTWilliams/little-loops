@@ -681,9 +681,7 @@ class TestGitHubSyncConfig:
 
     def test_from_dict_partial_label_mapping(self) -> None:
         """Test that partial label_mapping replaces default entirely."""
-        data = {
-            "label_mapping": {"BUG": "defect"}
-        }
+        data = {"label_mapping": {"BUG": "defect"}}
         config = GitHubSyncConfig.from_dict(data)
 
         # Partial mapping replaces default (doesn't merge)
@@ -716,7 +714,7 @@ class TestSyncConfig:
             "github": {
                 "repo": "myorg/myrepo",
                 "priority_labels": False,
-            }
+            },
         }
         config = SyncConfig.from_dict(data)
 
@@ -760,7 +758,7 @@ class TestBRConfigSyncIntegration:
             "github": {
                 "repo": "test/repo",
                 "priority_labels": True,
-            }
+            },
         }
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
@@ -791,7 +789,7 @@ class TestBRConfigSyncIntegration:
             "github": {
                 "repo": "owner/repo",
                 "label_mapping": {"BUG": "bug", "FEAT": "feature"},
-            }
+            },
         }
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
