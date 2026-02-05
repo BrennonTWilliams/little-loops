@@ -36,5 +36,17 @@
     "default_mode": "auto",
     "default_timeout": 3600,
     "default_max_workers": 4
+  },
+  "sync": {
+    "enabled": true,
+    "github": {
+      "label_mapping": {
+        "BUG": "bug",
+        "FEAT": "enhancement",
+        "ENH": "enhancement"
+      },
+      "priority_labels": true,
+      "sync_completed": false
+    }
   }
 }
