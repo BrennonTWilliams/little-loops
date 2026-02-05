@@ -85,4 +85,5 @@ This command creates commits for work done in the current session.
 Works well with:
 - `/ll:check_code` - Run before committing to ensure code quality
 - `/ll:run_tests` - Verify tests pass before committing
+- `/ll:open_pr` - After committing, open a pull request
 - `/ll:describe_pr` - After committing, generate PR description

@@ -116,6 +116,11 @@ GIT & WORKFLOW
 /ll:describe_pr
     Generate comprehensive PR descriptions from branch changes
 
+/ll:open_pr [target_branch] [--draft]
+    Open a pull request for the current branch
+    Arguments: target_branch (optional, default: auto-detect)
+    Flags: --draft (create as draft PR)
+
 ================================================================================
 Usage: /ll:<command> [arguments]
 
@@ -153,6 +158,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 | `resume` | Resume from previous session's continuation prompt |
 | `commit` | Create git commits |
 | `describe_pr` | Generate PR descriptions |
+| `open_pr` | Open a pull request for current branch |
 
 ---
 
@@ -175,7 +181,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 /ll:run_tests all
 /ll:check_code
 /ll:commit
-/ll:describe_pr
+/ll:open_pr
 
 # Analyze ll-parallel/ll-auto logs for tool bugs
 /ll:analyze_log ll-parallel-debug.log

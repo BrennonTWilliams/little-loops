@@ -135,5 +135,6 @@ $ARGUMENTS
 
 This command works well with:
 - `/ll:commit` - Commit changes first
+- `/ll:open_pr` - Open the PR after generating a description
 - `/ll:check_code` - Ensure code quality before PR
 - `/ll:run_tests` - Verify tests pass

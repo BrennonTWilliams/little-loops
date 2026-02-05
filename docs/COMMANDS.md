@@ -171,6 +171,14 @@ Create git commits with user approval (no Claude attribution).
 ### `/ll:describe_pr`
 Generate comprehensive PR descriptions from branch changes.
 
+### `/ll:open_pr`
+Open a pull request for the current branch.
+
+**Arguments:**
+- `target_branch` (optional): Target branch for the PR (default: auto-detect)
+
+**Flags:** `--draft` (create as draft PR)
+
 ### `/ll:cleanup_worktrees`
 Clean up stale git worktrees and branches from parallel processing.
 
@@ -262,6 +270,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 | `analyze-workflows` | Analyze user message patterns for automation |
 | `commit` | Create git commits |
 | `describe_pr` | Generate PR descriptions |
+| `open_pr` | Open a pull request for current branch |
 | `cleanup_worktrees` | Clean up stale worktrees and branches |
 | `handoff` | Generate session handoff prompt |
 | `resume` | Resume from continuation prompt |
@@ -291,5 +300,5 @@ Analyze user message history to suggest FSM loop configurations automatically.
 /ll:run_tests all
 /ll:check_code
 /ll:commit
-/ll:describe_pr
+/ll:open_pr
 ```
