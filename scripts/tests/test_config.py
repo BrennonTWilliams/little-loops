@@ -13,11 +13,13 @@ from little_loops.config import (
     BRConfig,
     CategoryConfig,
     CommandsConfig,
+    GitHubSyncConfig,
     IssuesConfig,
     ParallelAutomationConfig,
     ProjectConfig,
     ScanConfig,
     SprintsConfig,
+    SyncConfig,
 )
 
 
@@ -645,3 +647,170 @@ class TestIssuesConfigHelperMethods:
         assert "BUG" in prefixes
         assert "FEAT" in prefixes
         assert "ENH" in prefixes
+
+
+class TestGitHubSyncConfig:
+    """Tests for GitHubSyncConfig dataclass."""
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating GitHubSyncConfig with default values."""
+        config = GitHubSyncConfig.from_dict({})
+
+        assert config.repo is None
+        assert config.label_mapping == {"BUG": "bug", "FEAT": "enhancement", "ENH": "enhancement"}
+        assert config.priority_labels is True
+        assert config.sync_completed is False
+        assert config.state_file == ".claude/ll-sync-state.json"
+
+    def test_from_dict_with_all_fields(self) -> None:
+        """Test creating GitHubSyncConfig with all fields specified."""
+        data = {
+            "repo": "owner/repo",
+            "label_mapping": {"BUG": "defect", "FEAT": "feature"},
+            "priority_labels": False,
+            "sync_completed": True,
+            "state_file": "custom-sync-state.json",
+        }
+        config = GitHubSyncConfig.from_dict(data)
+
+        assert config.repo == "owner/repo"
+        assert config.label_mapping == {"BUG": "defect", "FEAT": "feature"}
+        assert config.priority_labels is False
+        assert config.sync_completed is True
+        assert config.state_file == "custom-sync-state.json"
+
+    def test_from_dict_partial_label_mapping(self) -> None:
+        """Test that partial label_mapping replaces default entirely."""
+        data = {
+            "label_mapping": {"BUG": "defect"}
+        }
+        config = GitHubSyncConfig.from_dict(data)
+
+        # Partial mapping replaces default (doesn't merge)
+        assert config.label_mapping == {"BUG": "defect"}
+
+
+class TestSyncConfig:
+    """Tests for SyncConfig dataclass."""
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating SyncConfig with default values."""
+        config = SyncConfig.from_dict({})
+
+        assert config.enabled is False
+        assert config.provider == "github"
+        assert isinstance(config.github, GitHubSyncConfig)
+        assert config.github.repo is None
+
+    def test_from_dict_enabled(self) -> None:
+        """Test creating SyncConfig with enabled flag."""
+        config = SyncConfig.from_dict({"enabled": True})
+
+        assert config.enabled is True
+        assert config.provider == "github"
+
+    def test_from_dict_with_github_settings(self) -> None:
+        """Test creating SyncConfig with GitHub settings."""
+        data = {
+            "enabled": True,
+            "github": {
+                "repo": "myorg/myrepo",
+                "priority_labels": False,
+            }
+        }
+        config = SyncConfig.from_dict(data)
+
+        assert config.enabled is True
+        assert config.github.repo == "myorg/myrepo"
+        assert config.github.priority_labels is False
+        # Other github defaults preserved
+        assert config.github.sync_completed is False
+
+    def test_from_dict_alternative_provider(self) -> None:
+        """Test creating SyncConfig with different provider value."""
+        config = SyncConfig.from_dict({"provider": "github"})
+
+        assert config.provider == "github"
+
+
+class TestBRConfigSyncIntegration:
+    """Tests for BRConfig sync property integration."""
+
+    def test_sync_property_exists(self, temp_project_dir: Path) -> None:
+        """Test that BRConfig has sync property."""
+        config = BRConfig(temp_project_dir)
+
+        assert hasattr(config, "sync")
+        assert isinstance(config.sync, SyncConfig)
+
+    def test_sync_property_with_defaults(self, temp_project_dir: Path) -> None:
+        """Test sync property returns defaults when not configured."""
+        config = BRConfig(temp_project_dir)
+
+        assert config.sync.enabled is False
+        assert config.sync.provider == "github"
+        assert config.sync.github.repo is None
+
+    def test_sync_property_loads_from_config(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test sync property loads from config file."""
+        sample_config["sync"] = {
+            "enabled": True,
+            "github": {
+                "repo": "test/repo",
+                "priority_labels": True,
+            }
+        }
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+
+        assert config.sync.enabled is True
+        assert config.sync.github.repo == "test/repo"
+
+    def test_sync_in_to_dict(self, temp_project_dir: Path) -> None:
+        """Test sync config appears in to_dict output."""
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert "sync" in result
+        assert "enabled" in result["sync"]
+        assert "provider" in result["sync"]
+        assert "github" in result["sync"]
+        assert "repo" in result["sync"]["github"]
+        assert "label_mapping" in result["sync"]["github"]
+
+    def test_sync_to_dict_serializable(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test that sync config in to_dict is JSON serializable."""
+        sample_config["sync"] = {
+            "enabled": True,
+            "github": {
+                "repo": "owner/repo",
+                "label_mapping": {"BUG": "bug", "FEAT": "feature"},
+            }
+        }
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        # Should not raise
+        json.dumps(result)
+
+    def test_resolve_variable_sync(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test resolve_variable works for sync config paths."""
+        sample_config["sync"] = {"enabled": True}
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+
+        assert config.resolve_variable("sync.enabled") == "True"
+        assert config.resolve_variable("sync.provider") == "github"

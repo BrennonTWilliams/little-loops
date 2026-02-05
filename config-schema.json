@@ -589,6 +589,61 @@
         }
       },
       "additionalProperties": false
+    },
+    "sync": {
+      "type": "object",
+      "description": "GitHub Issues synchronization settings (opt-in feature, disabled by default)",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable GitHub Issues sync feature",
+          "default": false
+        },
+        "provider": {
+          "type": "string",
+          "enum": ["github"],
+          "description": "Issue tracking provider (currently only GitHub supported)",
+          "default": "github"
+        },
+        "github": {
+          "type": "object",
+          "description": "GitHub-specific sync settings",
+          "properties": {
+            "repo": {
+              "type": ["string", "null"],
+              "description": "GitHub repository (owner/repo format, auto-detected if null)",
+              "default": null
+            },
+            "label_mapping": {
+              "type": "object",
+              "description": "Map issue types to GitHub labels",
+              "additionalProperties": { "type": "string" },
+              "default": {
+                "BUG": "bug",
+                "FEAT": "enhancement",
+                "ENH": "enhancement"
+              }
+            },
+            "priority_labels": {
+              "type": "boolean",
+              "description": "Add priority as GitHub label (e.g., 'P1')",
+              "default": true
+            },
+            "sync_completed": {
+              "type": "boolean",
+              "description": "Also sync completed issues (close on GitHub)",
+              "default": false
+            },
+            "state_file": {
+              "type": "string",
+              "description": "File to track sync state",
+              "default": ".claude/ll-sync-state.json"
+            }
+          },
+          "additionalProperties": false
+        }
+      },
+      "additionalProperties": false
     }
   },
   "additionalProperties": false

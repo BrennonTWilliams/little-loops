@@ -97,4 +97,25 @@ _No documents linked. Run `/ll:align_issues` to discover relevant docs._
 
 ## Status
 
-**Open** | Created: 2026-02-03 | Priority: P3
+**Completed** | Created: 2026-02-03 | Completed: 2026-02-04 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-04
+- **Status**: Completed
+
+### Changes Made
+- `config-schema.json`: Added `sync` configuration section with GitHub settings
+- `scripts/little_loops/config.py`: Added `GitHubSyncConfig` and `SyncConfig` dataclasses with `from_dict` methods, integrated into `BRConfig`
+- `skills/sync-issues/SKILL.md`: Created skill definition with trigger keywords
+- `commands/sync_issues.md`: Created command with push/pull/status actions
+- `scripts/tests/test_config.py`: Added 13 tests for sync configuration
+- `.claude/CLAUDE.md`: Documented new `/ll:sync_issues` command
+
+### Verification Results
+- Tests: PASS (2416 tests, 13 new sync tests)
+- Lint: PASS
+- Types: PASS

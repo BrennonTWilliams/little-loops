@@ -49,6 +49,7 @@ docs/           # Architecture, API, troubleshooting
 Run `/ll:help` for full list. Key commands:
 - `/ll:manage_issue` - Process issues through full lifecycle
 - `/ll:scan_codebase` - Find bugs/enhancements, create issues
+- `/ll:sync_issues` - Sync issues with GitHub Issues (requires `sync.enabled`)
 - `/ll:check_code` - Run lint/format/type checks
 - `/ll:run_tests` - Execute test suite
 - `/ll:commit` - Create commits with user approval

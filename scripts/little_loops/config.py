@@ -25,6 +25,8 @@ __all__ = [
     "CommandsConfig",
     "ScanConfig",
     "SprintsConfig",
+    "GitHubSyncConfig",
+    "SyncConfig",
     "REQUIRED_CATEGORIES",
     "DEFAULT_CATEGORIES",
 ]
@@ -300,6 +302,50 @@ class SprintsConfig:
         )
 
 
+@dataclass
+class GitHubSyncConfig:
+    """GitHub-specific sync configuration."""
+
+    repo: str | None = None
+    label_mapping: dict[str, str] = field(
+        default_factory=lambda: {"BUG": "bug", "FEAT": "enhancement", "ENH": "enhancement"}
+    )
+    priority_labels: bool = True
+    sync_completed: bool = False
+    state_file: str = ".claude/ll-sync-state.json"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> GitHubSyncConfig:
+        """Create GitHubSyncConfig from dictionary."""
+        return cls(
+            repo=data.get("repo"),
+            label_mapping=data.get(
+                "label_mapping", {"BUG": "bug", "FEAT": "enhancement", "ENH": "enhancement"}
+            ),
+            priority_labels=data.get("priority_labels", True),
+            sync_completed=data.get("sync_completed", False),
+            state_file=data.get("state_file", ".claude/ll-sync-state.json"),
+        )
+
+
+@dataclass
+class SyncConfig:
+    """Issue sync configuration."""
+
+    enabled: bool = False
+    provider: str = "github"
+    github: GitHubSyncConfig = field(default_factory=GitHubSyncConfig)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> SyncConfig:
+        """Create SyncConfig from dictionary."""
+        return cls(
+            enabled=data.get("enabled", False),
+            provider=data.get("provider", "github"),
+            github=GitHubSyncConfig.from_dict(data.get("github", {})),
+        )
+
+
 class BRConfig:
     """Main configuration class for little-loops.
 
@@ -346,6 +392,7 @@ class BRConfig:
         self._commands = CommandsConfig.from_dict(self._raw_config.get("commands", {}))
         self._scan = ScanConfig.from_dict(self._raw_config.get("scan", {}))
         self._sprints = SprintsConfig.from_dict(self._raw_config.get("sprints", {}))
+        self._sync = SyncConfig.from_dict(self._raw_config.get("sync", {}))
 
     @property
     def project(self) -> ProjectConfig:
@@ -381,6 +428,11 @@ class BRConfig:
     def sprints(self) -> SprintsConfig:
         """Get sprints configuration."""
         return self._sprints
+
+    @property
+    def sync(self) -> SyncConfig:
+        """Get sync configuration."""
+        return self._sync
 
     @property
     def repo_path(self) -> Path:
@@ -588,6 +640,17 @@ class BRConfig:
                 "sprints_dir": self._sprints.sprints_dir,
                 "default_timeout": self._sprints.default_timeout,
                 "default_max_workers": self._sprints.default_max_workers,
+            },
+            "sync": {
+                "enabled": self._sync.enabled,
+                "provider": self._sync.provider,
+                "github": {
+                    "repo": self._sync.github.repo,
+                    "label_mapping": self._sync.github.label_mapping,
+                    "priority_labels": self._sync.github.priority_labels,
+                    "sync_completed": self._sync.github.sync_completed,
+                    "state_file": self._sync.github.state_file,
+                },
             },
         }
 
