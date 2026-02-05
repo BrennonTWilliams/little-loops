@@ -1,41 +1,27 @@
 ---
-description: |
-  Refine issue files through interactive Q&A. Accepts an Issue ID and asks clarifying questions to improve issue quality before validation or implementation.
-
-  Trigger keywords: "refine issue", "clarify issue", "improve issue", "add details to issue", "flesh out issue", "elaborate issue", "enrich issue"
+description: Refine issue files through interactive Q&A to improve quality before validation or implementation
+arguments:
+  - name: issue_id
+    description: Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
+    required: true
 ---
 
-# Refine Issue Skill
+# Refine Issue
 
-This skill accepts an Issue ID and interactively gathers clarifying information to improve issue quality.
+Interactively gather clarifying information to improve issue quality through targeted Q&A based on issue type.
 
-## When to Activate
+## Configuration
 
-Proactively offer or invoke this skill when the user:
-- Mentions an issue needs more detail
-- Says "this issue is vague" or "unclear requirements"
-- Asks to "clarify" or "refine" an issue before implementation
-- Mentions an issue failed `/ll:ready_issue` validation
-- Wants to add acceptance criteria, reproduction steps, or scope details
+This command uses project configuration from `.claude/ll-config.json`:
+- **Issues base**: `{{config.issues.base_dir}}`
+- **Completed dir**: `{{config.issues.completed_dir}}`
 
-## How to Use
+## Process
 
-Refine a specific issue:
-
-```
-/ll:refine_issue FEAT-225
-```
-
-## Arguments
-
-$ARGUMENTS - Issue ID in TYPE-NNN format (e.g., BUG-071, FEAT-225, ENH-042)
-
-## Workflow
-
-### Phase 1: Locate Issue
+### 1. Locate Issue
 
 ```bash
-ISSUE_ID="${ARGUMENTS}"
+ISSUE_ID="${issue_id}"
 
 # Search for issue file across categories (not completed/)
 for dir in {{config.issues.base_dir}}/*/; do
@@ -54,14 +40,14 @@ done
 
 If not found, report error and exit.
 
-### Phase 2: Analyze Issue Content
+### 2. Analyze Issue Content
 
 1. Read the issue file completely
 2. Parse the frontmatter (discovered_date, discovered_by, etc.)
 3. Identify issue type from filename or ID prefix (BUG/FEAT/ENH)
 4. Extract existing sections and content
 
-### Phase 3: Identify Gaps
+### 3. Identify Gaps
 
 Analyze content against type-specific checklists:
 
@@ -95,7 +81,7 @@ Analyze content against type-specific checklists:
 | Scope Boundaries | Yes | "What is explicitly out of scope for this enhancement?" |
 | Backwards Compatibility | Conditional | "Are there backwards compatibility concerns?" |
 
-### Phase 4: Interactive Refinement
+### 4. Interactive Refinement
 
 For each identified gap, use AskUserQuestion to gather information.
 
@@ -124,7 +110,7 @@ questions:
 
 For each selected section, gather the information interactively. Allow free-form text input for each section.
 
-### Phase 5: Update Issue File
+### 5. Update Issue File
 
 1. Use Edit tool to add/update sections with gathered information
 2. Preserve existing frontmatter and content
@@ -186,7 +172,7 @@ As a [user type], I want to [action] so that [benefit].
 - [Item 2]: [Reason for exclusion]
 ```
 
-### Phase 6: Finalize
+### 6. Finalize
 
 1. Read the updated issue file to confirm changes
 2. Display summary of refinements made
@@ -243,21 +229,16 @@ ISSUE REFINED: [ISSUE-ID]
 
 ## Examples
 
-| User Says | Action |
-|-----------|--------|
-| "Refine FEAT-225" | `/ll:refine_issue FEAT-225` |
-| "This bug needs more detail" | Offer to run `/ll:refine_issue [ID]` |
-| "Add acceptance criteria to the feature" | `/ll:refine_issue [ID]` |
-| "Clarify the enhancement before implementing" | `/ll:refine_issue [ID]` |
-| "The issue is too vague" | `/ll:refine_issue [ID]` |
-| "Flesh out BUG-042" | `/ll:refine_issue BUG-042` |
+```bash
+# Refine a specific feature
+/ll:refine_issue FEAT-225
 
-## Configuration
+# Refine a bug with more detail
+/ll:refine_issue BUG-042
 
-Uses project configuration from `.claude/ll-config.json`:
-
-- `issues.base_dir` - Base directory for issues (default: `.issues`)
-- `issues.completed_dir` - Skipped during search (default: `completed`)
+# Refine an enhancement
+/ll:refine_issue ENH-015
+```
 
 ## Integration
 
@@ -271,5 +252,3 @@ Typical workflow:
 ```
 /ll:capture_issue "description" → /ll:refine_issue [ID] → /ll:ready_issue [ID] → /ll:manage_issue
 ```
-
-This skill fits between capture and validation, ensuring issues have sufficient detail before attempting implementation.
