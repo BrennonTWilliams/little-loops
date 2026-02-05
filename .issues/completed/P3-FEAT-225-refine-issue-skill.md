@@ -34,7 +34,7 @@ The `/ll:refine_issue FEAT-225` skill would:
 
 ## Proposed Solution
 
-Create new skill file at `skills/refine_issue.md` with:
+Create new skill directory at `skills/refine-issue/SKILL.md` with:
 
 - **Input**: Issue ID (TYPE-NNN format)
 - **Process**:
@@ -69,6 +69,30 @@ _No documents linked. Run `/ll:align_issues` to discover relevant docs._
 
 ---
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-05
+- **Status**: Completed
+
+### Changes Made
+- `skills/refine-issue/SKILL.md`: Created new skill with full workflow for interactive issue refinement
+- `thoughts/shared/plans/2026-02-05-FEAT-225-management.md`: Implementation plan
+
+### Implementation Details
+The skill provides:
+- Issue location using standard search pattern
+- Type-specific gap analysis (BUG/FEAT/ENH)
+- Interactive Q&A via AskUserQuestion
+- Issue file updates with Edit tool
+- Optional git staging
+
+### Verification Results
+- Tests: PASS (2455 passed)
+- Lint: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-05 | Priority: P3
+**Completed** | Created: 2026-02-05 | Completed: 2026-02-05 | Priority: P3
