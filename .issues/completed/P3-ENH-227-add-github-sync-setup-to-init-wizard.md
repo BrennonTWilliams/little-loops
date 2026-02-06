@@ -27,10 +27,18 @@ The `/ll:init` wizard does not ask about GitHub Issue syncing during project set
 
 ## Proposed Solution
 
-1. Add a new question to the `/ll:init` wizard skill asking about GitHub sync
-2. When "yes", populate `sync.enabled: true` and `sync.github` defaults in `ll-config.json`
-3. Verify `/ll:configure` already handles the sync section (or add support)
+1. Add a new question to the `/ll:init` wizard (`commands/init.md`) asking about GitHub sync — likely as part of the Features Selection round (Step 5c) or as a new round
+2. When "yes", populate `sync.enabled: true` and `sync.github` defaults in `ll-config.json` (schema already defined in `config-schema.json` lines 593+)
+3. Add `sync` as a configurable area in `/ll:configure` (`commands/configure.md`) — currently missing from the area mapping table
 4. Audit issue commands/skills to ensure they check `sync.enabled` where relevant
+
+### Key Files
+
+- `commands/init.md` — Init wizard (add sync question)
+- `commands/configure.md` — Configure command (add `sync` area)
+- `commands/sync_issues.md` — Sync command (reference for config structure)
+- `config-schema.json` — Schema (sync section already defined)
+- `skills/sync-issues/SKILL.md` — Sync skill (reference)
 
 ## Impact
 
@@ -51,6 +59,18 @@ The `/ll:init` wizard does not ask about GitHub Issue syncing during project set
 
 ---
 
-## Status
+## Resolution
 
-**Open** | Created: 2026-02-05 | Priority: P3
+- **Action**: implement
+- **Completed**: 2026-02-05
+- **Status**: Completed
+
+### Changes Made
+- `commands/init.md`: Added "GitHub sync" option to Features Selection (Round 3) multi-select, added conditional sync settings (priority_labels, sync_completed) to Dynamic Round 5, added sync config mapping, added [SYNC] section to summary output, added sync config writing rules, added sync next step to completion message
+- `commands/configure.md`: Added `sync` to area mapping table, added sync --show output, added sync to --list output, added sync to area selection menus, added full "Area: sync" interactive configuration section with 4 questions (enable, repository, priority labels, sync completed)
+- `thoughts/shared/plans/2026-02-05-ENH-227-management.md`: Implementation plan
+
+### Verification Results
+- Tests: PASS (2455 passed)
+- Lint: N/A (markdown files only)
+- Types: N/A (markdown files only)

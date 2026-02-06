@@ -343,6 +343,8 @@ questions:
         description: "Configure ll-parallel for concurrent issue processing with git worktrees"
       - label: "Context monitoring"
         description: "Auto-handoff reminders at 80% context usage (works in all modes)"
+      - label: "GitHub sync"
+        description: "Sync issues with GitHub Issues via /ll:sync_issues"
     multiSelect: true
 ```
 
@@ -494,6 +496,7 @@ Build this round dynamically based on previous responses. **Skip entirely if no 
 1. **issues_path** - If user selected "Yes, custom directory" in Round 2
 2. **worktree_files** - If user selected "Parallel processing" in Round 3
 3. **threshold** - If user selected "Context monitoring" in Round 3
+4. **sync_settings** - If user selected "GitHub sync" in Round 3
 
 If all conditions are false, skip this round entirely and proceed directly to Round 6 (Document Tracking).
 
@@ -534,6 +537,26 @@ questions:
       - label: "90%"
         description: "Aggressive - maximize context before handoff"
     multiSelect: false
+
+  # ONLY include if user selected "GitHub sync" in Round 3:
+  - header: "Priority Labels"
+    question: "Add priority levels (P0-P5) as GitHub labels when syncing?"
+    options:
+      - label: "Yes (Recommended)"
+        description: "Map P0-P5 to GitHub labels for filtering"
+      - label: "No"
+        description: "Don't add priority labels to GitHub Issues"
+    multiSelect: false
+
+  # ONLY include if user selected "GitHub sync" in Round 3:
+  - header: "Sync Completed"
+    question: "Sync completed issues to GitHub (close them)?"
+    options:
+      - label: "No (Recommended)"
+        description: "Only sync active issues"
+      - label: "Yes"
+        description: "Also close completed issues on GitHub"
+    multiSelect: false
 ```
 
 **Configuration from Round 4 responses:**
@@ -557,10 +580,26 @@ If context monitoring is enabled, add to configuration:
 }
 ```
 
+If GitHub sync is enabled, add to configuration:
+```json
+{
+  "sync": {
+    "enabled": true,
+    "github": {
+      "priority_labels": true,
+      "sync_completed": false
+    }
+  }
+}
+```
+
 **Notes:**
 - Only include `auto_handoff_threshold` if user selected a non-default value (not 80%)
 - Only include non-default values. If user selects exactly `[".env"]` (the default), the `worktree_copy_files` key can be omitted
 - The `.claude/` directory is always copied automatically regardless of `worktree_copy_files` setting
+- Only include `sync.github.priority_labels` if user selected "No" (true is the default)
+- Only include `sync.github.sync_completed` if user selected "Yes" (false is the default)
+- If both sync sub-settings are defaults, the `sync.github` object can be omitted (just include `sync.enabled: true`)
 
 **⚠️ MANDATORY NEXT STEP - DO NOT SKIP:**
 After completing Round 5 (or if Round 5 was skipped because no conditions matched), you MUST immediately proceed to **Round 6 (Document Tracking)** below. Round 6 is NOT optional. Do NOT display the summary yet. Do NOT say "All rounds complete." Continue reading and execute Round 6.
@@ -868,7 +907,7 @@ If prompt optimization settings differ from defaults, add to configuration:
 |-------|-------|-----------|------------|
 | 1 | Core Settings | name, src_dir, test_cmd, lint_cmd | Always |
 | 2 | Additional Config | format_cmd, issues, scan_dirs, excludes | Always |
-| 3 | Features | features (multi-select: parallel, context_monitor) | Always |
+| 3 | Features | features (multi-select: parallel, context_monitor, sync) | Always |
 | **4** | **Product Analysis** | **product (opt-in for product-focused analysis)** | **Always** |
 | 5 | Advanced (dynamic) | issues_path?, worktree_files?, threshold? | Conditional |
 | **6** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
@@ -883,6 +922,7 @@ If prompt optimization settings differ from defaults, add to configuration:
 - **issues_path**: Only if "custom directory" selected in Round 2
 - **worktree_files**: Only if "Parallel processing" selected in Round 3
 - **threshold**: Only if "Context monitoring" selected in Round 3
+- **sync_settings**: Only if "GitHub sync" selected in Round 3
 - **If no conditions match**: Round 5 is skipped
 
 **Round 6**: Always runs. User can choose "Use defaults", "Custom categories", or "Skip".
@@ -931,6 +971,11 @@ Configuration Summary:
   [CONTEXT MONITOR]                       # Only show if enabled
   context_monitor.enabled: true
   context_monitor.auto_handoff_threshold: [threshold]  # Only if non-default
+
+  [SYNC]                                  # Only show if enabled
+  sync.enabled: true
+  sync.github.priority_labels: [true/false]    # Only if non-default
+  sync.github.sync_completed: [true/false]     # Only if non-default
 
   [PRODUCT]                               # Only show if enabled
   product.enabled: true
@@ -984,6 +1029,7 @@ Otherwise (neither `--interactive` nor `--yes`):
      "scan": { ... },
      "parallel": { ... },
      "context_monitor": { ... },
+     "sync": { ... },
      "product": { ... },
      "documents": { ... },
      "continuation": { ... },
@@ -995,6 +1041,7 @@ Otherwise (neither `--interactive` nor `--yes`):
    - Omit `parallel` section entirely if not configured in interactive mode
    - Omit `parallel.worktree_copy_files` if user selected exactly the defaults
    - Omit `context_monitor` section if user selected "No" (disabled is the default)
+   - Omit `sync` section entirely if user did not select "GitHub sync" in Round 3 (disabled is the default)
    - Omit `product` section if user selected "No, skip" (disabled is the default)
    - Omit `documents` section if user selected "Skip" (disabled is the default)
    - Omit `continuation` section if all values match schema defaults
@@ -1042,6 +1089,7 @@ Next steps:
   3. Set up issue tracking: mkdir -p .issues/{bugs,features,enhancements}
   4. Configure product goals: .claude/ll-goals.md      # Only show if product enabled
   5. Run parallel processing: ll-parallel      # Only show if parallel configured
+  6. Sync with GitHub: /ll:sync_issues push   # Only show if sync enabled
 
 Documentation: https://github.com/BrennonTWilliams/little-loops
 

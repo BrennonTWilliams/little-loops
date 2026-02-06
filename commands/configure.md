@@ -2,7 +2,7 @@
 description: Interactively configure specific areas in ll-config.json
 arguments:
   - name: area
-    description: "project|issues|parallel|automation|documents|continuation|context|prompt|scan|workflow (optional - prompts if omitted)"
+    description: "project|issues|parallel|automation|documents|continuation|context|prompt|scan|workflow|sync (optional - prompts if omitted)"
     required: false
   - name: flags
     description: Optional flags (--list, --show, --reset)
@@ -50,6 +50,7 @@ Map argument names to config sections:
 | `prompt` | `prompt_optimization` | Prompt optimization: mode, confirm, bypass |
 | `scan` | `scan` | Focus dirs, exclude patterns |
 | `workflow` | `workflow` | Phase gates, deep research settings |
+| `sync` | `sync` | GitHub Issues sync: enabled, label mapping, priorities |
 
 ---
 
@@ -74,6 +75,7 @@ Configuration Areas
   prompt        [DEFAULT]     Prompt optimization: mode, confirm, bypass
   scan          [CONFIGURED]  Focus dirs, exclude patterns
   workflow      [DEFAULT]     Phase gates, deep research settings
+  sync          [DEFAULT]     GitHub Issues sync: enabled, label mapping, priorities
 
 Configure: /ll:configure <area>
 Show:      /ll:configure <area> --show
@@ -243,6 +245,22 @@ Workflow Configuration
 Edit: /ll:configure workflow
 ```
 
+#### sync --show
+
+```
+Sync Configuration
+------------------
+  enabled:          {{config.sync.enabled}}                       (default: false)
+  provider:         {{config.sync.provider}}                      (default: github)
+  GitHub:
+    repo:           {{config.sync.github.repo}}                   (default: auto-detect)
+    label_mapping:  {{config.sync.github.label_mapping}}          (default: BUG→bug, FEAT→enhancement, ENH→enhancement)
+    priority_labels: {{config.sync.github.priority_labels}}       (default: true)
+    sync_completed: {{config.sync.github.sync_completed}}         (default: false)
+
+Edit: /ll:configure sync
+```
+
 **Stop here if --show mode.**
 
 ---
@@ -308,7 +326,7 @@ questions:
       - label: "documents"
         description: "Key document categories for issue alignment"
       - label: "More areas..."
-        description: "Show continuation, context, prompt, workflow"
+        description: "Show sync, continuation, context, prompt, workflow"
 ```
 
 If "More areas..." selected again:
@@ -319,10 +337,24 @@ questions:
     header: "Area"
     multiSelect: false
     options:
+      - label: "sync"
+        description: "GitHub Issues sync: enabled, label mapping, priorities"
       - label: "continuation"
         description: "Session handoff: auto-detect, includes, expiry"
       - label: "context"
         description: "Context monitoring: threshold, limits"
+      - label: "More areas..."
+        description: "Show prompt, workflow"
+```
+
+If "More areas..." selected again:
+
+```yaml
+questions:
+  - question: "Which area do you want to configure?"
+    header: "Area"
+    multiSelect: false
+    options:
       - label: "prompt"
         description: "Prompt optimization: mode, confirm, bypass"
       - label: "workflow"
@@ -937,6 +969,70 @@ questions:
         description: "Skip pattern-finder"
       - label: "Locator only"
         description: "Minimal research"
+    multiSelect: false
+```
+
+---
+
+## Area: sync
+
+### Current Values
+
+```
+Current Sync Configuration
+--------------------------
+  enabled:          {{config.sync.enabled}}
+  provider:         {{config.sync.provider}}
+  repo:             {{config.sync.github.repo}}
+  label_mapping:    {{config.sync.github.label_mapping}}
+  priority_labels:  {{config.sync.github.priority_labels}}
+  sync_completed:   {{config.sync.github.sync_completed}}
+```
+
+### Round 1 (4 questions)
+
+```yaml
+questions:
+  - header: "Enable"
+    question: "Enable GitHub Issues synchronization?"
+    options:
+      - label: "{{current enabled}} (keep)"
+        description: "Keep current setting"
+      - label: "true"
+        description: "Yes, sync with GitHub"
+      - label: "false"
+        description: "No, disable (default)"
+    multiSelect: false
+
+  - header: "Repository"
+    question: "GitHub repository (owner/repo format)?"
+    options:
+      - label: "{{current repo}} (keep)"
+        description: "Keep current setting"
+      - label: "Auto-detect"
+        description: "Detect from git remote (default)"
+    multiSelect: false
+
+  - header: "Priority Labels"
+    question: "Add priority as GitHub labels (P0-P5)?"
+    options:
+      - label: "{{current priority_labels}} (keep)"
+        description: "Keep current setting"
+      - label: "true"
+        description: "Yes, add priority labels (default)"
+      - label: "false"
+        description: "No, omit priority labels"
+    multiSelect: false
+
+  - header: "Sync Completed"
+    question: "Sync completed issues to GitHub (close them)?"
+    options:
+      - label: "{{current sync_completed}} (keep)"
+        description: "Keep current setting"
+      - label: "false"
+        description: "No, active only (default)"
+      - label: "true"
+        description: "Yes, also close completed"
     multiSelect: false
 ```
 
