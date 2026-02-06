@@ -3,6 +3,9 @@ discovered_commit: a8f4144ebd05e95833281bd95506da984ba5d118
 discovered_branch: main
 discovered_date: 2026-02-06T03:41:30Z
 discovered_by: scan_codebase
+resolution: wont-fix
+closed_date: 2026-02-05
+closing_note: "Theoretical edge case with existing mitigations. The race window is microseconds, fcntl.flock() provides file-level atomicity, and stale locks from dead processes are auto-cleaned. Adding a global lock introduces complexity for a near-impossible scenario with no evidence of occurring in practice."
 ---
 
 # BUG-232: TOCTOU race condition in scope lock acquisition
@@ -76,4 +79,4 @@ with open(global_lock, "w") as gl:
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P2
+**Closed (won't-fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P2

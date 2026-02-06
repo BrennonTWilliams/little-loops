@@ -3,6 +3,9 @@ discovered_commit: a8f4144ebd05e95833281bd95506da984ba5d118
 discovered_branch: main
 discovered_date: 2026-02-06T03:41:30Z
 discovered_by: scan_codebase
+resolution: wont-fix
+closed_date: 2026-02-05
+closing_note: "No actual bug found. Naive and aware datetimes are never compared in practice — naive datetimes are used in display-only contexts (logger timestamps, filenames) or serialized to ISO strings that are never compared with UTC strings. Fixing this is pure hygiene with no practical impact."
 ---
 
 # BUG-237: Inconsistent naive vs UTC-aware datetime usage
@@ -53,4 +56,4 @@ Replace all `datetime.now()` calls with `datetime.now(UTC)` and ensure `from dat
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P3
+**Closed (won't-fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P3

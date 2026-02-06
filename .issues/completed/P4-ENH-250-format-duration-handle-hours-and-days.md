@@ -3,6 +3,9 @@ discovered_commit: a8f4144ebd05e95833281bd95506da984ba5d118
 discovered_branch: main
 discovered_date: 2026-02-06T03:41:30Z
 discovered_by: scan_codebase
+resolution: wont-fix
+closed_date: 2026-02-05
+closing_note: "Cosmetic polish with minimal user impact. The function works — it just shows '185.3 minutes' instead of '3h 5m'. This is a minor readability improvement for a log message that appears once at the end of a long run. Not worth tracking as a standalone issue."
 ---
 
 # ENH-250: format_duration handle hours and days
@@ -61,4 +64,4 @@ def format_duration(seconds: float) -> str:
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P4
+**Closed (won't-fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P4

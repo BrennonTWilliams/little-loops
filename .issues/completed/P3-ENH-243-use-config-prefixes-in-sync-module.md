@@ -3,6 +3,9 @@ discovered_commit: a8f4144ebd05e95833281bd95506da984ba5d118
 discovered_branch: main
 discovered_date: 2026-02-06T03:41:30Z
 discovered_by: scan_codebase
+resolution: wont-fix
+closed_date: 2026-02-05
+closing_note: "YAGNI — same reasoning as ENH-242. Hardcoded (BUG|FEAT|ENH) regex only matters if custom types (SEC, DOC, etc.) are added. No one is using custom categories. Fix when someone actually needs it."
 ---
 
 # ENH-243: Use config prefixes in sync module instead of hardcoded regex
@@ -64,4 +67,4 @@ category_map = {
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P3
+**Closed (won't-fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P3
