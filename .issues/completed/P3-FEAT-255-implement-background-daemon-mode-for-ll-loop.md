@@ -54,4 +54,6 @@ Implement process daemonization using `os.fork()` or `subprocess.Popen` with `st
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P3
+**Closed (Won't Fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P3
+
+**Closure reason**: YAGNI / over-engineered. Users already have nohup, &, screen, and tmux for backgrounding. The complexity of proper daemon management (PID files, orphan cleanup, crash recovery, signal handling) far outweighs the convenience.

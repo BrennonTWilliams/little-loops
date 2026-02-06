@@ -55,4 +55,6 @@ Add `--json` flag and `--format` argument to the history subparser. When `--json
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P4
+**Closed (Won't Fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P4
+
+**Closure reason**: Low value. No evidence anyone needs machine-readable loop history. Adds --json/--format flags for niche piping use cases. Can be added on-demand if requested.

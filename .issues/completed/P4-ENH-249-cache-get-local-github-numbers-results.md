@@ -55,4 +55,6 @@ Accept an optional `issue_files` parameter, or cache with a per-operation instan
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P4
+**Closed (Won't Fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P4
+
+**Closure reason**: Premature optimization. Reads a small directory of files; I/O cost is trivial. Caching adds staleness risk for no user-visible benefit.

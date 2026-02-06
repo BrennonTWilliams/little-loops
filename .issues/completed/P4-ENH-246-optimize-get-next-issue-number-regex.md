@@ -61,4 +61,6 @@ for dir_path in dirs_to_scan:
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P4
+**Closed (Won't Fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P4
+
+**Closure reason**: Premature optimization. Runs on ~30 files max; regex compilation cost is microseconds. No user-visible performance benefit.

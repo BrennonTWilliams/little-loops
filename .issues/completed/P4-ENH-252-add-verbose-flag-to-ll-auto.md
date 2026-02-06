@@ -47,4 +47,6 @@ Add `add_verbose_arg(parser)` to `add_common_auto_args()` and pass `verbose=args
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P4
+**Closed (Won't Fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P4
+
+**Closure reason**: Low value. Debug output adds maintenance surface. When debugging is truly needed, temporary print statements or a debugger work fine. Can be added on-demand if requested.

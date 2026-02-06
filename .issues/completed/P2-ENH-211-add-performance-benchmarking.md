@@ -45,6 +45,11 @@ pytest-benchmark is installed in the development environment but unused. Perform
 - Use benchmark groups for related operations
 - Consider separate benchmark suite from unit tests
 
+## Status
+**Closed (Won't Fix)** | Created: 2026-02-01 | Closed: 2026-02-05 | Priority: P2
+
+**Closure reason**: Over-engineered. The tool's bottleneck is API calls to Claude, not internal code. No user has reported performance issues. This is infrastructure for infrastructure's sake — 10+ benchmarks and CI comparison for code paths that handle tiny data sets.
+
 ## Priority
 P2 - Medium: Performance tracking is valuable but not critical; nice-to-have for long-term health.
 

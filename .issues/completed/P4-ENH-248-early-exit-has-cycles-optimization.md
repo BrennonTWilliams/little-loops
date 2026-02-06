@@ -49,4 +49,6 @@ Implement a separate early-exit DFS using graph coloring (WHITE/GRAY/BLACK) that
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P4
+**Closed (Won't Fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P4
+
+**Closure reason**: Premature optimization. Dependency graphs have <50 nodes typically. Full DFS is already instant.

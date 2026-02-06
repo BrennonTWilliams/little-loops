@@ -49,4 +49,6 @@ Add a mapping of file extensions to their common test file patterns and search f
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P3
+**Closed (Won't Fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P3
+
+**Closure reason**: Low value. The tool itself is Python, and test gap analysis in ll-history is a secondary reporting feature. Adding JS/TS/Go test patterns creates maintenance burden for each new language with minimal benefit to core functionality.

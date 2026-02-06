@@ -54,4 +54,6 @@ Either cache `to_dict()` result with invalidation, or use `getattr()` to navigat
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P4
+**Closed (Won't Fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P4
+
+**Closure reason**: Premature optimization. Config resolution happens a handful of times per run. Caching adds invalidation complexity for zero perceived speedup.

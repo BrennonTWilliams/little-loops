@@ -50,4 +50,6 @@ Compare GitHub issue `updated_at` timestamp against the local file's `last_synce
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P3
+**Closed (Won't Fix)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P3
+
+**Closure reason**: YAGNI / over-engineered. Bidirectional sync is notoriously hard (conflict resolution, timestamp comparison, merge strategies). Current one-way pull is functional. Users can delete and re-pull to "update". Complexity doesn't justify the rare use case.

@@ -59,4 +59,6 @@ return subprocess.CompletedProcess(
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P4
+**Closed (Superseded)** | Created: 2026-02-06T03:41:30Z | Closed: 2026-02-05 | Priority: P4
+
+**Closure reason**: Superseded by BUG-231. The None returncode only occurs when process.wait() isn't called, which is exactly what BUG-231 (zombie process after timeout) fixes. Once BUG-231 is resolved, this edge case becomes unreachable.
