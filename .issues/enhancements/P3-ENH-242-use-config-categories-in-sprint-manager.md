@@ -1,0 +1,54 @@
+---
+discovered_commit: a8f4144ebd05e95833281bd95506da984ba5d118
+discovered_branch: main
+discovered_date: 2026-02-06T03:41:30Z
+discovered_by: scan_codebase
+---
+
+# ENH-242: Use config categories in sprint manager instead of hardcoded list
+
+## Summary
+
+Both `SprintManager.validate_issues()` and `load_issue_infos()` iterate over a hardcoded `["bugs", "features", "enhancements"]` list instead of using `self.config.issue_categories`. Custom categories added via config will never be found by sprint validation or execution.
+
+## Location
+
+- **File**: `scripts/little_loops/sprint.py`
+- **Line(s)**: 318-326, 328-356 (at scan commit: a8f4144)
+- **Anchor**: `in methods SprintManager.validate_issues and load_issue_infos`
+- **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a8f4144ebd05e95833281bd95506da984ba5d118/scripts/little_loops/sprint.py#L318-L356)
+- **Code**:
+```python
+for category in ["bugs", "features", "enhancements"]:
+    issue_dir = self.config.get_issue_dir(category)
+```
+
+## Current Behavior
+
+Hardcoded category list means custom categories (e.g., "tasks" with prefix "TASK") are never searched.
+
+## Expected Behavior
+
+Use `self.config.issue_categories` to discover all configured categories dynamically.
+
+## Proposed Solution
+
+```python
+for category in self.config.issue_categories:
+    issue_dir = self.config.get_issue_dir(category)
+```
+
+## Impact
+
+- **Severity**: Medium
+- **Effort**: Small
+- **Risk**: Low
+
+## Labels
+
+`enhancement`, `priority-p3`
+
+---
+
+## Status
+**Open** | Created: 2026-02-06T03:41:30Z | Priority: P3
