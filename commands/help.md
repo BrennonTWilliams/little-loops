@@ -76,6 +76,10 @@ ISSUE MANAGEMENT
     Types: bug, feature, enhancement
     Actions: fix, implement, improve, verify
 
+/ll:tradeoff_review_issues
+    Evaluate issues for utility vs complexity trade-offs
+    Recommends implement, update, or close/defer for each issue
+
 /ll:iterate_plan [plan_path]
     Iterate on existing implementation plans with updates
 
@@ -149,6 +153,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 | `align_issues` | Validate issues against key documents |
 | `normalize_issues` | Fix issue filenames lacking valid IDs |
 | `manage_issue` | Full issue lifecycle management |
+| `tradeoff_review_issues` | Evaluate issues for utility vs complexity |
 | `iterate_plan` | Update implementation plans |
 | `audit_architecture` | Analyze code structure |
 | `audit_docs` | Check documentation accuracy |

@@ -5,30 +5,13 @@ description: |
   Trigger keywords: "tradeoff review", "review issues", "utility review", "prune backlog", "issue tradeoff", "sense check issues", "evaluate issues", "backlog review", "worth implementing", "low value issues"
 ---
 
-# Issue Tradeoff Review Skill
+# Issue Tradeoff Review
 
-This skill evaluates active issues by scoring utility vs complexity trade-offs, then recommends whether each issue should be implemented as-is, updated first, or closed/deferred. All changes require explicit user approval.
-
-## When to Activate
-
-Proactively offer or invoke this skill when the user:
-
-- Wants to review or prune their issue backlog
-- Asks if issues are "worth doing" or "worth implementing"
-- Is preparing for sprint planning and wants to filter low-value work
-- Mentions the backlog is getting large or unfocused
-- Wants to identify low-value or high-overhead issues
-- Says "sense check issues" or "evaluate my backlog"
-
-## How to Use
-
-```
-/ll:tradeoff_review_issues
-```
+You are tasked with evaluating active issues by scoring utility vs complexity trade-offs, then recommending whether each issue should be implemented as-is, updated first, or closed/deferred. All changes require explicit user approval.
 
 ## Workflow
 
-The skill follows a 5-phase workflow:
+The command follows a 5-phase workflow:
 
 ### Phase 1: Discovery
 
@@ -316,19 +299,9 @@ Uses project configuration from `.claude/ll-config.json`:
 - `issues.categories` - Bug/feature/enhancement directory config
 - `issues.completed_dir` - Where to move closed issues (default: `completed`)
 
-## Examples
-
-| User Says | Action |
-|-----------|--------|
-| "Review my backlog" | Run tradeoff review on all active issues |
-| "Are these issues worth doing?" | Run tradeoff review |
-| "Prune low-value issues" | Run tradeoff review, focus on Close/Defer results |
-| "Sense check issues before sprint" | Run tradeoff review |
-| "Evaluate issue utility" | Run tradeoff review |
-
 ## Overlap with Issue Size Review
 
-This skill complements `/ll:issue_size_review`:
+This command complements `/ll:issue_size_review`:
 - **Issue size review** asks: "Is this too big?" (decompose large issues)
 - **Tradeoff review** asks: "Is this worth doing?" (prune low-value issues)
 

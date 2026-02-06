@@ -1,5 +1,8 @@
 ---
-description: Open a pull request for the current branch
+description: |
+  Open a pull request for the current branch.
+
+  Trigger keywords: "open pr", "create pull request", "submit pr", "create pr", "open pull request", "submit for review", "make a pr"
 arguments:
   - name: target_branch
     description: "Target branch for the PR (default: auto-detect from origin/HEAD)"
