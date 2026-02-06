@@ -38,7 +38,7 @@ $ ll-messages --commands-only
 $ ll-messages --tools Bash,Read
 ```
 
-The `--include-commands` flag should be deprecated (still accepted but no-op since commands are now included by default). The new `--skip-cli` flag excludes CLI commands from output.
+The `--include-commands` flag should be removed entirely. The new `--skip-cli` flag excludes CLI commands from output.
 
 ### /ll:analyze-workflows changes
 
@@ -62,9 +62,8 @@ steps:
 
 ### 1. ll-messages CLI changes (`scripts/little_loops/cli.py`)
 
-- Make `--include-commands` the default behavior (include commands without requiring the flag)
+- Remove `--include-commands` flag entirely (commands included by default now)
 - Add `--skip-cli` flag that excludes CLI commands from output
-- Deprecate `--include-commands` (keep for backwards compatibility, emit deprecation notice)
 - Update help text to reflect new defaults
 
 ### 2. user_messages.py changes (`scripts/little_loops/user_messages.py`)
@@ -83,14 +82,14 @@ steps:
 
 - Update existing `ll-messages` tests for new default behavior
 - Add tests for `--skip-cli` flag
-- Add deprecation warning test for `--include-commands`
+- Remove existing tests for `--include-commands` flag
 - Update workflow analysis tests to verify CLI command inclusion
 
 ## Impact
 
 - **Priority**: P3
 - **Effort**: Medium - Multiple components need updating (CLI, pipeline, agents, skills)
-- **Risk**: Low - Backwards compatible with deprecation path for `--include-commands`
+- **Risk**: Low - Breaking change to `--include-commands` flag, but it was recently added and unlikely to have external consumers
 
 ## Related Key Documentation
 

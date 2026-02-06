@@ -14,7 +14,7 @@ discovered_by: scan_codebase
 ## Location
 
 - **File**: `scripts/little_loops/git_operations.py`
-- **Line(s)**: 18-25, 202-283 (at scan commit: a8f4144)
+- **Line(s)**: 18-25, 202-274 (at scan commit: a8f4144)
 - **Anchor**: `EXCLUDED_DIRECTORIES, filter_excluded_files, verify_work_was_done`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a8f4144ebd05e95833281bd95506da984ba5d118/scripts/little_loops/git_operations.py#L18-L25)
 
@@ -52,6 +52,15 @@ from little_loops.work_verification import (
 `enhancement`, `priority-p3`
 
 ---
+
+## Verification Notes
+
+**Verified: 2026-02-06** — VALID (line numbers updated)
+
+- `git_operations.py` line range corrected from `202-283` to `202-274`
+- Divergence has increased since discovery: `work_verification.py` now includes detailed diagnostic logging for excluded files (lines 68-73, 92-93, 113-117) that the `git_operations.py` version completely lacks
+- `EXCLUDED_DIRECTORIES` tuples remain identical in both files (lines 18-25)
+- Core duplication confirmed and growing worse over time
 
 ## Status
 **Open** | Created: 2026-02-06T03:41:30Z | Priority: P3
