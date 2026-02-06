@@ -22,7 +22,7 @@ from little_loops.issue_lifecycle import (
 from little_loops.issue_manager import AutoManager
 from little_loops.sync import GitHubSyncManager, SyncResult, SyncStatus
 
-__version__ = "1.1.0"
+__version__ = "1.3.0"
 __all__ = [
     "BRConfig",
     # git_operations

@@ -13,6 +13,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.3.0] - 2026-02-06
+
+### Added
+
+- **`tradeoff_review_issues` command** - Evaluate issue utility using tradeoff analysis (effort vs. value, risk vs. reward)
+- **Backlog review** - Closed 19 issues from backlog review (won't-fix, YAGNI, superseded, trivial)
+- **Issue capture** - Captured 28 issues from codebase scan
+
+### Fixed
+
+- Removed duplicate skill definitions from plugin configuration
+
+## [1.2.0] - 2026-02-05
+
+### Added
+
+- **`ll-sprint` CLI tool** - Sprint-based issue processing with YAML sprint definitions
+- **`ll-sync` CLI tool** - GitHub Issues synchronization
+- **Sprint management** - `/ll:create_sprint` skill for creating sprint definitions
+- **Issue sync** - `/ll:sync_issues` skill for bidirectional GitHub sync
+- **Product analysis** - `/ll:product-analyzer` and `/ll:scan_product` skills
+- **Loop automation** - `/ll:create_loop` and `/ll:loop-suggester` skills for FSM loop configuration
+- **Workflow analysis** - `/ll:analyze-workflows` and `/ll:workflow-automation-proposer` skills
+- **Issue refinement** - `/ll:refine_issue` and `/ll:align_issues` skills
+- **History analysis** - `/ll:analyze-history` skill for project health insights
+
+[1.3.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.1.0...v1.2.0
+
 ## [1.1.0] - 2026-02-01
 
 ### Added
