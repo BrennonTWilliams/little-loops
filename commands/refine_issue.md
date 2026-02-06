@@ -81,34 +81,85 @@ Analyze content against type-specific checklists:
 | Scope Boundaries | Yes | "What is explicitly out of scope for this enhancement?" |
 | Backwards Compatibility | Conditional | "Are there backwards compatibility concerns?" |
 
+### 3.5 Content Quality Analysis
+
+After structural gap analysis, perform a second pass evaluating the **quality** of content within sections that already exist. A section can pass structural checks (it's present and non-empty) yet still be unusable for implementation.
+
+For each section that has content, evaluate against these checks:
+
+#### Universal Quality Checks (All Issue Types)
+
+| Check | Applies To | Detection Method | Example Flag |
+|-------|-----------|-----------------|--------------|
+| Vague language | All sections | Words like "fast", "better", "improved", "proper", "correct", "appropriate", "good", "nice" without measurable criteria | "improve performance" — what metric? what target? |
+| Untestable criteria | Acceptance Criteria, Expected Behavior, Success Metrics | Criteria that cannot be verified with a specific test or measurement | "should be fast" — what is the threshold? |
+| Missing specifics | Steps to Reproduce, Proposed Solution | Generic references without concrete details | "click the button" — which button? what page? |
+| Scope ambiguity | Proposed Solution, Scope Boundaries | Broad/unbounded language like "refactor the module", "clean up", "fix everything" | "refactor the module" — which parts? what pattern? |
+| Contradictions | Expected vs Proposed, Current vs Expected | Statements in one section that conflict with another section | Expected says X, proposed solution implies Y |
+
+#### Type-Specific Quality Checks
+
+**BUG content quality:**
+- Steps to Reproduce should have numbered concrete steps (not "do the thing")
+- Expected vs Actual should describe different specific behaviors (not just "it should work")
+- Error messages should include actual error text, not just "there's an error"
+
+**FEAT content quality:**
+- User Story should name a specific persona/role and concrete goal
+- Acceptance Criteria should each be individually testable with clear pass/fail
+- Edge Cases should describe specific scenarios, not just "handle errors"
+
+**ENH content quality:**
+- Current Pain Point should describe measurable impact (frequency, severity, affected users)
+- Success Metrics should have numeric targets or clear before/after comparison
+- Scope Boundaries should list specific exclusions, not just "keep it simple"
+
+#### Classification
+
+Classify each finding with a prefix:
+- `[QUALITY]` — Content exists but is too vague/ambiguous for implementation
+- `[SPECIFICITY]` — Content lacks concrete details needed for implementation
+- `[CONTRADICTION]` — Content conflicts between sections
+
+#### Clarifying Questions
+
+For each quality finding, generate a **targeted** question about the specific content issue (not a generic section question):
+- "You mention a race condition — which threads/processes are involved?"
+- "This acceptance criterion says 'fast' — what response time target?"
+- "The proposed solution says 'refactor' — which specific functions need to change?"
+- "Steps to Reproduce says 'trigger the error' — what exact input or action triggers it?"
+
 ### 4. Interactive Refinement
 
-For each identified gap, use AskUserQuestion to gather information.
+For each identified structural gap **and content quality issue**, use AskUserQuestion to gather information.
 
 **Maximum 4 questions per round** (tool limitation). Prioritize by:
-1. Required sections first
-2. Conditional sections if context suggests relevance
-3. Nice-to-have sections last
+1. Required missing sections first
+2. Content quality issues (`[QUALITY]`, `[SPECIFICITY]`, `[CONTRADICTION]`)
+3. Conditional missing sections if context suggests relevance
+4. Nice-to-have missing sections last
 
-Present a summary of identified gaps first, then ask user which to address:
+Present a summary of all identified gaps and quality issues first, then ask user which to address:
 
 ```yaml
 questions:
-  - question: "Which sections would you like to add/improve?"
+  - question: "Which issues would you like to address?"
     header: "Sections"
     multiSelect: true
     options:
       - label: "[Section 1]"
         description: "Currently: [missing|vague|incomplete]"
       - label: "[Section 2]"
-        description: "Currently: [missing|vague|incomplete]"
+        description: "[QUALITY] Vague language: 'improve performance' — needs metric and target"
       - label: "[Section 3]"
-        description: "Currently: [missing|vague|incomplete]"
+        description: "[SPECIFICITY] Steps to Reproduce are generic — needs concrete steps"
       - label: "[Section 4]"
-        description: "Currently: [missing|vague|incomplete]"
+        description: "[CONTRADICTION] Expected behavior conflicts with proposed solution"
 ```
 
-For each selected section, gather the information interactively. Allow free-form text input for each section.
+For each selected item, gather the information interactively:
+- **Structural gaps**: Use the generic section question from the Step 3 checklist
+- **Quality issues**: Use the targeted clarifying question from Step 3.5 (e.g., "This acceptance criterion says 'fast' — what response time target?")
 
 ### 5. Update Issue File
 
@@ -211,12 +262,18 @@ ISSUE REFINED: [ISSUE-ID]
 - [Section 1]: [missing|vague|incomplete]
 - [Section 2]: [missing|vague|incomplete]
 
+## QUALITY ISSUES
+- [Section 3]: [QUALITY] Vague language — "improve performance" lacks metric/target
+- [Section 4]: [SPECIFICITY] Steps to Reproduce are generic — lacks concrete steps
+- [Section 5]: [CONTRADICTION] Expected behavior conflicts with proposed solution
+
 ## REFINEMENTS MADE
 - [Section 1]: Added [description of content]
-- [Section 2]: Added [description of content]
+- [Section 3]: Clarified [specific improvement made]
 
 ## SKIPPED
-- [Section 3]: User chose not to address
+- [Section 2]: User chose not to address
+- [Section 5]: User chose not to address
 
 ## FILE STATUS
 - [Staged|Not staged]
