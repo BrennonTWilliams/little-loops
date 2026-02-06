@@ -365,7 +365,7 @@ discovered_by: capture_issue
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
 
 ---
 
@@ -417,7 +417,7 @@ TBD - requires investigation
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
 
 ## Labels
 

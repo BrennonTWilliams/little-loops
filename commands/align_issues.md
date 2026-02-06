@@ -2,8 +2,8 @@
 description: Validate active issues against key documents for relevance and alignment
 arguments:
   - name: category
-    description: Document category to check against (e.g., architecture, product) or --all
-    required: true
+    description: "Document category, document path (.md), or omit to check each issue's linked docs. Use --all for all categories."
+    required: false
   - name: flags
     description: "Optional flags: --verbose (detailed analysis), --dry-run (report only, no auto-fixing)"
     required: false
@@ -52,7 +52,9 @@ And stop execution.
 
 $ARGUMENTS
 
-- **category** (required): Document category to align against
+- **category** (optional): What to align against
+  - *(omitted)* - Check each issue against its own linked Key Documents (skip issues with no linked docs)
+  - `path/to/doc.md` - Check all issues against a specific document file (detected by `.md` extension or `/` in argument)
   - `architecture` - Check alignment with architecture/design documents
   - `product` - Check alignment with product/goals documents
   - `--all` - Check all configured categories
@@ -67,16 +69,40 @@ $ARGUMENTS
 ### 1. Parse Arguments
 
 ```bash
-CATEGORY="${category}"
+CATEGORY="${category:-}"
 FLAGS="${flags:-}"
 VERBOSE=false
 DRY_RUN=false
 
 if [[ "$FLAGS" == *"--verbose"* ]]; then VERBOSE=true; fi
 if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
+
+# Determine mode based on argument
+if [[ -z "$CATEGORY" ]]; then
+  MODE="linked-docs"       # No argument: check each issue against its own linked docs
+elif [[ "$CATEGORY" == *.md || "$CATEGORY" == */* ]]; then
+  MODE="specific-doc"      # Document path: check all issues against this document
+elif [[ "$CATEGORY" == "--all" ]]; then
+  MODE="all-categories"    # Existing behavior: all configured categories
+else
+  MODE="category"          # Existing behavior: specific category name
+fi
 ```
 
-### 2. Load Document Categories
+### 2. Load Documents (mode-dependent)
+
+**If MODE is "linked-docs":**
+- Skip category loading entirely. Documents will be resolved per-issue from each issue's "Related Key Documentation" section in Step 5.
+
+**If MODE is "specific-doc":**
+- Verify the specified document file exists at the given path (relative to project root).
+- If the file does not exist, display an error and stop:
+  ```
+  Document file not found: [CATEGORY]
+  ```
+- Read the document content and extract constraints/concepts (same as Step 3).
+
+**If MODE is "category" or "all-categories":**
 
 ```bash
 # If CATEGORY is "--all", iterate through all categories in {{config.documents.categories}}
@@ -124,6 +150,23 @@ find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" | sort
 ```
 
 ### 5. Analyze Each Issue
+
+**Mode-specific behavior:**
+
+**If MODE is "linked-docs":**
+For each issue file, read its "Related Key Documentation" section. If the issue has no linked documents (section is missing, empty, or contains only placeholder text like `_No documents linked`), report:
+```
+Skipped [ISSUE-ID]: No linked documents — run /ll:normalize_issues first
+```
+For issues WITH linked documents, read each linked document and perform only the **Alignment Check (Step 5D)** against those documents. Skip the Relevance Check (5B) and Missing Documentation Check (5C) — we are only validating alignment of already-linked docs.
+
+**If MODE is "specific-doc":**
+For each issue file, perform only the **Alignment Check (Step 5D)** using the single specified document. Skip the Relevance Check (5B) and Missing Documentation Check (5C) — the user explicitly chose this document for all issues.
+
+**If MODE is "category" or "all-categories":**
+Use the full existing analysis flow below (Steps 5A through 5D).
+
+---
 
 For each issue file:
 
@@ -328,7 +371,13 @@ When checking all categories, produce combined report with per-category sections
 ## Examples
 
 ```bash
-# Check and auto-fix alignment (default behavior)
+# Check each issue against its own linked documents (no argument)
+/ll:align_issues
+
+# Check all issues against a specific document
+/ll:align_issues docs/ARCHITECTURE.md
+
+# Check and auto-fix alignment by category
 /ll:align_issues architecture
 
 # Check product/roadmap alignment with auto-fix

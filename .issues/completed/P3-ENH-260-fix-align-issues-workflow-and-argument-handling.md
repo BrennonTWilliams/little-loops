@@ -80,6 +80,17 @@ ELSE:
 
 ---
 
-## Status
+## Resolution
 
-**Open** | Created: 2026-02-06 | Priority: P3
+- **Action**: fix
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- `commands/capture_issue.md`: Changed both placeholder text occurrences (lines 368, 420) from referencing `/ll:align_issues` to `/ll:normalize_issues`
+- `commands/align_issues.md`: Made `category` argument optional, added mode detection logic (linked-docs, specific-doc, category, all-categories), updated argument docs and examples
+
+### Verification Results
+- Tests: PASS (2455 passed)
+- Lint: PASS
+- Types: N/A (markdown command files only)
