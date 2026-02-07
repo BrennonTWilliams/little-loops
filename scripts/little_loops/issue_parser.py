@@ -10,6 +10,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from little_loops.frontmatter import parse_frontmatter
+
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
@@ -225,7 +227,7 @@ class IssueParser:
         content = self._read_content(issue_path)
 
         # Parse frontmatter for discovered_by and product impact
-        frontmatter = self._parse_frontmatter(content)
+        frontmatter = parse_frontmatter(content)
         discovered_by = frontmatter.get("discovered_by")
         product_impact = self._parse_product_impact(frontmatter)
 
@@ -334,46 +336,6 @@ class IssueParser:
             return issue_path.read_text(encoding="utf-8")
         except Exception:
             return ""
-
-    def _parse_frontmatter(self, content: str) -> dict[str, Any]:
-        """Extract YAML frontmatter from issue content.
-
-        Looks for content between opening and closing '---' markers.
-        Returns empty dict if no frontmatter found or on parse error.
-
-        Args:
-            content: File content to parse
-
-        Returns:
-            Dictionary of frontmatter fields, or empty dict
-        """
-        if not content or not content.startswith("---"):
-            return {}
-
-        # Find closing ---
-        end_match = re.search(r"\n---\s*\n", content[3:])
-        if not end_match:
-            return {}
-
-        frontmatter_text = content[4 : 3 + end_match.start()]
-
-        # Simple YAML-like parsing for key: value pairs
-        # Avoids adding yaml dependency for this simple use case
-        result: dict[str, Any] = {}
-        for line in frontmatter_text.split("\n"):
-            line = line.strip()
-            if not line or line.startswith("#"):
-                continue
-            if ":" in line:
-                key, value = line.split(":", 1)
-                key = key.strip()
-                value = value.strip()
-                # Handle null/empty values
-                if value.lower() in ("null", "~", ""):
-                    result[key] = None
-                else:
-                    result[key] = value
-        return result
 
     def _parse_title_from_content(self, content: str, issue_path: Path) -> str:
         """Extract title from issue file content.

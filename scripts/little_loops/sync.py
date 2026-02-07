@@ -13,6 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from little_loops.frontmatter import parse_frontmatter
 from little_loops.issue_parser import get_next_issue_number
 
 if TYPE_CHECKING:
@@ -148,43 +149,6 @@ def _get_repo_name(logger: Logger) -> str | None:
     except Exception as e:
         logger.debug(f"Could not get repo name: {e}")
     return None
-
-
-def _parse_issue_frontmatter(content: str) -> dict[str, str | int | None]:
-    """Parse frontmatter from issue file content.
-
-    Args:
-        content: Full file content
-
-    Returns:
-        Dictionary of frontmatter fields
-    """
-    if not content or not content.startswith("---"):
-        return {}
-
-    # Find closing ---
-    end_match = re.search(r"\n---\s*\n", content[3:])
-    if not end_match:
-        return {}
-
-    frontmatter_text = content[4 : 3 + end_match.start()]
-
-    result: dict[str, str | int | None] = {}
-    for line in frontmatter_text.split("\n"):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" in line:
-            key, value = line.split(":", 1)
-            key = key.strip()
-            value = value.strip()
-            if value.lower() in ("null", "~", ""):
-                result[key] = None
-            elif value.isdigit():
-                result[key] = int(value)
-            else:
-                result[key] = value
-    return result
 
 
 def _update_issue_frontmatter(
@@ -451,7 +415,7 @@ class GitHubSyncManager:
             result: SyncResult to update
         """
         content = issue_path.read_text(encoding="utf-8")
-        frontmatter = _parse_issue_frontmatter(content)
+        frontmatter = parse_frontmatter(content, coerce_types=True)
         title = _parse_issue_title(content)
         body = _get_issue_body(content)
 
@@ -621,7 +585,7 @@ class GitHubSyncManager:
         numbers: set[int] = set()
         for issue_path in self._get_local_issues():
             content = issue_path.read_text(encoding="utf-8")
-            frontmatter = _parse_issue_frontmatter(content)
+            frontmatter = parse_frontmatter(content, coerce_types=True)
             gh_num = frontmatter.get("github_issue")
             if gh_num is not None:
                 numbers.add(int(gh_num))

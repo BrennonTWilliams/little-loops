@@ -10,6 +10,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from little_loops.config import BRConfig
+from little_loops.frontmatter import parse_frontmatter
 from little_loops.logger import Logger
 from little_loops.sync import (
     GitHubSyncManager,
@@ -18,7 +19,6 @@ from little_loops.sync import (
     _check_gh_auth,
     _get_issue_body,
     _get_repo_name,
-    _parse_issue_frontmatter,
     _parse_issue_title,
     _update_issue_frontmatter,
 )
@@ -74,11 +74,11 @@ class TestFrontmatterParsing:
 
     def test_parse_empty_content(self) -> None:
         """Empty content returns empty dict."""
-        assert _parse_issue_frontmatter("") == {}
+        assert parse_frontmatter("") == {}
 
     def test_parse_no_frontmatter(self) -> None:
         """Content without frontmatter returns empty dict."""
-        assert _parse_issue_frontmatter("# Title\n\nBody") == {}
+        assert parse_frontmatter("# Title\n\nBody") == {}
 
     def test_parse_simple_frontmatter(self) -> None:
         """Simple key:value frontmatter is parsed."""
@@ -89,7 +89,7 @@ github_url: https://example.com
 
 # Title
 """
-        result = _parse_issue_frontmatter(content)
+        result = parse_frontmatter(content, coerce_types=True)
         assert result["github_issue"] == 123
         assert result["github_url"] == "https://example.com"
 
@@ -101,7 +101,7 @@ field2: ~
 field3:
 ---
 """
-        result = _parse_issue_frontmatter(content)
+        result = parse_frontmatter(content)
         assert result["field1"] is None
         assert result["field2"] is None
         assert result["field3"] is None
@@ -113,7 +113,7 @@ github_issue: 42
 priority: 1
 ---
 """
-        result = _parse_issue_frontmatter(content)
+        result = parse_frontmatter(content, coerce_types=True)
         assert result["github_issue"] == 42
         assert isinstance(result["github_issue"], int)
 
@@ -123,7 +123,7 @@ priority: 1
 key: value
 # No closing delimiter
 """
-        assert _parse_issue_frontmatter(content) == {}
+        assert parse_frontmatter(content) == {}
 
 
 class TestFrontmatterUpdating:

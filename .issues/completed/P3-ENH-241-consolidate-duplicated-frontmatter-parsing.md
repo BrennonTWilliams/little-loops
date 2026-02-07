@@ -19,9 +19,9 @@ Near-identical YAML frontmatter parsing implementations exist in `issue_parser.p
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a8f4144ebd05e95833281bd95506da984ba5d118/scripts/little_loops/issue_parser.py#L338-L376)
 
 - **File**: `scripts/little_loops/sync.py`
-- **Line(s)**: 151-185 (at scan commit: a8f4144)
+- **Line(s)**: 153-187 (at scan commit: a8f4144)
 - **Anchor**: `function _parse_issue_frontmatter`
-- **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a8f4144ebd05e95833281bd95506da984ba5d118/scripts/little_loops/sync.py#L151-L185)
+- **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a8f4144ebd05e95833281bd95506da984ba5d118/scripts/little_loops/sync.py#L153-L187)
 
 ## Current Behavior
 
@@ -48,4 +48,25 @@ Extract a module-level `parse_frontmatter(content: str, coerce_types: bool = Fal
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P3
+**Completed** | Created: 2026-02-06T03:41:30Z | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/frontmatter.py`: Created shared `parse_frontmatter()` utility with optional `coerce_types` parameter
+- `scripts/little_loops/issue_parser.py`: Removed `IssueParser._parse_frontmatter` method, replaced with call to shared function
+- `scripts/little_loops/sync.py`: Removed `_parse_issue_frontmatter` function, replaced with `parse_frontmatter(content, coerce_types=True)`
+- `scripts/little_loops/issue_history.py`: Simplified `_parse_discovered_by` and `_parse_discovered_date` to use shared parser
+- `scripts/tests/test_frontmatter.py`: Added dedicated tests for the shared function
+- `scripts/tests/test_sync.py`: Updated imports to use shared function
+
+### Verification Results
+- Tests: PASS (2477 passed)
+- Lint: PASS
+- Types: PASS

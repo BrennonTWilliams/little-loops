@@ -20,6 +20,8 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any, Literal
 
+from little_loops.frontmatter import parse_frontmatter
+
 __all__ = [
     # Core dataclasses
     "CompletedIssue",
@@ -854,24 +856,9 @@ def _parse_discovered_by(content: str) -> str | None:
     Returns:
         discovered_by value or None
     """
-    if not content.startswith("---"):
-        return None
-
-    # Find closing ---
-    end_match = re.search(r"\n---\s*\n", content[3:])
-    if not end_match:
-        return None
-
-    frontmatter = content[4 : 3 + end_match.start()]
-
-    for line in frontmatter.split("\n"):
-        if line.strip().startswith("discovered_by:"):
-            value = line.split(":", 1)[1].strip()
-            if value.lower() in ("null", "~", ""):
-                return None
-            return value
-
-    return None
+    fm = parse_frontmatter(content)
+    value = fm.get("discovered_by")
+    return value if isinstance(value, str) else None
 
 
 def _parse_completion_date(content: str, file_path: Path) -> date | None:
@@ -1129,24 +1116,14 @@ def _parse_discovered_date(content: str) -> date | None:
     Returns:
         discovered_date value or None
     """
-    if not content.startswith("---"):
+    fm = parse_frontmatter(content)
+    value = fm.get("discovered_date")
+    if not isinstance(value, str):
         return None
-
-    end_match = re.search(r"\n---\s*\n", content[3:])
-    if not end_match:
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
         return None
-
-    frontmatter = content[4 : 3 + end_match.start()]
-
-    for line in frontmatter.split("\n"):
-        if line.strip().startswith("discovered_date:"):
-            value = line.split(":", 1)[1].strip()
-            try:
-                return date.fromisoformat(value)
-            except ValueError:
-                return None
-
-    return None
 
 
 def _extract_subsystem(content: str) -> str | None:
