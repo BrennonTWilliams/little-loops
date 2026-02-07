@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **`manage_release` command** - Release management with git tags, changelogs, GitHub releases, and version bumping. Integrates completed issues into release notes with parallel agent data gathering.
+
 ### Planned
 
 - Test coverage for core modules
