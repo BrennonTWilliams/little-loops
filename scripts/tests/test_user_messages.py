@@ -1323,20 +1323,20 @@ class TestMessagesArgumentParsingWithCommands:
         parser.add_argument("--stdout", action="store_true")
         parser.add_argument("-v", "--verbose", action="store_true")
         parser.add_argument("--include-response-context", action="store_true")
-        parser.add_argument("--include-commands", action="store_true")
+        parser.add_argument("--skip-cli", action="store_true")
         parser.add_argument("--commands-only", action="store_true")
         parser.add_argument("--tools", type=str, default="Bash")
         return parser.parse_args(args)
 
-    def test_include_commands_default(self) -> None:
-        """--include-commands defaults to False."""
+    def test_skip_cli_default(self) -> None:
+        """--skip-cli defaults to False (commands included by default)."""
         args = self._parse_messages_args([])
-        assert args.include_commands is False
+        assert args.skip_cli is False
 
-    def test_include_commands_flag(self) -> None:
-        """--include-commands flag."""
-        args = self._parse_messages_args(["--include-commands"])
-        assert args.include_commands is True
+    def test_skip_cli_flag(self) -> None:
+        """--skip-cli flag excludes CLI commands."""
+        args = self._parse_messages_args(["--skip-cli"])
+        assert args.skip_cli is True
 
     def test_commands_only_default(self) -> None:
         """--commands-only defaults to False."""
@@ -1362,13 +1362,13 @@ class TestMessagesArgumentParsingWithCommands:
         """Multiple command flags work together correctly."""
         args = self._parse_messages_args(
             [
-                "--include-commands",
+                "--skip-cli",
                 "--tools",
                 "Bash,Task",
                 "-n",
                 "50",
             ]
         )
-        assert args.include_commands is True
+        assert args.skip_cli is True
         assert args.tools == "Bash,Task"
         assert args.limit == 50

@@ -361,9 +361,9 @@ Examples:
         help="Include metadata from assistant responses (tools used, files modified)",
     )
     parser.add_argument(
-        "--include-commands",
+        "--skip-cli",
         action="store_true",
-        help="Include CLI commands (Bash) alongside user messages",
+        help="Exclude CLI commands from output (included by default)",
     )
     parser.add_argument(
         "--commands-only",
@@ -426,7 +426,7 @@ Examples:
             include_response_context=args.include_response_context,
         )
 
-    if args.include_commands or args.commands_only:
+    if not args.skip_cli or args.commands_only:
         commands = extract_commands(
             project_folder=project_folder,
             limit=None,  # Apply limit after merging

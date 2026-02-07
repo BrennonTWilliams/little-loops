@@ -62,6 +62,7 @@ Look for high-value targets:
 | `hook_post_tool` | React to tool completions | Auto-lint after edits |
 | `hook_stop` | Session end automation | Auto-commit reminders |
 | `agent_enhancement` | Extend existing agent capabilities | Add entity extraction to analyzer |
+| `fsm_loop` | Repeated multi-step CLI workflows (test → fix → lint cycles) | `ll-loop` config for test-fix-lint loop |
 | `existing_command` | User should use existing command | Suggest `/ll:commit` for commit requests |
 
 ### Step 4: Check for Existing Solutions
@@ -123,6 +124,31 @@ For each proposal, include actionable steps:
 3. Add entry point to pyproject.toml
 4. Include usage examples
 ```
+
+**For FSM loops (`fsm_loop`):**
+
+When `cli_command` category entries are present in Step 1 patterns, use the actual CLI commands as `action` values:
+```yaml
+# Example ll-loop config generated from detected CLI command patterns
+name: test-fix-lint
+description: "Automated test → fix → lint cycle"
+paradigm: fix_loop
+steps:
+  - name: run_tests
+    action: "python -m pytest scripts/tests/ -v"
+    on_success: check_lint
+    on_failure: fix_errors
+  - name: fix_errors
+    action: "prompt: Fix the failing tests based on the error output"
+    on_success: run_tests
+    on_failure: stop
+  - name: check_lint
+    action: "ruff check scripts/"
+    on_success: done
+    on_failure: fix_lint
+```
+
+Use specific CLI commands discovered in the `cli_command` patterns rather than generic placeholders.
 
 ### Step 8: Create Implementation Roadmap
 

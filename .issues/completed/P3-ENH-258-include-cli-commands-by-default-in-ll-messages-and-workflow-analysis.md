@@ -113,4 +113,24 @@ steps:
 
 ## Status
 
-**Open** | Created: 2026-02-06 | Priority: P3
+**Completed** | Created: 2026-02-06 | Completed: 2026-02-06 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli.py`: Replaced `--include-commands` flag with `--skip-cli` flag; commands now included by default
+- `scripts/tests/test_user_messages.py`: Updated `TestMessagesArgumentParsingWithCommands` for new `--skip-cli` semantics
+- `agents/workflow-pattern-analyzer.md`: Added `cli_command` category and categorization rule for `type: command` records
+- `skills/workflow-automation-proposer/SKILL.md`: Added `fsm_loop` automation type with `ll-loop` YAML template
+- `commands/analyze-workflows.md`: Updated error message to reflect new default behavior
+
+### Verification Results
+- Tests: PASS (2483 passed)
+- Lint: PASS
+- Types: PASS

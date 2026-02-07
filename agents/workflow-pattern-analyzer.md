@@ -90,8 +90,10 @@ Categorize each message into exactly ONE of these categories:
 | `planning` | plan, design, architect, strategy, think about |
 | `content_creation` | write, draft, create content, module, component |
 | `research` | research, find out, look up, investigate, explore |
+| `cli_command` | record has `"type": "command"` field; raw CLI/shell command execution |
 
 **Categorization Rules**:
+- If record has `"type": "command"` field, treat as `cli_command` (these are CLI commands extracted from tool usage, not user messages)
 - If message starts with "/" treat as `slash_command`
 - If multiple categories apply, choose the most specific
 - If unclear, use `content_creation` as default
@@ -101,15 +103,17 @@ Categorize each message into exactly ONE of these categories:
 ### Step 1: Read Input File
 - Use Read tool to load the JSONL file
 - Parse each line as a JSON object
-- Extract the `content` field from each message
+- Extract the `content` field from each record
 - Note the `uuid` for reference
+- Check for `"type": "command"` field to distinguish CLI commands from user messages
 
 ### Step 2: Categorize Messages
-For each message:
-1. Check if it starts with "/" → `slash_command`
-2. Match keywords against category indicators
-3. Assign primary category
-4. Track in category_distribution
+For each record:
+1. Check if record has `"type": "command"` → `cli_command`
+2. Check if it starts with "/" → `slash_command`
+3. Match keywords against category indicators
+4. Assign primary category
+5. Track in category_distribution
 
 ### Step 3: Detect Patterns
 1. Normalize messages (lowercase, remove punctuation)

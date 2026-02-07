@@ -76,7 +76,7 @@ ERROR: Input file detection failed
 Reason: [No user-messages files found in .claude/ | File not found: {path}]
 
 To fix:
-1. Extract user messages first: ll-messages extract
+1. Extract messages first: ll-messages
 2. Then run: /ll:analyze-workflows
 ```
 
