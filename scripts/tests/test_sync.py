@@ -584,3 +584,225 @@ This is the body.
         assert "github_issue: 42" in updated_content
         assert "github_url:" in updated_content
         assert "last_synced:" in updated_content
+
+
+class TestDryRun:
+    """Tests for dry-run mode in GitHubSyncManager."""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path: Path) -> BRConfig:
+        """Create a mock BRConfig with test directories."""
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        config_file = claude_dir / "ll-config.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "sync": {
+                        "enabled": True,
+                        "github": {
+                            "repo": "test/repo",
+                            "label_mapping": {"BUG": "bug", "FEAT": "enhancement"},
+                            "priority_labels": True,
+                        },
+                    },
+                    "issues": {
+                        "base_dir": ".issues",
+                    },
+                }
+            )
+        )
+
+        # Create issue directories
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "bugs").mkdir(parents=True)
+        (issues_dir / "features").mkdir(parents=True)
+        (issues_dir / "enhancements").mkdir(parents=True)
+        (issues_dir / "completed").mkdir(parents=True)
+
+        return BRConfig(tmp_path)
+
+    @pytest.fixture
+    def mock_logger(self) -> MagicMock:
+        """Create a mock logger."""
+        return MagicMock(spec=Logger)
+
+    def test_push_dry_run_does_not_call_gh_create(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Push dry-run does not create GitHub issues."""
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md"
+        issue_file.write_text(
+            """---
+discovered_by: test
+---
+
+# BUG-001: Test Bug
+
+Body text.
+"""
+        )
+
+        manager = GitHubSyncManager(mock_config, mock_logger, dry_run=True)
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                result = manager.push_issues()
+
+        # _run_gh_command should not be called for issue create/edit
+        mock_run.assert_not_called()
+        assert result.success is True
+
+    def test_push_dry_run_does_not_call_gh_edit(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Push dry-run does not edit existing GitHub issues."""
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md"
+        issue_file.write_text(
+            """---
+github_issue: 42
+discovered_by: test
+---
+
+# BUG-001: Test Bug
+
+Body text.
+"""
+        )
+
+        manager = GitHubSyncManager(mock_config, mock_logger, dry_run=True)
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                result = manager.push_issues()
+
+        mock_run.assert_not_called()
+        assert result.success is True
+
+    def test_push_dry_run_does_not_write_frontmatter(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Push dry-run does not modify local issue files."""
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test.md"
+        original_content = """---
+discovered_by: test
+---
+
+# BUG-001: Test Bug
+
+Body text.
+"""
+        issue_file.write_text(original_content)
+
+        manager = GitHubSyncManager(mock_config, mock_logger, dry_run=True)
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command"):
+                manager.push_issues()
+
+        # File should be unchanged
+        assert issue_file.read_text() == original_content
+
+    def test_push_dry_run_populates_result(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Push dry-run populates created and updated lists in result."""
+        # Unsynced issue (would create)
+        issue1 = tmp_path / ".issues" / "bugs" / "P1-BUG-001-new.md"
+        issue1.write_text(
+            """---
+discovered_by: test
+---
+
+# BUG-001: New Bug
+"""
+        )
+
+        # Synced issue (would update)
+        issue2 = tmp_path / ".issues" / "bugs" / "P2-BUG-002-existing.md"
+        issue2.write_text(
+            """---
+github_issue: 10
+discovered_by: test
+---
+
+# BUG-002: Existing Bug
+"""
+        )
+
+        manager = GitHubSyncManager(mock_config, mock_logger, dry_run=True)
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command"):
+                result = manager.push_issues()
+
+        assert len(result.created) == 1
+        assert "would create" in result.created[0]
+        assert "BUG-001" in result.created[0]
+        assert len(result.updated) == 1
+        assert "would update" in result.updated[0]
+        assert "BUG-002" in result.updated[0]
+
+    def test_pull_dry_run_does_not_write_files(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Pull dry-run does not create local issue files."""
+        manager = GitHubSyncManager(mock_config, mock_logger, dry_run=True)
+
+        github_issues = [
+            {
+                "number": 99,
+                "title": "Remote Bug",
+                "body": "body",
+                "url": "https://github.com/test/repo/issues/99",
+                "labels": [{"name": "bug"}],
+                "state": "OPEN",
+            }
+        ]
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout=json.dumps(github_issues), stderr=""
+                )
+                result = manager.pull_issues()
+
+        # No new files should exist
+        bug_files = list((tmp_path / ".issues" / "bugs").glob("*.md"))
+        assert len(bug_files) == 0
+        assert result.success is True
+
+    def test_pull_dry_run_populates_result(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Pull dry-run populates created list with preview entries."""
+        manager = GitHubSyncManager(mock_config, mock_logger, dry_run=True)
+
+        github_issues = [
+            {
+                "number": 99,
+                "title": "Remote Bug",
+                "body": "body",
+                "url": "https://github.com/test/repo/issues/99",
+                "labels": [{"name": "bug"}],
+                "state": "OPEN",
+            }
+        ]
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout=json.dumps(github_issues), stderr=""
+                )
+                result = manager.pull_issues()
+
+        assert len(result.created) == 1
+        assert "would create" in result.created[0]
+        assert "#99" in result.created[0]
+        assert "Remote Bug" in result.created[0]

@@ -276,16 +276,19 @@ class GitHubSyncManager:
         self,
         config: BRConfig,
         logger: Logger,
+        dry_run: bool = False,
     ) -> None:
         """Initialize sync manager.
 
         Args:
             config: Project configuration
             logger: Logger for output
+            dry_run: If True, show what would be done without making changes
         """
         self.config = config
         self.sync_config = config.sync
         self.logger = logger
+        self.dry_run = dry_run
         self.issues_dir = config.project_root / config.issues.base_dir
 
     def _get_local_issues(self) -> list[Path]:
@@ -426,6 +429,15 @@ class GitHubSyncManager:
         labels = self._get_labels_for_issue(issue_path)
 
         github_number = frontmatter.get("github_issue")
+
+        if self.dry_run:
+            if github_number:
+                result.updated.append(f"{issue_id} → #{github_number} (would update)")
+                self.logger.info(f"Would update GitHub issue #{github_number} for {issue_id}")
+            else:
+                result.created.append(f"{issue_id} (would create)")
+                self.logger.info(f"Would create GitHub issue for {issue_id}")
+            return
 
         if github_number:
             # Update existing issue
@@ -570,10 +582,15 @@ class GitHubSyncManager:
                 result.skipped.append(f"#{gh_number} (no recognized type label)")
                 continue
 
-            try:
-                self._create_local_issue(gh_issue, issue_type, result)
-            except Exception as e:
-                result.failed.append((f"#{gh_number}", str(e)))
+            if self.dry_run:
+                gh_title = gh_issue.get("title", f"Issue #{gh_number}")
+                result.created.append(f"#{gh_number}: {gh_title} (would create as {issue_type})")
+                self.logger.info(f"Would create local issue from GitHub #{gh_number}: {gh_title}")
+            else:
+                try:
+                    self._create_local_issue(gh_issue, issue_type, result)
+                except Exception as e:
+                    result.failed.append((f"#{gh_number}", str(e)))
 
         if result.failed:
             result.success = False

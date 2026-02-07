@@ -2151,6 +2151,7 @@ Examples:
     # Common args
     add_config_arg(parser)
     add_quiet_arg(parser)
+    add_dry_run_arg(parser)
 
     args = parser.parse_args()
 
@@ -2168,7 +2169,8 @@ Examples:
         logger.error('  "sync": { "enabled": true }')
         return 1
 
-    manager = GitHubSyncManager(config, logger)
+    dry_run = getattr(args, "dry_run", False)
+    manager = GitHubSyncManager(config, logger, dry_run=dry_run)
 
     if args.action == "status":
         status = manager.get_status()
@@ -2176,12 +2178,16 @@ Examples:
         return 0
 
     elif args.action == "push":
+        if dry_run:
+            logger.info("[DRY RUN] Showing what would be pushed (no changes will be made)")
         issue_ids = args.issue_ids if args.issue_ids else None
         result = manager.push_issues(issue_ids)
         _print_sync_result(result, logger)
         return 0 if result.success else 1
 
     elif args.action == "pull":
+        if dry_run:
+            logger.info("[DRY RUN] Showing what would be pulled (no changes will be made)")
         labels = args.labels.split(",") if args.labels else None
         result = manager.pull_issues(labels)
         _print_sync_result(result, logger)
