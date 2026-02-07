@@ -64,6 +64,17 @@ def mock_popen() -> Generator[MagicMock, None, None]:
         yield mock
 
 
+def _patch_selector_cm(mock_selector: MagicMock) -> None:
+    """Configure mock selector to work as a context manager.
+
+    DefaultSelector is used as `with DefaultSelector() as sel:`, so the mock
+    instance's __enter__ must return itself for attribute access to work.
+    """
+    instance = mock_selector.return_value
+    instance.__enter__ = Mock(return_value=instance)
+    instance.__exit__ = Mock(return_value=False)
+
+
 # =============================================================================
 # TestDetectContextHandoff
 # =============================================================================
@@ -194,6 +205,7 @@ class TestRunClaudeCommand:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 # Configure selector to immediately return empty (no data)
                 mock_selector.return_value.get_map.return_value = {}
 
@@ -217,6 +229,7 @@ class TestRunClaudeCommand:
 
         with patch("subprocess.Popen", side_effect=capture_popen):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
                 run_claude_command("/ll:test_command")
 
@@ -244,6 +257,7 @@ class TestRunClaudeCommand:
 
         with patch("subprocess.Popen", side_effect=capture_popen):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
                 run_claude_command("test")
 
@@ -266,6 +280,7 @@ class TestRunClaudeCommand:
 
         with patch("subprocess.Popen", side_effect=capture_popen):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
                 run_claude_command("test", working_dir=tmp_path)
 
@@ -290,6 +305,7 @@ class TestRunClaudeCommandOutputCapture:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 selector_instance = mock_selector.return_value
                 # Track call count to control flow
                 call_count = [0]
@@ -325,6 +341,7 @@ class TestRunClaudeCommandOutputCapture:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 selector_instance = mock_selector.return_value
                 call_count = [0]
 
@@ -357,6 +374,7 @@ class TestRunClaudeCommandOutputCapture:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 selector_instance = mock_selector.return_value
                 call_count = [0]
 
@@ -389,6 +407,7 @@ class TestRunClaudeCommandOutputCapture:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
                 result = run_claude_command("test")
 
@@ -404,6 +423,7 @@ class TestRunClaudeCommandOutputCapture:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
                 result = run_claude_command("test")
 
@@ -433,6 +453,7 @@ class TestRunClaudeCommandStreaming:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 selector_instance = mock_selector.return_value
                 call_count = [0]
 
@@ -470,6 +491,7 @@ class TestRunClaudeCommandStreaming:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 selector_instance = mock_selector.return_value
                 call_count = [0]
 
@@ -502,6 +524,7 @@ class TestRunClaudeCommandStreaming:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 selector_instance = mock_selector.return_value
                 call_count = [0]
 
@@ -543,6 +566,7 @@ class TestRunClaudeCommandTimeout:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 selector_instance = mock_selector.return_value
 
                 # Make get_map always return something (simulating hanging process)
@@ -577,6 +601,7 @@ class TestRunClaudeCommandTimeout:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 selector_instance = mock_selector.return_value
                 selector_instance.get_map.return_value = {"stdout": True}
                 selector_instance.select.return_value = []
@@ -608,6 +633,7 @@ class TestRunClaudeCommandTimeout:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
 
                 # Should not raise even with simulated long time
@@ -638,6 +664,7 @@ class TestRunClaudeCommandProcessCallbacks:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
                 run_claude_command("test", on_process_start=on_start)
 
@@ -659,6 +686,7 @@ class TestRunClaudeCommandProcessCallbacks:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
                 run_claude_command("test", on_process_end=on_end)
 
@@ -681,6 +709,7 @@ class TestRunClaudeCommandProcessCallbacks:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 selector_instance = mock_selector.return_value
                 selector_instance.get_map.return_value = {"stdout": True}
                 selector_instance.select.return_value = []
@@ -713,11 +742,76 @@ class TestRunClaudeCommandProcessCallbacks:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
 
                 # Should not raise
                 result = run_claude_command("test", on_process_start=None, on_process_end=None)
                 assert result is not None
+
+
+# =============================================================================
+# TestRunClaudeCommandSelectorCleanup
+# =============================================================================
+
+
+class TestRunClaudeCommandSelectorCleanup:
+    """Tests for selector resource cleanup (BUG-230)."""
+
+    def test_selector_closed_on_success(self) -> None:
+        """Selector is closed after normal completion."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                selector_instance = MagicMock()
+                selector_instance.get_map.return_value = {}
+                mock_selector.return_value = selector_instance
+                selector_instance.__enter__ = Mock(return_value=selector_instance)
+                selector_instance.__exit__ = Mock(return_value=False)
+
+                run_claude_command("test")
+
+        selector_instance.__exit__.assert_called_once()
+
+    def test_selector_closed_on_timeout(self) -> None:
+        """Selector is closed even when timeout occurs."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = None
+        mock_process.wait.return_value = None
+        mock_process.kill = Mock()
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                selector_instance = MagicMock()
+                selector_instance.get_map.return_value = {"stdout": True}
+                selector_instance.select.return_value = []
+                selector_instance.register = Mock()
+                selector_instance.unregister = Mock()
+                mock_selector.return_value = selector_instance
+                selector_instance.__enter__ = Mock(return_value=selector_instance)
+                selector_instance.__exit__ = Mock(return_value=False)
+
+                start_time = time.time()
+                time_values = [start_time, start_time + 2.0]
+                time_index = [0]
+
+                def mock_time() -> float:
+                    result = time_values[min(time_index[0], len(time_values) - 1)]
+                    time_index[0] += 1
+                    return result
+
+                with patch("time.time", side_effect=mock_time):
+                    with pytest.raises(subprocess.TimeoutExpired):
+                        run_claude_command("test", timeout=1)
+
+        selector_instance.__exit__.assert_called_once()
 
 
 # =============================================================================
@@ -738,6 +832,7 @@ class TestRunClaudeCommandIntegration:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
 
                 # Should not raise
@@ -754,6 +849,7 @@ class TestRunClaudeCommandIntegration:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
 
                 result = run_claude_command("test")
@@ -770,6 +866,7 @@ class TestRunClaudeCommandIntegration:
 
         with patch("subprocess.Popen", return_value=mock_process):
             with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
 
                 result = run_claude_command("/ll:test_cmd")

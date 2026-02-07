@@ -42,6 +42,8 @@ class TestRunClaudeCommand:
             with patch("selectors.DefaultSelector") as mock_selector_cls:
                 mock_selector = MagicMock()
                 mock_selector_cls.return_value = mock_selector
+                mock_selector.__enter__ = Mock(return_value=mock_selector)
+                mock_selector.__exit__ = Mock(return_value=False)
                 # Simulate no ready file objects (empty selector)
                 mock_selector.get_map.side_effect = [True, False]
                 mock_selector.select.return_value = []
@@ -76,6 +78,8 @@ class TestRunClaudeCommand:
             with patch("selectors.DefaultSelector") as mock_selector_cls:
                 mock_selector = MagicMock()
                 mock_selector_cls.return_value = mock_selector
+                mock_selector.__enter__ = Mock(return_value=mock_selector)
+                mock_selector.__exit__ = Mock(return_value=False)
                 mock_selector.get_map.side_effect = [False]
 
                 from little_loops.issue_manager import run_claude_command
@@ -106,6 +110,8 @@ class TestRunClaudeCommand:
             with patch("selectors.DefaultSelector") as mock_selector_cls:
                 mock_selector = MagicMock()
                 mock_selector_cls.return_value = mock_selector
+                mock_selector.__enter__ = Mock(return_value=mock_selector)
+                mock_selector.__exit__ = Mock(return_value=False)
                 mock_selector.get_map.return_value = True
                 mock_selector.select.return_value = []
 
@@ -137,6 +143,8 @@ class TestRunClaudeCommand:
             with patch("selectors.DefaultSelector") as mock_selector_cls:
                 mock_selector = MagicMock()
                 mock_selector_cls.return_value = mock_selector
+                mock_selector.__enter__ = Mock(return_value=mock_selector)
+                mock_selector.__exit__ = Mock(return_value=False)
                 mock_selector.get_map.side_effect = [False]
 
                 from little_loops.issue_manager import run_claude_command

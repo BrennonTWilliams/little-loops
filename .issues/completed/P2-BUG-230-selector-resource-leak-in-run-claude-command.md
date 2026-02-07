@@ -75,4 +75,22 @@ with selectors.DefaultSelector() as sel:
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P2
+**Completed** | Created: 2026-02-06T03:41:30Z | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/subprocess_utils.py`: Wrapped `selectors.DefaultSelector()` in `with` statement to ensure OS file descriptors are released on both normal completion and exception paths
+- `scripts/tests/test_subprocess_utils.py`: Added `_patch_selector_cm` helper and `TestRunClaudeCommandSelectorCleanup` test class with tests for selector closure on success and timeout; updated all existing tests to support context manager protocol
+- `scripts/tests/test_subprocess_mocks.py`: Updated selector mocks to support context manager protocol
+
+### Verification Results
+- Tests: PASS (39/39 + 22/22)
+- Lint: PASS
+- Types: PASS

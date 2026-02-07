@@ -103,42 +103,42 @@ def run_claude_command(
     stderr_lines: list[str] = []
 
     # Use selectors for non-blocking read from both streams
-    sel = selectors.DefaultSelector()
-    if process.stdout:
-        sel.register(process.stdout, selectors.EVENT_READ)
-    if process.stderr:
-        sel.register(process.stderr, selectors.EVENT_READ)
+    with selectors.DefaultSelector() as sel:
+        if process.stdout:
+            sel.register(process.stdout, selectors.EVENT_READ)
+        if process.stderr:
+            sel.register(process.stderr, selectors.EVENT_READ)
 
-    start_time = time.time()
+        start_time = time.time()
 
-    try:
-        while sel.get_map():
-            if timeout and (time.time() - start_time) > timeout:
-                process.kill()
-                raise subprocess.TimeoutExpired(cmd_args, timeout)
+        try:
+            while sel.get_map():
+                if timeout and (time.time() - start_time) > timeout:
+                    process.kill()
+                    raise subprocess.TimeoutExpired(cmd_args, timeout)
 
-            ready = sel.select(timeout=1.0)
-            for key, _ in ready:
-                line = key.fileobj.readline()  # type: ignore[union-attr]
-                if not line:
-                    sel.unregister(key.fileobj)
-                    continue
+                ready = sel.select(timeout=1.0)
+                for key, _ in ready:
+                    line = key.fileobj.readline()  # type: ignore[union-attr]
+                    if not line:
+                        sel.unregister(key.fileobj)
+                        continue
 
-                line = line.rstrip("\n")
-                is_stderr = key.fileobj is process.stderr
+                    line = line.rstrip("\n")
+                    is_stderr = key.fileobj is process.stderr
 
-                if is_stderr:
-                    stderr_lines.append(line)
-                else:
-                    stdout_lines.append(line)
+                    if is_stderr:
+                        stderr_lines.append(line)
+                    else:
+                        stdout_lines.append(line)
 
-                if stream_callback:
-                    stream_callback(line, is_stderr)
+                    if stream_callback:
+                        stream_callback(line, is_stderr)
 
-        process.wait()
-    finally:
-        if on_process_end:
-            on_process_end(process)
+            process.wait()
+        finally:
+            if on_process_end:
+                on_process_end(process)
 
     return subprocess.CompletedProcess(
         cmd_args,
