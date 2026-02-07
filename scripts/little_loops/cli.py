@@ -522,6 +522,7 @@ def main_loop() -> int:
         "history",
         "test",
         "simulate",
+        "install",
     }
 
     # Pre-process args: if first positional arg is not a subcommand, insert "run"
@@ -628,9 +629,20 @@ Examples:
         help="Override max iterations for simulation (default: min of loop config or 20)",
     )
 
+    # Install subcommand
+    install_parser = subparsers.add_parser(
+        "install",
+        help="Copy a built-in loop to .loops/ for customization",
+    )
+    install_parser.add_argument("loop", help="Built-in loop name to install")
+
     args = parser.parse_args(argv)
 
     logger = Logger(verbose=not getattr(args, "quiet", False))
+
+    def get_builtin_loops_dir() -> Path:
+        """Get the path to built-in loops bundled with the plugin."""
+        return Path(__file__).parent.parent.parent / "loops"
 
     def resolve_loop_path(name_or_path: str) -> Path:
         """Resolve loop name to path, preferring compiled FSM over paradigm."""
@@ -647,6 +659,11 @@ Examples:
         loops_path = Path(".loops") / f"{name_or_path}.yaml"
         if loops_path.exists():
             return loops_path
+
+        # Fall back to built-in loops from plugin directory
+        builtin_path = get_builtin_loops_dir() / f"{name_or_path}.yaml"
+        if builtin_path.exists():
+            return builtin_path
 
         raise FileNotFoundError(f"Loop not found: {name_or_path}")
 
@@ -914,19 +931,58 @@ Examples:
                 print(f"  {state.loop_name}: {state.current_state} (iteration {state.iteration})")
             return 0
 
-        # List all loop files
-        if not loops_dir.exists():
-            print("No .loops/ directory found")
-            return 0
+        # Collect project loops
+        project_names: set[str] = set()
+        yaml_files: list[Path] = []
+        if loops_dir.exists():
+            yaml_files = list(loops_dir.glob("*.yaml"))
+            project_names = {p.stem for p in yaml_files}
 
-        yaml_files = list(loops_dir.glob("*.yaml"))
-        if not yaml_files:
-            print("No loops defined")
+        # Collect built-in loops (excluding those overridden by project)
+        builtin_dir = get_builtin_loops_dir()
+        builtin_files: list[Path] = []
+        if builtin_dir.exists():
+            builtin_files = [
+                f for f in sorted(builtin_dir.glob("*.yaml")) if f.stem not in project_names
+            ]
+
+        if not yaml_files and not builtin_files:
+            print("No loops available")
             return 0
 
         print("Available loops:")
         for path in sorted(yaml_files):
             print(f"  {path.stem}")
+        for path in builtin_files:
+            print(f"  {path.stem}  [built-in]")
+        return 0
+
+    def cmd_install(loop_name: str) -> int:
+        """Copy a built-in loop to .loops/ for customization."""
+        import shutil
+
+        builtin_dir = get_builtin_loops_dir()
+        source = builtin_dir / f"{loop_name}.yaml"
+
+        if not source.exists():
+            available = [f.stem for f in builtin_dir.glob("*.yaml")] if builtin_dir.exists() else []
+            logger.error(f"No built-in loop named '{loop_name}'")
+            if available:
+                print(f"Available built-in loops: {', '.join(sorted(available))}")
+            return 1
+
+        loops_dir = Path(".loops")
+        loops_dir.mkdir(exist_ok=True)
+        dest = loops_dir / f"{loop_name}.yaml"
+
+        if dest.exists():
+            logger.error(f"Loop already exists: {dest}")
+            print("Remove it first or edit it directly.")
+            return 1
+
+        shutil.copy2(source, dest)
+        print(f"Installed {loop_name} to {dest}")
+        print("You can now customize it by editing the file.")
         return 0
 
     def cmd_status(loop_name: str) -> int:
@@ -1308,6 +1364,8 @@ Examples:
         return cmd_test(args.loop)
     elif args.command == "simulate":
         return cmd_simulate(args.loop)
+    elif args.command == "install":
+        return cmd_install(args.loop)
     else:
         parser.print_help()
         return 1

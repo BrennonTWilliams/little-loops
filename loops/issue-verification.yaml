@@ -1,0 +1,14 @@
+paradigm: invariants
+name: issue-verification
+description: |
+  Ensure all issue files are verified for accuracy and have normalized
+  filenames with unique IDs. Runs until both constraints pass.
+constraints:
+  - name: "issues-verified"
+    check: "/ll:verify_issues"
+    fix: "Auto-corrects or closes invalid issues"
+  - name: "issues-normalized"
+    check: "/ll:normalize_issues"
+    fix: "Renames files to ensure unique IDs"
+maintain: false
+max_iterations: 20

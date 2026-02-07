@@ -1,0 +1,20 @@
+paradigm: invariants
+name: quality-gate
+description: |
+  Comprehensive code quality gate. Ensures lint, type checking,
+  formatting, and tests all pass.
+constraints:
+  - name: "lint"
+    check: "/ll:check_code lint"
+    fix: "Auto-fix lint issues"
+  - name: "types"
+    check: "/ll:check_code types"
+    fix: "Fix type errors"
+  - name: "format"
+    check: "/ll:check_code format"
+    fix: "Auto-format code"
+  - name: "tests"
+    check: "/ll:run_tests"
+    fix: "Fix failing tests"
+maintain: false
+max_iterations: 15

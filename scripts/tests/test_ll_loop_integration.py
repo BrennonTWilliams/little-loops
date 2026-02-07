@@ -245,7 +245,7 @@ states:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """list with empty .loops/ directory shows no loops."""
+        """list with empty .loops/ directory shows built-in loops only."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
 
@@ -257,8 +257,11 @@ states:
 
         assert result == 0
         captured = capsys.readouterr()
-        # Either shows "No loops" message or empty output
-        assert "No loops" in captured.out or captured.out.strip() == ""
+        # Built-in loops are shown when no project loops exist
+        if "[built-in]" in captured.out:
+            assert "Available loops:" in captured.out
+        else:
+            assert "No loops" in captured.out or captured.out.strip() == ""
 
     def test_list_multiple_loops(
         self,

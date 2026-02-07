@@ -79,6 +79,25 @@ After installing the plugin, users should be able to:
 
 ---
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-07
+- **Status**: Completed
+
+### Changes Made
+- `loops/` (new directory): 5 built-in loop YAML files (issue-readiness-cycle, pre-pr-checks, issue-verification, codebase-scan, quality-gate)
+- `scripts/little_loops/cli.py`: Added `get_builtin_loops_dir()`, extended `resolve_loop_path()` with built-in fallback, updated `cmd_list()` to show `[built-in]` tags, added `cmd_install()` subcommand
+- `scripts/tests/test_builtin_loops.py` (new): 12 tests covering loop validation, resolution, list display, and install
+- `scripts/tests/test_ll_loop_integration.py`: Updated `test_list_empty_loops_dir` for built-in loop awareness
+
+### Verification Results
+- Tests: PASS (2619 passed)
+- Lint: PASS
+- Types: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-07 | Priority: P3
+**Completed** | Created: 2026-02-07 | Completed: 2026-02-07 | Priority: P3

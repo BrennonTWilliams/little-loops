@@ -1,0 +1,13 @@
+paradigm: imperative
+name: issue-readiness-cycle
+description: |
+  Process issues through readiness validation and autonomous management.
+  Iterates through available issues, validating each before processing.
+steps:
+  - "/ll:ready_issue"
+  - "/ll:manage_issue"
+until:
+  check: "ls .issues/bugs/*.md .issues/features/*.md .issues/enhancements/*.md 2>/dev/null | wc -l"
+  condition: "output_equals"
+  value: "0"
+max_iterations: 50

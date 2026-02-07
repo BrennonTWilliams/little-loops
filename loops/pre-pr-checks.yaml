@@ -1,0 +1,15 @@
+paradigm: invariants
+name: pre-pr-checks
+description: |
+  Run code quality checks before creating a PR. Ensures all constraints
+  pass before proceeding to PR description generation.
+constraints:
+  - name: "code-quality"
+    check: "/ll:check_code"
+    fix: "Auto-fix via formatter and linter"
+  - name: "tests-pass"
+    check: "/ll:run_tests"
+    fix: "Review and fix failing tests"
+maintain: false
+on_success: "/ll:describe_pr"
+max_iterations: 10

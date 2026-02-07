@@ -1,0 +1,13 @@
+paradigm: imperative
+name: codebase-scan
+description: |
+  Scan the codebase for new issues, verify discovered issues
+  for accuracy, and assign priority levels.
+steps:
+  - "/ll:scan_codebase"
+  - "/ll:verify_issues"
+  - "/ll:prioritize_issues"
+until:
+  check: "git status --porcelain"
+  condition: "output_empty"
+max_iterations: 5
