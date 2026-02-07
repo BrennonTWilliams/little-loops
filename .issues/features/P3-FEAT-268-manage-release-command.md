@@ -30,6 +30,25 @@ No slash command or Skill exists for:
 - Managing release notes
 - Version bumping
 
+## User Story
+
+As a solo developer, I want to automate my release process so I can ship faster with less manual effort.
+
+## Acceptance Criteria
+
+- [ ] `tag` action creates annotated git tags following semver (vX.Y.Z)
+- [ ] `changelog` action generates a categorized changelog from commits and completed issues since last tag
+- [ ] `release` action creates a GitHub release via `gh` CLI with generated notes
+- [ ] `bump` action updates version strings in project files (pyproject.toml, plugin.json)
+- [ ] `full` action runs tag + changelog + release + bump in sequence
+- [ ] Interactive mode (no arguments) prompts user via `AskUserQuestion` for actions and version, then executes without further stops
+- [ ] Completed issues since last tag appear in changelogs/release notes, categorized by type (BUG, FEAT, ENH)
+- [ ] Issues with `github_issue` frontmatter include linked GitHub issue numbers in notes
+- [ ] Wave 1 spawns 3 parallel agents (git history, completed issues, version references) in a single message
+- [ ] Wave 2 merges agent results before executing selected actions
+- [ ] `--dry-run` flag previews actions without executing them
+- [ ] Command is registered in `plugin.json`
+
 ## Expected Behavior
 
 A new `/ll:manage_release` command should provide:
