@@ -724,7 +724,15 @@ class FSMExecutor:
 
         # Invoke handler if configured
         if self.handoff_handler:
-            self.handoff_handler.handle(self.fsm.name, signal.payload)
+            result = self.handoff_handler.handle(self.fsm.name, signal.payload)
+            if result.spawned_process is not None:
+                self._emit(
+                    "handoff_spawned",
+                    {
+                        "pid": result.spawned_process.pid,
+                        "state": self.current_state,
+                    },
+                )
 
         return ExecutionResult(
             final_state=self.current_state,

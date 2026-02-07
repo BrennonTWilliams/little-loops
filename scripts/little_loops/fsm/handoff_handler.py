@@ -112,4 +112,11 @@ class HandoffHandler:
         prompt = "".join(prompt_parts)
 
         cmd = ["claude", "-p", prompt]
-        return subprocess.Popen(cmd, text=True)
+        return subprocess.Popen(
+            cmd,
+            text=True,
+            start_new_session=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            stdin=subprocess.DEVNULL,
+        )

@@ -48,4 +48,22 @@ Either wait on the process in the executor, or detach it properly as a daemon pr
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P3
+**Completed** | Created: 2026-02-06T03:41:30Z | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/fsm/handoff_handler.py`: Properly detach spawned process as daemon with `start_new_session=True`, redirect stdin/stdout/stderr to `DEVNULL`
+- `scripts/little_loops/fsm/executor.py`: Capture `HandoffResult` return value and emit `handoff_spawned` event with process PID
+- `scripts/tests/test_handoff_handler.py`: Add assertions verifying daemon detachment arguments
+
+### Verification Results
+- Tests: PASS (2463 passed)
+- Lint: PASS
+- Types: PASS

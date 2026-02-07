@@ -1,5 +1,6 @@
 """Tests for handoff_handler module."""
 
+import subprocess
 from unittest.mock import patch
 
 from little_loops.fsm.handoff_handler import (
@@ -52,7 +53,7 @@ class TestHandoffHandler:
         assert result.spawned_process is None
 
     def test_spawn_behavior(self) -> None:
-        """Spawn launches Claude process."""
+        """Spawn launches Claude process as detached daemon."""
         with patch("subprocess.Popen") as mock_popen:
             handler = HandoffHandler(HandoffBehavior.SPAWN)
             result = handler.handle("test-loop", "continuation prompt")
@@ -70,6 +71,13 @@ class TestHandoffHandler:
             prompt = cmd[cmd.index("-p") + 1]
             assert "ll-loop resume test-loop" in prompt
             assert "continuation prompt" in prompt
+
+            # Verify process is detached as daemon
+            kwargs = mock_popen.call_args[1]
+            assert kwargs["start_new_session"] is True
+            assert kwargs["stdout"] == subprocess.DEVNULL
+            assert kwargs["stderr"] == subprocess.DEVNULL
+            assert kwargs["stdin"] == subprocess.DEVNULL
 
     def test_spawn_with_none_continuation(self) -> None:
         """Spawn handles None continuation prompt."""
