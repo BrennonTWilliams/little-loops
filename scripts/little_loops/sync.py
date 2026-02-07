@@ -571,10 +571,11 @@ class GitHubSyncManager:
 
         # List GitHub issues
         try:
-            cmd_result = _run_gh_command(
-                ["issue", "list", "--json", "number,title,body,labels,state,url", "--limit", "100"],
-                self.logger,
-            )
+            gh_args = ["issue", "list", "--json", "number,title,body,labels,state,url", "--limit", "100"]
+            if labels:
+                for label in labels:
+                    gh_args.extend(["--label", label])
+            cmd_result = _run_gh_command(gh_args, self.logger)
             github_issues = json.loads(cmd_result.stdout)
         except Exception as e:
             result.success = False

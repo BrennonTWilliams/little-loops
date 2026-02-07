@@ -404,6 +404,47 @@ class TestGitHubSyncManager:
         assert not result.success
         assert "not authenticated" in result.errors[0]
 
+    def test_pull_with_labels_filters_gh_command(
+        self, mock_config: BRConfig, mock_logger: MagicMock
+    ) -> None:
+        """Pull with labels passes --label flags to gh issue list."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="[]", stderr=""
+                )
+                manager.pull_issues(["bug", "enhancement"])
+
+        mock_run.assert_called_once()
+        gh_args = mock_run.call_args[0][0]
+        assert "--label" in gh_args
+        # Should have --label bug --label enhancement
+        label_indices = [i for i, a in enumerate(gh_args) if a == "--label"]
+        assert len(label_indices) == 2
+        assert gh_args[label_indices[0] + 1] == "bug"
+        assert gh_args[label_indices[1] + 1] == "enhancement"
+
+    def test_pull_without_labels_no_filter(
+        self, mock_config: BRConfig, mock_logger: MagicMock
+    ) -> None:
+        """Pull without labels does not include --label flags."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="[]", stderr=""
+                )
+                manager.pull_issues()
+
+        mock_run.assert_called_once()
+        gh_args = mock_run.call_args[0][0]
+        assert "--label" not in gh_args
+
     def test_get_status(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:

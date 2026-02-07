@@ -14,7 +14,7 @@ The `ll-sync pull --labels` CLI flag is parsed and passed to `GitHubSyncManager.
 ## Location
 
 - **File**: `scripts/little_loops/cli.py`
-- **Line(s)**: 2143-2148, 2184-2185 (at scan commit: a8f4144)
+- **Line(s)**: 2143-2148, 2185-2186 (at scan commit: a8f4144)
 - **Anchor**: `in function main_sync, pull_parser argument`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a8f4144ebd05e95833281bd95506da984ba5d118/scripts/little_loops/cli.py#L2143-L2148)
 - **Code**:
@@ -31,7 +31,7 @@ result = manager.pull_issues(labels)
 ```
 
 - **File**: `scripts/little_loops/sync.py`
-- **Line(s)**: 553-614 (at scan commit: a8f4144)
+- **Line(s)**: 555-616 (at scan commit: a8f4144)
 - **Anchor**: `in method GitHubSyncManager.pull_issues`
 - **Code**:
 ```python
@@ -74,5 +74,20 @@ if labels:
 
 ---
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/sync.py`: Modified `pull_issues()` to pass `--label` flags to `gh issue list` when labels parameter is provided
+- `scripts/tests/test_sync.py`: Added tests for label filtering in pull operations
+
+### Verification Results
+- Tests: PASS (41/41)
+- Lint: PASS
+- Types: PASS
+
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P2
+**Completed** | Created: 2026-02-06T03:41:30Z | Priority: P2
