@@ -622,6 +622,7 @@ class TestRunClaudeCommandTimeout:
                         run_claude_command("test", timeout=1)
 
         mock_process.kill.assert_called_once()
+        mock_process.wait.assert_called_once()  # reap zombie after kill
 
     def test_timeout_zero_means_no_timeout(self) -> None:
         """timeout=0 allows indefinite running (no timeout check)."""

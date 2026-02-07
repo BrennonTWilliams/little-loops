@@ -14,21 +14,23 @@ When a timeout occurs in `run_claude_command`, `process.kill()` sends SIGKILL bu
 ## Location
 
 - **File**: `scripts/little_loops/subprocess_utils.py`
-- **Line(s)**: 116-141 (at scan commit: a8f4144)
+- **Line(s)**: 114-141 (at scan commit: a8f4144)
 - **Anchor**: `in function run_claude_command, timeout handling`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a8f4144ebd05e95833281bd95506da984ba5d118/scripts/little_loops/subprocess_utils.py#L116-L141)
 - **Code**:
 ```python
-try:
-    while sel.get_map():
-        if timeout and (time.time() - start_time) > timeout:
-            process.kill()                                    # sends SIGKILL
-            raise subprocess.TimeoutExpired(cmd_args, timeout)  # exits immediately
-        # ...
-    process.wait()  # only reached on normal exit
-finally:
-    if on_process_end:
-        on_process_end(process)  # called even on timeout path
+with selectors.DefaultSelector() as sel:
+    # ... register stdout/stderr ...
+    try:
+        while sel.get_map():
+            if timeout and (time.time() - start_time) > timeout:
+                process.kill()                                    # sends SIGKILL
+                raise subprocess.TimeoutExpired(cmd_args, timeout)  # exits immediately
+            # ...
+        process.wait()  # only reached on normal exit
+    finally:
+        if on_process_end:
+            on_process_end(process)  # called even on timeout path
 ```
 
 ## Current Behavior
@@ -68,4 +70,21 @@ if timeout and (time.time() - start_time) > timeout:
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P2
+**Completed** | Created: 2026-02-06T03:41:30Z | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/subprocess_utils.py`: Added `process.wait()` after `process.kill()` on timeout path to reap child process
+- `scripts/tests/test_subprocess_utils.py`: Added assertion that `process.wait()` is called after kill on timeout
+
+### Verification Results
+- Tests: PASS (2460 passed)
+- Lint: PASS
+- Types: PASS

@@ -115,6 +115,7 @@ def run_claude_command(
             while sel.get_map():
                 if timeout and (time.time() - start_time) > timeout:
                     process.kill()
+                    process.wait()  # reap child to prevent zombie
                     raise subprocess.TimeoutExpired(cmd_args, timeout)
 
                 ready = sel.select(timeout=1.0)
