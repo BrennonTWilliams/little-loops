@@ -22,9 +22,9 @@ Development workflow toolkit for Claude Code with issue management, code quality
 
 little-loops is a Claude Code plugin that provides a complete development workflow toolkit. It includes:
 
-- **34 slash commands** for development workflows
+- **35 slash commands** for development workflows
 - **8 specialized agents** for codebase analysis
-- **6 skills** for specialized workflows (history analysis, issue size review, workflow reference, dependency mapping, product analysis, workflow automation)
+- **6 skills** for specialized workflows (history analysis, issue size review, issue workflow reference, dependency mapping, product analysis, workflow automation)
 - **Automation scripts** for autonomous issue processing
 - **Configuration system** for project customization
 
@@ -369,12 +369,12 @@ Specialized workflows invoked via the Skill tool:
 
 | Skill | Description |
 |-------|-------------|
-| `product-analyzer` | Analyze codebase against product goals to identify feature gaps, UX improvements, and business value opportunities |
-| `capture-issue` | Capture issues from conversation context or natural language descriptions with duplicate detection |
-| `codebase-analyzer` | Understand code behavior with detailed implementation analysis and data flow tracing |
-| `codebase-locator` | Find files related to specific features or topics across the codebase |
-| `codebase-pattern-finder` | Find concrete code examples and patterns to model after |
-| `workflow-pattern-analyzer` | Analyze workflow patterns and dependencies for automation |
+| `analyze-history` | Analyze issue history for project health, trends, and progress |
+| `issue-size-review` | Evaluate issue size/complexity and propose decomposition |
+| `issue-workflow` | Quick reference for issue management workflow |
+| `map-dependencies` | Analyze cross-issue dependencies based on file overlap |
+| `product-analyzer` | Analyze codebase against product goals for feature gaps and business value |
+| `workflow-automation-proposer` | Synthesize workflow patterns into automation proposals |
 
 ## CLI Tools
 
@@ -586,10 +586,11 @@ For detailed solutions, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
 ```
 little-loops/
-├── plugin.json           # Plugin manifest
+├── .claude-plugin/
+│   └── plugin.json       # Plugin manifest
 ├── config-schema.json    # Configuration schema
 ├── README.md             # This file
-├── commands/             # Slash command templates (34 commands)
+├── commands/             # Slash command templates (35 commands)
 ├── agents/               # Agent definitions (8 agents)
 ├── skills/               # Skill definitions (6 skills)
 ├── hooks/                # Lifecycle hooks and validation scripts
