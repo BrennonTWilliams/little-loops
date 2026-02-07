@@ -340,7 +340,15 @@ ELSE:
   TEMPLATE_STYLE = "full"
 ```
 
-**If TEMPLATE_STYLE is "minimal":**
+**Build issue from shared template:**
+
+1. Read `templates/issue-sections.json` (relative to the little-loops plugin directory)
+2. Look up `creation_variants.[TEMPLATE_STYLE]` to determine which sections to include
+3. For each section name in `include_common`, use `common_sections.[name].creation_template` as placeholder content
+4. If `include_type_sections` is true, also include sections from `type_sections.[TYPE]` that have a `creation_template`
+5. Always include YAML frontmatter with `discovered_date` and `discovered_by: capture_issue`
+
+The assembled file follows this structure:
 
 ```bash
 cat > "{{config.issues.base_dir}}/[category]/[filename]" << 'EOF'
@@ -353,7 +361,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-[Description extracted from input]
+[creation_template from common_sections.Summary]
 
 ## Context
 
@@ -363,61 +371,16 @@ discovered_by: capture_issue
 
 **Conversation mode**: Identified from conversation discussing: "[brief context]"
 
-## Related Key Documentation
+[For "full" template: include remaining common sections and type-specific sections
+ from the template, each with their creation_template as placeholder content]
 
-_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
-
----
-
-**Priority**: [P0-P5] | **Created**: [YYYY-MM-DD]
-EOF
-```
-
-**If TEMPLATE_STYLE is "full" (default):**
-
-```bash
-cat > "{{config.issues.base_dir}}/[category]/[filename]" << 'EOF'
----
-discovered_date: [YYYY-MM-DD]
-discovered_by: capture_issue
----
-
-# [TYPE]-[NNN]: [Title]
-
-## Summary
-
-[Description extracted from input]
-
-## Context
-
-[How this issue was identified]
-
-**Direct mode**: User description: "[original description]"
-
-**Conversation mode**: Identified from conversation discussing: "[brief context]"
-
-## Current Behavior
-
-[If applicable - describe what currently happens]
-
-## Expected Behavior
-
-[What should happen instead]
-
-## Proposed Solution
-
-[If mentioned in the description, otherwise:]
-TBD - requires investigation
-
-## Impact
-
-- **Priority**: [P0-P5]
-- **Effort**: TBD
-- **Risk**: TBD
+[For "minimal" template: skip to Related Key Documentation and Status footer]
 
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+
+[For "full" template only:]
 
 ## Labels
 

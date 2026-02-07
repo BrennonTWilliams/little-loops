@@ -1,0 +1,169 @@
+{
+  "_meta": {
+    "name": "Issue Section Definitions",
+    "description": "Shared section requirements for BUG, FEAT, and ENH issue types. Referenced by refine_issue, capture_issue, ready_issue, and scan_codebase commands.",
+    "version": "1.0"
+  },
+  "common_sections": {
+    "Summary": {
+      "required": true,
+      "description": "Clear description of the issue",
+      "creation_template": "[Description extracted from input]"
+    },
+    "Context": {
+      "required": false,
+      "description": "How this issue was identified",
+      "creation_template": "[How this issue was identified]",
+      "creation_contexts": ["capture"]
+    },
+    "Current Behavior": {
+      "required": true,
+      "description": "What currently happens",
+      "creation_template": "[If applicable - describe what currently happens]"
+    },
+    "Expected Behavior": {
+      "required": true,
+      "description": "What should happen instead",
+      "creation_template": "[What should happen instead]"
+    },
+    "Proposed Solution": {
+      "required": false,
+      "description": "Suggested approach to fix or implement",
+      "creation_template": "TBD - requires investigation"
+    },
+    "Impact": {
+      "required": true,
+      "description": "Priority, effort, and risk assessment",
+      "creation_template": "- **Priority**: [P0-P5]\n- **Effort**: TBD\n- **Risk**: TBD"
+    },
+    "Related Key Documentation": {
+      "required": false,
+      "description": "Links to relevant project documentation",
+      "creation_template": "_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._"
+    },
+    "Labels": {
+      "required": true,
+      "description": "Issue categorization labels",
+      "creation_template": "`[type-label]`, `captured`"
+    },
+    "Status": {
+      "required": true,
+      "description": "Current issue status footer",
+      "creation_template": "**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]"
+    }
+  },
+  "type_sections": {
+    "BUG": {
+      "Steps to Reproduce": {
+        "level": "required",
+        "description": "Numbered steps to reproduce the bug",
+        "question": "What are the steps to reproduce this bug?",
+        "creation_template": "1. [Step 1]\n2. [Step 2]\n3. [Observe: description of the bug]"
+      },
+      "Actual Behavior": {
+        "level": "required",
+        "description": "What actually happens when the bug occurs",
+        "question": "What actually happens when the bug occurs?"
+      },
+      "Error Messages": {
+        "level": "conditional",
+        "description": "Error messages or stack traces",
+        "question": "Are there any error messages or stack traces?"
+      },
+      "Environment": {
+        "level": "nice-to-have",
+        "description": "Environment details (browser, OS, versions)",
+        "question": "What environment does this occur in (browser, OS, versions)?"
+      },
+      "Frequency": {
+        "level": "nice-to-have",
+        "description": "How often the bug occurs",
+        "question": "How often does this happen (always, sometimes, rarely)?"
+      },
+      "Location": {
+        "level": "conditional",
+        "description": "File, line numbers, anchor, and code snippet where the bug occurs",
+        "creation_contexts": ["scan"],
+        "creation_template": "- **File**: `path/to/file`\n- **Line(s)**: [lines] (at scan commit: [COMMIT_HASH_SHORT])\n- **Anchor**: `in function name()`\n- **Code**:\n```\n# Relevant code snippet\n```"
+      }
+    },
+    "FEAT": {
+      "User Story": {
+        "level": "required",
+        "description": "Who is the user and what do they want to achieve",
+        "question": "Who is the user and what do they want to achieve?"
+      },
+      "Acceptance Criteria": {
+        "level": "required",
+        "description": "Criteria that must be met for the feature to be complete",
+        "question": "What criteria must be met for this feature to be complete?"
+      },
+      "Edge Cases": {
+        "level": "conditional",
+        "description": "Edge cases or error scenarios to consider",
+        "question": "Are there any edge cases or error scenarios to consider?"
+      },
+      "UI/UX Details": {
+        "level": "conditional",
+        "description": "UI/UX requirements or mockups",
+        "question": "Are there UI/UX requirements or mockups?"
+      },
+      "Data/API Impact": {
+        "level": "conditional",
+        "description": "Impact on data models or API contracts",
+        "question": "Does this affect data models or API contracts?"
+      }
+    },
+    "ENH": {
+      "Current Pain Point": {
+        "level": "required",
+        "description": "Specific problem the enhancement solves",
+        "question": "What specific problem does this enhancement solve?"
+      },
+      "Success Metrics": {
+        "level": "conditional",
+        "description": "How to measure if the enhancement is successful",
+        "question": "How will we measure if this enhancement is successful?"
+      },
+      "Scope Boundaries": {
+        "level": "required",
+        "description": "What is explicitly out of scope",
+        "question": "What is explicitly out of scope for this enhancement?"
+      },
+      "Backwards Compatibility": {
+        "level": "conditional",
+        "description": "Backwards compatibility concerns",
+        "question": "Are there backwards compatibility concerns?"
+      }
+    }
+  },
+  "creation_variants": {
+    "full": {
+      "description": "Complete issue template with all applicable sections",
+      "include_common": ["Summary", "Context", "Current Behavior", "Expected Behavior", "Proposed Solution", "Impact", "Related Key Documentation", "Labels", "Status"],
+      "include_type_sections": true
+    },
+    "minimal": {
+      "description": "Lightweight template with core sections only",
+      "include_common": ["Summary", "Context", "Related Key Documentation", "Status"],
+      "include_type_sections": false
+    }
+  },
+  "quality_checks": {
+    "BUG": [
+      "Steps to Reproduce should have numbered concrete steps (not \"do the thing\")",
+      "Expected vs Actual should describe different specific behaviors (not just \"it should work\")",
+      "Error messages should include actual error text, not just \"there's an error\""
+    ],
+    "FEAT": [
+      "User Story should name a specific persona/role and concrete goal",
+      "Acceptance Criteria should each be individually testable with clear pass/fail",
+      "Edge Cases should describe specific scenarios, not just \"handle errors\""
+    ],
+    "ENH": [
+      "Current Pain Point should describe measurable impact (frequency, severity, affected users)",
+      "Success Metrics should have numeric targets or clear before/after comparison",
+      "Scope Boundaries should list specific exclusions, not just \"keep it simple\""
+    ]
+  }
+}

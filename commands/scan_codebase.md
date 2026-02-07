@@ -190,7 +190,15 @@ After ALL sub-agents complete:
 
 ### 4. Create Issue Files
 
-For each finding, create an issue file with YAML frontmatter:
+For each finding, create an issue file using the section structure from `templates/issue-sections.json` (relative to the little-loops plugin directory):
+
+1. Read `templates/issue-sections.json` for section definitions
+2. Use `creation_variants.full` to determine which common sections to include
+3. For BUG issues, include `type_sections.BUG` sections (especially "Steps to Reproduce" — use this exact name, not "Reproduction Steps")
+4. For ENH issues, include `type_sections.ENH` sections
+5. Always include the scan-specific YAML frontmatter and Location section
+
+The assembled file follows this structure:
 
 ```markdown
 ---
@@ -211,45 +219,15 @@ discovered_by: scan_codebase
 - **File**: `path/to/file.py`
 - **Line(s)**: 42-45 (at scan commit: [COMMIT_HASH_SHORT])
 - **Anchor**: `in function process_issue()` or `in class IssueManager` or `near string "unique marker"`
-- **Permalink**: [View on GitHub](https://github.com/[REPO_OWNER]/[REPO_NAME]/blob/[COMMIT_HASH]/path/to/file.py#L42-L45)
+- **Permalink**: [View on GitHub](...)
 - **Code**:
-```python
+```[language]
 # Relevant code snippet
 ```
 
-## Current Behavior
-
-[What happens now]
-
-## Expected Behavior
-
-[What should happen]
-
-## Reproduction Steps
-
-[For bugs only - steps to reproduce the issue]
-1. [Step 1]
-2. [Step 2]
-3. [Observe: description of the bug]
-
-## Proposed Solution
-
-[Suggested approach to implement the enhancement or fix]
-
-## Impact
-
-- **Severity**: [High/Medium/Low]
-- **Effort**: [Small/Medium/Large]
-- **Risk**: [Low/Medium/High]
-
-## Labels
-
-`bug|enhancement|feature`, `priority-label`
-
----
-
-## Status
-**Open** | Created: [SCAN_DATE] | Priority: [P0-P5]
+[Remaining sections from template: Current Behavior, Expected Behavior,
+type-specific sections (e.g. Steps to Reproduce for BUGs), Proposed Solution,
+Impact, Labels, Status — using section names and structure from issue-sections.json]
 ```
 
 **Note**: Only include Permalink if `PERMALINKS_AVAILABLE` is true.

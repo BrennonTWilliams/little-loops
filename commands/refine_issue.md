@@ -49,37 +49,18 @@ If not found, report error and exit.
 
 ### 3. Identify Gaps
 
-Analyze content against type-specific checklists:
+Analyze content against type-specific checklists defined in `templates/issue-sections.json` (relative to the little-loops plugin directory):
 
-#### BUG Issues
+1. Read the shared template file `templates/issue-sections.json`
+2. For the issue's type (BUG/FEAT/ENH), look up `type_sections.[TYPE]` for type-specific sections
+3. Also check `common_sections` for universal required sections (Summary, Current Behavior, Expected Behavior, etc.)
+4. For each section, use its `level` (required/conditional/nice-to-have) and `question` field
 
-| Section | Required? | Question if Missing |
-|---------|-----------|---------------------|
-| Steps to Reproduce | Yes | "What are the steps to reproduce this bug?" |
-| Expected Behavior | Yes | "What behavior did you expect instead?" |
-| Actual Behavior | Yes | "What actually happens when the bug occurs?" |
-| Error Messages | Conditional | "Are there any error messages or stack traces?" |
-| Environment | Nice-to-have | "What environment does this occur in (browser, OS, versions)?" |
-| Frequency | Nice-to-have | "How often does this happen (always, sometimes, rarely)?" |
-
-#### FEAT Issues
+Present gaps as a table:
 
 | Section | Required? | Question if Missing |
 |---------|-----------|---------------------|
-| User Story | Yes | "Who is the user and what do they want to achieve?" |
-| Acceptance Criteria | Yes | "What criteria must be met for this feature to be complete?" |
-| Edge Cases | Conditional | "Are there any edge cases or error scenarios to consider?" |
-| UI/UX Details | Conditional | "Are there UI/UX requirements or mockups?" |
-| Data/API Impact | Conditional | "Does this affect data models or API contracts?" |
-
-#### ENH Issues
-
-| Section | Required? | Question if Missing |
-|---------|-----------|---------------------|
-| Current Pain Point | Yes | "What specific problem does this enhancement solve?" |
-| Success Metrics | Conditional | "How will we measure if this enhancement is successful?" |
-| Scope Boundaries | Yes | "What is explicitly out of scope for this enhancement?" |
-| Backwards Compatibility | Conditional | "Are there backwards compatibility concerns?" |
+| [section name from template] | [level from template] | [question from template] |
 
 ### 3.5 Content Quality Analysis
 
@@ -99,20 +80,7 @@ For each section that has content, evaluate against these checks:
 
 #### Type-Specific Quality Checks
 
-**BUG content quality:**
-- Steps to Reproduce should have numbered concrete steps (not "do the thing")
-- Expected vs Actual should describe different specific behaviors (not just "it should work")
-- Error messages should include actual error text, not just "there's an error"
-
-**FEAT content quality:**
-- User Story should name a specific persona/role and concrete goal
-- Acceptance Criteria should each be individually testable with clear pass/fail
-- Edge Cases should describe specific scenarios, not just "handle errors"
-
-**ENH content quality:**
-- Current Pain Point should describe measurable impact (frequency, severity, affected users)
-- Success Metrics should have numeric targets or clear before/after comparison
-- Scope Boundaries should list specific exclusions, not just "keep it simple"
+Read `quality_checks.[TYPE]` from `templates/issue-sections.json` for the issue's type (BUG/FEAT/ENH). Apply each quality check to the corresponding section content.
 
 #### Classification
 

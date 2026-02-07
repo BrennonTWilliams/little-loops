@@ -112,11 +112,11 @@ If deep validation reveals significant discrepancies:
 Check for completeness:
 
 #### Required Sections
-- [ ] Summary/description
-- [ ] Current behavior (for bugs)
-- [ ] Expected behavior
-- [ ] Reproduction steps (for bugs)
-- [ ] Proposed solution/approach
+
+Read `templates/issue-sections.json` (relative to the little-loops plugin directory) and verify:
+- [ ] All `common_sections` where `required: true` are present and non-empty (Summary, Current Behavior, Expected Behavior, Impact, Labels, Status)
+- [ ] For the issue's type (BUG/FEAT/ENH), all `type_sections.[TYPE]` entries where `level: "required"` are present and non-empty
+- [ ] Proposed Solution section is present (even if marked TBD)
 
 #### Code References
 - [ ] File paths exist in codebase

@@ -58,6 +58,26 @@ TBD - requires investigation into:
 
 ---
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-07
+- **Status**: Completed
+
+### Changes Made
+- `templates/issue-sections.json`: Created shared issue section definitions file with common_sections, type_sections (BUG/FEAT/ENH), creation_variants (full/minimal), and quality_checks
+- `commands/refine_issue.md`: Replaced inline BUG/FEAT/ENH section tables and quality checks with references to shared template
+- `commands/capture_issue.md`: Replaced inline "full" and "minimal" issue templates with shared template reference using creation_variants
+- `commands/ready_issue.md`: Replaced inline Required Sections checklist with shared template reference
+- `commands/scan_codebase.md`: Replaced inline issue creation template with shared template reference, standardized section names (e.g., "Steps to Reproduce" not "Reproduction Steps")
+
+### Verification Results
+- Tests: PASS (2607 passed)
+- Lint: PASS (3 pre-existing unrelated warnings)
+- Types: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-07 | Priority: P3
+**Completed** | Created: 2026-02-07 | Completed: 2026-02-07 | Priority: P3
