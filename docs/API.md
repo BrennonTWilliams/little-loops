@@ -31,6 +31,9 @@ pip install /path/to/little-loops/scripts
 | `little_loops.state` | State persistence |
 | `little_loops.logger` | Logging utilities |
 | `little_loops.logo` | CLI logo display |
+| `little_loops.frontmatter` | YAML frontmatter parsing |
+| `little_loops.doc_counts` | Documentation count verification |
+| `little_loops.link_checker` | Link validation for markdown docs |
 | `little_loops.user_messages` | User message extraction from Claude logs |
 | `little_loops.workflow_sequence_analyzer` | Workflow sequence analysis for multi-step patterns |
 | `little_loops.cli` | CLI entry points |
@@ -3377,4 +3380,216 @@ print(f"Found {len(valid)} valid issues")
 # List all sprints
 for s in manager.list_all():
     print(f"{s.name}: {len(s.issues)} issues")
+```
+
+---
+
+## little_loops.frontmatter
+
+Shared YAML-subset frontmatter parsing used by issue_parser, sync, and issue_history modules.
+
+### Public Functions
+
+| Function | Purpose |
+|----------|---------|
+| `parse_frontmatter` | Extract YAML frontmatter from file content |
+
+### parse_frontmatter
+
+```python
+def parse_frontmatter(
+    content: str, *, coerce_types: bool = False
+) -> dict[str, Any]
+```
+
+Extract YAML frontmatter from content between opening and closing `---` markers. Parses simple `key: value` pairs.
+
+**Parameters:**
+- `content` - File content to parse
+- `coerce_types` - If `True`, coerce digit strings to `int`
+
+**Returns:** Dictionary of frontmatter fields, or empty dict if no frontmatter found.
+
+**Example:**
+```python
+from little_loops.frontmatter import parse_frontmatter
+
+content = "---\npriority: P1\ngithub_issue: 42\n---\n# Title"
+meta = parse_frontmatter(content, coerce_types=True)
+print(meta)  # {"priority": "P1", "github_issue": 42}
+```
+
+---
+
+## little_loops.doc_counts
+
+Automated verification that documented counts (commands, agents, skills) match actual file counts in the codebase.
+
+### Data Classes
+
+#### CountResult
+
+```python
+@dataclass
+class CountResult:
+    category: str              # e.g., "commands", "agents", "skills"
+    actual: int                # Actual file count
+    documented: int | None     # Documented count (if found)
+    file: str | None           # Documentation file path
+    line: int | None           # Line number in doc file
+    matches: bool              # Whether counts match
+```
+
+#### VerificationResult
+
+```python
+@dataclass
+class VerificationResult:
+    total_checked: int                   # Number of counts checked
+    mismatches: list[CountResult]        # List of mismatches
+    all_match: bool                      # True if all counts match
+```
+
+##### Methods
+
+| Method | Description |
+|--------|-------------|
+| `add_result(result)` | Add a `CountResult` and track mismatches |
+
+#### FixResult
+
+```python
+@dataclass
+class FixResult:
+    fixed_count: int              # Number of counts fixed
+    files_modified: list[str]     # Files that were modified
+```
+
+### Public Functions
+
+| Function | Purpose |
+|----------|---------|
+| `count_files` | Count files matching a glob pattern in a directory |
+| `extract_count_from_line` | Extract a count number from a documentation line |
+| `verify_documentation` | Verify all documented counts against actual file counts |
+| `fix_counts` | Auto-fix count mismatches in documentation files |
+| `format_result_text` | Format verification result as plain text |
+| `format_result_json` | Format verification result as JSON |
+| `format_result_markdown` | Format verification result as Markdown |
+
+### verify_documentation
+
+```python
+def verify_documentation(
+    base_dir: Path | None = None,
+) -> VerificationResult
+```
+
+Verify all documented counts against actual file counts.
+
+**Parameters:**
+- `base_dir` - Base directory path (defaults to current working directory)
+
+**Returns:** `VerificationResult` with all results.
+
+**Example:**
+```python
+from pathlib import Path
+from little_loops.doc_counts import verify_documentation
+
+result = verify_documentation(Path.cwd())
+if result.all_match:
+    print("All counts match!")
+else:
+    for m in result.mismatches:
+        print(f"{m.category}: documented={m.documented}, actual={m.actual}")
+```
+
+---
+
+## little_loops.link_checker
+
+Automated verification that links in markdown files are valid. Supports HTTP/HTTPS URL checking and internal file reference validation.
+
+### Data Classes
+
+#### LinkResult
+
+```python
+@dataclass
+class LinkResult:
+    url: str                    # The URL that was checked
+    file: str                   # File containing the link
+    line: int                   # Line number where link appears
+    status: str                 # "valid", "broken", "timeout", "ignored", "internal"
+    error: str | None           # Error message if broken
+    link_text: str | None       # The link text from markdown [text](url)
+```
+
+#### LinkCheckResult
+
+```python
+@dataclass
+class LinkCheckResult:
+    total_links: int            # Total number of links found
+    valid_links: int            # Number of valid links
+    broken_links: int           # Number of broken links
+    ignored_links: int          # Number of ignored links
+    internal_links: int         # Number of internal file references
+    results: list[LinkResult]   # Individual link results
+```
+
+##### Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `has_errors` | `bool` | `True` if any broken links were found |
+
+### Public Functions
+
+| Function | Purpose |
+|----------|---------|
+| `extract_links_from_markdown` | Extract all links from markdown content |
+| `is_internal_reference` | Check if a URL is an internal file reference |
+| `should_ignore_url` | Check if a URL matches ignore patterns |
+| `check_url` | Check if a single URL is reachable |
+| `check_markdown_links` | Check all markdown files for broken links |
+| `load_ignore_patterns` | Load ignore patterns from `.mlc.config.json` |
+| `format_result_text` | Format link check result as plain text |
+| `format_result_json` | Format link check result as JSON |
+| `format_result_markdown` | Format link check result as Markdown |
+
+### check_markdown_links
+
+```python
+def check_markdown_links(
+    base_dir: Path,
+    ignore_patterns: list[str] | None = None,
+    timeout: int = 10,
+    verbose: bool = False,
+) -> LinkCheckResult
+```
+
+Check all markdown files for broken links.
+
+**Parameters:**
+- `base_dir` - Base directory to search
+- `ignore_patterns` - List of regex patterns to ignore (defaults to localhost patterns)
+- `timeout` - Request timeout in seconds
+- `verbose` - Whether to show progress
+
+**Returns:** `LinkCheckResult` with all findings.
+
+**Example:**
+```python
+from pathlib import Path
+from little_loops.link_checker import check_markdown_links
+
+result = check_markdown_links(Path.cwd())
+if result.has_errors:
+    for r in result.results:
+        if r.status == "broken":
+            print(f"Broken: {r.url} at {r.file}:{r.line}")
+else:
+    print(f"All {result.total_links} links valid!")
 ```

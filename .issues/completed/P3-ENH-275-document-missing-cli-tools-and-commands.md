@@ -60,6 +60,18 @@ The following command files exist in `commands/` but are not listed in `docs/COM
 
 ---
 
-## Status
+## Resolution
 
-**Open** | Created: 2026-02-07 | Priority: P3
+- **Action**: improve
+- **Completed**: 2026-02-07
+- **Status**: Completed
+
+### Changes Made
+- `README.md`: Added CLI tool documentation for `ll-sprint`, `ll-sync`, `ll-workflows`, `ll-verify-docs`, `ll-check-links`
+- `docs/COMMANDS.md`: Added detailed + quick reference entries for `find_demo_repos`, `manage_release`, `tradeoff_review_issues`
+- `docs/API.md`: Added Module Overview rows and full documentation sections for `frontmatter`, `doc_counts`, `link_checker`
+
+### Verification Results
+- Tests: PASS (2619 passed)
+- Lint: PASS (pre-existing test file issues only)
+- Types: PASS

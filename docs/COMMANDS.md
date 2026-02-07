@@ -113,6 +113,11 @@ Iterate on existing implementation plans with updates.
 
 **Arguments:** `plan_path` (optional)
 
+### `/ll:tradeoff_review_issues`
+Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close.
+
+**Trigger keywords:** "tradeoff review", "review issues", "prune backlog", "sense check issues"
+
 ---
 
 ## Sprint Management
@@ -161,6 +166,14 @@ Analyze user message history to identify patterns, workflows, and automation opp
 **Arguments:**
 - `file` (optional): Path to user-messages JSONL file (auto-detected if omitted)
 
+### `/ll:find_demo_repos`
+Search for and score public GitHub repositories as demo candidates for little-loops.
+
+**Arguments:**
+- `query` (optional): GitHub search query
+- `limit` (optional): Number of repos to search (default: 5)
+- `min_score` (optional): Minimum score to include (default: 35)
+
 ---
 
 ## Git & Workflow
@@ -184,6 +197,15 @@ Clean up stale git worktrees and branches from parallel processing.
 
 **Arguments:**
 - `mode`: `run` (default), `dry-run`
+
+### `/ll:manage_release`
+Manage releases — create git tags, generate changelogs, and create GitHub releases.
+
+**Arguments:**
+- `action` (optional): `tag`, `changelog`, `release`, `bump`, `full` (interactive if omitted)
+- `version` (optional): `vX.Y.Z`, `patch`, `minor`, `major` (auto-detects if omitted)
+
+**Flags:** `--dry-run`, `--push`, `--draft`
 
 ---
 
@@ -264,14 +286,17 @@ Analyze user message history to suggest FSM loop configurations automatically.
 | `sync_issues` | Sync local issues with GitHub Issues |
 | `manage_issue` | Full issue lifecycle management |
 | `iterate_plan` | Update implementation plans |
+| `tradeoff_review_issues` | Evaluate issues for utility vs complexity |
 | `audit_architecture` | Analyze code structure |
 | `audit_docs` | Check documentation accuracy |
 | `audit_claude_config` | Comprehensive config audit |
 | `analyze-workflows` | Analyze user message patterns for automation |
+| `find_demo_repos` | Search and score demo repository candidates |
 | `commit` | Create git commits |
 | `describe_pr` | Generate PR descriptions |
 | `open_pr` | Open a pull request for current branch |
 | `cleanup_worktrees` | Clean up stale worktrees and branches |
+| `manage_release` | Manage releases, tags, and changelogs |
 | `handoff` | Generate session handoff prompt |
 | `resume` | Resume from continuation prompt |
 | `create_loop` | Interactive FSM loop creation |

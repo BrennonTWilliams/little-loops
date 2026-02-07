@@ -478,6 +478,69 @@ ll-history summary -d /path/to/.issues  # Custom issues directory
 
 Shows total completed issues, date range, velocity (issues/day), and breakdowns by type (BUG/ENH/FEAT) and priority (P0-P5).
 
+### ll-sprint
+
+Manage and execute sprint/sequence definitions:
+
+```bash
+ll-sprint create sprint-1 --issues BUG-001,FEAT-010 --description "Q1 fixes"
+ll-sprint run sprint-1                # Execute a sprint
+ll-sprint run sprint-1 --dry-run      # Preview execution
+ll-sprint run sprint-1 --resume       # Resume interrupted sprint
+ll-sprint list                        # List all sprints
+ll-sprint show sprint-1               # Show sprint details
+ll-sprint delete sprint-1             # Delete a sprint
+```
+
+### ll-sync
+
+Sync local `.issues/` files with GitHub Issues:
+
+```bash
+ll-sync status                        # Show sync status
+ll-sync push                          # Push all local issues to GitHub
+ll-sync push BUG-123                  # Push specific issue
+ll-sync pull                          # Pull GitHub Issues to local
+ll-sync pull --labels bug             # Pull filtered by labels
+ll-sync --dry-run status              # Preview without changes
+```
+
+Requires `sync.enabled: true` in `.claude/ll-config.json`.
+
+### ll-workflows
+
+Workflow sequence analysis (step 2 of the workflow analysis pipeline):
+
+```bash
+ll-workflows analyze --input messages.jsonl --patterns step1.yaml
+ll-workflows analyze -i messages.jsonl -p patterns.yaml -o output.yaml
+```
+
+Identifies multi-step workflows and cross-session patterns using entity-based clustering, time-gap weighted boundaries, and semantic similarity scoring.
+
+### ll-verify-docs
+
+Verify that documented counts (commands, agents, skills) match actual file counts:
+
+```bash
+ll-verify-docs                        # Check and show results
+ll-verify-docs --json                 # Output as JSON
+ll-verify-docs --format markdown      # Markdown report
+ll-verify-docs --fix                  # Auto-fix mismatches
+```
+
+### ll-check-links
+
+Check markdown documentation for broken links:
+
+```bash
+ll-check-links                        # Check all markdown files
+ll-check-links docs/                  # Check specific directory
+ll-check-links --json                 # Output as JSON
+ll-check-links --format markdown      # Markdown report
+ll-check-links --ignore 'http://localhost.*'  # Ignore pattern
+```
+
 ## Command Override
 
 Projects can override plugin commands by placing files in `.claude/commands/ll/`.
