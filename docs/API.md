@@ -25,6 +25,7 @@ pip install /path/to/little-loops/scripts
 | `little_loops.issue_history` | Issue history and statistics |
 | `little_loops.git_operations` | Git utilities |
 | `little_loops.dependency_graph` | Dependency graph construction |
+| `little_loops.dependency_mapper` | Cross-issue dependency discovery and mapping |
 | `little_loops.work_verification` | Verification helpers |
 | `little_loops.subprocess_utils` | Subprocess handling |
 | `little_loops.state` | State persistence |
@@ -578,6 +579,249 @@ def detect_cycles(self) -> list[list[str]]
 Find all cycles in the graph using DFS.
 
 **Returns:** List of cycles, each cycle is a list of issue IDs
+
+---
+
+## little_loops.dependency_mapper
+
+Cross-issue dependency discovery and mapping. Analyzes active issues to discover potential dependencies based on file overlap and validates existing dependency references for integrity.
+
+Complements `dependency_graph`:
+- `dependency_graph` = execution ordering from existing `Blocked By` data
+- `dependency_mapper` = discovery and proposal of new relationships
+
+### DependencyProposal
+
+A proposed dependency relationship between two issues.
+
+```python
+@dataclass
+class DependencyProposal:
+    """A proposed dependency relationship between two issues."""
+    source_id: str              # Issue that would be blocked
+    target_id: str              # Issue that would block (the blocker)
+    reason: str                 # Category of discovery method
+    confidence: float           # Score from 0.0 to 1.0
+    rationale: str              # Human-readable explanation
+    overlapping_files: list[str]  # Files referenced by both issues
+```
+
+**Attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `source_id` | `str` | Issue that would be blocked |
+| `target_id` | `str` | Issue that would block (the blocker) |
+| `reason` | `str` | Category of discovery method (e.g., "file_overlap") |
+| `confidence` | `float` | Score from 0.0 to 1.0 |
+| `rationale` | `str` | Human-readable explanation |
+| `overlapping_files` | `list[str]` | Files referenced by both issues |
+
+### ValidationResult
+
+Result of validating existing dependency references.
+
+```python
+@dataclass
+class ValidationResult:
+    """Result of validating existing dependency references."""
+    broken_refs: list[tuple[str, str]]         # (issue_id, missing_ref_id)
+    missing_backlinks: list[tuple[str, str]]   # (issue_id, should_have_backlink_from)
+    cycles: list[list[str]]                    # Cycle paths
+    stale_completed_refs: list[tuple[str, str]]  # (issue_id, completed_ref_id)
+
+    @property
+    def has_issues(self) -> bool
+```
+
+**Attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `broken_refs` | `list[tuple[str, str]]` | References to nonexistent issues |
+| `missing_backlinks` | `list[tuple[str, str]]` | Asymmetric `Blocked By`/`Blocks` pairs |
+| `cycles` | `list[list[str]]` | Circular dependency chains |
+| `stale_completed_refs` | `list[tuple[str, str]]` | References to completed issues |
+
+**Properties:**
+- `has_issues` - Returns `True` if any validation problems were found
+
+### DependencyReport
+
+Complete dependency analysis report combining proposals and validation.
+
+```python
+@dataclass
+class DependencyReport:
+    """Complete dependency analysis report."""
+    proposals: list[DependencyProposal]
+    validation: ValidationResult
+    issue_count: int
+    existing_dep_count: int
+```
+
+**Attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `proposals` | `list[DependencyProposal]` | Proposed new dependency relationships |
+| `validation` | `ValidationResult` | Validation results for existing dependencies |
+| `issue_count` | `int` | Total issues analyzed |
+| `existing_dep_count` | `int` | Number of existing dependency edges |
+
+### Functions
+
+#### extract_file_paths
+
+```python
+def extract_file_paths(content: str) -> set[str]
+```
+
+Extract file paths from issue content.
+
+Searches for file paths in backtick-quoted paths, location section bold paths, and standalone paths with recognized extensions. Code fence blocks are stripped before extraction.
+
+**Parameters:**
+- `content` - Issue file content
+
+**Returns:** Set of file paths found in the content
+
+#### find_file_overlaps
+
+```python
+def find_file_overlaps(
+    issues: list[IssueInfo],
+    issue_contents: dict[str, str],
+) -> list[DependencyProposal]
+```
+
+Find issues that reference overlapping files and propose dependencies.
+
+For each pair of issues where both reference the same file(s), proposes a dependency where the lower-priority (or later ID at same priority) issue is blocked by the higher-priority issue. Pairs that already have a dependency relationship are skipped.
+
+**Parameters:**
+- `issues` - List of parsed issue objects
+- `issue_contents` - Mapping from issue_id to file content
+
+**Returns:** List of proposed dependencies with file overlap rationale
+
+#### validate_dependencies
+
+```python
+def validate_dependencies(
+    issues: list[IssueInfo],
+    completed_ids: set[str] | None = None,
+) -> ValidationResult
+```
+
+Validate existing dependency references for integrity.
+
+Checks for broken references to nonexistent issues, missing backlinks where A blocks B but B doesn't list A in `blocked_by`, circular dependency chains, and stale references to completed issues.
+
+**Parameters:**
+- `issues` - List of parsed issue objects
+- `completed_ids` - Set of completed issue IDs
+
+**Returns:** `ValidationResult` with all detected problems
+
+#### analyze_dependencies
+
+```python
+def analyze_dependencies(
+    issues: list[IssueInfo],
+    issue_contents: dict[str, str],
+    completed_ids: set[str] | None = None,
+) -> DependencyReport
+```
+
+Run full dependency analysis: discovery and validation.
+
+Combines file overlap discovery with dependency validation to produce a comprehensive report.
+
+**Parameters:**
+- `issues` - List of parsed issue objects
+- `issue_contents` - Mapping from issue_id to file content
+- `completed_ids` - Set of completed issue IDs
+
+**Returns:** Comprehensive `DependencyReport`
+
+#### format_report
+
+```python
+def format_report(report: DependencyReport) -> str
+```
+
+Format a dependency report as human-readable markdown.
+
+**Parameters:**
+- `report` - The analysis report to format
+
+**Returns:** Markdown-formatted report string
+
+#### format_mermaid
+
+```python
+def format_mermaid(
+    issues: list[IssueInfo],
+    proposals: list[DependencyProposal] | None = None,
+) -> str
+```
+
+Generate a Mermaid dependency graph diagram.
+
+Shows existing dependencies as solid arrows and proposed dependencies as dashed arrows.
+
+**Parameters:**
+- `issues` - List of parsed issue objects
+- `proposals` - Optional proposed dependencies to include
+
+**Returns:** Mermaid graph definition string
+
+#### apply_proposals
+
+```python
+def apply_proposals(
+    proposals: list[DependencyProposal],
+    issue_files: dict[str, Path],
+) -> list[str]
+```
+
+Write approved dependency proposals to issue files.
+
+For each proposal, adds the target to the source's `## Blocked By` section and the source to the target's `## Blocks` section.
+
+**Parameters:**
+- `proposals` - Approved proposals to apply
+- `issue_files` - Mapping from issue_id to file path
+
+**Returns:** List of modified file paths
+
+**Usage Example:**
+```python
+from little_loops.dependency_mapper import analyze_dependencies, apply_proposals
+from little_loops.issue_parser import find_issues
+from little_loops.config import BRConfig
+from pathlib import Path
+
+config = BRConfig(Path.cwd())
+issues = find_issues(config)
+
+# Load issue contents
+contents = {issue.issue_id: issue.path.read_text() for issue in issues}
+
+# Run analysis
+report = analyze_dependencies(issues, contents)
+
+# Review proposals
+for proposal in report.proposals:
+    print(f"{proposal.source_id} -> {proposal.target_id}: {proposal.rationale}")
+
+# Apply approved proposals
+if report.proposals:
+    issue_files = {issue.issue_id: issue.path for issue in issues}
+    modified = apply_proposals(report.proposals, issue_files)
+    print(f"Modified: {modified}")
+```
 
 ---
 

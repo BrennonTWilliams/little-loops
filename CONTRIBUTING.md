@@ -120,12 +120,13 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── skills/               # 9 skill definitions (user-invocable workflows)
+├── skills/               # 10 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── capture-issue/                # Capture issues from conversation
 │   ├── issue-size-review/            # Evaluate issue complexity
 │   ├── issue-workflow/               # Issue lifecycle quick reference
 │   ├── loop-suggester/               # Suggest FSM loops from message history
+│   ├── map-dependencies/             # Discover and map issue dependencies
 │   ├── open-pr/                      # Create PRs with generated descriptions
 │   ├── product-analyzer/             # Analyze codebase against product goals
 │   ├── sync-issues/                  # Sync issues with GitHub Issues
@@ -166,6 +167,7 @@ little-loops/
         ├── logger.py
         ├── logo.py              # CLI logo display
         ├── dependency_graph.py  # Dependency graph construction
+        ├── dependency_mapper.py # Cross-issue dependency discovery
         ├── user_messages.py     # User message extraction
         ├── workflow_sequence_analyzer.py  # Workflow analysis (ll-workflows)
         ├── fsm/                  # FSM loop system

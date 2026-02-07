@@ -89,7 +89,7 @@ little-loops/
 │       ├── session-cleanup.sh
 │       ├── session-start.sh
 │       └── user-prompt-check.sh
-├── skills/                  # 9 skill definitions
+├── skills/                  # 10 skill definitions
 │   ├── analyze-history/
 │   │   └── SKILL.md
 │   ├── capture-issue/
@@ -99,6 +99,8 @@ little-loops/
 │   ├── issue-workflow/
 │   │   └── SKILL.md
 │   ├── loop-suggester/
+│   │   └── SKILL.md
+│   ├── map-dependencies/
 │   │   └── SKILL.md
 │   ├── open-pr/
 │   │   └── SKILL.md
@@ -135,6 +137,7 @@ little-loops/
         ├── subprocess_utils.py  # Subprocess handling
         ├── logo.py              # CLI logo display
         ├── dependency_graph.py  # Dependency graph construction
+        ├── dependency_mapper.py # Cross-issue dependency discovery
         ├── user_messages.py     # User message extraction
         ├── sprint.py            # Sprint definition and management
         ├── fsm/                  # FSM loop execution engine
@@ -593,6 +596,15 @@ The `DependencyGraph.get_execution_waves()` returns:
 | 3 | FEAT-004 | FEAT-002, FEAT-003 completed in Wave 2 |
 
 Issues within each wave execute in parallel. Waves execute sequentially.
+
+### Dependency Discovery
+
+The `dependency_mapper` module complements `dependency_graph` by discovering new dependency relationships:
+
+- **dependency_graph.py**: Execution ordering from existing `Blocked By` data
+- **dependency_mapper.py**: Discovery of new relationships via file overlap analysis
+
+The `/ll:map_dependencies` skill uses `dependency_mapper` to analyze active issues, propose dependencies based on shared file references, validate existing dependency integrity (broken refs, missing backlinks, cycles), and write approved relationships to issue files.
 
 ---
 
