@@ -572,8 +572,7 @@ For detailed solutions, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
 ## Documentation
 
-For detailed documentation, see:
-
+- [**Documentation Index**](docs/INDEX.md) - Complete reference for all documentation
 - [Command Reference](docs/COMMANDS.md) - All slash commands with usage
 - [FSM Loop Guide](docs/generalized-fsm-loop.md) - Automation loop system and authoring paradigms
 - [Session Handoff Guide](docs/SESSION_HANDOFF.md) - Context management and session continuation
