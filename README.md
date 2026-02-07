@@ -594,6 +594,12 @@ little-loops/
 ├── agents/               # Agent definitions (8 agents)
 ├── skills/               # Skill definitions (6 skills)
 ├── hooks/                # Lifecycle hooks and validation scripts
+├── loops/                # Built-in FSM loop definitions
+│   ├── codebase-scan.yaml
+│   ├── issue-readiness-cycle.yaml
+│   ├── issue-verification.yaml
+│   ├── pre-pr-checks.yaml
+│   └── quality-gate.yaml
 ├── templates/            # Project type config templates
 │   ├── python-generic.json
 │   ├── javascript.json
@@ -609,25 +615,53 @@ little-loops/
     └── little_loops/
         ├── __init__.py
         ├── cli.py              # CLI entrypoints
+        ├── cli_args.py         # Argument parsing
         ├── config.py           # Configuration loading
         ├── state.py            # State persistence
         ├── logger.py           # Logging utilities
+        ├── logo.py             # CLI logo display
+        ├── frontmatter.py      # YAML frontmatter parsing
+        ├── doc_counts.py       # Documentation count utilities
+        ├── link_checker.py     # Link validation
         ├── issue_manager.py    # Sequential automation
         ├── issue_parser.py     # Issue file parsing
+        ├── issue_discovery.py  # Issue discovery and deduplication
         ├── issue_lifecycle.py  # Issue lifecycle operations
         ├── issue_history.py    # Issue history and statistics
         ├── git_operations.py   # Git utilities
         ├── work_verification.py # Verification helpers
         ├── subprocess_utils.py # Subprocess handling
+        ├── sprint.py           # Sprint planning and execution
+        ├── sync.py             # GitHub Issues sync
+        ├── goals_parser.py     # Goals file parsing
+        ├── dependency_graph.py  # Dependency graph construction
+        ├── dependency_mapper.py # Cross-issue dependency discovery
+        ├── user_messages.py     # User message extraction
+        ├── workflow_sequence_analyzer.py  # Workflow analysis
+        ├── fsm/                 # FSM loop execution engine
+        │   ├── __init__.py
+        │   ├── schema.py
+        │   ├── fsm-loop-schema.json
+        │   ├── compilers.py
+        │   ├── concurrency.py
+        │   ├── evaluators.py
+        │   ├── executor.py
+        │   ├── interpolation.py
+        │   ├── validation.py
+        │   ├── persistence.py
+        │   ├── signal_detector.py
+        │   └── handoff_handler.py
         └── parallel/           # Parallel processing
             ├── __init__.py
-            ├── git_lock.py
-            ├── merge_coordinator.py
             ├── orchestrator.py
-            ├── output_parsing.py
-            ├── priority_queue.py
-            ├── types.py
             ├── worker_pool.py
+            ├── merge_coordinator.py
+            ├── priority_queue.py
+            ├── output_parsing.py
+            ├── git_lock.py
+            ├── file_hints.py
+            ├── overlap_detector.py
+            ├── types.py
             └── tasks/          # Task templates for Claude CLI
 ```
 

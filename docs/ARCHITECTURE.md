@@ -59,9 +59,10 @@ flowchart TB
 
 ```
 little-loops/
-├── plugin.json              # Plugin manifest
+├── .claude-plugin/
+│   └── plugin.json          # Plugin manifest
 ├── config-schema.json       # JSON Schema for validation
-├── commands/                # 34 slash command templates
+├── commands/                # 35 slash command templates
 │   ├── init.md
 │   ├── help.md
 │   ├── check_code.md
@@ -81,14 +82,23 @@ little-loops/
 ├── hooks/                   # Lifecycle hooks and validation scripts
 │   ├── hooks.json           # Hook configuration
 │   ├── prompts/
-│   │   └── continuation-prompt-template.md  # Handoff prompt template
+│   │   ├── continuation-prompt-template.md  # Handoff prompt template
+│   │   └── optimize-prompt-hook.md          # Prompt optimization hook
 │   └── scripts/             # Hook scripts
 │       ├── check-duplicate-issue-id.sh
 │       ├── context-monitor.sh
 │       ├── precompact-state.sh
 │       ├── session-cleanup.sh
 │       ├── session-start.sh
-│       └── user-prompt-check.sh
+│       ├── user-prompt-check.sh
+│       └── lib/
+│           └── common.sh    # Shared shell functions
+├── loops/                   # Built-in FSM loop definitions
+│   ├── codebase-scan.yaml
+│   ├── issue-readiness-cycle.yaml
+│   ├── issue-verification.yaml
+│   ├── pre-pr-checks.yaml
+│   └── quality-gate.yaml
 ├── skills/                  # 6 skill definitions
 │   ├── analyze-history/
 │   │   └── SKILL.md
@@ -116,9 +126,14 @@ little-loops/
     └── little_loops/
         ├── __init__.py
         ├── cli.py               # CLI entrypoints
+        ├── cli_args.py          # Argument parsing
         ├── config.py            # Configuration loading
         ├── state.py             # State persistence
         ├── logger.py            # Logging utilities
+        ├── logo.py              # CLI logo display
+        ├── frontmatter.py       # YAML frontmatter parsing
+        ├── doc_counts.py        # Documentation count utilities
+        ├── link_checker.py      # Link validation
         ├── issue_manager.py     # Sequential automation
         ├── issue_parser.py      # Issue file parsing
         ├── issue_discovery.py   # Issue discovery and deduplication
@@ -127,15 +142,19 @@ little-loops/
         ├── git_operations.py    # Git utilities
         ├── work_verification.py # Verification helpers
         ├── subprocess_utils.py  # Subprocess handling
-        ├── logo.py              # CLI logo display
+        ├── sprint.py            # Sprint definition and management
+        ├── sync.py              # GitHub Issues sync
+        ├── goals_parser.py      # Goals file parsing
         ├── dependency_graph.py  # Dependency graph construction
         ├── dependency_mapper.py # Cross-issue dependency discovery
         ├── user_messages.py     # User message extraction
-        ├── sprint.py            # Sprint definition and management
+        ├── workflow_sequence_analyzer.py  # Workflow analysis
         ├── fsm/                  # FSM loop execution engine
         │   ├── __init__.py
         │   ├── schema.py            # Loop schema definitions
+        │   ├── fsm-loop-schema.json # JSON Schema for loop files
         │   ├── compilers.py         # YAML to FSM compilation
+        │   ├── concurrency.py       # Concurrent loop execution
         │   ├── evaluators.py        # Condition evaluation
         │   ├── executor.py          # Loop execution
         │   ├── interpolation.py     # Variable interpolation
@@ -151,6 +170,8 @@ little-loops/
             ├── priority_queue.py
             ├── output_parsing.py
             ├── git_lock.py
+            ├── file_hints.py       # File hint extraction
+            ├── overlap_detector.py  # File overlap detection
             ├── types.py
             └── tasks/
                 ├── README.md

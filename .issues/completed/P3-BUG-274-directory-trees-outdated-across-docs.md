@@ -19,7 +19,7 @@ Documentation issue found by `/ll:audit_docs`. The directory tree listings in RE
 
 ## Missing Items
 
-### Python modules missing from all three files
+### Python modules missing from README.md and ARCHITECTURE.md
 - `scripts/little_loops/frontmatter.py`
 - `scripts/little_loops/doc_counts.py`
 - `scripts/little_loops/link_checker.py`
@@ -30,6 +30,11 @@ Documentation issue found by `/ll:audit_docs`. The directory tree listings in RE
 - `scripts/little_loops/fsm/concurrency.py`
 - `scripts/little_loops/parallel/file_hints.py`
 - `scripts/little_loops/parallel/overlap_detector.py`
+
+### Python modules missing from CONTRIBUTING.md only
+- `scripts/little_loops/frontmatter.py`
+- `scripts/little_loops/doc_counts.py`
+- `scripts/little_loops/link_checker.py`
 
 ### Hook file missing
 - `hooks/scripts/lib/common.sh` (shared shell functions)
@@ -42,7 +47,7 @@ Documentation issue found by `/ll:audit_docs`. The directory tree listings in RE
 
 ## Files to Update
 
-1. **README.md** lines 587-631: Update directory tree
+1. **README.md** lines 587-632: Update directory tree
 2. **CONTRIBUTING.md** lines 107-192: Update directory tree
 3. **docs/ARCHITECTURE.md** lines 60-161: Update directory tree
 
@@ -61,3 +66,21 @@ Documentation issue found by `/ll:audit_docs`. The directory tree listings in RE
 ## Status
 
 **Open** | Created: 2026-02-07 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-07
+- **Status**: Completed
+
+### Changes Made
+- `README.md`: Added `loops/` directory, `fsm/` subdirectory, and 13 missing Python modules to directory tree
+- `CONTRIBUTING.md`: Added `loops/` directory, 3 missing Python modules (`frontmatter.py`, `doc_counts.py`, `link_checker.py`), `__init__.py` and `tasks/` to parallel, `INDEX.md` to docs listing
+- `docs/ARCHITECTURE.md`: Fixed `plugin.json` path from root to `.claude-plugin/plugin.json`, updated command count from 34 to 35, added `loops/` directory, added 7 missing Python modules, added `concurrency.py` and `fsm-loop-schema.json` to fsm, added `file_hints.py` and `overlap_detector.py` to parallel, added `lib/common.sh` to hooks/scripts, added `optimize-prompt-hook.md` to hooks/prompts
+
+### Verification Results
+- Tests: PASS (2619 passed)
+- Lint: PASS (pre-existing issues only)
+- Types: PASS

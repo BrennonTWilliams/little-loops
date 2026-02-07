@@ -120,6 +120,12 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
+├── loops/                # Built-in FSM loop definitions
+│   ├── codebase-scan.yaml
+│   ├── issue-readiness-cycle.yaml
+│   ├── issue-verification.yaml
+│   ├── pre-pr-checks.yaml
+│   └── quality-gate.yaml
 ├── skills/               # 6 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── issue-size-review/            # Evaluate issue complexity
@@ -134,6 +140,7 @@ little-loops/
 │   ├── CLI-TOOLS-AUDIT.md               # CLI tools audit
 │   ├── COMMANDS.md                      # Command reference
 │   ├── E2E_TESTING.md                   # End-to-end testing guide
+│   ├── INDEX.md                         # Documentation index
 │   ├── SESSION_HANDOFF.md               # Context management guide
 │   ├── TESTING.md                       # Testing patterns and conventions
 │   ├── TROUBLESHOOTING.md              # Common issues and solutions
@@ -149,6 +156,9 @@ little-loops/
         ├── cli_args.py          # Argument parsing
         ├── config.py            # Configuration management
         ├── state.py             # State persistence
+        ├── frontmatter.py       # YAML frontmatter parsing
+        ├── doc_counts.py        # Documentation count utilities
+        ├── link_checker.py      # Link validation
         ├── issue_manager.py
         ├── issue_parser.py
         ├── issue_discovery.py   # Issue discovery and deduplication
@@ -180,6 +190,7 @@ little-loops/
         │   ├── signal_detector.py
         │   └── handoff_handler.py
         └── parallel/     # Parallel processing module
+            ├── __init__.py
             ├── orchestrator.py
             ├── worker_pool.py
             ├── merge_coordinator.py
@@ -188,7 +199,8 @@ little-loops/
             ├── git_lock.py
             ├── file_hints.py
             ├── overlap_detector.py
-            └── types.py
+            ├── types.py
+            └── tasks/    # Task templates for Claude CLI
 ```
 
 For architecture details and system design, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
