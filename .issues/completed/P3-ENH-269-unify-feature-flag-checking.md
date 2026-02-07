@@ -68,6 +68,20 @@ Verified 2026-02-07. Original issue stated 6 enabled flags; corrected to 8 after
 
 ---
 
-## Status
+## Resolution
 
-**Open** | Created: 2026-02-07 | Priority: P3
+- **Action**: improve
+- **Completed**: 2026-02-07
+- **Status**: Completed
+
+### Changes Made
+- `hooks/scripts/lib/common.sh`: Added `ll_resolve_config`, `ll_feature_enabled`, and `ll_config_value` shared functions
+- `hooks/scripts/context-monitor.sh`: Refactored to use shared config functions, removing duplicated resolution and flag checking
+- `hooks/scripts/user-prompt-check.sh`: Refactored to source `common.sh` and use shared functions, removing duplication
+- `hooks/scripts/session-start.sh`: Added `validate_enabled_features` function that warns about misconfigured enabled features at session start
+- `scripts/tests/test_hooks_integration.py`: Added 16 tests for shared functions and startup validation
+
+### Verification Results
+- Tests: PASS (2607 passed)
+- Lint: PASS
+- Shell syntax: PASS (all 4 modified scripts)

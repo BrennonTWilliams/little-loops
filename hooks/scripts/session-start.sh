@@ -97,6 +97,52 @@ else:
 PYTHON
 }
 
+# Validate enabled features have required sub-configuration
+validate_enabled_features() {
+    local config_file="$1"
+
+    if ! command -v jq &> /dev/null; then
+        return 0
+    fi
+
+    if [ ! -f "$config_file" ]; then
+        return 0
+    fi
+
+    # sync.enabled requires sync.github configuration
+    local sync_enabled
+    sync_enabled=$(jq -r '.sync.enabled // false' "$config_file" 2>/dev/null)
+    if [ "$sync_enabled" = "true" ]; then
+        local github_keys
+        github_keys=$(jq -r '.sync.github // {} | keys | length' "$config_file" 2>/dev/null)
+        if [ "$github_keys" = "0" ]; then
+            echo "[little-loops] Warning: sync.enabled is true but sync.github is not configured" >&2
+        fi
+    fi
+
+    # documents.enabled requires documents.categories with entries
+    local docs_enabled
+    docs_enabled=$(jq -r '.documents.enabled // false' "$config_file" 2>/dev/null)
+    if [ "$docs_enabled" = "true" ]; then
+        local cat_keys
+        cat_keys=$(jq -r '.documents.categories // {} | keys | length' "$config_file" 2>/dev/null)
+        if [ "$cat_keys" = "0" ]; then
+            echo "[little-loops] Warning: documents.enabled is true but no document categories configured" >&2
+        fi
+    fi
+
+    # product.enabled requires goals file to exist
+    local product_enabled
+    product_enabled=$(jq -r '.product.enabled // false' "$config_file" 2>/dev/null)
+    if [ "$product_enabled" = "true" ]; then
+        local goals_file
+        goals_file=$(jq -r '.product.goals_file // ".claude/ll-goals.md"' "$config_file" 2>/dev/null)
+        if [ ! -f "$goals_file" ]; then
+            echo "[little-loops] Warning: product.enabled is true but goals file not found: $goals_file" >&2
+        fi
+    fi
+}
+
 # Display config (with optional local overrides)
 if [ -f "$CONFIG_FILE" ] || [ -f "$LOCAL_FILE" ]; then
     if [ -f "$LOCAL_FILE" ]; then
@@ -106,6 +152,8 @@ if [ -f "$CONFIG_FILE" ] || [ -f "$LOCAL_FILE" ]; then
         echo "[little-loops] Config loaded: $CONFIG_FILE"
         head -50 "$CONFIG_FILE"
     fi
+    # Validate enabled features have required sub-configuration
+    validate_enabled_features "$CONFIG_FILE"
 else
     echo "[little-loops] Warning: No config found. Run /ll:init to create one."
 fi

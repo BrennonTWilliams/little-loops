@@ -300,6 +300,288 @@ class TestDuplicateIssueId:
             os.chdir(original_dir)
 
 
+class TestSharedConfigFunctions:
+    """Test ll_resolve_config, ll_feature_enabled, ll_config_value from common.sh."""
+
+    @pytest.fixture
+    def common_sh(self) -> Path:
+        """Path to common.sh."""
+        return Path(__file__).parent.parent.parent / "hooks/scripts/lib/common.sh"
+
+    def _run_bash(self, common_sh: Path, script: str, cwd: Path) -> subprocess.CompletedProcess:
+        """Run a bash snippet that sources common.sh."""
+        full_script = f'source "{common_sh}"\n{script}'
+        return subprocess.run(
+            ["bash", "-e", "-c", full_script],
+            capture_output=True,
+            text=True,
+            timeout=5,
+            cwd=str(cwd),
+        )
+
+    def test_resolve_config_finds_claude_dir(self, common_sh: Path, tmp_path: Path):
+        """ll_resolve_config finds .claude/ll-config.json."""
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_file = config_dir / "ll-config.json"
+        config_file.write_text('{"test": true}')
+
+        result = self._run_bash(common_sh, 'll_resolve_config; echo "$LL_CONFIG_FILE"', tmp_path)
+        assert result.returncode == 0
+        assert result.stdout.strip() == ".claude/ll-config.json"
+
+    def test_resolve_config_finds_root_fallback(self, common_sh: Path, tmp_path: Path):
+        """ll_resolve_config falls back to ll-config.json."""
+        config_file = tmp_path / "ll-config.json"
+        config_file.write_text('{"test": true}')
+
+        result = self._run_bash(common_sh, 'll_resolve_config; echo "$LL_CONFIG_FILE"', tmp_path)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "ll-config.json"
+
+    def test_resolve_config_empty_when_missing(self, common_sh: Path, tmp_path: Path):
+        """ll_resolve_config sets empty string when no config found."""
+        result = self._run_bash(common_sh, 'll_resolve_config; echo "[$LL_CONFIG_FILE]"', tmp_path)
+        assert result.returncode == 0
+        assert result.stdout.strip() == "[]"
+
+    def test_feature_enabled_returns_true(self, common_sh: Path, tmp_path: Path):
+        """ll_feature_enabled returns 0 when feature is enabled."""
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        (config_dir / "ll-config.json").write_text(
+            '{"context_monitor": {"enabled": true}}'
+        )
+
+        result = self._run_bash(
+            common_sh,
+            'set +e; ll_resolve_config; ll_feature_enabled "context_monitor.enabled"; echo $?',
+            tmp_path,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "0"
+
+    def test_feature_enabled_returns_false(self, common_sh: Path, tmp_path: Path):
+        """ll_feature_enabled returns 1 when feature is disabled."""
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        (config_dir / "ll-config.json").write_text(
+            '{"context_monitor": {"enabled": false}}'
+        )
+
+        result = self._run_bash(
+            common_sh,
+            'set +e; ll_resolve_config; ll_feature_enabled "context_monitor.enabled"; echo $?',
+            tmp_path,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "1"
+
+    def test_feature_enabled_missing_key(self, common_sh: Path, tmp_path: Path):
+        """ll_feature_enabled returns 1 when key is missing."""
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        (config_dir / "ll-config.json").write_text('{}')
+
+        result = self._run_bash(
+            common_sh,
+            'set +e; ll_resolve_config; ll_feature_enabled "sync.enabled"; echo $?',
+            tmp_path,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "1"
+
+    def test_feature_enabled_no_config(self, common_sh: Path, tmp_path: Path):
+        """ll_feature_enabled returns 1 when no config file exists."""
+        result = self._run_bash(
+            common_sh,
+            'set +e; ll_resolve_config; ll_feature_enabled "sync.enabled"; echo $?',
+            tmp_path,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "1"
+
+    def test_config_value_reads_string(self, common_sh: Path, tmp_path: Path):
+        """ll_config_value reads a string value."""
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        (config_dir / "ll-config.json").write_text(
+            '{"prompt_optimization": {"mode": "thorough"}}'
+        )
+
+        result = self._run_bash(
+            common_sh,
+            'll_resolve_config; ll_config_value "prompt_optimization.mode" "quick"',
+            tmp_path,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "thorough"
+
+    def test_config_value_uses_default(self, common_sh: Path, tmp_path: Path):
+        """ll_config_value returns default when key is missing."""
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        (config_dir / "ll-config.json").write_text('{}')
+
+        result = self._run_bash(
+            common_sh,
+            'll_resolve_config; ll_config_value "prompt_optimization.mode" "quick"',
+            tmp_path,
+        )
+        assert result.returncode == 0
+        assert result.stdout.strip() == "quick"
+
+
+class TestSessionStartValidation:
+    """Test validate_enabled_features in session-start.sh."""
+
+    @pytest.fixture
+    def hook_script(self) -> Path:
+        """Path to session-start.sh."""
+        return Path(__file__).parent.parent.parent / "hooks/scripts/session-start.sh"
+
+    def test_warns_sync_without_github(self, hook_script: Path, tmp_path: Path):
+        """Warns when sync.enabled is true but sync.github is empty."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            config_dir = tmp_path / ".claude"
+            config_dir.mkdir()
+            (config_dir / "ll-config.json").write_text(
+                json.dumps({"sync": {"enabled": True}})
+            )
+
+            result = subprocess.run(
+                [str(hook_script)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            assert "sync.enabled is true but sync.github is not configured" in result.stderr
+        finally:
+            os.chdir(original_dir)
+
+    def test_warns_documents_without_categories(self, hook_script: Path, tmp_path: Path):
+        """Warns when documents.enabled is true but no categories."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            config_dir = tmp_path / ".claude"
+            config_dir.mkdir()
+            (config_dir / "ll-config.json").write_text(
+                json.dumps({"documents": {"enabled": True}})
+            )
+
+            result = subprocess.run(
+                [str(hook_script)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            assert "documents.enabled is true but no document categories configured" in result.stderr
+        finally:
+            os.chdir(original_dir)
+
+    def test_warns_product_without_goals(self, hook_script: Path, tmp_path: Path):
+        """Warns when product.enabled is true but goals file missing."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            config_dir = tmp_path / ".claude"
+            config_dir.mkdir()
+            (config_dir / "ll-config.json").write_text(
+                json.dumps({"product": {"enabled": True}})
+            )
+
+            result = subprocess.run(
+                [str(hook_script)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            assert "product.enabled is true but goals file not found" in result.stderr
+        finally:
+            os.chdir(original_dir)
+
+    def test_no_warnings_when_properly_configured(self, hook_script: Path, tmp_path: Path):
+        """No warnings when enabled features have required sub-configuration."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            config_dir = tmp_path / ".claude"
+            config_dir.mkdir()
+
+            # Create goals file for product
+            (config_dir / "ll-goals.md").write_text("# Goals\n")
+
+            (config_dir / "ll-config.json").write_text(
+                json.dumps({
+                    "sync": {
+                        "enabled": True,
+                        "github": {"label_mapping": {"BUG": "bug"}},
+                    },
+                    "documents": {
+                        "enabled": True,
+                        "categories": {"arch": {"files": ["docs/ARCH.md"]}},
+                    },
+                    "product": {
+                        "enabled": True,
+                        "goals_file": ".claude/ll-goals.md",
+                    },
+                })
+            )
+
+            result = subprocess.run(
+                [str(hook_script)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            assert "Warning:" not in result.stderr
+        finally:
+            os.chdir(original_dir)
+
+    def test_no_warnings_when_features_disabled(self, hook_script: Path, tmp_path: Path):
+        """No warnings when features are disabled."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+            config_dir = tmp_path / ".claude"
+            config_dir.mkdir()
+            (config_dir / "ll-config.json").write_text(
+                json.dumps({
+                    "sync": {"enabled": False},
+                    "documents": {"enabled": False},
+                    "product": {"enabled": False},
+                })
+            )
+
+            result = subprocess.run(
+                [str(hook_script)],
+                capture_output=True,
+                text=True,
+                timeout=5,
+            )
+
+            assert "Warning:" not in result.stderr
+        finally:
+            os.chdir(original_dir)
+
+
 class TestPrecompactState:
     """Test precompact-state.sh file operations."""
 

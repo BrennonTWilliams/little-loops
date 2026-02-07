@@ -177,3 +177,57 @@ validate_json() {
 
     return 1
 }
+
+# Resolve ll-config.json file path
+# Usage: ll_resolve_config
+# Sets: LL_CONFIG_FILE (empty string if not found)
+ll_resolve_config() {
+    LL_CONFIG_FILE=""
+    if [ -f ".claude/ll-config.json" ]; then
+        LL_CONFIG_FILE=".claude/ll-config.json"
+    elif [ -f "ll-config.json" ]; then
+        LL_CONFIG_FILE="ll-config.json"
+    fi
+}
+
+# Check if a feature flag is enabled in ll-config.json
+# Usage: ll_feature_enabled "section.enabled"
+# Returns: 0 if enabled, 1 if disabled/missing/no-jq
+# Requires: ll_resolve_config called first, jq available
+ll_feature_enabled() {
+    local flag_path="$1"
+
+    if [ -z "$LL_CONFIG_FILE" ]; then
+        return 1
+    fi
+
+    if ! command -v jq &> /dev/null; then
+        return 1
+    fi
+
+    local enabled
+    enabled=$(jq -r ".${flag_path} // false" "$LL_CONFIG_FILE" 2>/dev/null || echo "false")
+    [ "$enabled" = "true" ]
+}
+
+# Read a config value with a default fallback
+# Usage: ll_config_value "path.to.key" "default_value"
+# Prints: the config value or default
+# Requires: ll_resolve_config called first, jq available
+ll_config_value() {
+    local key_path="$1"
+    local default_value="${2:-}"
+
+    if [ -z "$LL_CONFIG_FILE" ] || ! command -v jq &> /dev/null; then
+        echo "$default_value"
+        return 0
+    fi
+
+    local value
+    value=$(jq -r ".${key_path} // empty" "$LL_CONFIG_FILE" 2>/dev/null)
+    if [ -z "$value" ]; then
+        echo "$default_value"
+    else
+        echo "$value"
+    fi
+}

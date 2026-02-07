@@ -9,19 +9,18 @@
 
 set -euo pipefail
 
+# Source shared utilities library
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "${SCRIPT_DIR}/lib/common.sh"
+
 # Read JSON input from stdin (contains user prompt)
 INPUT=$(cat)
 
-# Find config file
-CONFIG_FILE=""
-if [ -f ".claude/ll-config.json" ]; then
-    CONFIG_FILE=".claude/ll-config.json"
-elif [ -f "ll-config.json" ]; then
-    CONFIG_FILE="ll-config.json"
-fi
+# Resolve config
+ll_resolve_config
 
 # Check if config file exists - warn if not
-if [ -z "$CONFIG_FILE" ]; then
+if [ -z "$LL_CONFIG_FILE" ]; then
     echo "[little-loops] No config found. Run /ll:init to set up little-loops for this project."
     exit 0
 fi
@@ -40,15 +39,14 @@ if [ -z "$USER_PROMPT" ]; then
 fi
 
 # Check if prompt optimization is enabled
-ENABLED=$(jq -r '.prompt_optimization.enabled // false' "$CONFIG_FILE" 2>/dev/null || echo "false")
-if [ "$ENABLED" != "true" ]; then
+if ! ll_feature_enabled "prompt_optimization.enabled"; then
     exit 0
 fi
 
 # Read optimization settings with defaults
-MODE=$(jq -r '.prompt_optimization.mode // "quick"' "$CONFIG_FILE" 2>/dev/null)
-CONFIRM=$(jq -r '.prompt_optimization.confirm // true' "$CONFIG_FILE" 2>/dev/null)
-BYPASS_PREFIX=$(jq -r '.prompt_optimization.bypass_prefix // "*"' "$CONFIG_FILE" 2>/dev/null)
+MODE=$(ll_config_value "prompt_optimization.mode" "quick")
+CONFIRM=$(ll_config_value "prompt_optimization.confirm" "true")
+BYPASS_PREFIX=$(ll_config_value "prompt_optimization.bypass_prefix" "*")
 
 # Check bypass patterns
 # 1. Custom bypass prefix (default: *)
@@ -80,8 +78,6 @@ fi
 # All checks passed - output the optimization hook prompt
 # The hook prompt file uses {{VARIABLE}} placeholders that we substitute
 
-# Resolve script directory explicitly
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 HOOK_PROMPT_FILE="${CLAUDE_PLUGIN_ROOT:-$SCRIPT_DIR/..}/prompts/optimize-prompt-hook.md"
 
 # Validate file exists

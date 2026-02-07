@@ -16,37 +16,21 @@ source "${SCRIPT_DIR}/lib/common.sh"
 # Read JSON input from stdin
 INPUT=$(cat)
 
-# Find config file
-CONFIG_FILE=""
-if [ -f ".claude/ll-config.json" ]; then
-    CONFIG_FILE=".claude/ll-config.json"
-elif [ -f "ll-config.json" ]; then
-    CONFIG_FILE="ll-config.json"
-else
-    # No config, exit silently
-    exit 0
-fi
-
-# Check if jq is available (required for reliable JSON parsing)
-if ! command -v jq &> /dev/null; then
-    exit 0
-fi
-
-# Check if context_monitor is enabled
-ENABLED=$(jq -r '.context_monitor.enabled // false' "$CONFIG_FILE" 2>/dev/null || echo "false")
-if [ "$ENABLED" != "true" ]; then
+# Resolve config and check feature flag
+ll_resolve_config
+if ! ll_feature_enabled "context_monitor.enabled"; then
     exit 0
 fi
 
 # Read configuration with defaults
-THRESHOLD=$(jq -r '.context_monitor.auto_handoff_threshold // 80' "$CONFIG_FILE" 2>/dev/null)
-CONTEXT_LIMIT=$(jq -r '.context_monitor.context_limit_estimate // 150000' "$CONFIG_FILE" 2>/dev/null)
-STATE_FILE=$(jq -r '.context_monitor.state_file // ".claude/ll-context-state.json"' "$CONFIG_FILE" 2>/dev/null)
+THRESHOLD=$(ll_config_value "context_monitor.auto_handoff_threshold" "80")
+CONTEXT_LIMIT=$(ll_config_value "context_monitor.context_limit_estimate" "150000")
+STATE_FILE=$(ll_config_value "context_monitor.state_file" ".claude/ll-context-state.json")
 
 # Read estimate weights with defaults
-READ_PER_LINE=$(jq -r '.context_monitor.estimate_weights.read_per_line // 10' "$CONFIG_FILE" 2>/dev/null)
-TOOL_CALL_BASE=$(jq -r '.context_monitor.estimate_weights.tool_call_base // 100' "$CONFIG_FILE" 2>/dev/null)
-BASH_PER_CHAR=$(jq -r '.context_monitor.estimate_weights.bash_output_per_char // 0.3' "$CONFIG_FILE" 2>/dev/null)
+READ_PER_LINE=$(ll_config_value "context_monitor.estimate_weights.read_per_line" "10")
+TOOL_CALL_BASE=$(ll_config_value "context_monitor.estimate_weights.tool_call_base" "100")
+BASH_PER_CHAR=$(ll_config_value "context_monitor.estimate_weights.bash_output_per_char" "0.3")
 
 # Extract tool information from input
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""')
