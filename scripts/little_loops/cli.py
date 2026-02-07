@@ -2247,5 +2247,95 @@ def _print_sync_result(result: SyncResult, logger: Logger) -> None:
     logger.info("=" * 80)
 
 
+def main_verify_docs() -> int:
+    """Entry point for ll-verify-docs command.
+
+    Verify that documented counts (commands, agents, skills) match actual file counts.
+
+    Returns:
+        Exit code (0 = all match, 1 = mismatches found)
+    """
+    from little_loops.doc_counts import (
+        fix_counts,
+        format_result_json,
+        format_result_markdown,
+        format_result_text,
+        verify_documentation,
+    )
+
+    parser = argparse.ArgumentParser(
+        prog="ll-verify-docs",
+        description="Verify documented counts match actual file counts",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  %(prog)s                    # Check and show results
+  %(prog)s --json             # Output as JSON
+  %(prog)s --format markdown  # Markdown report
+  %(prog)s --fix              # Auto-fix mismatches
+
+Exit codes:
+  0 - All counts match
+  1 - Mismatches found
+  2 - Error occurred
+""",
+    )
+
+    parser.add_argument(
+        "-j",
+        "--json",
+        action="store_true",
+        help="Output as JSON",
+    )
+
+    parser.add_argument(
+        "-f",
+        "--format",
+        choices=["text", "json", "markdown"],
+        default="text",
+        help="Output format (default: text)",
+    )
+
+    parser.add_argument(
+        "--fix",
+        action="store_true",
+        help="Auto-fix count mismatches in documentation files",
+    )
+
+    parser.add_argument(
+        "-C",
+        "--directory",
+        type=Path,
+        default=None,
+        help="Base directory (default: current directory)",
+    )
+
+    args = parser.parse_args()
+
+    # Determine base directory
+    base_dir = args.directory or Path.cwd()
+
+    # Run verification
+    result = verify_documentation(base_dir)
+
+    # Format output
+    if args.json or args.format == "json":
+        output = format_result_json(result)
+    elif args.format == "markdown":
+        output = format_result_markdown(result)
+    else:
+        output = format_result_text(result)
+
+    print(output)
+
+    # Auto-fix if requested
+    if args.fix and not result.all_match:
+        fix_result = fix_counts(base_dir, result)
+        print(f"\nFixed {fix_result.fixed_count} count(s) in {len(fix_result.files_modified)} file(s)")
+
+    # Return exit code based on results
+    return 0 if result.all_match else 1
+
+
 if __name__ == "__main__":
     sys.exit(main_auto())
