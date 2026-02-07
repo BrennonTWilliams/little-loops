@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-01-06 -->
+<!-- Last updated: 2026-02-06 -->
 # little-loops (ll) - Claude Code Plugin
 
 Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing.

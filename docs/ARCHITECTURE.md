@@ -61,7 +61,7 @@ flowchart TB
 little-loops/
 ├── plugin.json              # Plugin manifest
 ├── config-schema.json       # JSON Schema for validation
-├── commands/                # 33 slash command templates
+├── commands/                # 34 slash command templates
 │   ├── init.md
 │   ├── help.md
 │   ├── check_code.md
