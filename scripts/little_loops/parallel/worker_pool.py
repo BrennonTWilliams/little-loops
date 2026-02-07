@@ -22,7 +22,7 @@ from typing import TYPE_CHECKING, Any, cast
 
 from little_loops.parallel.git_lock import GitLock
 from little_loops.parallel.output_parsing import parse_ready_issue_output
-from little_loops.parallel.types import ParallelConfig, WorkerResult
+from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
 from little_loops.subprocess_utils import (
     detect_context_handoff,
     read_continuation_prompt,
@@ -90,6 +90,8 @@ class WorkerPool:
         # Shutdown tracking for interrupted worker detection (ENH-036)
         self._shutdown_requested = False
         self._terminated_during_shutdown: set[str] = set()
+        # Track worker processing stages for progress visibility (ENH-262)
+        self._worker_stages: dict[str, WorkerStage] = {}
 
     def start(self) -> None:
         """Start the worker pool."""
@@ -209,6 +211,13 @@ class WorkerPool:
                     worktree_path=Path(),
                     error=f"Worker future failed: {e}",
                 )
+            # Set final stage based on result (ENH-262)
+            if result.success:
+                self.set_worker_stage(issue_id, WorkerStage.COMPLETED)
+            elif result.interrupted:
+                self.set_worker_stage(issue_id, WorkerStage.INTERRUPTED)
+            else:
+                self.set_worker_stage(issue_id, WorkerStage.FAILED)
             try:
                 callback(result)
             except Exception as e:
@@ -237,6 +246,9 @@ class WorkerPool:
             / f"worker-{issue.issue_id.lower()}-{timestamp}"
         )
 
+        # Set initial stage for progress tracking (ENH-262)
+        self.set_worker_stage(issue.issue_id, WorkerStage.SETUP)
+
         # Capture baseline of main repo status before worker starts
         # Used to detect files incorrectly written to main repo
         baseline_status = self._get_main_repo_baseline()
@@ -249,6 +261,9 @@ class WorkerPool:
             with self._process_lock:
                 self._active_worktrees.add(worktree_path)
 
+            # Update stage for progress tracking (ENH-262)
+            self.set_worker_stage(issue.issue_id, WorkerStage.VALIDATING)
+
             # Step 2: Run ready_issue validation
             ready_cmd = self.parallel_config.get_ready_command(issue.issue_id)
             ready_result = self._run_claude_command(
@@ -259,6 +274,7 @@ class WorkerPool:
 
             # Check if worker was terminated during shutdown (ENH-036)
             if issue.issue_id in self._terminated_during_shutdown:
+                self.set_worker_stage(issue.issue_id, WorkerStage.INTERRUPTED)
                 return WorkerResult(
                     issue_id=issue.issue_id,
                     success=False,
@@ -331,6 +347,9 @@ class WorkerPool:
             was_corrected = ready_parsed.get("was_corrected", False)
             corrections = ready_parsed.get("corrections", [])
 
+            # Update stage for progress tracking (ENH-262)
+            self.set_worker_stage(issue.issue_id, WorkerStage.IMPLEMENTING)
+
             # Step 4: Get action from BRConfig
             action = self.br_config.get_category_action(issue.issue_type)
 
@@ -344,8 +363,12 @@ class WorkerPool:
                 issue_id=issue.issue_id,
             )
 
+            # Update stage for progress tracking (ENH-262)
+            self.set_worker_stage(issue.issue_id, WorkerStage.VERIFYING)
+
             # Check if worker was terminated during shutdown (ENH-036)
             if issue.issue_id in self._terminated_during_shutdown:
+                self.set_worker_stage(issue.issue_id, WorkerStage.INTERRUPTED)
                 return WorkerResult(
                     issue_id=issue.issue_id,
                     success=False,
@@ -410,6 +433,10 @@ class WorkerPool:
             # Step 9: Update branch base before merge (BUG-180)
             # Fetch origin/main and rebase to ensure branch is based on latest main
             base_updated, base_error = self._update_branch_base(worktree_path, issue.issue_id)
+
+            # Update stage for progress tracking (ENH-262)
+            self.set_worker_stage(issue.issue_id, WorkerStage.MERGING)
+
             if not base_updated:
                 return WorkerResult(
                     issue_id=issue.issue_id,
@@ -1067,6 +1094,52 @@ class WorkerPool:
         with self._callback_lock:
             pending_callback_count = len(self._pending_callbacks)
         return running_futures + pending_callback_count
+
+    def set_worker_stage(self, issue_id: str, stage: WorkerStage) -> None:
+        """Update the stage of a worker.
+
+        Args:
+            issue_id: Issue ID being processed
+            stage: New stage value
+        """
+        with self._process_lock:
+            self._worker_stages[issue_id] = stage
+
+    def get_worker_stage(self, issue_id: str) -> WorkerStage | None:
+        """Get the current stage of a worker.
+
+        Args:
+            issue_id: Issue ID being processed
+
+        Returns:
+            Current stage, or None if issue not being tracked
+        """
+        with self._process_lock:
+            return self._worker_stages.get(issue_id)
+
+    def get_active_stages(self) -> dict[str, WorkerStage]:
+        """Get all active worker stages.
+
+        Returns:
+            Dictionary mapping issue_id to current stage for active workers
+        """
+        with self._process_lock:
+            # Only return workers that are actually active
+            active_ids = set(self._active_workers.keys())
+            return {
+                issue_id: stage
+                for issue_id, stage in self._worker_stages.items()
+                if issue_id in active_ids
+            }
+
+    def remove_worker_stage(self, issue_id: str) -> None:
+        """Remove a worker from stage tracking.
+
+        Args:
+            issue_id: Issue ID to remove
+        """
+        with self._process_lock:
+            self._worker_stages.pop(issue_id, None)
 
     def cleanup_all_worktrees(self) -> None:
         """Clean up all worker worktrees."""

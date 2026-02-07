@@ -143,6 +143,30 @@ class MergeStatus(Enum):
     RETRYING = "retrying"
 
 
+class WorkerStage(Enum):
+    """Processing stage of a worker.
+
+    Stages progress in order:
+    - SETUP: Creating git worktree and copying .claude/ directory
+    - VALIDATING: Running ready_issue command
+    - IMPLEMENTING: Running manage_issue command
+    - VERIFYING: Checking work was done and updating branch base
+    - MERGING: Awaiting merge coordination
+    - COMPLETED: Successfully finished
+    - FAILED: Failed at some stage
+    - INTERRUPTED: Interrupted during shutdown
+    """
+
+    SETUP = "setup"
+    VALIDATING = "validating"
+    IMPLEMENTING = "implementing"
+    VERIFYING = "verifying"
+    MERGING = "merging"
+    COMPLETED = "completed"
+    FAILED = "failed"
+    INTERRUPTED = "interrupted"
+
+
 @dataclass
 class MergeRequest:
     """Request to merge a completed worker's changes.

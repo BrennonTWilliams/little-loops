@@ -106,6 +106,8 @@ class ParallelOrchestrator:
         )
         # Track deferred issues for re-check after active issues complete
         self._deferred_issues: list[IssueInfo] = []
+        # Track last status report time for progress visibility (ENH-262)
+        self._last_status_time: float = 0.0
 
     @property
     def execution_duration(self) -> float:
@@ -533,6 +535,69 @@ class ParallelOrchestrator:
 
         return 0
 
+    def _maybe_report_status(self) -> None:
+        """Report status if enough time has elapsed since last report.
+
+        Reports every 5 seconds during active processing for progress visibility (ENH-262).
+        """
+        now = time.time()
+        # Report every 5 seconds
+        if now - self._last_status_time < 5.0:
+            return
+
+        self._last_status_time = now
+
+        # Build status line
+        parts = []
+
+        # Add wave label if present
+        if self.wave_label:
+            parts.append(f"{self.wave_label}")
+
+        # Get queue counts
+        in_progress = len(self.queue.in_progress_ids)
+        completed = self.queue.completed_count
+        failed = self.queue.failed_count
+        pending_merge = self.merge_coordinator.pending_count
+
+        parts.append(f"Active: {in_progress}")
+        parts.append(f"Done: {completed}")
+        if failed > 0:
+            parts.append(f"Failed: {failed}")
+        if pending_merge > 0:
+            parts.append(f"Merging: {pending_merge}")
+
+        # Build status line
+        status = " | ".join(parts)
+
+        # Get active worker stages
+        active_stages = self.worker_pool.get_active_stages()
+
+        # Add worker details if any are active
+        if active_stages:
+            # Group by stage
+            by_stage: dict[str, list[str]] = {}
+            for issue_id, worker_stage in active_stages.items():
+                stage_name = worker_stage.value.title()
+                by_stage.setdefault(stage_name, []).append(issue_id)
+
+            stage_parts = []
+            for stage_name in ["Validating", "Implementing", "Verifying", "Merging"]:
+                if stage_name in by_stage:
+                    issue_ids = ", ".join(by_stage[stage_name])
+                    stage_parts.append(f"{stage_name}: [{issue_ids}]")
+
+            if stage_parts:
+                status += " | " + " | ".join(stage_parts)
+
+        # Log with gray color to distinguish from normal logs
+        if self.logger.use_color:
+            color = self.logger.GRAY
+            ts = self.logger._timestamp()
+            print(f"{color}[{ts}]{self.logger.RESET} {status}")
+        else:
+            self.logger.info(status)
+
     def _execute(self) -> int:
         """Execute parallel issue processing.
 
@@ -590,6 +655,9 @@ class ParallelOrchestrator:
 
             # Save state periodically
             self._save_state()
+
+            # Report status periodically for progress visibility (ENH-262)
+            self._maybe_report_status()
 
             # Small sleep to prevent busy loop
             time.sleep(0.1)
@@ -750,6 +818,10 @@ class ParallelOrchestrator:
         self.state.timing[result.issue_id] = {
             "total": result.duration,
         }
+
+        # Clean up stage tracking after callback completes (ENH-262)
+        # Delay briefly so status reporter can show completion
+        self.worker_pool.remove_worker_stage(result.issue_id)
 
     def _requeue_deferred_issues(self) -> None:
         """Re-queue deferred issues that no longer have overlaps (ENH-143)."""

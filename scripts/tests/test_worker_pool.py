@@ -28,7 +28,7 @@ import pytest
 from little_loops.config import BRConfig
 from little_loops.fsm.schema import DEFAULT_LLM_MODEL
 from little_loops.parallel.git_lock import GitLock
-from little_loops.parallel.types import ParallelConfig, WorkerResult
+from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
 from little_loops.parallel.worker_pool import WorkerPool
 
 pytestmark = pytest.mark.integration
@@ -1693,3 +1693,46 @@ class TestWorkerPoolRunClaudeCommand:
 
         assert len(started_processes) == 1
         assert len(ended_processes) == 1
+
+
+class TestWorkerPoolStageTracking:
+    """Tests for worker stage tracking (ENH-262)."""
+
+    def test_set_and_get_worker_stage(
+        self, worker_pool: WorkerPool
+    ) -> None:
+        """Test setting and getting worker stages."""
+        # Initially no stage
+        assert worker_pool.get_worker_stage("BUG-123") is None
+
+        # Set a stage
+        worker_pool.set_worker_stage("BUG-123", WorkerStage.IMPLEMENTING)
+        assert worker_pool.get_worker_stage("BUG-123") == WorkerStage.IMPLEMENTING
+
+        # Update stage
+        worker_pool.set_worker_stage("BUG-123", WorkerStage.VERIFYING)
+        assert worker_pool.get_worker_stage("BUG-123") == WorkerStage.VERIFYING
+
+    def test_get_active_stages(self, worker_pool: WorkerPool) -> None:
+        """Test getting active worker stages."""
+        # Set stages for multiple issues
+        worker_pool.set_worker_stage("BUG-123", WorkerStage.IMPLEMENTING)
+        worker_pool.set_worker_stage("FEAT-456", WorkerStage.VALIDATING)
+        worker_pool.set_worker_stage("ENH-789", WorkerStage.VERIFYING)
+
+        # Since no workers are actually running, get_active_stages returns empty
+        # (only returns stages for issues in _active_workers)
+        assert worker_pool.get_active_stages() == {}
+
+    def test_remove_worker_stage(self, worker_pool: WorkerPool) -> None:
+        """Test removing worker stages."""
+        # Set a stage
+        worker_pool.set_worker_stage("BUG-123", WorkerStage.IMPLEMENTING)
+        assert worker_pool.get_worker_stage("BUG-123") == WorkerStage.IMPLEMENTING
+
+        # Remove the stage
+        worker_pool.remove_worker_stage("BUG-123")
+        assert worker_pool.get_worker_stage("BUG-123") is None
+
+        # Removing non-existent stage should not raise
+        worker_pool.remove_worker_stage("NONEXISTENT")

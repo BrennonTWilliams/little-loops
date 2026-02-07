@@ -26,6 +26,7 @@ from little_loops.parallel.types import (
     ParallelConfig,
     QueuedIssue,
     WorkerResult,
+    WorkerStage,
 )
 from little_loops.parallel.worker_pool import WorkerPool
 
@@ -44,5 +45,6 @@ __all__ = [
     "QueuedIssue",
     "WorkerPool",
     "WorkerResult",
+    "WorkerStage",
     "extract_file_hints",
 ]

@@ -25,6 +25,7 @@ from little_loops.parallel.types import (
     PendingWorktreeInfo,
     QueuedIssue,
     WorkerResult,
+    WorkerStage,
 )
 
 # =============================================================================
@@ -377,6 +378,30 @@ class TestMergeStatus:
     def test_enum_member_count(self) -> None:
         """MergeStatus has exactly 6 members."""
         assert len(MergeStatus) == 6
+
+
+# =============================================================================
+# WorkerStage Tests
+# =============================================================================
+
+
+class TestWorkerStage:
+    """Tests for WorkerStage enum (ENH-262)."""
+
+    def test_all_stage_values_exist(self) -> None:
+        """All expected stage values exist."""
+        assert WorkerStage.SETUP.value == "setup"
+        assert WorkerStage.VALIDATING.value == "validating"
+        assert WorkerStage.IMPLEMENTING.value == "implementing"
+        assert WorkerStage.VERIFYING.value == "verifying"
+        assert WorkerStage.MERGING.value == "merging"
+        assert WorkerStage.COMPLETED.value == "completed"
+        assert WorkerStage.FAILED.value == "failed"
+        assert WorkerStage.INTERRUPTED.value == "interrupted"
+
+    def test_enum_member_count(self) -> None:
+        """WorkerStage has exactly 8 members."""
+        assert len(WorkerStage) == 8
 
 
 # =============================================================================

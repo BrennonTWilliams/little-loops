@@ -62,6 +62,40 @@ TBD - requires investigation. Potential approaches:
 
 ---
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/parallel/types.py`: Added `WorkerStage` enum with stages: SETUP, VALIDATING, IMPLEMENTING, VERIFYING, MERGING, COMPLETED, FAILED, INTERRUPTED
+- `scripts/little_loops/parallel/__init__.py`: Exported `WorkerStage`
+- `scripts/little_loops/parallel/worker_pool.py`: Added stage tracking methods (`set_worker_stage`, `get_worker_stage`, `get_active_stages`, `remove_worker_stage`) and stage updates throughout `_process_issue()` lifecycle
+- `scripts/little_loops/parallel/orchestrator.py`: Added `_last_status_time` tracking and `_maybe_report_status()` method that emits progress updates every 5 seconds
+- `scripts/tests/test_parallel_types.py`: Added `TestWorkerStage` test class
+- `scripts/tests/test_worker_pool.py`: Added `TestWorkerPoolStageTracking` test class
+
+### Verification Results
+- Tests: PASS (2530 passed)
+- Lint: PASS
+- Types: PASS
+
+### Implementation Details
+
+The solution uses an event-driven approach where:
+1. Workers emit stage events as they progress through processing stages
+2. The orchestrator polls worker stages every 5 seconds and displays a status line
+3. Status output is gray-colored to distinguish from normal logs
+4. Status includes: Active count, Done count, Failed count, Merging count, and per-stage worker details
+
+Example status output:
+```
+[14:35:22] Active: 2 | Done: 3 | Validating: [BUG-001] | Implementing: [FEAT-456]
+```
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-06 | Priority: P3
+**Completed** | Created: 2026-02-06 | Priority: P3
