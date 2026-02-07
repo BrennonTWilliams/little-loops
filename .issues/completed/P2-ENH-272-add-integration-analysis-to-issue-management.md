@@ -113,4 +113,25 @@ Add a review step after verification passes:
 
 ## Status
 
-**Open** | Created: 2026-02-07 | Priority: P2
+**Completed** | Created: 2026-02-07 | Completed: 2026-02-07 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-07
+- **Status**: Completed
+
+### Changes Made
+- `commands/manage_issue.md`: Expanded codebase-pattern-finder prompt with reuse discovery search items
+- `commands/manage_issue.md`: Added "Reusable Code" subsection to research synthesis template
+- `commands/manage_issue.md`: Added "Code Reuse & Integration" section to plan template
+- `commands/manage_issue.md`: Inserted Phase 4.5 Integration Review between verification and completion
+- `commands/manage_issue.md`: Updated Final Report and Resolution templates to include integration status
+
+### Verification Results
+- Tests: PASS
+- Lint: PASS
+- Types: PASS
+- Integration: PASS

@@ -120,7 +120,7 @@ Use the Task tool to spawn these agents concurrently:
    Return detailed analysis with specific file:line references.
    ```
 
-3. **codebase-pattern-finder** - Find similar patterns to follow
+3. **codebase-pattern-finder** - Find similar patterns and reusable code
    ```
    Find similar implementations for [ISSUE-ID]: [issue title]
 
@@ -128,8 +128,10 @@ Use the Task tool to spawn these agents concurrently:
    - Similar fixes/features in the codebase
    - Established conventions for this type of change
    - Test patterns to model after
+   - Existing utility functions, helpers, and shared modules that could be reused or extended instead of writing new code
+   - Similar logic elsewhere that suggests consolidation rather than duplication
 
-   Return examples with file:line references.
+   Return examples with file:line references. For reusable code, explicitly note whether to reuse as-is, extend, or justify creating new.
    ```
 
 ### 2. Wait for All Tasks
@@ -154,6 +156,10 @@ Compile research into structured findings:
 ### Patterns to Follow
 - [Convention 1 found in codebase]
 - [Similar implementation at file:line]
+
+### Reusable Code
+- [Utility/module at file:line — reuse as-is / extend / justify new]
+- [Shared abstraction at file:line — how it applies]
 
 ### Potential Concerns
 - [Any complexity or risk identified]
@@ -231,6 +237,12 @@ Write the plan using this structure (sections are recommended, skip if not appli
 ## Solution Approach
 
 [High-level strategy based on research findings and patterns discovered]
+
+## Code Reuse & Integration
+
+- **Reusable existing code**: [list utilities/modules to leverage with file:line refs]
+- **Patterns to follow**: [established conventions this implementation must match]
+- **New code justification**: [what's genuinely new and why existing code doesn't cover it]
 
 ## Implementation Phases
 
@@ -476,6 +488,46 @@ All checks must pass before proceeding.
 
 ---
 
+## Phase 4.5: Integration Review
+
+After verification passes, review new/modified code for integration quality before completing the issue.
+
+**Skip this phase if**:
+- Action is `verify` (verification-only mode)
+
+### Review Checklist
+
+For each file created or substantially modified during implementation:
+
+1. **Duplication check**: Search for similar logic elsewhere in the codebase. Flag any new code that duplicates existing utility functions, helpers, or shared modules.
+2. **Shared module usage**: Verify that new code imports from and uses existing shared modules where appropriate, rather than reimplementing equivalent functionality.
+3. **Pattern conformance**: Confirm new code follows established project patterns for naming, structure, error handling, and abstraction boundaries.
+4. **Integration points**: Verify new code connects to existing architecture (uses existing config, follows existing data flow patterns) rather than creating parallel pathways.
+
+### Integration Report
+
+Produce a structured report:
+
+```
+INTEGRATION REVIEW: [ISSUE-ID]
+
+| Check              | Status    | Details                                    |
+|--------------------|-----------|--------------------------------------------|
+| Duplication        | PASS/WARN | [Details or "No duplication detected"]     |
+| Shared module use  | PASS/WARN | [Details or "Properly uses shared code"]   |
+| Pattern conformance| PASS/WARN | [Details or "Follows project patterns"]    |
+| Integration points | PASS/WARN | [Details or "Well-integrated"]             |
+
+Overall: PASS / WARN (with actionable findings)
+```
+
+### Handling Warnings
+
+- **PASS**: Proceed to Phase 5
+- **WARN**: Document findings in the plan file's iteration log. If warnings are minor (naming differences, style preferences), proceed. If warnings indicate significant duplication or missed reuse opportunities, fix before proceeding.
+
+---
+
 ## Phase 5: Complete Issue Lifecycle
 
 ### 1. Update Issue File
@@ -497,6 +549,7 @@ Add resolution section:
 - Tests: PASS
 - Lint: PASS
 - Types: PASS
+- Integration: PASS
 ```
 
 ### 2. Move to Completed
@@ -570,6 +623,7 @@ ISSUE MANAGED: {ISSUE_ID} - {action}
 - tests: PASS
 - lint: PASS
 - types: PASS
+- integration: PASS
 
 ## RESULT
 - Status: COMPLETED
