@@ -15,7 +15,7 @@ The `ThreadSafePriorityQueue.get()` method catches `except Exception` to handle 
 
 - **File**: `scripts/little_loops/parallel/priority_queue.py`
 - **Line(s)**: 101-108 (at scan commit: a8f4144)
-- **Anchor**: `in method ThreadSafePriorityQueue.get`
+- **Anchor**: `in method IssuePriorityQueue.get`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a8f4144ebd05e95833281bd95506da984ba5d118/scripts/little_loops/parallel/priority_queue.py#L101-L108)
 - **Code**:
 ```python
@@ -71,4 +71,21 @@ except queue_module.Empty:
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P2
+**Completed** | Created: 2026-02-06T03:41:30Z | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/parallel/priority_queue.py`: Narrowed `except Exception` to `except Empty` and added `Empty` to imports
+- `scripts/tests/test_priority_queue.py`: Added test verifying non-Empty exceptions propagate
+
+### Verification Results
+- Tests: PASS (60/60)
+- Lint: PASS
+- Types: PASS

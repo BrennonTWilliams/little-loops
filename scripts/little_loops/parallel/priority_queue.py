@@ -7,7 +7,7 @@ Provides a priority queue implementation that orders issues by priority level
 from __future__ import annotations
 
 import threading
-from queue import PriorityQueue
+from queue import Empty, PriorityQueue
 from typing import TYPE_CHECKING
 
 from little_loops.issue_parser import IssueInfo, find_issues
@@ -104,7 +104,7 @@ class IssuePriorityQueue:
                 self._queued.discard(queued.issue_info.issue_id)
                 self._in_progress.add(queued.issue_info.issue_id)
             return queued
-        except Exception:
+        except Empty:
             return None
 
     def mark_completed(self, issue_id: str) -> None:

@@ -762,3 +762,13 @@ class TestIssuePriorityQueueEdgeCases:
         # Empty queue with block=False should return None, not raise
         result = queue.get(block=False)
         assert result is None
+
+    def test_get_propagates_non_empty_exceptions(
+        self, queue: IssuePriorityQueue
+    ) -> None:
+        """get() propagates exceptions that aren't queue.Empty."""
+        # Mock _queue.get to return an object without issue_info
+        bad_item = MagicMock(spec=[])  # no issue_info attribute
+        with patch.object(queue._queue, "get", return_value=bad_item):
+            with pytest.raises(AttributeError):
+                queue.get(block=False)
