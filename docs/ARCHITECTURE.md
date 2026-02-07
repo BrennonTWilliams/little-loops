@@ -89,24 +89,16 @@ little-loops/
 │       ├── session-cleanup.sh
 │       ├── session-start.sh
 │       └── user-prompt-check.sh
-├── skills/                  # 10 skill definitions
+├── skills/                  # 6 skill definitions
 │   ├── analyze-history/
-│   │   └── SKILL.md
-│   ├── capture-issue/
 │   │   └── SKILL.md
 │   ├── issue-size-review/
 │   │   └── SKILL.md
 │   ├── issue-workflow/
 │   │   └── SKILL.md
-│   ├── loop-suggester/
-│   │   └── SKILL.md
 │   ├── map-dependencies/
 │   │   └── SKILL.md
-│   ├── open-pr/
-│   │   └── SKILL.md
 │   ├── product-analyzer/
-│   │   └── SKILL.md
-│   ├── sync-issues/
 │   │   └── SKILL.md
 │   └── workflow-automation-proposer/
 │       └── SKILL.md

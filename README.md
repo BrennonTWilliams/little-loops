@@ -2,6 +2,18 @@
   <img src="https://raw.githubusercontent.com/BrennonTWilliams/little-loops/main/assets/little-loops.jpeg" alt="Little Loops Logo" width="200">
 </p>
 
+<p align="center">
+  <a href="https://github.com/BrennonTWilliams/little-loops/releases">
+    <img src="https://img.shields.io/github/v/release/BrennonTWilliams/little-loops?display_name=tag&style=flat-square" alt="Version">
+  </a>
+  <a href="https://github.com/BrennonTWilliams/little-loops/blob/main/LICENSE">
+    <img src="https://img.shields.io/github/license/BrennonTWilliams/little-loops?style=flat-square" alt="License">
+  </a>
+  <a href="https://python.org">
+    <img src="https://img.shields.io/badge/python-3.11+-blue.svg?style=flat-square&logo=python" alt="Python Version">
+  </a>
+</p>
+
 # little-loops
 
 Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing.
@@ -10,9 +22,9 @@ Development workflow toolkit for Claude Code with issue management, code quality
 
 little-loops is a Claude Code plugin that provides a complete development workflow toolkit. It includes:
 
-- **33 slash commands** for development workflows
+- **34 slash commands** for development workflows
 - **8 specialized agents** for codebase analysis
-- **9 skills** for specialized workflows (issue management, history analysis, product analysis, etc.)
+- **6 skills** for specialized workflows (history analysis, issue size review, workflow reference, dependency mapping, product analysis, workflow automation)
 - **Automation scripts** for autonomous issue processing
 - **Configuration system** for project customization
 
@@ -578,9 +590,9 @@ little-loops/
 ├── plugin.json           # Plugin manifest
 ├── config-schema.json    # Configuration schema
 ├── README.md             # This file
-├── commands/             # Slash command templates (33 commands)
+├── commands/             # Slash command templates (34 commands)
 ├── agents/               # Agent definitions (8 agents)
-├── skills/               # Skill definitions (9 skills)
+├── skills/               # Skill definitions (6 skills)
 ├── hooks/                # Lifecycle hooks and validation scripts
 ├── templates/            # Project type config templates
 │   ├── python-generic.json
