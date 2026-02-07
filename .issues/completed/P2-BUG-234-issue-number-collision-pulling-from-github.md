@@ -62,5 +62,17 @@ Always scan the completed directory for number conflicts, or delegate to the exi
 
 ---
 
-## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P2
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/sync.py`: Replaced private `_get_next_issue_number()` with `get_next_issue_number()` from `issue_parser.py`, which always scans all directories including completed
+- `scripts/tests/test_sync.py`: Replaced old test with collision-specific test proving completed issues are considered
+
+### Verification Results
+- Tests: PASS (2461 passed)
+- Lint: PASS
+- Types: PASS

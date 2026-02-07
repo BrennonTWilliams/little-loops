@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from little_loops.issue_parser import get_next_issue_number
+
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
     from little_loops.logger import Logger
@@ -661,8 +663,8 @@ class GitHubSyncManager:
                 priority = label.upper()
                 break
 
-        # Generate next issue number
-        next_num = self._get_next_issue_number(issue_type)
+        # Generate next issue number (uses global numbering across all dirs)
+        next_num = get_next_issue_number(self.config)
 
         # Generate slug from title
         slug = re.sub(r"[^a-z0-9]+", "-", gh_title.lower())[:40].strip("-")
@@ -699,18 +701,6 @@ discovered_by: github_sync
         issue_path.write_text(content, encoding="utf-8")
         result.created.append(f"#{gh_number} → {issue_id}")
         self.logger.success(f"Created {filename} from GitHub #{gh_number}")
-
-    def _get_next_issue_number(self, issue_type: str) -> int:
-        """Get next available issue number for type."""
-        max_num = 0
-        pattern = re.compile(rf"{issue_type}-(\d+)")
-
-        for issue_path in self._get_local_issues():
-            match = pattern.search(issue_path.name)
-            if match:
-                max_num = max(max_num, int(match.group(1)))
-
-        return max_num + 1
 
     def get_status(self) -> SyncStatus:
         """Get sync status overview.

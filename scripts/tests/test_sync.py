@@ -483,18 +483,29 @@ github_issue: 1
         manager = GitHubSyncManager(mock_config, mock_logger)
         assert manager._determine_issue_type(["documentation"]) is None
 
-    def test_get_next_issue_number(
+    def test_create_local_issue_avoids_completed_collision(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
-        """Next issue number is calculated correctly."""
-        # Create existing issues
-        (tmp_path / ".issues" / "bugs" / "P1-BUG-001-first.md").write_text("# BUG-001")
-        (tmp_path / ".issues" / "bugs" / "P2-BUG-005-fifth.md").write_text("# BUG-005")
+        """Pulled issues do not collide with completed issue numbers."""
+        # BUG-042 exists in completed, active bugs only go up to 005
+        (tmp_path / ".issues" / "bugs" / "P2-BUG-005-active.md").write_text("# BUG-005")
+        (tmp_path / ".issues" / "completed" / "P1-BUG-042-done.md").write_text("# BUG-042")
 
         manager = GitHubSyncManager(mock_config, mock_logger)
-        next_num = manager._get_next_issue_number("BUG")
+        result = SyncResult(action="pull", success=True)
+        gh_issue = {
+            "number": 99,
+            "title": "Test collision",
+            "body": "body",
+            "url": "https://github.com/test/repo/issues/99",
+            "labels": [{"name": "bug"}],
+        }
 
-        assert next_num == 6  # max is 5, so next is 6
+        manager._create_local_issue(gh_issue, "BUG", result)
+
+        # Should get number 43 (not 6, which would collide with completed BUG-042)
+        created_files = list((tmp_path / ".issues" / "bugs").glob("*BUG-43*"))
+        assert len(created_files) == 1, f"Expected BUG-43, got: {list((tmp_path / '.issues' / 'bugs').glob('*.md'))}"
 
     def test_push_single_issue_creates_new(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
