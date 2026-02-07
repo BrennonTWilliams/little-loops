@@ -198,10 +198,23 @@ class WorkerPool:
         with self._callback_lock:
             self._pending_callbacks.add(issue_id)
         try:
-            result = future.result()
-            callback(result)
-        except Exception as e:
-            self.logger.error(f"Worker completion callback failed: {e}")
+            try:
+                result = future.result()
+            except Exception as e:
+                self.logger.error(f"Worker future failed for {issue_id}: {e}")
+                result = WorkerResult(
+                    issue_id=issue_id,
+                    success=False,
+                    branch_name="",
+                    worktree_path=Path(),
+                    error=f"Worker future failed: {e}",
+                )
+            try:
+                callback(result)
+            except Exception as e:
+                self.logger.error(
+                    f"Worker completion callback failed for {issue_id}: {e}"
+                )
         finally:
             with self._callback_lock:
                 self._pending_callbacks.discard(issue_id)

@@ -537,6 +537,71 @@ class TestWorkerPoolTaskSubmission:
         # After callback completes, should be removed
         assert "BUG-001" not in worker_pool._pending_callbacks
 
+    def test_handle_completion_invokes_callback_on_future_exception(
+        self, worker_pool: WorkerPool
+    ) -> None:
+        """_handle_completion() invokes callback with failure WorkerResult when future raises."""
+        callback_results: list[WorkerResult] = []
+
+        def callback(result: WorkerResult) -> None:
+            callback_results.append(result)
+
+        future: Future[WorkerResult] = Future()
+        future.set_exception(RuntimeError("Worker exploded"))
+
+        worker_pool._handle_completion(future, callback, "BUG-001")
+
+        assert len(callback_results) == 1
+        assert callback_results[0].success is False
+        assert callback_results[0].issue_id == "BUG-001"
+        assert "Worker future failed" in (callback_results[0].error or "")
+        assert "BUG-001" not in worker_pool._pending_callbacks
+
+    def test_handle_completion_invokes_callback_on_cancelled_future(
+        self, worker_pool: WorkerPool
+    ) -> None:
+        """_handle_completion() invokes callback with failure WorkerResult when future is cancelled."""
+        callback_results: list[WorkerResult] = []
+
+        def callback(result: WorkerResult) -> None:
+            callback_results.append(result)
+
+        future: Future[WorkerResult] = Future()
+        future.cancel()
+        # Force the future into cancelled state for testing
+        future._state = "CANCELLED"  # type: ignore[attr-defined]
+
+        worker_pool._handle_completion(future, callback, "BUG-002")
+
+        assert len(callback_results) == 1
+        assert callback_results[0].success is False
+        assert callback_results[0].issue_id == "BUG-002"
+        assert "BUG-002" not in worker_pool._pending_callbacks
+
+    def test_handle_completion_logs_callback_exception(
+        self, worker_pool: WorkerPool, mock_logger: MagicMock
+    ) -> None:
+        """_handle_completion() logs error when callback itself raises."""
+
+        def bad_callback(result: WorkerResult) -> None:
+            raise ValueError("Callback broke")
+
+        future: Future[WorkerResult] = Future()
+        result = WorkerResult(
+            issue_id="BUG-001",
+            success=True,
+            branch_name="parallel/bug-001",
+            worktree_path=Path("/tmp/worktree"),
+        )
+        future.set_result(result)
+
+        worker_pool._handle_completion(future, bad_callback, "BUG-001")
+
+        mock_logger.error.assert_called()
+        error_msg = mock_logger.error.call_args[0][0]
+        assert "callback failed" in error_msg.lower()
+        assert "BUG-001" not in worker_pool._pending_callbacks
+
     def test_active_count_includes_futures_and_callbacks(self, worker_pool: WorkerPool) -> None:
         """active_count includes running futures and pending callbacks."""
         # Add a pending callback

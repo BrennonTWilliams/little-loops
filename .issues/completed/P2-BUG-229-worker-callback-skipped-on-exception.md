@@ -40,11 +40,16 @@ def _handle_completion(
 
 ## Current Behavior
 
-If `future.result()` raises an exception (because the worker thread threw), the `callback(result)` is never called. The except block only logs the error but does not create a failure `WorkerResult` to pass to the callback. The issue remains stuck in `_in_progress` in the priority queue indefinitely, blocking that queue slot.
+The `_handle_completion` except block catches all exceptions but only logs the error — it does not construct a failure `WorkerResult` or invoke the callback. While `_process_issue` has its own top-level `except Exception` that returns a `WorkerResult(success=False)` (preventing most worker exceptions from propagating to `future.result()`), the callback can still be skipped if:
+
+1. `future.result()` raises a `CancelledError` (e.g., future cancelled during shutdown)
+2. The `callback(result)` itself raises an exception (callback failure is conflated with future failure in the except block)
+
+In either case, the orchestrator's completion callback is not invoked with a failure result, which can leave an issue stuck in `_in_progress`.
 
 ## Expected Behavior
 
-When a worker throws an exception, a failure `WorkerResult` should be constructed and passed to the callback so the orchestrator can properly handle the failure and continue processing remaining issues.
+When `future.result()` raises (e.g., `CancelledError`), a failure `WorkerResult` should be constructed and passed to the callback so the orchestrator can properly handle the failure and continue processing remaining issues.
 
 ## Reproduction Steps
 
@@ -71,15 +76,32 @@ except Exception as e:
 
 ## Impact
 
-- **Severity**: High
+- **Severity**: Medium (defensive fix; primary scenario mitigated by _process_issue's own exception handling)
 - **Effort**: Small
 - **Risk**: Low
 
 ## Labels
 
-`bug`, `priority-p1`
+`bug`, `priority-p2`
 
 ---
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P1
+**Completed** | Created: 2026-02-06T03:41:30Z | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/parallel/worker_pool.py`: Separated `_handle_completion` error handling into two distinct try/except blocks — one for `future.result()` and one for `callback(result)`. When `future.result()` raises, a failure `WorkerResult` is now constructed and passed to the callback so the orchestrator can properly transition the issue out of `_in_progress`.
+- `scripts/tests/test_worker_pool.py`: Added 3 tests covering future exception, cancelled future, and callback exception scenarios.
+
+### Verification Results
+- Tests: PASS (2458 passed)
+- Lint: PASS
+- Types: PASS
