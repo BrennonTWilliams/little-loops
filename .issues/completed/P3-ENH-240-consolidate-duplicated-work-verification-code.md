@@ -14,7 +14,7 @@ discovered_by: scan_codebase
 ## Location
 
 - **File**: `scripts/little_loops/git_operations.py`
-- **Line(s)**: 18-25, 202-274 (at scan commit: a8f4144)
+- **Line(s)**: 18-25, 202-283 (at scan commit: a8f4144)
 - **Anchor**: `EXCLUDED_DIRECTORIES, filter_excluded_files, verify_work_was_done`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a8f4144ebd05e95833281bd95506da984ba5d118/scripts/little_loops/git_operations.py#L18-L25)
 
@@ -57,10 +57,27 @@ from little_loops.work_verification import (
 
 **Verified: 2026-02-06** — VALID (line numbers updated)
 
-- `git_operations.py` line range corrected from `202-283` to `202-274`
-- Divergence has increased since discovery: `work_verification.py` now includes detailed diagnostic logging for excluded files (lines 68-73, 92-93, 113-117) that the `git_operations.py` version completely lacks
+- `git_operations.py` duplicated functions span lines 202-283 (`filter_excluded_files` at 202-215, `verify_work_was_done` at 218-283)
+- Divergence confirmed: `work_verification.py` includes detailed diagnostic logging for excluded files (lines 68-72, 76, 92-93, 109-110, 112-119) that the `git_operations.py` version completely lacks
 - `EXCLUDED_DIRECTORIES` tuples remain identical in both files (lines 18-25)
 - Core duplication confirmed and growing worse over time
 
 ## Status
-**Open** | Created: 2026-02-06T03:41:30Z | Priority: P3
+**Completed** | Created: 2026-02-06T03:41:30Z | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/git_operations.py`: Removed duplicated `EXCLUDED_DIRECTORIES`, `filter_excluded_files()`, and `verify_work_was_done()` definitions; replaced with re-exports from `work_verification.py`
+- `scripts/little_loops/__init__.py`: Updated imports to source the 3 consolidated symbols from `work_verification` instead of `git_operations`
+
+### Verification Results
+- Tests: PASS (2463 passed)
+- Lint: PASS
+- Types: PASS
