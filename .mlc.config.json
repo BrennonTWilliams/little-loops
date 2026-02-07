@@ -1,0 +1,15 @@
+{
+  "ignorePatterns": [
+    {"pattern": "^http://localhost"},
+    {"pattern": "^https://localhost"},
+    {"pattern": "^http://127\\.0\\.0\\.1"},
+    {"pattern": "^https://127\\.0\\.0\\.1"},
+    {"pattern": "^http://0\\.0\\.0\\.0"},
+    {"pattern": "^https://0\\.0\\.0\\.0"},
+    {"pattern": "^https://github\\.com/BrennonTWilliams/little-loops/.*$"}
+  ],
+  "timeout": "10s",
+  "retryOn429": true,
+  "retryCount": 3,
+  "fallbackRetryDelay": "5s"
+}

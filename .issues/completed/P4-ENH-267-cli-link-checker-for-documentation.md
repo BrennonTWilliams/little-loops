@@ -96,3 +96,57 @@ repos:
 ## Status
 
 **Open** | Created: 2026-02-06 | Priority: P4
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+- **scripts/little_loops/link_checker.py** (NEW): Link checker module with URL extraction, validation, and multiple output formats
+- **scripts/little_loops/cli.py**: Added `main_check_links()` CLI entry point function
+- **scripts/pyproject.toml**: Registered `ll-check-links` CLI command
+- **scripts/tests/test_link_checker.py** (NEW): Comprehensive test coverage (35 tests, all passing)
+- **.github/workflows/docs-link-check.yml** (NEW): GitHub Actions workflow for automated link checking
+- **.mlc.config.json** (NEW): Link checker configuration with ignore patterns
+
+### CLI Usage
+```bash
+# Check all markdown files
+ll-check-links
+
+# Output as JSON
+ll-check-links --json
+
+# Markdown report
+ll-check-links --format markdown
+
+# Check specific directory
+ll-check-links --directory docs/
+
+# Ignore patterns
+ll-check-links --ignore 'http://localhost.*'
+```
+
+### Features Implemented
+- Native Python implementation (no external dependencies)
+- Markdown link extraction `[text](url)` and bare URLs
+- HTTP/HTTPS URL validation with configurable timeout
+- Internal reference detection (anchors, relative paths)
+- Configurable ignore patterns via `.mlc.config.json`
+- Multiple output formats: text (default), JSON, markdown
+- Proper exit codes: 0 (valid), 1 (broken links), 2 (error)
+
+### Verification Results
+- Tests: PASS (35/35)
+- Lint: PASS (ruff)
+- Types: PASS (mypy)
+- CLI: Functional (tested with `ll-check-links --help`)
+
+### Notes
+- Pre-commit hook was NOT implemented (project uses Claude Code plugin hooks instead)
+- Used native Python implementation following existing patterns from `ll-verify-docs`
+- GitHub Actions workflow uses the CLI command instead of external actions
