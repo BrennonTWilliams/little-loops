@@ -180,6 +180,13 @@ After ALL sub-agents complete:
    - Find the highest existing number across ALL issue types (BUG, FEAT, ENH)
    - Use `global_max + 1` for each new issue regardless of type
    - Example: If BUG-003, FEAT-005, and ENH-010 exist, next issue is 011 (e.g., BUG-011 or FEAT-011)
+5. **Cross-reference for dependencies**: After assigning IDs to new findings:
+   - For each new finding, extract the file path(s) from its Location section
+   - Compare against file paths in ALL existing active issues (read their Location sections)
+   - If a new finding references files also referenced by an existing issue:
+     - If existing issue is higher priority or more foundational: add existing issue to the new issue's `## Blocked By` section
+     - Add a comment: `<!-- Suggested by scan_codebase: file overlap with [file.py] -->`
+   - This is a suggestion only — users can review and remove suggestions during the confirmation step (Step 4.5)
 
 ### 4. Create Issue Files
 

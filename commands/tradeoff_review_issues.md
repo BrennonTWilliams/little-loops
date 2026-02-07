@@ -73,10 +73,24 @@ For each issue, read the full issue file and score on these dimensions using LOW
    - MEDIUM: Occasional updates needed, moderate dependency surface
    - HIGH: Frequent updates, external dependencies, breaking change exposure
 
+6. **Blocking bottleneck**: How many other issues depend on this one?
+   - HIGH: Blocks 3+ other issues (critical bottleneck)
+   - MEDIUM: Blocks 1-2 other issues
+   - LOW: Blocks no other issues
+
+   To determine this:
+   - Read all active issue files and check their `## Blocked By` sections
+   - Count how many issues reference this issue ID in their `## Blocked By`
+   - Issues that block many others have higher effective utility regardless of their standalone value
+
 Then make a recommendation:
 - **Implement**: Good utility-to-complexity ratio (high utility, manageable cost)
 - **Update first**: Has merit but needs refinement (unclear scope, missing details, or scope too broad)
 - **Close/Defer**: Low value relative to complexity (low utility with medium/high cost, or speculative)
+
+**Adjusted recommendation for blocking bottleneck**: If an issue scores HIGH on blocking (blocks 3+ issues), boost its recommendation by one tier:
+- Close/Defer with HIGH blocking → Update first (it unblocks others)
+- Update first with HIGH blocking → Implement (it unblocks others)
 
 Issues to evaluate:
 
@@ -98,6 +112,7 @@ For each issue:
 - complexity: [LOW/MEDIUM/HIGH]
 - tech_debt: [LOW/MEDIUM/HIGH]
 - maintenance: [LOW/MEDIUM/HIGH]
+- blocking: [LOW/MEDIUM/HIGH]
 - recommendation: [Implement/Update first/Close/Defer]
 - rationale: [1-2 sentence explanation]
 ```
@@ -139,21 +154,21 @@ ISSUE TRADEOFF REVIEW
 
 ## CLOSE/DEFER RECOMMENDATIONS
 
-| ID | Title | Utility | Effort | Complexity | Tech Debt | Maintenance | Rationale |
-|----|-------|---------|--------|------------|-----------|-------------|-----------|
-| [ID] | [Title] | LOW | HIGH | HIGH | MEDIUM | HIGH | [Brief reason] |
+| ID | Title | Utility | Effort | Complexity | Tech Debt | Maintenance | Blocking | Rationale |
+|----|-------|---------|--------|------------|-----------|-------------|----------|-----------|
+| [ID] | [Title] | LOW | HIGH | HIGH | MEDIUM | HIGH | LOW | [Brief reason] |
 
 ## UPDATE FIRST RECOMMENDATIONS
 
-| ID | Title | Utility | Effort | Complexity | Tech Debt | Maintenance | Rationale |
-|----|-------|---------|--------|------------|-----------|-------------|-----------|
-| [ID] | [Title] | MEDIUM | MEDIUM | MEDIUM | LOW | MEDIUM | [Brief reason] |
+| ID | Title | Utility | Effort | Complexity | Tech Debt | Maintenance | Blocking | Rationale |
+|----|-------|---------|--------|------------|-----------|-------------|----------|-----------|
+| [ID] | [Title] | MEDIUM | MEDIUM | MEDIUM | LOW | MEDIUM | LOW | [Brief reason] |
 
 ## IMPLEMENT RECOMMENDATIONS (no changes needed)
 
-| ID | Title | Utility | Effort | Complexity | Tech Debt | Maintenance |
-|----|-------|---------|--------|------------|-----------|-------------|
-| [ID] | [Title] | HIGH | LOW | LOW | LOW | LOW |
+| ID | Title | Utility | Effort | Complexity | Tech Debt | Maintenance | Blocking |
+|----|-------|---------|--------|------------|-----------|-------------|----------|
+| [ID] | [Title] | HIGH | LOW | LOW | LOW | LOW | LOW |
 ```
 
 #### 4b: Per-Issue Approval

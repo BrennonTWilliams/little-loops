@@ -49,6 +49,22 @@ find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" | sort
 | NEEDS_UPDATE | Valid but needs clarification |
 | REGRESSION_LIKELY | Matches completed issue, files modified since fix |
 | POSSIBLE_REGRESSION | Matches completed issue, but can't confirm regression |
+| DEP_ISSUES | Dependency references have problems (broken refs, missing backlinks, cycles) |
+
+#### E. Validate Dependency References
+
+For each issue, check dependency integrity:
+
+1. **Blocked By references**: For each ID in `## Blocked By`:
+   - Verify the referenced issue exists (in active issues or completed)
+   - If in completed: note as "satisfied" (informational, not an error)
+   - If missing entirely: flag as BROKEN_REF
+
+2. **Blocks backlinks**: For each ID in `## Blocked By`:
+   - Check that the referenced issue has this issue in its `## Blocks` section
+   - If missing: flag as MISSING_BACKLINK
+
+3. **Cycle check**: After processing all issues, build a dependency graph and check for cycles
 
 #### D. Regression Detection (for matches to completed issues)
 
@@ -141,12 +157,20 @@ For resolved issues:
 | ENH-007 | ENH-002 | INVALID_FIX | Files unchanged since fix - fix never worked |
 | BUG-008 | BUG-001 | UNVERIFIED | No fix commit tracked |
 
+### Dependency Issues
+| Issue ID | Problem | Details |
+|----------|---------|---------|
+| [ID] | BROKEN_REF | References nonexistent [REF-ID] |
+| [ID] | MISSING_BACKLINK | Blocked by [REF-ID], but [REF-ID] has no Blocks entry for [ID] |
+| [IDs] | CYCLE | Circular dependency detected |
+
 ## Recommended Actions
 1. Move resolved issues to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` (sibling to category dirs)
 2. Update outdated issues with current info
 3. Remove or archive invalid issues
 4. Re-prioritize if needed
 5. Review potential regressions - reopen completed issues with proper classification
+6. Fix dependency issues - remove broken refs, add missing backlinks, resolve cycles
 ```
 
 ---

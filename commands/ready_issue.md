@@ -131,6 +131,17 @@ If line numbers are outdated but an Anchor field exists:
 3. Update line references automatically
 4. Note in CORRECTIONS_MADE: `[line_drift] Updated line N -> M using anchor 'function_name'`
 
+#### Dependency Status
+- [ ] If `## Blocked By` section exists:
+  - Check each referenced issue ID
+  - If any blocker is still in an active category (bugs/, features/, enhancements/) and NOT in `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`:
+    - Flag as WARNING: "Blocked by [ID] which is still open"
+  - If all blockers are in completed/ or don't exist: PASS
+- [ ] If `## Blocked By` section is empty or absent: PASS (no blockers)
+
+**Note**: Open blockers are a WARNING, not a failure. The issue can still be marked READY
+but the warning should be prominently displayed so the user is aware of open blockers.
+
 #### Metadata
 - [ ] Priority prefix in filename
 - [ ] Issue ID format correct
@@ -270,6 +281,7 @@ Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't 
 | Code snippets | PASS | Match current code |
 | Priority | PASS | P2 prefix present |
 | Sections | PASS | All required present |
+| Blockers | PASS/WARN | "All blockers completed" or "Open blockers: FEAT-010, BUG-015" |
 
 ## CONCERNS
 - [List any issues that couldn't be auto-corrected]

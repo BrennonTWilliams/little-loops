@@ -126,3 +126,32 @@ The Python module (`dependency_mapper.py`) sits alongside `dependency_graph.py`:
 ## Status
 
 **Open** | Created: 2026-02-06 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-06
+- **Status**: Completed
+
+### Changes Made
+
+**Part A: New Python Module + Skill**
+- `scripts/little_loops/dependency_mapper.py` [CREATED]: Cross-issue dependency discovery engine with file overlap detection, dependency validation, report formatting, Mermaid diagram generation, and proposal application
+- `skills/map-dependencies/SKILL.md` [CREATED]: 5-phase skill definition for interactive dependency mapping workflow
+- `scripts/tests/test_dependency_mapper.py` [CREATED]: 42 tests covering all public functions
+- `scripts/tests/fixtures/issues/feature-with-file-refs.md` [CREATED]: Test fixture
+- `scripts/tests/fixtures/issues/enhancement-with-file-refs.md` [CREATED]: Test fixture
+
+**Part B: Five Integration Touches**
+- `commands/verify_issues.md` [MODIFIED]: Added dependency validation pass (Step E) with broken ref, missing backlink, and cycle detection
+- `commands/ready_issue.md` [MODIFIED]: Added dependency status check warning for open blockers
+- `commands/create_sprint.md` [MODIFIED]: Added Step 4.5 with dependency analysis, external blocker warnings, wave structure preview, and cycle check
+- `commands/scan_codebase.md` [MODIFIED]: Added Step 5 cross-referencing new findings against existing issues for file overlap dependencies
+- `commands/tradeoff_review_issues.md` [MODIFIED]: Added 6th "blocking bottleneck" scoring dimension with recommendation boost for high-blocking issues
+
+### Verification Results
+- Tests: PASS (42/42 new tests, 2525 total)
+- Lint: PASS
+- Types: PASS

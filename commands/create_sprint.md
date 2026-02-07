@@ -313,6 +313,35 @@ If a pattern returns no results, the issue is missing. Report any missing issues
 - Remove missing issues from list
 - Cancel and fix the list
 
+### 4.5 Dependency Analysis for Sprint Issues
+
+After validating that all issues exist, perform dependency analysis on the sprint issue set:
+
+1. **Parse dependency sections** from all sprint issue files:
+   - Read `## Blocked By` / `## Blocks` sections from each issue
+   - Build a local dependency graph for just the sprint issues
+
+2. **Check for issues blocked by non-sprint issues**:
+   - For each sprint issue's `## Blocked By` entries:
+     - If the blocker is NOT in the sprint issue set AND NOT in `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`:
+       - Warn: "[ISSUE-ID] is blocked by [BLOCKER-ID] which is not in this sprint"
+   - Present warnings to user if any found
+
+3. **Show dependency structure** (if any dependencies exist within the sprint):
+   - Display execution waves:
+     ```
+     Sprint Dependency Structure:
+     Wave 1: FEAT-001, BUG-015 (no blockers)
+     Wave 2: FEAT-020 (blocked by FEAT-001)
+     Wave 3: ENH-030 (blocked by FEAT-020)
+     ```
+   - Note: This previews how `ll-sprint run` will execute the sprint
+
+4. **Check for cycles** within the sprint issue set:
+   - If cycles detected, warn and ask user to resolve before creating sprint
+
+Continue to Step 5 regardless of warnings (unless cycles found).
+
 ### 5. Create Sprint Directory (if needed)
 
 Ensure the configured sprints directory exists:
