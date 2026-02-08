@@ -686,11 +686,17 @@ Both modes save state for resume capability:
 
 ### Merge Strategy
 
-The merge coordinator uses:
-1. Fast-forward merge when possible
-2. Rebase worker branch on conflict
-3. Retry up to `max_merge_retries` times
-4. Auto-stash local changes before merge
+The merge coordinator is a sophisticated git operations state machine that handles:
+1. Sequential merge queue (one at a time to avoid conflicts)
+2. Automatic stash/unstash of local changes with smart exclusions
+3. Adaptive pull strategy (tracks problematic commits, switches to merge on repeat)
+4. Index recovery (detects and repairs corrupted git state)
+5. Lifecycle file coordination (auto-commits pending moves)
+6. Conflict retry with rebase (up to `max_merge_retries` times)
+7. Circuit breaker (pauses after consecutive failures)
+8. Untracked file backup and retry
+
+**See [MERGE-COORDINATOR.md](MERGE-COORDINATOR.md) for comprehensive documentation.**
 
 ### Context Monitor and Session Continuation
 

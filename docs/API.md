@@ -1907,7 +1907,9 @@ Both `ll-auto` and `ll-parallel` use `parse_ready_issue_output()` but handle res
 
 ### MergeCoordinator
 
-Sequential merge queue with conflict handling.
+Sequential merge queue with sophisticated conflict handling, error recovery, and adaptive strategies.
+
+**See [MERGE-COORDINATOR.md](MERGE-COORDINATOR.md) for comprehensive documentation.**
 
 ```python
 from little_loops.parallel import MergeCoordinator
@@ -1935,6 +1937,7 @@ MergeCoordinator(
 |----------|------|-------------|
 | `merged_ids` | `list[str]` | Successfully merged issue IDs |
 | `failed_merges` | `dict[str, str]` | Failed merges with errors |
+| `stash_pop_failures` | `dict[str, str]` | Issues where merge succeeded but stash restore failed |
 | `pending_count` | `int` | Pending merge requests |
 
 #### Methods

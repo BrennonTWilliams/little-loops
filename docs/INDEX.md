@@ -32,6 +32,7 @@ Documentation for contributing to and developing little-loops.
 Deep dives into specific systems and internals.
 
 - [FSM Loop Guide](generalized-fsm-loop.md) - Automation loop system and FSM paradigm for authoring loops
+- [Merge Coordinator](MERGE-COORDINATOR.md) - Sophisticated merge coordination for parallel processing
 - [Claude CLI Integration](claude-cli-integration-mechanics.md) - Technical details on Claude CLI integration
 - [CLI Tools Audit](CLI-TOOLS-AUDIT.md) - Review and audit of CLI tools
 - [Demo Repository Rubric](demo-repo-rubric.md) - Criteria for evaluating demo repositories
