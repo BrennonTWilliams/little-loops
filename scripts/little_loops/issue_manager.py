@@ -194,6 +194,37 @@ def run_with_continuation(
     )
 
 
+def detect_plan_creation(output: str, issue_id: str) -> Path | None:
+    """Detect if manage_issue created a plan file awaiting approval.
+
+    Checks for plan file creation in thoughts/shared/plans/ matching the issue ID.
+    This happens when manage_issue creates a plan but waits for user approval.
+
+    Args:
+        output: Command stdout (unused, for future pattern matching)
+        issue_id: Issue ID (e.g., "BUG-280")
+
+    Returns:
+        Path to plan file if created, None otherwise
+    """
+    plans_dir = Path("thoughts/shared/plans")
+    if not plans_dir.exists():
+        return None
+
+    # Find plan files matching this issue ID (format: YYYY-MM-DD-ISSUE-ID-*.md)
+    # Use glob pattern with issue_id
+    pattern = f"*-{issue_id}-*.md"
+    matching_plans = list(plans_dir.glob(pattern))
+
+    if not matching_plans:
+        return None
+
+    # Return the most recently modified plan file
+    # (in case multiple exist, take the latest)
+    latest_plan = max(matching_plans, key=lambda p: p.stat().st_mtime)
+    return latest_plan
+
+
 @dataclass
 class IssueProcessingResult:
     """Result of processing a single issue in-place."""
@@ -204,6 +235,8 @@ class IssueProcessingResult:
     was_closed: bool = False
     failure_reason: str = ""
     corrections: list[str] = field(default_factory=list)
+    plan_created: bool = False
+    plan_path: str = ""
 
 
 def process_issue_inplace(
@@ -506,6 +539,23 @@ def process_issue_inplace(
             # 2. File wasn't moved to completed
             # 3. There's EVIDENCE of actual work being done (code changes)
             if not verified and result.returncode == 0:
+                # Check if a plan was created awaiting approval
+                plan_path = detect_plan_creation(result.stdout, info.issue_id)
+                if plan_path is not None:
+                    logger.info(
+                        f"Plan created at {plan_path}, awaiting approval - "
+                        "issue will remain incomplete until plan is approved and implemented"
+                    )
+                    return IssueProcessingResult(
+                        success=False,
+                        duration=time.time() - issue_start_time,
+                        issue_id=info.issue_id,
+                        plan_created=True,
+                        plan_path=str(plan_path),
+                        failure_reason="",  # Not a failure - plan awaiting approval
+                        corrections=corrections,
+                    )
+
                 logger.info(
                     "Command returned success but issue not moved - "
                     "checking for evidence of work..."
@@ -796,6 +846,13 @@ class AutoManager:
             self.state_manager.mark_completed(info.issue_id)
         elif result.success:
             self.state_manager.mark_completed(info.issue_id, {"total": result.duration})
+        elif result.plan_created:
+            # Don't mark as failed if a plan was created (awaiting approval)
+            self.logger.info(
+                f"{info.issue_id} has plan at {result.plan_path} - "
+                "leaving in pending state for manual approval"
+            )
+            # Issue remains in pending state (not marked as failed)
         elif result.failure_reason:
             self.state_manager.mark_failed(info.issue_id, result.failure_reason)
 

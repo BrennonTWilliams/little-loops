@@ -1463,13 +1463,17 @@ class TestFallbackVerification:
                 "little_loops.issue_manager.run_with_continuation", return_value=impl_result
             ):
                 with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
-                    with patch(
-                        "little_loops.issue_manager.verify_work_was_done", return_value=True
-                    ):
+                    with patch("little_loops.issue_manager.detect_plan_creation", return_value=None):
                         with patch(
-                            "little_loops.issue_manager.complete_issue_lifecycle", return_value=True
+                            "little_loops.issue_manager.verify_work_was_done", return_value=True
                         ):
-                            result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+                            with patch(
+                                "little_loops.issue_manager.complete_issue_lifecycle",
+                                return_value=True,
+                            ):
+                                result = process_issue_inplace(
+                                    sample_issue, mock_config, mock_logger
+                                )
 
         assert result.success
 
@@ -1495,10 +1499,11 @@ class TestFallbackVerification:
                 "little_loops.issue_manager.run_with_continuation", return_value=impl_result
             ):
                 with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
-                    with patch(
-                        "little_loops.issue_manager.verify_work_was_done", return_value=False
-                    ):
-                        result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+                    with patch("little_loops.issue_manager.detect_plan_creation", return_value=None):
+                        with patch(
+                            "little_loops.issue_manager.verify_work_was_done", return_value=False
+                        ):
+                            result = process_issue_inplace(sample_issue, mock_config, mock_logger)
 
         assert not result.success
         mock_logger.error.assert_called()
@@ -1969,3 +1974,106 @@ class TestIssueManagerConcurrency:
         # All queries should succeed (graph is read-only after init)
         assert len(errors) == 0, f"Errors occurred: {errors}"
         assert query_count[0] == 100
+
+
+class TestDetectPlanCreation:
+    """Tests for detect_plan_creation function."""
+
+    def test_no_plan_returns_none(self, temp_project_dir: Path) -> None:
+        """Returns None when no plan file exists."""
+        from little_loops.issue_manager import detect_plan_creation
+
+        # Setup: Create plans directory but no matching plan
+        plans_dir = temp_project_dir / "thoughts/shared/plans"
+        plans_dir.mkdir(parents=True)
+
+        # Change to temp directory
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(temp_project_dir)
+
+            # Test
+            result = detect_plan_creation("", "BUG-999")
+
+            # Verify
+            assert result is None
+        finally:
+            os.chdir(original_dir)
+
+    def test_matching_plan_returns_path(self, temp_project_dir: Path) -> None:
+        """Returns Path when matching plan file exists."""
+        from little_loops.issue_manager import detect_plan_creation
+
+        # Setup: Create plan file
+        plans_dir = temp_project_dir / "thoughts/shared/plans"
+        plans_dir.mkdir(parents=True)
+        plan_file = plans_dir / "2026-02-08-BUG-280-management.md"
+        plan_file.write_text("# Plan content")
+
+        # Change to temp directory
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(temp_project_dir)
+
+            # Test
+            result = detect_plan_creation("", "BUG-280")
+
+            # Verify
+            assert result is not None
+            assert result.name == "2026-02-08-BUG-280-management.md"
+        finally:
+            os.chdir(original_dir)
+
+    def test_multiple_plans_returns_latest(self, temp_project_dir: Path) -> None:
+        """Returns most recently modified plan when multiple exist."""
+        from little_loops.issue_manager import detect_plan_creation
+
+        # Setup: Create multiple plan files
+        plans_dir = temp_project_dir / "thoughts/shared/plans"
+        plans_dir.mkdir(parents=True)
+        old_plan = plans_dir / "2026-02-07-BUG-280-management.md"
+        new_plan = plans_dir / "2026-02-08-BUG-280-management.md"
+        old_plan.write_text("# Old plan")
+        import time
+
+        time.sleep(0.01)  # Ensure different mtimes
+        new_plan.write_text("# New plan")
+
+        # Change to temp directory
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(temp_project_dir)
+
+            # Test
+            result = detect_plan_creation("", "BUG-280")
+
+            # Verify
+            assert result is not None
+            assert result.name == "2026-02-08-BUG-280-management.md"
+        finally:
+            os.chdir(original_dir)
+
+    def test_no_plans_dir_returns_none(self, temp_project_dir: Path) -> None:
+        """Returns None when plans directory doesn't exist."""
+        from little_loops.issue_manager import detect_plan_creation
+
+        # Change to temp directory (without creating plans dir)
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(temp_project_dir)
+
+            # Test
+            result = detect_plan_creation("", "BUG-999")
+
+            # Verify
+            assert result is None
+        finally:
+            os.chdir(original_dir)
