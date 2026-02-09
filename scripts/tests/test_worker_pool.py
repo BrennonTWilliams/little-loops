@@ -1675,6 +1675,7 @@ class TestWorkerPoolRunClaudeCommand:
             stream_callback: Any,
             on_process_start: Any,
             on_process_end: Any,
+            idle_timeout: int = 0,
         ) -> subprocess.CompletedProcess[str]:
             mock_proc = Mock(spec=subprocess.Popen)
             if on_process_start:

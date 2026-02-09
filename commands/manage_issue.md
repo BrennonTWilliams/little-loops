@@ -179,7 +179,7 @@ After reading the issue and completing research, create a comprehensive plan.
 
 1. **Unclear Requirements** → Ask for clarification or research further
 2. **Technical Uncertainty** → Spawn additional research tasks
-3. **Design Decisions** → Present options to user, get explicit approval
+3. **Design Decisions** → Present options to user, get explicit approval (**only with `--gates` flag**; without `--gates`, make the best autonomous decision and document the rationale in the plan)
 
 **The plan must be complete and actionable with no unresolved questions.**
 
@@ -427,6 +427,7 @@ By default (no `--gates` flag):
 - Execute all phases sequentially
 - Report all results in final output
 - If critical errors occur, mark as INCOMPLETE
+- **Do NOT use `AskUserQuestion` or any interactive tools** — all decisions must be made autonomously
 
 ### Mismatch Handling Protocol
 
@@ -447,15 +448,15 @@ When reality diverges from the plan during implementation:
 
    ```
 
-   Use the AskUserQuestion tool with single-select:
+3. **With `--gates` flag**: Use the AskUserQuestion tool with single-select:
    - Question: "How should I handle this mismatch?"
    - Options:
      - "Adapt" - Adapt implementation to actual code structure
      - "Update plan" - Update plan to reflect reality, then continue
      - "Stop" - Stop and re-research before proceeding
 
-3. **Without --gates flag**:
-   - Attempt Option A if the mismatch is minor
+4. **Without `--gates` flag (default)**: Do NOT use `AskUserQuestion`. Instead:
+   - Attempt to adapt the implementation if the mismatch is minor
    - If significant mismatch, mark as `INCOMPLETE` and report:
      ```
      INCOMPLETE: Mismatch in Phase [N]

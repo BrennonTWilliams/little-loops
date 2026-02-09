@@ -16,7 +16,7 @@ Identified from conversation analyzing how `ll-sprint run` handles commands that
 ## Current Behavior
 
 1. `ll-sprint run` invokes `claude --dangerously-skip-permissions -p <command>`
-2. stdin defaults to `/dev/null` (no terminal attached)
+2. stdin is inherited from the parent (no terminal attached; not explicitly redirected)
 3. If Claude calls `AskUserQuestion`, the subprocess blocks waiting for input that will never arrive
 4. The only safeguard is the timeout (default 3600s), after which the process is killed
 5. No heartbeat, idle detection, or output-activity monitoring exists
@@ -66,4 +66,27 @@ Multi-pronged approach:
 
 ## Status
 
-**Open** | Created: 2026-02-09 | Priority: P2
+**Completed** | Created: 2026-02-09 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-09
+- **Status**: Completed
+
+### Changes Made
+- `commands/manage_issue.md`: Restructured mismatch handling to explicitly forbid AskUserQuestion without --gates flag; scoped design decisions interactive prompts to --gates mode; added automation guard to Default Behavior section
+- `scripts/little_loops/subprocess_utils.py`: Added `idle_timeout` parameter to `run_claude_command()` with output inactivity detection — kills process and raises `TimeoutExpired` with `output="idle_timeout"` when no output for configurable period
+- `scripts/little_loops/config.py`: Added `idle_timeout_seconds` (default 600) to `AutomationConfig`
+- `scripts/little_loops/parallel/types.py`: Added `idle_timeout_per_issue` (default 600) to `ParallelConfig` with serialization support
+- `scripts/little_loops/issue_manager.py`: Threaded `idle_timeout` through `run_claude_command()` and `run_with_continuation()` wrappers
+- `scripts/little_loops/parallel/worker_pool.py`: Passed `idle_timeout` from `ParallelConfig` to `_run_claude_base()`
+- `scripts/tests/test_subprocess_utils.py`: Added 5 tests for idle timeout (trigger, disabled, reset on output, output field, cleanup callback)
+- `scripts/tests/test_worker_pool.py`: Updated mock to accept `idle_timeout` kwarg
+
+### Verification Results
+- Tests: PASS (2660 passed)
+- Lint: PASS
+- Types: PASS

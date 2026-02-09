@@ -93,6 +93,7 @@ def run_claude_command(
     logger: Logger,
     timeout: int = 3600,
     stream_output: bool = True,
+    idle_timeout: int = 0,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -101,6 +102,7 @@ def run_claude_command(
         logger: Logger for output
         timeout: Timeout in seconds
         stream_output: Whether to stream output to console
+        idle_timeout: Kill process if no output for this many seconds (0 to disable)
 
     Returns:
         CompletedProcess with stdout/stderr captured
@@ -118,6 +120,7 @@ def run_claude_command(
         command=command,
         timeout=timeout,
         stream_callback=stream_callback if stream_output else None,
+        idle_timeout=idle_timeout,
     )
 
 
@@ -128,6 +131,7 @@ def run_with_continuation(
     stream_output: bool = True,
     max_continuations: int = 3,
     repo_path: Path | None = None,
+    idle_timeout: int = 0,
 ) -> subprocess.CompletedProcess[str]:
     """Run a Claude command with automatic continuation on context handoff.
 
@@ -141,6 +145,7 @@ def run_with_continuation(
         stream_output: Whether to stream output
         max_continuations: Maximum number of continuation attempts
         repo_path: Repository root path
+        idle_timeout: Kill process if no output for this many seconds (0 to disable)
 
     Returns:
         Final CompletedProcess result
@@ -156,6 +161,7 @@ def run_with_continuation(
             logger,
             timeout=timeout,
             stream_output=stream_output,
+            idle_timeout=idle_timeout,
         )
 
         all_stdout.append(result.stdout)
@@ -278,6 +284,7 @@ def process_issue_inplace(
                 logger,
                 timeout=config.automation.timeout_seconds,
                 stream_output=config.automation.stream_output,
+                idle_timeout=config.automation.idle_timeout_seconds,
             )
             if result.returncode != 0:
                 logger.warning("ready_issue command failed to execute, continuing anyway...")
@@ -326,6 +333,7 @@ def process_issue_inplace(
                                 logger,
                                 timeout=config.automation.timeout_seconds,
                                 stream_output=config.automation.stream_output,
+                                idle_timeout=config.automation.idle_timeout_seconds,
                             )
 
                             if retry_result.returncode != 0:
@@ -477,6 +485,7 @@ def process_issue_inplace(
                 stream_output=config.automation.stream_output,
                 max_continuations=config.automation.max_continuations,
                 repo_path=config.repo_path,
+                idle_timeout=config.automation.idle_timeout_seconds,
             )
         else:
             logger.info(f"Would run: /ll:manage_issue {info.issue_type} {action} {info.issue_id}")

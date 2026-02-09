@@ -317,6 +317,7 @@ class ParallelConfig:
     max_issues: int = 0
     dry_run: bool = False
     timeout_per_issue: int = 3600
+    idle_timeout_per_issue: int = 600  # Kill if no output for 10 minutes (0 to disable)
     orchestrator_timeout: int = 0  # 0 = use timeout_per_issue * max_workers
     stream_subprocess_output: bool = False
     show_model: bool = False  # Make API call to verify model on worktree setup
@@ -383,6 +384,7 @@ class ParallelConfig:
             "max_issues": self.max_issues,
             "dry_run": self.dry_run,
             "timeout_per_issue": self.timeout_per_issue,
+            "idle_timeout_per_issue": self.idle_timeout_per_issue,
             "orchestrator_timeout": self.orchestrator_timeout,
             "stream_subprocess_output": self.stream_subprocess_output,
             "show_model": self.show_model,
@@ -415,6 +417,7 @@ class ParallelConfig:
             max_issues=data.get("max_issues", 0),
             dry_run=data.get("dry_run", False),
             timeout_per_issue=data.get("timeout_per_issue", 7200),
+            idle_timeout_per_issue=data.get("idle_timeout_per_issue", 600),
             orchestrator_timeout=data.get("orchestrator_timeout", 0),
             stream_subprocess_output=data.get("stream_subprocess_output", False),
             show_model=data.get("show_model", False),

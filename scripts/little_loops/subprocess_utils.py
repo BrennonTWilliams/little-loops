@@ -59,6 +59,7 @@ def run_claude_command(
     stream_callback: OutputCallback | None = None,
     on_process_start: ProcessCallback | None = None,
     on_process_end: ProcessCallback | None = None,
+    idle_timeout: int = 0,
 ) -> subprocess.CompletedProcess[str]:
     """Invoke Claude CLI command with real-time output streaming.
 
@@ -72,12 +73,14 @@ def run_claude_command(
             Receives the Popen object for tracking/management.
         on_process_end: Optional callback invoked after process completes.
             Receives the Popen object. Called in finally block.
+        idle_timeout: Kill process if no output for this many seconds (0 to disable).
 
     Returns:
         CompletedProcess with stdout/stderr captured
 
     Raises:
-        subprocess.TimeoutExpired: If command exceeds timeout
+        subprocess.TimeoutExpired: If command exceeds timeout or idle timeout.
+            When triggered by idle timeout, the output field is set to "idle_timeout".
     """
     cmd_args = ["claude", "--dangerously-skip-permissions", "-p", command]
 
@@ -110,13 +113,22 @@ def run_claude_command(
             sel.register(process.stderr, selectors.EVENT_READ)
 
         start_time = time.time()
+        last_output_time = start_time
 
         try:
             while sel.get_map():
-                if timeout and (time.time() - start_time) > timeout:
+                now = time.time()
+                if timeout and (now - start_time) > timeout:
                     process.kill()
                     process.wait()  # reap child to prevent zombie
                     raise subprocess.TimeoutExpired(cmd_args, timeout)
+
+                if idle_timeout and (now - last_output_time) > idle_timeout:
+                    process.kill()
+                    process.wait()  # reap child to prevent zombie
+                    raise subprocess.TimeoutExpired(
+                        cmd_args, idle_timeout, output="idle_timeout"
+                    )
 
                 ready = sel.select(timeout=1.0)
                 for key, _ in ready:
@@ -125,6 +137,7 @@ def run_claude_command(
                         sel.unregister(key.fileobj)
                         continue
 
+                    last_output_time = time.time()
                     line = line.rstrip("\n")
                     is_stderr = key.fileobj is process.stderr
 

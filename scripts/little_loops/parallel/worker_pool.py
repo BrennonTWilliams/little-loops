@@ -681,6 +681,7 @@ class WorkerPool:
             stream_callback=stream_callback if stream_output else None,
             on_process_start=on_start if issue_id else None,
             on_process_end=on_end if issue_id else None,
+            idle_timeout=self.parallel_config.idle_timeout_per_issue,
         )
 
     def _run_with_continuation(
