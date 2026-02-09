@@ -1967,24 +1967,30 @@ def _cmd_sprint_run(
                 result = orchestrator.run()
                 total_duration += orchestrator.execution_duration
 
-                # Track completed/failed from this wave
-                if result == 0:
-                    completed.update(wave_ids)
-                    state.completed_issues.extend(wave_ids)
-                    for issue_id in wave_ids:
+                # Track completed/failed from this wave using per-issue results
+                actually_completed = set(orchestrator.queue.completed_ids)
+                actually_failed = set(orchestrator.queue.failed_ids)
+
+                for issue_id in wave_ids:
+                    if issue_id in actually_completed:
+                        completed.add(issue_id)
+                        state.completed_issues.append(issue_id)
                         state.timing[issue_id] = {
                             "total": orchestrator.execution_duration / len(wave)
                         }
+                    elif issue_id in actually_failed:
+                        completed.add(issue_id)
+                        state.completed_issues.append(issue_id)
+                        state.failed_issues[issue_id] = "Issue failed during wave execution"
+                    # else: issue was neither completed nor failed (interrupted/stranded)
+                    # — leave untracked so it can be retried on resume
+
+                if result == 0:
                     logger.success(
                         f"Wave {wave_num}/{total_waves} completed: {', '.join(wave_ids)}"
                     )
                 else:
-                    # Some issues failed - continue but track failures
                     failed_waves += 1
-                    completed.update(wave_ids)
-                    state.completed_issues.extend(wave_ids)
-                    for issue_id in wave_ids:
-                        state.failed_issues[issue_id] = "Wave execution had failures"
                     logger.warning(f"Wave {wave_num}/{total_waves} had failures")
                 _save_sprint_state(state, logger)
                 if wave_num < total_waves:

@@ -287,11 +287,24 @@ issues:
         )
 
         # Mock ParallelOrchestrator for multi-issue waves
+        class MockQueue:
+            def __init__(self, ids: set[str]):
+                self._ids = ids
+
+            @property
+            def completed_ids(self) -> list[str]:
+                return sorted(self._ids)
+
+            @property
+            def failed_ids(self) -> list[str]:
+                return []
+
         class MockOrchestrator:
             execution_duration = 2.0
 
             def __init__(self, parallel_config: Any, br_config: Any, path: Any, **kwargs: Any):
                 self.only_ids = parallel_config.only_ids
+                self.queue = MockQueue(self.only_ids)
 
             def run(self) -> int:
                 # Record execution of all issues in this wave
@@ -354,11 +367,24 @@ issues:
             mock_process_inplace,
         )
 
+        class MockQueue:
+            def __init__(self, ids: set[str]):
+                self._ids = ids
+
+            @property
+            def completed_ids(self) -> list[str]:
+                return sorted(self._ids)
+
+            @property
+            def failed_ids(self) -> list[str]:
+                return []
+
         class MockOrchestrator:
             execution_duration = 2.0
 
             def __init__(self, parallel_config: Any, br_config: Any, path: Any, **kwargs: Any):
                 orchestrator_wave_sizes.append(len(parallel_config.only_ids))
+                self.queue = MockQueue(parallel_config.only_ids)
 
             def run(self) -> int:
                 return 0
@@ -406,11 +432,24 @@ issues:
             mock_process_inplace,
         )
 
+        class MockQueue:
+            def __init__(self, ids: set[str]):
+                self._ids = ids
+
+            @property
+            def completed_ids(self) -> list[str]:
+                return sorted(self._ids)
+
+            @property
+            def failed_ids(self) -> list[str]:
+                return []
+
         class MockOrchestrator:
             execution_duration = 2.0
 
             def __init__(self, parallel_config: Any, br_config: Any, path: Any, **kwargs: Any):
                 captured_configs.append(parallel_config)
+                self.queue = MockQueue(parallel_config.only_ids)
 
             def run(self) -> int:
                 return 0
@@ -512,11 +551,20 @@ issues:
 
         _, config, manager = self._setup_error_recovery_project(tmp_path)
 
+        class MockQueue:
+            @property
+            def completed_ids(self) -> list[str]:
+                return []
+
+            @property
+            def failed_ids(self) -> list[str]:
+                return ["BUG-001", "BUG-002", "BUG-003"]
+
         class MockOrchestrator:
             execution_duration = 2.0
 
             def __init__(self, parallel_config: Any, br_config: Any, path: Any, **kwargs: Any):
-                pass
+                self.queue = MockQueue()
 
             def run(self) -> int:
                 return 1  # Simulate failure
@@ -697,6 +745,119 @@ issues:
         # BUG-001 was in Wave 1 which was fully completed
         assert "BUG-002" in executed_issues
         assert "BUG-001" not in executed_issues
+
+    def test_sprint_partial_wave_tracks_per_issue(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Test that partial wave success tracks completed and failed issues separately."""
+        import argparse
+
+        from little_loops import cli
+
+        _, config, manager = self._setup_error_recovery_project(tmp_path)
+
+        class MockQueue:
+            @property
+            def completed_ids(self) -> list[str]:
+                return ["BUG-001", "BUG-003"]
+
+            @property
+            def failed_ids(self) -> list[str]:
+                return ["BUG-002"]
+
+        class MockOrchestrator:
+            execution_duration = 3.0
+
+            def __init__(self, parallel_config: Any, br_config: Any, path: Any, **kwargs: Any):
+                self.queue = MockQueue()
+
+            def run(self) -> int:
+                return 1  # Some failures
+
+        monkeypatch.setattr("little_loops.cli.ParallelOrchestrator", MockOrchestrator)
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="recovery-test",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=3,
+            quiet=False,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 1
+
+        state_data = json.loads((tmp_path / ".sprint-state.json").read_text())
+
+        # Only actually-completed issues should be in completed_issues
+        assert "BUG-001" in state_data["completed_issues"]
+        assert "BUG-003" in state_data["completed_issues"]
+
+        # Failed issue should be in both completed_issues (processed) and failed_issues
+        assert "BUG-002" in state_data["completed_issues"]
+        assert "BUG-002" in state_data["failed_issues"]
+
+        # Only the actually-failed issue should be in failed_issues
+        assert "BUG-001" not in state_data["failed_issues"]
+        assert "BUG-003" not in state_data["failed_issues"]
+
+    def test_sprint_stranded_issues_not_marked_completed(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Test that issues neither completed nor failed are left untracked for retry."""
+        import argparse
+
+        from little_loops import cli
+
+        _, config, manager = self._setup_error_recovery_project(tmp_path)
+
+        class MockQueue:
+            @property
+            def completed_ids(self) -> list[str]:
+                return ["BUG-001"]  # Only 1 of 3 completed
+
+            @property
+            def failed_ids(self) -> list[str]:
+                return ["BUG-002"]  # Only 1 of 3 failed
+                # BUG-003 is stranded (not in either list)
+
+        class MockOrchestrator:
+            execution_duration = 3.0
+
+            def __init__(self, parallel_config: Any, br_config: Any, path: Any, **kwargs: Any):
+                self.queue = MockQueue()
+
+            def run(self) -> int:
+                return 1
+
+        monkeypatch.setattr("little_loops.cli.ParallelOrchestrator", MockOrchestrator)
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="recovery-test",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=3,
+            quiet=False,
+        )
+
+        cli._cmd_sprint_run(args, manager, config)
+
+        state_data = json.loads((tmp_path / ".sprint-state.json").read_text())
+
+        # Stranded issue (BUG-003) should NOT be in completed_issues
+        assert "BUG-003" not in state_data["completed_issues"]
+        assert "BUG-003" not in state_data["failed_issues"]
+
+        # BUG-001 completed, BUG-002 failed — both tracked
+        assert "BUG-001" in state_data["completed_issues"]
+        assert "BUG-002" in state_data["completed_issues"]
+        assert "BUG-002" in state_data["failed_issues"]
 
 
 class TestDependencyHandling:
@@ -921,11 +1082,21 @@ issues:
             mock_process_inplace,
         )
 
+        class MockQueue:
+            @property
+            def completed_ids(self) -> list[str]:
+                return []
+
+            @property
+            def failed_ids(self) -> list[str]:
+                return []
+
         class MockOrchestrator:
             execution_duration = 2.0
 
             def __init__(self, *args: Any, **kwargs: Any):
                 orchestrator_called.append(True)
+                self.queue = MockQueue()
 
             def run(self) -> int:
                 return 0
