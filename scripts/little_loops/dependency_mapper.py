@@ -38,6 +38,43 @@ _SOURCE_EXTENSIONS = frozenset({
     ".sql", ".go", ".rs", ".java", ".kt", ".rb", ".php",
 })
 
+# Semantic target extraction patterns
+_PASCAL_CASE = re.compile(r"\b([A-Z][a-z]+(?:[A-Z][a-z]+)+)\b")
+_FUNCTION_REF = re.compile(r"`(\w+)\(\)`")
+_COMPONENT_SCOPE = re.compile(
+    r"(?:component|module|class|widget|section)[:\s]+[`\"']?([a-zA-Z0-9_./\-]{3,})[`\"']?",
+    re.IGNORECASE,
+)
+
+# UI region / section keywords mapped to canonical names
+_SECTION_KEYWORDS: dict[str, frozenset[str]] = {
+    "header": frozenset({"header", "heading", "title bar", "top bar", "nav", "navbar", "toolbar"}),
+    "body": frozenset({"body", "content", "main", "droppable", "list", "table", "grid"}),
+    "footer": frozenset({"footer", "bottom", "status bar", "action bar"}),
+    "sidebar": frozenset({"sidebar", "side panel", "drawer", "menu"}),
+    "card": frozenset({"card", "tile", "item", "row", "entry"}),
+    "modal": frozenset({"modal", "dialog", "popup", "overlay", "sheet"}),
+    "form": frozenset({"form", "input", "field", "editor", "picker"}),
+}
+
+# Modification type classification keywords
+_MODIFICATION_TYPES: dict[str, frozenset[str]] = {
+    "structural": frozenset({
+        "extract", "split", "refactor", "restructure", "reorganize",
+        "create new component", "break out", "separate", "decompose",
+    }),
+    "infrastructure": frozenset({
+        "enable", "hook", "handler", "event", "listener", "provider",
+        "context", "store", "state management", "routing", "middleware",
+        "dragging", "drag", "drop", "dnd",
+    }),
+    "enhancement": frozenset({
+        "add button", "add field", "add column", "add stats", "add icon",
+        "add toggle", "display", "show", "render", "style", "format",
+        "empty state", "placeholder", "tooltip", "badge",
+    }),
+}
+
 
 @dataclass
 class DependencyProposal:
@@ -50,6 +87,7 @@ class DependencyProposal:
         confidence: Score from 0.0 to 1.0
         rationale: Human-readable explanation
         overlapping_files: Files referenced by both issues
+        conflict_score: Semantic conflict score from 0.0 to 1.0
     """
 
     source_id: str
@@ -58,6 +96,26 @@ class DependencyProposal:
     confidence: float
     rationale: str
     overlapping_files: list[str] = field(default_factory=list)
+    conflict_score: float = 0.5
+
+
+@dataclass
+class ParallelSafePair:
+    """A pair of issues that share files but can safely run in parallel.
+
+    Attributes:
+        issue_a: First issue ID
+        issue_b: Second issue ID
+        shared_files: Files referenced by both issues
+        conflict_score: Semantic conflict score (< 0.4)
+        reason: Why these are parallel-safe
+    """
+
+    issue_a: str
+    issue_b: str
+    shared_files: list[str] = field(default_factory=list)
+    conflict_score: float = 0.0
+    reason: str = ""
 
 
 @dataclass
@@ -93,12 +151,14 @@ class DependencyReport:
 
     Attributes:
         proposals: Proposed new dependency relationships
+        parallel_safe: Pairs of issues that share files but can run in parallel
         validation: Validation results for existing dependencies
         issue_count: Total issues analyzed
         existing_dep_count: Number of existing dependency edges
     """
 
     proposals: list[DependencyProposal] = field(default_factory=list)
+    parallel_safe: list[ParallelSafePair] = field(default_factory=list)
     validation: ValidationResult = field(default_factory=ValidationResult)
     issue_count: int = 0
     existing_dep_count: int = 0
@@ -138,15 +198,150 @@ def extract_file_paths(content: str) -> set[str]:
     return paths
 
 
+def _extract_semantic_targets(content: str) -> set[str]:
+    """Extract component and function references from issue content.
+
+    Identifies PascalCase component names, function references,
+    and explicitly mentioned component/module scopes.
+
+    Args:
+        content: Issue file content
+
+    Returns:
+        Set of normalized semantic target names
+    """
+    if not content:
+        return set()
+
+    stripped = _CODE_FENCE.sub("", content)
+    targets: set[str] = set()
+
+    for match in _PASCAL_CASE.finditer(stripped):
+        targets.add(match.group(1).lower())
+
+    for match in _FUNCTION_REF.finditer(stripped):
+        targets.add(match.group(1).lower())
+
+    for match in _COMPONENT_SCOPE.finditer(stripped):
+        targets.add(match.group(1).lower())
+
+    return targets
+
+
+def _extract_section_mentions(content: str) -> set[str]:
+    """Extract UI region/section references from issue content.
+
+    Maps keywords like "header", "body", "sidebar" to canonical
+    section names using word-boundary matching.
+
+    Args:
+        content: Issue file content
+
+    Returns:
+        Set of canonical section names mentioned
+    """
+    if not content:
+        return set()
+
+    content_lower = content.lower()
+    sections: set[str] = set()
+
+    for section_name, keywords in _SECTION_KEYWORDS.items():
+        for keyword in keywords:
+            # Use word boundary for single words, substring for multi-word phrases
+            if " " in keyword:
+                if keyword in content_lower:
+                    sections.add(section_name)
+                    break
+            else:
+                if re.search(rf"\b{re.escape(keyword)}\b", content_lower):
+                    sections.add(section_name)
+                    break
+
+    return sections
+
+
+def _classify_modification_type(content: str) -> str:
+    """Classify the modification type of an issue.
+
+    Returns one of: "structural", "infrastructure", "enhancement".
+    Falls back to "enhancement" if no clear match.
+
+    Args:
+        content: Issue file content
+
+    Returns:
+        Modification type classification string
+    """
+    if not content:
+        return "enhancement"
+
+    content_lower = content.lower()
+
+    for mod_type in ("structural", "infrastructure", "enhancement"):
+        keywords = _MODIFICATION_TYPES[mod_type]
+        for keyword in keywords:
+            if keyword in content_lower:
+                return mod_type
+
+    return "enhancement"
+
+
+def compute_conflict_score(
+    content_a: str,
+    content_b: str,
+) -> float:
+    """Compute semantic conflict score between two issues.
+
+    Combines three signals:
+    - Semantic target overlap (component/function names): weight 0.5
+    - Section mention overlap (UI regions): weight 0.3
+    - Modification type match: weight 0.2
+
+    Args:
+        content_a: First issue's file content
+        content_b: Second issue's file content
+
+    Returns:
+        Conflict score from 0.0 (parallel-safe) to 1.0 (definite conflict)
+    """
+    targets_a = _extract_semantic_targets(content_a)
+    targets_b = _extract_semantic_targets(content_b)
+
+    sections_a = _extract_section_mentions(content_a)
+    sections_b = _extract_section_mentions(content_b)
+
+    type_a = _classify_modification_type(content_a)
+    type_b = _classify_modification_type(content_b)
+
+    # Signal 1: Semantic target overlap (0.0 - 1.0)
+    if targets_a and targets_b:
+        target_union = len(targets_a | targets_b)
+        target_score = len(targets_a & targets_b) / target_union if target_union > 0 else 0.0
+    else:
+        target_score = 0.5  # Unknown — default to moderate
+
+    # Signal 2: Section overlap (0.0 or 1.0)
+    if sections_a and sections_b:
+        section_score = 1.0 if sections_a & sections_b else 0.0
+    else:
+        section_score = 0.5  # Unknown
+
+    # Signal 3: Modification type match (0.0 or 1.0)
+    type_score = 1.0 if type_a == type_b else 0.0
+
+    return round(target_score * 0.5 + section_score * 0.3 + type_score * 0.2, 2)
+
+
 def find_file_overlaps(
     issues: list[IssueInfo],
     issue_contents: dict[str, str],
-) -> list[DependencyProposal]:
+) -> tuple[list[DependencyProposal], list[ParallelSafePair]]:
     """Find issues that reference overlapping files and propose dependencies.
 
-    For each pair of issues where both reference the same file(s), proposes
-    a dependency where the lower-priority (or later ID at same priority)
-    issue is blocked by the higher-priority (or earlier ID) issue.
+    For each pair of issues where both reference the same file(s), computes
+    a semantic conflict score. High-conflict pairs get dependency proposals;
+    low-conflict pairs are reported as parallel-safe.
 
     Pairs that already have a dependency relationship are skipped.
 
@@ -155,7 +350,7 @@ def find_file_overlaps(
         issue_contents: Mapping from issue_id to file content
 
     Returns:
-        List of proposed dependencies with file overlap rationale
+        Tuple of (proposed dependencies, parallel-safe pairs)
     """
     # Build existing dependency set for skip check
     existing_deps: set[tuple[str, str]] = set()
@@ -172,7 +367,10 @@ def find_file_overlaps(
             issue_paths[issue.issue_id] = paths
 
     proposals: list[DependencyProposal] = []
+    parallel_safe: list[ParallelSafePair] = []
     issue_ids = sorted(issue_paths.keys())
+
+    _type_order = {"structural": 0, "infrastructure": 1, "enhancement": 2}
 
     for i, id_a in enumerate(issue_ids):
         for id_b in issue_ids[i + 1 :]:
@@ -180,25 +378,74 @@ def find_file_overlaps(
             if not overlap:
                 continue
 
-            # Determine direction: higher priority (lower number) blocks lower priority
+            # Skip if dependency already exists (in either direction)
+            if (id_a, id_b) in existing_deps or (id_b, id_a) in existing_deps:
+                continue
+
+            content_a = issue_contents.get(id_a, "")
+            content_b = issue_contents.get(id_b, "")
+            conflict = compute_conflict_score(content_a, content_b)
+
+            overlap_list = sorted(overlap)
+
+            # Low-conflict pairs are parallel-safe
+            if conflict < 0.4:
+                sections_a = _extract_section_mentions(content_a)
+                sections_b = _extract_section_mentions(content_b)
+                if sections_a and sections_b:
+                    reason = (
+                        f"Different sections ({', '.join(sorted(sections_a))}"
+                        f" vs {', '.join(sorted(sections_b))})"
+                    )
+                else:
+                    reason = "Low semantic conflict score"
+                parallel_safe.append(
+                    ParallelSafePair(
+                        issue_a=id_a,
+                        issue_b=id_b,
+                        shared_files=overlap_list,
+                        conflict_score=conflict,
+                        reason=reason,
+                    )
+                )
+                continue
+
+            # Determine direction for high-conflict pairs
             issue_a = next(iss for iss in issues if iss.issue_id == id_a)
             issue_b = next(iss for iss in issues if iss.issue_id == id_b)
 
-            if (issue_a.priority_int, id_a) <= (issue_b.priority_int, id_b):
-                target_id, source_id = id_a, id_b
-            else:
-                target_id, source_id = id_b, id_a
+            confidence_modifier = 1.0
 
-            # Skip if dependency already exists (in either direction)
-            if (source_id, target_id) in existing_deps:
-                continue
-            if (target_id, source_id) in existing_deps:
-                continue
+            if issue_a.priority_int != issue_b.priority_int:
+                # Different priorities: higher priority blocks lower
+                if issue_a.priority_int < issue_b.priority_int:
+                    target_id, source_id = id_a, id_b
+                else:
+                    target_id, source_id = id_b, id_a
+            else:
+                # Same priority: use modification type ordering
+                type_a = _classify_modification_type(content_a)
+                type_b = _classify_modification_type(content_b)
+                order_a = _type_order.get(type_a, 2)
+                order_b = _type_order.get(type_b, 2)
+
+                if order_a != order_b:
+                    if order_a < order_b:
+                        target_id, source_id = id_a, id_b
+                    else:
+                        target_id, source_id = id_b, id_a
+                else:
+                    # Fall back to ID ordering with reduced confidence
+                    if id_a < id_b:
+                        target_id, source_id = id_a, id_b
+                    else:
+                        target_id, source_id = id_b, id_a
+                    confidence_modifier = 0.5
 
             min_paths = min(len(issue_paths[id_a]), len(issue_paths[id_b]))
             confidence = len(overlap) / min_paths if min_paths > 0 else 0.0
+            confidence *= confidence_modifier
 
-            overlap_list = sorted(overlap)
             rationale = (
                 f"{source_id} and {target_id} both reference "
                 f"{', '.join(overlap_list[:3])}"
@@ -214,12 +461,13 @@ def find_file_overlaps(
                     confidence=round(confidence, 2),
                     rationale=rationale,
                     overlapping_files=overlap_list,
+                    conflict_score=conflict,
                 )
             )
 
     # Sort by confidence descending
     proposals.sort(key=lambda p: -p.confidence)
-    return proposals
+    return proposals, parallel_safe
 
 
 def validate_dependencies(
@@ -290,13 +538,14 @@ def analyze_dependencies(
     Returns:
         Comprehensive dependency report
     """
-    proposals = find_file_overlaps(issues, issue_contents)
+    proposals, parallel_safe = find_file_overlaps(issues, issue_contents)
     validation = validate_dependencies(issues, completed_ids)
 
     existing_dep_count = sum(len(issue.blocked_by) for issue in issues)
 
     return DependencyReport(
         proposals=proposals,
+        parallel_safe=parallel_safe,
         validation=validation,
         issue_count=len(issues),
         existing_dep_count=existing_dep_count,
@@ -318,6 +567,7 @@ def format_report(report: DependencyReport) -> str:
     lines.append(f"- **Issues analyzed**: {report.issue_count}")
     lines.append(f"- **Existing dependencies**: {report.existing_dep_count}")
     lines.append(f"- **Proposed new dependencies**: {len(report.proposals)}")
+    lines.append(f"- **Parallel-safe pairs**: {len(report.parallel_safe)}")
     lines.append(f"- **Validation issues**: "
                  f"{'Yes' if report.validation.has_issues else 'None'}")
     lines.append("")
@@ -326,12 +576,40 @@ def format_report(report: DependencyReport) -> str:
     if report.proposals:
         lines.append("## Proposed Dependencies")
         lines.append("")
-        lines.append("| # | Source (blocked) | Target (blocker) | Reason | Confidence | Rationale |")
-        lines.append("|---|-----------------|-----------------|--------|------------|-----------|")
+        lines.append(
+            "| # | Source (blocked) | Target (blocker) | Reason "
+            "| Conflict | Confidence | Rationale |"
+        )
+        lines.append(
+            "|---|-----------------|-----------------|--------"
+            "|----------|------------|-----------|"
+        )
         for i, p in enumerate(report.proposals, 1):
+            if p.conflict_score >= 0.7:
+                conflict_level = "HIGH"
+            elif p.conflict_score >= 0.4:
+                conflict_level = "MEDIUM"
+            else:
+                conflict_level = "LOW"
             lines.append(
                 f"| {i} | {p.source_id} | {p.target_id} | "
-                f"{p.reason} | {p.confidence:.0%} | {p.rationale} |"
+                f"{p.reason} | {conflict_level} | {p.confidence:.0%} | {p.rationale} |"
+            )
+        lines.append("")
+
+    # Parallel-safe section
+    if report.parallel_safe:
+        lines.append("## Parallel Execution Safe")
+        lines.append("")
+        lines.append("| Issue A | Issue B | Shared Files | Conflict Score | Reason |")
+        lines.append("|---------|---------|--------------|---------------|--------|")
+        for pair in report.parallel_safe:
+            files_str = ", ".join(pair.shared_files[:3])
+            if len(pair.shared_files) > 3:
+                files_str += " and more"
+            lines.append(
+                f"| {pair.issue_a} | {pair.issue_b} | "
+                f"{files_str} | {pair.conflict_score:.0%} | {pair.reason} |"
             )
         lines.append("")
 
@@ -374,7 +652,7 @@ def format_report(report: DependencyReport) -> str:
                 )
             lines.append("")
 
-    if not report.proposals and not v.has_issues:
+    if not report.proposals and not report.parallel_safe and not v.has_issues:
         lines.append("No dependency proposals or validation issues found.")
         lines.append("")
 
