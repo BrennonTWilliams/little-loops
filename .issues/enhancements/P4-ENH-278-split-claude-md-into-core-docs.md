@@ -30,7 +30,7 @@ Ensure core docs are loaded by the plugin system. Test with `/context` to verify
 
 ### Implementation trigger
 
-Only implement when CLAUDE.md exceeds ~200 lines. Currently at ~80 lines, so this is forward-looking. The issue documents the pattern for when it becomes necessary.
+Only implement when CLAUDE.md exceeds ~200 lines. Currently at ~110 lines, so this is forward-looking. The issue documents the pattern for when it becomes necessary.
 
 ## Files to Modify
 
@@ -54,3 +54,10 @@ Only implement when CLAUDE.md exceeds ~200 lines. Currently at ~80 lines, so thi
 ## Status
 
 **Open** | Created: 2026-02-08 | Priority: P4
+
+## Verification Notes
+
+- **Verified**: 2026-02-09
+- **Verdict**: VALID (after update)
+- Updated line count from ~80 to ~110 lines (actual: 109 lines)
+- Implementation trigger (200 lines) not yet reached but closer than previously documented

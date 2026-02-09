@@ -15,7 +15,7 @@ Identified from conversation analyzing `ll-sprint run` approval handling. Curren
 
 ## Current Behavior
 
-`_run_claude_base()` in `subprocess_utils.py:82-119` monitors the subprocess with a simple timeout loop. It reads stdout/stderr but does not track when the last output was produced. A stuck process runs for the entire timeout duration.
+`run_claude_command()` in `subprocess_utils.py:55-149` monitors the subprocess with a simple timeout loop (body starts at line 82, monitoring loop at lines 115-137). It reads stdout/stderr but does not track when the last output was produced. A stuck process runs for the entire timeout duration.
 
 ## Expected Behavior
 
@@ -27,7 +27,7 @@ A single stuck subprocess in `ll-sprint` wastes up to 1 hour of wall-clock time 
 
 ## Proposed Solution
 
-1. Track `last_output_time` in `_run_claude_base()` alongside the existing timeout check
+1. Track `last_output_time` in `run_claude_command()` alongside the existing timeout check
 2. Add a configurable `idle_timeout` parameter (default: 300-600 seconds)
 3. When idle timeout is exceeded, kill the process and raise a distinct `IdleTimeoutError` (or similar)
 4. Log a clear message indicating the process was killed due to inactivity vs. total timeout
@@ -60,3 +60,10 @@ A single stuck subprocess in `ll-sprint` wastes up to 1 hour of wall-clock time 
 ## Status
 
 **Open** | Created: 2026-02-09 | Priority: P3
+
+## Verification Notes
+
+- **Verified**: 2026-02-09
+- **Verdict**: VALID (after update)
+- Fixed function name from `_run_claude_base()` to `run_claude_command()` and corrected line references
+- Confirmed: no idle/output tracking exists in subprocess_utils.py — only a total timeout check
