@@ -1957,6 +1957,8 @@ def _cmd_sprint_run(
                     max_workers=min(max_workers, len(wave)),
                     only_ids=only_ids,
                     dry_run=args.dry_run,
+                    overlap_detection=True,
+                    serialize_overlapping=True,
                 )
 
                 orchestrator = ParallelOrchestrator(

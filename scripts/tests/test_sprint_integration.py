@@ -386,6 +386,61 @@ issues:
         # Wave 2 has 2 issues and should use orchestrator
         assert 2 in orchestrator_wave_sizes, "Wave 2 (2 issues) should use ParallelOrchestrator"
 
+    def test_sprint_enables_overlap_detection(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """Test sprint runner enables overlap detection for parallel waves (BUG-305)."""
+        import argparse
+
+        from little_loops import cli
+
+        _, config, manager = self._setup_multi_wave_project(tmp_path)
+
+        captured_configs: list[Any] = []
+
+        def mock_process_inplace(info: Any, **kwargs: Any) -> Any:
+            from little_loops.issue_manager import IssueProcessingResult
+
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            mock_process_inplace,
+        )
+
+        class MockOrchestrator:
+            execution_duration = 2.0
+
+            def __init__(self, parallel_config: Any, br_config: Any, path: Any, **kwargs: Any):
+                captured_configs.append(parallel_config)
+
+            def run(self) -> int:
+                return 0
+
+        monkeypatch.setattr(
+            "little_loops.cli.ParallelOrchestrator",
+            MockOrchestrator,
+        )
+
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="multi-wave",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=4,
+            quiet=False,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 0
+
+        # Verify overlap detection is enabled on all parallel configs
+        assert len(captured_configs) > 0, "Should have created at least one ParallelConfig"
+        for pc in captured_configs:
+            assert pc.overlap_detection is True, "Sprint should enable overlap detection"
+            assert pc.serialize_overlapping is True, "Sprint should serialize overlapping issues"
+
 
 class TestErrorRecovery:
     """Integration tests for error recovery during sprint execution."""
