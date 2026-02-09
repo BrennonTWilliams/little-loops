@@ -315,30 +315,50 @@ If a pattern returns no results, the issue is missing. Report any missing issues
 
 ### 4.5 Dependency Analysis for Sprint Issues
 
-After validating that all issues exist, perform dependency analysis on the sprint issue set:
+After validating that all issues exist, run dependency analysis using `dependency_mapper` to discover missing dependencies and validate existing ones.
 
-1. **Parse dependency sections** from all sprint issue files:
-   - Read `## Blocked By` / `## Blocks` sections from each issue
-   - Build a local dependency graph for just the sprint issues
+Use the Bash tool to run the analysis on the sprint issues (replace `ISSUE_ID_LIST` with the actual comma-separated issue IDs):
 
-2. **Check for issues blocked by non-sprint issues**:
-   - For each sprint issue's `## Blocked By` entries:
-     - If the blocker is NOT in the sprint issue set AND NOT in `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`:
-       - Warn: "[ISSUE-ID] is blocked by [BLOCKER-ID] which is not in this sprint"
-   - Present warnings to user if any found
+```bash
+python -c "
+from little_loops.issue_parser import IssueParser
+from little_loops.config import BRConfig
+from little_loops.dependency_mapper import analyze_dependencies, format_report
+from pathlib import Path
 
-3. **Show dependency structure** (if any dependencies exist within the sprint):
-   - Display execution waves:
-     ```
-     Sprint Dependency Structure:
-     Wave 1: FEAT-001, BUG-015 (no blockers)
-     Wave 2: FEAT-020 (blocked by FEAT-001)
-     Wave 3: ENH-030 (blocked by FEAT-020)
-     ```
-   - Note: This previews how `ll-sprint run` will execute the sprint
+config = BRConfig(Path.cwd())
+parser = IssueParser(config)
+issue_ids = 'ISSUE_ID_LIST'.split(',')
+issues = []
+contents = {}
+for iid in issue_ids:
+    for cat in ['bugs', 'features', 'enhancements']:
+        found = False
+        for p in config.get_issue_dir(cat).glob(f'*-{iid}-*.md'):
+            info = parser.parse_file(p)
+            issues.append(info)
+            contents[iid] = p.read_text()
+            found = True
+            break
+        if found:
+            break
+report = analyze_dependencies(issues, contents)
+print(format_report(report))
+"
+```
 
-4. **Check for cycles** within the sprint issue set:
-   - If cycles detected, warn and ask user to resolve before creating sprint
+The report includes:
+- **Proposed dependencies**: File-overlap-based dependency proposals with conflict scores and confidence levels
+- **Parallel-safe pairs**: Issues sharing files but safe to run concurrently
+- **Validation issues**: Broken references, missing backlinks, cycles, stale completed refs
+
+Additionally, **check for issues blocked by non-sprint issues**:
+- For each sprint issue's `## Blocked By` entries:
+  - If the blocker is NOT in the sprint issue set AND NOT in `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`:
+    - Warn: "[ISSUE-ID] is blocked by [BLOCKER-ID] which is not in this sprint"
+- Present warnings to user if any found
+
+If cycles are detected in the report, warn and ask user to resolve before creating sprint.
 
 Continue to Step 5 regardless of warnings (unless cycles found).
 

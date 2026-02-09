@@ -26,6 +26,7 @@ from little_loops.cli_args import (
     add_only_arg,
     add_quiet_arg,
     add_resume_arg,
+    add_skip_analysis_arg,
     add_skip_arg,
     add_timeout_arg,
     parse_issue_ids,
@@ -1425,6 +1426,7 @@ Examples:
         run_parser,
         help_text="Comma-separated list of issue IDs to skip during execution (e.g., BUG-003,FEAT-004)",
     )
+    add_skip_analysis_arg(run_parser)
 
     # list subcommand
     list_parser = subparsers.add_parser("list", help="List all sprints")
@@ -1436,6 +1438,7 @@ Examples:
     show_parser = subparsers.add_parser("show", help="Show sprint details")
     show_parser.add_argument("sprint", help="Sprint name to show")
     add_config_arg(show_parser)
+    add_skip_analysis_arg(show_parser)
 
     # delete subcommand
     delete_parser = subparsers.add_parser("delete", help="Delete a sprint")
@@ -1689,6 +1692,14 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
             for cycle in cycles:
                 print(f"  {' -> '.join(cycle)}")
 
+    # Dependency analysis (ENH-301)
+    if issue_infos and not args.skip_analysis:
+        from little_loops.dependency_mapper import analyze_dependencies
+
+        issue_contents = _build_issue_contents(issue_infos)
+        dep_report = analyze_dependencies(issue_infos, issue_contents)
+        _render_dependency_analysis(dep_report, logger)
+
     if sprint.options:
         print("\nOptions:")
         print(f"  Max iterations: {sprint.options.max_iterations}")
@@ -1776,6 +1787,63 @@ def _cleanup_sprint_state(logger: Logger) -> None:
         logger.info("Sprint state file cleaned up")
 
 
+def _build_issue_contents(issue_infos: list) -> dict[str, str]:
+    """Build issue_id -> file content mapping for dependency analysis."""
+    return {
+        info.issue_id: info.path.read_text()
+        for info in issue_infos
+        if info.path.exists()
+    }
+
+
+def _render_dependency_analysis(report: Any, logger: Logger) -> None:
+    """Display dependency analysis results in CLI format."""
+    if not report.proposals and not report.validation.has_issues:
+        return
+
+    logger.header("Dependency Analysis", char="-", width=60)
+
+    if report.proposals:
+        logger.warning(
+            f"Found {len(report.proposals)} potential missing "
+            f"dependency(ies):"
+        )
+        for p in report.proposals:
+            if p.conflict_score >= 0.7:
+                conflict = "HIGH"
+            elif p.conflict_score >= 0.4:
+                conflict = "MEDIUM"
+            else:
+                conflict = "LOW"
+            logger.warning(
+                f"  {p.source_id} may depend on {p.target_id} "
+                f"({conflict} conflict, {p.confidence:.0%} confidence)"
+            )
+            if p.overlapping_files:
+                files = ", ".join(p.overlapping_files[:3])
+                if len(p.overlapping_files) > 3:
+                    files += " and more"
+                logger.info(f"    Shared files: {files}")
+
+    if report.validation.has_issues:
+        v = report.validation
+        if v.broken_refs:
+            for issue_id, ref_id in v.broken_refs:
+                logger.warning(f"  {issue_id}: references nonexistent {ref_id}")
+        if v.stale_completed_refs:
+            for issue_id, ref_id in v.stale_completed_refs:
+                logger.warning(f"  {issue_id}: blocked by {ref_id} (completed)")
+        if v.missing_backlinks:
+            for issue_id, ref_id in v.missing_backlinks:
+                logger.warning(
+                    f"  {issue_id} blocked by {ref_id}, "
+                    f"but {ref_id} missing backlink"
+                )
+
+    logger.info("Run /ll:map-dependencies to apply discovered dependencies")
+    print()  # blank line separator
+
+
 def _cmd_sprint_run(
     args: argparse.Namespace,
     manager: SprintManager,
@@ -1821,6 +1889,14 @@ def _cmd_sprint_run(
     if not issue_infos:
         logger.error("No issue files found")
         return 1
+
+    # Dependency analysis (ENH-301)
+    if not getattr(args, "skip_analysis", False):
+        from little_loops.dependency_mapper import analyze_dependencies
+
+        issue_contents = _build_issue_contents(issue_infos)
+        dep_report = analyze_dependencies(issue_infos, issue_contents)
+        _render_dependency_analysis(dep_report, logger)
 
     # Build dependency graph
     dep_graph = DependencyGraph.from_issues(issue_infos)

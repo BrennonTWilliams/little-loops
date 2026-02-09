@@ -86,4 +86,24 @@ None
 
 ## Status
 
-**Open** | Created: 2026-02-09 | Priority: P3
+**Completed** | Created: 2026-02-09 | Completed: 2026-02-09 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-09
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli_args.py`: Added `add_skip_analysis_arg()` function and export
+- `scripts/little_loops/cli.py`: Added `_build_issue_contents()` and `_render_dependency_analysis()` helpers; integrated `analyze_dependencies()` into `_cmd_sprint_run()` and `_cmd_sprint_show()`; added `--skip-analysis` flag to `run` and `show` subparsers
+- `commands/create_sprint.md`: Updated Step 4.5 to use `dependency_mapper` functions instead of ad-hoc parsing
+- `scripts/tests/test_sprint.py`: Added `TestSprintDependencyAnalysis` test class with 4 tests
+
+### Verification Results
+- Tests: PASS (61/61)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS

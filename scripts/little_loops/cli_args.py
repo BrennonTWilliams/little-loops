@@ -128,6 +128,15 @@ def add_quiet_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_skip_analysis_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --skip-analysis argument to skip dependency discovery."""
+    parser.add_argument(
+        "--skip-analysis",
+        action="store_true",
+        help="Skip dependency analysis (use when dependencies are known to be current)",
+    )
+
+
 def add_max_issues_arg(parser: argparse.ArgumentParser) -> None:
     """Add --max-issues/-m argument for limiting issues processed."""
     parser.add_argument(
@@ -197,6 +206,7 @@ __all__ = [
     "add_max_workers_arg",
     "add_timeout_arg",
     "add_quiet_arg",
+    "add_skip_analysis_arg",
     "add_max_issues_arg",
     "parse_issue_ids",
     "add_common_auto_args",

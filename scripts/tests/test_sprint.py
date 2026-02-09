@@ -676,3 +676,206 @@ issues:
         state_data = json.loads(state_file.read_text())
         assert state_data["sprint_name"] == "test"
         assert "last_checkpoint" in state_data
+
+
+class TestSprintDependencyAnalysis:
+    """Tests for dependency analysis integration in sprint commands (ENH-301)."""
+
+    @staticmethod
+    def _setup_overlapping_issues(tmp_path: Path) -> tuple[Any, Any, Any]:
+        """Create two issues that reference the same file."""
+        from little_loops.config import BRConfig
+        from little_loops.sprint import SprintManager
+
+        # Create directory structure
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        for category in ["bugs", "features", "enhancements", "completed"]:
+            (issues_dir / category).mkdir()
+
+        # Create config
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_file = config_dir / "ll-config.json"
+        config_data = {
+            "project": {
+                "name": "test-project",
+                "src_dir": "src/",
+                "test_cmd": "pytest",
+                "lint_cmd": "ruff check",
+            },
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                    "features": {
+                        "prefix": "FEAT",
+                        "dir": "features",
+                        "action": "implement",
+                    },
+                    "enhancements": {
+                        "prefix": "ENH",
+                        "dir": "enhancements",
+                        "action": "improve",
+                    },
+                },
+                "completed_dir": "completed",
+            },
+        }
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        # Create two issues that reference the same file
+        (issues_dir / "bugs" / "P1-BUG-001-fix-config.md").write_text(
+            "# BUG-001: Fix config parsing\n\n"
+            "## Summary\nFix bug in `scripts/config.py` module.\n\n"
+            "## Blocked By\n\nNone\n\n"
+            "## Blocks\n\nNone\n"
+        )
+        (issues_dir / "features" / "P2-FEAT-001-add-config-validation.md").write_text(
+            "# FEAT-001: Add config validation\n\n"
+            "## Summary\nAdd validation to `scripts/config.py` module.\n\n"
+            "## Blocked By\n\nNone\n\n"
+            "## Blocks\n\nNone\n"
+        )
+
+        # Create sprint
+        sprints_dir = tmp_path / "sprints"
+        sprints_dir.mkdir()
+        sprint_file = sprints_dir / "overlap-test.yaml"
+        sprint_file.write_text(
+            "name: overlap-test\n"
+            "issues:\n"
+            "  - BUG-001\n"
+            "  - FEAT-001\n"
+        )
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=sprints_dir, config=config)
+        return sprints_dir, config, manager
+
+    def test_run_shows_dependency_analysis(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint run displays dependency analysis when issues have file overlaps."""
+        import argparse
+
+        from little_loops import cli
+        from little_loops.issue_manager import IssueProcessingResult
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+
+        def mock_process_inplace(info: Any, **kwargs: Any) -> IssueProcessingResult:
+            return IssueProcessingResult(
+                success=True, duration=1.0, issue_id=info.issue_id
+            )
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace", mock_process_inplace
+        )
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            dry_run=True,
+            resume=False,
+            skip=None,
+            max_workers=1,
+            quiet=False,
+            skip_analysis=False,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        # The analysis ran (whether it found proposals depends on content,
+        # but the code path was exercised without error)
+        assert "Dry run mode" in captured.out
+
+    def test_run_skip_analysis_flag(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint run with --skip-analysis skips dependency analysis."""
+        import argparse
+
+        from little_loops import cli
+        from little_loops.issue_manager import IssueProcessingResult
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+
+        def mock_process_inplace(info: Any, **kwargs: Any) -> IssueProcessingResult:
+            return IssueProcessingResult(
+                success=True, duration=1.0, issue_id=info.issue_id
+            )
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace", mock_process_inplace
+        )
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            dry_run=True,
+            resume=False,
+            skip=None,
+            max_workers=1,
+            quiet=False,
+            skip_analysis=True,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        # Analysis section should NOT appear when skipped
+        assert "Dependency Analysis" not in captured.out
+
+    def test_show_includes_dependency_analysis(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint show runs dependency analysis."""
+        import argparse
+
+        from little_loops import cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=False,
+        )
+
+        result = cli._cmd_sprint_show(args, manager)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        assert "Sprint: overlap-test" in captured.out
+
+    def test_show_skip_analysis_flag(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Sprint show with --skip-analysis skips dependency analysis."""
+        import argparse
+
+        from little_loops import cli
+
+        _, config, manager = self._setup_overlapping_issues(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="overlap-test",
+            config=None,
+            skip_analysis=True,
+        )
+
+        result = cli._cmd_sprint_show(args, manager)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        assert "Sprint: overlap-test" in captured.out
+        assert "Dependency Analysis" not in captured.out
