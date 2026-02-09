@@ -6,7 +6,9 @@ from pathlib import Path
 
 import pytest
 
-from little_loops.dependency_graph import DependencyGraph
+from unittest.mock import Mock
+
+from little_loops.dependency_graph import DependencyGraph, refine_waves_for_contention
 from little_loops.issue_parser import IssueInfo
 
 
@@ -604,3 +606,144 @@ class TestGetExecutionWaves:
         waves = graph.get_execution_waves(completed={"FEAT-001", "FEAT-002"})
 
         assert waves == []
+
+
+def _make_issue_with_content(
+    issue_id: str,
+    content: str = "",
+    priority: str = "P1",
+    blocked_by: list[str] | None = None,
+    blocks: list[str] | None = None,
+) -> IssueInfo:
+    """Helper to create IssueInfo with mock path returning given content."""
+    mock_path = Mock(spec=Path)
+    mock_path.exists.return_value = bool(content)
+    mock_path.read_text.return_value = content
+    return IssueInfo(
+        path=mock_path,
+        issue_type="features",
+        priority=priority,
+        issue_id=issue_id,
+        title=f"Test {issue_id}",
+        blocked_by=blocked_by or [],
+        blocks=blocks or [],
+    )
+
+
+class TestRefineWavesForContention:
+    """Tests for refine_waves_for_contention()."""
+
+    def test_single_issue_wave_unchanged(self) -> None:
+        """Single-issue waves pass through unchanged."""
+        issue = _make_issue_with_content("FEAT-001", "modifies src/cli.py")
+        waves: list[list[IssueInfo]] = [[issue]]
+
+        result = refine_waves_for_contention(waves)
+
+        assert len(result) == 1
+        assert result[0] == [issue]
+
+    def test_no_overlaps_unchanged(self) -> None:
+        """Multi-issue wave with no file contention stays as one wave."""
+        a = _make_issue_with_content("FEAT-001", "modifies src/cli.py")
+        b = _make_issue_with_content("FEAT-002", "modifies src/sprint.py")
+        waves: list[list[IssueInfo]] = [[a, b]]
+
+        result = refine_waves_for_contention(waves)
+
+        assert len(result) == 1
+        assert [i.issue_id for i in result[0]] == ["FEAT-001", "FEAT-002"]
+
+    def test_two_issues_same_file_split(self) -> None:
+        """Two issues sharing a file split into 2 sub-waves."""
+        a = _make_issue_with_content("FEAT-001", "modifies src/cli.py")
+        b = _make_issue_with_content("FEAT-002", "modifies src/cli.py")
+        waves: list[list[IssueInfo]] = [[a, b]]
+
+        result = refine_waves_for_contention(waves)
+
+        assert len(result) == 2
+        assert result[0][0].issue_id == "FEAT-001"
+        assert result[1][0].issue_id == "FEAT-002"
+
+    def test_three_issues_two_overlap_one_independent(self) -> None:
+        """3 issues where A overlaps B but C is independent → 2 sub-waves."""
+        a = _make_issue_with_content("FEAT-001", "modifies src/page.tsx", priority="P0")
+        b = _make_issue_with_content("FEAT-002", "modifies src/page.tsx", priority="P1")
+        c = _make_issue_with_content("FEAT-003", "modifies src/api.py", priority="P2")
+        waves: list[list[IssueInfo]] = [[a, b, c]]
+
+        result = refine_waves_for_contention(waves)
+
+        assert len(result) == 2
+        # Sub-wave 1: A and C (no overlap), sub-wave 2: B
+        sub1_ids = {i.issue_id for i in result[0]}
+        sub2_ids = {i.issue_id for i in result[1]}
+        assert "FEAT-001" in sub1_ids
+        assert "FEAT-003" in sub1_ids
+        assert "FEAT-002" in sub2_ids
+
+    def test_all_three_overlap_pairwise(self) -> None:
+        """3 issues all overlapping each other → 3 sub-waves."""
+        a = _make_issue_with_content("FEAT-001", "modifies src/shared.py")
+        b = _make_issue_with_content("FEAT-002", "modifies src/shared.py")
+        c = _make_issue_with_content("FEAT-003", "modifies src/shared.py")
+        waves: list[list[IssueInfo]] = [[a, b, c]]
+
+        result = refine_waves_for_contention(waves)
+
+        assert len(result) == 3
+        assert result[0][0].issue_id == "FEAT-001"
+        assert result[1][0].issue_id == "FEAT-002"
+        assert result[2][0].issue_id == "FEAT-003"
+
+    def test_empty_hints_no_split(self) -> None:
+        """Issues with no file hints (empty content) don't trigger splitting."""
+        a = _make_issue_with_content("FEAT-001", "")
+        b = _make_issue_with_content("FEAT-002", "")
+        waves: list[list[IssueInfo]] = [[a, b]]
+
+        result = refine_waves_for_contention(waves)
+
+        assert len(result) == 1
+        assert len(result[0]) == 2
+
+    def test_mixed_waves_only_multi_refined(self) -> None:
+        """Multiple waves: only multi-issue waves with overlaps get refined."""
+        single = _make_issue_with_content("FEAT-001", "modifies src/a.py")
+        multi_a = _make_issue_with_content("FEAT-002", "modifies src/b.py", priority="P0")
+        multi_b = _make_issue_with_content("FEAT-003", "modifies src/b.py", priority="P1")
+        no_overlap_a = _make_issue_with_content("FEAT-004", "modifies src/c.py", priority="P0")
+        no_overlap_b = _make_issue_with_content("FEAT-005", "modifies src/d.py", priority="P1")
+        waves: list[list[IssueInfo]] = [[single], [multi_a, multi_b], [no_overlap_a, no_overlap_b]]
+
+        result = refine_waves_for_contention(waves)
+
+        # Wave 1: single issue passthrough
+        assert len(result[0]) == 1
+        assert result[0][0].issue_id == "FEAT-001"
+        # Wave 2: split into 2 sub-waves
+        assert result[1][0].issue_id == "FEAT-002"
+        assert result[2][0].issue_id == "FEAT-003"
+        # Wave 3: no overlap, stays as one wave
+        assert len(result[3]) == 2
+        assert {i.issue_id for i in result[3]} == {"FEAT-004", "FEAT-005"}
+
+    def test_preserves_priority_order(self) -> None:
+        """Issues within sub-waves maintain priority ordering."""
+        a = _make_issue_with_content("FEAT-001", "modifies src/x.py", priority="P0")
+        b = _make_issue_with_content("FEAT-002", "modifies src/shared.py", priority="P1")
+        c = _make_issue_with_content("FEAT-003", "modifies src/y.py", priority="P2")
+        # b overlaps with nobody (different files), a and c are independent
+        waves: list[list[IssueInfo]] = [[a, b, c]]
+
+        result = refine_waves_for_contention(waves)
+
+        # No overlaps → single wave, order preserved
+        assert len(result) == 1
+        assert [i.issue_id for i in result[0]] == ["FEAT-001", "FEAT-002", "FEAT-003"]
+
+    def test_empty_waves_input(self) -> None:
+        """Empty input returns empty output."""
+        result = refine_waves_for_contention([])
+        assert result == []

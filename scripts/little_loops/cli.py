@@ -31,7 +31,7 @@ from little_loops.cli_args import (
     parse_issue_ids,
 )
 from little_loops.config import BRConfig
-from little_loops.dependency_graph import DependencyGraph
+from little_loops.dependency_graph import DependencyGraph, refine_waves_for_contention
 from little_loops.issue_manager import AutoManager
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
@@ -1665,6 +1665,7 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
 
         if not has_cycles:
             waves = dep_graph.get_execution_waves()
+            waves = refine_waves_for_contention(waves)
 
     print(f"Sprint: {sprint.name}")
     print(f"Description: {sprint.description or '(none)'}")
@@ -1837,6 +1838,9 @@ def _cmd_sprint_run(
     except ValueError as e:
         logger.error(str(e))
         return 1
+
+    # Refine waves for file contention (ENH-306)
+    waves = refine_waves_for_contention(waves)
 
     # Display execution plan
     logger.info(f"Running sprint: {sprint.name}")

@@ -29,6 +29,16 @@ After computing dependency-based waves, refine each wave by:
 3. If overlaps exist, split the wave into sub-waves where no two issues in the same sub-wave overlap (greedy graph coloring)
 4. Display the refined plan showing any sub-waves created due to file contention
 
+## Current Pain Point
+
+Issues that modify the same files can be grouped in the same parallel wave by `get_execution_waves()`, which only considers `blocked_by` relationships. This causes merge conflicts during parallel dispatch — observed in a sprint failure where 3 unrelated issues all modified `page.tsx`. The problem is frequent enough to warrant static prevention in addition to the runtime `OverlapDetector` safety net (BUG-305).
+
+## Scope Boundaries
+
+- **In scope**: Post-processing refinement of waves to split file-contention overlaps into sub-waves
+- **Out of scope**: Modifying the core `get_execution_waves()` algorithm itself, integrating the full dependency mapper (ENH-301), or changing the `OverlapDetector` runtime behavior
+- **Out of scope**: Cross-wave file contention detection (only intra-wave overlaps are addressed)
+
 ## Proposed Solution
 
 Add a function `refine_waves_for_contention(waves, issue_infos)` to `dependency_graph.py` that:
@@ -69,4 +79,23 @@ Wire this into `_cmd_sprint_run()` after the call to `dep_graph.get_execution_wa
 
 ## Status
 
-**Open** | Created: 2026-02-09 | Priority: P2
+**Completed** | Created: 2026-02-09 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-09
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/dependency_graph.py`: Added `refine_waves_for_contention()` function with greedy graph coloring to split overlapping issues into sub-waves
+- `scripts/little_loops/cli.py`: Wired `refine_waves_for_contention()` into `_cmd_sprint_run()` and `_cmd_sprint_show()` after `get_execution_waves()`
+- `scripts/tests/test_dependency_graph.py`: Added `TestRefineWavesForContention` with 9 test cases covering split scenarios, edge cases, and priority ordering
+
+### Verification Results
+- Tests: PASS (208/208)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS

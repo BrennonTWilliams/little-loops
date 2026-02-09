@@ -316,3 +316,72 @@ class DependencyGraph:
     def __contains__(self, issue_id: str) -> bool:
         """Check if an issue is in the graph."""
         return issue_id in self.issues
+
+
+def refine_waves_for_contention(
+    waves: list[list[IssueInfo]],
+) -> list[list[IssueInfo]]:
+    """Refine execution waves by splitting on file contention.
+
+    For each wave with multiple issues, extracts file hints from issue
+    content and checks for pairwise overlaps. Overlapping issues are
+    split into sub-waves using greedy graph coloring so no two issues
+    in the same sub-wave modify the same files.
+
+    Args:
+        waves: Execution waves from get_execution_waves()
+
+    Returns:
+        Refined wave list with contention-free sub-waves.
+        Single-issue waves pass through unchanged.
+    """
+    from little_loops.parallel.file_hints import FileHints, extract_file_hints
+
+    refined: list[list[IssueInfo]] = []
+
+    for wave in waves:
+        if len(wave) <= 1:
+            refined.append(wave)
+            continue
+
+        # Extract file hints for each issue in the wave
+        hints: dict[str, FileHints] = {}
+        for issue in wave:
+            content = issue.path.read_text() if issue.path.exists() else ""
+            hints[issue.issue_id] = extract_file_hints(content, issue.issue_id)
+
+        # Build conflict adjacency: issue_id -> set of conflicting issue_ids
+        conflicts: dict[str, set[str]] = {issue.issue_id: set() for issue in wave}
+        for i, a in enumerate(wave):
+            for b in wave[i + 1 :]:
+                if hints[a.issue_id].overlaps_with(hints[b.issue_id]):
+                    conflicts[a.issue_id].add(b.issue_id)
+                    conflicts[b.issue_id].add(a.issue_id)
+
+        # If no conflicts, keep wave as-is
+        if not any(conflicts.values()):
+            refined.append(wave)
+            continue
+
+        # Greedy graph coloring — assign each issue the lowest color
+        # not used by any conflicting neighbor
+        color: dict[str, int] = {}
+        for issue in wave:  # iterate in priority order (preserved from get_ready_issues)
+            used_colors = {color[c] for c in conflicts[issue.issue_id] if c in color}
+            c = 0
+            while c in used_colors:
+                c += 1
+            color[issue.issue_id] = c
+
+        # Group issues by color into sub-waves, preserving priority order
+        max_color = max(color.values())
+        for c in range(max_color + 1):
+            sub_wave = [issue for issue in wave if color[issue.issue_id] == c]
+            if sub_wave:
+                refined.append(sub_wave)
+
+        logger.info(
+            f"  Wave split into {max_color + 1} sub-waves due to file contention"
+        )
+
+    return refined
