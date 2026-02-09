@@ -607,6 +607,7 @@ class DependencyProposal:
     confidence: float           # Score from 0.0 to 1.0
     rationale: str              # Human-readable explanation
     overlapping_files: list[str]  # Files referenced by both issues
+    conflict_score: float       # Semantic conflict score from 0.0 to 1.0
 ```
 
 **Attributes:**
@@ -619,6 +620,32 @@ class DependencyProposal:
 | `confidence` | `float` | Score from 0.0 to 1.0 |
 | `rationale` | `str` | Human-readable explanation |
 | `overlapping_files` | `list[str]` | Files referenced by both issues |
+| `conflict_score` | `float` | Semantic conflict score (0.0 = parallel-safe, 1.0 = definite conflict). Default: 0.5 |
+
+### ParallelSafePair
+
+A pair of issues that share files but can safely run in parallel (conflict score below threshold).
+
+```python
+@dataclass
+class ParallelSafePair:
+    """A pair of issues that share files but can safely run in parallel."""
+    issue_a: str                # First issue ID
+    issue_b: str                # Second issue ID
+    shared_files: list[str]     # Files referenced by both issues
+    conflict_score: float       # Semantic conflict score (< 0.4)
+    reason: str                 # Why these are parallel-safe
+```
+
+**Attributes:**
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `issue_a` | `str` | First issue ID |
+| `issue_b` | `str` | Second issue ID |
+| `shared_files` | `list[str]` | Files referenced by both issues |
+| `conflict_score` | `float` | Semantic conflict score (always < 0.4) |
+| `reason` | `str` | Explanation of why the pair is parallel-safe (e.g., "Different sections (body vs header)") |
 
 ### ValidationResult
 
@@ -651,13 +678,14 @@ class ValidationResult:
 
 ### DependencyReport
 
-Complete dependency analysis report combining proposals and validation.
+Complete dependency analysis report combining proposals, parallel-safe pairs, and validation.
 
 ```python
 @dataclass
 class DependencyReport:
     """Complete dependency analysis report."""
     proposals: list[DependencyProposal]
+    parallel_safe: list[ParallelSafePair]
     validation: ValidationResult
     issue_count: int
     existing_dep_count: int
@@ -667,7 +695,8 @@ class DependencyReport:
 
 | Attribute | Type | Description |
 |-----------|------|-------------|
-| `proposals` | `list[DependencyProposal]` | Proposed new dependency relationships |
+| `proposals` | `list[DependencyProposal]` | Proposed new dependency relationships (conflict score >= 0.4) |
+| `parallel_safe` | `list[ParallelSafePair]` | File-overlapping pairs safe to run in parallel (conflict score < 0.4) |
 | `validation` | `ValidationResult` | Validation results for existing dependencies |
 | `issue_count` | `int` | Total issues analyzed |
 | `existing_dep_count` | `int` | Number of existing dependency edges |
@@ -689,24 +718,66 @@ Searches for file paths in backtick-quoted paths, location section bold paths, a
 
 **Returns:** Set of file paths found in the content
 
+#### compute_conflict_score
+
+```python
+def compute_conflict_score(
+    content_a: str,
+    content_b: str,
+) -> float
+```
+
+Compute semantic conflict score between two issues.
+
+Combines three weighted signals to determine how likely two file-overlapping issues are to conflict:
+
+| Signal | Weight | Description |
+|--------|--------|-------------|
+| Semantic target overlap | 0.5 | Jaccard similarity of component/function names (PascalCase, function refs, explicit scopes) |
+| Section mention overlap | 0.3 | Whether issues reference the same UI regions (header, body, sidebar, etc.) |
+| Modification type match | 0.2 | Whether both issues have the same modification type (structural, infrastructure, enhancement) |
+
+When a signal cannot be determined (e.g., no component names found), it defaults to 0.5 (moderate).
+
+**Parameters:**
+- `content_a` - First issue's file content
+- `content_b` - Second issue's file content
+
+**Returns:** Conflict score from 0.0 (parallel-safe) to 1.0 (definite conflict)
+
+**Score interpretation:**
+
+| Score | Level | Meaning |
+|-------|-------|---------|
+| >= 0.7 | HIGH | Same component, same section, same type — definite conflict |
+| 0.4–0.7 | MEDIUM | Possible conflict, unclear if same section |
+| < 0.4 | LOW | Different sections/components — likely safe to parallelize |
+
 #### find_file_overlaps
 
 ```python
 def find_file_overlaps(
     issues: list[IssueInfo],
     issue_contents: dict[str, str],
-) -> list[DependencyProposal]
+) -> tuple[list[DependencyProposal], list[ParallelSafePair]]
 ```
 
 Find issues that reference overlapping files and propose dependencies.
 
-For each pair of issues where both reference the same file(s), proposes a dependency where the lower-priority (or later ID at same priority) issue is blocked by the higher-priority issue. Pairs that already have a dependency relationship are skipped.
+For each pair of issues where both reference the same file(s), computes a semantic conflict score. High-conflict pairs (score >= 0.4) get dependency proposals; low-conflict pairs (score < 0.4) are reported as parallel-safe.
+
+**Dependency direction logic:**
+1. **Different priorities**: Higher priority (lower P-number) blocks lower priority
+2. **Same priority, different modification types**: Structural blocks infrastructure blocks enhancement
+3. **Same priority, same type**: Falls back to ID ordering with reduced confidence (0.5x multiplier)
+
+Pairs that already have a dependency relationship are skipped.
 
 **Parameters:**
 - `issues` - List of parsed issue objects
 - `issue_contents` - Mapping from issue_id to file content
 
-**Returns:** List of proposed dependencies with file overlap rationale
+**Returns:** Tuple of (proposed dependencies, parallel-safe pairs)
 
 #### validate_dependencies
 
@@ -755,6 +826,12 @@ def format_report(report: DependencyReport) -> str
 ```
 
 Format a dependency report as human-readable markdown.
+
+Output includes:
+- Summary statistics (issues analyzed, existing deps, proposed deps, parallel-safe pairs, validation issues)
+- **Proposed Dependencies** table with Conflict level column (HIGH/MEDIUM/LOW)
+- **Parallel Execution Safe** table listing file-overlapping pairs that can run concurrently
+- **Validation Issues** sections (broken refs, missing backlinks, cycles, stale refs)
 
 **Parameters:**
 - `report` - The analysis report to format
@@ -815,9 +892,14 @@ contents = {issue.issue_id: issue.path.read_text() for issue in issues}
 # Run analysis
 report = analyze_dependencies(issues, contents)
 
-# Review proposals
+# Review proposals (conflict score >= 0.4)
 for proposal in report.proposals:
-    print(f"{proposal.source_id} -> {proposal.target_id}: {proposal.rationale}")
+    print(f"{proposal.source_id} -> {proposal.target_id} "
+          f"(conflict: {proposal.conflict_score:.0%}): {proposal.rationale}")
+
+# Review parallel-safe pairs (conflict score < 0.4)
+for pair in report.parallel_safe:
+    print(f"{pair.issue_a} || {pair.issue_b}: {pair.reason}")
 
 # Apply approved proposals
 if report.proposals:

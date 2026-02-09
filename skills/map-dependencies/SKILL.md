@@ -40,15 +40,22 @@ Scan all active issues to build the analysis dataset:
 
 Perform three types of analysis:
 
-#### 2a. File Overlap Detection
+#### 2a. File Overlap Detection with Semantic Conflict Analysis
 
 For each pair of issues:
 1. Extract file paths from issue content (Location sections, inline backtick references)
 2. Compute the intersection of file paths between each pair
-3. If overlapping files found:
-   - Propose dependency: lower-priority issue `blocked_by` higher-priority issue
-   - Calculate confidence score: `overlap_count / min(paths_a, paths_b)`
-   - Skip pairs that already have a dependency relationship
+3. If overlapping files found, compute a **semantic conflict score** (0.0–1.0):
+   - **Semantic target overlap** (weight 0.5): Extract PascalCase component names, `function()` references, and explicit component/module scopes — compute Jaccard similarity
+   - **Section mention overlap** (weight 0.3): Detect UI regions (header, body, sidebar, footer, card, modal, form) — check if both issues target the same region
+   - **Modification type match** (weight 0.2): Classify each issue as structural, infrastructure, or enhancement
+4. Based on conflict score:
+   - **Score < 0.4** → **Parallel-safe**: Issues touch different parts of the same file — do NOT propose a dependency, report as safe to parallelize
+   - **Score >= 0.4** → **Propose dependency**: Lower-priority issue `blocked_by` higher-priority issue
+5. For same-priority conflicts, use modification type to determine direction:
+   - Structural changes block infrastructure, which blocks enhancements
+   - Same type falls back to ID ordering with reduced confidence (0.5x)
+6. Skip pairs that already have a dependency relationship
 
 #### 2b. Dependency Validation
 
@@ -64,6 +71,7 @@ Compute:
 - Total issues analyzed
 - Total existing dependency edges
 - Number of proposed new dependencies
+- Number of parallel-safe pairs
 - Number of validation issues found
 
 ### Phase 3: Report
@@ -79,13 +87,21 @@ DEPENDENCY ANALYSIS REPORT
 - Issues analyzed: N
 - Existing dependencies: M
 - Proposed new dependencies: P
+- Parallel-safe pairs: S
 - Validation issues: V
 
 ## PROPOSED DEPENDENCIES
 
-| # | Source (blocked) | Target (blocker) | Reason | Confidence | Files |
-|---|-----------------|-----------------|--------|------------|-------|
-| 1 | FEAT-020 | FEAT-001 | file_overlap | 80% | config.py |
+| # | Source (blocked) | Target (blocker) | Reason | Conflict | Confidence | Rationale |
+|---|-----------------|-----------------|--------|----------|------------|-----------|
+| 1 | FEAT-031 | FEAT-028 | file_overlap | HIGH | 90% | Both modify ActivityCard in day-columns.tsx |
+| 2 | FEAT-020 | FEAT-001 | file_overlap | MEDIUM | 80% | Both reference config.py |
+
+## PARALLEL EXECUTION SAFE
+
+| Issue A | Issue B | Shared Files | Conflict Score | Reason |
+|---------|---------|--------------|---------------|--------|
+| ENH-032 | ENH-033 | day-columns.tsx | 15% | Different sections (body vs header) |
 
 ## VALIDATION ISSUES
 
@@ -214,12 +230,20 @@ After running dependency mapping:
 
 ### Good Dependencies
 
-- Based on **file overlap** — issues touching the same code should be sequenced
+- Based on **file overlap + semantic conflict** — issues modifying the same component/section should be sequenced
 - **Priority ordering** — higher priority issues block lower priority ones
+- **Modification type ordering** — structural changes block infrastructure, which blocks enhancements (at same priority)
 - Dependencies represent real sequencing needs, not just related topics
+
+### Parallel-Safe Pairs
+
+- Issues touching the **same file but different sections** (e.g., header vs body) are identified as parallel-safe
+- The conflict score threshold is 0.4 — pairs below this are not proposed as dependencies
+- Review parallel-safe pairs to confirm the tool's assessment is correct for your context
 
 ### Avoid
 
 - Creating dependencies between unrelated issues just because they have similar titles
 - Circular dependencies (the tool will warn about these)
 - Over-connecting — not every pair of related issues needs a dependency edge
+- Overriding parallel-safe assessments without good reason — false-positive dependencies reduce sprint throughput

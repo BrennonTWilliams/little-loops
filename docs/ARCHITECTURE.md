@@ -615,9 +615,23 @@ Issues within each wave execute in parallel. Waves execute sequentially.
 The `dependency_mapper` module complements `dependency_graph` by discovering new dependency relationships:
 
 - **dependency_graph.py**: Execution ordering from existing `Blocked By` data
-- **dependency_mapper.py**: Discovery of new relationships via file overlap analysis
+- **dependency_mapper.py**: Discovery of new relationships via file overlap + semantic conflict analysis
 
 The `/ll:map_dependencies` skill uses `dependency_mapper` to analyze active issues, propose dependencies based on shared file references, validate existing dependency integrity (broken refs, missing backlinks, cycles), and write approved relationships to issue files.
+
+#### Semantic Conflict Analysis
+
+When two issues reference the same file, the mapper goes beyond simple file overlap to determine whether they actually conflict. It computes a **conflict score** (0.0–1.0) from three signals:
+
+1. **Semantic target overlap** (weight 0.5) — Extracts PascalCase component names, function references, and explicit scope mentions from issue content, then computes Jaccard similarity
+2. **Section mention overlap** (weight 0.3) — Detects UI region keywords (header, body, sidebar, footer, card, modal, form) and checks if both issues target the same region
+3. **Modification type match** (weight 0.2) — Classifies each issue as structural, infrastructure, or enhancement based on keyword matching
+
+**Score thresholds:**
+- **< 0.4**: Parallel-safe — issues touch different sections of the same file and can run concurrently
+- **>= 0.4**: Dependency proposed — issues likely conflict and should be sequenced
+
+**Same-priority ordering**: When two conflicting issues share the same priority, the mapper uses modification type to determine direction (structural → infrastructure → enhancement) rather than arbitrary ID ordering.
 
 ---
 
