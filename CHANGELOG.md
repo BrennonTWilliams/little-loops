@@ -7,44 +7,71 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Added
-
-- **`manage_release` command** - Release management with git tags, changelogs, GitHub releases, and version bumping. Integrates completed issues into release notes with parallel agent data gathering.
-
 ### Planned
 
 - Test coverage for core modules
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
-## [1.3.0] - 2026-02-06
+## [1.5.0] - 2026-02-09
 
 ### Added
 
-- **`tradeoff_review_issues` command** - Evaluate issue utility using tradeoff analysis (effort vs. value, risk vs. reward)
-- **Backlog review** - Closed 19 issues from backlog review (won't-fix, YAGNI, superseded, trivial)
-- **Issue capture** - Captured 28 issues from codebase scan
+- **GitHub Issues sync** - Bidirectional sync with GitHub Issues including `ll-sync` CLI tool, `--dry-run` support, and `--labels` filtering (FEAT-222, FEAT-226)
+- **Release management** - `/ll:manage_release` command for git tags, changelogs, GitHub releases, and version bumping (FEAT-268)
+- **Product analysis** - `/ll:product-analyzer` skill and `/ll:scan_product` command for product-focused codebase analysis (FEAT-022)
+- **Issue dependency mapping** - Automated cross-issue dependency discovery with semantic conflict analysis (FEAT-261)
+- **Loop automation** - `/ll:create_loop` and `/ll:loop-suggester` skills for FSM loop configuration; ship 5 built-in loops (FEAT-219, FEAT-270)
+- **Tradeoff review** - `/ll:tradeoff_review_issues` skill for issue utility vs complexity evaluation (FEAT-257)
+- **Issue refinement** - `/ll:refine_issue` skill with content-quality analysis for interactive issue clarification (FEAT-225)
+- **Open PR command** - `/ll:open_pr` command and skill for pull request creation (FEAT-228)
+- **GitHub sync in init wizard** - Add sync setup to `/ll:init` and `/ll:configure` (ENH-227)
+- **Sprint management** - `ll-sprint` CLI tool with YAML sprint definitions and quiet mode
+- **Workflow analysis** - `/ll:analyze-workflows` and `/ll:workflow-automation-proposer` skills
+- **History analysis** - `/ll:analyze-history` skill for project health insights
+- **CLI command extraction** - `ll-messages --include-commands` for CLI command history (FEAT-221)
+- **End-to-end CLI tests** - Comprehensive CLI workflow tests (FEAT-210)
+- **Fuzz testing** - Fuzz testing for critical parsers (ENH-216)
+- **Documentation tooling** - CLI link checker (ENH-267), automated doc count verification (ENH-265), central documentation index (ENH-266)
+- **Real-time progress** - Worktree progress visibility in `ll-parallel` (ENH-262)
+- **Quiet mode** - `--quiet` flag for `ll-auto` and `ll-sprint`
 
 ### Fixed
 
-- Removed duplicate skill definitions from plugin configuration
+- **ll-auto verification** - Detect plan creation in Phase 3 verification (BUG-280)
+- **Process management** - Reap child process after timeout kill to prevent zombies (BUG-231); close selector to prevent file descriptor leak (BUG-230); detach spawned continuation process as daemon (BUG-236)
+- **Parallel processing** - Ensure worker callback invoked on future exception (BUG-229); narrow exception catch in priority queue to `queue.Empty` (BUG-233)
+- **GitHub sync** - Use global issue numbering to prevent collision with completed issues (BUG-234); pass `--labels` flag to `gh issue list` during pull (BUG-235)
+- **Documentation accuracy** - Correct README command count, skills table, and plugin.json path (BUG-273); update outdated directory trees across README, CONTRIBUTING, and ARCHITECTURE (BUG-274)
+- **FSM documentation** - Clarify max_iterations defaults vs recommended values (BUG-194); add notation legend to FSM Compilation Reference (BUG-197); update ll-loop test output docs (BUG-199)
+- **ll-messages** - Aggregate all assistant turns for `--include-response-context` (BUG-220)
+- **Plugin configuration** - Correct relative paths for commands and skills directories; correct marketplace.json source path
+- **Create loop docs** - Document missing `action_type` field (BUG-192) and `on_handoff` feature (BUG-193)
 
-## [1.2.0] - 2026-02-05
+### Changed
 
-### Added
+- **Frontmatter parsing** - Consolidated duplicated parsing into shared module
+- **Work verification** - Consolidated duplicated verification code into single source
+- **CLI architecture** - Extracted shared CLI argument definitions to `cli_args` module
+- **Plugin structure** - Converted `refine_issue` from skill to command
+- **Error messages** - Standardized error message format across paradigm validators
+- **Templates** - Extracted issue section checks into shared template file
+- **Hooks** - Unified feature flag checking with shared functions
+- **Issue management** - Added integration analysis to lifecycle; added product impact fields to issue parsing
+- **Config** - Added configurable duplicate detection thresholds
 
-- **`ll-sprint` CLI tool** - Sprint-based issue processing with YAML sprint definitions
-- **`ll-sync` CLI tool** - GitHub Issues synchronization
-- **Sprint management** - `/ll:create_sprint` skill for creating sprint definitions
-- **Issue sync** - `/ll:sync_issues` skill for bidirectional GitHub sync
-- **Product analysis** - `/ll:product-analyzer` and `/ll:scan_product` skills
-- **Loop automation** - `/ll:create_loop` and `/ll:loop-suggester` skills for FSM loop configuration
-- **Workflow analysis** - `/ll:analyze-workflows` and `/ll:workflow-automation-proposer` skills
-- **Issue refinement** - `/ll:refine_issue` and `/ll:align_issues` skills
-- **History analysis** - `/ll:analyze-history` skill for project health insights
+### Testing
 
-[1.3.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.2.0...v1.3.0
-[1.2.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.1.0...v1.2.0
+- Improved `issue_manager.py` test coverage to 87% (ENH-207)
+- Improved `merge_coordinator.py` test coverage to 80% (ENH-208)
+- Improved `orchestrator.py` test coverage (ENH-209)
+- Added concurrent access tests (ENH-217)
+- Improved error message validation in tests (ENH-215)
+- Added comprehensive testing documentation (ENH-214)
+- Split large test files into focused modules
+- Added tests for loop-suggester and create_loop skill artifacts
+
+[1.5.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.1.0...v1.5.0
 
 ## [1.1.0] - 2026-02-01
 
