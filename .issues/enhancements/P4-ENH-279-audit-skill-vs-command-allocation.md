@@ -1,0 +1,62 @@
+---
+discovered_date: 2026-02-08
+discovered_by: manual_review
+---
+
+# ENH-279: Audit skill vs command allocation
+
+## Summary
+
+Review the current 6 skills against the "proactive discovery" criterion: skills should be things Claude auto-discovers and uses proactively, while commands are for user-invoked actions. SuperClaude validates this distinction — they have only 1 skill (confidence-check) and 30 commands. Some of our skills may be better as commands.
+
+## Current Behavior
+
+We have 6 skills, each consuming character budget in the system prompt and signaling to Claude to consider them proactively. However, several skills are only invoked when a user explicitly asks:
+
+| Skill | Proactive? | Assessment |
+|---|---|---|
+| `workflow-automation-proposer` | No — Step 3 of a pipeline, always user-invoked | Candidate for command |
+| `product-analyzer` | No — Requires explicit user intent | Candidate for command |
+| `analyze-history` | No — User asks for it | Candidate for command |
+| `issue-workflow` | No — Reference doc, user asks for it | Candidate for command |
+| `issue-size-review` | Yes — Could be proactive during sprint planning | Keep as skill |
+| `map-dependencies` | Yes — Could be proactive during sprint planning | Keep as skill |
+
+## Expected Behavior
+
+Evaluate each skill and migrate candidates from `skills/` to `commands/` where appropriate:
+
+1. Apply the criterion: "Would Claude proactively invoke this without the user asking?"
+2. Consider character budget impact — skills and commands consume budget equally, but skills add context load by signaling proactive consideration
+3. Migrate 4 candidates (`workflow-automation-proposer`, `product-analyzer`, `analyze-history`, `issue-workflow`) to commands if analysis confirms they are always user-initiated
+4. Keep `issue-size-review` and `map-dependencies` as skills
+
+### Migration steps per skill:
+- Move `skills/<name>/SKILL.md` content to `commands/<name>.md` format
+- Update any references in other commands or documentation
+- Remove the skill directory
+- Update plugin.json if needed
+
+## Files to Modify
+
+- `skills/workflow-automation-proposer/SKILL.md` — Potential move to `commands/`
+- `skills/product-analyzer/SKILL.md` — Potential move to `commands/`
+- `skills/analyze-history/SKILL.md` — Potential move to `commands/`
+- `skills/issue-workflow/SKILL.md` — Potential move to `commands/`
+- System prompt descriptions and plugin.json as needed
+
+## Impact
+
+- **Priority**: P4
+- **Effort**: Medium
+- **Risk**: Low — current allocation works, this is optimization
+
+## Labels
+
+`enhancement`, `skills`, `commands`, `architecture`
+
+---
+
+## Status
+
+**Open** | Created: 2026-02-08 | Priority: P4
