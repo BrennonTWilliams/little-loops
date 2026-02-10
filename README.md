@@ -148,8 +148,7 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     "state_file": ".auto-manage-state.json",
     "worktree_base": ".worktrees",
     "max_workers": 2,
-    "stream_output": true,
-    "max_continuations": 3
+    "stream_output": true
   },
 
   "parallel": {
@@ -176,6 +175,16 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     "focus_dirs": ["src/", "tests/"],
     "exclude_patterns": ["**/node_modules/**", "**/__pycache__/**", "**/.git/**"],
     "custom_agents": []
+  },
+
+  "continuation": {
+    "enabled": true,
+    "auto_detect_on_session_start": true,
+    "include_todos": true,
+    "include_git_status": true,
+    "include_recent_files": true,
+    "max_continuations": 3,
+    "prompt_expiry_hours": 24
   },
 
   "context_monitor": {
@@ -268,7 +277,6 @@ Sequential automation settings (ll-auto):
 | `worktree_base` | `.worktrees` | Git worktree directory |
 | `max_workers` | `2` | Parallel workers |
 | `stream_output` | `true` | Stream subprocess output |
-| `max_continuations` | `3` | Max session restarts on context handoff |
 
 #### `parallel`
 
@@ -309,6 +317,20 @@ Codebase scanning configuration:
 |-----|---------|-------------|
 | `focus_dirs` | `["src/", "tests/"]` | Directories to scan |
 | `exclude_patterns` | Standard patterns | Paths to exclude from scanning |
+
+#### `continuation`
+
+Session continuation and handoff settings (`/ll:handoff`, `/ll:resume`):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable continuation prompt features |
+| `auto_detect_on_session_start` | `true` | Check for continuation prompt when session starts |
+| `include_todos` | `true` | Include todo list state in continuation prompt |
+| `include_git_status` | `true` | Include git status in continuation prompt |
+| `include_recent_files` | `true` | Include recently modified files in continuation prompt |
+| `max_continuations` | `3` | Max automatic session continuations for CLI tools |
+| `prompt_expiry_hours` | `24` | Hours before continuation prompt is considered stale |
 
 #### `sprints`
 
