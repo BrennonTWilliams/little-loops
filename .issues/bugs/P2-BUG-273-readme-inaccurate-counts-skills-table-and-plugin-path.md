@@ -98,3 +98,21 @@ The actual 6 skills are: `analyze-history`, `issue-size-review`, `issue-workflow
 - Skill count: 6 (matches `ls skills/*/SKILL.md | wc -l`)
 - plugin.json location: `.claude-plugin/plugin.json` (confirmed exists)
 - No stale references remain in README
+
+---
+
+## Reopened
+
+- **Date**: 2026-02-10
+- **By**: audit_docs
+- **Reason**: Command count drifted again (opposite direction)
+
+### New Findings
+
+README.md line 25 now says "35 slash commands" but only **34** command files exist in `commands/`. The `find_demo_repos` entry in COMMANDS.md has no corresponding command file (see BUG-313). Once BUG-313 is resolved:
+- If the ghost entry is removed: count should be **34**
+- If the command file is created: count stays **35**
+
+Also, ARCHITECTURE.md:65 says "35 slash command templates" while the mermaid diagram on line 24 says "34" — these are internally inconsistent.
+
+This is the **8th occurrence** of command count drift (BUG-014, BUG-083, BUG-098, BUG-155, BUG-161, BUG-162, BUG-273). Consider adding `ll-verify-docs` to CI to prevent recurrence.
