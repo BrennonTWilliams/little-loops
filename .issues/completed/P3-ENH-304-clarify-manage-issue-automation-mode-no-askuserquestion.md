@@ -63,4 +63,20 @@ If Claude calls `AskUserQuestion` during non-interactive execution, the subproce
 
 ## Status
 
-**Open** | Created: 2026-02-09 | Priority: P3
+**Closed - Already Fixed** | Created: 2026-02-09 | Closed: 2026-02-09 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: close
+- **Closed**: 2026-02-09
+- **Status**: Closed - Already Fixed
+- **Reason**: All proposed changes were already implemented as part of BUG-302 (commit `f54b32f`)
+
+### Evidence
+
+All three proposed items were addressed in the BUG-302 fix:
+1. `manage_issue.md` line 430: Added explicit "Do NOT use AskUserQuestion or any interactive tools" to Default Behavior section
+2. `manage_issue.md` line 458: No-gates mismatch handling explicitly forbids AskUserQuestion
+3. `manage_issue.md` line 182: Design decisions section scoped to `--gates` flag only

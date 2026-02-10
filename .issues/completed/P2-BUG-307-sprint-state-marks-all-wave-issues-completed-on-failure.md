@@ -15,7 +15,7 @@ Identified from root cause analysis of a sprint failure. FEAT-031's merge was ne
 
 ## Current Behavior
 
-At `cli.py:1979-1986`, when `result != 0`:
+At `cli.py:1981-1988`, when `result != 0`:
 ```python
 # Some issues failed - continue but track failures
 failed_waves += 1
@@ -25,7 +25,7 @@ for issue_id in wave_ids:
     state.failed_issues[issue_id] = "Wave execution had failures"
 ```
 
-Similarly, at `cli.py:1969-1977`, when `result == 0`, ALL wave IDs are marked completed without verifying per-issue merge status.
+Similarly, at `cli.py:1971-1980`, when `result == 0`, ALL wave IDs are marked completed without verifying per-issue merge status.
 
 ## Expected Behavior
 
@@ -55,7 +55,7 @@ Replace the all-or-nothing wave tracking with per-issue tracking from the orches
 
 ## Files
 
-- `scripts/little_loops/cli.py` (lines ~1969-1986 in `_cmd_sprint_run()`)
+- `scripts/little_loops/cli.py` (lines ~1971-1988 in `_cmd_sprint_run()`)
 - `scripts/tests/test_sprint_integration.py` — Add test for per-issue tracking
 
 ## Labels
@@ -64,6 +64,17 @@ Replace the all-or-nothing wave tracking with per-issue tracking from the orches
 
 ---
 
-## Status
+## Resolution
 
-**Open** | Created: 2026-02-09 | Priority: P2
+- **Action**: fix
+- **Completed**: 2026-02-09
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli.py`: Replaced all-or-nothing wave tracking (lines 1970-1988) with per-issue tracking using `orchestrator.queue.completed_ids` and `orchestrator.queue.failed_ids`
+- `scripts/tests/test_sprint_integration.py`: Updated all 5 MockOrchestrator instances to include `queue` attribute; added 2 new tests for partial wave success and stranded issue tracking
+
+### Verification Results
+- Tests: PASS (2642 passed)
+- Lint: PASS
+- Types: PASS
