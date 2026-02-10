@@ -604,7 +604,7 @@ ll-parallel --workers 3              # Use 3 parallel workers
 ll-parallel --dry-run                # Preview what would be processed
 ll-parallel --resume                 # Resume from previous state
 ll-parallel --priority P1,P2         # Only process P1 and P2 issues
-ll-parallel --include-p0             # Include P0 in parallel processing
+ll-parallel --priority P0,P1,P2      # Process P0, P1, and P2 (P0 processed sequentially by default)
 ll-parallel --max-issues 10          # Limit total issues to process
 ll-parallel --timeout 7200           # Timeout per issue in seconds
 ll-parallel --stream-output          # Stream Claude CLI output in real-time
