@@ -13,7 +13,7 @@ discovered_by: manual_review
 
 The config schema defines `lint_cmd`, `type_cmd`, `format_cmd`, and `build_cmd` as `["string", "null"]`. Several project templates set these to `null`:
 
-- **Java**: `lint_cmd: null`, `type_cmd: null`, `format_cmd: null`
+- **Java**: `type_cmd: null`, `format_cmd: null` (lint_cmd has values: `mvn checkstyle:check` / `./gradlew checkstyleMain`)
 - **Go/Rust/Node.js/.NET**: `type_cmd: null`
 - **General fallback**: `test_cmd: null`, `lint_cmd: null`, `type_cmd: null`, `format_cmd: null`
 
@@ -86,3 +86,11 @@ Report skipped checks in the verification output rather than failing silently.
 ## Status
 
 **Open** | Created: 2026-02-10 | Priority: P2
+
+## Verification Notes
+
+- **Verified**: 2026-02-10
+- **Verdict**: VALID (after update)
+- Fixed Java template claim: Java has `lint_cmd` values (`mvn checkstyle:check` / `./gradlew checkstyleMain`), not null. Only the generic template has `lint_cmd: null`.
+- Confirmed: check_code lint/format/types blocks have no null guards. build_cmd has documented guard (ENH-310).
+- Confirmed: manage_issue Phase 4 lacks null guards for test_cmd, lint_cmd; type_cmd has comment only. build_cmd missing entirely.

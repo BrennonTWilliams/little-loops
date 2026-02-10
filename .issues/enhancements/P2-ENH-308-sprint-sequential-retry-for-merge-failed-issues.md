@@ -13,7 +13,7 @@ When issues fail due to merge conflicts during a parallel wave, the sprint curre
 
 Identified from root cause analysis of a sprint failure. FEAT-031 failed due to merge conflict and was never retried. ENH-032 and ENH-033 also initially failed but were manually retried sequentially and succeeded. This retry pattern should be automated.
 
-The `process_issue_inplace()` function already exists in `issue_manager.py` and handles single-issue processing in the working tree (no worktree overhead). The sprint runner already uses it for single-issue waves at `cli.py:1927`.
+The `process_issue_inplace()` function already exists in `issue_manager.py` and handles single-issue processing in the working tree (no worktree overhead). The sprint runner already uses it for single-issue waves at `cli.py:2005`.
 
 ## Current Behavior
 
@@ -75,3 +75,12 @@ if failed_ids:
 ## Status
 
 **Open** | Created: 2026-02-09 | Priority: P2
+
+## Verification Notes
+
+- **Verified**: 2026-02-10
+- **Verdict**: VALID (after update)
+- Fixed line reference: `process_issue_inplace()` used at `cli.py:2005`, not 1927
+- Confirmed: no retry logic for merge-failed issues exists in `_cmd_sprint_run()`
+- Confirmed: `process_issue_inplace()` exists at `issue_manager.py:248` and is available for reuse
+- BUG-307 dependency satisfied (completed 2026-02-09)

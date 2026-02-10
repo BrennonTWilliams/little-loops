@@ -59,11 +59,18 @@ A single stuck subprocess in `ll-sprint` wastes up to 1 hour of wall-clock time 
 
 ## Status
 
-**Open** | Created: 2026-02-09 | Priority: P3
+**Resolved** | Created: 2026-02-09 | Resolved: 2026-02-10 | Priority: P3
+
+## Resolution
+
+Already implemented. `run_claude_command()` at `subprocess_utils.py:55` has full idle detection:
+- `idle_timeout` parameter (line 62, default 0 = disabled)
+- `last_output_time` tracking (line 116, updated at line 140)
+- Idle timeout check kills process and raises `TimeoutExpired(output="idle_timeout")` (lines 126-131)
 
 ## Verification Notes
 
-- **Verified**: 2026-02-09
-- **Verdict**: VALID (after update)
-- Fixed function name from `_run_claude_base()` to `run_claude_command()` and corrected line references
-- Confirmed: no idle/output tracking exists in subprocess_utils.py — only a total timeout check
+- **Verified**: 2026-02-10
+- **Verdict**: RESOLVED
+- Idle detection was implemented since the previous verification on 2026-02-09
+- All proposed features (last_output_time, configurable idle_timeout, distinct error) are present

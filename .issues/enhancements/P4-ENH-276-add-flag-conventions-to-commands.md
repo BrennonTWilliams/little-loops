@@ -11,7 +11,7 @@ Add `--flag` style modifier conventions to existing commands so users can adjust
 
 ## Current Behavior
 
-Commands like `/ll:scan_codebase`, `/ll:manage_issue`, and `/ll:audit_architecture` have fixed behavior with no way to modify depth, focus area, or execution mode from user input. Any behavioral variation requires editing the command definition or creating a new command.
+Most commands have fixed behavior with no way to modify depth, focus area, or execution mode from user input. `/ll:manage_issue` is the exception — it already supports `--plan-only`, `--resume`, and `--gates` flags. However, this pattern is not standardized or documented as a convention, and other commands like `/ll:scan_codebase` and `/ll:audit_architecture` have no flag support.
 
 ## Expected Behavior
 
@@ -51,3 +51,10 @@ Commands should document supported flags in their help text. Flags are optional 
 ## Status
 
 **Open** | Created: 2026-02-08 | Priority: P4
+
+## Verification Notes
+
+- **Verified**: 2026-02-10
+- **Verdict**: VALID (after update)
+- Updated Current Behavior: `manage_issue` already supports `--plan-only`, `--resume`, `--gates` flags
+- Issue scope refined to standardizing the flag convention across other commands and documenting it in help
