@@ -280,13 +280,13 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `p0_sequential` | `true` | Process P0 issues sequentially |
 | `worktree_base` | `.worktrees` | Git worktree directory |
 | `state_file` | `.parallel-manage-state.json` | State persistence |
-| `timeout_per_issue` | `7200` | Per-issue timeout in seconds |
+| `timeout_per_issue` | `3600` | Per-issue timeout in seconds |
 | `max_merge_retries` | `2` | Rebase attempts before failing |
 | `stream_subprocess_output` | `false` | Stream Claude CLI output |
 | `command_prefix` | `/ll:` | Prefix for slash commands |
 | `ready_command` | `ready_issue {{issue_id}}` | Ready command template |
 | `manage_command` | `manage_issue {{issue_type}} {{action}} {{issue_id}}` | Manage command template |
-| `worktree_copy_files` | `[".claude/settings.local.json", ".env"]` | Files to copy to worktrees |
+| `worktree_copy_files` | `[".env"]` | Files to copy to worktrees (.claude/ is always copied automatically) |
 
 #### `product`
 
@@ -307,7 +307,7 @@ Codebase scanning configuration:
 
 | Key | Default | Description |
 |-----|---------|-------------|
-| `focus_dirs` | `["src/"]` | Directories to scan |
+| `focus_dirs` | `["src/", "tests/"]` | Directories to scan |
 | `exclude_patterns` | Standard patterns | Paths to exclude from scanning |
 
 #### `sprints`
