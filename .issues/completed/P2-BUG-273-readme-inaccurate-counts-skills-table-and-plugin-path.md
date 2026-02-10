@@ -77,7 +77,7 @@ The actual 6 skills are: `analyze-history`, `issue-size-review`, `issue-workflow
 
 ## Status
 
-**Completed** | Created: 2026-02-07 | Priority: P2
+**Reopened** | Created: 2026-02-07 | Reopened: 2026-02-10 | Priority: P2
 
 ---
 
@@ -116,3 +116,21 @@ README.md line 25 now says "35 slash commands" but only **34** command files exi
 Also, ARCHITECTURE.md:65 says "35 slash command templates" while the mermaid diagram on line 24 says "34" — these are internally inconsistent.
 
 This is the **8th occurrence** of command count drift (BUG-014, BUG-083, BUG-098, BUG-155, BUG-161, BUG-162, BUG-273). Consider adding `ll-verify-docs` to CI to prevent recurrence.
+
+---
+
+## Resolution (Reopened Fix)
+
+- **Action**: fix
+- **Completed**: 2026-02-10
+- **Status**: Completed
+
+### Changes Made
+- `README.md:25`: Updated command count from 35 to 34
+- `README.md:659`: Updated command count from 35 to 34 in directory tree
+- `docs/ARCHITECTURE.md:65`: Updated command count from 35 to 34 in directory tree
+
+### Verification Results
+- Command count: 34 (matches `ls commands/*.md | wc -l`)
+- All documentation references now consistent (README.md, ARCHITECTURE.md mermaid, ARCHITECTURE.md tree)
+- No stale "35" references remain in user-facing docs

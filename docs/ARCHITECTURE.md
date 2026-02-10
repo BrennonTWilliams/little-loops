@@ -62,7 +62,7 @@ little-loops/
 ├── .claude-plugin/
 │   └── plugin.json          # Plugin manifest
 ├── config-schema.json       # JSON Schema for validation
-├── commands/                # 35 slash command templates
+├── commands/                # 34 slash command templates
 │   ├── init.md
 │   ├── help.md
 │   ├── check_code.md
