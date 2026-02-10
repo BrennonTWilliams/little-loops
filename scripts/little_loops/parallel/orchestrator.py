@@ -108,6 +108,7 @@ class ParallelOrchestrator:
         self._deferred_issues: list[IssueInfo] = []
         # Track last status report time for progress visibility (ENH-262)
         self._last_status_time: float = 0.0
+        self._last_status_line: str = ""
 
     @property
     def execution_duration(self) -> float:
@@ -539,6 +540,7 @@ class ParallelOrchestrator:
         """Report status if enough time has elapsed since last report.
 
         Reports every 5 seconds during active processing for progress visibility (ENH-262).
+        Suppresses duplicate lines when nothing has changed.
         """
         now = time.time()
         # Report every 5 seconds
@@ -589,6 +591,11 @@ class ParallelOrchestrator:
 
             if stage_parts:
                 status += " | " + " | ".join(stage_parts)
+
+        # Skip if nothing changed since last report
+        if status == self._last_status_line:
+            return
+        self._last_status_line = status
 
         # Log with gray color to distinguish from normal logs
         if self.logger.use_color:
