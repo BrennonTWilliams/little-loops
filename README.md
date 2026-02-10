@@ -182,6 +182,33 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     "enabled": true,
     "auto_handoff_threshold": 80,
     "context_limit_estimate": 150000
+  },
+
+  "sprints": {
+    "sprints_dir": ".sprints",
+    "default_timeout": 3600,
+    "default_max_workers": 4
+  },
+
+  "sync": {
+    "enabled": false,
+    "provider": "github",
+    "github": {
+      "repo": null,
+      "label_mapping": {
+        "BUG": "bug",
+        "FEAT": "enhancement",
+        "ENH": "enhancement"
+      },
+      "priority_labels": true,
+      "sync_completed": false,
+      "state_file": ".claude/ll-sync-state.json"
+    }
+  },
+
+  "documents": {
+    "enabled": false,
+    "categories": {}
   }
 }
 ```
@@ -282,6 +309,59 @@ Codebase scanning configuration:
 |-----|---------|-------------|
 | `focus_dirs` | `["src/"]` | Directories to scan |
 | `exclude_patterns` | Standard patterns | Paths to exclude from scanning |
+
+#### `sprints`
+
+Sprint management settings (ll-sprint, `/ll:create_sprint`):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `sprints_dir` | `.sprints` | Directory for sprint definitions |
+| `default_timeout` | `3600` | Default timeout per issue in seconds |
+| `default_max_workers` | `4` | Worker count for parallel execution within waves (1-8) |
+
+#### `sync`
+
+GitHub Issues synchronization for `/ll:sync_issues`:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable GitHub Issues sync feature |
+| `provider` | `"github"` | Issue tracking provider (currently only GitHub) |
+| `github.repo` | `null` | GitHub repository in owner/repo format (auto-detected if null) |
+| `github.label_mapping` | `{"BUG": "bug", ...}` | Map issue types to GitHub labels |
+| `github.priority_labels` | `true` | Add priority as GitHub label (e.g., "P1") |
+| `github.sync_completed` | `false` | Also sync completed issues (close on GitHub) |
+| `github.state_file` | `.claude/ll-sync-state.json` | File to track sync state |
+
+To enable sync, set `sync.enabled: true`. The repository is auto-detected from your git remote; set `sync.github.repo` to override.
+
+#### `documents`
+
+Document category tracking for `/ll:align_issues`:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable document category tracking |
+| `categories` | `{}` | Document categories with file lists |
+
+To enable document tracking, set `documents.enabled: true` and define categories:
+
+```json
+{
+  "documents": {
+    "enabled": true,
+    "categories": {
+      "architecture": {
+        "description": "System design and technical decisions",
+        "files": ["docs/ARCHITECTURE.md", "docs/API.md"]
+      }
+    }
+  }
+}
+```
+
+Each category requires a `files` array of relative paths. The optional `description` field documents what the category covers.
 
 ## Commands
 
