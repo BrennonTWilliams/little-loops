@@ -166,14 +166,6 @@ Analyze user message history to identify patterns, workflows, and automation opp
 **Arguments:**
 - `file` (optional): Path to user-messages JSONL file (auto-detected if omitted)
 
-### `/ll:find_demo_repos`
-Search for and score public GitHub repositories as demo candidates for little-loops.
-
-**Arguments:**
-- `query` (optional): GitHub search query
-- `limit` (optional): Number of repos to search (default: 5)
-- `min_score` (optional): Minimum score to include (default: 35)
-
 ---
 
 ## Git & Workflow
@@ -291,7 +283,6 @@ Analyze user message history to suggest FSM loop configurations automatically.
 | `audit_docs` | Check documentation accuracy |
 | `audit_claude_config` | Comprehensive config audit |
 | `analyze-workflows` | Analyze user message patterns for automation |
-| `find_demo_repos` | Search and score demo repository candidates |
 | `commit` | Create git commits |
 | `describe_pr` | Generate PR descriptions |
 | `open_pr` | Open a pull request for current branch |

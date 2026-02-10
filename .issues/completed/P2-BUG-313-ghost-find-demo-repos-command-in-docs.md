@@ -46,10 +46,13 @@ No `commands/find_demo_repos.md` file exists. The command was either:
 
 ## Related Count Fixes
 
-After resolving, update counts in:
-- `README.md:25` - "35 slash commands" → update to match actual count
-- `ARCHITECTURE.md:65` - "35 slash command templates" → update to match actual count
-- `ARCHITECTURE.md:24` - Mermaid diagram already says "34" (correct if Option A)
+> **Note**: Counts were already corrected from 35→34 in commit `3b78009`. No count updates needed.
+>
+> - `README.md:25` - Already says "34 slash commands" ✓
+> - `ARCHITECTURE.md:65` - Already says "34 slash command templates" ✓
+> - `ARCHITECTURE.md:24` - Mermaid diagram already says "34" ✓
+>
+> After removing the ghost entry from COMMANDS.md (Option A), COMMANDS.md will document 34 commands matching the 34 command files — all counts stay consistent.
 
 ## Impact
 
@@ -63,6 +66,25 @@ After resolving, update counts in:
 
 ---
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-10
+- **Status**: Completed
+
+### Changes Made
+- `docs/COMMANDS.md`: Removed ghost `/ll:find_demo_repos` detailed section (former lines 169-176)
+- `docs/COMMANDS.md`: Removed ghost `find_demo_repos` row from Quick Reference table (former line 294)
+
+### Approach
+Applied Option A — removed the ghost documentation entry since the command was never implemented (erroneously documented during ENH-275).
+
+### Verification Results
+- `find_demo_repos` no longer appears in COMMANDS.md: PASS
+- Command count (34) consistent across COMMANDS.md, README.md, ARCHITECTURE.md: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-10 | Priority: P2
+**Completed** | Created: 2026-02-10 | Resolved: 2026-02-10 | Priority: P2
