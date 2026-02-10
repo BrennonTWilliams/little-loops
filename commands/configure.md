@@ -40,7 +40,7 @@ Map argument names to config sections:
 
 | Argument | Config Section | Description |
 |----------|----------------|-------------|
-| `project` | `project` | Test, lint, format, type-check, build commands |
+| `project` | `project` | Test, lint, format, type-check, build, run commands |
 | `issues` | `issues` | Base dir, categories, templates, capture style |
 | `parallel` | `parallel` | ll-parallel: workers, timeouts, worktree files |
 | `automation` | `automation` | ll-auto: workers, timeouts, streaming |
@@ -110,6 +110,7 @@ Project Configuration
   type_cmd:   {{config.project.type_cmd}}      (default: mypy)
   format_cmd: {{config.project.format_cmd}}    (default: ruff format .)
   build_cmd:  {{config.project.build_cmd}}     (default: none)
+  run_cmd:    {{config.project.run_cmd}}      (default: none)
 
 Edit: /ll:configure project
 ```
@@ -384,6 +385,7 @@ Current Project Configuration
   type_cmd:   {{config.project.type_cmd}}
   format_cmd: {{config.project.format_cmd}}
   build_cmd:  {{config.project.build_cmd}}
+  run_cmd:    {{config.project.run_cmd}}
 ```
 
 ### Round 1: Core Commands (4 questions)
@@ -443,7 +445,7 @@ questions:
     multiSelect: false
 ```
 
-### Round 2: Format and Build (2 questions)
+### Round 2: Format, Build, and Run (3 questions)
 
 ```yaml
 questions:
@@ -471,6 +473,19 @@ questions:
         description: "Python editable install"
       - label: "none"
         description: "No build command"
+    multiSelect: false
+
+  - header: "Run cmd"
+    question: "Which run/start command should be used?"
+    options:
+      - label: "{{current run_cmd}} (keep)"
+        description: "Keep current setting"
+      - label: "npm start"
+        description: "Node.js start"
+      - label: "go run ."
+        description: "Go application"
+      - label: "none"
+        description: "No run command"
     multiSelect: false
 ```
 

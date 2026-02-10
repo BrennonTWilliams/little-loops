@@ -12,7 +12,8 @@
     "lint_cmd": "./gradlew checkstyleMain",
     "type_cmd": null,
     "format_cmd": null,
-    "build_cmd": "./gradlew build -x test"
+    "build_cmd": "./gradlew build -x test",
+    "run_cmd": "./gradlew run"
   },
   "scan": {
     "focus_dirs": ["src/main/java/", "src/test/java/"],

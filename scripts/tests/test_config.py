@@ -66,6 +66,7 @@ class TestProjectConfig:
             "type_cmd": "tsc --noEmit",
             "format_cmd": "prettier --write .",
             "build_cmd": "npm run build",
+            "run_cmd": "npm start",
         }
         config = ProjectConfig.from_dict(data)
 
@@ -76,6 +77,7 @@ class TestProjectConfig:
         assert config.type_cmd == "tsc --noEmit"
         assert config.format_cmd == "prettier --write ."
         assert config.build_cmd == "npm run build"
+        assert config.run_cmd == "npm start"
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating ProjectConfig with default values."""
@@ -88,6 +90,7 @@ class TestProjectConfig:
         assert config.type_cmd == "mypy"
         assert config.format_cmd == "ruff format ."
         assert config.build_cmd is None
+        assert config.run_cmd is None
 
 
 class TestIssuesConfig:

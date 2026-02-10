@@ -73,6 +73,7 @@ class ProjectConfig:
     type_cmd: str | None = "mypy"
     format_cmd: str | None = "ruff format ."
     build_cmd: str | None = None
+    run_cmd: str | None = None
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> ProjectConfig:
@@ -85,6 +86,7 @@ class ProjectConfig:
             type_cmd=data.get("type_cmd", "mypy"),
             format_cmd=data.get("format_cmd", "ruff format ."),
             build_cmd=data.get("build_cmd"),
+            run_cmd=data.get("run_cmd"),
         )
 
 
@@ -597,6 +599,7 @@ class BRConfig:
                 "type_cmd": self._project.type_cmd,
                 "format_cmd": self._project.format_cmd,
                 "build_cmd": self._project.build_cmd,
+                "run_cmd": self._project.run_cmd,
             },
             "issues": {
                 "base_dir": self._issues.base_dir,

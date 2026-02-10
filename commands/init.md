@@ -733,15 +733,28 @@ questions:
       - label: "make build"
         description: "Makefile build"
     multiSelect: false
+
+  - header: "Run Cmd"
+    question: "Do you have a run/start command?"
+    options:
+      - label: "Skip (Recommended)"
+        description: "No run command needed"
+      - label: "npm start"
+        description: "Node.js start"
+      - label: "python app.py"
+        description: "Python application"
+      - label: "go run ."
+        description: "Go application"
+    multiSelect: false
 ```
 
 **Populate options based on detected project type:**
-- Python: tests/, test/, Same as src | Skip, python -m build, make build
-- Node.js: tests/, test/, __tests__/ | npm run build, yarn build, Skip
-- Go: *_test.go files in same dir | go build, make build, Skip
-- Rust: tests/ | cargo build, cargo build --release, Skip
-- Java: src/test/java/ | mvn package, gradle build, Skip
-- .NET: tests/ | dotnet build, dotnet publish, Skip
+- Python: tests/, test/, Same as src | Skip, python -m build, make build | Skip, python app.py, python -m flask run
+- Node.js: tests/, test/, __tests__/ | npm run build, yarn build, Skip | npm start, node server.js, Skip
+- Go: *_test.go files in same dir | go build, make build, Skip | go run ., go run cmd/main.go, Skip
+- Rust: tests/ | cargo build, cargo build --release, Skip | cargo run, Skip
+- Java: src/test/java/ | mvn package, gradle build, Skip | mvn exec:java, Skip
+- .NET: tests/ | dotnet build, dotnet publish, Skip | dotnet run, Skip
 
 **Configuration from Round 6 responses:**
 
@@ -763,9 +776,19 @@ If user selected a build command (not "Skip"), add to configuration:
 }
 ```
 
+If user selected a run command (not "Skip"), add to configuration:
+```json
+{
+  "project": {
+    "run_cmd": "<selected command>"
+  }
+}
+```
+
 **Notes:**
 - Only include `test_dir` if different from the schema default ("tests")
 - Only include `build_cmd` if user selected a command (not "Skip")
+- Only include `run_cmd` if user selected a command (not "Skip")
 
 #### Step 5i: Continuation Behavior (Round 8)
 
@@ -957,6 +980,7 @@ Configuration Summary:
   project.type_cmd:   [type_cmd]
   project.format_cmd: [format_cmd]
   project.build_cmd:  [build_cmd]               # Only show if configured
+  project.run_cmd:    [run_cmd]                # Only show if configured
 
   [ISSUES]
   issues.base_dir:    [base_dir]

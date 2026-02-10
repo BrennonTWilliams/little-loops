@@ -127,7 +127,8 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     "lint_cmd": "ruff check src/",
     "type_cmd": "mypy src/",
     "format_cmd": "ruff format src/",
-    "build_cmd": null
+    "build_cmd": null,
+    "run_cmd": null
   },
 
   "issues": {
@@ -200,6 +201,7 @@ Project-level settings for commands:
 | `type_cmd` | `mypy` | Command for type checking |
 | `format_cmd` | `ruff format .` | Command to format code |
 | `build_cmd` | `null` | Optional build command |
+| `run_cmd` | `null` | Optional run/start command (smoke test) |
 
 #### `issues`
 

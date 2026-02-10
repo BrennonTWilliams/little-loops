@@ -12,7 +12,8 @@
     "lint_cmd": "cargo clippy -- -D warnings",
     "type_cmd": null,
     "format_cmd": "cargo fmt",
-    "build_cmd": "cargo build"
+    "build_cmd": "cargo build",
+    "run_cmd": "cargo run"
   },
   "scan": {
     "focus_dirs": ["src/", "tests/", "benches/"],

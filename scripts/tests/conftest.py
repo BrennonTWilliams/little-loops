@@ -74,6 +74,7 @@ def sample_config() -> dict[str, Any]:
             "type_cmd": "mypy src/",
             "format_cmd": "ruff format .",
             "build_cmd": None,
+            "run_cmd": None,
         },
         "issues": {
             "base_dir": ".issues",

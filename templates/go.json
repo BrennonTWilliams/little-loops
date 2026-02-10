@@ -12,7 +12,8 @@
     "lint_cmd": "golangci-lint run",
     "type_cmd": null,
     "format_cmd": "gofmt -w .",
-    "build_cmd": "go build ./..."
+    "build_cmd": "go build ./...",
+    "run_cmd": "go run ."
   },
   "scan": {
     "focus_dirs": ["cmd/", "pkg/", "internal/"],

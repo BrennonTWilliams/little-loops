@@ -51,6 +51,11 @@
           "type": ["string", "null"],
           "description": "Command to build project",
           "default": null
+        },
+        "run_cmd": {
+          "type": ["string", "null"],
+          "description": "Command to run/start project (smoke test)",
+          "default": null
         }
       },
       "additionalProperties": false

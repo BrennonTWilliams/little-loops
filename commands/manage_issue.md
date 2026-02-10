@@ -484,6 +484,9 @@ Run each verification command if configured (non-null). Skip silently if not con
 # Run build if build_cmd is configured (non-null)
 {{config.project.build_cmd}}
 
+# Run smoke test if run_cmd is configured (non-null). For long-running processes (servers), start in background, wait briefly for startup, then terminate.
+{{config.project.run_cmd}}
+
 # Run custom verification (if configured)
 # {{config.commands.custom_verification}}
 ```
@@ -553,6 +556,7 @@ Add resolution section:
 - Tests: PASS
 - Lint: PASS
 - Types: PASS
+- Run: PASS
 - Integration: PASS
 ```
 
@@ -627,6 +631,7 @@ ISSUE MANAGED: {ISSUE_ID} - {action}
 - tests: PASS
 - lint: PASS
 - types: PASS
+- run: PASS
 - integration: PASS
 
 ## RESULT

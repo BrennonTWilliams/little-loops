@@ -12,7 +12,8 @@
     "lint_cmd": "mvn checkstyle:check",
     "type_cmd": null,
     "format_cmd": null,
-    "build_cmd": "mvn package -DskipTests"
+    "build_cmd": "mvn package -DskipTests",
+    "run_cmd": "mvn exec:java"
   },
   "scan": {
     "focus_dirs": ["src/main/java/", "src/test/java/"],

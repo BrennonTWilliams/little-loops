@@ -12,7 +12,8 @@
     "lint_cmd": "npm run lint",
     "type_cmd": "npx tsc --noEmit",
     "format_cmd": "npm run format",
-    "build_cmd": "npm run build"
+    "build_cmd": "npm run build",
+    "run_cmd": "npm start"
   },
   "scan": {
     "focus_dirs": ["src/", "tests/", "test/", "lib/"],

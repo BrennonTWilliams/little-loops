@@ -221,6 +221,7 @@ class ProjectConfig:
     type_cmd: str | None = "mypy"
     format_cmd: str | None = "ruff format ."
     build_cmd: str | None = None
+    run_cmd: str | None = None
 ```
 
 ### IssuesConfig

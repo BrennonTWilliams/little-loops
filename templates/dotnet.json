@@ -12,7 +12,8 @@
     "lint_cmd": "dotnet format --verify-no-changes",
     "type_cmd": null,
     "format_cmd": "dotnet format",
-    "build_cmd": "dotnet build"
+    "build_cmd": "dotnet build",
+    "run_cmd": "dotnet run"
   },
   "scan": {
     "focus_dirs": ["src/", "tests/"],

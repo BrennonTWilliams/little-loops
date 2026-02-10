@@ -82,3 +82,31 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-02-10 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-10
+- **Status**: Completed
+
+### Changes Made
+- `config-schema.json`: Added `run_cmd` property (nullable string, default null)
+- `scripts/little_loops/config.py`: Added `run_cmd` field to ProjectConfig dataclass, from_dict, to_dict
+- `templates/*.json` (9 files): Added `run_cmd` to all project templates
+- `commands/manage_issue.md`: Added `run_cmd` smoke test to Phase 4 verification with null-guard
+- `commands/init.md`: Added `run_cmd` to interactive wizard (Round 7), summary display
+- `commands/configure.md`: Added `run_cmd` to --show, current values, interactive Round 2
+- `scripts/tests/test_config.py`: Added `run_cmd` test assertions
+- `scripts/tests/conftest.py`: Added `run_cmd` to sample_config fixture
+- `scripts/tests/test_issue_discovery.py`: Added `run_cmd` to test fixture
+- `docs/API.md`: Added `run_cmd` to ProjectConfig listing
+- `README.md`: Added `run_cmd` to config example and table
+
+### Verification Results
+- Tests: PASS (2660 passed)
+- Lint: PASS
+- Types: PASS
+- Run: SKIP (not configured for this project)
+- Integration: PASS

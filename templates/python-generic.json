@@ -12,7 +12,8 @@
     "lint_cmd": "ruff check .",
     "type_cmd": "mypy",
     "format_cmd": "ruff format .",
-    "build_cmd": null
+    "build_cmd": null,
+    "run_cmd": null
   },
   "scan": {
     "focus_dirs": ["src/", "tests/"],

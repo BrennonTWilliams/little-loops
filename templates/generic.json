@@ -13,7 +13,8 @@
     "lint_cmd": null,
     "type_cmd": null,
     "format_cmd": null,
-    "build_cmd": null
+    "build_cmd": null,
+    "run_cmd": null
   },
   "scan": {
     "focus_dirs": ["src/", "lib/"],

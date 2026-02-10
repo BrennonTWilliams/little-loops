@@ -13,7 +13,8 @@
     "lint_cmd": "npm run lint",
     "type_cmd": null,
     "format_cmd": "npm run format",
-    "build_cmd": null
+    "build_cmd": null,
+    "run_cmd": "npm start"
   },
   "scan": {
     "focus_dirs": ["src/", "lib/", "tests/", "test/"],
