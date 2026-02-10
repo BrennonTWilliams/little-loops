@@ -18,6 +18,15 @@ logger = logging.getLogger(__name__)
 
 
 @dataclass
+class WaveContentionNote:
+    """Annotation for a wave that was split due to file contention."""
+
+    contended_paths: list[str]
+    sub_wave_index: int
+    total_sub_waves: int
+
+
+@dataclass
 class DependencyGraph:
     """Directed acyclic graph of issue dependencies.
 
@@ -320,7 +329,7 @@ class DependencyGraph:
 
 def refine_waves_for_contention(
     waves: list[list[IssueInfo]],
-) -> list[list[IssueInfo]]:
+) -> tuple[list[list[IssueInfo]], list[WaveContentionNote | None]]:
     """Refine execution waves by splitting on file contention.
 
     For each wave with multiple issues, extracts file hints from issue
@@ -332,16 +341,20 @@ def refine_waves_for_contention(
         waves: Execution waves from get_execution_waves()
 
     Returns:
-        Refined wave list with contention-free sub-waves.
-        Single-issue waves pass through unchanged.
+        Tuple of (refined_waves, contention_notes).
+        refined_waves: Wave list with contention-free sub-waves.
+        contention_notes: Parallel list (same length as refined_waves).
+            None for waves that weren't split, WaveContentionNote for sub-waves.
     """
     from little_loops.parallel.file_hints import FileHints, extract_file_hints
 
     refined: list[list[IssueInfo]] = []
+    annotations: list[WaveContentionNote | None] = []
 
     for wave in waves:
         if len(wave) <= 1:
             refined.append(wave)
+            annotations.append(None)
             continue
 
         # Extract file hints for each issue in the wave
@@ -361,7 +374,17 @@ def refine_waves_for_contention(
         # If no conflicts, keep wave as-is
         if not any(conflicts.values()):
             refined.append(wave)
+            annotations.append(None)
             continue
+
+        # Collect all contended paths for display
+        contended: set[str] = set()
+        for i, a in enumerate(wave):
+            for b in wave[i + 1 :]:
+                contended.update(
+                    hints[a.issue_id].get_overlapping_paths(hints[b.issue_id])
+                )
+        contended_paths = sorted(contended)
 
         # Greedy graph coloring — assign each issue the lowest color
         # not used by any conflicting neighbor
@@ -375,13 +398,21 @@ def refine_waves_for_contention(
 
         # Group issues by color into sub-waves, preserving priority order
         max_color = max(color.values())
-        for c in range(max_color + 1):
+        total_sub_waves = max_color + 1
+        for c in range(total_sub_waves):
             sub_wave = [issue for issue in wave if color[issue.issue_id] == c]
             if sub_wave:
                 refined.append(sub_wave)
+                annotations.append(
+                    WaveContentionNote(
+                        contended_paths=contended_paths,
+                        sub_wave_index=c,
+                        total_sub_waves=total_sub_waves,
+                    )
+                )
 
         logger.info(
-            f"  Wave split into {max_color + 1} sub-waves due to file contention"
+            f"  Wave split into {total_sub_waves} sub-waves due to file contention"
         )
 
-    return refined
+    return refined, annotations

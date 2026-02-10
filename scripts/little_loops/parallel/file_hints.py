@@ -96,6 +96,38 @@ class FileHints:
 
         return False
 
+    def get_overlapping_paths(self, other: FileHints) -> set[str]:
+        """Get specific paths that overlap between two hint sets.
+
+        Unlike overlaps_with() which returns bool, this returns the
+        actual file/directory paths causing the overlap.
+        """
+        if self.is_empty or other.is_empty:
+            return set()
+
+        overlapping: set[str] = set()
+
+        # Exact file matches
+        overlapping.update(self.files & other.files)
+
+        # Directory overlaps (use shorter/parent path)
+        for d1 in self.directories:
+            for d2 in other.directories:
+                if _directories_overlap(d1, d2):
+                    overlapping.add(d1 if len(d1) <= len(d2) else d2)
+
+        # File in directory
+        for f in self.files:
+            for d in other.directories:
+                if _file_in_directory(f, d):
+                    overlapping.add(f)
+        for f in other.files:
+            for d in self.directories:
+                if _file_in_directory(f, d):
+                    overlapping.add(f)
+
+        return overlapping
+
 
 def _directories_overlap(dir1: str, dir2: str) -> bool:
     """Check if two directory paths overlap (one contains the other)."""

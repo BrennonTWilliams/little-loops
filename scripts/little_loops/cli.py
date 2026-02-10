@@ -32,7 +32,11 @@ from little_loops.cli_args import (
     parse_issue_ids,
 )
 from little_loops.config import BRConfig
-from little_loops.dependency_graph import DependencyGraph, refine_waves_for_contention
+from little_loops.dependency_graph import (
+    DependencyGraph,
+    WaveContentionNote,
+    refine_waves_for_contention,
+)
 from little_loops.issue_manager import AutoManager
 from little_loops.logger import Logger, format_duration
 from little_loops.parallel.orchestrator import ParallelOrchestrator
@@ -1520,12 +1524,15 @@ def _cmd_sprint_create(args: argparse.Namespace, manager: SprintManager) -> int:
 def _render_execution_plan(
     waves: list[list[Any]],
     dep_graph: DependencyGraph,
+    contention_notes: list[WaveContentionNote | None] | None = None,
 ) -> str:
     """Render execution plan with wave groupings.
 
     Args:
         waves: List of execution waves from get_execution_waves()
         dep_graph: DependencyGraph for looking up blockers
+        contention_notes: Optional per-wave contention annotations from
+            refine_waves_for_contention(). Same length as waves.
 
     Returns:
         Formatted string showing wave structure
@@ -1568,6 +1575,19 @@ def _render_execution_plan(
                 blocker_prefix = "      └── " if is_last else "  │   └── "
                 blockers_str = ", ".join(sorted(blockers))
                 lines.append(f"{blocker_prefix}blocked by: {blockers_str}")
+
+        # Show file contention annotation if this wave was split
+        if contention_notes and wave_num <= len(contention_notes):
+            note = contention_notes[wave_num - 1]
+            if note:
+                lines.append(
+                    f"  \u26a0  File contention \u2014 sub-wave "
+                    f"{note.sub_wave_index + 1}/{note.total_sub_waves}"
+                )
+                paths_str = ", ".join(note.contended_paths[:3])
+                if len(note.contended_paths) > 3:
+                    paths_str += f" +{len(note.contended_paths) - 3} more"
+                lines.append(f"     Contended: {paths_str}")
 
     return "\n".join(lines)
 
@@ -1660,6 +1680,7 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
     issue_infos = manager.load_issue_infos(list(valid.keys()))
     dep_graph: DependencyGraph | None = None
     waves: list[list[Any]] = []
+    contention_notes: list[WaveContentionNote | None] | None = None
     has_cycles = False
 
     if issue_infos:
@@ -1668,7 +1689,7 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
 
         if not has_cycles:
             waves = dep_graph.get_execution_waves()
-            waves = refine_waves_for_contention(waves)
+            waves, contention_notes = refine_waves_for_contention(waves)
 
     print(f"Sprint: {sprint.name}")
     print(f"Description: {sprint.description or '(none)'}")
@@ -1676,7 +1697,7 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
 
     # Show execution plan if we have dependency info and no cycles
     if waves and dep_graph:
-        print(_render_execution_plan(waves, dep_graph))
+        print(_render_execution_plan(waves, dep_graph, contention_notes))
         print(_render_dependency_graph(waves, dep_graph))
     else:
         # Fallback to simple list if no valid issues or cycles
@@ -1916,14 +1937,21 @@ def _cmd_sprint_run(
         return 1
 
     # Refine waves for file contention (ENH-306)
-    waves = refine_waves_for_contention(waves)
+    waves, contention_notes = refine_waves_for_contention(waves)
 
     # Display execution plan
     logger.info(f"Running sprint: {sprint.name}")
     logger.info("Dependency analysis:")
     for i, wave in enumerate(waves, 1):
         issue_ids = ", ".join(issue.issue_id for issue in wave)
-        logger.info(f"  Wave {i}: {issue_ids}")
+        note = contention_notes[i - 1] if contention_notes else None
+        if note:
+            logger.info(
+                f"  Wave {i}: {issue_ids}"
+                f" [sub-wave {note.sub_wave_index + 1}/{note.total_sub_waves}]"
+            )
+        else:
+            logger.info(f"  Wave {i}: {issue_ids}")
 
     if args.dry_run:
         logger.info("\nDry run mode - no changes will be made")

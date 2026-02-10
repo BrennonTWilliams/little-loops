@@ -1038,6 +1038,106 @@ class TestSprintShowDependencyVisualization:
         assert "..." in output
         assert "A" * 60 not in output
 
+    def test_render_execution_plan_with_contention_notes(self) -> None:
+        """Contention notes should display warning and contended files."""
+        from little_loops.cli import _render_execution_plan
+        from little_loops.dependency_graph import DependencyGraph, WaveContentionNote
+
+        issue1 = self._make_issue("FEAT-001", priority="P0", title="First feature")
+        issue2 = self._make_issue("FEAT-002", priority="P1", title="Second feature")
+
+        graph = DependencyGraph.from_issues([issue1, issue2])
+        waves = [[issue1], [issue2]]
+        notes: list[WaveContentionNote | None] = [
+            WaveContentionNote(
+                contended_paths=["src/cli.py"],
+                sub_wave_index=0,
+                total_sub_waves=2,
+            ),
+            WaveContentionNote(
+                contended_paths=["src/cli.py"],
+                sub_wave_index=1,
+                total_sub_waves=2,
+            ),
+        ]
+
+        output = _render_execution_plan(waves, graph, notes)
+
+        assert "File contention" in output
+        assert "sub-wave 1/2" in output
+        assert "sub-wave 2/2" in output
+        assert "src/cli.py" in output
+
+    def test_render_execution_plan_no_contention_notes(self) -> None:
+        """No contention notes means no warnings displayed."""
+        from little_loops.cli import _render_execution_plan
+        from little_loops.dependency_graph import DependencyGraph
+
+        issue1 = self._make_issue("BUG-001", priority="P0", title="Fix crash")
+        issue2 = self._make_issue("FEAT-002", priority="P2", title="Add feature")
+
+        graph = DependencyGraph.from_issues([issue1, issue2])
+        waves = graph.get_execution_waves()
+
+        output = _render_execution_plan(waves, graph, None)
+
+        assert "File contention" not in output
+        assert "sub-wave" not in output
+
+    def test_render_execution_plan_mixed_contention(self) -> None:
+        """Mix of split and non-split waves shows warnings only where needed."""
+        from little_loops.cli import _render_execution_plan
+        from little_loops.dependency_graph import DependencyGraph, WaveContentionNote
+
+        issue1 = self._make_issue("BUG-001", priority="P0", title="Bug fix")
+        issue2 = self._make_issue("FEAT-002", priority="P1", title="Feature A")
+        issue3 = self._make_issue("FEAT-003", priority="P2", title="Feature B")
+
+        graph = DependencyGraph.from_issues([issue1, issue2, issue3])
+        waves = [[issue1], [issue2], [issue3]]
+        notes: list[WaveContentionNote | None] = [
+            None,
+            WaveContentionNote(
+                contended_paths=["src/page.tsx"],
+                sub_wave_index=0,
+                total_sub_waves=2,
+            ),
+            WaveContentionNote(
+                contended_paths=["src/page.tsx"],
+                sub_wave_index=1,
+                total_sub_waves=2,
+            ),
+        ]
+
+        output = _render_execution_plan(waves, graph, notes)
+
+        # Both split waves should have contention notes
+        assert "sub-wave 1/2" in output
+        assert "sub-wave 2/2" in output
+        assert "src/page.tsx" in output
+        # The contention notes appear exactly twice (one per sub-wave)
+        assert output.count("File contention") == 2
+
+    def test_render_execution_plan_contention_path_truncation(self) -> None:
+        """More than 3 contended paths should be truncated."""
+        from little_loops.cli import _render_execution_plan
+        from little_loops.dependency_graph import DependencyGraph, WaveContentionNote
+
+        issue = self._make_issue("BUG-001", priority="P0", title="Bug fix")
+        graph = DependencyGraph.from_issues([issue])
+        waves = [[issue]]
+        notes: list[WaveContentionNote | None] = [
+            WaveContentionNote(
+                contended_paths=["a.py", "b.py", "c.py", "d.py", "e.py"],
+                sub_wave_index=0,
+                total_sub_waves=2,
+            ),
+        ]
+
+        output = _render_execution_plan(waves, graph, notes)
+
+        assert "+2 more" in output
+
 
 # =============================================================================
 # ENH-206: Additional Coverage Tests

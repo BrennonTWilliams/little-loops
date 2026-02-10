@@ -638,10 +638,11 @@ class TestRefineWavesForContention:
         issue = _make_issue_with_content("FEAT-001", "modifies src/cli.py")
         waves: list[list[IssueInfo]] = [[issue]]
 
-        result = refine_waves_for_contention(waves)
+        result, notes = refine_waves_for_contention(waves)
 
         assert len(result) == 1
         assert result[0] == [issue]
+        assert notes[0] is None
 
     def test_no_overlaps_unchanged(self) -> None:
         """Multi-issue wave with no file contention stays as one wave."""
@@ -649,10 +650,11 @@ class TestRefineWavesForContention:
         b = _make_issue_with_content("FEAT-002", "modifies src/sprint.py")
         waves: list[list[IssueInfo]] = [[a, b]]
 
-        result = refine_waves_for_contention(waves)
+        result, notes = refine_waves_for_contention(waves)
 
         assert len(result) == 1
         assert [i.issue_id for i in result[0]] == ["FEAT-001", "FEAT-002"]
+        assert notes[0] is None
 
     def test_two_issues_same_file_split(self) -> None:
         """Two issues sharing a file split into 2 sub-waves."""
@@ -660,20 +662,20 @@ class TestRefineWavesForContention:
         b = _make_issue_with_content("FEAT-002", "modifies src/cli.py")
         waves: list[list[IssueInfo]] = [[a, b]]
 
-        result = refine_waves_for_contention(waves)
+        result, notes = refine_waves_for_contention(waves)
 
         assert len(result) == 2
         assert result[0][0].issue_id == "FEAT-001"
         assert result[1][0].issue_id == "FEAT-002"
 
     def test_three_issues_two_overlap_one_independent(self) -> None:
-        """3 issues where A overlaps B but C is independent → 2 sub-waves."""
+        """3 issues where A overlaps B but C is independent -> 2 sub-waves."""
         a = _make_issue_with_content("FEAT-001", "modifies src/page.tsx", priority="P0")
         b = _make_issue_with_content("FEAT-002", "modifies src/page.tsx", priority="P1")
         c = _make_issue_with_content("FEAT-003", "modifies src/api.py", priority="P2")
         waves: list[list[IssueInfo]] = [[a, b, c]]
 
-        result = refine_waves_for_contention(waves)
+        result, notes = refine_waves_for_contention(waves)
 
         assert len(result) == 2
         # Sub-wave 1: A and C (no overlap), sub-wave 2: B
@@ -684,13 +686,13 @@ class TestRefineWavesForContention:
         assert "FEAT-002" in sub2_ids
 
     def test_all_three_overlap_pairwise(self) -> None:
-        """3 issues all overlapping each other → 3 sub-waves."""
+        """3 issues all overlapping each other -> 3 sub-waves."""
         a = _make_issue_with_content("FEAT-001", "modifies src/shared.py")
         b = _make_issue_with_content("FEAT-002", "modifies src/shared.py")
         c = _make_issue_with_content("FEAT-003", "modifies src/shared.py")
         waves: list[list[IssueInfo]] = [[a, b, c]]
 
-        result = refine_waves_for_contention(waves)
+        result, notes = refine_waves_for_contention(waves)
 
         assert len(result) == 3
         assert result[0][0].issue_id == "FEAT-001"
@@ -703,10 +705,11 @@ class TestRefineWavesForContention:
         b = _make_issue_with_content("FEAT-002", "")
         waves: list[list[IssueInfo]] = [[a, b]]
 
-        result = refine_waves_for_contention(waves)
+        result, notes = refine_waves_for_contention(waves)
 
         assert len(result) == 1
         assert len(result[0]) == 2
+        assert notes[0] is None
 
     def test_mixed_waves_only_multi_refined(self) -> None:
         """Multiple waves: only multi-issue waves with overlaps get refined."""
@@ -717,7 +720,7 @@ class TestRefineWavesForContention:
         no_overlap_b = _make_issue_with_content("FEAT-005", "modifies src/d.py", priority="P1")
         waves: list[list[IssueInfo]] = [[single], [multi_a, multi_b], [no_overlap_a, no_overlap_b]]
 
-        result = refine_waves_for_contention(waves)
+        result, notes = refine_waves_for_contention(waves)
 
         # Wave 1: single issue passthrough
         assert len(result[0]) == 1
@@ -737,13 +740,46 @@ class TestRefineWavesForContention:
         # b overlaps with nobody (different files), a and c are independent
         waves: list[list[IssueInfo]] = [[a, b, c]]
 
-        result = refine_waves_for_contention(waves)
+        result, notes = refine_waves_for_contention(waves)
 
-        # No overlaps → single wave, order preserved
+        # No overlaps -> single wave, order preserved
         assert len(result) == 1
         assert [i.issue_id for i in result[0]] == ["FEAT-001", "FEAT-002", "FEAT-003"]
 
     def test_empty_waves_input(self) -> None:
         """Empty input returns empty output."""
-        result = refine_waves_for_contention([])
+        result, notes = refine_waves_for_contention([])
         assert result == []
+        assert notes == []
+
+    def test_contention_notes_for_split_wave(self) -> None:
+        """Split waves should have WaveContentionNote annotations."""
+        a = _make_issue_with_content("FEAT-001", "modifies src/cli.py")
+        b = _make_issue_with_content("FEAT-002", "modifies src/cli.py")
+        waves: list[list[IssueInfo]] = [[a, b]]
+
+        result, notes = refine_waves_for_contention(waves)
+
+        assert len(notes) == 2
+        assert notes[0] is not None
+        assert notes[0].sub_wave_index == 0
+        assert notes[0].total_sub_waves == 2
+        assert "src/cli.py" in notes[0].contended_paths
+        assert notes[1] is not None
+        assert notes[1].sub_wave_index == 1
+        assert notes[1].total_sub_waves == 2
+
+    def test_contention_notes_mixed_waves(self) -> None:
+        """Notes should be None for non-split waves and populated for split ones."""
+        single = _make_issue_with_content("FEAT-001", "modifies src/a.py")
+        overlap_a = _make_issue_with_content("FEAT-002", "modifies src/b.py", priority="P0")
+        overlap_b = _make_issue_with_content("FEAT-003", "modifies src/b.py", priority="P1")
+        waves: list[list[IssueInfo]] = [[single], [overlap_a, overlap_b]]
+
+        result, notes = refine_waves_for_contention(waves)
+
+        assert len(notes) == 3  # 1 passthrough + 2 sub-waves
+        assert notes[0] is None  # single issue wave
+        assert notes[1] is not None  # sub-wave 1
+        assert notes[2] is not None  # sub-wave 2
+        assert "src/b.py" in notes[1].contended_paths

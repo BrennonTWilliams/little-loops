@@ -169,6 +169,64 @@ class TestFileHintsOverlap:
         assert not FileHints(scopes={"auth"}).is_empty
 
 
+class TestGetOverlappingPaths:
+    """Tests for FileHints.get_overlapping_paths method."""
+
+    def test_exact_file_match(self) -> None:
+        """Should return shared file paths."""
+        hints1 = FileHints(files={"src/cli.py", "src/other.py"})
+        hints2 = FileHints(files={"src/cli.py", "src/config.py"})
+        result = hints1.get_overlapping_paths(hints2)
+        assert result == {"src/cli.py"}
+
+    def test_directory_overlap(self) -> None:
+        """Should return the shorter/parent directory."""
+        hints1 = FileHints(directories={"src/"})
+        hints2 = FileHints(directories={"src/components/"})
+        result = hints1.get_overlapping_paths(hints2)
+        assert "src/" in result
+
+    def test_file_in_directory(self) -> None:
+        """Should return the file path when it's in a directory."""
+        hints1 = FileHints(files={"src/cli.py"})
+        hints2 = FileHints(directories={"src/"})
+        result = hints1.get_overlapping_paths(hints2)
+        assert "src/cli.py" in result
+
+    def test_file_in_directory_reverse(self) -> None:
+        """Should detect file-in-directory in both directions."""
+        hints1 = FileHints(directories={"src/"})
+        hints2 = FileHints(files={"src/cli.py"})
+        result = hints1.get_overlapping_paths(hints2)
+        assert "src/cli.py" in result
+
+    def test_no_overlap(self) -> None:
+        """Should return empty set when no overlap."""
+        hints1 = FileHints(files={"src/cli.py"})
+        hints2 = FileHints(files={"tests/test.py"})
+        result = hints1.get_overlapping_paths(hints2)
+        assert result == set()
+
+    def test_empty_hints(self) -> None:
+        """Should return empty set for empty hints."""
+        hints1 = FileHints()
+        hints2 = FileHints(files={"src/cli.py"})
+        result = hints1.get_overlapping_paths(hints2)
+        assert result == set()
+
+    def test_both_empty(self) -> None:
+        """Should return empty set when both empty."""
+        result = FileHints().get_overlapping_paths(FileHints())
+        assert result == set()
+
+    def test_multiple_overlaps(self) -> None:
+        """Should return all overlapping paths."""
+        hints1 = FileHints(files={"src/a.py", "src/b.py"})
+        hints2 = FileHints(files={"src/a.py", "src/b.py", "src/c.py"})
+        result = hints1.get_overlapping_paths(hints2)
+        assert result == {"src/a.py", "src/b.py"}
+
+
 class TestDirectoriesOverlap:
     """Tests for _directories_overlap helper."""
 
