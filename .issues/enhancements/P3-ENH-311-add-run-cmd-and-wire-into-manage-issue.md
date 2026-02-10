@@ -33,11 +33,15 @@ There is no `run_cmd` in the config schema. After implementing an issue via `man
 - Update `commands/init.md` and `commands/configure.md` to include `run_cmd`
 
 ### Verification Integration
-- In `manage_issue` verification phase, if `run_cmd` is configured:
+- In `manage_issue` verification phase, if `run_cmd` is configured (non-null):
   - Run the command with a short timeout (e.g., 10s)
   - Check for startup success (exit code 0 or expected output)
   - For long-running processes (servers), start in background, wait briefly for startup, then kill
+  - If `run_cmd` is null, skip silently and report `SKIP` status — do NOT attempt to execute
 - This is the trickiest part — need to handle both one-shot CLIs and long-running servers
+
+### Null Guard Pattern
+Follow the same null-guard pattern established by BUG-312 for other nullable commands. The `manage_issue` verification block for `run_cmd` must include an explicit instruction: "Run smoke test if `run_cmd` is configured (non-null). Skip silently if not configured." This prevents the template from interpolating a null value into a bash command.
 
 ## Current Pain Point
 
@@ -60,6 +64,10 @@ After implementing changes via `manage_issue`, there's no automated check that t
 - **Priority**: P3
 - **Effort**: Medium — schema, config, templates, init, configure, and manage_issue changes
 - **Risk**: Low-Medium — the server smoke test logic needs care to handle timeouts and background processes correctly
+
+## Dependencies
+
+- **BUG-312**: Adds null guards to existing commands (`lint_cmd`, `type_cmd`, `format_cmd`, `test_cmd`, `build_cmd`). ENH-311 should follow the same pattern for `run_cmd`.
 
 ## Related Key Documentation
 
