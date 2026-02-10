@@ -37,12 +37,6 @@ Deep dives into specific systems and internals.
 - [CLI Tools Audit](CLI-TOOLS-AUDIT.md) - Review and audit of CLI tools
 - [Demo Repository Rubric](demo-repo-rubric.md) - Criteria for evaluating demo repositories
 
-## Research
-
-Research notes and explorations (directory currently empty).
-
-- [research/](research/) - Research notes and experimental explorations
-
 ---
 
 **Need help?** See the [Troubleshooting Guide](TROUBLESHOOTING.md) or check [Getting Help](TROUBLESHOOTING.md#getting-help) section.

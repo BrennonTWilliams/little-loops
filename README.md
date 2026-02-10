@@ -755,7 +755,8 @@ little-loops/
 │   ├── java-maven.json
 │   ├── java-gradle.json
 │   ├── dotnet.json
-│   └── generic.json
+│   ├── generic.json
+│   └── issue-sections.json
 └── scripts/              # Python CLI tools
     ├── pyproject.toml
     └── little_loops/
