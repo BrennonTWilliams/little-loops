@@ -1,10 +1,10 @@
 ---
-description: Run code quality checks (lint, format, types)
+description: Run code quality checks (lint, format, types, build)
 allowed-tools:
-  - Bash(ruff:*, mypy:*, python:*)
+  - Bash(ruff:*, mypy:*, python:*, npm:*, cargo:*, go:*, dotnet:*, mvn:*, ./gradlew:*, make:*)
 arguments:
   - name: mode
-    description: Check mode (lint|format|types|all|fix)
+    description: Check mode (lint|format|types|build|all|fix)
     required: false
 ---
 
@@ -19,12 +19,14 @@ This command uses project configuration from `.claude/ll-config.json`:
 - **Lint command**: `{{config.project.lint_cmd}}`
 - **Format command**: `{{config.project.format_cmd}}`
 - **Type command**: `{{config.project.type_cmd}}`
+- **Build command**: `{{config.project.build_cmd}}`
 
 ## Check Modes
 
 - **lint**: Run linter to find code issues
 - **format**: Check code formatting
 - **types**: Run type checking
+- **build**: Run build verification (if configured)
 - **all**: Run all checks (default)
 - **fix**: Auto-fix issues where possible
 
@@ -104,6 +106,28 @@ if [ "$MODE" = "types" ] || [ "$MODE" = "all" ]; then
 fi
 ```
 
+#### Mode: build
+
+Run build verification if `build_cmd` is configured (non-null). Skip silently if not configured.
+
+```bash
+if [ "$MODE" = "build" ] || [ "$MODE" = "all" ]; then
+    echo ""
+    echo "========================================"
+    echo "BUILD"
+    echo "========================================"
+
+    # Only run if build_cmd is configured (non-null)
+    {{config.project.build_cmd}}
+
+    if [ $? -eq 0 ]; then
+        echo "[PASS] Build succeeded"
+    else
+        echo "[FAIL] Build failed"
+    fi
+fi
+```
+
 #### Mode: fix
 
 ```bash
@@ -145,11 +169,13 @@ Results:
   Linting:    [PASS/FIXED/FAIL]
   Formatting: [PASS/FIXED/FAIL]
   Types:      [PASS/FAIL]
+  Build:      [PASS/FAIL/SKIP]
 
 Status:
 - PASS: No issues found
 - FIXED: Issues were found and automatically fixed
-- FAIL: Issues remain (type errors cannot be auto-fixed)
+- FAIL: Issues remain (type errors and build errors cannot be auto-fixed)
+- SKIP: Check not configured (e.g., no build_cmd set)
 
 ================================================================================
 ```
@@ -164,6 +190,7 @@ $ARGUMENTS
   - `lint` - Run linter only
   - `format` - Check formatting only
   - `types` - Run type checking only
+  - `build` - Run build verification only (if configured)
   - `all` - Run all checks
   - `fix` - Auto-fix lint and format issues
 
@@ -183,6 +210,9 @@ $ARGUMENTS
 
 # Just type checking
 /ll:check_code types
+
+# Just build verification
+/ll:check_code build
 
 # Auto-fix issues
 /ll:check_code fix

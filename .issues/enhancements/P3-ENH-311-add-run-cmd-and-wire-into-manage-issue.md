@@ -1,0 +1,76 @@
+---
+discovered_date: 2026-02-10
+discovered_by: capture_issue
+---
+
+# ENH-311: Add run_cmd to config and wire into manage_issue verification
+
+## Summary
+
+Add a `run_cmd` field to the project config schema for starting/running the project (e.g., `npm start`, `python app.py`, `go run .`). Wire it into `/ll:manage_issue` verification phase so that after implementation, the project can be smoke-tested to confirm it still runs.
+
+## Context
+
+Identified from conversation discussing whether `ll-config` should capture the run command alongside the existing build command. `build_cmd` is a one-shot compilation check, while `run_cmd` covers actually starting the project — important for web apps, APIs, and CLI tools.
+
+## Current Behavior
+
+There is no `run_cmd` in the config schema. After implementing an issue via `manage_issue`, verification only covers tests, lint, and type checking — there's no check that the project actually starts successfully.
+
+## Expected Behavior
+
+1. `run_cmd` exists in `config-schema.json` under `project` (nullable string, default null)
+2. Project templates populate `run_cmd` where applicable (e.g., `npm start` for TS, `go run .` for Go)
+3. `/ll:init` and `/ll:configure` support configuring `run_cmd`
+4. `/ll:manage_issue` verification phase runs `run_cmd` (if configured) as a smoke test
+
+## Proposed Solution
+
+### Schema & Config
+- Add `run_cmd` to `config-schema.json` `project.properties` (type: `["string", "null"]`, default: `null`)
+- Add `run_cmd` to `ProjectConfig` dataclass in `config.py`
+- Update templates that have meaningful run commands (typescript, go, java, rust, dotnet)
+- Update `commands/init.md` and `commands/configure.md` to include `run_cmd`
+
+### Verification Integration
+- In `manage_issue` verification phase, if `run_cmd` is configured:
+  - Run the command with a short timeout (e.g., 10s)
+  - Check for startup success (exit code 0 or expected output)
+  - For long-running processes (servers), start in background, wait briefly for startup, then kill
+- This is the trickiest part — need to handle both one-shot CLIs and long-running servers
+
+## Current Pain Point
+
+After implementing changes via `manage_issue`, there's no automated check that the project still starts. Build verification (if wired) catches compilation errors, but runtime startup failures (missing env vars, broken imports, config errors) go undetected until manual testing.
+
+## Scope Boundaries
+
+- Keep `run_cmd` simple — a single string command, not a complex server management system
+- Don't build a full "dev server manager" — just a quick smoke test
+- Don't add `run_cmd` to `check_code` (that's for static checks only)
+- Don't attempt to verify application behavior beyond startup success
+
+## Backwards Compatibility
+
+- `run_cmd` defaults to `null`, so existing configs are unaffected
+- Verification phase only uses it if configured — no change for projects without it
+
+## Impact
+
+- **Priority**: P3
+- **Effort**: Medium — schema, config, templates, init, configure, and manage_issue changes
+- **Risk**: Low-Medium — the server smoke test logic needs care to handle timeouts and background processes correctly
+
+## Related Key Documentation
+
+_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+
+## Labels
+
+`enhancement`, `captured`
+
+---
+
+## Status
+
+**Open** | Created: 2026-02-10 | Priority: P3
