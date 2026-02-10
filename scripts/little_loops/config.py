@@ -174,7 +174,7 @@ class AutomationConfig:
     """Automation script configuration."""
 
     timeout_seconds: int = 3600
-    idle_timeout_seconds: int = 600  # Kill if no output for 10 minutes (0 to disable)
+    idle_timeout_seconds: int = 0  # Kill if no output for N seconds (0 to disable)
     state_file: str = ".auto-manage-state.json"
     worktree_base: str = ".worktrees"
     max_workers: int = 2
@@ -186,7 +186,7 @@ class AutomationConfig:
         """Create AutomationConfig from dictionary."""
         return cls(
             timeout_seconds=data.get("timeout_seconds", 3600),
-            idle_timeout_seconds=data.get("idle_timeout_seconds", 600),
+            idle_timeout_seconds=data.get("idle_timeout_seconds", 0),
             state_file=data.get("state_file", ".auto-manage-state.json"),
             worktree_base=data.get("worktree_base", ".worktrees"),
             max_workers=data.get("max_workers", 2),
