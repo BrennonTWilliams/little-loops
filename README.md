@@ -424,6 +424,7 @@ Each category requires a `files` array of relative paths. The optional `descript
 | `/ll:align_issues <category>` | Validate issues against key documents |
 | `/ll:sync_issues [mode]` | Sync local issues with GitHub Issues |
 | `/ll:create_sprint [name] [--issues]` | Create sprint (explicit or auto-suggested) |
+| `/ll:tradeoff_review_issues` | Evaluate issues for utility vs complexity |
 
 ### Documentation & Analysis
 
@@ -440,9 +441,12 @@ Each category requires a `files` array of relative paths. The optional `descript
 | Command | Description |
 |---------|-------------|
 | `/ll:commit` | Create commits with approval |
+| `/ll:open_pr [target_branch]` | Open pull request for current branch |
+| `/ll:manage_release [action] [version]` | Manage releases, tags, and changelogs |
 | `/ll:iterate_plan [path]` | Update existing plans |
 | `/ll:cleanup_worktrees [mode]` | Clean orphaned git worktrees |
 | `/ll:create_loop` | Interactive FSM loop creation |
+| `/ll:loop-suggester [file]` | Suggest FSM loops from message history |
 
 ### Session Management
 
