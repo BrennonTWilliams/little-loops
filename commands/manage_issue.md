@@ -469,23 +469,26 @@ When reality diverges from the plan during implementation:
 
 ## Phase 4: Verify
 
-Run verification commands:
+Run each verification command if configured (non-null). Skip silently if not configured, reporting SKIP status.
 
 ```bash
-# Run tests
+# Run tests if test_cmd is configured (non-null)
 {{config.project.test_cmd}} tests/ -v
 
-# Run linting
+# Run linting if lint_cmd is configured (non-null)
 {{config.project.lint_cmd}} {{config.project.src_dir}}
 
-# Run type checking (if configured)
+# Run type checking if type_cmd is configured (non-null)
 {{config.project.type_cmd}} {{config.project.src_dir}}
+
+# Run build if build_cmd is configured (non-null)
+{{config.project.build_cmd}}
 
 # Run custom verification (if configured)
 # {{config.commands.custom_verification}}
 ```
 
-All checks must pass before proceeding.
+All configured checks must pass before proceeding. Unconfigured (null) checks are skipped.
 
 ---
 

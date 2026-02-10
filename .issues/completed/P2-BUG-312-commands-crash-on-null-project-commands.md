@@ -11,13 +11,23 @@ discovered_by: manual_review
 
 ## Context
 
-The config schema defines `lint_cmd`, `type_cmd`, `format_cmd`, and `build_cmd` as `["string", "null"]`. Several project templates set these to `null`:
+The config schema defines `type_cmd`, `format_cmd`, and `build_cmd` as `["string", "null"]` (explicitly nullable). `lint_cmd` and `test_cmd` are typed as `"string"` in the schema, but templates still set them to `null`. Several project templates set these to `null`:
 
 - **Java**: `type_cmd: null`, `format_cmd: null` (lint_cmd has values: `mvn checkstyle:check` / `./gradlew checkstyleMain`)
 - **Go/Rust/Node.js/.NET**: `type_cmd: null`
 - **General fallback**: `test_cmd: null`, `lint_cmd: null`, `type_cmd: null`, `format_cmd: null`
 
 ENH-310 added a null guard for `build_cmd` in `check_code` ("Run build verification if `build_cmd` is configured (non-null). Skip silently if not configured.") but no other command block received the same treatment.
+
+## Steps to Reproduce
+
+1. Configure a project using a template with null commands (e.g., `generic.json` sets `test_cmd`, `lint_cmd`, `type_cmd`, `format_cmd` all to `null`)
+2. Run `/ll:check_code` (or `/ll:manage_issue bug fix` which hits Phase 4 verification)
+3. Observe that the null command is interpolated into bash, producing an invalid command execution
+
+## Actual Behavior
+
+When a nullable command (e.g., `type_cmd: null`) is interpolated into a bash block like `{{config.project.type_cmd}} {{config.project.src_dir}}`, the resulting command is invalid and causes the check to fail rather than being skipped gracefully.
 
 ## Current Behavior
 
@@ -83,9 +93,27 @@ Report skipped checks in the verification output rather than failing silently.
 
 ---
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-10
+- **Status**: Completed
+
+### Changes Made
+- `commands/check_code.md`: Added null-guard instructions to lint, format, and types blocks matching existing build_cmd pattern. Added guards to fix mode for lint_cmd and format_cmd. Updated summary report to show SKIP status for all checks.
+- `commands/manage_issue.md`: Added null-guard instructions to Phase 4 for test_cmd, lint_cmd, type_cmd. Added build_cmd verification step (previously missing). Updated instruction text to clarify skip behavior.
+
+### Verification Results
+- Tests: PASS (2660 passed)
+- Lint: PASS (no new issues)
+- Types: PASS
+- Integration: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-10 | Priority: P2
+**Completed** | Created: 2026-02-10 | Completed: 2026-02-10 | Priority: P2
 
 ## Verification Notes
 
@@ -94,3 +122,10 @@ Report skipped checks in the verification output rather than failing silently.
 - Fixed Java template claim: Java has `lint_cmd` values (`mvn checkstyle:check` / `./gradlew checkstyleMain`), not null. Only the generic template has `lint_cmd: null`.
 - Confirmed: check_code lint/format/types blocks have no null guards. build_cmd has documented guard (ENH-310).
 - Confirmed: manage_issue Phase 4 lacks null guards for test_cmd, lint_cmd; type_cmd has comment only. build_cmd missing entirely.
+
+### Ready Issue Validation (2026-02-10)
+
+- Corrected Context section: `lint_cmd` and `test_cmd` are `"string"` in schema (not nullable), though templates still set null values
+- Added missing BUG-required sections: Steps to Reproduce, Actual Behavior
+- All file references verified: `commands/check_code.md`, `commands/manage_issue.md` exist and confirm claims
+- ENH-310 completed issue confirms build_cmd guard was intentionally scoped to check_code only

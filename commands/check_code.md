@@ -45,6 +45,8 @@ echo "Running code checks in mode: $MODE"
 
 #### Mode: lint
 
+Run linting if `lint_cmd` is configured (non-null). Skip silently if not configured.
+
 ```bash
 if [ "$MODE" = "lint" ] || [ "$MODE" = "all" ]; then
     echo ""
@@ -52,6 +54,7 @@ if [ "$MODE" = "lint" ] || [ "$MODE" = "all" ]; then
     echo "LINTING"
     echo "========================================"
 
+    # Only run if lint_cmd is configured (non-null)
     {{config.project.lint_cmd}} {{config.project.src_dir}}
 
     if [ $? -eq 0 ]; then
@@ -67,6 +70,8 @@ If lint errors are detected, immediately run the lint fix command:
 
 #### Mode: format
 
+Run format check if `format_cmd` is configured (non-null). Skip silently if not configured.
+
 ```bash
 if [ "$MODE" = "format" ] || [ "$MODE" = "all" ]; then
     echo ""
@@ -74,6 +79,7 @@ if [ "$MODE" = "format" ] || [ "$MODE" = "all" ]; then
     echo "FORMAT CHECK"
     echo "========================================"
 
+    # Only run if format_cmd is configured (non-null)
     {{config.project.format_cmd}} --check {{config.project.src_dir}}
 
     if [ $? -eq 0 ]; then
@@ -89,6 +95,8 @@ If formatting issues are detected, immediately run the format fix command:
 
 #### Mode: types
 
+Run type checking if `type_cmd` is configured (non-null). Skip silently if not configured.
+
 ```bash
 if [ "$MODE" = "types" ] || [ "$MODE" = "all" ]; then
     echo ""
@@ -96,6 +104,7 @@ if [ "$MODE" = "types" ] || [ "$MODE" = "all" ]; then
     echo "TYPE CHECK"
     echo "========================================"
 
+    # Only run if type_cmd is configured (non-null)
     {{config.project.type_cmd}} {{config.project.src_dir}} --ignore-missing-imports
 
     if [ $? -eq 0 ]; then
@@ -130,6 +139,8 @@ fi
 
 #### Mode: fix
 
+Run auto-fix for `lint_cmd` and `format_cmd` if configured (non-null). Skip each silently if not configured.
+
 ```bash
 if [ "$MODE" = "fix" ]; then
     echo ""
@@ -137,10 +148,12 @@ if [ "$MODE" = "fix" ]; then
     echo "AUTO-FIXING ISSUES"
     echo "========================================"
 
+    # Only run if lint_cmd is configured (non-null)
     echo "Step 1: Fixing lint issues..."
     {{config.project.lint_cmd}} --fix {{config.project.src_dir}}
 
     echo ""
+    # Only run if format_cmd is configured (non-null)
     echo "Step 2: Formatting code..."
     {{config.project.format_cmd}} {{config.project.src_dir}}
 
@@ -166,9 +179,9 @@ CODE QUALITY CHECK COMPLETE
 Mode: $MODE
 
 Results:
-  Linting:    [PASS/FIXED/FAIL]
-  Formatting: [PASS/FIXED/FAIL]
-  Types:      [PASS/FAIL]
+  Linting:    [PASS/FIXED/FAIL/SKIP]
+  Formatting: [PASS/FIXED/FAIL/SKIP]
+  Types:      [PASS/FAIL/SKIP]
   Build:      [PASS/FAIL/SKIP]
 
 Status:
