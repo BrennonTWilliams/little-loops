@@ -123,6 +123,7 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
   "project": {
     "name": "my-project",
     "src_dir": "src/",
+    "test_dir": "tests",
     "test_cmd": "pytest tests/",
     "lint_cmd": "ruff check src/",
     "type_cmd": "mypy src/",
@@ -140,7 +141,12 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     },
     "completed_dir": "completed",
     "priorities": ["P0", "P1", "P2", "P3", "P4", "P5"],
-    "templates_dir": null
+    "templates_dir": null,
+    "capture_template": "full",
+    "duplicate_detection": {
+      "exact_threshold": 0.8,
+      "similar_threshold": 0.5
+    }
   },
 
   "automation": {
@@ -175,6 +181,30 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     "focus_dirs": ["src/", "tests/"],
     "exclude_patterns": ["**/node_modules/**", "**/__pycache__/**", "**/.git/**"],
     "custom_agents": []
+  },
+
+  "workflow": {
+    "phase_gates": {
+      "enabled": true,
+      "auto_mode_skip": true
+    },
+    "deep_research": {
+      "enabled": true,
+      "quick_flag_skips": true,
+      "agents": ["codebase-locator", "codebase-analyzer", "codebase-pattern-finder"]
+    },
+    "plan_template": {
+      "sections_recommended": true,
+      "sections_mandatory": false
+    }
+  },
+
+  "prompt_optimization": {
+    "enabled": true,
+    "mode": "quick",
+    "confirm": true,
+    "bypass_prefix": "*",
+    "clarity_threshold": 6
   },
 
   "continuation": {
@@ -232,6 +262,7 @@ Project-level settings for commands:
 |-----|---------|-------------|
 | `name` | Directory name | Project name |
 | `src_dir` | `src/` | Source code directory |
+| `test_dir` | `tests` | Test directory path |
 | `test_cmd` | `pytest` | Command to run tests |
 | `lint_cmd` | `ruff check .` | Command to run linter |
 | `type_cmd` | `mypy` | Command for type checking |
@@ -250,6 +281,9 @@ Issue management settings:
 | `completed_dir` | `completed` | Where completed issues go |
 | `priorities` | `[P0-P5]` | Valid priority prefixes |
 | `templates_dir` | `null` | Directory for issue templates |
+| `capture_template` | `"full"` | Default template style for captured issues (`"full"` or `"minimal"`) |
+| `duplicate_detection.exact_threshold` | `0.8` | Jaccard similarity threshold for exact duplicates (0.5-1.0) |
+| `duplicate_detection.similar_threshold` | `0.5` | Jaccard similarity threshold for similar issues (0.1-0.9) |
 
 **Custom Categories**: The three core categories (bugs, features, enhancements) are always included automatically. You can add custom categories and they will be merged with the required ones:
 
@@ -317,6 +351,32 @@ Codebase scanning configuration:
 |-----|---------|-------------|
 | `focus_dirs` | `["src/", "tests/"]` | Directories to scan |
 | `exclude_patterns` | Standard patterns | Paths to exclude from scanning |
+
+#### `workflow`
+
+Workflow behavior settings (`/ll:manage_issue`, `/ll:ready_issue`):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `phase_gates.enabled` | `true` | Enable phase gates for manual verification |
+| `phase_gates.auto_mode_skip` | `true` | Skip phase gates when --auto flag is used |
+| `deep_research.enabled` | `true` | Enable deep research by default |
+| `deep_research.quick_flag_skips` | `true` | Allow --quick flag to skip research |
+| `deep_research.agents` | 3 sub-agents | Sub-agents to spawn for research |
+| `plan_template.sections_recommended` | `true` | Show all template sections as recommended |
+| `plan_template.sections_mandatory` | `false` | Require all template sections |
+
+#### `prompt_optimization`
+
+Automatic prompt optimization settings (`/ll:toggle_autoprompt`):
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `true` | Enable automatic prompt optimization |
+| `mode` | `"quick"` | Optimization mode (`"quick"` or `"thorough"`) |
+| `confirm` | `true` | Show diff and ask for confirmation before applying |
+| `bypass_prefix` | `*` | Prefix to bypass optimization |
+| `clarity_threshold` | `6` | Minimum clarity score (1-10) to pass through unchanged |
 
 #### `continuation`
 
