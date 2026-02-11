@@ -3,11 +3,11 @@ discovered_date: 2026-02-10
 discovered_by: capture_issue
 ---
 
-# ENH-319: Improve /ll:analyze-workflows with 12+ enhancements
+# ENH-319: Improve /ll:analyze-workflows with 6 enhancements
 
 ## Summary
 
-Add sophisticated capabilities to `/ll:analyze-workflows` to make it more efficient, interactive, and actionable. Currently, the command is a basic orchestrator that runs the 3-step analysis pipeline and generates a static report. This enhancement adds incremental analysis, interactive refinement, auto-implementation, filtering, trend tracking, and other improvements to transform it from a reporting tool into an actionable workflow automation engine.
+Add focused capabilities to `/ll:analyze-workflows` to make it more efficient, interactive, and actionable. Currently, the command is a basic orchestrator that runs the 3-step analysis pipeline and generates a static report. This enhancement adds incremental analysis, smart caching, interactive refinement, auto-implementation, filtering, and trend tracking to transform it from a reporting tool into an actionable workflow automation engine.
 
 ## Context
 
@@ -23,27 +23,21 @@ Identified from conversation discussing improvements to `/ll:analyze-workflows`.
 - No filtering or scoping options
 - No comparison with previous runs
 - No path to implement proposals
-- No feedback loop tracking
 
 ## Expected Behavior
 
 Enhanced `/ll:analyze-workflows` should:
 - Support incremental analysis (only new messages since last run)
+- Smart caching and resumption from failed steps
 - Allow filtering by date range, categories, patterns, frequency thresholds
 - Offer interactive proposal refinement (let user select which to implement)
 - Auto-implement small/high-priority proposals with user permission
 - Track trends and compare with previous analysis runs
-- Support custom pattern rules via config
-- Integrate with issue management (create issues from proposals)
-- Execute Step 1 and Step 2 in parallel where possible
-- Provide progressive updates and visual indicators
-- Track proposal implementation outcomes and impact
-- Detect cross-session patterns and abandoned workflows
-- Smart caching and resumption from failed steps
+- Offer to create issues from proposals via existing `/ll:capture_issue`
 
 ## Proposed Solution
 
-Implement 12 enhancements grouped into three categories:
+Implement 6 enhancements grouped into three categories:
 
 ### Category 1: Efficiency & Performance (P2)
 
@@ -62,25 +56,21 @@ Implement 12 enhancements grouped into three categories:
      new_messages_analyzed: 451-520
      ```
 
-2. **Parallel Execution**
-   - Run Step 1a (pattern categorization via agent) and Step 1b (basic statistics via CLI) in parallel
-   - Merge results before proceeding to Step 2
-   - Expected 30-40% faster execution
-
-3. **Smart Caching & Resumption**
+2. **Smart Caching & Resumption**
    - Add `--resume` flag to continue from last successful step
    - Cache intermediate results (step1-patterns.yaml, step2-workflows.yaml)
    - Clear cache option: `--fresh`
 
 ### Category 2: Interactivity & Actionability (P2)
 
-4. **Interactive Proposal Refinement** (QUICK WIN)
+3. **Interactive Proposal Refinement** (QUICK WIN)
    - After generating proposals, use AskUserQuestion:
      - "Which proposals interest you?" (multi-select)
      - "What priority threshold to implement?" (HIGH only? MEDIUM+?)
      - "Auto-implement SMALL effort proposals?" (yes/no)
+   - Offer to create issues from selected proposals via `/ll:capture_issue`
 
-5. **Auto-Implementation Mode** (QUICK WIN)
+4. **Auto-Implementation Mode** (QUICK WIN)
    - For proposals with `effort: SMALL` and `priority: HIGH`:
      - Ask permission to implement automatically
      - Create command/hook/script files
@@ -89,16 +79,9 @@ Implement 12 enhancements grouped into three categories:
    - Add `--auto-implement` flag to enable
    - Add `--priority` and `--effort` filters
 
-6. **Integration with Issue Management**
-   - Auto-create enhancement issues from HIGH priority proposals
-   - Link proposals to existing issues that would be solved
-   - Track which proposals have been implemented
-   - Add `--create-issues` flag
-   - Add `--label` option for issue tagging
-
 ### Category 3: Analysis & Insights (P3)
 
-7. **Filtering & Scoping**
+5. **Filtering & Scoping**
    - Add arguments:
      - `--since YYYY-MM-DD`: Only analyze messages after date
      - `--until YYYY-MM-DD`: Only analyze messages before date
@@ -107,7 +90,7 @@ Implement 12 enhancements grouped into three categories:
      - `--min-frequency N`: Only show patterns with frequency >= N
      - `--focus KEYWORD`: Focus analysis on specific topic
 
-8. **Trend Tracking & Comparison**
+6. **Trend Tracking & Comparison**
    - Compare current analysis with previous runs
    - Show pattern evolution (frequency increases/decreases)
    - Identify likely causes of changes (e.g., new command implemented)
@@ -121,62 +104,20 @@ Implement 12 enhancements grouped into three categories:
        ⚠ Consider test automation improvements
      ```
 
-9. **Pattern Rule Customization**
-   - Let users define custom patterns in ll-config.json:
-     ```json
-     {
-       "workflow_analysis": {
-         "custom_patterns": [
-           {
-             "name": "database_migration",
-             "keywords": ["migrate", "schema", "alembic"],
-             "min_frequency": 2,
-             "suggest_type": "slash_command"
-           }
-         ]
-       }
-     }
-     ```
-
-10. **Cross-Session Pattern Detection**
-    - Detect patterns spanning multiple days
-    - Identify "morning routines" or "sprint rituals"
-    - Find abandoned workflows (started but never finished)
-
-11. **Feedback Loop Tracking**
-    - Track proposal outcomes in metadata:
-      ```yaml
-      proposals:
-        - id: prop-001
-          status: implemented
-          implemented_date: "2026-02-05"
-          impact_metrics:
-            usage_count: 23
-            time_saved_estimate: "45 minutes"
-            user_feedback: "Very helpful"
-      ```
-
-12. **Smarter Output & UX**
-    - Progressive updates during analysis (show what's happening)
-    - Collapsible sections in summary
-    - Visual indicators (✓, ⚠, ●) for priority/status
-    - Direct action links: `Run: /ll:implement-proposal prop-001`
-
 ## Current Pain Point
 
-Users must manually re-analyze entire message history every time, cannot filter or scope analysis, cannot act on proposals without manual work, and have no visibility into whether implemented automations are actually helping. The command generates static reports that require significant manual effort to translate into actual improvements.
+Users must manually re-analyze entire message history every time, cannot filter or scope analysis, and cannot act on proposals without manual work. The command generates static reports that require significant manual effort to translate into actual improvements.
 
 ## Success Metrics
 
 - **Time savings**: Incremental analysis reduces re-analysis time by 70-90% for large histories
 - **Actionability**: 50%+ of high-priority proposals get implemented (vs current ~10%)
 - **Adoption**: Users run analysis weekly instead of once (current behavior)
-- **Feedback loop**: Track that implemented automations actually reduce pattern frequency
 
 ## Scope Boundaries
 
 **In scope:**
-- Enhancements 1-12 listed above
+- Enhancements 1-6 listed above
 - Backward compatibility with existing output formats
 - Config-driven customization
 
@@ -198,28 +139,20 @@ All enhancements should be:
 ## Impact
 
 - **Priority**: P2 (High value improvements to existing feature)
-- **Effort**: LARGE (12 enhancements, touches command + CLI + config)
+- **Effort**: MEDIUM (6 enhancements, touches command + CLI + config)
 - **Risk**: LOW (incremental improvements, backward compatible, opt-in features)
 
 ## Proposed Implementation
 
 ### Phase 1: Quick Wins (Immediate Value)
-1. Incremental analysis (ENH #1)
-2. Interactive proposal refinement (ENH #4)
-3. Auto-implementation mode (ENH #5)
+1. Interactive proposal refinement (#3)
+2. Auto-implementation mode (#4)
+3. Smart caching & resumption (#2)
 
-### Phase 2: Analysis Enhancements
-4. Filtering & scoping (ENH #7)
-5. Trend tracking & comparison (ENH #8)
-6. Smarter output & UX (ENH #12)
-
-### Phase 3: Advanced Features
-7. Pattern rule customization (ENH #9)
-8. Issue management integration (ENH #6)
-9. Feedback loop tracking (ENH #11)
-10. Cross-session detection (ENH #10)
-11. Parallel execution (ENH #2)
-12. Smart caching (ENH #3)
+### Phase 2: Core Enhancements
+4. Incremental analysis (#1)
+5. Filtering & scoping (#5)
+6. Trend tracking & comparison (#6)
 
 ## Related Key Documentation
 
