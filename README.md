@@ -447,18 +447,43 @@ Each category requires a `files` array of relative paths. The optional `descript
 
 ## Commands
 
-### Setup & Help
+Commands are organized by workflow capability. Run `/ll:help` for the full reference.
+
+### Issue Discovery
 
 | Command | Description |
 |---------|-------------|
-| `/ll:init [flags]` | Initialize config for a project (auto-detects type) |
-| `/ll:help` | Show available commands and usage |
-| `/ll:configure [area]` | Interactive configuration editor |
+| `/ll:capture_issue [input]` | Capture issues from conversation or description |
+| `/ll:scan_codebase` | Find new issues (technical) |
+| `/ll:scan_product` | Find new issues (product-focused) |
+| `/ll:audit_architecture [focus]` | Analyze architecture for patterns and improvements |
 
-**Init flags:**
-- `--interactive` - Full guided wizard with prompts for each option
-- `--yes` - Accept all defaults without confirmation
-- `--force` - Overwrite existing configuration
+### Issue Refinement
+
+| Command | Description |
+|---------|-------------|
+| `/ll:normalize_issues` | Fix invalid issue filenames |
+| `/ll:prioritize_issues` | Assign priorities (P0-P5) to issues |
+| `/ll:align_issues <category>` | Validate issues against key documents |
+| `/ll:refine_issue [id]` | Refine issue files through interactive Q&A |
+| `/ll:verify_issues` | Verify issues against codebase |
+| `/ll:tradeoff_review_issues` | Evaluate issues for utility vs complexity |
+| `/ll:ready_issue [id]` | Validate issue for implementation |
+
+### Planning & Implementation
+
+| Command | Description |
+|---------|-------------|
+| `/ll:create_sprint [name] [--issues]` | Create sprint (explicit or auto-suggested) |
+| `/ll:manage_issue <type> <action> [id]` | Full issue lifecycle (plan, implement, verify, complete) |
+| `/ll:iterate_plan [path]` | Update existing implementation plans |
+
+### Scanning & Analysis
+
+| Command | Description |
+|---------|-------------|
+| `/ll:find_dead_code` | Find unused code |
+| `/ll:analyze_log <log_file>` | Analyze ll-parallel/ll-auto log files for tool bugs |
 
 ### Code Quality
 
@@ -466,52 +491,40 @@ Each category requires a `files` array of relative paths. The optional `descript
 |---------|-------------|
 | `/ll:check_code [mode]` | Run linting, formatting, type checks |
 | `/ll:run_tests [scope]` | Run test suites |
-| `/ll:find_dead_code` | Find unused code |
+| `/ll:audit_docs [scope]` | Audit documentation for accuracy and completeness |
 
-### Issue Management
-
-| Command | Description |
-|---------|-------------|
-| `/ll:manage_issue <type> <action> [id]` | Full issue lifecycle |
-| `/ll:ready_issue [id]` | Validate issue for implementation |
-| `/ll:prioritize_issues` | Assign priorities to issues |
-| `/ll:verify_issues` | Verify issues against codebase |
-| `/ll:normalize_issues` | Fix invalid issue filenames |
-| `/ll:scan_codebase` | Find new issues (technical) |
-| `/ll:scan_product` | Find new issues (product-focused) |
-| `/ll:capture_issue [input]` | Capture issues from conversation |
-| `/ll:refine_issue [id]` | Refine issue files through interactive Q&A |
-| `/ll:align_issues <category>` | Validate issues against key documents |
-| `/ll:sync_issues [mode]` | Sync local issues with GitHub Issues |
-| `/ll:create_sprint [name] [--issues]` | Create sprint (explicit or auto-suggested) |
-| `/ll:tradeoff_review_issues` | Evaluate issues for utility vs complexity |
-
-### Documentation & Analysis
-
-| Command | Description |
-|---------|-------------|
-| `/ll:audit_docs [scope]` | Audit documentation |
-| `/ll:audit_architecture [focus]` | Analyze architecture |
-| `/ll:describe_pr` | Generate PR description |
-| `/ll:audit_claude_config [scope]` | Audit Claude Code plugin configuration |
-| `/ll:analyze-workflows [file]` | Analyze user message patterns for automation |
-
-### Git & Workflow
+### Git & Release
 
 | Command | Description |
 |---------|-------------|
 | `/ll:commit` | Create commits with approval |
 | `/ll:open_pr [target_branch]` | Open pull request for current branch |
+| `/ll:describe_pr` | Generate PR description |
 | `/ll:manage_release [action] [version]` | Manage releases, tags, and changelogs |
-| `/ll:iterate_plan [path]` | Update existing plans |
+| `/ll:sync_issues [mode]` | Sync local issues with GitHub Issues |
 | `/ll:cleanup_worktrees [mode]` | Clean orphaned git worktrees |
-| `/ll:create_loop` | Interactive FSM loop creation |
-| `/ll:loop-suggester [file]` | Suggest FSM loops from message history |
 
-### Session Management
+### Automation & Loops
 
 | Command | Description |
 |---------|-------------|
+| `/ll:create_loop` | Interactive FSM loop creation |
+| `/ll:loop-suggester [file]` | Suggest FSM loops from message history |
+
+### Meta-Analysis
+
+| Command | Description |
+|---------|-------------|
+| `/ll:audit_claude_config [scope]` | Audit Claude Code plugin configuration |
+| `/ll:analyze-workflows [file]` | Analyze user message patterns for automation |
+
+### Session & Config
+
+| Command | Description |
+|---------|-------------|
+| `/ll:init [flags]` | Initialize config for a project (auto-detects type) |
+| `/ll:configure [area]` | Interactive configuration editor |
+| `/ll:help` | Show available commands and usage |
 | `/ll:handoff [context]` | Generate continuation prompt for session handoff |
 | `/ll:resume [prompt_file]` | Resume from previous session's continuation prompt |
 | `/ll:toggle_autoprompt [setting]` | Toggle automatic prompt optimization |
@@ -533,16 +546,16 @@ Each category requires a `files` array of relative paths. The optional `descript
 
 ## Skills
 
-Specialized workflows invoked via the Skill tool:
+Specialized workflows invoked via the Skill tool, organized by capability:
 
-| Skill | Description |
-|-------|-------------|
-| `analyze-history` | Analyze issue history for project health, trends, and progress |
-| `issue-size-review` | Evaluate issue size/complexity and propose decomposition |
-| `issue-workflow` | Quick reference for issue management workflow |
-| `map-dependencies` | Analyze cross-issue dependencies based on file overlap |
-| `product-analyzer` | Analyze codebase against product goals for feature gaps and business value |
-| `workflow-automation-proposer` | Synthesize workflow patterns into automation proposals |
+| Skill | Capability Group | Description |
+|-------|-----------------|-------------|
+| `issue-workflow` | Issue Discovery / Refinement | Quick reference for issue management workflow |
+| `issue-size-review` | Issue Discovery / Refinement | Evaluate issue size/complexity and propose decomposition |
+| `map-dependencies` | Issue Discovery / Refinement | Analyze cross-issue dependencies based on file overlap |
+| `product-analyzer` | Scanning & Analysis | Analyze codebase against product goals for feature gaps |
+| `workflow-automation-proposer` | Automation & Loops | Synthesize workflow patterns into automation proposals |
+| `analyze-history` | Meta-Analysis | Analyze issue history for project health, trends, and progress |
 
 ## CLI Tools
 

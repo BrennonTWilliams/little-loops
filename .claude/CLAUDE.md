@@ -46,13 +46,16 @@ docs/           # Architecture, API, troubleshooting
 
 ## Commands
 
-Run `/ll:help` for full list. Key commands:
-- `/ll:manage_issue` - Process issues through full lifecycle
-- `/ll:scan_codebase` - Find bugs/enhancements, create issues
-- `/ll:sync_issues` - Sync issues with GitHub Issues (requires `sync.enabled`)
-- `/ll:check_code` - Run lint/format/type checks
-- `/ll:run_tests` - Execute test suite
-- `/ll:commit` - Create commits with user approval
+Run `/ll:help` for full list. Key commands by capability:
+
+- **Issue Discovery**: `capture_issue`, `scan_codebase`, `scan_product`, `audit_architecture`
+- **Issue Refinement**: `normalize_issues`, `prioritize_issues`, `align_issues`, `refine_issue`, `verify_issues`, `tradeoff_review_issues`, `ready_issue`
+- **Planning & Implementation**: `create_sprint`, `manage_issue`, `iterate_plan`
+- **Code Quality**: `check_code`, `run_tests`, `audit_docs`
+- **Git & Release**: `commit`, `open_pr`, `describe_pr`, `manage_release`, `sync_issues`, `cleanup_worktrees`
+- **Automation & Loops**: `create_loop`, `loop-suggester`
+- **Meta-Analysis**: `audit_claude_config`, `analyze-workflows`
+- **Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle_autoprompt`
 
 ## Development
 

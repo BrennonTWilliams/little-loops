@@ -98,3 +98,22 @@ TBD - requires investigation of which docs need updates. Likely targets:
 ## Status
 
 **Open** | Created: 2026-02-11 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `commands/help.md`: Reorganized command reference output under 9 capability groupings, added missing commands (scan_product, refine_issue, configure, manage_release, sync_issues, create_sprint, cleanup_worktrees, create_loop, loop-suggester, analyze-workflows, analyze_log)
+- `README.md`: Reorganized Commands section from 6 groups to 9 capability groupings, updated Skills table with capability group column
+- `.claude/CLAUDE.md`: Reorganized Commands section from flat list to 8 capability groupings
+
+### Verification Results
+- Tests: N/A (documentation-only)
+- Lint: N/A (documentation-only)
+- Types: N/A (documentation-only)
+- Integration: PASS
