@@ -73,6 +73,11 @@ Mix paradigms to ensure coverage — especially if goal/convergence compilers ar
 ### Configuration
 - N/A
 
+## Scope Boundaries
+
+- **In scope**: Creating 2-4 new loop template YAML files using CLI tools with `action_type: shell`
+- **Out of scope**: Modifying existing templates, changing the FSM loop engine, implementing new paradigm compilers
+
 ## Implementation Steps
 
 1. Design 2-4 loop templates using CLI tools for distinct workflows

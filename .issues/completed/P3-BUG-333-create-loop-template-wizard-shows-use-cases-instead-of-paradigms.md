@@ -94,7 +94,7 @@ The template selection step lists existing use-case template files rather than t
 
 ## Status
 
-**Open** | Created: 2026-02-11 | Priority: P3
+**Completed** | Created: 2026-02-11 | Priority: P3
 
 ---
 
@@ -106,3 +106,21 @@ The template selection step lists existing use-case template files rather than t
 - Templates at Step 0.1 (lines 47-66) are inline use-case definitions, not references to existing YAML files in `loops/`
 - Core complaint is valid: paradigms should be presented instead of use-case templates
 - Fixed: References corrected from "skill" to "command"
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md`: Replaced Step 0.1 use-case template list with paradigm selection (goal, invariants, convergence, imperative)
+- Updated Step 0.2 flow text for consistency with paradigm-first approach
+
+### Verification Results
+- Tests: PASS (2686 passed)
+- Lint: N/A (markdown-only change)
+- Types: N/A
+- Integration: PASS

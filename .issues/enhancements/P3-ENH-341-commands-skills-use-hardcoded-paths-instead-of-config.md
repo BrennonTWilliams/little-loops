@@ -20,13 +20,82 @@ Identified during a config consistency audit. These are in command/skill markdow
 - `commands/manage_release.md`: hardcodes `scripts/pyproject.toml` instead of using `{{config.project.src_dir}}`
 - `commands/init.md`: hardcodes `.worktrees` and `.issues` in find patterns
 
-## Proposed Fix
+## Current Behavior
+
+Commands and skills hardcode directory paths (`.loops/`, `scripts/`, `.worktrees`, `.issues`) instead of using `{{config.*}}` template references that are available in command/skill markdown files.
+
+## Expected Behavior
+
+Commands and skills should use `{{config.*}}` template references for all configurable paths, ensuring they respect user config overrides.
+
+## Motivation
+
+This enhancement would:
+- Ensure config overrides are respected in command/skill behavior
+- Improve consistency: some commands already use config refs while others hardcode paths
+- Reduce brittleness when users customize their project layout
+
+## Proposed Solution
 
 Replace hardcoded values with `{{config.*}}` template references:
 - `.loops/` -> `{{config.loops.loops_dir}}` (after BUG-339 adds the config key)
 - `scripts/` -> `{{config.project.src_dir}}`
 - `.worktrees` -> `{{config.parallel.worktree_base}}`
 - `.issues` -> `{{config.issues.base_dir}}`
+
+## Scope Boundaries
+
+- **In scope**: Replacing hardcoded paths in commands/skills with config references
+- **Out of scope**: Adding new config keys (handled by BUG-339), changing command behavior
+
+## Implementation Steps
+
+1. Replace hardcoded `.loops/` in `create_loop.md` and `loop-suggester.md` with config refs
+2. Replace hardcoded `scripts/` in `manage_release.md` with config ref
+3. Replace hardcoded `.worktrees` and `.issues` in `init.md` with config refs
+4. Verify template rendering works correctly
+
+## Integration Map
+
+### Files to Modify
+- `commands/create_loop.md` - Replace `.loops/` references
+- `commands/loop-suggester.md` - Replace `.loops/` references
+- `commands/manage_release.md` - Replace `scripts/` reference
+- `commands/init.md` - Replace `.worktrees` and `.issues` references
+
+### Dependent Files (Callers/Importers)
+- N/A - commands are user-invoked
+
+### Similar Patterns
+- `commands/refine_issue.md` already uses `{{config.issues.base_dir}}` correctly
+
+### Tests
+- Manual testing of affected commands
+
+### Documentation
+- N/A
+
+### Configuration
+- Depends on BUG-339 for `loops.loops_dir` config key
+
+## Impact
+
+- **Priority**: P3 - Config overrides not respected in commands/skills
+- **Effort**: Small - String replacements in 4 files
+- **Risk**: Low - Template references are a supported feature
+- **Breaking Change**: No
+
+## Blocked By
+
+- BUG-339: CLI hardcodes .loops directory path (provides `loops.loops_dir` config key needed for template refs)
+
+## Blocks
+
+- ENH-342: Command examples hardcode tool names
+
+## Labels
+
+`enhancement`, `commands`, `config`, `captured`
 
 ---
 

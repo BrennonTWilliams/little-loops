@@ -142,7 +142,7 @@ All enhancements should be:
 - **Effort**: MEDIUM (6 enhancements, touches command + CLI + config)
 - **Risk**: LOW (incremental improvements, backward compatible, opt-in features)
 
-## Proposed Implementation
+## Implementation Steps
 
 ### Phase 1: Quick Wins (Immediate Value)
 1. Interactive proposal refinement (#3)
@@ -154,6 +154,28 @@ All enhancements should be:
 5. Filtering & scoping (#5)
 6. Trend tracking & comparison (#6)
 
+## Integration Map
+
+### Files to Modify
+- `commands/analyze-workflows.md` - Add flags for incremental, filtering, auto-implement
+- `agents/workflow-pattern-analyzer/AGENT.md` - Support incremental analysis
+- `skills/workflow-automation-proposer/SKILL.md` - Add interactive refinement, auto-implementation
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/workflow_sequence_analyzer.py` - Pipeline Step 2
+
+### Similar Patterns
+- N/A
+
+### Tests
+- Manual testing of new flags and modes
+
+### Documentation
+- `docs/ARCHITECTURE.md` - Update workflow analysis section
+
+### Configuration
+- `.claude/ll-config.json` - Potential new workflow analysis settings
+
 ## Related Key Documentation
 
 | Category | Document | Relevance |
@@ -161,6 +183,10 @@ All enhancements should be:
 | architecture | docs/ARCHITECTURE.md | Documents workflow-pattern-analyzer agent and workflow_sequence_analyzer.py module |
 | architecture | docs/API.md | Detailed API reference for workflow_sequence_analyzer module (Step 2 of pipeline) |
 | guidelines | .claude/CLAUDE.md | Overview of /ll:analyze-workflows command and plugin structure |
+
+## Blocks
+
+- ENH-279: Audit skill vs command allocation
 
 ## Labels
 

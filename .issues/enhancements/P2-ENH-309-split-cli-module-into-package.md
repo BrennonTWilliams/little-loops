@@ -180,6 +180,7 @@ This enhancement would:
 
 - ENH-308: Sprint sequential retry for merge-failed issues
 - ENH-328: ll-auto verify check implementation markers
+- BUG-339: CLI hardcodes .loops directory path
 
 ## Labels
 

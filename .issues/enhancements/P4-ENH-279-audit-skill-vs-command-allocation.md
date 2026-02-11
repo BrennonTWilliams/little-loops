@@ -95,6 +95,10 @@ This enhancement would:
 - **Effort**: Medium
 - **Risk**: Low — current allocation works, this is optimization
 
+## Blocked By
+
+- ENH-319: Improve /ll:analyze-workflows with 6 enhancements (enhance workflow-automation-proposer before potentially migrating it)
+
 ## Labels
 
 `enhancement`, `skills`, `commands`, `architecture`

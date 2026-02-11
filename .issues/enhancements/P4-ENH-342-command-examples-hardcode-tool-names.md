@@ -19,9 +19,71 @@ Identified during a config consistency audit. Lower priority since these are ill
 - `commands/iterate_plan.md` (lines ~119-120): examples hardcode `pytest tests/` and `ruff check .`
 - `commands/loop-suggester.md` (line ~55): lists hardcoded tools
 
-## Proposed Fix
+## Current Behavior
+
+Command templates and examples use literal tool names (`pytest`, `ruff`, `mypy`) instead of referencing the user's configured commands from `ll-config.json`.
+
+## Expected Behavior
+
+Examples should either use `{{config.project.test_cmd}}` template references or include a note indicating they use the configured command.
+
+## Motivation
+
+This enhancement would:
+- Reduce confusion for projects using different tools (e.g., `unittest` instead of `pytest`)
+- Improve consistency with the config-driven approach used elsewhere
+
+## Proposed Solution
 
 Either use `{{config.project.test_cmd}}` etc. in templates, or add a note like "uses your configured test command" next to examples.
+
+## Scope Boundaries
+
+- **In scope**: Updating command examples to reference or note configurable tool names
+- **Out of scope**: Changing actual tool execution logic, adding new config keys
+
+## Implementation Steps
+
+1. Update `create_loop.md` examples to reference configured tool names
+2. Update `iterate_plan.md` examples similarly
+3. Update `loop-suggester.md` examples similarly
+
+## Integration Map
+
+### Files to Modify
+- `commands/create_loop.md` - Update tool name examples
+- `commands/iterate_plan.md` - Update tool name examples
+- `commands/loop-suggester.md` - Update tool name examples
+
+### Dependent Files (Callers/Importers)
+- N/A
+
+### Similar Patterns
+- `commands/check_code.md` already uses `{{config.project.*}}` references
+
+### Tests
+- Manual review of rendered command output
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A - uses existing config keys
+
+## Impact
+
+- **Priority**: P4 - Cosmetic, examples still illustrative with literal names
+- **Effort**: Small - String replacements in 3 files
+- **Risk**: Low - No behavior changes
+- **Breaking Change**: No
+
+## Blocked By
+
+- ENH-341: Commands and skills use hardcoded paths instead of config refs (path refs before tool name refs in shared files)
+
+## Labels
+
+`enhancement`, `commands`, `config`, `captured`
 
 ---
 
