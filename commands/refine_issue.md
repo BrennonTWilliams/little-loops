@@ -49,12 +49,20 @@ If not found, report error and exit.
 
 ### 3. Identify Gaps
 
-Analyze content against type-specific checklists defined in `templates/issue-sections.json` (relative to the little-loops plugin directory):
+Analyze content against type-specific checklists defined in `templates/issue-sections.json` v2.0 (relative to the little-loops plugin directory):
 
-1. Read the shared template file `templates/issue-sections.json`
+1. Read the shared template file `templates/issue-sections.json` (v2.0 - optimized for AI implementation)
 2. For the issue's type (BUG/FEAT/ENH), look up `type_sections.[TYPE]` for type-specific sections
-3. Also check `common_sections` for universal required sections (Summary, Current Behavior, Expected Behavior, etc.)
+3. Also check `common_sections` for universal required sections (Summary, Current Behavior, Expected Behavior, Motivation, etc.)
 4. For each section, use its `level` (required/conditional/nice-to-have) and `question` field
+5. **Note**: Sections marked `deprecated: true` are still supported for backward compatibility but should not be suggested for new content
+
+**New sections in v2.0** to consider:
+- **Motivation** (common): Why this matters - replaces "Current Pain Point" for ENH
+- **Implementation Steps** (common): High-level outline for agent guidance (3-8 phases)
+- **Root Cause** (BUG): File + function anchor + explanation
+- **API/Interface** (FEAT/ENH): Public contract changes
+- **Use Case** (FEAT): Concrete scenario (renamed from "User Story")
 
 Present gaps as a table:
 
@@ -156,39 +164,86 @@ For each selected item, gather the information interactively:
 [User-provided actual behavior]
 ```
 
-**Example addition for FEAT**:
+**Example addition for FEAT** (v2.0 template):
 ```markdown
-## User Story
+## Use Case
 
-As a [user type], I want to [action] so that [benefit].
+**Who**: [Specific user role/persona]
+
+**Context**: [When/where they need this]
+
+**Goal**: [What they want to achieve]
+
+**Outcome**: [Expected result]
 
 ## Acceptance Criteria
 
-- [ ] [Criterion 1]
-- [ ] [Criterion 2]
-- [ ] [Criterion 3]
+- [ ] [Testable criterion 1]
+- [ ] [Testable criterion 2]
+- [ ] [Testable criterion 3]
 
-## Edge Cases
+## API/Interface
 
-- [Edge case 1]: [How to handle]
-- [Edge case 2]: [How to handle]
+```python
+def new_function(arg: Type) -> ReturnType:
+    """Function signature for new feature."""
 ```
 
-**Example addition for ENH**:
-```markdown
-## Current Pain Point
+## Implementation Steps
 
-[Description of the specific problem this enhancement addresses]
+1. [High-level phase 1]
+2. [High-level phase 2]
+3. [Verification approach]
+```
+
+**Example addition for ENH** (v2.0 template):
+```markdown
+## Motivation
+
+This enhancement would:
+- [Quantified impact 1]: affects X users, saves Y minutes
+- [Business value]: enables Z capability
+- [Technical debt]: reduces maintenance cost by %
 
 ## Success Metrics
 
-- [Metric 1]: [Target value]
-- [Metric 2]: [Target value]
+- [Metric 1]: [Current value] → [Target value]
+- [Metric 2]: [Measurable before/after comparison]
 
-## Out of Scope
+## Scope Boundaries
 
-- [Item 1]: [Reason for exclusion]
-- [Item 2]: [Reason for exclusion]
+- **In scope**: [Specific inclusions]
+- **Out of scope**: [Specific exclusions with reasons]
+
+## Implementation Steps
+
+1. [High-level phase 1]
+2. [High-level phase 2]
+3. [Verification approach]
+```
+
+**Example addition for BUG** (v2.0 template):
+```markdown
+## Root Cause
+
+- **File**: `path/to/buggy_file.py`
+- **Anchor**: `in function problematic_func()`
+- **Cause**: [Explanation of why the bug occurs - logic error, race condition, etc.]
+
+## Proposed Solution
+
+Fix in `buggy_file.py`, function `problematic_func()`:
+
+```python
+# Current (buggy) code shown for context
+# Proposed fix with code example
+```
+
+## Implementation Steps
+
+1. Fix root cause in identified function
+2. Add regression test
+3. Verify fix resolves issue
 ```
 
 ### 6. Finalize

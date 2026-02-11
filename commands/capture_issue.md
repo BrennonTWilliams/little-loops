@@ -342,11 +342,18 @@ ELSE:
 
 **Build issue from shared template:**
 
-1. Read `templates/issue-sections.json` (relative to the little-loops plugin directory)
+1. Read `templates/issue-sections.json` (v2.0 - optimized for AI implementation)
 2. Look up `creation_variants.[TEMPLATE_STYLE]` to determine which sections to include
 3. For each section name in `include_common`, use `common_sections.[name].creation_template` as placeholder content
 4. If `include_type_sections` is true, also include sections from `type_sections.[TYPE]` that have a `creation_template`
 5. Always include YAML frontmatter with `discovered_date` and `discovered_by: capture_issue`
+
+**New sections in v2.0** (auto-included based on template variant):
+- **Motivation**: Why this matters (replaces Current Pain Point for ENH)
+- **Implementation Steps**: High-level outline for agent guidance
+- **Root Cause** (BUG): File + function anchor + explanation
+- **API/Interface** (FEAT/ENH): Public contract changes
+- **Use Case** (FEAT): Concrete scenario (renamed from User Story)
 
 The assembled file follows this structure:
 

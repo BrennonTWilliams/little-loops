@@ -113,10 +113,15 @@ Check for completeness:
 
 #### Required Sections
 
-Read `templates/issue-sections.json` (relative to the little-loops plugin directory) and verify:
+Read `templates/issue-sections.json` v2.0 (relative to the little-loops plugin directory) and verify:
 - [ ] All `common_sections` where `required: true` are present and non-empty (Summary, Current Behavior, Expected Behavior, Impact, Labels, Status)
 - [ ] For the issue's type (BUG/FEAT/ENH), all `type_sections.[TYPE]` entries where `level: "required"` are present and non-empty
 - [ ] Proposed Solution section is present (even if marked TBD)
+
+**Backward Compatibility (v2.0)**:
+- Sections marked `deprecated: true` in template are still valid and should be accepted
+- Old section names (e.g., "User Story", "Current Pain Point") are supported alongside new names ("Use Case", "Motivation")
+- Both old and new formats are considered VALID
 
 #### Code References
 - [ ] File paths exist in codebase
