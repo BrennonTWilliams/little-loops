@@ -61,6 +61,10 @@ if not moved_to_completed:
 - **Risk**: Low - Additive change, doesn't modify core flow
 - **Breaking Change**: No
 
+## Blocked By
+
+- ENH-309: cli.py must be split into package first (structural change)
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._

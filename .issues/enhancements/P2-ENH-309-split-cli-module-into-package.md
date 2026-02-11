@@ -133,6 +133,12 @@ cli/
 4. **Easier navigation** - Developers can find command logic quickly
 5. **Parallel development** - Multiple developers can work on different commands without conflicts
 
+## Blocks
+
+- FEAT-001: Add ABC for CLI commands
+- ENH-308: Sprint sequential retry for merge-failed issues
+- ENH-328: ll-auto verify check implementation markers
+
 ## Labels
 
 `enhancement`, `architecture`, `refactoring`, `auto-generated`, `god-module`

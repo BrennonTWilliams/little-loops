@@ -56,9 +56,13 @@ if failed_ids:
 - **Effort**: Small-Medium
 - **Risk**: Low — uses existing `process_issue_inplace()`, retries are sequential
 
+## Blocked By
+
+- ENH-309: cli.py must be split into package first (structural change)
+
 ## Dependencies
 
-- BUG-307: Sprint state per-issue tracking (needed to identify which issues failed)
+- BUG-307: Sprint state per-issue tracking (completed 2026-02-09)
 
 ## Files
 
