@@ -472,6 +472,20 @@
               "type": "number",
               "description": "Estimated tokens per character of bash output",
               "default": 0.3
+            },
+            "per_turn_overhead": {
+              "type": "integer",
+              "description": "Tokens added per tool call to account for Claude output and user message tokens",
+              "default": 800,
+              "minimum": 0,
+              "maximum": 5000
+            },
+            "system_prompt_baseline": {
+              "type": "integer",
+              "description": "One-time token estimate for system prompt (CLAUDE.md, skills, etc.) added on first tool call",
+              "default": 10000,
+              "minimum": 0,
+              "maximum": 50000
             }
           },
           "additionalProperties": false

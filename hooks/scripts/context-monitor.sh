@@ -31,6 +31,8 @@ STATE_FILE=$(ll_config_value "context_monitor.state_file" ".claude/ll-context-st
 READ_PER_LINE=$(ll_config_value "context_monitor.estimate_weights.read_per_line" "10")
 TOOL_CALL_BASE=$(ll_config_value "context_monitor.estimate_weights.tool_call_base" "100")
 BASH_PER_CHAR=$(ll_config_value "context_monitor.estimate_weights.bash_output_per_char" "0.3")
+PER_TURN_OVERHEAD=$(ll_config_value "context_monitor.estimate_weights.per_turn_overhead" "800")
+SYSTEM_PROMPT_BASELINE=$(ll_config_value "context_monitor.estimate_weights.system_prompt_baseline" "10000")
 
 # Post-compaction reset: percentage of context limit to use as new baseline
 POST_COMPACT_PERCENT=$(ll_config_value "context_monitor.post_compaction_percent" "30")
@@ -207,6 +209,18 @@ main() {
     NEW_TOKENS=$((CURRENT_TOKENS + TOKENS))
     NEW_CALLS=$((CURRENT_CALLS + 1))
 
+    # Add per-turn overhead for Claude output + user message tokens
+    local overhead=$PER_TURN_OVERHEAD
+    # Add system prompt baseline on first tool call of session
+    if [ "$CURRENT_CALLS" -eq 0 ]; then
+        overhead=$((overhead + SYSTEM_PROMPT_BASELINE))
+    fi
+    NEW_TOKENS=$((NEW_TOKENS + overhead))
+
+    # Track overhead in breakdown
+    OVERHEAD_CURRENT=$(echo "$STATE" | jq -r '.breakdown["claude_overhead"] // 0')
+    OVERHEAD_NEW=$((OVERHEAD_CURRENT + overhead))
+
     # Update breakdown by tool type
     TOOL_KEY=$(echo "$TOOL_NAME" | tr '[:upper:]' '[:lower:]')
     TOOL_CURRENT=$(echo "$STATE" | jq -r --arg key "$TOOL_KEY" '.breakdown[$key] // 0')
@@ -218,7 +232,8 @@ main() {
         --argjson calls "$NEW_CALLS" \
         --arg key "$TOOL_KEY" \
         --argjson tool_tokens "$TOOL_NEW" \
-        '.estimated_tokens = $tokens | .tool_calls = $calls | .breakdown[$key] = $tool_tokens')
+        --argjson overhead "$OVERHEAD_NEW" \
+        '.estimated_tokens = $tokens | .tool_calls = $calls | .breakdown[$key] = $tool_tokens | .breakdown["claude_overhead"] = $overhead')
 
     # Calculate usage percentage
     USAGE_PERCENT=$((NEW_TOKENS * 100 / CONTEXT_LIMIT))

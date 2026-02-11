@@ -53,6 +53,18 @@ TBD - requires investigation. Possible approaches:
 
 ---
 
-## Status
+## Resolution
 
-**Open** | Created: 2026-02-11 | Priority: P3
+- **Action**: implement
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `hooks/scripts/context-monitor.sh`: Added per-turn overhead (800 tokens default) for Claude output + user messages, and system prompt baseline (10000 tokens default) on first tool call. Tracked in `breakdown["claude_overhead"]`.
+- `config-schema.json`: Added `per_turn_overhead` and `system_prompt_baseline` weight parameters under `context_monitor.estimate_weights`.
+
+### Verification Results
+- Tests: PASS (2675 passed)
+- Lint: PASS
+- Types: N/A (bash script)
+- Integration: PASS
