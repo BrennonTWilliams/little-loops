@@ -325,3 +325,14 @@ After this feature:
 ## Status
 
 **Open** | Created: 2026-02-10 | Priority: P3
+
+---
+
+## Verification Notes
+
+- **Verified**: 2026-02-10
+- **Verdict**: VALID
+- scripts/little_loops/issue_history/formatters/ directory does not exist
+- Formatting functions remain in issue_history.py as standalone functions
+- No formatter protocol or registry implemented
+- Dependency ENH-310 not yet completed — implementation blocked

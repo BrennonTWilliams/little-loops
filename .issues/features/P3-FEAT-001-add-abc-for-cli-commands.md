@@ -225,3 +225,14 @@ def list_commands() -> list[str]:
 ## Status
 
 **Open** | Created: 2026-02-10 | Priority: P3
+
+---
+
+## Verification Notes
+
+- **Verified**: 2026-02-10
+- **Verdict**: VALID
+- scripts/little_loops/cli/base.py does not exist — no ABCs implemented
+- scripts/little_loops/cli/ package does not exist — still single cli.py file
+- CLI commands remain as standalone functions (main_auto, main_parallel, etc.)
+- Dependency ENH-309 not yet completed — implementation blocked

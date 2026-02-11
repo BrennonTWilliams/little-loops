@@ -122,3 +122,14 @@ The main challenge is reliably identifying the *active* session file. `ll-messag
 ## Status
 
 **Open** | Created: 2026-02-10 | Priority: P2
+
+---
+
+## Verification Notes
+
+- **Verified**: 2026-02-10
+- **Verdict**: VALID
+- .ll/ directory does not exist — no local state storage implemented
+- No session log linking exists in issue files
+- scripts/little_loops/messages.py exists for JSONL discovery — can be reused
+- Feature is new work, no existing implementation
