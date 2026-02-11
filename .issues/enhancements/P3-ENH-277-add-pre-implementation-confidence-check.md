@@ -92,3 +92,25 @@ Update first - Has merit but the 5-point assessment criteria need more specifici
 4. **Scoring rubric**: What specific criteria for each percentage point?
 
 Without concrete detection methods, the skill may give false confidence or be inconsistent in its assessments.
+
+---
+
+## Tradeoff Review Note (2026-02-11)
+
+**Reviewed**: 2026-02-11 by `/ll:tradeoff_review_issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | MEDIUM |
+| Complexity added | LOW |
+| Technical debt risk | LOW |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Update first - Detection criteria need more specificity before implementation:
+1. **No duplicate implementations**: Define what to search for (code patterns, function names, feature flags?)
+2. **Root cause identified**: Define what constitutes "identified" vs "symptoms treated"
+3. **Architecture compliance**: Document which patterns to check and where they're defined
+4. **Scoring rubric**: Define specific criteria for each percentage threshold

@@ -101,4 +101,8 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-02-11 | Priority: P3
+**Closed - Already Fixed** | Created: 2026-02-11 | Closed: 2026-02-11 | Priority: P3
+
+## Resolution
+
+Both `compile_goal` and `compile_convergence` are already implemented in `scripts/little_loops/fsm/compilers.py` (lines 134 and 208) and registered in the `COMPILERS` dict (lines 107-108). All four paradigms are functional.

@@ -128,3 +128,21 @@ tests/cli/
   - test_fsm_executor.py: 1,925 lines (reported: 1,925)
   - test_worker_pool.py: 1,737 lines (reported: 1,739)
 - Dependencies (ENH-309, ENH-310) not yet completed — test splitting not started
+
+---
+
+## Resolution
+
+- **Status**: Closed - Tradeoff Review
+- **Completed**: 2026-02-11
+- **Reason**: Low utility relative to implementation complexity
+
+### Tradeoff Review Scores
+- Utility: LOW
+- Implementation Effort: MEDIUM
+- Complexity Added: LOW
+- Technical Debt Risk: LOW
+- Maintenance Overhead: LOW
+
+### Rationale
+Explicitly optional and low-priority per the issue itself. Blocked by ENH-309 and ENH-310. Large test files are more acceptable than large production files. Reopen only if test navigation becomes a real pain point.

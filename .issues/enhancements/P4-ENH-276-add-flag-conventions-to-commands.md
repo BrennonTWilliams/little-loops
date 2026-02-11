@@ -58,3 +58,25 @@ Commands should document supported flags in their help text. Flags are optional 
 - **Verdict**: VALID (after update)
 - Updated Current Behavior: `manage_issue` already supports `--plan-only`, `--resume`, `--gates` flags
 - Issue scope refined to standardizing the flag convention across other commands and documenting it in help
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-11 by `/ll:tradeoff_review_issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | MEDIUM |
+| Complexity added | MEDIUM |
+| Technical debt risk | LOW |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first - Needs scope clarification before implementation:
+1. Which commands/flags should be implemented first as proof-of-concept?
+2. What's the rollout strategy (all at once vs incremental)?
+3. Are all 4 flags needed for all commands?
+4. Use `manage_issue`'s existing flags as reference implementation to document and standardize

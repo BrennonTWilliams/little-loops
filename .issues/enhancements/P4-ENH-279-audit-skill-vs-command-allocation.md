@@ -70,3 +70,25 @@ Evaluate each skill and migrate candidates from `skills/` to `commands/` where a
 - Conceptual issue for architecture review
 - All 6 assessed skills still exist in skills/ directory
 - Assessment remains valid: workflow-automation-proposer, product-analyzer, analyze-history, issue-workflow are user-initiated candidates for migration to commands
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-11 by `/ll:tradeoff_review_issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | MEDIUM |
+| Complexity added | LOW |
+| Technical debt risk | LOW |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Update first - The "proactive discovery" criterion needs validation with evidence:
+1. Test whether Claude actually invokes these skills without user prompting
+2. Provide evidence for why `issue-size-review` is proactive but `workflow-automation-proposer` is not
+3. Measure actual token cost difference between skills and commands
+4. Consider reviewing usage data from `ll-messages` logs before proceeding

@@ -208,3 +208,25 @@ Consider splitting into smaller issues:
 - **ENH-319d**: Filtering & scoping + Trend tracking
 
 This allows incremental delivery and clearer progress tracking.
+
+---
+
+## Tradeoff Review Note (2026-02-11)
+
+**Reviewed**: 2026-02-11 by `/ll:tradeoff_review_issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | HIGH |
+| Complexity added | HIGH |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first - 6 enhancements in one issue is too broad. Decompose into smaller issues before implementation:
+- **ENH-319a**: Interactive proposal refinement + Auto-implementation mode (quick wins)
+- **ENH-319b**: Smart caching & resumption
+- **ENH-319c**: Incremental analysis
+- **ENH-319d**: Filtering & scoping + Trend tracking
