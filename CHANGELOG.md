@@ -13,6 +13,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.8.0] - 2026-02-11
+
+### Added
+
+- **Auto mode for issue refinement** - `refine_issue` now supports automatic template v2.0 alignment without interactive Q&A (ENH-325, FEAT-256)
+- **Session linking and history DB issues** - New issues for session continuity and historical tracking (FEAT-255)
+- feat(refine_issue): add auto mode for template v2.0 alignment (2fb8ab4)
+
+### Fixed
+
+- **Improve action clarity** - `manage_issue` improve action now clearly requires full implementation, not just plans (BUG-326)
+- **Template v2.0 section names** - Corrected old v1.0 template section names in 3 files (BUG-322)
+
+### Changed
+
+- refactor(issue): reduce ENH-319 scope from 12 to 6 enhancements (8e6ec6e)
+- chore: add .sprints/ to .gitignore (e7ab913)
+- chore: ignore generated loop-suggestions cache directory (f8e7ce4)
+- style: fix lint errors and reformat with ruff (ae44c67)
+
+[1.8.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.7.0...v1.8.0
+
 ## [1.7.0] - 2026-02-10
 
 ### Added
