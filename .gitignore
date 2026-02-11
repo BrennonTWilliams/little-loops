@@ -51,6 +51,7 @@ temp/
 # Claude Code
 .claude/settings.local.json
 .claude/ll.local.md
+.claude/loop-suggestions/
 .mcp.json
 
 # Python
