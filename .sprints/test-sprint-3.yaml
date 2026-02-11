@@ -1,9 +1,0 @@
-name: test-sprint-3
-description: Test sprint
-created: '2026-02-07T04:09:34.753046+00:00'
-issues:
-- BUG-001
-options:
-  max_iterations: 100
-  timeout: 3600
-  max_workers: 2

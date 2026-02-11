@@ -1,9 +1,0 @@
-name: test-sprint-2
-description: ''
-created: '2026-02-07T04:09:34.748066+00:00'
-issues:
-- FEAT-010
-options:
-  max_iterations: 100
-  timeout: 3600
-  max_workers: 2
