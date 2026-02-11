@@ -27,6 +27,7 @@ ISSUE DISCOVERY
 /ll:scan_product
     Scan codebase for product-focused issues based on goals document
     Requires: product.enabled in ll-config.json
+    Skills: product-analyzer
 
 /ll:audit_architecture [focus]
     Analyze codebase architecture for patterns and improvements
@@ -61,7 +62,7 @@ ISSUE REFINEMENT
 /ll:ready_issue [issue_id]
     Validate issue file for accuracy and auto-correct problems
 
-    Skills: issue-size-review, map-dependencies
+    Skills: issue-size-review, map-dependencies, confidence-check
 
 PLANNING & IMPLEMENTATION
 --------------------------
@@ -82,11 +83,6 @@ SCANNING & ANALYSIS
 -------------------
 /ll:find_dead_code
     Analyze codebase for deprecated, unused, or dead code
-
-/ll:analyze_log <log_file>
-    Analyze ll-parallel/ll-auto log files to identify tool bugs
-
-    Skills: product-analyzer
 
 CODE QUALITY
 ------------
@@ -149,7 +145,7 @@ META-ANALYSIS
     Analyze user message patterns for automation opportunities
 
     Skills: analyze-history
-    CLI: ll-history, ll-workflows
+    CLI: ll-messages, ll-history, ll-workflows
 
 SESSION & CONFIG
 ----------------
@@ -188,7 +184,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 **Issue Discovery**: `capture_issue`, `scan_codebase`, `scan_product`, `audit_architecture`
 **Issue Refinement**: `normalize_issues`, `prioritize_issues`, `align_issues`, `refine_issue`, `verify_issues`, `tradeoff_review_issues`, `ready_issue`
 **Planning & Implementation**: `create_sprint`, `manage_issue`, `iterate_plan`
-**Scanning & Analysis**: `find_dead_code`, `analyze_log`
+**Scanning & Analysis**: `find_dead_code`
 **Code Quality**: `check_code`, `run_tests`, `audit_docs`
 **Git & Release**: `commit`, `open_pr`, `describe_pr`, `manage_release`, `sync_issues`, `cleanup_worktrees`
 **Automation & Loops**: `create_loop`, `loop-suggester`
@@ -217,9 +213,6 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 /ll:check_code
 /ll:commit
 /ll:open_pr
-
-# Analyze ll-parallel/ll-auto logs for tool bugs
-/ll:analyze_log ll-parallel-debug.log
 ```
 
 ---
