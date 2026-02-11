@@ -90,3 +90,14 @@ Either use `{{config.project.test_cmd}}` etc. in templates, or add a note like "
 ## Status
 
 **Open** | Created: 2026-02-11 | Priority: P4
+
+---
+
+## Verification Notes
+
+- **Verified**: 2026-02-11
+- **Verdict**: VALID
+- `create_loop.md` hardcodes `pytest`, `ruff`, `mypy` in template examples (confirmed)
+- `iterate_plan.md` and `loop-suggester.md` also use literal tool names
+- `check_code.md` already uses `{{config.project.*}}` refs — pattern exists to follow
+- Blocked by ENH-341 (confirmed open)

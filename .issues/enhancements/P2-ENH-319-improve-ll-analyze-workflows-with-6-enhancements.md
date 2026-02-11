@@ -186,7 +186,7 @@ All enhancements should be:
 
 ## Blocks
 
-- ENH-279: Audit skill vs command allocation
+_None — ENH-279 dependency removed (can proceed independently)._
 
 ## Labels
 

@@ -97,7 +97,7 @@ This enhancement would:
 
 ## Blocked By
 
-- ENH-319: Improve /ll:analyze-workflows with 6 enhancements (enhance workflow-automation-proposer before potentially migrating it)
+_None — previously blocked by ENH-319, but this audit can proceed independently. The skill-vs-command evaluation doesn't require workflow enhancements to be implemented first._
 
 ## Labels
 

@@ -112,7 +112,7 @@ Storage location: `.ll/history.db` at project root (gitignored). This keeps it p
 
 ## Blocked By
 
-- FEAT-323: Link session JSONL logs to issue files (provides session data to ingest)
+- ~~FEAT-323: Link session JSONL logs to issue files~~ (completed 2026-02-10 — dependency satisfied)
 
 ## Related Key Documentation
 
