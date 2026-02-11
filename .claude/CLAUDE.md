@@ -5,7 +5,7 @@ Development workflow toolkit for Claude Code with issue management, code quality
 
 ## Project Configuration
 
-- **Plugin manifest**: `plugin.json`
+- **Plugin manifest**: `.claude-plugin/plugin.json`
 - **Config schema**: `config-schema.json`
 - **Project config**: `.claude/ll-config.json` (read this for project-specific settings)
 - **Local overrides**: `.claude/ll.local.md` (user-specific, gitignored)
