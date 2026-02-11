@@ -391,7 +391,16 @@ For each selected item, gather the information interactively:
 - **Structural gaps**: Use the generic section question from the Step 3 checklist
 - **Quality issues**: Use the targeted clarifying question from Step 3.5 (e.g., "This acceptance criterion says 'fast' — what response time target?")
 
-### 5. Update Issue File
+### 5. Update Issue File and Append Session Log
+
+After updating the issue, append a session log entry:
+
+```markdown
+## Session Log
+- `/ll:refine_issue` - [ISO timestamp] - `[path to current session JSONL]`
+```
+
+To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
 
 1. Use Edit tool to add/update sections with gathered information
 2. Preserve existing frontmatter and content

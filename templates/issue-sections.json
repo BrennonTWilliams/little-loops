@@ -114,6 +114,13 @@
       "human_value": "LOW",
       "creation_template": "`[type-label]`, `captured`"
     },
+    "Session Log": {
+      "required": false,
+      "description": "Links to Claude Code JSONL session files involved in this issue's lifecycle",
+      "ai_usage": "LOW",
+      "human_value": "MEDIUM",
+      "creation_template": ""
+    },
     "Status": {
       "required": true,
       "description": "Current issue status footer",

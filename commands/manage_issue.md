@@ -575,6 +575,19 @@ Add resolution section:
 - Integration: PASS
 ```
 
+### 1.5. Append Session Log Entry
+
+Append a session log entry to the issue file before moving it:
+
+```markdown
+## Session Log
+- `/ll:manage_issue` - [ISO timestamp] - `[path to current session JSONL]`
+```
+
+To find the current session JSONL path: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), then find the most recently modified `.jsonl` file (excluding files starting with `agent-`).
+
+If the `## Session Log` section already exists, append the new entry below the header. If it doesn't exist, add it before the `---` / `## Status` footer.
+
 ### 2. Move to Completed
 
 **CRITICAL**: Move to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` - this is a SIBLING directory to bugs/features/enhancements, NOT a subdirectory within them.

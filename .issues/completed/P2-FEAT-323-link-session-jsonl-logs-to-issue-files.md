@@ -123,9 +123,31 @@ The main challenge is reliably identifying the *active* session file. `ll-messag
 
 ---
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/session_log.py`: New utility module with `get_current_session_jsonl()` and `append_session_log_entry()`
+- `templates/issue-sections.json`: Added `Session Log` section definition
+- `commands/manage_issue.md`: Added session log append instruction on completion
+- `commands/capture_issue.md`: Added session log append instruction on issue creation
+- `commands/scan_codebase.md`: Added session log append instruction on issue creation
+- `commands/refine_issue.md`: Added session log append instruction on issue update
+- `scripts/tests/test_session_log.py`: 11 tests covering both utility functions
+
+### Verification Results
+- Tests: PASS (11/11)
+- Lint: PASS
+- Types: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-10 | Priority: P2
+**Completed** | Created: 2026-02-10 | Completed: 2026-02-11 | Priority: P2
 
 ---
 
