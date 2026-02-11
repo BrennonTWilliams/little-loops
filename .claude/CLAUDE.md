@@ -108,5 +108,6 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-sprint` - Sprint-based issue processing
 - `ll-workflows` - Workflow sequence analyzer
 - `ll-history` - View completed issue statistics and history
+- `ll-deps` - Cross-issue dependency analysis and validation
 
 Install: `pip install -e "./scripts[dev]"`

@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
+from unittest.mock import patch
 
 from little_loops.dependency_mapper import (
     DependencyProposal,
@@ -14,8 +16,9 @@ from little_loops.dependency_mapper import (
     compute_conflict_score,
     extract_file_paths,
     find_file_overlaps,
-    format_text_graph,
     format_report,
+    format_text_graph,
+    main,
     validate_dependencies,
 )
 from little_loops.issue_parser import IssueInfo
@@ -831,3 +834,89 @@ class TestApplyProposals:
         # Files don't exist in the mapping
         modified = apply_proposals(proposals, {})
         assert modified == []
+
+
+# =============================================================================
+# CLI main() tests
+# =============================================================================
+
+
+class TestMainCLI:
+    """Tests for the ll-deps CLI entry point."""
+
+    def test_no_command_shows_help(self) -> None:
+        """Test main() with no command returns 1."""
+        with patch.object(sys, "argv", ["ll-deps"]):
+            result = main()
+        assert result == 1
+
+    def test_nonexistent_issues_dir(self) -> None:
+        """Test main() with nonexistent issues directory returns 1."""
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", "/nonexistent/path", "analyze"]
+        ):
+            result = main()
+        assert result == 1
+
+    def test_analyze_no_issues(self, tmp_path: Path) -> None:
+        """Test analyze with empty issues directory."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        (issues_dir / "bugs").mkdir()
+        (issues_dir / "features").mkdir()
+        (issues_dir / "enhancements").mkdir()
+        (issues_dir / "completed").mkdir()
+
+        # Create minimal config
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze"]
+        ):
+            result = main()
+        assert result == 0
+
+    def test_validate_no_issues(self, tmp_path: Path) -> None:
+        """Test validate with empty issues directory."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        (issues_dir / "bugs").mkdir()
+        (issues_dir / "features").mkdir()
+        (issues_dir / "enhancements").mkdir()
+        (issues_dir / "completed").mkdir()
+
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate"]
+        ):
+            result = main()
+        assert result == 0
+
+    def test_analyze_with_issues(self, tmp_path: Path, capsys: object) -> None:
+        """Test analyze with actual issues produces output."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        bugs_dir = issues_dir / "bugs"
+        bugs_dir.mkdir()
+        (issues_dir / "features").mkdir()
+        (issues_dir / "enhancements").mkdir()
+        (issues_dir / "completed").mkdir()
+
+        (bugs_dir / "P1-BUG-001-test-bug.md").write_text(
+            "# BUG-001: Test Bug\n\n## Summary\n\nFix `scripts/config.py`\n"
+        )
+
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+
+        with patch.object(
+            sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze"]
+        ):
+            result = main()
+        assert result == 0

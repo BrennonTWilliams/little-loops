@@ -40,6 +40,12 @@ The `analyze-history` skill demonstrates the correct integration pattern: skill 
 3. Rewrite skill to call CLI and format output
 4. Update `help.md` to reference `ll-deps` CLI
 
+## Scope Boundaries
+
+- Out of scope: Changing the underlying algorithms in `dependency_mapper.py`
+- Out of scope: Adding new analysis features beyond what the module already provides
+- Out of scope: Modifying other skills to follow this pattern (track separately)
+
 ## Impact
 
 - **Scope**: `dependency_mapper.py`, `skills/map-dependencies/SKILL.md`, `pyproject.toml`
@@ -60,4 +66,26 @@ The `analyze-history` skill demonstrates the correct integration pattern: skill 
 
 ## Status
 
-**Open** | Created: 2026-02-11 | Priority: P3
+**Completed** | Created: 2026-02-11 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/dependency_mapper.py`: Added `main()` CLI function with `analyze` and `validate` subcommands, plus `_load_issues()` helper
+- `scripts/pyproject.toml`: Registered `ll-deps` entry point
+- `skills/map-dependencies/SKILL.md`: Rewrote to delegate to `ll-deps` CLI (following analyze-history pattern)
+- `scripts/tests/test_dependency_mapper.py`: Added CLI integration tests
+- `commands/help.md`: Added `ll-deps` CLI reference
+- `.claude/CLAUDE.md`: Added `ll-deps` to CLI tools list
+
+### Verification Results
+- Tests: PASS (63 passed)
+- Lint: PASS
+- Types: PASS
+- Run: PASS (ll-deps analyze and validate both work)

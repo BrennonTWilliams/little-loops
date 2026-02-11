@@ -55,6 +55,7 @@ ll-workflows = "little_loops.workflow_sequence_analyzer:main"
 ll-history = "little_loops.cli:main_history"
 ll-verify-docs = "little_loops.cli:main_verify_docs"
 ll-check-links = "little_loops.cli:main_check_links"
+ll-deps = "little_loops.dependency_mapper:main"
 
 [project.optional-dependencies]
 dev = [

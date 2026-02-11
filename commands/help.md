@@ -34,6 +34,7 @@ ISSUE DISCOVERY
     Focus: large-files, integration, patterns, organization, all
 
     Skills: issue-workflow, issue-size-review, map-dependencies
+    CLI: ll-deps
 
 ISSUE REFINEMENT
 ----------------
