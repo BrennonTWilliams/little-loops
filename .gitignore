@@ -67,4 +67,7 @@ scripts/.parallel-manage-state.json
 
 # ll-parallel artifacts
 .worktrees/
+.sprints/
 *-state.json
+
+docs/demo
