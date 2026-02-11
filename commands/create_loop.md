@@ -45,25 +45,27 @@ questions:
 
 ---
 
-### Step 0.1: Template Selection
+### Step 0.1: Paradigm Selection (Template Path)
 
-If "Start from template" was selected:
+If "Start from template" was selected, present the loop paradigms:
 
 ```yaml
 questions:
-  - question: "Which template would you like to use?"
-    header: "Template"
+  - question: "Which loop paradigm fits your use case?"
+    header: "Paradigm"
     multiSelect: false
     options:
-      - label: "Python quality (lint + types + format)"
-        description: "ruff check/fix + mypy + ruff format until clean"
-      - label: "JavaScript quality (lint + types)"
-        description: "eslint + tsc until clean"
-      - label: "Run tests until passing"
-        description: "pytest/jest with auto-fix until green"
-      - label: "Full quality gate (tests + types + lint)"
-        description: "All checks must pass before completing"
+      - label: "Goal (Recommended)"
+        description: "Define an end state and let the loop work toward it. Best for: fixing errors until clean"
+      - label: "Invariants"
+        description: "Define conditions that must always hold; loop checks and fixes violations. Best for: quality gates"
+      - label: "Convergence"
+        description: "Measure a metric and apply fixes until it reaches a target. Best for: reducing error counts"
+      - label: "Imperative"
+        description: "Execute an ordered list of steps sequentially. Best for: multi-stage builds"
 ```
+
+**After paradigm selection**: Continue to Step 0.2 (Template Customization) with the selected paradigm, then skip to Step 4 (Preview and Confirm) with template-populated configuration. The template definitions below provide pre-built configurations for each paradigm.
 
 ---
 
@@ -151,7 +153,7 @@ max_iterations: {{max_iterations}}
 
 ### Step 0.2: Template Customization
 
-After template selection, ask for customization:
+After paradigm selection, ask for customization:
 
 ```yaml
 questions:
@@ -190,9 +192,10 @@ questions:
 - Replace `{{test_cmd}}`, `{{type_cmd}}`, `{{lint_cmd}}`, `{{lint_fix_cmd}}` with language-appropriate defaults
 
 **Flow after template customization:**
+- Use the selected paradigm to pick the matching template definition below
 - The generated YAML and auto-suggested loop name are ready
 - Continue directly to Step 4 (Preview and Confirm) with the template-populated configuration
-- Skip Step 1 (Paradigm Selection), Step 2 (Paradigm-Specific Questions), and Step 3 (Loop Name) since template provides all configuration
+- Skip Step 1 (Paradigm Selection), Step 2 (Paradigm-Specific Questions), and Step 3 (Loop Name) since paradigm + template provides all configuration
 
 ---
 
