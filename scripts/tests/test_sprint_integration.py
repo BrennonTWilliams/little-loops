@@ -268,7 +268,7 @@ issues:
         """Test sprint with 3 waves executes issues in correct order."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         _, config, manager = self._setup_multi_wave_project(tmp_path)
 
@@ -313,7 +313,7 @@ issues:
                 return 0
 
         monkeypatch.setattr(
-            "little_loops.cli.ParallelOrchestrator",
+            "little_loops.cli.sprint.ParallelOrchestrator",
             MockOrchestrator,
         )
 
@@ -350,7 +350,7 @@ issues:
         """Test issues within same wave are processed together via orchestrator."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         _, config, manager = self._setup_multi_wave_project(tmp_path)
 
@@ -390,7 +390,7 @@ issues:
                 return 0
 
         monkeypatch.setattr(
-            "little_loops.cli.ParallelOrchestrator",
+            "little_loops.cli.sprint.ParallelOrchestrator",
             MockOrchestrator,
         )
 
@@ -416,7 +416,7 @@ issues:
         """Test sprint runner enables overlap detection for parallel waves (BUG-305)."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         _, config, manager = self._setup_multi_wave_project(tmp_path)
 
@@ -455,7 +455,7 @@ issues:
                 return 0
 
         monkeypatch.setattr(
-            "little_loops.cli.ParallelOrchestrator",
+            "little_loops.cli.sprint.ParallelOrchestrator",
             MockOrchestrator,
         )
 
@@ -547,7 +547,7 @@ issues:
         """Test failed issues are tracked in state correctly."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         _, config, manager = self._setup_error_recovery_project(tmp_path)
 
@@ -570,7 +570,7 @@ issues:
                 return 1  # Simulate failure
 
         monkeypatch.setattr(
-            "little_loops.cli.ParallelOrchestrator",
+            "little_loops.cli.sprint.ParallelOrchestrator",
             MockOrchestrator,
         )
 
@@ -602,7 +602,7 @@ issues:
         """Test state is saved when issue fails."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         _, config, manager = self._setup_error_recovery_project(tmp_path)
 
@@ -654,7 +654,7 @@ issues:
         """
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
         from little_loops.sprint import SprintState
 
         # Create a project with dependencies to create multiple waves
@@ -750,7 +750,7 @@ issues:
         """Test that partial wave success tracks completed and failed issues separately."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         _, config, manager = self._setup_error_recovery_project(tmp_path)
 
@@ -772,7 +772,7 @@ issues:
             def run(self) -> int:
                 return 1  # Some failures
 
-        monkeypatch.setattr("little_loops.cli.ParallelOrchestrator", MockOrchestrator)
+        monkeypatch.setattr("little_loops.cli.sprint.ParallelOrchestrator", MockOrchestrator)
         monkeypatch.chdir(tmp_path)
         cli._sprint_shutdown_requested = False
 
@@ -808,7 +808,7 @@ issues:
         """Test that issues neither completed nor failed are left untracked for retry."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         _, config, manager = self._setup_error_recovery_project(tmp_path)
 
@@ -831,7 +831,7 @@ issues:
             def run(self) -> int:
                 return 1
 
-        monkeypatch.setattr("little_loops.cli.ParallelOrchestrator", MockOrchestrator)
+        monkeypatch.setattr("little_loops.cli.sprint.ParallelOrchestrator", MockOrchestrator)
         monkeypatch.chdir(tmp_path)
         cli._sprint_shutdown_requested = False
 
@@ -865,7 +865,7 @@ class TestDependencyHandling:
         """Test circular dependencies are detected and reported."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         issues_dir = tmp_path / ".issues"
         issues_dir.mkdir()
@@ -1027,7 +1027,7 @@ class TestEdgeCases:
         """Test sprint with only one issue uses in-place processing."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         issues_dir = tmp_path / ".issues"
         issues_dir.mkdir()
@@ -1100,7 +1100,7 @@ issues:
                 return 0
 
         monkeypatch.setattr(
-            "little_loops.cli.ParallelOrchestrator",
+            "little_loops.cli.sprint.ParallelOrchestrator",
             MockOrchestrator,
         )
 
@@ -1128,7 +1128,7 @@ issues:
         """Test sprint where all issues are filtered via --skip."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         issues_dir = tmp_path / ".issues"
         issues_dir.mkdir()
@@ -1187,7 +1187,7 @@ issues:
         """Test dry run mode makes no actual changes."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         issues_dir = tmp_path / ".issues"
         issues_dir.mkdir()
@@ -1265,7 +1265,7 @@ issues:
         """Test error handling for non-existent sprint."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()

@@ -6,7 +6,7 @@ discovered_by: audit_architecture
 focus_area: large-files
 ---
 
-# ENH-309: Split cli.py into cli/ package
+# ENH-344: Split cli.py into cli/ package
 
 ## Summary
 
@@ -18,9 +18,7 @@ Architectural issue found by `/ll:audit_architecture`. The cli.py module is a go
 - **Lines**: 1-2624 (entire file)
 - **Module**: `little_loops.cli`
 
-## Finding
-
-### Current State
+## Current Behavior
 
 cli.py contains 9 CLI entry points in a single file:
 - `main_auto()` - ll-auto command
@@ -35,12 +33,9 @@ cli.py contains 9 CLI entry points in a single file:
 
 The module has high coupling (15 internal imports) and is difficult to maintain and test due to its size.
 
-### Impact
+## Expected Behavior
 
-- **Development velocity**: Hard to navigate and modify specific CLI commands
-- **Maintainability**: Changes to one command can affect others, risk of merge conflicts
-- **Testability**: Large test files mirror the monolithic structure
-- **Risk**: High - Single point of failure for all CLI functionality
+cli.py should be split into a `cli/` package with one module per CLI command, each self-contained with its own imports and helper functions. The public API remains unchanged via `cli/__init__.py` re-exports.
 
 ## Proposed Solution
 
@@ -147,7 +142,19 @@ This enhancement would:
 
 ### Dependent Files (Callers/Importers)
 - `setup.py` / `pyproject.toml` - CLI entry point references
-- `scripts/tests/test_cli.py` - imports from `cli`
+- `scripts/tests/test_cli.py` - ~50 imports from `little_loops.cli`
+- `scripts/tests/test_ll_loop_execution.py` - ~40 imports of `main_loop`
+- `scripts/tests/test_ll_loop_integration.py` - ~20 imports of `main_loop`
+- `scripts/tests/test_ll_loop_state.py` - ~10 imports of `main_loop`
+- `scripts/tests/test_ll_loop_display.py` - ~6 imports of `main_loop`
+- `scripts/tests/test_ll_loop_commands.py` - ~6 imports of `main_loop`
+- `scripts/tests/test_ll_loop_errors.py` - ~12 imports of `main_loop`
+- `scripts/tests/test_sprint_integration.py` - ~13 imports of `cli`
+- `scripts/tests/test_sprint.py` - ~9 imports of `cli`
+- `scripts/tests/test_issue_history_cli.py` - ~9 imports of `main_history`
+- `scripts/tests/test_create_loop.py` - ~5 imports of `main_loop`
+- `scripts/tests/test_builtin_loops.py` - ~8 imports of `main_loop`
+- `scripts/tests/test_cli_e2e.py` - ~4 imports
 
 ### Similar Patterns
 - ENH-310 (issue_history.py split) follows the same god-module-to-package pattern
@@ -161,12 +168,12 @@ This enhancement would:
 ### Configuration
 - N/A
 
-## Impact Assessment
+## Impact
 
-- **Severity**: High - Maintainability issue affecting all CLI development
-- **Effort**: Medium - Straightforward file splitting, careful import updates
-- **Risk**: Low - Breaking changes contained to internal imports, public API unchanged
-- **Breaking Change**: No - Public API preserved via cli/__init__.py
+- **Priority**: P2 - Important maintainability improvement but not blocking features
+- **Effort**: Medium - Straightforward file splitting, but many test imports to update (~130 import sites)
+- **Risk**: Low - Breaking changes contained to internal imports, public API unchanged via __init__.py re-exports
+- **Breaking Change**: No
 
 ## Benefits
 
@@ -190,7 +197,33 @@ This enhancement would:
 
 ## Status
 
-**Open** | Created: 2026-02-10 | Priority: P2
+**Completed** | Created: 2026-02-10 | Completed: 2026-02-11 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli.py` → Split into `scripts/little_loops/cli/` package (8 modules + `__init__.py`)
+- `scripts/little_loops/cli/__init__.py` - Re-exports all 9 entry points for backward compatibility
+- `scripts/little_loops/cli/auto.py` - `main_auto()` (58 lines)
+- `scripts/little_loops/cli/parallel.py` - `main_parallel()` (167 lines)
+- `scripts/little_loops/cli/messages.py` - `main_messages()` + `_save_combined()` (203 lines)
+- `scripts/little_loops/cli/loop.py` - `main_loop()` with nested commands (883 lines)
+- `scripts/little_loops/cli/sprint.py` - `main_sprint()` + 13 helpers + signal handler (768 lines)
+- `scripts/little_loops/cli/history.py` - `main_history()` (133 lines)
+- `scripts/little_loops/cli/sync.py` - `main_sync()` + 2 helpers (156 lines)
+- `scripts/little_loops/cli/docs.py` - `main_verify_docs()` + `main_check_links()` (200 lines)
+- Updated ~15 patch paths in `test_cli.py`, `test_sprint.py`, `test_sprint_integration.py`
+
+### Verification Results
+- Tests: PASS (2691 passed, 4 skipped)
+- Lint: PASS
+- Types: PASS
 
 ---
 
@@ -201,3 +234,9 @@ This enhancement would:
 - cli.py is 2,614 lines (matches reported ~2,624 lines)
 - cli/ package does not exist yet — refactoring not started
 - All 9 CLI entry points remain in single file
+
+### Ready Issue Validation (2026-02-11)
+
+- **ID Collision**: ENH-344 is also used by completed issue `P3-ENH-344-sprint-execution-plan-shows-file-contention-warnings.md`. This issue needs renormalization to a unique ID.
+- Auto-corrected: Renamed "Finding > Current State" to "Current Behavior", added "Expected Behavior", renamed "Impact Assessment" to "Impact" with justifications
+- ~130 test import sites in 12+ test files reference `from little_loops.cli import` — Integration Map updated

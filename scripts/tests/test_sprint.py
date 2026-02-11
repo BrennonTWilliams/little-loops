@@ -470,7 +470,7 @@ class TestSprintSignalHandler:
         """First signal sets shutdown flag."""
         import signal
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         # Reset state
         cli._sprint_shutdown_requested = False
@@ -486,7 +486,7 @@ class TestSprintSignalHandler:
 
         import pytest
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         # Set flag as if first signal received
         cli._sprint_shutdown_requested = True
@@ -565,7 +565,7 @@ issues:
         """KeyboardInterrupt during wave processing returns exit code 130."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         sprints_dir, config, manager = self._setup_test_project(tmp_path)
 
@@ -601,7 +601,7 @@ issues:
         """Unexpected exception during wave processing returns exit code 1."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         sprints_dir, config, manager = self._setup_test_project(tmp_path)
 
@@ -637,7 +637,7 @@ issues:
         """Exception during processing saves state before exit."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         sprints_dir, config, manager = self._setup_test_project(tmp_path)
 
@@ -755,7 +755,7 @@ class TestSprintDependencyAnalysis:
         """Sprint run displays dependency analysis when issues have file overlaps."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
         from little_loops.issue_manager import IssueProcessingResult
 
         _, config, manager = self._setup_overlapping_issues(tmp_path)
@@ -791,7 +791,7 @@ class TestSprintDependencyAnalysis:
         """Sprint run with --skip-analysis skips dependency analysis."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
         from little_loops.issue_manager import IssueProcessingResult
 
         _, config, manager = self._setup_overlapping_issues(tmp_path)
@@ -828,7 +828,7 @@ class TestSprintDependencyAnalysis:
         """Sprint show runs dependency analysis."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         _, config, manager = self._setup_overlapping_issues(tmp_path)
         monkeypatch.chdir(tmp_path)
@@ -849,7 +849,7 @@ class TestSprintDependencyAnalysis:
         """Sprint show with --skip-analysis skips dependency analysis."""
         import argparse
 
-        from little_loops import cli
+        from little_loops.cli import sprint as cli
 
         _, config, manager = self._setup_overlapping_issues(tmp_path)
         monkeypatch.chdir(tmp_path)

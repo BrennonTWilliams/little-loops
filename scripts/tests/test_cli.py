@@ -344,7 +344,7 @@ class TestMainAutoIntegration:
 
     def test_main_auto_creates_manager_with_correct_args(self, temp_project: Path) -> None:
         """main_auto creates AutoManager with parsed arguments."""
-        with patch("little_loops.cli.AutoManager") as mock_manager_cls:
+        with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
             mock_manager = MagicMock()
             mock_manager.run.return_value = 0
             mock_manager_cls.return_value = mock_manager
@@ -378,7 +378,7 @@ class TestMainAutoIntegration:
 
     def test_main_auto_quiet_flag_passed_to_manager(self, temp_project: Path) -> None:
         """main_auto passes quiet flag as verbose=False to AutoManager."""
-        with patch("little_loops.cli.AutoManager") as mock_manager_cls:
+        with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
             mock_manager = MagicMock()
             mock_manager.run.return_value = 0
             mock_manager_cls.return_value = mock_manager
@@ -404,7 +404,7 @@ class TestMainAutoIntegration:
 
     def test_main_auto_without_quiet_flag_passed_to_manager(self, temp_project: Path) -> None:
         """main_auto without --quiet passes verbose=True to AutoManager (default)."""
-        with patch("little_loops.cli.AutoManager") as mock_manager_cls:
+        with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
             mock_manager = MagicMock()
             mock_manager.run.return_value = 0
             mock_manager_cls.return_value = mock_manager
@@ -542,7 +542,7 @@ class TestMainMessagesIntegration:
                         uuid="uuid-2",
                     ),
                 ]
-                with patch("little_loops.cli._save_combined") as mock_save:
+                with patch("little_loops.cli.messages._save_combined") as mock_save:
                     mock_save.return_value = Path("/output/user-messages-123.jsonl")
 
                     with patch.object(sys, "argv", ["ll-messages"]):
@@ -1173,7 +1173,7 @@ class TestMainAutoAdditionalCoverage:
 
     def test_category_filter_passed_to_manager(self, temp_project: Path) -> None:
         """main_auto passes --category filter to AutoManager."""
-        with patch("little_loops.cli.AutoManager") as mock_manager_cls:
+        with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
             mock_manager = MagicMock()
             mock_manager.run.return_value = 0
             mock_manager_cls.return_value = mock_manager
@@ -1193,7 +1193,7 @@ class TestMainAutoAdditionalCoverage:
 
     def test_only_and_skip_parsed_to_sets(self, temp_project: Path) -> None:
         """main_auto parses --only and --skip to sets."""
-        with patch("little_loops.cli.AutoManager") as mock_manager_cls:
+        with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
             mock_manager = MagicMock()
             mock_manager.run.return_value = 0
             mock_manager_cls.return_value = mock_manager
@@ -1222,7 +1222,7 @@ class TestMainAutoAdditionalCoverage:
 
     def test_project_root_fallback_to_cwd(self, temp_project: Path) -> None:
         """main_auto uses Path.cwd() when no --config provided."""
-        with patch("little_loops.cli.AutoManager") as mock_manager_cls:
+        with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
             mock_manager = MagicMock()
             mock_manager.run.return_value = 0
             mock_manager_cls.return_value = mock_manager
@@ -1246,7 +1246,7 @@ class TestMainAutoAdditionalCoverage:
 
     def test_manager_run_error_returned(self, temp_project: Path) -> None:
         """main_auto returns error code when manager.run() fails."""
-        with patch("little_loops.cli.AutoManager") as mock_manager_cls:
+        with patch("little_loops.cli.auto.AutoManager") as mock_manager_cls:
             mock_manager = MagicMock()
             mock_manager.run.return_value = 1  # Non-zero exit
             mock_manager_cls.return_value = mock_manager
@@ -1437,7 +1437,7 @@ class TestMainMessagesAdditionalCoverage:
                         uuid="uuid-1",
                     )
                 ]
-                with patch("little_loops.cli._save_combined") as mock_save:
+                with patch("little_loops.cli.messages._save_combined") as mock_save:
                     mock_save.return_value = Path("/custom/output.jsonl")
 
                     with patch.object(
@@ -2096,7 +2096,7 @@ class TestSprintSignalHandler:
     @classmethod
     def setup_class(cls) -> None:
         """Import once at class level to access signal handler."""
-        import little_loops.cli as cli_module
+        import little_loops.cli.sprint as cli_module
 
         cls.cli_module = cli_module
 
