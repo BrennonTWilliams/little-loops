@@ -90,4 +90,22 @@ TBD - requires investigation. Possible approaches:
 
 ## Status
 
-**Open** | Created: 2026-02-11 | Priority: P2
+**Completed** | Created: 2026-02-11 | Completed: 2026-02-11 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `hooks/scripts/context-monitor.sh`: Added `check_compaction()` function that detects compaction via `ll-precompact-state.json`, resets `estimated_tokens` to 30% of context limit (configurable), clears threshold/handoff flags, and removes the precompact marker file
+- `config-schema.json`: Added `post_compaction_percent` config option (default 30, range 10-60)
+
+### Verification Results
+- Tests: PASS (2675 passed)
+- Lint: PASS
+- Types: N/A (bash script)
+- Syntax: PASS (bash -n)
