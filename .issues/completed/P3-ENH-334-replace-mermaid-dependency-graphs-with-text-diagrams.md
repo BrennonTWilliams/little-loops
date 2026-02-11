@@ -91,7 +91,7 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-02-11 | Priority: P3
+**Completed** | Created: 2026-02-11 | Priority: P3
 
 ---
 
@@ -102,3 +102,21 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 - `format_mermaid()` confirmed at `dependency_mapper.py:713`
 - No `format_text_graph()` alternative exists
 - Feature is new work — replace mermaid output with ASCII rendering
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/dependency_mapper.py`: Replaced `format_mermaid()` with `format_text_graph()` using ASCII arrows (`──→` for existing, `-.→` for proposed)
+- `scripts/tests/test_dependency_mapper.py`: Updated tests to verify ASCII output instead of mermaid
+- `docs/API.md`: Updated API documentation for `format_text_graph()`
+
+### Verification Results
+- Tests: PASS (58 passed)
+- Lint: PASS
+- Types: PASS

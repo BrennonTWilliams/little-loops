@@ -14,7 +14,7 @@ from little_loops.dependency_mapper import (
     compute_conflict_score,
     extract_file_paths,
     find_file_overlaps,
-    format_mermaid,
+    format_text_graph,
     format_report,
     validate_dependencies,
 )
@@ -646,12 +646,12 @@ class TestFormatReportConflictInfo:
 
 
 # =============================================================================
-# format_mermaid tests
+# format_text_graph tests
 # =============================================================================
 
 
-class TestFormatMermaid:
-    """Tests for Mermaid diagram generation."""
+class TestFormatTextGraph:
+    """Tests for ASCII text graph generation."""
 
     def test_simple_graph(self) -> None:
         """Test generating a simple dependency graph."""
@@ -659,11 +659,10 @@ class TestFormatMermaid:
             make_issue("FEAT-001", title="Auth feature"),
             make_issue("FEAT-002", title="User profile", blocked_by=["FEAT-001"]),
         ]
-        mermaid = format_mermaid(issues)
-        assert "```mermaid" in mermaid
-        assert "graph TD" in mermaid
-        assert 'FEAT-001["FEAT-001: Auth feature"]' in mermaid
-        assert "FEAT-001 --> FEAT-002" in mermaid
+        text = format_text_graph(issues)
+        assert "FEAT-001" in text
+        assert "FEAT-002" in text
+        assert "FEAT-001 ──→ FEAT-002" in text
 
     def test_graph_with_proposals(self) -> None:
         """Test that proposed edges use dashed arrows."""
@@ -680,14 +679,13 @@ class TestFormatMermaid:
                 rationale="test",
             )
         ]
-        mermaid = format_mermaid(issues, proposals)
-        assert "FEAT-001 -.-> FEAT-002" in mermaid
+        text = format_text_graph(issues, proposals)
+        assert "FEAT-001 -.→ FEAT-002" in text
 
     def test_empty_graph(self) -> None:
         """Test with no issues."""
-        mermaid = format_mermaid([])
-        assert "```mermaid" in mermaid
-        assert "graph TD" in mermaid
+        text = format_text_graph([])
+        assert text == "(no issues)"
 
     def test_no_edges(self) -> None:
         """Test issues with no dependencies."""
@@ -695,9 +693,9 @@ class TestFormatMermaid:
             make_issue("FEAT-001"),
             make_issue("FEAT-002"),
         ]
-        mermaid = format_mermaid(issues)
-        assert "-->" not in mermaid
-        assert "-.->" not in mermaid
+        text = format_text_graph(issues)
+        assert "──→" not in text
+        assert "-.→" not in text
 
 
 # =============================================================================

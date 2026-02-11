@@ -839,24 +839,24 @@ Output includes:
 
 **Returns:** Markdown-formatted report string
 
-#### format_mermaid
+#### format_text_graph
 
 ```python
-def format_mermaid(
+def format_text_graph(
     issues: list[IssueInfo],
     proposals: list[DependencyProposal] | None = None,
 ) -> str
 ```
 
-Generate a Mermaid dependency graph diagram.
+Generate an ASCII dependency graph diagram.
 
-Shows existing dependencies as solid arrows and proposed dependencies as dashed arrows.
+Shows existing dependencies as solid arrows (`──→`) and proposed dependencies as dashed arrows (`-.→`).
 
 **Parameters:**
 - `issues` - List of parsed issue objects
 - `proposals` - Optional proposed dependencies to include
 
-**Returns:** Mermaid graph definition string
+**Returns:** Text graph string readable in the terminal
 
 #### apply_proposals
 

@@ -710,11 +710,11 @@ def format_report(report: DependencyReport) -> str:
     return "\n".join(lines)
 
 
-def format_mermaid(
+def format_text_graph(
     issues: list[IssueInfo],
     proposals: list[DependencyProposal] | None = None,
 ) -> str:
-    """Generate a Mermaid dependency graph diagram.
+    """Generate an ASCII dependency graph diagram.
 
     Shows existing dependencies as solid arrows and proposed
     dependencies as dashed arrows.
@@ -724,33 +724,78 @@ def format_mermaid(
         proposals: Optional proposed dependencies to include
 
     Returns:
-        Mermaid graph definition string
+        Text graph string readable in the terminal
     """
-    lines: list[str] = []
-    lines.append("```mermaid")
-    lines.append("graph TD")
+    if not issues:
+        return "(no issues)"
 
-    # Add nodes
-    for issue in sorted(issues, key=lambda i: (i.priority_int, i.issue_id)):
-        label = f"{issue.issue_id}: {issue.title[:30]}"
-        lines.append(f'    {issue.issue_id}["{label}"]')
+    issue_ids = {i.issue_id for i in issues}
+    sorted_issues = sorted(issues, key=lambda i: (i.priority_int, i.issue_id))
 
-    # Add existing edges (solid arrows)
-    for issue in issues:
+    # Build adjacency: blocker -> list of blocked issues
+    blocks: dict[str, list[str]] = {}
+    for issue in sorted_issues:
         for blocker_id in issue.blocked_by:
-            # Only show edges where both nodes are in the issue set
-            if any(i.issue_id == blocker_id for i in issues):
-                lines.append(f"    {blocker_id} --> {issue.issue_id}")
+            if blocker_id in issue_ids:
+                blocks.setdefault(blocker_id, []).append(issue.issue_id)
 
-    # Add proposed edges (dashed arrows)
+    # Add proposed edges
+    proposed_edges: set[tuple[str, str]] = set()
     if proposals:
         for p in proposals:
-            if any(i.issue_id == p.target_id for i in issues) and any(
-                i.issue_id == p.source_id for i in issues
-            ):
-                lines.append(f"    {p.target_id} -.-> {p.source_id}")
+            if p.target_id in issue_ids and p.source_id in issue_ids:
+                blocks.setdefault(p.target_id, []).append(p.source_id)
+                proposed_edges.add((p.target_id, p.source_id))
 
-    lines.append("```")
+    # Build chains from roots (issues not blocked by anything in the set)
+    blocked_ids: set[str] = set()
+    for targets in blocks.values():
+        blocked_ids.update(targets)
+    roots = [i.issue_id for i in sorted_issues if i.issue_id not in blocked_ids]
+
+    visited: set[str] = set()
+    chains: list[str] = []
+
+    def build_chain(issue_id: str) -> str:
+        if issue_id in visited:
+            return issue_id
+        visited.add(issue_id)
+        targets = sorted(blocks.get(issue_id, []))
+        if not targets:
+            return issue_id
+        if len(targets) == 1:
+            arrow = "-.→" if (issue_id, targets[0]) in proposed_edges else "──→"
+            return f"{issue_id} {arrow} {build_chain(targets[0])}"
+        # Multiple branches: first inline, rest as separate chains
+        arrow = "-.→" if (issue_id, targets[0]) in proposed_edges else "──→"
+        result = f"{issue_id} {arrow} {build_chain(targets[0])}"
+        for other in targets[1:]:
+            if other not in visited:
+                arrow_other = "-.→" if (issue_id, other) in proposed_edges else "──→"
+                chains.append(f"  {issue_id} {arrow_other} {build_chain(other)}")
+        return result
+
+    for root in roots:
+        if root not in visited:
+            chain = build_chain(root)
+            chains.append(f"  {chain}")
+
+    # Isolated issues (not in any chain)
+    for issue in sorted_issues:
+        if issue.issue_id not in visited:
+            chains.append(f"  {issue.issue_id}")
+
+    lines: list[str] = list(chains)
+
+    if any("──→" in c for c in chains) or any("-.→" in c for c in chains):
+        lines.append("")
+        legend_parts = []
+        if any("──→" in c for c in chains):
+            legend_parts.append("──→ blocks")
+        if any("-.→" in c for c in chains):
+            legend_parts.append("-.→ proposed")
+        lines.append(f"Legend: {', '.join(legend_parts)}")
+
     return "\n".join(lines)
 
 
