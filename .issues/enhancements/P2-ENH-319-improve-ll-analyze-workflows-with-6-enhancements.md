@@ -104,7 +104,7 @@ Implement 6 enhancements grouped into three categories:
        ⚠ Consider test automation improvements
      ```
 
-## Current Pain Point
+## Motivation
 
 Users must manually re-analyze entire message history every time, cannot filter or scope analysis, and cannot act on proposals without manual work. The command generates static reports that require significant manual effort to translate into actual improvements.
 

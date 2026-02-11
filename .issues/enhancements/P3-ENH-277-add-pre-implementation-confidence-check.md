@@ -40,6 +40,46 @@ Integrate as a recommended step in `/ll:manage_issue` planning phase.
 - New `skills/confidence-check/SKILL.md` — Skill definition with assessment criteria
 - `commands/manage_issue.md` — Reference the confidence-check skill in the planning phase
 
+## Motivation
+
+This enhancement would:
+- Prevent wasted implementation effort: catching wrong-direction work early saves 5,000-50,000 tokens
+- Improve implementation success rate: pre-checks catch duplicates, architecture mismatches, and underspecified issues
+- Complement existing quality gates: `/ll:ready_issue` validates the file, confidence-check validates the approach
+
+## Scope Boundaries
+
+- **In scope**: Creating the confidence-check skill with 5-point assessment, integrating into manage_issue planning phase
+- **Out of scope**: Making the check mandatory/blocking, changing ready_issue behavior
+
+## Implementation Steps
+
+1. Create `skills/confidence-check/SKILL.md` with 5-point assessment criteria
+2. Define detection methods for each criterion (search patterns, architecture rules, etc.)
+3. Implement scoring rubric with clear thresholds
+4. Integrate as recommended step in `manage_issue` planning phase
+5. Test with sample issues across BUG/FEAT/ENH types
+
+## Integration Map
+
+### Files to Modify
+- New: `skills/confidence-check/SKILL.md` - Skill definition
+
+### Dependent Files (Callers/Importers)
+- `commands/manage_issue.md` - Reference skill in planning phase
+
+### Similar Patterns
+- `/ll:ready_issue` - Similar validation pattern but for file quality, not implementation readiness
+
+### Tests
+- Manual testing with sample issues
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Impact
 
 - **Priority**: P3

@@ -36,6 +36,53 @@ BUG-100 ──► ENH-200 ──► FEAT-300
 4. Update or remove `format_mermaid()` if no longer needed
 5. Update tests in `scripts/tests/test_dependency_mapper.py`
 
+## Motivation
+
+This enhancement would:
+- Improve usability: mermaid code blocks are unreadable in the terminal where these commands are used
+- Remove a rendering dependency: text diagrams work everywhere, mermaid requires a renderer
+
+## Proposed Solution
+
+Replace `format_mermaid()` in `dependency_mapper.py` with a `format_text_graph()` function that renders directed graphs using box-drawing or ASCII arrow characters (e.g., `──►`, `│`, `└──`).
+
+## Scope Boundaries
+
+- **In scope**: Replacing mermaid output with text diagram output in dependency_mapper.py
+- **Out of scope**: Adding interactive graph features, changing graph data structures
+
+## Impact
+
+- **Priority**: P3 - UX improvement for CLI output readability
+- **Effort**: Small-Medium - Single function replacement with ASCII rendering logic
+- **Risk**: Low - Output format change only, no behavioral changes
+- **Breaking Change**: No (output format is not a public API)
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/dependency_mapper.py` - Replace `format_mermaid()` with `format_text_graph()`
+
+### Dependent Files (Callers/Importers)
+- `skills/map-dependencies/SKILL.md` - calls dependency mapper formatting
+- `skills/create-sprint/SKILL.md` - may use dependency graph output
+
+### Similar Patterns
+- N/A
+
+### Tests
+- `scripts/tests/test_dependency_mapper.py` - update format tests
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Labels
+
+`enhancement`, `cli`, `ux`, `captured`
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
@@ -45,3 +92,13 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-02-11 | Priority: P3
+
+---
+
+## Verification Notes
+
+- **Verified**: 2026-02-11
+- **Verdict**: VALID
+- `format_mermaid()` confirmed at `dependency_mapper.py:713`
+- No `format_text_graph()` alternative exists
+- Feature is new work — replace mermaid output with ASCII rendering

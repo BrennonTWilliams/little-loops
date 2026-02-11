@@ -65,6 +65,26 @@ if not moved_to_completed:
 
 - ENH-309: cli.py must be split into package first (structural change)
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli.py` - Add fallback checks to verify phase in `main_auto()`
+
+### Dependent Files (Callers/Importers)
+- N/A - verify phase is internal to ll-auto
+
+### Similar Patterns
+- N/A
+
+### Tests
+- `scripts/tests/test_cli.py` - Test verify phase with implementation markers
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
@@ -78,3 +98,13 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-02-11 | Priority: P3
+
+---
+
+## Verification Notes
+
+- **Verified**: 2026-02-11
+- **Verdict**: VALID
+- Verify phase logic is in `main_auto()` in `scripts/little_loops/cli.py`
+- No implementation marker checking exists — only file-move detection
+- Blocked by ENH-309 (cli.py split) confirmed — ENH-309 still open

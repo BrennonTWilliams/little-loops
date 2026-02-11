@@ -110,6 +110,10 @@ Storage location: `.ll/history.db` at project root (gitignored). This keeps it p
 - **Risk**: Medium - New persistent state to manage; schema migrations needed over time
 - **Breaking Change**: No
 
+## Blocked By
+
+- FEAT-323: Link session JSONL logs to issue files (provides session data to ingest)
+
 ## Related Key Documentation
 
 | Category | Document | Relevance |

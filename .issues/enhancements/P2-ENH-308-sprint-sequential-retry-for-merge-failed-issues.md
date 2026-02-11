@@ -50,6 +50,45 @@ if failed_ids:
                 state.failed_issues.pop(issue.issue_id, None)
 ```
 
+## Motivation
+
+This enhancement would:
+- Recover work that is currently lost: merge-failed issues represent completed implementation that just needs rebasing
+- Reduce manual intervention: users currently must manually retry failed issues after sprint completion
+- Improve sprint completion rates: sequential retry after parallel wave eliminates merge conflicts
+
+## Scope Boundaries
+
+- **In scope**: Automatic sequential retry of merge-failed issues after each parallel wave
+- **Out of scope**: Retrying issues that failed for non-merge reasons (implementation errors, test failures)
+
+## Implementation Steps
+
+1. Add retry detection logic after `orchestrator.run()` in `_cmd_sprint_run()`
+2. For each merge-failed issue, call `process_issue_inplace()` sequentially
+3. Update sprint state tracking (move retried successes from failed to completed)
+4. Add logging for retry attempts and outcomes
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli.py` - Add retry logic in `_cmd_sprint_run()`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/issue_manager.py` - Reuse `process_issue_inplace()` (no changes needed)
+
+### Similar Patterns
+- Single-issue wave processing at `cli.py:2005` already uses `process_issue_inplace()`
+
+### Tests
+- `scripts/tests/test_sprint_integration.py` - Test retry behavior
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Impact
 
 - **Priority**: P2
@@ -84,7 +123,7 @@ if failed_ids:
 
 - **Verified**: 2026-02-10
 - **Verdict**: VALID (after update)
-- Fixed line reference: `process_issue_inplace()` used at `cli.py:2005`, not 1927
+- Fixed line reference: `process_issue_inplace()` used at `cli.py:2023` (previously 2005, drifted due to code changes)
 - Confirmed: no retry logic for merge-failed issues exists in `_cmd_sprint_run()`
 - Confirmed: `process_issue_inplace()` exists at `issue_manager.py:248` and is available for reuse
 - BUG-307 dependency satisfied (completed 2026-02-09)

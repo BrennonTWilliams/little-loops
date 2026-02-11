@@ -99,3 +99,13 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-02-11 | Priority: P3
+
+---
+
+## Verification Notes
+
+- **Verified**: 2026-02-11
+- **Verdict**: VALID
+- 5 templates confirmed in `loops/`: codebase-scan, issue-readiness-cycle, issue-verification, pre-pr-checks, quality-gate
+- None use `action_type: shell` or reference CLI tools (ll-auto, ll-parallel, etc.)
+- Feature is new work — additive YAML files only

@@ -37,6 +37,42 @@ Update the create_loop command's template selection step to present paradigm opt
 2. Replace inline use-case template list with paradigm list and descriptions
 3. Wire selected paradigm into the subsequent wizard steps
 
+## Steps to Reproduce
+
+1. Run `/ll:create_loop`
+2. Select "Start from template (Recommended)"
+3. Observe: wizard presents use-case templates (codebase-scan, quality-gate) instead of paradigm options
+
+## Actual Behavior
+
+The template selection step lists existing use-case template files rather than the five loop paradigms.
+
+## Root Cause
+
+- **File**: `commands/create_loop.md`
+- **Anchor**: Step 0.1, template selection logic (lines 47-66)
+- **Cause**: Template list is hardcoded with use-case templates instead of paradigm definitions
+
+## Integration Map
+
+### Files to Modify
+- `commands/create_loop.md` - Replace template list with paradigm options
+
+### Dependent Files (Callers/Importers)
+- N/A - standalone command
+
+### Similar Patterns
+- N/A
+
+### Tests
+- Manual testing of the create_loop wizard flow
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Impact
 
 - **Priority**: P3 - UX improvement for loop creation workflow

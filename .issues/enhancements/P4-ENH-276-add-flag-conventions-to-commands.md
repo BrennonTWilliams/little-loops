@@ -36,6 +36,49 @@ Commands should document supported flags in their help text. Flags are optional 
 - `commands/audit_architecture.md` — Add flag parsing and conditional behavior
 - `commands/help.md` — Document the flag convention
 
+## Motivation
+
+This enhancement would:
+- Improve user control: users can adjust command behavior without needing separate command variants
+- Standardize existing patterns: `manage_issue` already supports flags but the convention isn't documented
+- Reduce command proliferation: flags allow one command to serve multiple use cases
+
+## Scope Boundaries
+
+- **In scope**: Defining flag conventions, adding flag support to scan_codebase, manage_issue, audit_architecture
+- **Out of scope**: Adding flags to all commands at once, creating a generic flag parsing library
+
+## Implementation Steps
+
+1. Document the flag convention (syntax, supported flags, parsing approach)
+2. Add `--quick`/`--deep`/`--focus` flag parsing to `scan_codebase.md`
+3. Add `--dry-run`/`--quick` flag parsing to `manage_issue.md`
+4. Add `--focus`/`--deep` flag parsing to `audit_architecture.md`
+5. Update `help.md` to document the flag convention
+
+## Integration Map
+
+### Files to Modify
+- `commands/scan_codebase.md` - Add flag parsing
+- `commands/manage_issue.md` - Add flag parsing
+- `commands/audit_architecture.md` - Add flag parsing
+- `commands/help.md` - Document convention
+
+### Dependent Files (Callers/Importers)
+- N/A - commands are user-invoked
+
+### Similar Patterns
+- `commands/manage_issue.md` already supports `--plan-only`, `--resume`, `--gates` flags
+
+### Tests
+- Manual testing of flag parsing in each command
+
+### Documentation
+- `commands/help.md` - Flag convention reference
+
+### Configuration
+- N/A
+
 ## Impact
 
 - **Priority**: P4

@@ -118,6 +118,49 @@ cli/
    git rm scripts/little_loops/cli.py
    ```
 
+## Motivation
+
+This enhancement would:
+- Improve maintainability: 2,624-line god module with 9 CLI entry points is difficult to navigate
+- Reduce merge conflicts: developers working on different CLI commands frequently conflict
+- Enable focused testing: each command can have isolated, smaller test files
+
+## Scope Boundaries
+
+- **In scope**: Splitting cli.py into cli/ package with one module per CLI command
+- **Out of scope**: Changing CLI interfaces, adding new commands, refactoring internal logic
+
+## Implementation Steps
+
+1. Create `cli/` package directory with `__init__.py`
+2. Extract each CLI entry point to its own module (auto.py, parallel.py, etc.)
+3. Wire up `__init__.py` to re-export all entry points
+4. Verify `setup.py` entry points still work via `__init__.py` exports
+5. Update imports in other modules
+6. Run tests to verify no regressions
+7. Delete original `cli.py`
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli.py` - Split into package
+
+### Dependent Files (Callers/Importers)
+- `setup.py` / `pyproject.toml` - CLI entry point references
+- `scripts/tests/test_cli.py` - imports from `cli`
+
+### Similar Patterns
+- ENH-310 (issue_history.py split) follows the same god-module-to-package pattern
+
+### Tests
+- `scripts/tests/test_cli.py` - update imports if needed
+
+### Documentation
+- `docs/API.md` - update module references
+
+### Configuration
+- N/A
+
 ## Impact Assessment
 
 - **Severity**: High - Maintainability issue affecting all CLI development
@@ -135,7 +178,6 @@ cli/
 
 ## Blocks
 
-- FEAT-001: Add ABC for CLI commands
 - ENH-308: Sprint sequential retry for merge-failed issues
 - ENH-328: ll-auto verify check implementation markers
 

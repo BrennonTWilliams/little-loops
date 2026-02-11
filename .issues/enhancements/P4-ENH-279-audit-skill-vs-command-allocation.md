@@ -45,6 +45,50 @@ Evaluate each skill and migrate candidates from `skills/` to `commands/` where a
 - `skills/issue-workflow/SKILL.md` — Potential move to `commands/`
 - System prompt descriptions and plugin.json as needed
 
+## Motivation
+
+This enhancement would:
+- Reduce system prompt bloat: skills consume character budget and signal proactive consideration
+- Improve clarity: users-initiated actions should be commands, not skills
+- Follow established patterns: SuperClaude uses 1 skill vs 30 commands
+
+## Scope Boundaries
+
+- **In scope**: Evaluating 4 candidate skills for migration to commands, migrating confirmed candidates
+- **Out of scope**: Changing skill/command functionality, redesigning the skill system
+
+## Implementation Steps
+
+1. Validate the proactive discovery criterion for each of the 6 skills
+2. Migrate confirmed candidates from `skills/` to `commands/` format
+3. Update references in other commands and documentation
+4. Update plugin.json if needed
+5. Remove migrated skill directories
+
+## Integration Map
+
+### Files to Modify
+- `skills/workflow-automation-proposer/SKILL.md` - Potential migration to `commands/`
+- `skills/product-analyzer/SKILL.md` - Potential migration to `commands/`
+- `skills/analyze-history/SKILL.md` - Potential migration to `commands/`
+- `skills/issue-workflow/SKILL.md` - Potential migration to `commands/`
+
+### Dependent Files (Callers/Importers)
+- `.claude-plugin/plugin.json` - skill registrations
+- Other commands referencing these skills
+
+### Similar Patterns
+- N/A
+
+### Tests
+- Verify migrated commands are accessible after migration
+
+### Documentation
+- `docs/ARCHITECTURE.md` - Update skill/command listing
+
+### Configuration
+- `.claude-plugin/plugin.json` - Remove migrated skill entries
+
 ## Impact
 
 - **Priority**: P4

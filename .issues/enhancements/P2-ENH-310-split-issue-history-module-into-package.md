@@ -198,6 +198,51 @@ issue_history/
     git rm scripts/little_loops/issue_history.py
     ```
 
+## Motivation
+
+This enhancement would:
+- Improve maintainability: 3,824-line god module is extremely difficult to navigate and modify
+- Reduce merge conflict risk: changes to analysis logic currently conflict with formatting changes
+- Enable better testing: focused modules can have focused, smaller test files
+
+## Scope Boundaries
+
+- **In scope**: Splitting issue_history.py into issue_history/ package with models, parsing, analysis, formatting modules
+- **Out of scope**: Changing any public API, adding new features, refactoring internal logic
+
+## Implementation Steps
+
+1. Create `issue_history/` package directory with `__init__.py`
+2. Extract dataclasses to `models.py`
+3. Extract parsing functions to `parsing.py`
+4. Extract analysis functions to `analysis.py`
+5. Extract formatting functions to `formatting.py`
+6. Wire up `__init__.py` to re-export all public APIs
+7. Update imports in other modules
+8. Run tests to verify no regressions
+9. Delete original `issue_history.py`
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/issue_history.py` - Split into package
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli.py` - imports from `issue_history`
+- `scripts/tests/test_issue_history_advanced_analytics.py` - imports from `issue_history`
+
+### Similar Patterns
+- ENH-309 (cli.py split) follows the same god-module-to-package pattern
+
+### Tests
+- `scripts/tests/test_issue_history_advanced_analytics.py` - update imports if needed
+
+### Documentation
+- `docs/API.md` - update module references
+
+### Configuration
+- N/A
+
 ## Impact Assessment
 
 - **Severity**: High - Maintainability issue affecting all history analysis

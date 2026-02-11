@@ -106,6 +106,10 @@ The main challenge is reliably identifying the *active* session file. `ll-messag
 - **Risk**: Low - Additive change, no breaking modifications
 - **Breaking Change**: No
 
+## Blocks
+
+- FEAT-324: SQLite history database for issues and sessions
+
 ## Related Key Documentation
 
 | Category | Document | Relevance |
