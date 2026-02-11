@@ -32,6 +32,9 @@ READ_PER_LINE=$(ll_config_value "context_monitor.estimate_weights.read_per_line"
 TOOL_CALL_BASE=$(ll_config_value "context_monitor.estimate_weights.tool_call_base" "100")
 BASH_PER_CHAR=$(ll_config_value "context_monitor.estimate_weights.bash_output_per_char" "0.3")
 
+# Post-compaction reset: percentage of context limit to use as new baseline
+POST_COMPACT_PERCENT=$(ll_config_value "context_monitor.post_compaction_percent" "30")
+
 # Extract tool information from input
 TOOL_NAME=$(echo "$INPUT" | jq -r '.tool_name // ""')
 TOOL_RESPONSE=$(echo "$INPUT" | jq -c '.tool_response // {}')
@@ -133,6 +136,40 @@ write_state() {
     atomic_write_json "$STATE_FILE" "$state"
 }
 
+# Check if context compaction occurred and reset estimate
+# Returns reset state on stdout if compaction detected, returns 1 otherwise
+check_compaction() {
+    local state="$1"
+    local precompact_file=".claude/ll-precompact-state.json"
+
+    # No precompact file = no compaction happened
+    [ -f "$precompact_file" ] || return 1
+
+    # Read compaction timestamp
+    local compacted_at
+    compacted_at=$(jq -r '.compacted_at // ""' "$precompact_file" 2>/dev/null || echo "")
+    [ -n "$compacted_at" ] && [ "$compacted_at" != "null" ] || return 1
+
+    # Check if we already handled this compaction
+    local last_compaction
+    last_compaction=$(echo "$state" | jq -r '.last_compaction // ""')
+    if [ "$last_compaction" = "$compacted_at" ]; then
+        return 1
+    fi
+
+    # Compaction detected - reset estimate to safety margin
+    local reset_tokens=$((CONTEXT_LIMIT * POST_COMPACT_PERCENT / 100))
+
+    local reset_state
+    reset_state=$(echo "$state" | jq \
+        --argjson tokens "$reset_tokens" \
+        --arg compaction "$compacted_at" \
+        '.estimated_tokens = $tokens | .threshold_crossed_at = null | .handoff_complete = false | .last_compaction = $compaction | .breakdown = {}')
+
+    echo "$reset_state"
+    return 0
+}
+
 # Main logic
 main() {
     # Skip if no tool name
@@ -152,6 +189,13 @@ main() {
 
     # Read current state
     STATE=$(read_state)
+
+    # Check for compaction event and reset if needed
+    RESET_STATE=$(check_compaction "$STATE" || true)
+    if [ -n "$RESET_STATE" ]; then
+        STATE="$RESET_STATE"
+        rm -f ".claude/ll-precompact-state.json" 2>/dev/null || true
+    fi
 
     # Extract current values
     CURRENT_TOKENS=$(echo "$STATE" | jq -r '.estimated_tokens // 0')

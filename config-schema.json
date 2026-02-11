@@ -487,6 +487,13 @@
           "type": "string",
           "description": "File to track context usage state",
           "default": ".claude/ll-context-state.json"
+        },
+        "post_compaction_percent": {
+          "type": "integer",
+          "description": "After context compaction, reset token estimate to this percentage of context_limit_estimate as a safety margin",
+          "default": 30,
+          "minimum": 10,
+          "maximum": 60
         }
       },
       "additionalProperties": false
