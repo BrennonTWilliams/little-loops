@@ -137,3 +137,28 @@ Storage location: `.ll/history.db` at project root (gitignored). This keeps it p
 - scripts/little_loops/history_db.py does not exist
 - No issue ingestion or DB query functionality exists
 - Feature is new work, depends on FEAT-323 for session linking
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-10 by `/ll:tradeoff_review_issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | HIGH |
+| Implementation effort | HIGH |
+| Complexity added | HIGH |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first - High value but scope is too broad for a single issue. Needs refinement on:
+1. **session_summaries table scope**: What content is extracted from JSONL files? How is it summarized? This is underspecified.
+2. **Migration strategy**: How will schema versioning work? What happens when history.db schema changes?
+3. **Phased implementation**: Consider splitting into Phase 1 (basic issue metadata + FTS5 search) and Phase 2 (session summaries integration)
+
+### Implementation Prerequisites
+- Must complete FEAT-323 (session linking) first
+- Clarify session_summaries table content and extraction strategy

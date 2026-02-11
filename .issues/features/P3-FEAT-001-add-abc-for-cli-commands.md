@@ -236,3 +236,23 @@ def list_commands() -> list[str]:
 - scripts/little_loops/cli/ package does not exist — still single cli.py file
 - CLI commands remain as standalone functions (main_auto, main_parallel, etc.)
 - Dependency ENH-309 not yet completed — implementation blocked
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-10 by `/ll:tradeoff_review_issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | LOW |
+| Implementation effort | MEDIUM |
+| Complexity added | MEDIUM |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | LOW |
+
+### Recommendation
+User selected "Update instead" of closure. This issue represents speculative architecture work with no immediate user benefit. The project already has working CLI commands; adding ABCs for "plugin architecture" that doesn't yet exist is premature abstraction. Consider reopening only after:
+1. ENH-309 is completed (cli.py split)
+2. There's actual demand for third-party CLI command plugins

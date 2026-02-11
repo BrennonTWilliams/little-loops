@@ -336,3 +336,21 @@ After this feature:
 - Formatting functions remain in issue_history.py as standalone functions
 - No formatter protocol or registry implemented
 - Dependency ENH-310 not yet completed — implementation blocked
+
+---
+
+## Resolution
+
+- **Status**: Closed - Tradeoff Review
+- **Completed**: 2026-02-10
+- **Reason**: Low utility relative to implementation complexity (premature optimization)
+
+### Tradeoff Review Scores
+- Utility: LOW (no current need for additional formats)
+- Implementation Effort: MEDIUM (extract 6+ functions, create protocols/registry)
+- Complexity Added: MEDIUM (new Strategy pattern, backward compatibility)
+- Technical Debt Risk: LOW (well-defined pattern)
+- Maintenance Overhead: LOW (set-and-forget)
+
+### Rationale
+Current formatting functions work fine; no user demand for additional formats (HTML, CSV, XML mentioned as "future"). This is premature optimization for a hypothetical use case. Also blocked by ENH-310 which is not yet complete.

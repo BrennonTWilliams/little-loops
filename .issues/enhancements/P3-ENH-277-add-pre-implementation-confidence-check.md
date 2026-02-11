@@ -66,3 +66,29 @@ Integrate as a recommended step in `/ll:manage_issue` planning phase.
 - skills/confidence-check/ does not exist yet
 - /ll:ready_issue exists but does not include implementation readiness checks
 - /ll:manage_issue exists but does not integrate confidence-check
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-10 by `/ll:tradeoff_review_issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | MEDIUM |
+| Complexity added | LOW |
+| Technical debt risk | LOW |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Update first - Has merit but the 5-point assessment criteria need more specificity before implementation:
+
+### Needed Clarification
+1. **No duplicate implementations**: How to detect? Search for what? Code patterns? Function names?
+2. **Root cause identified**: How to verify? What constitutes "identified" vs "symptoms treated"?
+3. **Architecture compliance**: What patterns to check? Where are they documented?
+4. **Scoring rubric**: What specific criteria for each percentage point?
+
+Without concrete detection methods, the skill may give false confidence or be inconsistent in its assessments.
