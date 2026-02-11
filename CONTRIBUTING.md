@@ -127,7 +127,7 @@ little-loops/
 │   ├── issue-verification.yaml
 │   ├── pre-pr-checks.yaml
 │   └── quality-gate.yaml
-├── skills/               # 6 skill definitions (user-invocable workflows)
+├── skills/               # 7 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── issue-size-review/            # Evaluate issue complexity
 │   ├── issue-workflow/               # Issue lifecycle quick reference

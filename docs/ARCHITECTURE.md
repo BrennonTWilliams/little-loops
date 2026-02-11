@@ -99,8 +99,10 @@ little-loops/
 │   ├── issue-verification.yaml
 │   ├── pre-pr-checks.yaml
 │   └── quality-gate.yaml
-├── skills/                  # 6 skill definitions
+├── skills/                  # 7 skill definitions
 │   ├── analyze-history/
+│   │   └── SKILL.md
+│   ├── confidence-check/
 │   │   └── SKILL.md
 │   ├── issue-size-review/
 │   │   └── SKILL.md

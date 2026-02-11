@@ -24,7 +24,7 @@ little-loops is a Claude Code plugin that provides a complete development workfl
 
 - **34 slash commands** for development workflows
 - **8 specialized agents** for codebase analysis
-- **6 skills** for specialized workflows (history analysis, issue size review, issue workflow reference, dependency mapping, product analysis, workflow automation)
+- **7 skills** for specialized workflows (history analysis, issue size review, issue workflow reference, dependency mapping, product analysis, workflow automation, confidence check)
 - **Automation scripts** for autonomous issue processing
 - **Configuration system** for project customization
 
@@ -556,6 +556,7 @@ Specialized workflows invoked via the Skill tool, organized by capability:
 | `product-analyzer` | Scanning & Analysis | Analyze codebase against product goals for feature gaps |
 | `workflow-automation-proposer` | Automation & Loops | Synthesize workflow patterns into automation proposals |
 | `analyze-history` | Meta-Analysis | Analyze issue history for project health, trends, and progress |
+| `confidence-check` | Planning & Implementation | Pre-implementation confidence check for readiness validation |
 
 ## CLI Tools
 
@@ -837,7 +838,7 @@ little-loops/
 ├── README.md             # This file
 ├── commands/             # Slash command templates (34 commands)
 ├── agents/               # Agent definitions (8 agents)
-├── skills/               # Skill definitions (6 skills)
+├── skills/               # Skill definitions (7 skills)
 ├── hooks/                # Lifecycle hooks and validation scripts
 ├── loops/                # Built-in FSM loop definitions
 │   ├── codebase-scan.yaml
