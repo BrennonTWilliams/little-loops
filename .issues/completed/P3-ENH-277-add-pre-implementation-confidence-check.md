@@ -80,11 +80,16 @@ This enhancement would:
 ### Configuration
 - N/A
 
+## Proposed Solution
+
+Create `skills/confidence-check/SKILL.md` as described in Expected Behavior. Integrate into `commands/manage_issue.md` planning phase as a recommended (non-blocking) step. See Expected Behavior for the 5-point assessment and scoring thresholds.
+
 ## Impact
 
-- **Priority**: P3
-- **Effort**: Medium
-- **Risk**: Low — skill is advisory, does not block by default
+- **Priority**: P3 — Useful quality gate but not blocking any current workflows
+- **Effort**: Medium — New skill file plus manage_issue integration; detection methods need design
+- **Risk**: Low — Advisory only, does not block implementation by default
+- **Breaking Change**: No
 
 ## Labels
 
@@ -154,3 +159,24 @@ Update first - Detection criteria need more specificity before implementation:
 2. **Root cause identified**: Define what constitutes "identified" vs "symptoms treated"
 3. **Architecture compliance**: Document which patterns to check and where they're defined
 4. **Scoring rubric**: Define specific criteria for each percentage threshold
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `skills/confidence-check/SKILL.md`: Created new skill with 5-point assessment, concrete detection methods, scoring rubric (0-20 per criterion, 100 total), and structured output format
+- `commands/manage_issue.md`: Added recommended confidence-check step in Phase 2 between research and plan creation
+
+### Verification Results
+- Tests: PASS (2686 passed)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS
+
+### Notes
+All tradeoff review concerns addressed — each criterion now has specific detection methods, scoring tables, and concrete examples rather than vague descriptions.

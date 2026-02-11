@@ -173,6 +173,20 @@ After reading the issue and completing research, create a comprehensive plan.
 
 **If `--plan-only` flag is set**: Stop after writing the plan (do not implement).
 
+### Recommended: Pre-Implementation Confidence Check
+
+Before creating the plan, consider running the `confidence-check` skill to validate implementation readiness. This is advisory (non-blocking) and uses the research findings from Phase 1.5:
+
+```
+Use Skill tool with:
+  skill: "ll:confidence-check"
+  args: "[ISSUE-ID]"
+```
+
+- **Score >=70**: Proceed to plan creation
+- **Score <70**: Review the gaps identified and consider addressing them before planning
+- **Skip if**: Action is `verify`, or time constraints require proceeding immediately
+
 ### No Open Questions Rule
 
 **CRITICAL**: Before writing the plan, resolve ALL open questions:
