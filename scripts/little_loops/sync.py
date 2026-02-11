@@ -547,7 +547,14 @@ class GitHubSyncManager:
 
         # List GitHub issues
         try:
-            gh_args = ["issue", "list", "--json", "number,title,body,labels,state,url", "--limit", "100"]
+            gh_args = [
+                "issue",
+                "list",
+                "--json",
+                "number,title,body,labels,state,url",
+                "--limit",
+                "100",
+            ]
             if labels:
                 for label in labels:
                     gh_args.extend(["--label", label])

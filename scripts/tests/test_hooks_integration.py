@@ -349,9 +349,7 @@ class TestSharedConfigFunctions:
         """ll_feature_enabled returns 0 when feature is enabled."""
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "ll-config.json").write_text(
-            '{"context_monitor": {"enabled": true}}'
-        )
+        (config_dir / "ll-config.json").write_text('{"context_monitor": {"enabled": true}}')
 
         result = self._run_bash(
             common_sh,
@@ -365,9 +363,7 @@ class TestSharedConfigFunctions:
         """ll_feature_enabled returns 1 when feature is disabled."""
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "ll-config.json").write_text(
-            '{"context_monitor": {"enabled": false}}'
-        )
+        (config_dir / "ll-config.json").write_text('{"context_monitor": {"enabled": false}}')
 
         result = self._run_bash(
             common_sh,
@@ -381,7 +377,7 @@ class TestSharedConfigFunctions:
         """ll_feature_enabled returns 1 when key is missing."""
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "ll-config.json").write_text('{}')
+        (config_dir / "ll-config.json").write_text("{}")
 
         result = self._run_bash(
             common_sh,
@@ -405,9 +401,7 @@ class TestSharedConfigFunctions:
         """ll_config_value reads a string value."""
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "ll-config.json").write_text(
-            '{"prompt_optimization": {"mode": "thorough"}}'
-        )
+        (config_dir / "ll-config.json").write_text('{"prompt_optimization": {"mode": "thorough"}}')
 
         result = self._run_bash(
             common_sh,
@@ -421,7 +415,7 @@ class TestSharedConfigFunctions:
         """ll_config_value returns default when key is missing."""
         config_dir = tmp_path / ".claude"
         config_dir.mkdir()
-        (config_dir / "ll-config.json").write_text('{}')
+        (config_dir / "ll-config.json").write_text("{}")
 
         result = self._run_bash(
             common_sh,
@@ -449,9 +443,7 @@ class TestSessionStartValidation:
             os.chdir(tmp_path)
             config_dir = tmp_path / ".claude"
             config_dir.mkdir()
-            (config_dir / "ll-config.json").write_text(
-                json.dumps({"sync": {"enabled": True}})
-            )
+            (config_dir / "ll-config.json").write_text(json.dumps({"sync": {"enabled": True}}))
 
             result = subprocess.run(
                 [str(hook_script)],
@@ -473,9 +465,7 @@ class TestSessionStartValidation:
             os.chdir(tmp_path)
             config_dir = tmp_path / ".claude"
             config_dir.mkdir()
-            (config_dir / "ll-config.json").write_text(
-                json.dumps({"documents": {"enabled": True}})
-            )
+            (config_dir / "ll-config.json").write_text(json.dumps({"documents": {"enabled": True}}))
 
             result = subprocess.run(
                 [str(hook_script)],
@@ -484,7 +474,9 @@ class TestSessionStartValidation:
                 timeout=5,
             )
 
-            assert "documents.enabled is true but no document categories configured" in result.stderr
+            assert (
+                "documents.enabled is true but no document categories configured" in result.stderr
+            )
         finally:
             os.chdir(original_dir)
 
@@ -497,9 +489,7 @@ class TestSessionStartValidation:
             os.chdir(tmp_path)
             config_dir = tmp_path / ".claude"
             config_dir.mkdir()
-            (config_dir / "ll-config.json").write_text(
-                json.dumps({"product": {"enabled": True}})
-            )
+            (config_dir / "ll-config.json").write_text(json.dumps({"product": {"enabled": True}}))
 
             result = subprocess.run(
                 [str(hook_script)],
@@ -526,20 +516,22 @@ class TestSessionStartValidation:
             (config_dir / "ll-goals.md").write_text("# Goals\n")
 
             (config_dir / "ll-config.json").write_text(
-                json.dumps({
-                    "sync": {
-                        "enabled": True,
-                        "github": {"label_mapping": {"BUG": "bug"}},
-                    },
-                    "documents": {
-                        "enabled": True,
-                        "categories": {"arch": {"files": ["docs/ARCH.md"]}},
-                    },
-                    "product": {
-                        "enabled": True,
-                        "goals_file": ".claude/ll-goals.md",
-                    },
-                })
+                json.dumps(
+                    {
+                        "sync": {
+                            "enabled": True,
+                            "github": {"label_mapping": {"BUG": "bug"}},
+                        },
+                        "documents": {
+                            "enabled": True,
+                            "categories": {"arch": {"files": ["docs/ARCH.md"]}},
+                        },
+                        "product": {
+                            "enabled": True,
+                            "goals_file": ".claude/ll-goals.md",
+                        },
+                    }
+                )
             )
 
             result = subprocess.run(
@@ -563,11 +555,13 @@ class TestSessionStartValidation:
             config_dir = tmp_path / ".claude"
             config_dir.mkdir()
             (config_dir / "ll-config.json").write_text(
-                json.dumps({
-                    "sync": {"enabled": False},
-                    "documents": {"enabled": False},
-                    "product": {"enabled": False},
-                })
+                json.dumps(
+                    {
+                        "sync": {"enabled": False},
+                        "documents": {"enabled": False},
+                        "product": {"enabled": False},
+                    }
+                )
             )
 
             result = subprocess.run(

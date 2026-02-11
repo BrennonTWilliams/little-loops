@@ -14,11 +14,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 # Markdown link patterns
-MARKDOWN_LINK_PATTERN = re.compile(r'\[([^\]]+)\]\(([^)]+)\)')
-BARE_URL_PATTERN = re.compile(
-    r'(?:^|[\s\'"<\(])((?:https?://)[^\s\'"<>)]+)',
-    re.MULTILINE
-)
+MARKDOWN_LINK_PATTERN = re.compile(r"\[([^\]]+)\]\(([^)]+)\)")
+BARE_URL_PATTERN = re.compile(r'(?:^|[\s\'"<\(])((?:https?://)[^\s\'"<>)]+)', re.MULTILINE)
 
 # Default ignore patterns
 DEFAULT_IGNORE_PATTERNS = [
@@ -85,9 +82,7 @@ class LinkCheckResult:
         return self.broken_links > 0
 
 
-def extract_links_from_markdown(
-    content: str, file_path: str
-) -> list[tuple[str, str | None, int]]:
+def extract_links_from_markdown(content: str, file_path: str) -> list[tuple[str, str | None, int]]:
     """Extract links from markdown content.
 
     Args:
@@ -109,11 +104,11 @@ def extract_links_from_markdown(
 
         # Extract bare URLs, excluding those already captured in markdown links
         # First, remove markdown link URLs from the line
-        line_without_md_links = MARKDOWN_LINK_PATTERN.sub('', line)
+        line_without_md_links = MARKDOWN_LINK_PATTERN.sub("", line)
         for match in BARE_URL_PATTERN.finditer(line_without_md_links):
             url = match.group(1).strip()
             # Clean up trailing punctuation
-            url = re.sub(r'[.,;:!?)\]]+$', '', url)
+            url = re.sub(r"[.,;:!?)\]]+$", "", url)
             links.append((url, None, line_num))
 
     return links
@@ -130,10 +125,7 @@ def is_internal_reference(url: str) -> bool:
     """
     # Internal references start with # or ./ or ../ or just .md
     return (
-        url.startswith("#")
-        or url.startswith("./")
-        or url.startswith("../")
-        or url.endswith(".md")
+        url.startswith("#") or url.startswith("./") or url.startswith("../") or url.endswith(".md")
     )
 
 
@@ -165,10 +157,7 @@ def check_url(url: str, timeout: int = 10) -> tuple[bool, str | None]:
     """
     try:
         # Create request with user agent
-        req = urllib.request.Request(
-            url,
-            headers={"User-Agent": "little-loops-link-checker/1.0"}
-        )
+        req = urllib.request.Request(url, headers={"User-Agent": "little-loops-link-checker/1.0"})
         # Use HEAD request for efficiency
         req.get_method = lambda: "HEAD"  # type: ignore[method-assign]
 
@@ -435,9 +424,7 @@ def format_result_markdown(result: LinkCheckResult) -> str:
             if r.status == "broken":
                 url_display = r.url[:60] + "..." if len(r.url) > 60 else r.url
                 error_display = r.error or "Unknown"
-                lines.append(
-                    f"| `{url_display}` | `{r.file}` | {r.line} | {error_display} |"
-                )
+                lines.append(f"| `{url_display}` | `{r.file}` | {r.line} | {error_display} |")
     else:
         lines.append("## ✅ All Links Valid")
         lines.append("")

@@ -176,9 +176,7 @@ def format_result_text(result: VerificationResult) -> str:
 
         for mismatch in result.mismatches:
             lines.append(
-                f"  {mismatch.category}: "
-                f"documented={mismatch.documented}, "
-                f"actual={mismatch.actual}"
+                f"  {mismatch.category}: documented={mismatch.documented}, actual={mismatch.actual}"
             )
             lines.append(f"    at {mismatch.file}:{mismatch.line}")
 
@@ -243,9 +241,7 @@ def format_result_markdown(result: VerificationResult) -> str:
     return "\n".join(lines)
 
 
-def fix_counts(
-    base_dir: Path, result: VerificationResult
-) -> FixResult:
+def fix_counts(base_dir: Path, result: VerificationResult) -> FixResult:
     """Fix count mismatches in documentation files.
 
     Args:

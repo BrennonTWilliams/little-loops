@@ -746,9 +746,7 @@ issues:
         assert "BUG-002" in executed_issues
         assert "BUG-001" not in executed_issues
 
-    def test_sprint_partial_wave_tracks_per_issue(
-        self, tmp_path: Path, monkeypatch: Any
-    ) -> None:
+    def test_sprint_partial_wave_tracks_per_issue(self, tmp_path: Path, monkeypatch: Any) -> None:
         """Test that partial wave success tracks completed and failed issues separately."""
         import argparse
 

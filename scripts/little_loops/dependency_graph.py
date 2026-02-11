@@ -381,9 +381,7 @@ def refine_waves_for_contention(
         contended: set[str] = set()
         for i, a in enumerate(wave):
             for b in wave[i + 1 :]:
-                contended.update(
-                    hints[a.issue_id].get_overlapping_paths(hints[b.issue_id])
-                )
+                contended.update(hints[a.issue_id].get_overlapping_paths(hints[b.issue_id]))
         contended_paths = sorted(contended)
 
         # Greedy graph coloring — assign each issue the lowest color
@@ -411,8 +409,6 @@ def refine_waves_for_contention(
                     )
                 )
 
-        logger.info(
-            f"  Wave split into {total_sub_waves} sub-waves due to file contention"
-        )
+        logger.info(f"  Wave split into {total_sub_waves} sub-waves due to file contention")
 
     return refined, annotations

@@ -12,7 +12,6 @@ import yaml
 from little_loops.fsm.compilers import compile_paradigm
 from little_loops.fsm.validation import ValidationSeverity, validate_fsm
 
-
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent.parent / "loops"
 
 
@@ -73,9 +72,7 @@ class TestBuiltinLoopFiles:
 class TestBuiltinLoopResolution:
     """Tests for resolve_loop_path with built-in fallback."""
 
-    def test_builtin_fallback(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
+    def test_builtin_fallback(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """resolve_loop_path falls back to built-in loops."""
         monkeypatch.chdir(tmp_path)
         with patch.object(sys, "argv", ["ll-loop", "validate", "pre-pr-checks"]):
@@ -93,8 +90,7 @@ class TestBuiltinLoopResolution:
         loops_dir.mkdir()
         # Create a project-local loop with the same name but different content
         (loops_dir / "pre-pr-checks.yaml").write_text(
-            "name: pre-pr-checks\ninitial: start\nstates:\n"
-            "  start:\n    terminal: true\n"
+            "name: pre-pr-checks\ninitial: start\nstates:\n  start:\n    terminal: true\n"
         )
 
         monkeypatch.chdir(tmp_path)
@@ -146,7 +142,7 @@ class TestBuiltinLoopList:
         captured = capsys.readouterr()
         lines = captured.out.strip().split("\n")
         # pre-pr-checks should appear without [built-in] tag (project version)
-        pr_lines = [l for l in lines if "pre-pr-checks" in l]
+        pr_lines = [line for line in lines if "pre-pr-checks" in line]
         assert len(pr_lines) == 1
         assert "[built-in]" not in pr_lines[0]
 

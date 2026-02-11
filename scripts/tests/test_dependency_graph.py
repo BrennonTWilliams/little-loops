@@ -3,10 +3,9 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import Mock
 
 import pytest
-
-from unittest.mock import Mock
 
 from little_loops.dependency_graph import DependencyGraph, refine_waves_for_contention
 from little_loops.issue_parser import IssueInfo

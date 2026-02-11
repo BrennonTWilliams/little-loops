@@ -126,9 +126,7 @@ def run_claude_command(
                 if idle_timeout and (now - last_output_time) > idle_timeout:
                     process.kill()
                     process.wait()  # reap child to prevent zombie
-                    raise subprocess.TimeoutExpired(
-                        cmd_args, idle_timeout, output="idle_timeout"
-                    )
+                    raise subprocess.TimeoutExpired(cmd_args, idle_timeout, output="idle_timeout")
 
                 ready = sel.select(timeout=1.0)
                 for key, _ in ready:

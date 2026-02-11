@@ -743,12 +743,7 @@ class TestSprintDependencyAnalysis:
         sprints_dir = tmp_path / "sprints"
         sprints_dir.mkdir()
         sprint_file = sprints_dir / "overlap-test.yaml"
-        sprint_file.write_text(
-            "name: overlap-test\n"
-            "issues:\n"
-            "  - BUG-001\n"
-            "  - FEAT-001\n"
-        )
+        sprint_file.write_text("name: overlap-test\nissues:\n  - BUG-001\n  - FEAT-001\n")
 
         config = BRConfig(tmp_path)
         manager = SprintManager(sprints_dir=sprints_dir, config=config)
@@ -766,9 +761,7 @@ class TestSprintDependencyAnalysis:
         _, config, manager = self._setup_overlapping_issues(tmp_path)
 
         def mock_process_inplace(info: Any, **kwargs: Any) -> IssueProcessingResult:
-            return IssueProcessingResult(
-                success=True, duration=1.0, issue_id=info.issue_id
-            )
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
             "little_loops.issue_manager.process_issue_inplace", mock_process_inplace
@@ -794,9 +787,7 @@ class TestSprintDependencyAnalysis:
         # but the code path was exercised without error)
         assert "Dry run mode" in captured.out
 
-    def test_run_skip_analysis_flag(
-        self, tmp_path: Path, monkeypatch: Any, capsys: Any
-    ) -> None:
+    def test_run_skip_analysis_flag(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
         """Sprint run with --skip-analysis skips dependency analysis."""
         import argparse
 
@@ -806,9 +797,7 @@ class TestSprintDependencyAnalysis:
         _, config, manager = self._setup_overlapping_issues(tmp_path)
 
         def mock_process_inplace(info: Any, **kwargs: Any) -> IssueProcessingResult:
-            return IssueProcessingResult(
-                success=True, duration=1.0, issue_id=info.issue_id
-            )
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
         monkeypatch.setattr(
             "little_loops.issue_manager.process_issue_inplace", mock_process_inplace
@@ -856,9 +845,7 @@ class TestSprintDependencyAnalysis:
         captured = capsys.readouterr()
         assert "Sprint: overlap-test" in captured.out
 
-    def test_show_skip_analysis_flag(
-        self, tmp_path: Path, monkeypatch: Any, capsys: Any
-    ) -> None:
+    def test_show_skip_analysis_flag(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
         """Sprint show with --skip-analysis skips dependency analysis."""
         import argparse
 

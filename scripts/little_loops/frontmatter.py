@@ -10,9 +10,7 @@ import re
 from typing import Any
 
 
-def parse_frontmatter(
-    content: str, *, coerce_types: bool = False
-) -> dict[str, Any]:
+def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, Any]:
     """Extract YAML frontmatter from content.
 
     Looks for content between opening and closing '---' markers.

@@ -2,11 +2,8 @@
 
 from pathlib import Path
 
-import pytest
-
 from little_loops.doc_counts import (
     CountResult,
-    FixResult,
     VerificationResult,
     count_files,
     extract_count_from_line,

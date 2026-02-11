@@ -50,7 +50,7 @@ class TestExtractFilePaths:
 
     def test_extract_from_location_section(self) -> None:
         """Test extracting path from **File**: format."""
-        content = '- **File**: `scripts/little_loops/config.py`'
+        content = "- **File**: `scripts/little_loops/config.py`"
         paths = extract_file_paths(content)
         assert "scripts/little_loops/config.py" in paths
 
@@ -83,19 +83,13 @@ Real reference: `scripts/little_loops/real_module.py`
 
     def test_deduplicates_paths(self) -> None:
         """Test that duplicate paths are deduplicated."""
-        content = (
-            "See `scripts/config.py` for details.\n"
-            "Also check `scripts/config.py` again."
-        )
+        content = "See `scripts/config.py` for details.\nAlso check `scripts/config.py` again."
         paths = extract_file_paths(content)
         assert paths == {"scripts/config.py"}
 
     def test_various_extensions(self) -> None:
         """Test extraction of various file extensions."""
-        content = (
-            "Files: `src/app.ts`, `src/style.css`, `data/config.json`, "
-            "`scripts/run.sh`"
-        )
+        content = "Files: `src/app.ts`, `src/style.css`, `data/config.json`, `scripts/run.sh`"
         paths = extract_file_paths(content)
         assert "src/app.ts" in paths
         assert "src/style.css" in paths
@@ -718,9 +712,7 @@ class TestApplyProposals:
         """Test adding Blocked By section to an issue that doesn't have one."""
         issue_file = tmp_path / "FEAT-002.md"
         issue_file.write_text(
-            "# FEAT-002: Test Issue\n\n"
-            "## Summary\n\nTest summary.\n\n"
-            "## Labels\n\n`feature`\n"
+            "# FEAT-002: Test Issue\n\n## Summary\n\nTest summary.\n\n## Labels\n\n`feature`\n"
         )
 
         blocker_file = tmp_path / "FEAT-001.md"
@@ -755,10 +747,7 @@ class TestApplyProposals:
         """Test appending to an existing Blocked By section."""
         issue_file = tmp_path / "FEAT-003.md"
         issue_file.write_text(
-            "# FEAT-003: Test Issue\n\n"
-            "## Blocked By\n\n"
-            "- FEAT-001\n\n"
-            "## Labels\n\n`feature`\n"
+            "# FEAT-003: Test Issue\n\n## Blocked By\n\n- FEAT-001\n\n## Labels\n\n`feature`\n"
         )
 
         proposals = [
@@ -783,10 +772,7 @@ class TestApplyProposals:
         """Test that applying a proposal with an already-present ID is a no-op."""
         issue_file = tmp_path / "FEAT-002.md"
         issue_file.write_text(
-            "# FEAT-002: Test Issue\n\n"
-            "## Blocked By\n\n"
-            "- FEAT-001\n\n"
-            "## Labels\n\n`feature`\n"
+            "# FEAT-002: Test Issue\n\n## Blocked By\n\n- FEAT-001\n\n## Labels\n\n`feature`\n"
         )
 
         proposals = [

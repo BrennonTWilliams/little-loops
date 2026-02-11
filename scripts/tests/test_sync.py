@@ -546,7 +546,9 @@ github_issue: 1
 
         # Should get number 43 (not 6, which would collide with completed BUG-042)
         created_files = list((tmp_path / ".issues" / "bugs").glob("*BUG-43*"))
-        assert len(created_files) == 1, f"Expected BUG-43, got: {list((tmp_path / '.issues' / 'bugs').glob('*.md'))}"
+        assert len(created_files) == 1, (
+            f"Expected BUG-43, got: {list((tmp_path / '.issues' / 'bugs').glob('*.md'))}"
+        )
 
     def test_push_single_issue_creates_new(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path

@@ -221,9 +221,7 @@ class WorkerPool:
             try:
                 callback(result)
             except Exception as e:
-                self.logger.error(
-                    f"Worker completion callback failed for {issue_id}: {e}"
-                )
+                self.logger.error(f"Worker completion callback failed for {issue_id}: {e}")
         finally:
             with self._callback_lock:
                 self._pending_callbacks.discard(issue_id)

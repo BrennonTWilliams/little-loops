@@ -1699,9 +1699,7 @@ class TestWorkerPoolRunClaudeCommand:
 class TestWorkerPoolStageTracking:
     """Tests for worker stage tracking (ENH-262)."""
 
-    def test_set_and_get_worker_stage(
-        self, worker_pool: WorkerPool
-    ) -> None:
+    def test_set_and_get_worker_stage(self, worker_pool: WorkerPool) -> None:
         """Test setting and getting worker stages."""
         # Initially no stage
         assert worker_pool.get_worker_stage("BUG-123") is None

@@ -1810,11 +1810,7 @@ def _cleanup_sprint_state(logger: Logger) -> None:
 
 def _build_issue_contents(issue_infos: list) -> dict[str, str]:
     """Build issue_id -> file content mapping for dependency analysis."""
-    return {
-        info.issue_id: info.path.read_text()
-        for info in issue_infos
-        if info.path.exists()
-    }
+    return {info.issue_id: info.path.read_text() for info in issue_infos if info.path.exists()}
 
 
 def _render_dependency_analysis(report: Any, logger: Logger) -> None:
@@ -1825,10 +1821,7 @@ def _render_dependency_analysis(report: Any, logger: Logger) -> None:
     logger.header("Dependency Analysis", char="-", width=60)
 
     if report.proposals:
-        logger.warning(
-            f"Found {len(report.proposals)} potential missing "
-            f"dependency(ies):"
-        )
+        logger.warning(f"Found {len(report.proposals)} potential missing dependency(ies):")
         for p in report.proposals:
             if p.conflict_score >= 0.7:
                 conflict = "HIGH"
@@ -1856,10 +1849,7 @@ def _render_dependency_analysis(report: Any, logger: Logger) -> None:
                 logger.warning(f"  {issue_id}: blocked by {ref_id} (completed)")
         if v.missing_backlinks:
             for issue_id, ref_id in v.missing_backlinks:
-                logger.warning(
-                    f"  {issue_id} blocked by {ref_id}, "
-                    f"but {ref_id} missing backlink"
-                )
+                logger.warning(f"  {issue_id} blocked by {ref_id}, but {ref_id} missing backlink")
 
     logger.info("Run /ll:map-dependencies to apply discovered dependencies")
     print()  # blank line separator
@@ -2505,7 +2495,9 @@ Exit codes:
     # Auto-fix if requested
     if args.fix and not result.all_match:
         fix_result = fix_counts(base_dir, result)
-        print(f"\nFixed {fix_result.fixed_count} count(s) in {len(fix_result.files_modified)} file(s)")
+        print(
+            f"\nFixed {fix_result.fixed_count} count(s) in {len(fix_result.files_modified)} file(s)"
+        )
 
     # Return exit code based on results
     return 0 if result.all_match else 1
@@ -2600,9 +2592,7 @@ Exit codes:
     ignore_patterns.extend(args.ignore)
 
     # Run link check
-    result = check_markdown_links(
-        base_dir, ignore_patterns, args.timeout, args.verbose
-    )
+    result = check_markdown_links(base_dir, ignore_patterns, args.timeout, args.verbose)
 
     # Format output
     if args.json or args.format == "json":

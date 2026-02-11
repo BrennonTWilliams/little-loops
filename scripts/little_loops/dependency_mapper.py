@@ -26,17 +26,38 @@ logger = logging.getLogger(__name__)
 # File path patterns for extraction from issue content
 _BACKTICK_PATH = re.compile(r"`([^`\s]+\.[a-z]{2,4})`")
 _BOLD_FILE_PATH = re.compile(r"\*\*File\*\*:\s*`?([^`\n]+\.[a-z]{2,4})`?")
-_STANDALONE_PATH = re.compile(
-    r"(?:^|\s)([a-zA-Z_][\w/.-]*\.[a-z]{2,4})(?:\s|$|:|\))", re.MULTILINE
-)
+_STANDALONE_PATH = re.compile(r"(?:^|\s)([a-zA-Z_][\w/.-]*\.[a-z]{2,4})(?:\s|$|:|\))", re.MULTILINE)
 _CODE_FENCE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
 
 # File extensions that indicate real source file paths
-_SOURCE_EXTENSIONS = frozenset({
-    ".py", ".ts", ".js", ".tsx", ".jsx", ".md", ".json", ".yaml", ".yml",
-    ".toml", ".cfg", ".ini", ".html", ".css", ".scss", ".sh", ".bash",
-    ".sql", ".go", ".rs", ".java", ".kt", ".rb", ".php",
-})
+_SOURCE_EXTENSIONS = frozenset(
+    {
+        ".py",
+        ".ts",
+        ".js",
+        ".tsx",
+        ".jsx",
+        ".md",
+        ".json",
+        ".yaml",
+        ".yml",
+        ".toml",
+        ".cfg",
+        ".ini",
+        ".html",
+        ".css",
+        ".scss",
+        ".sh",
+        ".bash",
+        ".sql",
+        ".go",
+        ".rs",
+        ".java",
+        ".kt",
+        ".rb",
+        ".php",
+    }
+)
 
 # Semantic target extraction patterns
 _PASCAL_CASE = re.compile(r"\b([A-Z][a-z]+(?:[A-Z][a-z]+)+)\b")
@@ -59,20 +80,57 @@ _SECTION_KEYWORDS: dict[str, frozenset[str]] = {
 
 # Modification type classification keywords
 _MODIFICATION_TYPES: dict[str, frozenset[str]] = {
-    "structural": frozenset({
-        "extract", "split", "refactor", "restructure", "reorganize",
-        "create new component", "break out", "separate", "decompose",
-    }),
-    "infrastructure": frozenset({
-        "enable", "hook", "handler", "event", "listener", "provider",
-        "context", "store", "state management", "routing", "middleware",
-        "dragging", "drag", "drop", "dnd",
-    }),
-    "enhancement": frozenset({
-        "add button", "add field", "add column", "add stats", "add icon",
-        "add toggle", "display", "show", "render", "style", "format",
-        "empty state", "placeholder", "tooltip", "badge",
-    }),
+    "structural": frozenset(
+        {
+            "extract",
+            "split",
+            "refactor",
+            "restructure",
+            "reorganize",
+            "create new component",
+            "break out",
+            "separate",
+            "decompose",
+        }
+    ),
+    "infrastructure": frozenset(
+        {
+            "enable",
+            "hook",
+            "handler",
+            "event",
+            "listener",
+            "provider",
+            "context",
+            "store",
+            "state management",
+            "routing",
+            "middleware",
+            "dragging",
+            "drag",
+            "drop",
+            "dnd",
+        }
+    ),
+    "enhancement": frozenset(
+        {
+            "add button",
+            "add field",
+            "add column",
+            "add stats",
+            "add icon",
+            "add toggle",
+            "display",
+            "show",
+            "render",
+            "style",
+            "format",
+            "empty state",
+            "placeholder",
+            "tooltip",
+            "badge",
+        }
+    ),
 }
 
 
@@ -138,10 +196,7 @@ class ValidationResult:
     def has_issues(self) -> bool:
         """Return True if any validation problems were found."""
         return bool(
-            self.broken_refs
-            or self.missing_backlinks
-            or self.cycles
-            or self.stale_completed_refs
+            self.broken_refs or self.missing_backlinks or self.cycles or self.stale_completed_refs
         )
 
 
@@ -568,8 +623,7 @@ def format_report(report: DependencyReport) -> str:
     lines.append(f"- **Existing dependencies**: {report.existing_dep_count}")
     lines.append(f"- **Proposed new dependencies**: {len(report.proposals)}")
     lines.append(f"- **Parallel-safe pairs**: {len(report.parallel_safe)}")
-    lines.append(f"- **Validation issues**: "
-                 f"{'Yes' if report.validation.has_issues else 'None'}")
+    lines.append(f"- **Validation issues**: {'Yes' if report.validation.has_issues else 'None'}")
     lines.append("")
 
     # Proposals section
@@ -581,8 +635,7 @@ def format_report(report: DependencyReport) -> str:
             "| Conflict | Confidence | Rationale |"
         )
         lines.append(
-            "|---|-----------------|-----------------|--------"
-            "|----------|------------|-----------|"
+            "|---|-----------------|-----------------|--------|----------|------------|-----------|"
         )
         for i, p in enumerate(report.proposals, 1):
             if p.conflict_score >= 0.7:
@@ -647,9 +700,7 @@ def format_report(report: DependencyReport) -> str:
             lines.append("### Stale References (to completed issues)")
             lines.append("")
             for issue_id, ref_id in v.stale_completed_refs:
-                lines.append(
-                    f"- {issue_id}: blocked by {ref_id} (completed)"
-                )
+                lines.append(f"- {issue_id}: blocked by {ref_id} (completed)")
             lines.append("")
 
     if not report.proposals and not report.parallel_safe and not v.has_issues:
@@ -682,7 +733,7 @@ def format_mermaid(
     # Add nodes
     for issue in sorted(issues, key=lambda i: (i.priority_int, i.issue_id)):
         label = f"{issue.issue_id}: {issue.title[:30]}"
-        lines.append(f"    {issue.issue_id}[\"{label}\"]")
+        lines.append(f'    {issue.issue_id}["{label}"]')
 
     # Add existing edges (solid arrows)
     for issue in issues:
@@ -694,9 +745,8 @@ def format_mermaid(
     # Add proposed edges (dashed arrows)
     if proposals:
         for p in proposals:
-            if (
-                any(i.issue_id == p.target_id for i in issues)
-                and any(i.issue_id == p.source_id for i in issues)
+            if any(i.issue_id == p.target_id for i in issues) and any(
+                i.issue_id == p.source_id for i in issues
             ):
                 lines.append(f"    {p.target_id} -.-> {p.source_id}")
 
@@ -769,8 +819,10 @@ def _add_to_section(file_path: Path, section_name: str, issue_id: str) -> None:
             return  # Already present
 
         # Find insertion point: end of section content (before next section or EOF)
-        insert_pos = start + len(section_content.rstrip()) + (
-            len(section_content) - len(section_content.rstrip())
+        insert_pos = (
+            start
+            + len(section_content.rstrip())
+            + (len(section_content) - len(section_content.rstrip()))
         )
         # Actually, insert at end of the last list item in the section
         # Find the last non-blank line in the section
@@ -790,9 +842,7 @@ def _add_to_section(file_path: Path, section_name: str, issue_id: str) -> None:
 
         # Try to insert before ## Labels or ## Status
         for anchor in ("## Labels", "## Status"):
-            anchor_match = re.search(
-                rf"^{re.escape(anchor)}\s*$", content, re.MULTILINE
-            )
+            anchor_match = re.search(rf"^{re.escape(anchor)}\s*$", content, re.MULTILINE)
             if anchor_match:
                 insert_pos = anchor_match.start()
                 content = content[:insert_pos] + new_section + "\n" + content[insert_pos:]

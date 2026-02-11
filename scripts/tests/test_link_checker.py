@@ -4,8 +4,6 @@ import json
 from pathlib import Path
 from unittest.mock import Mock, patch
 
-import pytest
-
 from little_loops.link_checker import (
     LinkCheckResult,
     LinkResult,
@@ -260,9 +258,7 @@ class TestCheckMarkdownLinks:
         test_file = tmp_path / "test.md"
         test_file.write_text("[Local](http://localhost:8080)\n")
 
-        result = check_markdown_links(
-            tmp_path, [r"^http://localhost"], timeout=10
-        )
+        result = check_markdown_links(tmp_path, [r"^http://localhost"], timeout=10)
 
         assert result.ignored_links == 1
         assert result.valid_links == 0

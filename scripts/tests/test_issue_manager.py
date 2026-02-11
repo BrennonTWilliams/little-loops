@@ -1463,7 +1463,9 @@ class TestFallbackVerification:
                 "little_loops.issue_manager.run_with_continuation", return_value=impl_result
             ):
                 with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
-                    with patch("little_loops.issue_manager.detect_plan_creation", return_value=None):
+                    with patch(
+                        "little_loops.issue_manager.detect_plan_creation", return_value=None
+                    ):
                         with patch(
                             "little_loops.issue_manager.verify_work_was_done", return_value=True
                         ):
@@ -1499,7 +1501,9 @@ class TestFallbackVerification:
                 "little_loops.issue_manager.run_with_continuation", return_value=impl_result
             ):
                 with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
-                    with patch("little_loops.issue_manager.detect_plan_creation", return_value=None):
+                    with patch(
+                        "little_loops.issue_manager.detect_plan_creation", return_value=None
+                    ):
                         with patch(
                             "little_loops.issue_manager.verify_work_was_done", return_value=False
                         ):
@@ -2061,10 +2065,10 @@ class TestDetectPlanCreation:
 
     def test_no_plans_dir_returns_none(self, temp_project_dir: Path) -> None:
         """Returns None when plans directory doesn't exist."""
-        from little_loops.issue_manager import detect_plan_creation
-
         # Change to temp directory (without creating plans dir)
         import os
+
+        from little_loops.issue_manager import detect_plan_creation
 
         original_dir = os.getcwd()
         try:
