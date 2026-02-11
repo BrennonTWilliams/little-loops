@@ -13,6 +13,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.7.0] - 2026-02-10
+
+### Added
+
+- **Issue template v2.0 with Integration Map** - New template format with integration analysis section for better cross-component awareness (ENH-320, ENH-321)
+
+### Fixed
+
+- **Null command guards** - Commands no longer crash when project commands (lint_cmd, type_cmd, format_cmd, test_cmd) are null (BUG-312)
+- **Sprint duplicate status lines** - Suppress duplicate status output during parallel execution (BUG-305)
+- **Documentation accuracy** - Correct 3 config default values, command count, `max_continuations` section placement, missing commands in README tables, ghost `find_demo_repos` entry, and `--include-p0` flag docs (BUG-313, BUG-315, BUG-316, BUG-317, BUG-318)
+
+### Changed
+
+- **Sprint file contention warnings** - Execution plan now shows file contention warnings for better parallel planning (ENH-309)
+- **build_cmd verification** - `check_code` now includes build_cmd verification step (ENH-310)
+- **run_cmd config field** - Added run_cmd to config and wired into manage_issue verification (ENH-311)
+- **README config documentation** - Added sync, sprints, documents, and missing config sections to README (ENH-314, ENH-318)
+- docs(contributing): add issue creation guidelines for v2.0 (fe6fea5)
+- docs(commands): update commands for template v2.0 (317144c)
+
+[1.7.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.6.0...v1.7.0
+
 ## [1.6.0] - 2026-02-10
 
 ### Changed
