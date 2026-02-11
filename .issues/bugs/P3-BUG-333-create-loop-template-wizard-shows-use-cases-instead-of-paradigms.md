@@ -29,12 +29,12 @@ Paradigms are the core abstraction of the loop system. Presenting use-case templ
 
 ## Proposed Solution
 
-Update the create_loop skill's template selection step to present paradigm options instead of use-case templates. Each option should include the paradigm name and a brief explanation of when to use it.
+Update the create_loop command's template selection step to present paradigm options instead of use-case templates. Each option should include the paradigm name and a brief explanation of when to use it.
 
 ## Implementation Steps
 
-1. Locate the template selection logic in the create_loop skill
-2. Replace use-case template list with paradigm list and descriptions
+1. Locate the template selection logic in `commands/create_loop.md` (Step 0.1, around lines 47-66)
+2. Replace inline use-case template list with paradigm list and descriptions
 3. Wire selected paradigm into the subsequent wizard steps
 
 ## Impact
@@ -59,3 +59,14 @@ Update the create_loop skill's template selection step to present paradigm optio
 ## Status
 
 **Open** | Created: 2026-02-11 | Priority: P3
+
+---
+
+## Verification Notes
+
+- **Verified**: 2026-02-11
+- **Verdict**: VALID (updated)
+- Template selection logic is in `commands/create_loop.md` (not a skill)
+- Templates at Step 0.1 (lines 47-66) are inline use-case definitions, not references to existing YAML files in `loops/`
+- Core complaint is valid: paradigms should be presented instead of use-case templates
+- Fixed: References corrected from "skill" to "command"

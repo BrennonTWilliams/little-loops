@@ -69,14 +69,14 @@ The main challenge is reliably identifying the *active* session file. `ll-messag
 ## Integration Map
 
 ### Files to Modify
-- `skills/manage_issue.md` - Add session log append on completion
-- `skills/capture_issue.md` - Add session log append on create/update
-- `skills/scan_codebase.md` - Add session log append on create
-- `skills/refine_issue.md` - Add session log append on update
+- `commands/manage_issue.md` - Add session log append on completion
+- `commands/capture_issue.md` - Add session log append on create/update
+- `commands/scan_codebase.md` - Add session log append on create
+- `commands/refine_issue.md` - Add session log append on update
 - `templates/issue-sections.json` - Add Session Log section definition
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/messages.py` - Reuse JSONL discovery logic
+- `scripts/little_loops/cli.py` - Reuse JSONL discovery logic (main_messages function)
 
 ### Similar Patterns
 - N/A
@@ -127,9 +127,10 @@ The main challenge is reliably identifying the *active* session file. `ll-messag
 
 ## Verification Notes
 
-- **Verified**: 2026-02-10
-- **Verdict**: VALID
+- **Verified**: 2026-02-11
+- **Verdict**: VALID (updated)
 - .ll/ directory does not exist — no local state storage implemented
 - No session log linking exists in issue files
-- scripts/little_loops/messages.py exists for JSONL discovery — can be reused
+- JSONL discovery logic lives in `scripts/little_loops/cli.py` (main_messages), not a separate `messages.py`
+- Fixed: Files to Modify section corrected from `skills/` to `commands/` paths
 - Feature is new work, no existing implementation
