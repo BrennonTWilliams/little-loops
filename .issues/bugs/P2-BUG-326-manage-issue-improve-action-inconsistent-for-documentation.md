@@ -1,0 +1,138 @@
+---
+discovered_date: 2026-02-10
+discovered_by: capture_issue
+---
+
+# BUG-326: manage_issue improve action inconsistent for documentation issues
+
+## Summary
+
+The `ll:manage_issue` command with `improve` action behaves inconsistently based on issue type:
+- **Code fix issues** (e.g., ENH-2078): Implements, tests, and commits as expected
+- **Documentation issues** (e.g., ENH-2079): Only verifies and asks confirmation question
+
+For documentation-only issues, the command defaults to "verify and ask confirmation" mode instead of implementing directly. This breaks the automated workflow (ll-auto, ll-parallel) because the command exits with return code 0 but no actual changes were made.
+
+## Context
+
+**Direct mode**: User description: "The ll:manage_issue skill has inconsistent behavior for the improve action: Code fix (ENH-2078) implements, tests, commits; Documentation (ENH-2079) only verifies, asks question"
+
+Identified from issue discovered in a development project using `ll-auto` automation. Documentation issues would pass ready_issue verification but then fail during implementation because manage_issue skipped the implementation phases and only performed verification.
+
+## Current Behavior
+
+When running `/ll:manage_issue enhancement improve ENH-2079` (a documentation issue):
+
+1. The command may skip to verification phase without implementing
+2. Exits with return code 0 (success) without making changes
+3. ll-auto's `verify_work_was_done()` detects no meaningful changes
+4. Issue is not marked complete, causing the automation to stall
+
+The model interprets `improve` for documentation as a verification task rather than an implementation task, leading to:
+- Skipping implementation phases
+- Running verification only
+- Asking confirmation questions (potentially via AskUserQuestion despite no --gates flag)
+
+## Expected Behavior
+
+The `improve` action should:
+1. Always go through full implementation phases (Plan -> Implement -> Verify -> Complete)
+2. Make actual changes to the files described in the issue
+3. Not ask confirmation questions unless --gates flag is provided
+4. Behave consistently regardless of issue type (code vs documentation vs tests)
+
+## Root Cause
+
+The `manage_issue.md` prompt (commands/manage_issue.md) lacks clear instructions for the `improve` action behavior. While `fix` and `implement` actions have clear implementation phases, `improve` is ambiguously defined as "Improve/enhance" without explicit implementation requirements.
+
+The model interprets `improve` for documentation as a verification task rather than an implementation task. This ambiguity causes:
+- Inconsistent behavior across issue types
+- Prompt-level confusion leading to skipped implementation
+- Potential fallback to `verify` action behavior
+
+### Key Locations
+
+- **Primary fix location**: `commands/manage_issue.md`
+- Action definitions section (line ~660): `improve` - Improve/enhance
+- Phase 4.5 skip condition (line ~503): Action is `verify` (verification-only mode)
+
+## Proposed Solution
+
+Update `commands/manage_issue.md` to:
+
+1. **Add explicit improve action instructions** near the action definitions:
+   - Clarify that `improve` requires full implementation (not just verification)
+   - Specify that `improve` should behave like `fix`/`implement` for all issue types
+
+2. **Add documentation-specific guidance** to prevent ambiguity:
+   - Explicitly state that documentation improvements require editing files
+   - Clarify that `improve documentation` means make changes, not verify correctness
+
+3. **Reinforce automation-mode constraints**:
+   - Add explicit reminder that without --gates, no interactive prompts should occur
+   - Ensure the prompt doesn't allow `improve` to fall back to `verify` behavior
+
+### Implementation Steps
+
+1. Read `commands/manage_issue.md` to locate action definitions section
+2. Add explicit instructions for `improve` action requiring full implementation
+3. Add documentation-specific guidance in the implementation phase instructions
+4. Reinforce no-interactive-prompts constraint in default behavior section
+5. Test with a documentation-only issue to verify consistent behavior
+
+## Integration Map
+
+### Files to Modify
+- `commands/manage_issue.md` - Primary fix location
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/issue_manager.py` - Uses get_category_action() to determine action (line 467)
+- `scripts/little_loops/work_verification.py` - verify_work_was_done() detects no changes (lines 44-125)
+- `scripts/little_loops/parallel/worker_pool.py` - Uses get_category_action() for parallel workers (line 352)
+
+### Similar Patterns
+- ENH-304 (completed) - Similar prompt clarification for AskUserQuestion in automation mode
+- BUG-302 (completed) - Added explicit "Do NOT use AskUserQuestion" to manage_issue.md
+
+### Tests
+- `scripts/tests/test_issue_manager.py` - Contains tests for manage_issue workflow
+- `scripts/tests/test_config.py` - Contains tests for get_category_action (lines 371-382)
+
+### Documentation
+- `docs/ARCHITECTURE.md` - Documents manage_issue lifecycle and automation flow
+- `docs/API.md` - Documents manage_issue command templates
+
+### Configuration
+- `.claude/ll-config.json` - Issue categories with actions (enhancements.action = "improve")
+
+## Impact
+
+- **Priority**: P2
+  - **Justification**: Breaks ll-auto/ll-parallel automation for documentation issues. Not P0/P1 because workarounds exist (manual implementation, using fix/implement actions instead), but automation is significantly degraded.
+
+- **Effort**: Small
+  - **Justification**: Prompt clarification only - no code changes required
+
+- **Risk**: Very low
+  - **Justification**: Prompt instruction change only - clarifying existing intent, not changing behavior
+
+- **Affected workflows**: ll-auto, ll-parallel, ll-sprint
+- **Issue types affected**: Documentation issues (and potentially test-only issues)
+
+## Related Key Documentation
+
+| Category | Document | Relevance |
+|----------|----------|-----------|
+| architecture | docs/ARCHITECTURE.md | Documents manage_issue lifecycle and automation flow |
+| architecture | docs/API.md | Documents manage_issue command templates |
+| reference | commands/manage_issue.md | Primary file to fix - contains improve action definition |
+
+## Labels
+
+`bug`, `automation`, `prompt-engineering`, `documentation`, `captured`
+
+---
+
+## Status
+
+**Open** | Created: 2026-02-10 | Priority: P2

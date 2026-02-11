@@ -3,12 +3,15 @@ description: Refine issue files through interactive Q&A to improve quality befor
 arguments:
   - name: issue_id
     description: Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
-    required: true
+    required: false
+  - name: flags
+    description: "Optional flags: --auto (non-interactive), --all (all active issues), --dry-run (preview), --template-align-only (section rename only)"
+    required: false
 ---
 
 # Refine Issue
 
-Interactively gather clarifying information to improve issue quality through targeted Q&A based on issue type.
+Gather clarifying information to improve issue quality through targeted Q&A based on issue type. Interactive by default, with optional --auto mode for non-interactive refinement.
 
 ## Configuration
 
@@ -16,12 +19,70 @@ This command uses project configuration from `.claude/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Completed dir**: `{{config.issues.completed_dir}}`
 
+## Arguments
+
+$ARGUMENTS
+
+- **issue_id** (optional): Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
+  - If provided, refines that specific issue
+  - If omitted with `--all`, processes all active issues
+  - If omitted without `--all`, shows error
+
+- **flags** (optional): Command behavior flags
+  - `--auto` - Enable non-interactive auto-refinement mode (applies inferred changes without prompts)
+  - `--all` - Process all active issues (bugs/, features/, enhancements/), skip completed/
+  - `--dry-run` - Preview changes without applying them (no file modifications)
+  - `--template-align-only` - Only rename deprecated v1.0 sections to v2.0 (skip content inference)
+
 ## Process
 
-### 1. Locate Issue
+### 0. Parse Flags
 
 ```bash
-ISSUE_ID="${issue_id}"
+ISSUE_ID="${issue_id:-}"
+FLAGS="${flags:-}"
+AUTO_MODE=false
+ALL_MODE=false
+DRY_RUN=false
+TEMPLATE_ALIGN_ONLY=false
+
+# Check if --dangerously-skip-permissions is in effect
+# When running in automation contexts (ll-auto, ll-parallel, ll-sprint), this flag is present
+# If detected, auto-enable auto mode for non-interactive operation
+if [[ "$FLAGS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then
+    AUTO_MODE=true
+fi
+
+if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
+if [[ "$FLAGS" == *"--all"* ]]; then ALL_MODE=true; fi
+if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
+if [[ "$FLAGS" == *"--template-align-only"* ]]; then TEMPLATE_ALIGN_ONLY=true; fi
+
+# Validate: --all requires issue_id to be omitted
+if [[ "$ALL_MODE" == true ]] && [[ -n "$ISSUE_ID" ]]; then
+    echo "Error: --all flag requires issue_id to be omitted"
+    echo "Usage: /ll:refine_issue --all --auto"
+    exit 1
+fi
+
+# Validate: --all requires --auto (or --dangerously-skip-permissions)
+if [[ "$ALL_MODE" == true ]] && [[ "$AUTO_MODE" == false ]]; then
+    echo "Error: --all flag requires --auto mode for non-interactive batch processing"
+    echo "Usage: /ll:refine_issue --all --auto"
+    exit 1
+fi
+```
+
+### 1. Locate Issue (or All Issues for --all)
+
+**When `ALL_MODE` is false (single issue mode):**
+
+```bash
+if [[ -z "$ISSUE_ID" ]]; then
+    echo "Error: issue_id is required when not using --all flag"
+    echo "Usage: /ll:refine_issue [ISSUE_ID] [--auto]"
+    exit 1
+fi
 
 # Search for issue file across categories (not completed/)
 for dir in {{config.issues.base_dir}}/*/; do
@@ -36,9 +97,33 @@ for dir in {{config.issues.base_dir}}/*/; do
         fi
     fi
 done
+
+if [ -z "$FILE" ]; then
+    echo "Error: Issue $ISSUE_ID not found in active issues"
+    exit 1
+fi
 ```
 
-If not found, report error and exit.
+**When `ALL_MODE` is true (batch processing):**
+
+```bash
+# Find all active issues (not in completed/)
+declare -a ISSUE_FILES
+for dir in {{config.issues.base_dir}}/{bugs,features,enhancements}/; do
+    if [ -d "$dir" ]; then
+        while IFS= read -r file; do
+            ISSUE_FILES+=("$file")
+        done < <(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | sort)
+    fi
+done
+
+if [[ ${#ISSUE_FILES[@]} -eq 0 ]]; then
+    echo "No active issues found to refine"
+    exit 0
+fi
+
+echo "Found ${#ISSUE_FILES[@]} active issues to refine"
+```
 
 ### 2. Analyze Issue Content
 
@@ -46,6 +131,69 @@ If not found, report error and exit.
 2. Parse the frontmatter (discovered_date, discovered_by, etc.)
 3. Identify issue type from filename or ID prefix (BUG/FEAT/ENH)
 4. Extract existing sections and content
+
+**When `ALL_MODE` is true (batch processing):**
+
+```bash
+# Track results for aggregate report
+declare -a BATCH_RESULTS
+declare -a BATCH_RENAMES
+declare -a BATCH_ADDITIONS
+
+# Process each issue in the loop
+for ISSUE_FILE in "${ISSUE_FILES[@]}"; do
+    FILE="$ISSUE_FILE"
+    echo "=========================================="
+    echo "Processing: $FILE"
+
+    # Continue with Steps 2.1-2.4 for this issue
+    # (Read file, parse frontmatter, identify type, extract sections)
+
+    # After processing, collect results
+    BATCH_RESULTS+=("[$ISSUE_ID]: [Status summary]")
+done
+```
+
+### 2.5. Template v2.0 Section Alignment
+
+Read `templates/issue-sections.json` (relative to the little-loops plugin directory) and apply v1.0 → v2.0 section renaming.
+
+**Known v1.0 → v2.0 mappings:**
+
+| Old Section (v1.0) | New Section (v2.0) | Issue Type |
+|-------------------|-------------------|------------|
+| `Reproduction Steps` | `Steps to Reproduce` | BUG |
+| `Proposed Fix` | `Proposed Solution` | BUG |
+| `User Story` | `Use Case` | FEAT |
+| `Current Pain Point` | `Motivation` | ENH |
+
+**Rename logic:**
+
+1. Scan the issue content for deprecated section headers
+2. For each old section found:
+   - Use Edit tool to replace the section header
+   - Preserve all content under the section
+   - Track rename for report output
+
+**Example rename:**
+```markdown
+## Reproduction Steps
+
+1. Click the button
+2. See error
+```
+
+Becomes:
+```markdown
+## Steps to Reproduce
+
+1. Click the button
+2. See error
+```
+
+**Skip if `--template-align-only` is NOT set and not in auto mode:**
+- In interactive mode (no --auto), skip automatic renaming and let user decide
+- In auto mode with --template-align-only, only do renaming (skip content inference)
 
 ### 3. Identify Gaps
 
@@ -105,7 +253,113 @@ For each quality finding, generate a **targeted** question about the specific co
 - "The proposed solution says 'refactor' — which specific functions need to change?"
 - "Steps to Reproduce says 'trigger the error' — what exact input or action triggers it?"
 
-### 4. Interactive Refinement
+### 3.6. Intelligent Section Inference (Auto Mode)
+
+**Skip this section if**:
+- `AUTO_MODE` is false (interactive mode asks user instead)
+- `TEMPLATE_ALIGN_ONLY` is true (only doing section renames)
+
+For missing v2.0 sections identified in Step 3, infer content from existing issue content:
+
+#### Inference Rules
+
+| Section | Inference Strategy | Issue Type |
+|---------|-------------------|------------|
+| **Motivation** | Extract from Summary: Look for "why this matters" language; add quantified impact placeholder | ENH, common |
+| **Implementation Steps** | Parse Proposed Solution into 3-8 high-level phases; if no Proposed Solution, add generic steps | common |
+| **Root Cause** | Extract from Location section if present; otherwise add placeholder with file/anchor fields | BUG |
+| **API/Interface** | Scan Proposed Solution for function/class signatures; if none found, add "N/A - no public API changes" | FEAT/ENH |
+| **Integration Map** | Scan issue for file paths mentioned in Location, Proposed Solution, or Context; populate Files to Modify; use placeholders for other sub-sections | common |
+
+#### Inference Templates
+
+**For Motivation:**
+```markdown
+## Motivation
+
+This [enhancement|issue] would:
+- [Extract from Summary]: [What the issue aims to improve]
+- Business value: [Enable X capability / Improve Y experience]
+- Technical debt: [Reduce maintenance cost / Improve code clarity]
+
+[Additional context from Summary or Context sections]
+```
+
+**For Implementation Steps:**
+```markdown
+## Implementation Steps
+
+1. [Phase 1 from Proposed Solution - e.g., "Read and analyze current implementation"]
+2. [Phase 2 from Proposed Solution - e.g., "Implement the proposed changes"]
+3. [Phase 3 from Proposed Solution - e.g., "Add tests for new behavior"]
+4. [Verification approach - e.g., "Run tests and verify fix resolves issue"]
+```
+
+**For Root Cause (BUG only):**
+```markdown
+## Root Cause
+
+- **File**: [Extract from Location section or 'TBD - requires investigation']
+- **Anchor**: [Extract from Location or 'in function TBD()']
+- **Cause**: [Extract from issue description or 'Requires investigation to determine why bug occurs']
+```
+
+**For API/Interface (FEAT/ENH):**
+```markdown
+## API/Interface
+
+N/A - No public API changes
+
+[OR if signatures found in Proposed Solution]
+
+```python
+[Extracted function/class signatures from Proposed Solution]
+```
+```
+
+**For Integration Map:**
+```markdown
+## Integration Map
+
+### Files to Modify
+- [Extract file paths from Location, Proposed Solution, Context sections]
+- [Additional files from scanning issue content for path patterns like `path/to/file.py`]
+
+### Dependent Files (Callers/Importers)
+- TBD - use grep to find references: `grep -r "affected_function_or_class" src/`
+
+### Similar Patterns
+- TBD - search for consistency: `grep -r "similar_pattern" src/`
+
+### Tests
+- TBD - identify test files to update
+
+### Documentation
+- TBD - docs that need updates
+
+### Configuration
+- N/A [or list config files if mentioned in issue]
+```
+
+#### Preservation Rule
+
+**Do NOT overwrite non-empty sections**: If a section already exists and has content beyond just "TBD" or placeholder text, preserve it and do not apply inference.
+
+**Detection**: Skip inference if section content has > 2 lines of meaningful text (not counting the header).
+
+**Examples of content to preserve**:
+- Any section with specific details, code examples, or numbered lists
+- Any section that references specific files or functions
+- Any section with concrete acceptance criteria
+
+**Examples of content to replace with inference**:
+- Empty section with just header
+- Section containing only "TBD" or "to be determined"
+- Section containing only placeholder text like "add details here"
+
+### 4. Interactive Refinement (Skip in Auto Mode)
+
+**Skip this entire section if `AUTO_MODE` is true.**
 
 For each identified structural gap **and content quality issue**, use AskUserQuestion to gather information.
 
@@ -271,6 +525,8 @@ git add "[issue-file-path]"
 
 ## Output Format
 
+### Interactive Mode Output (without --auto)
+
 ```
 ================================================================================
 ISSUE REFINED: [ISSUE-ID]
@@ -307,17 +563,122 @@ ISSUE REFINED: [ISSUE-ID]
 ================================================================================
 ```
 
+### Auto Mode Output (--auto)
+
+```
+================================================================================
+AUTO-REFINE: [ISSUE-ID]
+================================================================================
+
+## ISSUE
+- File: [path]
+- Type: [BUG|FEAT|ENH]
+- Title: [title]
+- Mode: Auto-refine [--dry-run | --all | --template-align-only]
+
+## CHANGES APPLIED
+
+### Section Renames (v1.0 → v2.0)
+- `Reproduction Steps` → `Steps to Reproduce`
+- `User Story` → `Use Case`
+- [Additional renames]
+
+### Sections Added (Inferred)
+- **Motivation**: Inferred from Summary - [brief description]
+- **Integration Map**: Files to Modify populated from issue content
+- **Implementation Steps**: 3 phases extracted from Proposed Solution
+
+### Sections Preserved
+- **Proposed Solution**: Existing content preserved (non-empty)
+- **Acceptance Criteria**: Existing content preserved
+- [Additional preserved sections]
+
+## DRY RUN PREVIEW [--dry-run only]
+[Show exact changes that would be applied without applying them]
+- Would rename: `## Reproduction Steps` → `## Steps to Reproduce`
+- Would add: `## Motivation` section with inferred content
+- Would add: `## Integration Map` section with placeholder
+
+## FILE STATUS
+- [Modified | Not modified (--dry-run)]
+- [Staged | Not staged]
+
+## NEXT STEPS
+- Run `/ll:ready_issue [ID]` to validate
+- Run `/ll:commit` to commit changes
+================================================================================
+```
+
+### Batch Mode Output (--all --auto)
+
+```
+================================================================================
+AUTO-REFINE BATCH REPORT: --all mode
+================================================================================
+
+## SUMMARY
+- Issues processed: 15
+- Issues refined: 12
+- Issues skipped: 3 (already v2.0 compliant)
+- Total section renames: 8
+- Total sections added: 24
+
+## RESULTS BY ISSUE
+
+### BUG-071: Error in login flow
+- Sections renamed: Reproduction Steps → Steps to Reproduce, Proposed Fix → Proposed Solution
+- Sections added: Root Cause (from Location), Integration Map
+- Status: Success
+
+### FEAT-042: Add dark mode
+- Sections renamed: User Story → Use Case
+- Sections added: API/Interface (N/A), Implementation Steps (3 phases)
+- Status: Success
+
+### ENH-089: Improve performance
+- Sections renamed: (none)
+- Sections added: Motivation (from Summary), Success Metrics
+- Status: Success
+
+### BUG-123: Memory leak
+- No changes needed (already v2.0 compliant)
+- Status: No changes
+
+## FILES MODIFIED
+- .issues/bugs/P2-BUG-071-error-in-login-flow.md
+- .issues/features/P1-FEAT-042-add-dark-mode.md
+- .issues/enhancements/P3-ENH-089-improve-performance.md
+
+## NEXT STEPS
+- Review changes in each file
+- Run `/ll:ready_issue --all` to validate all issues
+- Run `/ll:commit` to commit changes
+================================================================================
+```
+
 ## Examples
 
 ```bash
-# Refine a specific feature
+# Interactive refinement (existing behavior)
 /ll:refine_issue FEAT-225
 
-# Refine a bug with more detail
-/ll:refine_issue BUG-042
+# Auto-refine single issue (non-interactive)
+/ll:refine_issue BUG-042 --auto
 
-# Refine an enhancement
-/ll:refine_issue ENH-015
+# Auto-refine with dry-run (preview changes without applying)
+/ll:refine_issue BUG-042 --auto --dry-run
+
+# Auto-refine all active issues
+/ll:refine_issue --all --auto
+
+# Auto-refine with template alignment only (rename old sections, skip content inference)
+/ll:refine_issue ENH-015 --auto --template-align-only
+
+# Full auto-refine: template alignment + content inference
+/ll:refine_issue FEAT-225 --auto
+
+# Batch auto-refine all issues with dry-run preview
+/ll:refine_issue --all --auto --dry-run
 ```
 
 ## Integration
@@ -328,7 +689,24 @@ After refining an issue:
 - Commit with `/ll:commit`
 - Implement with `/ll:manage_issue`
 
-Typical workflow:
+### Typical Workflows
+
+**Interactive workflow** (manual refinement):
 ```
 /ll:capture_issue "description" → /ll:refine_issue [ID] → /ll:ready_issue [ID] → /ll:manage_issue
 ```
+
+**Auto-refine workflow** (non-interactive):
+```
+/ll:capture_issue "description" → /ll:refine_issue [ID] --auto → /ll:ready_issue [ID] → /ll:manage_issue
+```
+
+**Batch auto-refine workflow** (all issues):
+```
+/ll:refine_issue --all --auto → /ll:ready_issue --all → /ll:commit
+```
+
+**Automation integration** (ll-auto, ll-parallel, ll-sprint):
+- These automation scripts can now use `/ll:refine_issue [ID] --auto` before implementation
+- Template v2.0 alignment happens during refinement, not at execution time
+- Enables automated issue quality improvement without user interaction
