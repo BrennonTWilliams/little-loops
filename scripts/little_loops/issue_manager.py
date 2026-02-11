@@ -184,9 +184,10 @@ def run_with_continuation(
             continuation_count += 1
             logger.info(f"Starting continuation session #{continuation_count}")
 
-            # Use continuation prompt as the new command
-            # Escape the prompt content for CLI
-            current_command = prompt_content.replace('"', '\\"')
+            # Re-invoke the original command with --resume flag so the skill
+            # lifecycle (including completion/file-move) runs in the new session.
+            # The skill reads .claude/ll-continue-prompt.md for context.
+            current_command = f"{initial_command} --resume"
             continue
 
         # No handoff signal, we're done

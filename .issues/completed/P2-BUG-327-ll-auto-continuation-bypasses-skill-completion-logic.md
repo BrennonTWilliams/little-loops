@@ -37,37 +37,39 @@ Implementation succeeds in the continuation session but all bookkeeping is skipp
 
 ## Root Cause
 
-- **File**: `scripts/little_loops/auto.py` (or equivalent ll-auto entry point)
-- **Anchor**: Continuation session spawning logic after `CONTEXT_HANDOFF` detection
-- **Cause**: The continuation command is built as raw `-p '<context>'` instead of `-p '/ll:manage_issue ... --resume'`
+- **File**: `scripts/little_loops/issue_manager.py`
+- **Anchor**: `run_with_continuation()` function, continuation command construction after `detect_context_handoff()`
+- **Cause**: The continuation command is built as raw prompt content (`current_command = prompt_content.replace(...)`) instead of re-invoking `/ll:manage_issue ... --resume`
 
 ## Proposed Solution
 
 Modify `ll-auto`'s handoff handling to invoke the skill in the continuation session:
 
 ```python
-# Instead of:
-cmd = f"claude --dangerously-skip-permissions -p '{continuation_prompt}'"
+# In run_with_continuation(), instead of:
+current_command = prompt_content.replace('"', '\\"')
 
-# Use:
-cmd = f"claude --dangerously-skip-permissions -p '/ll:manage_issue {type} fix {issue_id} --resume'"
+# Wrap continuation in skill invocation that preserves lifecycle:
+current_command = f"/ll:manage_issue {type_name} {action} {issue_id} --resume"
 ```
 
 This ensures the manage_issue skill loads, reads the continuation prompt from `.claude/ll-continue-prompt.md`, and runs its full lifecycle including completion.
 
+Note: `run_with_continuation` may need additional parameters (issue type, action, issue ID) to construct the skill command. The caller at line ~481 already has this context.
+
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/auto.py` — continuation session command construction
+- `scripts/little_loops/issue_manager.py` — `run_with_continuation()` continuation command construction
 
 ### Dependent Files (Callers/Importers)
 - `ll-auto` CLI entry point
 
 ### Similar Patterns
-- `ll-parallel` may have similar handoff handling — check for consistency
+- `scripts/little_loops/parallel/worker_pool.py` — has identical handoff handling pattern at ~line 722, needs same fix for consistency
 
 ### Tests
-- `scripts/tests/test_auto.py` — add test for continuation command format
+- `scripts/tests/test_issue_manager.py` — add test for continuation command format
 
 ### Documentation
 - N/A
@@ -77,7 +79,7 @@ This ensures the manage_issue skill loads, reads the continuation prompt from `.
 
 ## Implementation Steps
 
-1. Locate handoff detection and continuation command construction in `auto.py`
+1. Locate handoff detection and continuation command construction in `issue_manager.py`
 2. Change continuation command to use `/ll:manage_issue ... --resume` instead of raw prompt
 3. Verify `/ll:resume` or `--resume` flag properly reads `.claude/ll-continue-prompt.md`
 4. Add test covering continuation command format
@@ -101,4 +103,21 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-02-11 | Priority: P2
+**Completed** | Created: 2026-02-11 | Completed: 2026-02-11 | Priority: P2
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/issue_manager.py`: Changed continuation command from raw prompt content to `initial_command + " --resume"`
+- `scripts/little_loops/parallel/worker_pool.py`: Same fix for parallel worker continuation
+- `scripts/tests/test_issue_manager.py`: Added test verifying continuation uses `--resume` flag
+
+### Verification Results
+- Tests: PASS (2675 passed)
+- Lint: PASS

@@ -924,6 +924,53 @@ class TestRunWithContinuation:
         # Should stop after handoff with no prompt
         mock_logger.warning.assert_called()
 
+    def test_continuation_uses_resume_flag(self, temp_project_dir: Path) -> None:
+        """Test that continuation re-invokes original command with --resume (BUG-327)."""
+        from little_loops.issue_manager import run_with_continuation
+
+        mock_logger = MagicMock()
+
+        first_result = MagicMock()
+        first_result.returncode = 0
+        first_result.stdout = "CONTEXT_HANDOFF\n"
+        first_result.stderr = ""
+        first_result.args = ["claude", "-p", "first"]
+
+        second_result = MagicMock()
+        second_result.returncode = 0
+        second_result.stdout = "Done"
+        second_result.stderr = ""
+        second_result.args = ["claude", "-p", "resume"]
+
+        commands_received: list[str] = []
+
+        def mock_run(command: str, *args, **kwargs):
+            commands_received.append(command)
+            if len(commands_received) == 1:
+                return first_result
+            return second_result
+
+        handoff_responses = iter([True, False])
+
+        with patch("little_loops.issue_manager.run_claude_command", side_effect=mock_run):
+            with patch(
+                "little_loops.issue_manager.detect_context_handoff",
+                side_effect=lambda _: next(handoff_responses),
+            ):
+                with patch(
+                    "little_loops.issue_manager.read_continuation_prompt",
+                    return_value="# Some prompt content",
+                ):
+                    run_with_continuation(
+                        "/ll:manage_issue bug fix BUG-327",
+                        mock_logger,
+                        max_continuations=3,
+                    )
+
+        assert len(commands_received) == 2
+        assert commands_received[0] == "/ll:manage_issue bug fix BUG-327"
+        assert commands_received[1] == "/ll:manage_issue bug fix BUG-327 --resume"
+
 
 class TestReadyIssueErrorHandling:
     """Tests for error handling during ready_issue phase (ENH-207)."""

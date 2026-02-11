@@ -741,8 +741,9 @@ class WorkerPool:
                     f"[{issue_id}] Starting continuation session #{continuation_count}"
                 )
 
-                # Use continuation prompt as the new command
-                current_command = prompt_content.replace('"', '\\"')
+                # Re-invoke the original command with --resume flag so the skill
+                # lifecycle (including completion/file-move) runs in the new session.
+                current_command = f"{command} --resume"
                 continue
 
             # No handoff signal, we're done
