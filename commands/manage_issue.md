@@ -337,6 +337,19 @@ If `--resume` flag is specified:
 4. **Mark todos complete** as you finish
 5. **Update checkboxes in plan** as you complete each section
 
+### Documentation Implementation Guidance
+
+**IMPORTANT**: The `improve` action requires implementation, not just verification:
+
+- For **documentation issues**: Edit or create the documentation files described in the issue
+  - "Improve docs.md" means edit the file to add/update content, not review it for correctness
+  - Make actual changes to improve clarity, completeness, or accuracy
+  - Do not skip to verification without making file changes
+
+- For **code issues**: Follow the same implementation process as `fix` and `implement` actions
+
+- **All issue types**: The `improve` action is NOT a verification-only action (unlike `verify`)
+
 ### Context Monitoring & Proactive Handoff
 
 **IMPORTANT**: Monitor context usage throughout implementation. When context is running low:
@@ -428,6 +441,8 @@ By default (no `--gates` flag):
 - Report all results in final output
 - If critical errors occur, mark as INCOMPLETE
 - **Do NOT use `AskUserQuestion` or any interactive tools** — all decisions must be made autonomously
+
+> **Note**: The `improve` action requires full implementation (Plan → Implement → Verify → Complete). Do not interpret `improve` as a verification-only action or skip the Implementation phase. For all issue types including documentation, `improve` means make changes to files, not just review or verify them.
 
 ### Mismatch Handling Protocol
 
@@ -657,7 +672,11 @@ $ARGUMENTS
 - **action** (required): Action to perform
   - `fix` - Fix a bug
   - `implement` - Implement a feature
-  - `improve` - Improve/enhance
+  - `improve` - Improve/enhance existing functionality or documentation
+  - **IMPORTANT**: Requires full implementation (Plan → Implement → Verify → Complete)
+  - For documentation: Must edit/create files, not just verify content
+  - For code: Follow same implementation process as fix/implement
+  - Behaves identically to fix/implement actions across all issue types
   - `verify` - Verify issue status only
   - `plan` - Create plan only (equivalent to --plan-only flag)
 
