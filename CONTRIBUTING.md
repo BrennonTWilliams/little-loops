@@ -3,6 +3,7 @@
 Thank you for your interest in contributing to little-loops! This document provides guidelines and instructions for contributing.
 
 > **Related Documentation:**
+> - [Issue Template Guide](docs/ISSUE_TEMPLATE.md) - v2.0 issue template with examples and best practices
 > - [Testing Guide](docs/TESTING.md) - Comprehensive testing patterns and conventions
 > - [Architecture Overview](docs/ARCHITECTURE.md) - System design and component relationships
 > - [API Reference](docs/API.md) - Python module documentation
@@ -257,6 +258,69 @@ test(config): add tests for configuration merging
 - Include tests for new functionality
 - Update CHANGELOG.md for user-facing changes
 - Ensure CI passes before requesting review
+
+## Creating Issues
+
+Issues are tracked in `.issues/` with structured Markdown files following the v2.0 template.
+
+### Issue Template (v2.0)
+
+The issue template has been optimized for AI implementation with **19 sections** across BUG, FEAT, and ENH types.
+
+**Key Features**:
+- Anchor-based code references (function/class names, not line numbers)
+- High-level Implementation Steps (agent expands into detailed plan)
+- Enhanced Motivation and Impact sections with justifications
+- New Root Cause (BUG), API/Interface (FEAT/ENH) sections
+
+**See**: [docs/ISSUE_TEMPLATE.md](docs/ISSUE_TEMPLATE.md) for complete guide with examples
+
+### Quick Start
+
+**Create an issue**:
+```bash
+/ll:capture_issue "Description of the issue"
+```
+
+**Refine an issue**:
+```bash
+/ll:refine_issue .issues/bugs/P2-BUG-123-description.md
+```
+
+**Validate an issue**:
+```bash
+/ll:ready_issue .issues/bugs/P2-BUG-123-description.md
+```
+
+### Issue Quality Checklist
+
+All issues should pass these checks:
+
+- [ ] **Summary**: One sentence combining WHAT and WHY
+- [ ] **Impact**: Includes justifications for priority, effort, and risk
+- [ ] **Proposed Solution**: Uses anchor-based references (function/class names) not line numbers
+- [ ] **Integration Map**: Lists all affected files (callers, tests, docs, config)
+- [ ] **Implementation Steps**: High-level outline (3-8 phases), not detailed substeps
+
+**Type-specific**:
+- **BUG**: Numbered steps to reproduce, Root Cause with file + function anchor
+- **FEAT**: Concrete Use Case scenario, API/Interface for public contracts
+- **ENH**: Motivation with quantified impact, Success Metrics with targets
+
+### Best Practices
+
+**For AI Implementation**:
+- Use function/class anchors: `in function foo()` not `at line 42`
+- Include code examples in Proposed Solution
+- Reference existing patterns to reuse
+- Use Integration Map to enumerate ALL affected files (prevents isolated changes)
+- Keep Implementation Steps high-level (let agent create detailed plan)
+
+**For Human Reviewers**:
+- Quantify impact: "affects 100 users" not "affects users"
+- Show concrete scenarios, not generic templates
+- Justify priority/effort/risk decisions
+- Link relevant documentation
 
 ## Adding Commands
 
