@@ -28,9 +28,7 @@ def get_current_session_jsonl(cwd: Path | None = None) -> Path | None:
     if project_folder is None:
         return None
 
-    jsonl_files = [
-        f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")
-    ]
+    jsonl_files = [f for f in project_folder.glob("*.jsonl") if not f.name.startswith("agent-")]
     if not jsonl_files:
         return None
 
