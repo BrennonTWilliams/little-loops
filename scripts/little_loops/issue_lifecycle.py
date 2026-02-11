@@ -465,11 +465,11 @@ Implementation should complete without errors.
 ## Root Cause
 Discovered during automated processing of `{parent_info.path}`.
 
-## Reproduction Steps
+## Steps to Reproduce
 1. Run: `/ll:manage_issue {parent_info.issue_type} fix {parent_info.issue_id}`
 2. Observe error
 
-## Proposed Fix
+## Proposed Solution
 Investigate the error output above and address the root cause.
 
 ## Impact

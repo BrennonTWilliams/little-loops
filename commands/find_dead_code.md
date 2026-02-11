@@ -178,7 +178,7 @@ Dead code cleanup task identified by `/ll:find_dead_code`.
 | `unused_import` | Import | High | Never referenced |
 | `_old_helper()` | Function | High | Zero callers |
 
-## Proposed Fix
+## Proposed Solution
 
 Remove the identified dead code items.
 

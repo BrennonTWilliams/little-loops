@@ -122,7 +122,7 @@ The services.py file has grown too large and should be split.
 - **File**: `src/services.py`
 - **Line(s)**: 1-850
 
-## Proposed Fix
+## Proposed Solution
 Split into smaller modules by responsibility.
 """)
 
