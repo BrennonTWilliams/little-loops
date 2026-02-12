@@ -1,0 +1,15 @@
+paradigm: imperative
+name: workflow-analysis
+description: |
+  Extract user messages from Claude Code logs and analyze them for
+  workflow patterns. Uses ll-messages to extract data, then ll-workflows
+  to identify repeated sequences and automation opportunities.
+steps:
+  - "ll-messages --limit 200 --stdout > .claude/workflow-messages.jsonl"
+  - "ll-workflows .claude/workflow-messages.jsonl"
+until:
+  check: "test -f .claude/workflow-messages.jsonl && echo done"
+  evaluator:
+    type: output_contains
+    pattern: "done"
+max_iterations: 1

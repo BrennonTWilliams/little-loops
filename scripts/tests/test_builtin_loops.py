@@ -64,6 +64,9 @@ class TestBuiltinLoopFiles:
             "issue-verification",
             "codebase-scan",
             "quality-gate",
+            "sprint-execution",
+            "workflow-analysis",
+            "history-reporting",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

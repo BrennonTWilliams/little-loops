@@ -1,0 +1,18 @@
+paradigm: invariants
+name: history-reporting
+description: |
+  Generate issue history analysis reports. Checks that completed issues
+  exist and produces summary and detailed analysis reports.
+constraints:
+  - name: "completed-issues-exist"
+    check: "ls .issues/completed/*.md 2>/dev/null | wc -l | tr -d ' '"
+    fix: "echo 'No completed issues found. Process some issues first.'"
+    evaluator:
+      type: output_numeric
+      operator: gt
+      target: 0
+  - name: "history-report"
+    check: "ll-history analyze --format markdown"
+    fix: "ll-history summary"
+maintain: false
+max_iterations: 3

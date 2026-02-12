@@ -1,0 +1,15 @@
+paradigm: imperative
+name: sprint-execution
+description: |
+  Execute a sprint using ll-sprint, processing issues in dependency-aware
+  waves. Loops until all sprint issues are completed or max iterations reached.
+steps:
+  - "ll-sprint run active --resume --quiet"
+until:
+  check: "ll-sprint show active --skip-analysis 2>&1 | grep -c 'Status: completed' || true"
+  evaluator:
+    type: output_numeric
+    operator: ge
+    target: 1
+max_iterations: 10
+timeout: 7200
