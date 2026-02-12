@@ -46,7 +46,10 @@ You are a specialist at validating cross-component consistency in Claude Code pl
    - Config → Commands (referenced commands exist)
 
 3. **Detect Conflicts**
-   - Global vs Project CLAUDE.md contradictions
+   - Memory hierarchy contradictions (managed policy vs user memory vs project memory)
+   - Project memory vs CLAUDE.local.md conflicts
+   - User rules vs project rules priority conflicts
+   - Overlapping path patterns in rules files
    - Duplicate definitions across components
    - Inconsistent naming conventions
    - Overlapping responsibilities
@@ -61,6 +64,11 @@ You are a specialist at validating cross-component consistency in Claude Code pl
 | CLAUDE.md | commands/*.md | /ll:X mentioned → commands/X.md exists |
 | CLAUDE.md | .mcp.json | MCP tool X mentioned → server provides it |
 | hooks/hooks.json | scripts | "command": ["bash", "X"] → X is executable |
+| .claude/rules/*.md | YAML frontmatter | Frontmatter parses, `paths` is valid array |
+| .claude/rules/ | symlink targets | Symlinks resolve to existing files |
+| ~/.claude/rules/*.md | YAML frontmatter | Same as project rules |
+| MEMORY.md | line count | Warn if >200 lines (only first 200 loaded) |
+| rules files | path patterns | Detect overlapping glob patterns across rules |
 
 ## Validation Process
 
@@ -68,9 +76,13 @@ You are a specialist at validating cross-component consistency in Claude Code pl
 From Wave 1 findings or by scanning:
 - Extract all subagent_type values from commands
 - Extract all prompt paths from hooks.json
-- Extract all @import references from CLAUDE.md
-- Extract all MCP tool mentions from CLAUDE.md
+- Extract all @import references from CLAUDE.md files
+- Extract all MCP tool mentions from CLAUDE.md files
 - Extract all file paths mentioned in instructions
+- Extract all rules files with frontmatter from `.claude/rules/` and `~/.claude/rules/`
+- Extract all `paths` patterns from rules files
+- Extract all symlinks in rules directories
+- Check MEMORY.md line count in `~/.claude/projects/<project>/memory/`
 
 ### Step 2: Validate Each Reference
 For each reference found:
@@ -82,10 +94,13 @@ For each reference found:
 
 ### Step 3: Check for Conflicts
 Compare configurations across files:
-1. Global CLAUDE.md vs Project CLAUDE.md
-2. Multiple commands using same agent differently
-3. Hooks with conflicting behaviors
-4. Config values contradicting CLAUDE.md instructions
+1. Managed policy vs User memory vs Project memory (hierarchy conflicts)
+2. Project memory vs CLAUDE.local.md (local overrides)
+3. User rules vs Project rules (priority conflicts)
+4. Overlapping path patterns in rules files
+5. Multiple commands using same agent differently
+6. Hooks with conflicting behaviors
+7. Config values contradicting CLAUDE.md instructions
 
 ## Output Format
 
@@ -128,6 +143,35 @@ Structure your consistency check like this:
 | automation.timeout_seconds | number | number | OK |
 | ... | ... | ... | ... |
 
+#### Rules → Frontmatter
+| File | Has Frontmatter | YAML Valid | Paths Field | Status |
+|------|-----------------|------------|-------------|--------|
+| .claude/rules/example.md | Yes/No | Yes/No | [patterns] | OK/WARNING |
+| ... | ... | ... | ... | ... |
+
+#### Rules → Symlinks
+| File | Is Symlink | Target | Target Exists | Status |
+|------|------------|--------|---------------|--------|
+| .claude/rules/shared.md | Yes/No | /path/to/target | Yes/No | OK/BROKEN |
+| ... | ... | ... | ... | ... |
+
+#### Auto Memory → Size
+| File | Lines | Status |
+|------|-------|--------|
+| MEMORY.md | N | OK (≤200) / WARNING (>200) |
+
+#### Memory Hierarchy Conflicts
+| Higher Priority | Lower Priority | Conflict | Resolution |
+|-----------------|----------------|----------|------------|
+| managed policy | project memory | Conflicting X instruction | Higher priority wins |
+| ... | ... | ... | ... |
+
+#### Rules Path Pattern Overlaps
+| File 1 | Pattern 1 | File 2 | Pattern 2 | Overlap Type |
+|--------|-----------|--------|-----------|--------------|
+| rules/api.md | src/api/**/*.ts | rules/backend.md | src/**/*.ts | Subset overlap |
+| ... | ... | ... | ... | ... |
+
 ### Conflicts Detected
 
 | Location 1 | Location 2 | Conflict | Severity |
@@ -159,6 +203,10 @@ Structure your consistency check like this:
 | CLAUDE.md → Commands | X | Y | Z |
 | CLAUDE.md → MCP | X | Y | Z |
 | Config → Schema | X | Y | Z |
+| Rules → Frontmatter | X | Y | Z |
+| Rules → Symlinks | X | Y | Z |
+| Auto Memory → Size | X | Y | Z |
+| Memory Hierarchy | X | Y | Z |
 | Conflicts | - | - | Z |
 | **Total** | X | Y | **Z** |
 

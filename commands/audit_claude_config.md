@@ -2,7 +2,7 @@
 description: Comprehensive audit of Claude Code plugin configuration with parallel sub-agents
 arguments:
   - name: scope
-    description: Audit scope (all|global|project|hooks|mcp|agents|commands|skills)
+    description: Audit scope (all|managed|user|project|hooks|mcp|agents|commands|skills)
     required: false
   - name: flags
     description: "Optional flags: --non-interactive (no prompts), --fix (auto-apply safe fixes)"
@@ -15,10 +15,16 @@ You are tasked with performing a comprehensive audit of CLAUDE.md files and Clau
 
 ## Configuration Files to Audit
 
-### CLAUDE.md Files (Priority Order)
-1. **Global**: `~/.claude/CLAUDE.md` - User's private global instructions
-2. **Project**: `./.claude/CLAUDE.md` - Project-specific instructions
-3. **Root**: `./CLAUDE.md` - Alternative project location
+### Memory Files (Hierarchy Order)
+1. **Managed policy**: Organization-wide instructions
+   - macOS: `/Library/Application Support/ClaudeCode/CLAUDE.md`
+   - Linux: `/etc/claude-code/CLAUDE.md`
+2. **Project memory**: `./.claude/CLAUDE.md` or `./CLAUDE.md` - Team-shared instructions
+3. **Project rules**: `./.claude/rules/*.md` - Modular project instructions (supports `paths` frontmatter for conditional loading, subdirectories, symlinks)
+4. **User memory**: `~/.claude/CLAUDE.md` - Personal preferences for all projects
+5. **User rules**: `~/.claude/rules/*.md` - Personal modular rules (loaded before project rules)
+6. **Project memory (local)**: `./CLAUDE.local.md` - Personal project preferences (auto-gitignored)
+7. **Auto memory**: `~/.claude/projects/<project>/memory/MEMORY.md` - Claude's automatic notes (first 200 lines loaded at startup; topic files loaded on-demand)
 
 ### Plugin Components
 - **Agents**: `agents/*.md` - Sub-agent definitions
@@ -36,8 +42,9 @@ You are tasked with performing a comprehensive audit of CLAUDE.md files and Clau
 ## Audit Scopes
 
 - **all**: Complete audit of all configuration (default)
-- **global**: Focus on global ~/.claude/ configurations
-- **project**: Focus on project .claude/ configurations
+- **managed**: Focus on managed policy (organization-wide CLAUDE.md)
+- **user**: Focus on user memory (~/.claude/CLAUDE.md) and user rules (~/.claude/rules/)
+- **project**: Focus on project memory, project rules, and local overrides
 - **hooks**: Audit hooks configuration only
 - **mcp**: Audit MCP server configuration only
 - **agents**: Audit agent definitions only
@@ -90,12 +97,16 @@ Based on SCOPE, spawn the relevant agents:
 Use Task tool with subagent_type="codebase-analyzer"
 
 Prompt:
-Audit all CLAUDE.md files for this project:
+Audit all memory files for this project across the full Claude Code memory hierarchy:
 
 Files to check:
-- ~/.claude/CLAUDE.md (global)
-- .claude/CLAUDE.md (project)
-- ./CLAUDE.md (root)
+- Managed policy (macOS: /Library/Application Support/ClaudeCode/CLAUDE.md, Linux: /etc/claude-code/CLAUDE.md)
+- Project memory: .claude/CLAUDE.md and ./CLAUDE.md
+- Project rules: .claude/rules/*.md (recursive, including subdirectories)
+- User memory: ~/.claude/CLAUDE.md
+- User rules: ~/.claude/rules/*.md (recursive, including subdirectories)
+- Project memory (local): ./CLAUDE.local.md
+- Auto memory: ~/.claude/projects/<project>/memory/MEMORY.md and topic files
 
 For each file found, analyze:
 
@@ -103,7 +114,7 @@ For each file found, analyze:
    - Clear section organization with headers
    - Logical instruction grouping
    - Appropriate use of H1/H2/H3 hierarchy
-   - @import usage for modularity
+   - @import usage for modularity (max 5 hops recursive; relative paths resolve from containing file; not evaluated in code blocks)
 
 2. **Content Quality**:
    - Instructions are actionable and specific
@@ -122,14 +133,30 @@ For each file found, analyze:
    - Redundant instructions identified
    - Unnecessary verbosity
 
+5. **Rules-Specific Validation** (for .claude/rules/*.md and ~/.claude/rules/*.md):
+   - YAML frontmatter parses correctly
+   - `paths` field, if present, is an array of strings
+   - Glob patterns in `paths` use valid syntax
+   - Symlink resolution: symlinked files resolve to existing targets
+   - No circular symlinks
+
+6. **Auto Memory Checks** (for ~/.claude/projects/<project>/memory/):
+   - MEMORY.md line count (warn if >200 lines, as only first 200 are loaded)
+   - List topic files present in the memory directory
+
 Return structured findings with:
 - File path, size, section count
+- Memory type label per file (managed/project/user/auto/local)
 - Quality score (1-10) per file
 - Issues found with severity (CRITICAL/WARNING/INFO)
 - Line numbers for each issue
+- Rules directory summary (files found, symlinks detected, frontmatter parse results)
+- Auto memory size check results
 - List of all @import references for Wave 2
 - List of all command references (/ll:X) for Wave 2
 - List of all MCP tool references for Wave 2
+- List of all symlinks in rules directories for Wave 2
+- List of all rules path patterns for Wave 2
 ```
 
 #### Task 2: Plugin Components Auditor
@@ -266,11 +293,17 @@ Check:
 2. **Hooks → Prompts**: Every prompt path in hooks.json resolves to existing file
 3. **Config → Schema**: ll-config.json values comply with config-schema.json types
 4. **CLAUDE.md → @imports**: Every @import reference resolves to existing file
+5. **Rules → Frontmatter**: YAML frontmatter in .claude/rules/*.md and ~/.claude/rules/*.md parses correctly
+6. **Rules → Paths**: Glob patterns in `paths` fields are syntactically valid
+7. **Rules → Symlinks**: All symlinks in rules directories resolve to existing targets
+8. **Auto Memory → Size**: MEMORY.md ≤ 200 lines (only first 200 loaded at startup)
 
 Return:
 - Reference validation table with status for each
 - List of missing references (CRITICAL)
 - List of broken references (WARNING)
+- Rules validation results (frontmatter, paths, symlinks)
+- Auto memory size warnings
 - Internal consistency score
 ```
 
@@ -289,11 +322,14 @@ Check:
 2. **CLAUDE.md → Commands**: /ll:X references have matching commands/X.md
 3. **Hooks → Scripts**: Bash scripts referenced are executable
 4. **Config → Paths**: File paths in config files exist in filesystem
-5. **Global vs Project**: Check for conflicts between global and project CLAUDE.md
+5. **Memory Hierarchy**: Check for conflicts between managed policy, user memory, and project memory
+6. **Rules Path Overlap**: Detect overlapping path patterns across rules files
+7. **Local vs Project**: Check for conflicts between CLAUDE.local.md and project CLAUDE.md
 
 Return:
 - External reference validation table
-- Conflicts detected with recommended resolution
+- Hierarchy conflicts detected with recommended resolution
+- Rules path overlap warnings
 - List of missing/broken external references
 - External consistency score
 ```
@@ -320,7 +356,12 @@ Synthesize all findings from Waves 1 and 2 into prioritized fix suggestions:
 
 **Warning (Should Fix)** - May cause issues:
 - Missing @import files
-- Conflicting instructions between global/project
+- Conflicting instructions between managed/user/project memory
+- CLAUDE.local.md not in .gitignore
+- Auto memory MEMORY.md exceeds 200 lines
+- Broken symlinks in rules directories
+- Invalid glob patterns in rules frontmatter
+- Overlapping path patterns in rules files
 - Suboptimal timeout values
 - Missing command examples
 - Incomplete agent descriptions
@@ -421,13 +462,41 @@ Apply suggestions? [Y/n/select]
 
 ## Wave 1: Individual Component Audits
 
-### CLAUDE.md Files
+### Memory Files
 
+#### Managed Policy
+| Location | Exists | Size | Health | Issues |
+|----------|--------|------|--------|--------|
+| /Library/Application Support/ClaudeCode/CLAUDE.md (macOS) or /etc/claude-code/CLAUDE.md (Linux) | Yes/No | XKB | X/10 | N |
+
+#### Project Memory
+| Location | Exists | Size | Sections | Health | Issues |
+|----------|--------|------|----------|--------|--------|
+| .claude/CLAUDE.md | Yes/No | XKB | N | X/10 | N |
+| ./CLAUDE.md | Yes/No | XKB | N | X/10 | N |
+| ./CLAUDE.local.md | Yes/No | XKB | N | X/10 | N |
+
+#### Project Rules
+| File | Frontmatter | Paths Pattern | Symlink | Health |
+|------|-------------|---------------|---------|--------|
+[Table rows for each .claude/rules/*.md file]
+
+#### User Memory
 | Location | Exists | Size | Sections | Health | Issues |
 |----------|--------|------|----------|--------|--------|
 | ~/.claude/CLAUDE.md | Yes/No | XKB | N | X/10 | N |
-| .claude/CLAUDE.md | Yes/No | XKB | N | X/10 | N |
-| ./CLAUDE.md | Yes/No | XKB | N | X/10 | N |
+
+#### User Rules
+| File | Frontmatter | Paths Pattern | Health |
+|------|-------------|---------------|--------|
+[Table rows for each ~/.claude/rules/*.md file]
+
+#### Auto Memory
+| File | Lines | Topic Files | Health |
+|------|-------|-------------|--------|
+| MEMORY.md | N (warn if >200) | N files | X/10 |
+
+> Note: Parent directory traversal is runtime-dependent, not audited statically.
 
 #### Issues Found
 [List issues with severity, file:line, description]
@@ -497,8 +566,10 @@ Apply suggestions? [Y/n/select]
 
 | Category | Score | Notes |
 |----------|-------|-------|
-| CLAUDE.md structure | X/10 | [Brief note] |
+| Memory file structure | X/10 | [Brief note] |
 | Content quality | X/10 | [Brief note] |
+| Memory hierarchy coverage | X/10 | [Are all locations checked] |
+| Rules files quality | X/10 | [Frontmatter, paths, symlinks] |
 | Plugin components | X/10 | [Brief note] |
 | Hooks config | X/10 | [Brief note] |
 | MCP config | X/10 | [Brief note] |
