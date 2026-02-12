@@ -2,7 +2,7 @@
 description: Interactively configure specific areas in ll-config.json
 arguments:
   - name: area
-    description: "project|issues|parallel|automation|documents|continuation|context|prompt|scan|workflow|sync (optional - prompts if omitted)"
+    description: "project|issues|parallel|automation|documents|continuation|context|prompt|scan|sync (optional - prompts if omitted)"
     required: false
   - name: flags
     description: Optional flags (--list, --show, --reset)
@@ -49,7 +49,6 @@ Map argument names to config sections:
 | `context` | `context_monitor` | Context monitoring: threshold, limits |
 | `prompt` | `prompt_optimization` | Prompt optimization: mode, confirm, bypass |
 | `scan` | `scan` | Focus dirs, exclude patterns |
-| `workflow` | `workflow` | Phase gates, deep research settings |
 | `sync` | `sync` | GitHub Issues sync: enabled, label mapping, priorities |
 
 ---
@@ -74,7 +73,6 @@ Configuration Areas
   context       [CONFIGURED]  Context monitoring: threshold, limits
   prompt        [DEFAULT]     Prompt optimization: mode, confirm, bypass
   scan          [CONFIGURED]  Focus dirs, exclude patterns
-  workflow      [DEFAULT]     Phase gates, deep research settings
   sync          [DEFAULT]     GitHub Issues sync: enabled, label mapping, priorities
 
 Configure: /ll:configure <area>
@@ -232,20 +230,6 @@ Scan Configuration
 Edit: /ll:configure scan
 ```
 
-#### workflow --show
-
-```
-Workflow Configuration
-----------------------
-  phase_gates.enabled:       {{config.workflow.phase_gates.enabled}}       (default: true)
-  phase_gates.auto_mode_skip: {{config.workflow.phase_gates.auto_mode_skip}} (default: true)
-  deep_research.enabled:     {{config.workflow.deep_research.enabled}}     (default: true)
-  deep_research.quick_flag_skips: {{config.workflow.deep_research.quick_flag_skips}} (default: true)
-  deep_research.agents:      {{config.workflow.deep_research.agents}}      (default: [codebase-locator, codebase-analyzer, codebase-pattern-finder])
-
-Edit: /ll:configure workflow
-```
-
 #### sync --show
 
 ```
@@ -309,7 +293,7 @@ questions:
       - label: "scan"
         description: "Focus dirs, exclude patterns"
       - label: "More areas..."
-        description: "Show parallel, automation, documents, continuation, context, prompt, workflow"
+        description: "Show parallel, automation, documents, continuation, context, prompt"
 ```
 
 If "More areas..." selected:
@@ -327,7 +311,7 @@ questions:
       - label: "documents"
         description: "Key document categories for issue alignment"
       - label: "More areas..."
-        description: "Show sync, continuation, context, prompt, workflow"
+        description: "Show sync, continuation, context, prompt"
 ```
 
 If "More areas..." selected again:
@@ -344,22 +328,8 @@ questions:
         description: "Session handoff: auto-detect, includes, expiry"
       - label: "context"
         description: "Context monitoring: threshold, limits"
-      - label: "More areas..."
-        description: "Show prompt, workflow"
-```
-
-If "More areas..." selected again:
-
-```yaml
-questions:
-  - question: "Which area do you want to configure?"
-    header: "Area"
-    multiSelect: false
-    options:
       - label: "prompt"
         description: "Prompt optimization: mode, confirm, bypass"
-      - label: "workflow"
-        description: "Phase gates, deep research settings"
 ```
 
 ### Step 2: Interactive Configuration
@@ -931,59 +901,6 @@ questions:
         description: "node_modules, __pycache__, .git"
       - label: "Extended"
         description: "Standard + dist, build, .venv"
-    multiSelect: false
-```
-
----
-
-## Area: workflow
-
-### Current Values
-
-```
-Current Workflow Configuration
-------------------------------
-  phase_gates:   {{config.workflow.phase_gates.enabled}}
-  deep_research: {{config.workflow.deep_research.enabled}}
-```
-
-### Round 1 (3 questions)
-
-```yaml
-questions:
-  - header: "Phase gates"
-    question: "Enable phase gates for manual verification?"
-    options:
-      - label: "{{current phase_gates.enabled}} (keep)"
-        description: "Keep current setting"
-      - label: "true"
-        description: "Yes, pause between phases (default)"
-      - label: "false"
-        description: "No, continuous execution"
-    multiSelect: false
-
-  - header: "Deep research"
-    question: "Enable deep research before planning?"
-    options:
-      - label: "{{current deep_research.enabled}} (keep)"
-        description: "Keep current setting"
-      - label: "true"
-        description: "Yes, spawn research agents (default)"
-      - label: "false"
-        description: "No, skip research"
-    multiSelect: false
-
-  - header: "Agents"
-    question: "Which research agents to use?"
-    options:
-      - label: "{{current deep_research.agents}} (keep)"
-        description: "Keep current setting"
-      - label: "All three (default)"
-        description: "locator, analyzer, pattern-finder"
-      - label: "Locator + analyzer"
-        description: "Skip pattern-finder"
-      - label: "Locator only"
-        description: "Minimal research"
     multiSelect: false
 ```
 

@@ -33,9 +33,8 @@ This command uses project configuration from `.claude/ll-config.json`:
 - **Custom verification**: `{{config.commands.custom_verification}}`
 
 ### Workflow Settings
-- **Phase gates**: Disabled by default (enable with --gates)
-- **Deep research**: `{{config.workflow.deep_research.enabled}}`
-- **Research agents**: `{{config.workflow.deep_research.agents}}`
+- **Phase gates**: Disabled by default (enable with `--gates` flag)
+- **Deep research**: Always enabled (Phase 1.5 spawns codebase-locator, codebase-analyzer, codebase-pattern-finder)
 
 ### Directory Structure
 

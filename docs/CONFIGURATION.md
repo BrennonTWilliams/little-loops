@@ -73,22 +73,6 @@ For interactive editing, use `/ll:configure`.
     "custom_agents": []
   },
 
-  "workflow": {
-    "phase_gates": {
-      "enabled": true,
-      "auto_mode_skip": true
-    },
-    "deep_research": {
-      "enabled": true,
-      "quick_flag_skips": true,
-      "agents": ["codebase-locator", "codebase-analyzer", "codebase-pattern-finder"]
-    },
-    "plan_template": {
-      "sections_recommended": true,
-      "sections_mandatory": false
-    }
-  },
-
   "prompt_optimization": {
     "enabled": true,
     "mode": "quick",
@@ -241,20 +225,6 @@ Codebase scanning configuration:
 |-----|---------|-------------|
 | `focus_dirs` | `["src/", "tests/"]` | Directories to scan |
 | `exclude_patterns` | Standard patterns | Paths to exclude from scanning |
-
-### `workflow`
-
-Workflow behavior settings (`/ll:manage_issue`, `/ll:ready_issue`):
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `phase_gates.enabled` | `true` | Enable phase gates for manual verification |
-| `phase_gates.auto_mode_skip` | `true` | Skip phase gates when --auto flag is used |
-| `deep_research.enabled` | `true` | Enable deep research by default |
-| `deep_research.quick_flag_skips` | `true` | Allow --quick flag to skip research |
-| `deep_research.agents` | 3 sub-agents | Sub-agents to spawn for research |
-| `plan_template.sections_recommended` | `true` | Show all template sections as recommended |
-| `plan_template.sections_mandatory` | `false` | Require all template sections |
 
 ### `prompt_optimization`
 
