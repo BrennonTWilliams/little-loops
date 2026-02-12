@@ -78,6 +78,15 @@ You are tasked with creating git commits for the changes made during this sessio
 
 ---
 
+## Examples
+
+```bash
+# Commit changes from current session
+/ll:commit
+```
+
+---
+
 ## Integration
 
 This command creates commits for work done in the current session.

@@ -322,6 +322,17 @@ This command complements `/ll:issue_size_review`:
 
 Both can be run as part of backlog grooming. Run tradeoff review first to prune, then size review to decompose remaining issues.
 
+---
+
+## Examples
+
+```bash
+# Review all active issues for utility vs complexity trade-offs
+/ll:tradeoff_review_issues
+```
+
+---
+
 ## Integration
 
 After running tradeoff review:
