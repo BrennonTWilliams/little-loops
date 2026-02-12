@@ -1,11 +1,14 @@
 """Sprint and sequence management for issue execution."""
 
+import logging
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import yaml
+
+logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -349,7 +352,8 @@ class SprintManager:
                         info = parser.parse_file(path)
                         result.append(info)
                         break
-                    except Exception:
+                    except Exception as e:
+                        logger.warning("Failed to parse issue file %s: %s", path, e)
                         continue
                 if any(i.issue_id == issue_id for i in result):
                     break

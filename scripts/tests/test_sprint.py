@@ -4,8 +4,10 @@ import json
 from pathlib import Path
 from typing import Any
 
+import pytest
 import yaml
 
+from little_loops.config import BRConfig
 from little_loops.sprint import Sprint, SprintManager, SprintOptions, SprintState
 
 
@@ -276,6 +278,60 @@ class TestSprintManager:
         manager = SprintManager(sprints_dir=tmp_path, config=None)
         infos = manager.load_issue_infos(["BUG-001", "FEAT-010"])
         assert infos == []
+
+    def test_load_issue_infos_logs_warning_on_parse_failure(
+        self, tmp_path: Path, caplog: pytest.LogCaptureFixture
+    ) -> None:
+        """Unparseable issue files are logged as warnings instead of silently dropped."""
+        from unittest.mock import patch
+
+        # Set up project structure with config
+        issues_dir = tmp_path / ".issues"
+        for category in ["bugs", "features", "enhancements", "completed"]:
+            (issues_dir / category).mkdir(parents=True)
+
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_file = config_dir / "ll-config.json"
+        config_data = {
+            "project": {"name": "test-project", "src_dir": "src/"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                    "enhancements": {
+                        "prefix": "ENH",
+                        "dir": "enhancements",
+                        "action": "improve",
+                    },
+                },
+                "completed_dir": "completed",
+            },
+        }
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        # Create an issue file that exists on disk (so glob finds it)
+        issue_file = issues_dir / "bugs" / "P3-BUG-999-corrupted.md"
+        issue_file.write_text("# BUG-999: Test\n")
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=tmp_path, config=config)
+
+        # Mock parse_file to raise, simulating a corrupted/unparseable file
+        with (
+            patch(
+                "little_loops.issue_parser.IssueParser.parse_file",
+                side_effect=ValueError("corrupted file"),
+            ),
+            caplog.at_level("WARNING", logger="little_loops.sprint"),
+        ):
+            infos = manager.load_issue_infos(["BUG-999"])
+
+        assert infos == []
+        assert "Failed to parse issue file" in caplog.text
+        assert "corrupted file" in caplog.text
 
 
 class TestSprintYAMLFormat:
