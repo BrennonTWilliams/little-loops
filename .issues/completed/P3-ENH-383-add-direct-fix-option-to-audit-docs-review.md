@@ -88,9 +88,28 @@ Likely approach: after each finding (or batch of findings), present an AskUserQu
 
 ## Session Log
 - `/ll:capture_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/547d54cb-745d-4a90-b71c-54c2d5602d61.jsonl`
+- `/ll:manage_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0d57825-d932-44f0-8c62-28a1785050e2.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-12
+- **Status**: Completed
+
+### Changes Made
+- `commands/audit_docs.md`: Added Phase 4.5 (Direct Fix Option) with finding classification, three action paths (Fix all now, Create issues for all, Review each), and `--fix` flag support
+- `commands/audit_docs.md`: Added `--fix` argument to frontmatter and arguments section
+- `commands/audit_docs.md`: Updated Phase 5 note for reduced finding set, Phase 8 summary with direct fix counts, and Integration section
+
+### Verification Results
+- Tests: PASS (2695 passed)
+- Lint: PASS
+- Types: PASS
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Priority: P3
