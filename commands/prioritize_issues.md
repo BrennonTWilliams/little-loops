@@ -29,9 +29,10 @@ This command uses project configuration from `.claude/ll-config.json`:
 ### 1. Find Unprioritized Issues
 
 ```bash
-# Find all issue files without priority prefix
+# Find all issue files without priority prefix (exclude completed/)
 for dir in {{config.issues.base_dir}}/*/; do
-    if [ -d "$dir" ]; then
+    dirname=$(basename "$dir")
+    if [ -d "$dir" ] && [ "$dirname" != "completed" ]; then
         echo "Checking $dir..."
         ls "$dir"*.md 2>/dev/null | while read file; do
             basename=$(basename "$file")
@@ -42,6 +43,106 @@ for dir in {{config.issues.base_dir}}/*/; do
     fi
 done
 ```
+
+### 1.5. Check If All Issues Already Prioritized
+
+After scanning, determine if any unprioritized issues were found:
+
+- If **unprioritized issues were found** → continue to Step 2 (existing flow)
+- If **all issues already have `P[0-5]-` prefixes** → proceed to the re-prioritize prompt below
+
+#### Re-prioritize Prompt
+
+When all active issues are already prioritized, use the `AskUserQuestion` tool:
+
+```yaml
+questions:
+  - question: "All active issues are already prioritized. Would you like to re-evaluate priorities based on current context?"
+    header: "Re-prioritize"
+    multiSelect: false
+    options:
+      - label: "Re-evaluate all"
+        description: "Re-assess priorities for all active issues and update where changed"
+      - label: "View current"
+        description: "Show current priority distribution and exit"
+```
+
+**If "View current"**: Output a summary of the current priority distribution across categories and stop:
+
+```markdown
+# Current Priority Distribution
+
+| Priority | Bugs | Features | Enhancements | Total |
+|----------|------|----------|--------------|-------|
+| P0       | N    | N        | N            | N     |
+| P1       | N    | N        | N            | N     |
+| P2       | N    | N        | N            | N     |
+| P3       | N    | N        | N            | N     |
+| P4       | N    | N        | N            | N     |
+| P5       | N    | N        | N            | N     |
+```
+
+**If "Re-evaluate all"**: Continue to Step 2-RE below.
+
+### 2-RE. Re-evaluate All Active Issues
+
+For each active issue file (in `bugs/`, `features/`, `enhancements/` — **not** `completed/`):
+
+1. **Read the file content** to understand:
+   - Summary/description
+   - Impact and severity
+   - Effort required
+   - Dependencies
+
+2. **Re-assess priority** using the same criteria as initial prioritization (see Step 2 below), considering:
+   - Has the project context changed since the original priority was assigned?
+   - Are there new issues that shift relative importance?
+   - Has the issue's scope or understanding evolved?
+
+3. **Compare** the re-assessed priority against the current `P[0-5]-` prefix:
+   - If priority is **unchanged** → skip (no rename needed)
+   - If priority **changed** → record the change for renaming
+
+### 3-RE. Rename Changed Priority Files
+
+For each issue where priority changed:
+
+```bash
+# Rename file with updated priority prefix (replace existing P[X]- with P[Y]-)
+git mv "{{config.issues.base_dir}}/[category]/P[old]-[rest-of-name].md" \
+       "{{config.issues.base_dir}}/[category]/P[new]-[rest-of-name].md"
+```
+
+Commit with: `git commit -m "chore(issues): re-prioritize issues"`
+
+### 4-RE. Output Re-prioritize Report
+
+```markdown
+# Priority Re-evaluation Report
+
+## Summary
+- Issues re-evaluated: X
+- Priorities changed: Y
+- Priorities unchanged: Z
+
+## Changes
+
+| Category | Issue | Old Priority | New Priority | Reason |
+|----------|-------|--------------|--------------|--------|
+| bugs | BUG-001-description | P3 | P2 | Increased user impact since initial assessment |
+| enhancements | ENH-042-description | P2 | P3 | Lower relative priority after new P1 issues |
+
+## Unchanged
+- [N] issues retained their current priority
+
+## Next Steps
+1. Review priority changes for accuracy
+2. Run `/ll:manage_issue` to process highest priority
+```
+
+After outputting the report, **stop here** (do not continue to Step 2).
+
+---
 
 ### 2. Analyze Each Issue
 
@@ -127,4 +228,5 @@ git mv "{{config.issues.base_dir}}/[category]/[old-name].md" \
 
 - Always use `git mv` to rename files (preserves history)
 - Commit the renames: `git commit -m "chore(issues): prioritize issues"`
-- Re-evaluate priorities periodically as context changes
+- When all issues are already prioritized, the command offers to re-evaluate priorities
+- Exclude `completed/` directory from both prioritization and re-prioritization scans
