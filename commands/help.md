@@ -53,6 +53,10 @@ ISSUE REFINEMENT
 /ll:format_issue [issue_id]
     Format issue files to align with template v2.0 structure
 
+/ll:refine_issue <issue_id> [flags]
+    Refine issue with codebase-driven research to fill knowledge gaps
+    Flags: --auto (non-interactive), --dry-run (preview)
+
 /ll:verify_issues
     Verify all issue files against current codebase state
 
@@ -183,7 +187,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 ## Quick Reference Table
 
 **Issue Discovery**: `capture_issue`, `scan_codebase`, `scan_product`, `audit_architecture`
-**Issue Refinement**: `normalize_issues`, `prioritize_issues`, `align_issues`, `format_issue`, `verify_issues`, `tradeoff_review_issues`, `ready_issue`
+**Issue Refinement**: `normalize_issues`, `prioritize_issues`, `align_issues`, `format_issue`, `refine_issue`, `verify_issues`, `tradeoff_review_issues`, `ready_issue`
 **Planning & Implementation**: `create_sprint`, `manage_issue`, `iterate_plan`
 **Scanning & Analysis**: `find_dead_code`
 **Code Quality**: `check_code`, `run_tests`, `audit_docs`

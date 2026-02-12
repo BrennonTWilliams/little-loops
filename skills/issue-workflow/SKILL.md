@@ -69,6 +69,7 @@ Quick reference for managing issues with the little-loops plugin.
 /ll:prioritize_issues          # Assign P0-P5 priorities
 /ll:align_issues <category>   # Validate issues against key documents
 /ll:format_issue [id]          # Align issue with template v2.0 structure
+/ll:refine_issue [id]          # Enrich issue with codebase research findings
 /ll:verify_issues              # Verify all issues against current codebase
 /ll:tradeoff_review_issues     # Evaluate utility vs complexity trade-offs
 /ll:ready_issue [id]           # Final validation before implementation
@@ -158,7 +159,7 @@ Install: `pip install -e "./scripts[dev]"`
 
 ## Quick Tips
 
-- Run refinement commands (`normalize`, `prioritize`, `align`, `verify`) before `ready_issue`
+- Run refinement commands (`normalize`, `prioritize`, `align`, `format`, `refine`, `verify`) before `ready_issue`
 - Always run `/ll:ready_issue` before `/ll:manage_issue`
 - Use `/ll:create_sprint` to group related issues for focused execution
 - Use `/ll:tradeoff_review_issues` to prune low-value issues before sprints

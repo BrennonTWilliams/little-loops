@@ -49,7 +49,7 @@ docs/           # Architecture, API, troubleshooting
 Run `/ll:help` for full list. Key commands by capability:
 
 - **Issue Discovery**: `capture_issue`, `scan_codebase`, `scan_product`, `audit_architecture`
-- **Issue Refinement**: `normalize_issues`, `prioritize_issues`, `align_issues`, `format_issue`, `verify_issues`, `tradeoff_review_issues`, `ready_issue`
+- **Issue Refinement**: `normalize_issues`, `prioritize_issues`, `align_issues`, `format_issue`, `refine_issue`, `verify_issues`, `tradeoff_review_issues`, `ready_issue`
 - **Planning & Implementation**: `create_sprint`, `manage_issue`, `iterate_plan`
 - **Code Quality**: `check_code`, `run_tests`, `audit_docs`, `find_dead_code`
 - **Git & Release**: `commit`, `open_pr`, `describe_pr`, `manage_release`, `sync_issues`, `cleanup_worktrees`

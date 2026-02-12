@@ -135,11 +135,30 @@ Key difference from current `refine_issue`: the gap analysis is driven by **impl
 
 `feature`, `commands`, `issue-pipeline`, `captured`
 
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-12
+- **Status**: Completed
+
+### Changes Made
+- `commands/refine_issue.md`: Created new command with codebase-driven research workflow
+- `.claude/CLAUDE.md`: Added `refine_issue` to Issue Refinement command list
+- `commands/help.md`: Added `refine_issue` entry to command listing
+- `commands/format_issue.md`: Updated integration section and workflow references to include `refine_issue`
+- `skills/issue-workflow/SKILL.md`: Added `refine_issue` to Refinement Phase and Quick Tips
+
+### Verification Results
+- Tests: PASS (2695 passed)
+- Lint: PASS
+- Types: PASS
+
 ## Session Log
 - `/ll:capture_issue` - 2026-02-12T12:00:00Z - `~/.claude/projects/<project>/d65a885a-6b92-4b2e-be03-ca8f0f08c767.jsonl`
+- `/ll:manage_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/current-session.jsonl`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P2
+**Completed** | Created: 2026-02-12 | Priority: P2

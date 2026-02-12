@@ -685,6 +685,7 @@ AUTO-FORMAT BATCH REPORT: --all mode
 
 After formatting an issue:
 
+- Enrich with codebase research: `/ll:refine_issue [ID]`
 - Validate with `/ll:ready_issue [ID]`
 - Commit with `/ll:commit`
 - Implement with `/ll:manage_issue`
@@ -693,12 +694,12 @@ After formatting an issue:
 
 **Interactive workflow** (manual formatting):
 ```
-/ll:capture_issue "description" → /ll:format_issue [ID] → /ll:ready_issue [ID] → /ll:manage_issue
+/ll:capture_issue "description" → /ll:format_issue [ID] → /ll:refine_issue [ID] → /ll:ready_issue [ID] → /ll:manage_issue
 ```
 
 **Auto-format workflow** (non-interactive):
 ```
-/ll:capture_issue "description" → /ll:format_issue [ID] --auto → /ll:ready_issue [ID] → /ll:manage_issue
+/ll:capture_issue "description" → /ll:format_issue [ID] --auto → /ll:refine_issue [ID] --auto → /ll:ready_issue [ID] → /ll:manage_issue
 ```
 
 **Batch auto-format workflow** (all issues):
