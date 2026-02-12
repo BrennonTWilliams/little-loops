@@ -842,7 +842,7 @@ Initial: <initial-state>
 Max iterations: <max_iterations>
 Evaluator: <type> [<details>]  # Only shown if non-default evaluator configured
 
-This will create: .loops/<name>.yaml
+This will create: {{config.loops.loops_dir}}/<name>.yaml
 ```
 
 **Example previews by paradigm:**
@@ -929,7 +929,7 @@ questions:
     multiSelect: false
     options:
       - label: "Yes, save and validate"
-        description: "Save to .loops/<name>.yaml and run validation"
+        description: "Save to {{config.loops.loops_dir}}/<name>.yaml and run validation"
       - label: "No, start over"
         description: "Discard and restart the wizard"
 ```
@@ -940,12 +940,12 @@ If confirmed:
 
 1. **Create directory if needed:**
    ```bash
-   mkdir -p .loops
+   mkdir -p {{config.loops.loops_dir}}
    ```
 
 2. **Check for existing file:**
    ```bash
-   test -f .loops/<name>.yaml && echo "EXISTS" || echo "OK"
+   test -f {{config.loops.loops_dir}}/<name>.yaml && echo "EXISTS" || echo "OK"
    ```
 
    If exists, ask:
@@ -962,7 +962,7 @@ If confirmed:
    ```
 
 3. **Write the file** using the Write tool:
-   - Path: `.loops/<name>.yaml`
+   - Path: `{{config.loops.loops_dir}}/<name>.yaml`
    - Content: The generated YAML
 
 4. **Validate** using ll-loop CLI:
@@ -1025,7 +1025,7 @@ If confirmed:
    ```
    Loop created successfully!
 
-   File: .loops/<name>.yaml
+   File: {{config.loops.loops_dir}}/<name>.yaml
    States: <list-of-states>
    Initial: <initial-state>
    Max iterations: <max>
@@ -1037,7 +1037,7 @@ If confirmed:
    ```
    Loop created successfully!
 
-   File: .loops/<name>.yaml
+   File: {{config.loops.loops_dir}}/<name>.yaml
    States: <list-of-states>
    Initial: <initial-state>
    Max iterations: <max>
@@ -1053,7 +1053,7 @@ If confirmed:
    Loop saved but validation failed:
    <error-message>
 
-   Please fix the configuration at .loops/<name>.yaml
+   Please fix the configuration at {{config.loops.loops_dir}}/<name>.yaml
    ```
 
 ## Quick Reference

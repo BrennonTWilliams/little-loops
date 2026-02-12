@@ -143,7 +143,7 @@ suggestions:
     yaml_config: |
       [Complete paradigm YAML]
     usage_instructions: |
-      1. Save to .loops/[name].yaml
+      1. Save to {{config.loops.loops_dir}}/[name].yaml
       2. Run: ll-loop validate [name]
       3. Test: ll-loop test [name]
       4. Execute: ll-loop run [name]

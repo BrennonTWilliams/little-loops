@@ -87,7 +87,7 @@ Replace hardcoded values with `{{config.*}}` template references:
 
 ## Blocked By
 
-- BUG-339: CLI hardcodes .loops directory path (provides `loops.loops_dir` config key needed for template refs)
+- ~~BUG-339~~: CLI hardcodes .loops directory path (completed - `loops.loops_dir` config key now available)
 
 ## Blocks
 
@@ -101,4 +101,22 @@ Replace hardcoded values with `{{config.*}}` template references:
 
 ## Status
 
-**Open** | Created: 2026-02-11 | Priority: P3
+**Completed** | Created: 2026-02-11 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md`: Replaced 8 hardcoded `.loops/` references with `{{config.loops.loops_dir}}/`
+- `commands/loop-suggester.md`: Replaced 1 hardcoded `.loops/` reference with `{{config.loops.loops_dir}}/`
+- `commands/manage_release.md`: Replaced all `scripts/pyproject.toml` and `scripts/little_loops/__init__.py` references with `{{config.project.src_dir}}` prefixed paths
+- `commands/init.md`: Replaced hardcoded `.issues` and `.worktrees` in find patterns with `{{config.issues.base_dir}}` and `{{config.parallel.worktree_base}}`
+
+### Verification Results
+- Tests: PASS (2691 passed)
+- Lint: PASS

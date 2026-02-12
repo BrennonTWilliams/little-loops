@@ -613,7 +613,7 @@ After completing Round 5 (or if Round 5 was skipped because no conditions matche
 **First, scan for markdown documents:**
 ```bash
 # Find markdown files that might be key documents
-find . -name "*.md" -not -path "*/.git/*" -not -path "*/node_modules/*" -not -path "*/.issues/*" -not -path "*/.worktrees/*" -not -path "*/thoughts/*" | head -30
+find . -name "*.md" -not -path "*/.git/*" -not -path "*/node_modules/*" -not -path "*/{{config.issues.base_dir}}/*" -not -path "*/{{config.parallel.worktree_base}}/*" -not -path "*/thoughts/*" | head -30
 ```
 
 Use a SINGLE AskUserQuestion call:
@@ -1110,7 +1110,7 @@ Updated: .gitignore (added state file exclusions)
 Next steps:
   1. Review and customize: .claude/ll-config.json
   2. Try a command: /ll:check_code
-  3. Set up issue tracking: mkdir -p .issues/{bugs,features,enhancements}
+  3. Set up issue tracking: mkdir -p {{config.issues.base_dir}}/{bugs,features,enhancements}
   4. Configure product goals: .claude/ll-goals.md      # Only show if product enabled
   5. Run parallel processing: ll-parallel      # Only show if parallel configured
   6. Sync with GitHub: /ll:sync_issues push   # Only show if sync enabled

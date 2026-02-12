@@ -35,9 +35,9 @@ Read settings from `.claude/ll-config.json`:
 - **Completed dir**: `{{config.issues.completed_dir}}` (default: `completed`)
 
 Version is tracked in these files:
-- `scripts/pyproject.toml` — `version = "X.Y.Z"`
+- `{{config.project.src_dir}}pyproject.toml` — `version = "X.Y.Z"`
 - `.claude-plugin/plugin.json` — `"version": "X.Y.Z"`
-- `scripts/little_loops/__init__.py` — `__version__ = "X.Y.Z"`
+- `{{config.project.src_dir}}little_loops/__init__.py` — `__version__ = "X.Y.Z"`
 
 Changelog: `CHANGELOG.md` (follows [Keep a Changelog](https://keepachangelog.com/) format)
 
@@ -208,9 +208,9 @@ Prompt:
 Find all version references in the project.
 
 Search for version strings in these files:
-1. scripts/pyproject.toml — look for: version = "X.Y.Z"
+1. {{config.project.src_dir}}pyproject.toml — look for: version = "X.Y.Z"
 2. .claude-plugin/plugin.json — look for: "version": "X.Y.Z"
-3. scripts/little_loops/__init__.py — look for: __version__ = "X.Y.Z"
+3. {{config.project.src_dir}}little_loops/__init__.py — look for: __version__ = "X.Y.Z"
 4. Any other files containing the current version string
 
 For each file found, report:
@@ -248,15 +248,15 @@ Update version in all files found by Agent 3:
 
 ```bash
 # For each version file, use Edit tool to update version string
-# scripts/pyproject.toml: version = "X.Y.Z" → version = "NEW_VERSION"
+# {{config.project.src_dir}}pyproject.toml: version = "X.Y.Z" → version = "NEW_VERSION"
 # .claude-plugin/plugin.json: "version": "X.Y.Z" → "version": "NEW_VERSION"
-# scripts/little_loops/__init__.py: __version__ = "X.Y.Z" → __version__ = "NEW_VERSION"
+# {{config.project.src_dir}}little_loops/__init__.py: __version__ = "X.Y.Z" → __version__ = "NEW_VERSION"
 ```
 
 After bumping, commit the version change:
 
 ```bash
-git add scripts/pyproject.toml .claude-plugin/plugin.json scripts/little_loops/__init__.py
+git add {{config.project.src_dir}}pyproject.toml .claude-plugin/plugin.json {{config.project.src_dir}}little_loops/__init__.py
 git commit -m "chore(release): bump version to NEW_VERSION"
 ```
 
@@ -378,9 +378,9 @@ Actions to perform:
 - ...
 
 --- Version Files ---
-  scripts/pyproject.toml:7 → version = "X.Y.Z"
+  {{config.project.src_dir}}pyproject.toml:7 → version = "X.Y.Z"
   .claude-plugin/plugin.json:3 → "version": "X.Y.Z"
-  scripts/little_loops/__init__.py:25 → __version__ = "X.Y.Z"
+  {{config.project.src_dir}}little_loops/__init__.py:25 → __version__ = "X.Y.Z"
 
 === END DRY RUN (no changes made) ===
 ```
