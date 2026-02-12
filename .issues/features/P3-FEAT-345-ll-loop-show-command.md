@@ -47,6 +47,31 @@ A developer has several loop YAML files in their `loops/` directory. Before runn
 # ll-loop show loops/sprint-execution.yaml  (also accept path)
 ```
 
+## Proposed Solution
+
+Add `show` subcommand to `scripts/little_loops/cli/loop.py` following the existing `list`/`status` pattern:
+
+1. **Add to `known_subcommands` set** and create parser with a positional `loop` argument (name or path)
+2. **Implement `cmd_show()`** that:
+   - Resolves loop name to YAML file (reuse `resolve_loop_path()` or similar from `cmd_run`)
+   - Loads and parses the YAML with existing FSM loader
+   - Renders metadata (name, description, paradigm, variables)
+   - Renders states/transitions as a formatted table
+   - Generates ASCII FSM diagram (simple box-and-arrow style using string formatting)
+   - Prints a copyable `ll-loop run <name>` command
+3. **Dispatch** in the main `if/elif` block at the bottom of `main_loop()`
+
+```python
+# ASCII diagram example output:
+# [start] --> [implement] --> [test] --> [review] --> [done]
+#                  |                        |
+#                  +--- (fail) ---<---------+
+```
+
+Key functions to reuse:
+- Loop resolution logic from `cmd_run()` or `cmd_list()` for finding YAML files
+- `yaml.safe_load()` for parsing (already used throughout)
+
 ## Integration Map
 
 ### Files to Modify
@@ -97,6 +122,7 @@ A developer has several loop YAML files in their `loops/` directory. Before runn
 
 ## Session Log
 - `/ll:capture_issue` - 2026-02-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09f8643a-95e5-4842-b201-dae40adfb54e.jsonl`
+- `/ll:refine_issue` - 2026-02-11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbd89ffd-0647-4b4f-a35c-b8b09dd4813c.jsonl`
 
 ---
 
