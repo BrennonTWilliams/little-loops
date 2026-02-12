@@ -307,3 +307,82 @@ class TestHistoryTail:
         assert result == 0
         captured = capsys.readouterr()
         assert "No history" in captured.out
+
+
+class TestCmdShow:
+    """Tests for show command."""
+
+    @pytest.fixture
+    def valid_loop_dir(self, tmp_path: Path) -> Path:
+        """Create a .loops directory with a valid loop."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_success: done\n"
+            "    on_failure: check\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        return loops_dir
+
+    def test_show_displays_metadata(
+        self,
+        valid_loop_dir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Show command displays loop metadata."""
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Loop: my-loop" in out
+        assert "[check]" in out
+        assert "[done]" in out
+        assert "ll-loop run my-loop" in out
+
+    def test_show_displays_diagram(
+        self,
+        valid_loop_dir: Path,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Show command displays FSM diagram."""
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Diagram:" in out
+        assert "[check]" in out
+        assert "[done]" in out
+
+    def test_show_nonexistent_loop(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Show command returns error for missing loop."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "nonexistent"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 1

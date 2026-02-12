@@ -75,7 +75,7 @@ Key functions to reuse:
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli.py` - Add `show` subcommand to ll-loop CLI
+- `scripts/little_loops/cli/loop.py` - Add `show` subcommand to ll-loop CLI
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/` - FSM loader/parser used to read loop YAML
@@ -123,9 +123,27 @@ Key functions to reuse:
 ## Session Log
 - `/ll:capture_issue` - 2026-02-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09f8643a-95e5-4842-b201-dae40adfb54e.jsonl`
 - `/ll:refine_issue` - 2026-02-11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dbd89ffd-0647-4b4f-a35c-b8b09dd4813c.jsonl`
+- `/ll:manage_issue` - 2026-02-11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/311ea8fc-ed1c-4a87-aab3-fe7b1501ab13.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/loop.py`: Added `show` subcommand with metadata display, states/transitions table, ASCII FSM diagram, and run command output
+- `scripts/tests/test_ll_loop_commands.py`: Added TestCmdShow with 3 tests (metadata, diagram, error case)
+
+### Verification Results
+- Tests: PASS
+- Lint: PASS
+- Types: PASS
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-11 | Priority: P3
+**Completed** | Created: 2026-02-11 | Completed: 2026-02-11 | Priority: P3

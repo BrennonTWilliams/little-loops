@@ -47,6 +47,7 @@ def main_loop() -> int:
         "test",
         "simulate",
         "install",
+        "show",
     }
 
     # Pre-process args: if first positional arg is not a subcommand, insert "run"
@@ -159,6 +160,10 @@ Examples:
         help="Copy a built-in loop to .loops/ for customization",
     )
     install_parser.add_argument("loop", help="Built-in loop name to install")
+
+    # Show subcommand
+    show_parser = subparsers.add_parser("show", help="Show loop details and structure")
+    show_parser.add_argument("loop", help="Loop name or path")
 
     args = parser.parse_args(argv)
 
@@ -867,6 +872,138 @@ Examples:
 
         return 0
 
+    def cmd_show(loop_name: str) -> int:
+        """Show loop details and structure."""
+        try:
+            path = resolve_loop_path(loop_name)
+
+            with open(path) as f:
+                spec = yaml.safe_load(f)
+
+            # Auto-compile paradigm files
+            if "paradigm" in spec and "initial" not in spec:
+                fsm = compile_paradigm(spec)
+            else:
+                fsm = load_and_validate(path)
+        except FileNotFoundError as e:
+            logger.error(str(e))
+            return 1
+        except ValueError as e:
+            logger.error(f"Invalid loop: {e}")
+            return 1
+
+        # --- Metadata ---
+        print(f"Loop: {fsm.name}")
+        if fsm.paradigm:
+            print(f"Paradigm: {fsm.paradigm}")
+        description = spec.get("description", "").strip()
+        if description:
+            print(f"Description: {description}")
+        print(f"Max iterations: {fsm.max_iterations}")
+        if fsm.timeout:
+            print(f"Timeout: {fsm.timeout}s")
+        if fsm.backoff:
+            print(f"Backoff: {fsm.backoff}s")
+        if fsm.maintain:
+            print("Maintain: yes (restarts after completion)")
+        if fsm.context:
+            print(f"Context variables: {', '.join(fsm.context.keys())}")
+        if fsm.scope:
+            print(f"Scope: {', '.join(fsm.scope)}")
+        print(f"Source: {path}")
+
+        # --- States & Transitions ---
+        print()
+        print("States:")
+        for name, state in fsm.states.items():
+            terminal_marker = " [TERMINAL]" if state.terminal else ""
+            initial_marker = " [INITIAL]" if name == fsm.initial else ""
+            print(f"  [{name}]{initial_marker}{terminal_marker}")
+            if state.action:
+                action_display = state.action[:70] + "..." if len(state.action) > 70 else state.action
+                print(f"    action: {action_display}")
+            if state.action_type:
+                print(f"    type: {state.action_type}")
+            if state.evaluate:
+                print(f"    evaluate: {state.evaluate.type}")
+            if state.on_success:
+                print(f"    on_success ──→ {state.on_success}")
+            if state.on_failure:
+                print(f"    on_failure ──→ {state.on_failure}")
+            if state.on_error:
+                print(f"    on_error ──→ {state.on_error}")
+            if state.next:
+                print(f"    next ──→ {state.next}")
+            if state.route:
+                print("    route:")
+                for verdict, target in state.route.routes.items():
+                    print(f"      {verdict} ──→ {target}")
+                if state.route.default:
+                    print(f"      _ ──→ {state.route.default}")
+
+        # --- ASCII FSM Diagram ---
+        print()
+        print("Diagram:")
+        # Build adjacency for diagram
+        edges: list[tuple[str, str, str]] = []  # (from, to, label)
+        for name, state in fsm.states.items():
+            if state.on_success:
+                edges.append((name, state.on_success, "success"))
+            if state.on_failure:
+                edges.append((name, state.on_failure, "fail"))
+            if state.on_error:
+                edges.append((name, state.on_error, "error"))
+            if state.next:
+                edges.append((name, state.next, "next"))
+            if state.route:
+                for verdict, target in state.route.routes.items():
+                    edges.append((name, target, verdict))
+                if state.route.default:
+                    edges.append((name, state.route.default, "_"))
+
+        # Trace linear path from initial state for main flow
+        visited: set[str] = set()
+        main_path: list[str] = []
+        current = fsm.initial
+        while current and current not in visited:
+            visited.add(current)
+            main_path.append(current)
+            st = fsm.states.get(current)
+            if not st or st.terminal:
+                break
+            # Follow primary transition
+            nxt = st.on_success or st.next
+            if nxt:
+                current = nxt
+            elif st.route:
+                # Pick first route entry as primary
+                first_target = next(iter(st.route.routes.values()), None)
+                current = first_target or st.route.default or ""
+            else:
+                break
+
+        # Render main flow
+        if main_path:
+            flow_parts = [f"[{s}]" for s in main_path]
+            print(f"  {' ──→ '.join(flow_parts)}")
+
+        # Render back-edges and alternate transitions
+        for src, dst, label in edges:
+            if src in visited and dst in visited:
+                # Skip edges already shown in main flow
+                src_idx = main_path.index(src) if src in main_path else -1
+                dst_idx = main_path.index(dst) if dst in main_path else -1
+                if dst_idx == src_idx + 1 and label in ("success", "next"):
+                    continue
+            print(f"  [{src}] ──({label})──→ [{dst}]")
+
+        # --- Run Command ---
+        print()
+        print("Run command:")
+        print(f"  ll-loop run {loop_name}")
+
+        return 0
+
     # Dispatch commands
     if args.command == "run":
         return cmd_run(args.loop)
@@ -890,6 +1027,8 @@ Examples:
         return cmd_simulate(args.loop)
     elif args.command == "install":
         return cmd_install(args.loop)
+    elif args.command == "show":
+        return cmd_show(args.loop)
     else:
         parser.print_help()
         return 1
