@@ -155,9 +155,11 @@ Analyze codebase architecture for patterns and improvements.
 **Focus:** `large-files`, `integration`, `patterns`, `organization`, `all`
 
 ### `/ll:audit_docs`
-Audit documentation for accuracy and completeness.
+Audit documentation for accuracy and completeness. Auto-fixable findings (wrong counts, outdated paths, broken links) can be fixed directly during the audit.
 
 **Scope:** `full`, `readme`, `file:<path>`
+
+**Flags:** `--fix` (auto-apply fixable corrections without prompting)
 
 ### `/ll:audit_claude_config`
 Comprehensive audit of Claude Code plugin configuration with parallel sub-agents.

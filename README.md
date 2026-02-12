@@ -126,7 +126,7 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 |---------|-------------|
 | `/ll:check_code [mode]` | Run linting, formatting, type checks |
 | `/ll:run_tests [scope]` | Run test suites |
-| `/ll:audit_docs [scope]` | Audit documentation for accuracy and completeness |
+| `/ll:audit_docs [scope] [--fix]` | Audit documentation for accuracy and completeness |
 | `/ll:find_dead_code` | Find unused code |
 
 ### Git & Release
