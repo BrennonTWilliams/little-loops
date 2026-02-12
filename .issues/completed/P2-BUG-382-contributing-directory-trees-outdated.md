@@ -79,7 +79,7 @@ Edit `CONTRIBUTING.md` Project Structure section:
 `bug`, `documentation`, `auto-generated`
 
 ## Session Log
-- `/ll:manage_issue` - 2026-02-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ddf6ceda-e0cf-4b1c-b02f-513a1596f75c.jsonl`
+- `/ll:manage_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/ddf6ceda-e0cf-4b1c-b02f-513a1596f75c.jsonl`
 
 ---
 

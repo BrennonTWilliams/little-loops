@@ -2,7 +2,7 @@
 discovered_commit: b57c0542e0f94e62f0f00d59ef27afc70a580d82
 discovered_date: 2026-02-08
 discovered_source: blender-agents-ll-auto-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/ai-workspaces/blender-agents/
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-280: ll-auto falsely reports verification failure when manage_issue creates plan awaiting approval
@@ -15,7 +15,7 @@ When `/ll:manage_issue` creates an implementation plan and waits for user approv
 
 **Log File**: `blender-agents-ll-auto-debug.log`
 **Log Type**: ll-auto
-**External Repo**: `/Users/brennon/AIProjects/ai-workspaces/blender-agents/`
+**External Repo**: `<external-repo>`
 **Occurrences**: 1
 **Affected External Issues**: ENH-2028
 

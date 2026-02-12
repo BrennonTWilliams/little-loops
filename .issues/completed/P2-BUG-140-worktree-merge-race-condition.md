@@ -2,7 +2,7 @@
 discovered_commit: 841d8e8
 discovered_date: 2026-01-24
 discovered_source: argobots-ll-parallel-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/ai-workspaces/headstorm/Agrobot
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-140: Race condition between worktree creation and merge operations
@@ -15,7 +15,7 @@ Worktree creation and merge processing can run concurrently, causing transient m
 
 **Log File**: `argobots-ll-parallel-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/ai-workspaces/headstorm/Agrobot`
+**External Repo**: `<external-repo>`
 **Affected External Issues**: ENH-1002
 
 ### Timeline

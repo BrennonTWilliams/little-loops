@@ -2,7 +2,7 @@
 discovered_commit: 64342c8
 discovered_date: 2026-01-09
 discovered_source: ll-parallel-blender-agents-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-009: Issue lifecycle: git mv fails when destination already exists
@@ -15,7 +15,7 @@ When completing issue lifecycle (moving issue file to `completed/`), the `git mv
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 3
 **Affected External Issues**: ENH-550, ENH-557, ENH-547
 

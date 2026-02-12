@@ -2,7 +2,7 @@
 discovered_commit: 8ebfe0b
 discovered_date: 2026-01-11
 discovered_source: ll-parallel-blender-agents-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-015: ready_issue verdict parsing fails on non-standard output
@@ -15,7 +15,7 @@ The ready_issue command's verdict parsing fails when the LLM returns advice text
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 1
 **Affected External Issues**: ENH-616
 
@@ -126,7 +126,7 @@ The issue is well-structured with:
 ### New Evidence
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 1
 **Affected External Issues**: ENH-641
 

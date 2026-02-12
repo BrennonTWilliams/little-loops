@@ -2,7 +2,7 @@
 discovered_commit: 8279174
 discovered_date: 2026-01-12
 discovered_source: ll-parallel-blender-agents-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-018: Merge blocked by local changes despite stash exclusions
@@ -15,7 +15,7 @@ During merge coordination, a merge can fail because "local changes would be over
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 1
 **Affected External Issues**: ENH-643 (failed), ENH-625 (lifecycle file causing conflict)
 
@@ -140,7 +140,7 @@ The BUG-008 fix added stash exclusions for lifecycle file moves to prevent stash
 ### New Evidence
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 2 merge attempts (both failed)
 **Affected External Issues**: ENH-724 (failed)
 

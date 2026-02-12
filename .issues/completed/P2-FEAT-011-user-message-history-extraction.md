@@ -75,7 +75,7 @@ class UserMessage:
 def get_project_folder(cwd: Path | None = None) -> Path | None:
     """Map current directory to Claude Code project folder.
 
-    Converts: /Users/brennon/foo/bar → ~/.claude/projects/-Users-brennon-foo-bar
+    Converts: /home/user/foo/bar → ~/.claude/projects/-home-user-foo-bar
     """
     ...
 
@@ -138,8 +138,8 @@ ll-messages stats [OPTIONS]     # Usage analytics
 Simplified format optimized for downstream analysis:
 
 ```json
-{"content": "Help me implement feature X", "timestamp": "2026-01-09T22:29:32.603Z", "session_id": "686d1cb9-...", "cwd": "/Users/brennon/project", "git_branch": "main", "entities": ["feature X"]}
-{"content": "Fix the bug in checkout.py", "timestamp": "2026-01-09T21:15:00.000Z", "session_id": "abc123-...", "cwd": "/Users/brennon/project", "git_branch": "feature/checkout", "entities": ["checkout.py"]}
+{"content": "Help me implement feature X", "timestamp": "2026-01-09T22:29:32.603Z", "session_id": "686d1cb9-...", "cwd": "/path/to/project", "git_branch": "main", "entities": ["feature X"]}
+{"content": "Fix the bug in checkout.py", "timestamp": "2026-01-09T21:15:00.000Z", "session_id": "abc123-...", "cwd": "/path/to/project", "git_branch": "feature/checkout", "entities": ["checkout.py"]}
 ```
 
 ### 3.1 Entity Extraction

@@ -90,7 +90,7 @@ This fits naturally into the existing Wave 2 consistency checks alongside agent/
 `enhancement`, `captured`
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0d92ce3-b9a6-4888-8b14-5f5d2b2b2715.jsonl`
+- `/ll:capture_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/c0d92ce3-b9a6-4888-8b14-5f5d2b2b2715.jsonl`
 
 ---
 

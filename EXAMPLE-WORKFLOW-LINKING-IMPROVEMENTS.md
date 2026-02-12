@@ -461,7 +461,7 @@ Enhance the message extraction script to capture response metadata.
   "timestamp": "2026-01-12T07:13:56.678Z",
   "session_id": "abc-123",
   "uuid": "msg-007",
-  "cwd": "/Users/brennon/AIProjects/ai-workspaces/forescout-workshops",
+  "cwd": "<external-repo>",
   "git_branch": "master",
   "is_sidechain": false,
 

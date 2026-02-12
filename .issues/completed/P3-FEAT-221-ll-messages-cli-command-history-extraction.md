@@ -47,7 +47,7 @@ $ ll-messages --include-commands --since 2026-01-01
   "session_id": "abc123-...",
   "uuid": "...",
   "tool": "Bash",
-  "cwd": "/Users/brennon/project",
+  "cwd": "/path/to/project",
   "git_branch": "main"
 }
 ```

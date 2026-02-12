@@ -5,7 +5,7 @@ Root Cause Analysis
 
   The Problem
 
-  In /Users/brennon/.claude/plugins/cache/little-loops/ll/1.0.0/hooks/scripts/session-cleanup.sh:
+  In ~/.claude/plugins/cache/little-loops/ll/1.0.0/hooks/scripts/session-cleanup.sh:
 
   set -euo pipefail
 

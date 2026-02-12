@@ -2,7 +2,7 @@
 discovered_commit: b0fced8
 discovered_date: 2026-01-13
 discovered_source: ll-parallel-blender-agents-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # ENH-036: Graceful shutdown: workers report UNKNOWN when interrupted during ready_issue
@@ -15,7 +15,7 @@ When ll-parallel receives a signal interrupt (e.g., Ctrl+C), workers that are mi
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 2
 **Affected External Issues**: BUG-695, ENH-686
 

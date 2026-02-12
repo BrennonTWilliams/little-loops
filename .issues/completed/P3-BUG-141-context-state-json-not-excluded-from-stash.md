@@ -2,7 +2,7 @@
 discovered_commit: 841d8e8
 discovered_date: 2026-01-24
 discovered_source: argobots-ll-parallel-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/ai-workspaces/headstorm/Agrobot
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-141: .claude/ll-context-state.json deletions not excluded from stash
@@ -15,7 +15,7 @@ The merge coordinator's `_stash_local_changes()` method excludes the orchestrato
 
 **Log File**: `argobots-ll-parallel-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/ai-workspaces/headstorm/Agrobot`
+**External Repo**: `<external-repo>`
 
 ### Sample Log Output
 

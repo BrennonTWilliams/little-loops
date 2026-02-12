@@ -17,14 +17,14 @@ Identified from Claude Code debug log analysis. The error appears during plugin 
 **Debug log entry (line 271):**
 ```
 Failed to read raw marketplace.json: Error: ENOENT: no such file or directory,
-open '/Users/brennon/.claude/plugins/cache/little-loops/ll/.claude-plugin/marketplace.json'
+open '~/.claude/plugins/cache/little-loops/ll/.claude-plugin/marketplace.json'
 ```
 
 ## Current Behavior
 
 When the `ll@little-loops` plugin is loaded, Claude Code attempts to read a `marketplace.json` file at:
 ```
-/Users/brennon/.claude/plugins/cache/little-loops/ll/.claude-plugin/marketplace.json
+~/.claude/plugins/cache/little-loops/ll/.claude-plugin/marketplace.json
 ```
 
 This file doesn't exist, resulting in an error logged to the debug output. The plugin continues to load successfully despite this error (all 22 commands, 8 agents, 3 skills, and hooks load correctly).

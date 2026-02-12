@@ -1,7 +1,7 @@
 # ENH-325: Add auto mode to refine_issue for template v2.0 alignment - Implementation Plan
 
 ## Issue Reference
-- **File**: `/Users/brennon/AIProjects/brenentech/little-loops/.issues/enhancements/P2-ENH-325-add-auto-mode-to-refine-issue.md`
+- **File**: `.issues/enhancements/P2-ENH-325-add-auto-mode-to-refine-issue.md`
 - **Type**: enhancement
 - **Priority**: P2
 - **Action**: implement

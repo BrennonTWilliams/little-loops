@@ -234,7 +234,7 @@ ll-history analyze --trajectory --format yaml
 
 ## Implementation Plan
 
-See: `/Users/brennon/.claude/plans/sunny-mapping-pine.md`
+See: `~/.claude/plans/sunny-mapping-pine.md`
 
 ## Related
 

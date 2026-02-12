@@ -318,7 +318,7 @@ def _detect_error_message(content: list) -> str | None:
 def get_project_folder(cwd: Path | None = None) -> Path | None:
     """Map current directory to Claude Code project folder.
 
-    Converts: /Users/brennon/foo/bar -> ~/.claude/projects/-Users-brennon-foo-bar
+    Converts: /home/user/foo/bar -> ~/.claude/projects/-home-user-foo-bar
 
     Args:
         cwd: Working directory to map. If None, uses current directory.
@@ -330,7 +330,7 @@ def get_project_folder(cwd: Path | None = None) -> Path | None:
         cwd = Path.cwd()
 
     # Convert path to dash-separated format
-    # /Users/brennon/foo/bar -> -Users-brennon-foo-bar
+    # /home/user/foo/bar -> -home-user-foo-bar
     path_str = str(cwd.resolve())
     encoded_path = path_str.replace("/", "-")
 

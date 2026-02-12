@@ -92,6 +92,6 @@ Replace the bare `except Exception: pass` with either:
 ---
 
 ## Session Log
-- `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
+- `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
 
 **Open** | Created: 2026-02-12 | Priority: P3

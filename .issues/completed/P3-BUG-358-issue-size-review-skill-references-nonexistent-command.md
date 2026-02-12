@@ -49,7 +49,7 @@ The "How to Use" section references `/ll:issue_size_review` which does not match
 `bug`, `skills`, `documentation`
 
 ## Session Log
-- `/ll:manage_issue` - 2026-02-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a622f000-6389-43e9-8498-867481f130a3.jsonl`
+- `/ll:manage_issue` - 2026-02-12 - `~/.claude/projects/<project>/a622f000-6389-43e9-8498-867481f130a3.jsonl`
 
 ---
 

@@ -1,7 +1,7 @@
 # P2-BUG-051: Issue lifecycle: git mv fails when source not under version control - Implementation Plan
 
 ## Issue Reference
-- **File**: `/Users/brennon/AIProjects/brenentech/little-loops/.issues/bugs/P2-BUG-051-git-mv-fails-source-not-versioned.md`
+- **File**: `.issues/bugs/P2-BUG-051-git-mv-fails-source-not-versioned.md`
 - **Type**: bug
 - **Priority**: P2
 - **Action**: fix

@@ -37,7 +37,7 @@ Add `response_metadata` field to extracted messages:
   "timestamp": "2026-01-12T07:13:56.678Z",
   "session_id": "abc-123",
   "uuid": "msg-007",
-  "cwd": "/Users/brennon/project",
+  "cwd": "/path/to/project",
   "git_branch": "main",
   "is_sidechain": false,
   "entities": ["champion-insights.md"],

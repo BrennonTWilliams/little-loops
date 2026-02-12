@@ -2,7 +2,7 @@
 discovered_commit: 08fba71
 discovered_date: 2026-01-13
 discovered_source: ll-parallel-blender-agents-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-034: Work verification: possible false positive on "Only excluded files modified"
@@ -15,7 +15,7 @@ During parallel processing, ENH-686 failed with "Only excluded files modified" d
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 1
 **Affected External Issues**: ENH-686
 
@@ -25,7 +25,7 @@ During parallel processing, ENH-686 failed with "Only excluded files modified" d
 [12:52:29] Dispatching ENH-686 to worker pool
 [12:52:29] Copied .claude/ directory to worktree
 [12:52:30] Copied .env to worktree
-[12:52:30] Created worktree at /Users/brennon/AIProjects/blender-ai/blender-agents/.worktrees/worker-enh-686-20260113-125228 on branch parallel/enh-686-20260113-125228
+[12:52:30] Created worktree at <external-repo>/.worktrees/worker-enh-686-20260113-125228 on branch parallel/enh-686-20260113-125228
 ...
 [13:09:19] No meaningful changes detected - only excluded files modified
 [13:09:20] ENH-686 failed: Only excluded files modified (e.g., .issues/, thoughts/)

@@ -2,7 +2,7 @@
 discovered_commit: 4dea1b4a40efb6abdf0fe660d57cddb64b34eb7c
 discovered_date: 2026-01-14
 discovered_source: ll-parallel-blender-agents-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-051: Issue lifecycle: git mv fails when source not under version control
@@ -15,7 +15,7 @@ When completing issue lifecycle (moving issue file to `completed/`), the `git mv
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 1
 **Affected External Issues**: BUG-745
 

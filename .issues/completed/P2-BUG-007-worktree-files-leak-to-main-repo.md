@@ -2,7 +2,7 @@
 discovered_commit: 64342c8
 discovered_date: 2026-01-09
 discovered_source: ll-parallel-blender-agents-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-007: Worktree isolation: files leak to main repo during parallel processing
@@ -15,7 +15,7 @@ During parallel issue processing, files created or modified in worker worktrees 
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 2
 **Affected External Issues**: BUG-553, BUG-552
 
@@ -98,7 +98,7 @@ The codebase already has detection and cleanup logic in `worker_pool.py`:
 ### New Evidence
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 1
 **Affected External Issues**: BUG-636
 
@@ -173,7 +173,7 @@ establishing a cached project root before subsequent invocations with the proper
 ### New Evidence
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 2
 **Affected External Issues**: ENH-706, ENH-692
 
@@ -259,7 +259,7 @@ The leak detection and cleanup patterns in `worker_pool.py` and `merge_coordinat
 ### New Evidence
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 2
 **Affected External Issues**: BUG-779, ENH-827
 

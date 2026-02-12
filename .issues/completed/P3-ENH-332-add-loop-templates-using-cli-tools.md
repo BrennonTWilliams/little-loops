@@ -106,7 +106,7 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 **Open** | Created: 2026-02-11 | Priority: P3
 
 ## Session Log
-- `/ll:manage_issue` - 2026-02-11T22:14:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f38f197-afe1-4d5f-aac8-6babbc891bd2.jsonl`
+- `/ll:manage_issue` - 2026-02-11T22:14:00Z - `~/.claude/projects/<project>/9f38f197-afe1-4d5f-aac8-6babbc891bd2.jsonl`
 
 ---
 

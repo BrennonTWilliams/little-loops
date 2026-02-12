@@ -2,7 +2,7 @@
 discovered_commit: 64342c8
 discovered_date: 2026-01-09
 discovered_source: ll-parallel-blender-agents-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # ENH-010: Issue quality: high auto-correction rate indicates scan accuracy issues
@@ -15,13 +15,13 @@ During parallel processing, 7 out of 17 completed issues (41%) required auto-cor
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
 **Log Type**: ll-parallel
-**Target Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**Target Repo**: `<external-repo>`
 **Occurrences**: 7
 **Affected External Issues**: BUG-549, ENH-550, BUG-552, BUG-546, ENH-542, BUG-543, ENH-527
 
 **Log File Location** (check in order):
-1. Little-loops repo: `/Users/brennon/AIProjects/brenentech/little-loops/ll-parallel-blender-agents-debug.log`
-2. Target repo: `/Users/brennon/AIProjects/blender-ai/blender-agents/ll-parallel-blender-agents-debug.log`
+1. Little-loops repo: `ll-parallel-blender-agents-debug.log`
+2. Target repo: `<external-repo>/ll-parallel-blender-agents-debug.log`
 
 Note: ll-parallel logs are typically created in the directory where the command is run (usually little-loops), not in the target repository being processed.
 
@@ -118,7 +118,7 @@ The primary mismatch was between scan_codebase template (missing "Reproduction S
 ### New Evidence
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 5 out of 9 completed issues (56%)
 **Affected External Issues**: ENH-617, ENH-618, ENH-620, ENH-629, ENH-630
 
@@ -195,7 +195,7 @@ The Enhancement Scanner prompt only asked for "Brief explanation of the improvem
 ### New Evidence
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 3 out of 9 completed issues (33%)
 **Affected External Issues**: BUG-643, ENH-625, ENH-639
 
@@ -317,7 +317,7 @@ Future scan runs should produce more accurate issues with verified code referenc
 ### New Evidence
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 11 out of 15 completed issues (73%)
 **Affected External Issues**: ENH-691, ENH-706, BUG-699, ENH-692, ENH-693, ENH-698, ENH-697, ENH-702, ENH-703, ENH-704, ENH-705
 

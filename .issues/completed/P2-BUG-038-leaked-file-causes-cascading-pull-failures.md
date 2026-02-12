@@ -2,7 +2,7 @@
 discovered_commit: d2f420d
 discovered_date: 2026-01-13
 discovered_source: ll-parallel-blender-agents-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-038: Leaked file cleanup fails silently for gitignored paths
@@ -17,7 +17,7 @@ When a file leaks to a gitignored path (e.g., `issues/` without dot prefix), the
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 11 pull failures after initial leak
 **Trigger Issue**: ENH-706 (leaked to `issues/enhancements/` then moved to `issues/completed/`)
 

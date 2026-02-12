@@ -92,7 +92,7 @@ The command should be renamed to `format_issue` (or `align_issue`) with matching
 `enhancement`, `commands`, `naming`, `captured`
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12T12:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d65a885a-6b92-4b2e-be03-ca8f0f08c767.jsonl`
+- `/ll:capture_issue` - 2026-02-12T12:00:00Z - `~/.claude/projects/<project>/d65a885a-6b92-4b2e-be03-ca8f0f08c767.jsonl`
 
 ---
 

@@ -3,7 +3,7 @@ discovered_commit: b0fced8
 discovered_branch: main
 discovered_date: 2026-01-13T15:05:00Z
 discovered_source: ll-parallel-blender-agents-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # ENH-037: Smarter Pull Strategy for Repeated Rebase Conflicts
@@ -15,7 +15,7 @@ Improve the merge coordinator's pull strategy to detect and handle commits that 
 ## Evidence from Log
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 2 (BUG-692 and BUG-694)
 **Affected External Issues**: BUG-692, BUG-694
 

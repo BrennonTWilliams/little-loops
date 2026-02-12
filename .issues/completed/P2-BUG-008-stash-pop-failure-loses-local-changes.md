@@ -2,7 +2,7 @@
 discovered_commit: 64342c8
 discovered_date: 2026-01-09
 discovered_source: ll-parallel-blender-agents-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-008: Merge coordination: stash pop failure loses local changes
@@ -15,7 +15,7 @@ During merge coordination, after merging a completed branch, the stash pop opera
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 1
 **Affected External Issues**: BUG-552 (occurred after merge)
 
@@ -116,7 +116,7 @@ This ensures users cannot miss the warning about their local changes needing man
 ### New Evidence
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 1 (stash pop) + 1 (pull conflict) + 1 (conflicted stash cleanup)
 **Affected External Issues**: ENH-624, ENH-618
 

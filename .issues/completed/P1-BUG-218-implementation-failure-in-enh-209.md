@@ -12,7 +12,7 @@ Unknown error
 Implementation should complete without errors.
 
 ## Root Cause
-Discovered during automated processing of `/Users/brennon/AIProjects/brenentech/little-loops/.issues/enhancements/P1-ENH-209-improve-orchestrator-py-test-coverage.md`.
+Discovered during automated processing of `.issues/enhancements/P1-ENH-209-improve-orchestrator-py-test-coverage.md`.
 
 ## Reproduction Steps
 1. Run: `/ll:manage_issue enhancements fix ENH-209`
@@ -36,7 +36,7 @@ Investigate the error output above and address the root cause.
 **Open** | Created: 2026-02-01T18:33:28.014769 | Priority: P1
 
 ## Related Issues
-- [ENH-209](/Users/brennon/AIProjects/brenentech/little-loops/.issues/enhancements/P1-ENH-209-improve-orchestrator-py-test-coverage.md)
+- [ENH-209](.issues/enhancements/P1-ENH-209-improve-orchestrator-py-test-coverage.md)
 
 
 ---

@@ -2,7 +2,7 @@
 discovered_commit: ef0f5a7
 discovered_date: 2026-01-16
 discovered_source: git-error-analysis-blender-agents-ll-parallel.md
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-079: Post-merge rebase causes unnecessary merge failures
@@ -15,7 +15,7 @@ After the merge coordinator successfully handles a merge conflict by switching f
 
 **Log File**: `ll-parallel-blender-agents-debug.log`
 **Log Type**: ll-parallel
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Affected External Issues**: ENH-828
 
 ### Sample Log Output

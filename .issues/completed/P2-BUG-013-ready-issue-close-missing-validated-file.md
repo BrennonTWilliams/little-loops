@@ -2,7 +2,7 @@
 discovered_commit: 90750f8
 discovered_date: 2026-01-09
 discovered_source: ll-auto-blender-agents-debug.log
-discovered_external_repo: /Users/brennon/AIProjects/blender-ai/blender-agents
+discovered_external_repo: <external-repo>
 ---
 
 # BUG-013: ready_issue CLOSE verdict occasionally missing VALIDATED_FILE section
@@ -15,7 +15,7 @@ When `ready_issue` returns a CLOSE verdict, the model sometimes omits the requir
 
 **Log File**: `ll-auto-blender-agents-debug.log`
 **Log Type**: ll-auto
-**External Repo**: `/Users/brennon/AIProjects/blender-ai/blender-agents`
+**External Repo**: `<external-repo>`
 **Occurrences**: 1
 **Affected External Issues**: BUG-567
 
