@@ -1,17 +1,17 @@
 ---
-description: Refine issue files through interactive Q&A to improve quality before validation or implementation
+description: Format issue files to align with template v2.0 structure through interactive Q&A or auto mode
 arguments:
   - name: issue_id
-    description: Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
+    description: Issue ID to format (e.g., BUG-071, FEAT-225, ENH-042)
     required: false
   - name: flags
-    description: "Optional flags: --auto (non-interactive), --all (all active issues), --dry-run (preview), --template-align-only (section rename only)"
+    description: "Optional flags: --auto (non-interactive), --all (all active issues), --dry-run (preview)"
     required: false
 ---
 
-# Refine Issue
+# Format Issue
 
-Gather clarifying information to improve issue quality through targeted Q&A based on issue type. Interactive by default, with optional --auto mode for non-interactive refinement.
+Align issue files with template v2.0 structure through section renaming, structural gap-filling, and boilerplate inference. Interactive by default, with optional --auto mode for non-interactive formatting.
 
 ## Configuration
 
@@ -23,16 +23,15 @@ This command uses project configuration from `.claude/ll-config.json`:
 
 $ARGUMENTS
 
-- **issue_id** (optional): Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
-  - If provided, refines that specific issue
+- **issue_id** (optional): Issue ID to format (e.g., BUG-071, FEAT-225, ENH-042)
+  - If provided, formats that specific issue
   - If omitted with `--all`, processes all active issues
   - If omitted without `--all`, shows error
 
 - **flags** (optional): Command behavior flags
-  - `--auto` - Enable non-interactive auto-refinement mode (applies inferred changes without prompts)
+  - `--auto` - Enable non-interactive auto-format mode (applies inferred changes without prompts)
   - `--all` - Process all active issues (bugs/, features/, enhancements/), skip completed/
   - `--dry-run` - Preview changes without applying them (no file modifications)
-  - `--template-align-only` - Only rename deprecated v1.0 sections to v2.0 (skip content inference)
 
 ## Process
 
@@ -44,8 +43,6 @@ FLAGS="${flags:-}"
 AUTO_MODE=false
 ALL_MODE=false
 DRY_RUN=false
-TEMPLATE_ALIGN_ONLY=false
-
 # Check if --dangerously-skip-permissions is in effect
 # When running in automation contexts (ll-auto, ll-parallel, ll-sprint), this flag is present
 # If detected, auto-enable auto mode for non-interactive operation
@@ -56,19 +53,18 @@ fi
 if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
 if [[ "$FLAGS" == *"--all"* ]]; then ALL_MODE=true; fi
 if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
-if [[ "$FLAGS" == *"--template-align-only"* ]]; then TEMPLATE_ALIGN_ONLY=true; fi
 
 # Validate: --all requires issue_id to be omitted
 if [[ "$ALL_MODE" == true ]] && [[ -n "$ISSUE_ID" ]]; then
     echo "Error: --all flag requires issue_id to be omitted"
-    echo "Usage: /ll:refine_issue --all --auto"
+    echo "Usage: /ll:format_issue --all --auto"
     exit 1
 fi
 
 # Validate: --all requires --auto (or --dangerously-skip-permissions)
 if [[ "$ALL_MODE" == true ]] && [[ "$AUTO_MODE" == false ]]; then
     echo "Error: --all flag requires --auto mode for non-interactive batch processing"
-    echo "Usage: /ll:refine_issue --all --auto"
+    echo "Usage: /ll:format_issue --all --auto"
     exit 1
 fi
 ```
@@ -80,7 +76,7 @@ fi
 ```bash
 if [[ -z "$ISSUE_ID" ]]; then
     echo "Error: issue_id is required when not using --all flag"
-    echo "Usage: /ll:refine_issue [ISSUE_ID] [--auto]"
+    echo "Usage: /ll:format_issue [ISSUE_ID] [--auto]"
     exit 1
 fi
 
@@ -118,11 +114,11 @@ for dir in {{config.issues.base_dir}}/{bugs,features,enhancements}/; do
 done
 
 if [[ ${#ISSUE_FILES[@]} -eq 0 ]]; then
-    echo "No active issues found to refine"
+    echo "No active issues found to format"
     exit 0
 fi
 
-echo "Found ${#ISSUE_FILES[@]} active issues to refine"
+echo "Found ${#ISSUE_FILES[@]} active issues to format"
 ```
 
 ### 2. Analyze Issue Content
@@ -191,9 +187,8 @@ Becomes:
 2. See error
 ```
 
-**Skip if `--template-align-only` is NOT set and not in auto mode:**
-- In interactive mode (no --auto), skip automatic renaming and let user decide
-- In auto mode with --template-align-only, only do renaming (skip content inference)
+**Skip in interactive mode (no --auto):**
+- In interactive mode, skip automatic renaming and let user decide
 
 ### 3. Identify Gaps
 
@@ -257,7 +252,6 @@ For each quality finding, generate a **targeted** question about the specific co
 
 **Skip this section if**:
 - `AUTO_MODE` is false (interactive mode asks user instead)
-- `TEMPLATE_ALIGN_ONLY` is true (only doing section renames)
 
 For missing v2.0 sections identified in Step 3, infer content from existing issue content:
 
@@ -397,7 +391,7 @@ After updating the issue, append a session log entry:
 
 ```markdown
 ## Session Log
-- `/ll:refine_issue` - [ISO timestamp] - `[path to current session JSONL]`
+- `/ll:format_issue` - [ISO timestamp] - `[path to current session JSONL]`
 ```
 
 To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
@@ -512,12 +506,12 @@ Fix in `buggy_file.py`, function `problematic_func()`:
 ### 6. Finalize
 
 1. Read the updated issue file to confirm changes
-2. Display summary of refinements made
+2. Display summary of formatting changes made
 3. Offer to stage changes:
 
 ```yaml
 questions:
-  - question: "Stage the refined issue for commit?"
+  - question: "Stage the formatted issue for commit?"
     header: "Stage"
     multiSelect: false
     options:
@@ -538,7 +532,7 @@ git add "[issue-file-path]"
 
 ```
 ================================================================================
-ISSUE REFINED: [ISSUE-ID]
+ISSUE FORMATTED: [ISSUE-ID]
 ================================================================================
 
 ## ISSUE
@@ -555,7 +549,7 @@ ISSUE REFINED: [ISSUE-ID]
 - [Section 4]: [SPECIFICITY] Steps to Reproduce are generic — lacks concrete steps
 - [Section 5]: [CONTRADICTION] Expected behavior conflicts with proposed solution
 
-## REFINEMENTS MADE
+## CHANGES MADE
 - [Section 1]: Added [description of content]
 - [Section 3]: Clarified [specific improvement made]
 
@@ -576,14 +570,14 @@ ISSUE REFINED: [ISSUE-ID]
 
 ```
 ================================================================================
-AUTO-REFINE: [ISSUE-ID]
+AUTO-FORMAT: [ISSUE-ID]
 ================================================================================
 
 ## ISSUE
 - File: [path]
 - Type: [BUG|FEAT|ENH]
 - Title: [title]
-- Mode: Auto-refine [--dry-run | --all | --template-align-only]
+- Mode: Auto-format [--dry-run | --all]
 
 ## CHANGES APPLIED
 
@@ -622,12 +616,12 @@ AUTO-REFINE: [ISSUE-ID]
 
 ```
 ================================================================================
-AUTO-REFINE BATCH REPORT: --all mode
+AUTO-FORMAT BATCH REPORT: --all mode
 ================================================================================
 
 ## SUMMARY
 - Issues processed: 15
-- Issues refined: 12
+- Issues formatted: 12
 - Issues skipped: 3 (already v2.0 compliant)
 - Total section renames: 8
 - Total sections added: 24
@@ -668,31 +662,28 @@ AUTO-REFINE BATCH REPORT: --all mode
 ## Examples
 
 ```bash
-# Interactive refinement (existing behavior)
-/ll:refine_issue FEAT-225
+# Interactive formatting (existing behavior)
+/ll:format_issue FEAT-225
 
-# Auto-refine single issue (non-interactive)
-/ll:refine_issue BUG-042 --auto
+# Auto-format single issue (non-interactive)
+/ll:format_issue BUG-042 --auto
 
-# Auto-refine with dry-run (preview changes without applying)
-/ll:refine_issue BUG-042 --auto --dry-run
+# Auto-format with dry-run (preview changes without applying)
+/ll:format_issue BUG-042 --auto --dry-run
 
-# Auto-refine all active issues
-/ll:refine_issue --all --auto
+# Auto-format all active issues
+/ll:format_issue --all --auto
 
-# Auto-refine with template alignment only (rename old sections, skip content inference)
-/ll:refine_issue ENH-015 --auto --template-align-only
+# Full auto-format: template alignment + content inference
+/ll:format_issue FEAT-225 --auto
 
-# Full auto-refine: template alignment + content inference
-/ll:refine_issue FEAT-225 --auto
-
-# Batch auto-refine all issues with dry-run preview
-/ll:refine_issue --all --auto --dry-run
+# Batch auto-format all issues with dry-run preview
+/ll:format_issue --all --auto --dry-run
 ```
 
 ## Integration
 
-After refining an issue:
+After formatting an issue:
 
 - Validate with `/ll:ready_issue [ID]`
 - Commit with `/ll:commit`
@@ -700,22 +691,22 @@ After refining an issue:
 
 ### Typical Workflows
 
-**Interactive workflow** (manual refinement):
+**Interactive workflow** (manual formatting):
 ```
-/ll:capture_issue "description" → /ll:refine_issue [ID] → /ll:ready_issue [ID] → /ll:manage_issue
-```
-
-**Auto-refine workflow** (non-interactive):
-```
-/ll:capture_issue "description" → /ll:refine_issue [ID] --auto → /ll:ready_issue [ID] → /ll:manage_issue
+/ll:capture_issue "description" → /ll:format_issue [ID] → /ll:ready_issue [ID] → /ll:manage_issue
 ```
 
-**Batch auto-refine workflow** (all issues):
+**Auto-format workflow** (non-interactive):
 ```
-/ll:refine_issue --all --auto → /ll:ready_issue --all → /ll:commit
+/ll:capture_issue "description" → /ll:format_issue [ID] --auto → /ll:ready_issue [ID] → /ll:manage_issue
+```
+
+**Batch auto-format workflow** (all issues):
+```
+/ll:format_issue --all --auto → /ll:ready_issue --all → /ll:commit
 ```
 
 **Automation integration** (ll-auto, ll-parallel, ll-sprint):
-- These automation scripts can now use `/ll:refine_issue [ID] --auto` before implementation
-- Template v2.0 alignment happens during refinement, not at execution time
-- Enables automated issue quality improvement without user interaction
+- These automation scripts can now use `/ll:format_issue [ID] --auto` before implementation
+- Template v2.0 alignment happens during formatting, not at execution time
+- Enables automated issue formatting without user interaction

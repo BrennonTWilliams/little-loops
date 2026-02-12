@@ -57,16 +57,15 @@ Capture issues from conversation or natural language description.
 
 **Arguments:** `input` (optional) - natural language description
 
-### `/ll:refine_issue`
-Refine issue files through interactive Q&A to improve quality before validation or implementation. Interactive by default, with optional `--auto` mode for non-interactive refinement.
+### `/ll:format_issue`
+Format issue files to align with template v2.0 structure through section renaming, structural gap-filling, and boilerplate inference. Interactive by default, with optional `--auto` mode for non-interactive formatting.
 
 **Arguments:**
-- `issue_id` (optional): Issue ID to refine (e.g., BUG-071, FEAT-225)
+- `issue_id` (optional): Issue ID to format (e.g., BUG-071, FEAT-225)
 - `flags` (optional):
-  - `--auto` - Non-interactive auto-refinement mode
+  - `--auto` - Non-interactive auto-format mode
   - `--all` - Process all active issues
   - `--dry-run` - Preview changes without applying
-  - `--template-align-only` - Only rename deprecated v1.0 sections to v2.0
 
 ### `/ll:scan_codebase`
 Scan codebase to identify bugs, enhancements, and features (technical analysis).
@@ -275,7 +274,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 | `run_tests` | Execute test suites |
 | `find_dead_code` | Identify unused code |
 | `capture_issue` | Capture issues from conversation or description |
-| `refine_issue` | Refine issue files (interactive or --auto mode) |
+| `format_issue` | Format issue files (interactive or --auto mode) |
 | `scan_codebase` | Find issues in code (technical analysis) |
 | `scan_product` | Find issues in code (product-focused analysis) |
 | `prioritize_issues` | Assign P0-P5 priorities |
@@ -318,7 +317,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 /ll:scan_product             # Product analysis (if enabled)
 /ll:normalize_issues
 /ll:prioritize_issues
-/ll:refine_issue --all --auto  # Auto-refine all issues (template v2.0 alignment)
+/ll:format_issue --all --auto  # Auto-format all issues (template v2.0 alignment)
 /ll:manage_issue bug fix
 
 # Prepare for a pull request

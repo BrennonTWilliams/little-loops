@@ -68,7 +68,7 @@ Quick reference for managing issues with the little-loops plugin.
 /ll:normalize_issues           # Fix invalid issue filenames
 /ll:prioritize_issues          # Assign P0-P5 priorities
 /ll:align_issues <category>   # Validate issues against key documents
-/ll:refine_issue [id]          # Improve issue quality through interactive Q&A
+/ll:format_issue [id]          # Align issue with template v2.0 structure
 /ll:verify_issues              # Verify all issues against current codebase
 /ll:tradeoff_review_issues     # Evaluate utility vs complexity trade-offs
 /ll:ready_issue [id]           # Final validation before implementation

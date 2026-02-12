@@ -1,7 +1,7 @@
 {
   "_meta": {
     "name": "Issue Section Definitions",
-    "description": "Shared section requirements for BUG, FEAT, and ENH issue types. Referenced by refine_issue, capture_issue, ready_issue, and scan_codebase commands.",
+    "description": "Shared section requirements for BUG, FEAT, and ENH issue types. Referenced by format_issue, capture_issue, ready_issue, and scan_codebase commands.",
     "version": "2.0",
     "changelog": "2.0 - Added Motivation, Root Cause, Implementation Steps, API/Interface, Integration Map; Enhanced Proposed Solution and Impact; Deprecated 8 low-value sections; Renamed User Story to Use Case"
   },

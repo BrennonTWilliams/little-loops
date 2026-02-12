@@ -86,7 +86,7 @@ Successfully implemented the issue template optimization plan, reducing sections
 - Added note about v2.0 template (line 345)
 - Listed new sections and their purposes
 
-**`commands/refine_issue.md`**:
+**`commands/format_issue.md`**:
 - Updated examples to use v2.0 sections (lines 159-213)
 - Added note about deprecated sections (line 52-66)
 - Included BUG, FEAT, and ENH example additions
@@ -144,12 +144,12 @@ Successfully implemented the issue template optimization plan, reducing sections
 
 ### Phase 2: Ready to Deploy
 - New issues will automatically use v2.0 template via `/ll:capture_issue`
-- `/ll:refine_issue` will offer new sections during interactive Q&A
+- `/ll:format_issue` will offer new sections during interactive Q&A
 - `/ll:ready_issue` accepts both old and new formats
 
 ### Phase 3: Gradual Migration (Optional)
 - Existing issues continue working (backward compatible)
-- `/ll:refine_issue` can optionally migrate old issues
+- `/ll:format_issue` can optionally migrate old issues
 - No forced migration required
 
 ### Phase 4: Cleanup (Future, Optional)
@@ -176,7 +176,7 @@ Successfully implemented the issue template optimization plan, reducing sections
 
 4. **Issue Refinement** (Recommend Testing)
    ```bash
-   /ll:refine_issue <existing-issue-id>
+   /ll:format_issue <existing-issue-id>
    ```
    - Should offer to add new sections
 
@@ -209,7 +209,7 @@ Successfully implemented the issue template optimization plan, reducing sections
 
 ### Supporting Changes
 - ✅ `commands/capture_issue.md` - Issue creation
-- ✅ `commands/refine_issue.md` - Issue refinement
+- ✅ `commands/format_issue.md` - Issue refinement
 - ✅ `commands/ready_issue.md` - Issue validation
 
 ### Documentation
@@ -225,7 +225,7 @@ Successfully implemented the issue template optimization plan, reducing sections
 
 2. **Test refinement on existing issue**:
    ```bash
-   /ll:refine_issue FEAT-001
+   /ll:format_issue FEAT-001
    ```
 
 3. **Monitor adoption**:

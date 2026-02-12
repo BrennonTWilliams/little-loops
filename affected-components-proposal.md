@@ -244,7 +244,7 @@ def get_user_profile(user_id: int) -> UserProfile:
 
 ### Phase 2: Update Commands
 1. **capture_issue.md** - Add Affected Components to creation flow
-2. **refine_issue.md** - Add interactive questions for identifying affected files
+2. **format_issue.md** - Add interactive questions for identifying affected files
 3. **scan_codebase.md** - Auto-populate Affected Components using grep/analysis
 
 ### Phase 3: Add Tooling Support

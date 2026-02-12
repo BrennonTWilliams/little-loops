@@ -293,9 +293,9 @@ The issue template has been optimized for AI implementation with **19 sections**
 /ll:capture_issue "Description of the issue"
 ```
 
-**Refine an issue**:
+**Format an issue**:
 ```bash
-/ll:refine_issue .issues/bugs/P2-BUG-123-description.md
+/ll:format_issue .issues/bugs/P2-BUG-123-description.md
 ```
 
 **Validate an issue**:

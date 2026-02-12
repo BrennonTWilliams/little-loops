@@ -107,7 +107,7 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 | `/ll:normalize_issues` | Fix invalid issue filenames |
 | `/ll:prioritize_issues` | Assign priorities (P0-P5) to issues |
 | `/ll:align_issues <category>` | Validate issues against key documents |
-| `/ll:refine_issue [id]` | Refine issue files through interactive Q&A |
+| `/ll:format_issue [id]` | Format issue files to align with template v2.0 structure |
 | `/ll:verify_issues` | Verify issues against codebase |
 | `/ll:tradeoff_review_issues` | Evaluate issues for utility vs complexity |
 | `/ll:ready_issue [id]` | Validate issue for implementation |
