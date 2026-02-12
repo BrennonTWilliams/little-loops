@@ -3,7 +3,7 @@ discovered_date: 2026-02-12
 discovered_by: hooks-reference-audit
 ---
 
-# ENH-368: Remove silently-ignored matchers from UserPromptSubmit and Stop hooks
+# ENH-377: Remove silently-ignored matchers from UserPromptSubmit and Stop hooks
 
 ## Summary
 

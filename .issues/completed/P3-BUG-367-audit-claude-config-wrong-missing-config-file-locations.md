@@ -81,3 +81,33 @@ The audit produces incomplete results - missing entire configuration files from 
 ## Status
 
 **Open** | Created: 2026-02-12 | Priority: P3
+
+---
+
+## Verification Notes
+
+- **Verified**: 2026-02-12
+- **Verdict**: NEEDS_UPDATE
+- Claim #1 (CLAUDE.local.md missing): **RESOLVED** — `audit_claude_config.md` line 26 now includes `CLAUDE.local.md` and Task 1 file list at line 108 also includes it
+- Claim #2 (settings.json omitted): **PARTIALLY RESOLVED** — overview section (line 36) now lists `~/.claude/settings.json`, but Task 3 agent prompt (lines 210-214) still omits it from "Files to find and validate"
+- Claim #3 (MCP path wrong): **STILL VALID** — line 40 still references `~/.claude/.mcp.json`
+- Line numbers in the issue (19-34, 96-98, 183-208) are stale — file has been significantly expanded
+- Consider narrowing scope to remaining claims #2 (partial) and #3, or closing if effort doesn't justify
+
+---
+
+## Resolution
+
+- **Status**: Closed - Tradeoff Review
+- **Completed**: 2026-02-12
+- **Reason**: Low utility relative to implementation complexity
+
+### Tradeoff Review Scores
+- Utility: LOW
+- Implementation Effort: LOW
+- Complexity Added: LOW
+- Technical Debt Risk: LOW
+- Maintenance Overhead: LOW
+
+### Rationale
+Verification notes show claims #1 and #2 are already mostly resolved, leaving only the MCP path issue which is a minor documentation fix with low user impact. Not worth keeping open for the remaining marginal improvement.

@@ -83,3 +83,21 @@ Either parameterize the function to accept the path, or add a config key under `
 ## Status
 
 **Open** | Created: 2026-02-11 | Priority: P4
+
+---
+
+## Resolution
+
+- **Status**: Closed - Tradeoff Review
+- **Completed**: 2026-02-12
+- **Reason**: Low utility relative to implementation complexity
+
+### Tradeoff Review Scores
+- Utility: LOW
+- Implementation Effort: LOW
+- Complexity Added: LOW
+- Technical Debt Risk: LOW
+- Maintenance Overhead: LOW
+
+### Rationale
+Minor consistency issue with negligible user benefit. Most users won't need custom continuation prompt paths. Low effort but even lower value — not worth the maintenance overhead of adding yet another config key.

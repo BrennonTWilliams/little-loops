@@ -256,3 +256,21 @@ Update first - 6 enhancements in one issue is too broad. Decompose into smaller 
 - **ENH-319b**: Smart caching & resumption
 - **ENH-319c**: Incremental analysis
 - **ENH-319d**: Filtering & scoping + Trend tracking
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-12 by `/ll:tradeoff_review_issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | HIGH |
+| Complexity added | HIGH |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first - Meta-issue tracking 6 separate enhancements that should be split into individual issues for incremental delivery. Consistent recommendation across three reviews to decompose before implementation.

@@ -39,3 +39,21 @@ Either:
 ## Status
 
 **Open** | Created: 2026-02-12 | Priority: P3
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-12 by `/ll:tradeoff_review_issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | MEDIUM |
+| Complexity added | MEDIUM |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Update first - Requires architectural decision about whether workflow configuration is planned or abandoned. If planned, needs schema design; if abandoned, needs documentation cleanup. Scope unclear until decision is made.

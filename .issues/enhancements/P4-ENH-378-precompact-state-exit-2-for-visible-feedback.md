@@ -3,7 +3,7 @@ discovered_date: 2026-02-12
 discovered_by: hooks-reference-audit
 ---
 
-# ENH-369: precompact-state.sh should use exit 2 for user-visible feedback
+# ENH-378: precompact-state.sh should use exit 2 for user-visible feedback
 
 ## Summary
 

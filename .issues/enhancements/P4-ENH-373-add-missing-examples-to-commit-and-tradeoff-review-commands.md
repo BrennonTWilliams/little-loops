@@ -3,7 +3,7 @@ discovered_date: 2026-02-12
 discovered_by: audit_claude_config
 ---
 
-# ENH-364: Add missing Examples sections to commit and tradeoff_review_issues commands
+# ENH-373: Add missing Examples sections to commit and tradeoff_review_issues commands
 
 ## Summary
 

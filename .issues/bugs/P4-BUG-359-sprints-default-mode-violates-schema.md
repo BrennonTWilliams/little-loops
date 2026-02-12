@@ -39,3 +39,21 @@ Either:
 ## Status
 
 **Open** | Created: 2026-02-12 | Priority: P4
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-12 by `/ll:tradeoff_review_issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | LOW |
+| Complexity added | LOW |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Update first - Schema-config mismatch needs investigation to determine if this is dead code or missing implementation. Decision required: add `default_mode` schema property (if the feature is planned), or remove `default_mode` from config and test fixtures (if unused).

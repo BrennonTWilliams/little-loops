@@ -113,11 +113,14 @@ _None — previously blocked by ENH-319, but this audit can proceed independentl
 
 ## Verification Notes
 
-- **Verified**: 2026-02-10
-- **Verdict**: VALID
-- Conceptual issue for architecture review
-- All 6 assessed skills still exist in skills/ directory
-- Assessment remains valid: workflow-automation-proposer, product-analyzer, analyze-history, issue-workflow are user-initiated candidates for migration to commands
+- **Verified**: 2026-02-12
+- **Verdict**: NEEDS_UPDATE
+- **Skills count changed**: Now 8 skills exist (was 6 at time of writing). Two new skills added since issue creation:
+  - `confidence-check` — likely a strong "keep as skill" candidate (Claude could proactively invoke before implementation)
+  - `loop-suggester` — needs proactive-discovery assessment
+- Assessment table should be updated to include both new skills
+- The 4 migration candidates (`workflow-automation-proposer`, `product-analyzer`, `analyze-history`, `issue-workflow`) still exist in `skills/` — none have been migrated
+- The 2 "keep as skill" recommendations (`issue-size-review`, `map-dependencies`) still exist
 
 ---
 
@@ -140,3 +143,21 @@ Update first - The "proactive discovery" criterion needs validation with evidenc
 2. Provide evidence for why `issue-size-review` is proactive but `workflow-automation-proposer` is not
 3. Measure actual token cost difference between skills and commands
 4. Consider reviewing usage data from `ll-messages` logs before proceeding
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-12 by `/ll:tradeoff_review_issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | MEDIUM |
+| Complexity added | LOW |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first - Assessment is stale (6 skills now 8, two new skills need evaluation). Lacks empirical evidence. Consistent recommendation across two reviews to validate assumptions with usage data first.

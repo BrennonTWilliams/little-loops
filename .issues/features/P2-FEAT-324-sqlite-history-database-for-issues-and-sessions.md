@@ -184,3 +184,21 @@ Update first - High value but scope is too broad for a single issue. Needs refin
 
 ### Recommendation
 Update first - High value but scope too broad. Split into Phase 1 (core issue metadata + FTS5 duplicate detection) and Phase 2 (session summaries integration). Database migrations and schema versioning strategy need clarification before implementation.
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-12 by `/ll:tradeoff_review_issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | HIGH |
+| Implementation effort | HIGH |
+| Complexity added | HIGH |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first - High value feature but scope is too broad and underspecified (session_summaries table, migration strategy unclear). Consistent recommendation across three reviews: split into phases and clarify scope before implementation.

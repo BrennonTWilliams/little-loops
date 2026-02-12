@@ -3,7 +3,7 @@ discovered_date: 2026-02-12
 discovered_by: plugin-audit
 ---
 
-# ENH-365: plugin.json declares commands/skills but omits agents and hooks
+# ENH-374: plugin.json declares commands/skills but omits agents and hooks
 
 ## Summary
 
