@@ -25,3 +25,15 @@ Could be bundled with ENH-356 since both modify the same file.
 ## Impact
 
 Low — documentation freshness improvement.
+
+---
+
+## Audit Update (2026-02-12)
+
+**By**: audit_docs
+
+The skills count discrepancy extends beyond CLAUDE.md:
+- **README.md**: Claims "7 skills", table lists 7 (missing `loop-suggester`) — tracked in BUG-381
+- **CONTRIBUTING.md**: Says "7 skill definitions", tree shows 6 — tracked in BUG-382
+
+Consider fixing all three files together for consistency.

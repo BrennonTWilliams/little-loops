@@ -12,7 +12,7 @@ little-loops is a Claude Code plugin providing development workflow automation w
 
 The system consists of three main layers:
 
-1. **Command Layer** - Slash commands and agents for Claude Code
+1. **Command Layer** - Slash commands, skills, and agents for Claude Code
 2. **Automation Layer** - Python CLI tools for batch processing
 3. **Configuration Layer** - JSON-based project configuration
 
@@ -23,6 +23,7 @@ flowchart TB
     subgraph "Claude Code Plugin"
         CMD[Commands<br/>34 slash commands]
         AGT[Agents<br/>8 specialized agents]
+        SKL[Skills<br/>8 composable skills]
     end
 
     subgraph "Configuration"
@@ -47,6 +48,7 @@ flowchart TB
     SCHEMA -.->|validates| CFG
     CFG --> CLI
     CMD --> AGT
+    CMD --> SKL
     CLI --> AUTO
     CLI --> PARALLEL
     AUTO --> ISSUES
@@ -99,7 +101,7 @@ little-loops/
 │   ├── issue-verification.yaml
 │   ├── pre-pr-checks.yaml
 │   └── quality-gate.yaml
-├── skills/                  # 7 skill definitions
+├── skills/                  # 8 skill definitions
 │   ├── analyze-history/
 │   │   └── SKILL.md
 │   ├── confidence-check/
@@ -107,6 +109,8 @@ little-loops/
 │   ├── issue-size-review/
 │   │   └── SKILL.md
 │   ├── issue-workflow/
+│   │   └── SKILL.md
+│   ├── loop-suggester/
 │   │   └── SKILL.md
 │   ├── map-dependencies/
 │   │   └── SKILL.md
