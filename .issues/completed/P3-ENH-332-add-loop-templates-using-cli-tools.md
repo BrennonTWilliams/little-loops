@@ -105,6 +105,29 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 
 **Open** | Created: 2026-02-11 | Priority: P3
 
+## Session Log
+- `/ll:manage_issue` - 2026-02-11T22:14:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f38f197-afe1-4d5f-aac8-6babbc891bd2.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `loops/sprint-execution.yaml`: New imperative loop template using `ll-sprint` for batch sprint processing
+- `loops/workflow-analysis.yaml`: New imperative loop template using `ll-messages` + `ll-workflows` pipeline
+- `loops/history-reporting.yaml`: New invariants loop template using `ll-history` for retrospective analysis
+- `scripts/tests/test_builtin_loops.py`: Updated expected loops set
+
+### Verification Results
+- Tests: PASS
+- Lint: PASS
+- Compile: PASS (all 3 templates)
+- Validate: PASS (all 3 templates)
+
 ---
 
 ## Verification Notes
