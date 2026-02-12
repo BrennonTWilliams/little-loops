@@ -17,6 +17,7 @@ def main_loop() -> int:
     """
     import yaml
 
+    from little_loops.config import BRConfig
     from little_loops.fsm.compilers import compile_paradigm
     from little_loops.fsm.concurrency import LockManager
     from little_loops.fsm.persistence import (
@@ -27,6 +28,10 @@ def main_loop() -> int:
     )
     from little_loops.fsm.schema import FSMLoop
     from little_loops.fsm.validation import load_and_validate
+
+    # Load config for loops_dir
+    config = BRConfig(Path.cwd())
+    loops_dir = Path(config.loops.loops_dir)
 
     # Check if first positional arg is a subcommand or a loop name
     # This enables "ll-loop fix-types" shorthand for "ll-loop run fix-types"
@@ -171,13 +176,13 @@ Examples:
         if path.exists():
             return path
 
-        # Try .loops/<name>.fsm.yaml first (compiled FSM)
-        fsm_path = Path(".loops") / f"{name_or_path}.fsm.yaml"
+        # Try <loops_dir>/<name>.fsm.yaml first (compiled FSM)
+        fsm_path = loops_dir / f"{name_or_path}.fsm.yaml"
         if fsm_path.exists():
             return fsm_path
 
-        # Fall back to .loops/<name>.yaml (paradigm)
-        loops_path = Path(".loops") / f"{name_or_path}.yaml"
+        # Fall back to <loops_dir>/<name>.yaml (paradigm)
+        loops_path = loops_dir / f"{name_or_path}.yaml"
         if loops_path.exists():
             return loops_path
 
@@ -333,7 +338,7 @@ Examples:
             logger.warning("Background mode not yet implemented, running in foreground")
 
         # Scope-based locking
-        lock_manager = LockManager()
+        lock_manager = LockManager(loops_dir)
         scope = fsm.scope or ["."]
 
         if not lock_manager.acquire(fsm.name, scope):
@@ -358,7 +363,7 @@ Examples:
                 return 1
 
         try:
-            executor = PersistentExecutor(fsm)
+            executor = PersistentExecutor(fsm, loops_dir=loops_dir)
             return run_foreground(executor, fsm)
         finally:
             lock_manager.release(fsm.name)
@@ -440,8 +445,6 @@ Examples:
 
     def cmd_list() -> int:
         """List loops."""
-        loops_dir = Path(".loops")
-
         if getattr(args, "running", False):
             states = list_running_loops(loops_dir)
             if not states:
@@ -492,7 +495,6 @@ Examples:
                 print(f"Available built-in loops: {', '.join(sorted(available))}")
             return 1
 
-        loops_dir = Path(".loops")
         loops_dir.mkdir(exist_ok=True)
         dest = loops_dir / f"{loop_name}.yaml"
 
@@ -508,7 +510,7 @@ Examples:
 
     def cmd_status(loop_name: str) -> int:
         """Show loop status."""
-        persistence = StatePersistence(loop_name)
+        persistence = StatePersistence(loop_name, loops_dir)
         state = persistence.load_state()
 
         if state is None:
@@ -531,7 +533,7 @@ Examples:
 
     def cmd_stop(loop_name: str) -> int:
         """Stop a running loop."""
-        persistence = StatePersistence(loop_name)
+        persistence = StatePersistence(loop_name, loops_dir)
         state = persistence.load_state()
 
         if state is None:
@@ -570,7 +572,7 @@ Examples:
             return 1
 
         # Check state before resuming to show context
-        persistence = StatePersistence(loop_name)
+        persistence = StatePersistence(loop_name, loops_dir)
         state = persistence.load_state()
         if state and state.status == "awaiting_continuation":
             print(f"Resuming from context handoff (iteration {state.iteration})...")
@@ -582,7 +584,7 @@ Examples:
                 print(f"Context: {prompt_preview}")
                 print()
 
-        executor = PersistentExecutor(fsm)
+        executor = PersistentExecutor(fsm, loops_dir=loops_dir)
         result = executor.resume()
 
         if result is None:
@@ -605,7 +607,7 @@ Examples:
 
     def cmd_history(loop_name: str) -> int:
         """Show loop history."""
-        events = get_loop_history(loop_name)
+        events = get_loop_history(loop_name, loops_dir)
 
         if not events:
             print(f"No history for: {loop_name}")

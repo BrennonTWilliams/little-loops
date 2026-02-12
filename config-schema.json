@@ -616,6 +616,18 @@
       },
       "additionalProperties": false
     },
+    "loops": {
+      "type": "object",
+      "description": "FSM loop settings",
+      "properties": {
+        "loops_dir": {
+          "type": "string",
+          "description": "Directory for loop definitions and runtime state",
+          "default": ".loops"
+        }
+      },
+      "additionalProperties": false
+    },
     "sync": {
       "type": "object",
       "description": "GitHub Issues synchronization settings (opt-in feature, disabled by default)",

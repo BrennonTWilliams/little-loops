@@ -25,6 +25,7 @@ __all__ = [
     "CommandsConfig",
     "ScanConfig",
     "SprintsConfig",
+    "LoopsConfig",
     "GitHubSyncConfig",
     "SyncConfig",
     "REQUIRED_CATEGORIES",
@@ -307,6 +308,20 @@ class SprintsConfig:
 
 
 @dataclass
+class LoopsConfig:
+    """FSM loop configuration."""
+
+    loops_dir: str = ".loops"
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> LoopsConfig:
+        """Create LoopsConfig from dictionary."""
+        return cls(
+            loops_dir=data.get("loops_dir", ".loops"),
+        )
+
+
+@dataclass
 class GitHubSyncConfig:
     """GitHub-specific sync configuration."""
 
@@ -396,6 +411,7 @@ class BRConfig:
         self._commands = CommandsConfig.from_dict(self._raw_config.get("commands", {}))
         self._scan = ScanConfig.from_dict(self._raw_config.get("scan", {}))
         self._sprints = SprintsConfig.from_dict(self._raw_config.get("sprints", {}))
+        self._loops = LoopsConfig.from_dict(self._raw_config.get("loops", {}))
         self._sync = SyncConfig.from_dict(self._raw_config.get("sync", {}))
 
     @property
@@ -432,6 +448,11 @@ class BRConfig:
     def sprints(self) -> SprintsConfig:
         """Get sprints configuration."""
         return self._sprints
+
+    @property
+    def loops(self) -> LoopsConfig:
+        """Get loops configuration."""
+        return self._loops
 
     @property
     def sync(self) -> SyncConfig:
@@ -489,6 +510,10 @@ class BRConfig:
         if category in self._issues.categories:
             return self._issues.categories[category].action
         return "fix"
+
+    def get_loops_dir(self) -> Path:
+        """Get the loops directory path."""
+        return self.project_root / self._loops.loops_dir
 
     def get_src_path(self) -> Path:
         """Get the source directory path."""
@@ -645,6 +670,9 @@ class BRConfig:
                 "sprints_dir": self._sprints.sprints_dir,
                 "default_timeout": self._sprints.default_timeout,
                 "default_max_workers": self._sprints.default_max_workers,
+            },
+            "loops": {
+                "loops_dir": self._loops.loops_dir,
             },
             "sync": {
                 "enabled": self._sync.enabled,
