@@ -13,6 +13,7 @@ New to little-loops? Start here:
 
 Documentation for using little-loops in your projects.
 
+- [Configuration Reference](CONFIGURATION.md) - Full config options, variable substitution, and command overrides
 - [Command Reference](COMMANDS.md) - Complete reference for all slash commands with usage examples
 - [Troubleshooting](TROUBLESHOOTING.md) - Common issues, diagnostic commands, and solutions
 - [Session Handoff](SESSION_HANDOFF.md) - Context management and session continuation guide

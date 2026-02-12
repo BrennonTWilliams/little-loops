@@ -16,21 +16,11 @@
 
 # little-loops
 
-Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing.
+little-loops turns Claude Code into a full development workflow engine. It adds issue tracking, automated code fixes, sprint planning, and parallel processing — so Claude can manage entire backlogs, not just one-off prompts. Install the plugin, point it at your codebase, and let it discover, plan, implement, and verify changes autonomously.
 
-## Overview
+## Quick Start
 
-little-loops is a Claude Code plugin that provides a complete development workflow toolkit. It includes:
-
-- **34 slash commands** for development workflows
-- **8 specialized agents** for codebase analysis
-- **7 skills** for specialized workflows (history analysis, issue size review, issue workflow reference, dependency mapping, product analysis, workflow automation, confidence check)
-- **Automation scripts** for autonomous issue processing
-- **Configuration system** for project customization
-
-## Installation
-
-### From GitHub (recommended)
+### Install
 
 ```bash
 # Add the GitHub repository as a marketplace
@@ -40,19 +30,17 @@ little-loops is a Claude Code plugin that provides a complete development workfl
 /plugin install ll@little-loops
 ```
 
-### From local path (development)
+<details>
+<summary>Alternative install methods</summary>
+
+**From local path (development):**
 
 ```bash
-# Add the local directory as a marketplace
 /plugin marketplace add /path/to/little-loops
-
-# Install the plugin
 /plugin install ll@little-loops
 ```
 
-### Manual configuration
-
-Add to your project's `.claude/settings.local.json`:
+**Manual configuration** — add to `.claude/settings.local.json`:
 
 ```json
 {
@@ -70,380 +58,34 @@ Add to your project's `.claude/settings.local.json`:
 }
 ```
 
-## Quick Start
+</details>
 
-1. **Initialize configuration** (recommended):
+### First Commands
 
 ```bash
 # Auto-detect project type and generate config
 /ll:init
 
-# Or use interactive wizard for full customization
-/ll:init --interactive
-
-# Or accept all defaults without prompts
-/ll:init --yes
-```
-
-This detects your project type (Python, Node.js, Go, Rust, Java, .NET) and creates `.claude/ll-config.json` with appropriate defaults.
-
-2. **Use commands**:
-
-```bash
 # Check code quality
 /ll:check_code all
 
 # Run tests
 /ll:run_tests unit
 
-# Manage issues
+# Scan for issues
+/ll:scan_codebase
+
+# Manage an issue end-to-end (plan, implement, verify, complete)
 /ll:manage_issue bug fix BUG-001
 ```
 
-3. **Run automation** (requires Python package):
-
-```bash
-# Install CLI tools (use the path to your little-loops installation)
-pip install /path/to/little-loops/scripts
-
-# Process issues automatically
-ll-auto --max-issues 5
-```
-
-## Configuration
-
-little-loops uses `.claude/ll-config.json` for project-specific settings. All settings have sensible defaults.
-
-### Full Configuration Example
-
-```json
-{
-  "$schema": "./config-schema.json",
-
-  "project": {
-    "name": "my-project",
-    "src_dir": "src/",
-    "test_dir": "tests",
-    "test_cmd": "pytest tests/",
-    "lint_cmd": "ruff check src/",
-    "type_cmd": "mypy src/",
-    "format_cmd": "ruff format src/",
-    "build_cmd": null,
-    "run_cmd": null
-  },
-
-  "issues": {
-    "base_dir": ".issues",
-    "categories": {
-      "bugs": { "prefix": "BUG", "dir": "bugs", "action": "fix" },
-      "features": { "prefix": "FEAT", "dir": "features", "action": "implement" },
-      "enhancements": { "prefix": "ENH", "dir": "enhancements", "action": "improve" }
-    },
-    "completed_dir": "completed",
-    "priorities": ["P0", "P1", "P2", "P3", "P4", "P5"],
-    "templates_dir": null,
-    "capture_template": "full",
-    "duplicate_detection": {
-      "exact_threshold": 0.8,
-      "similar_threshold": 0.5
-    }
-  },
-
-  "automation": {
-    "timeout_seconds": 3600,
-    "state_file": ".auto-manage-state.json",
-    "worktree_base": ".worktrees",
-    "max_workers": 2,
-    "stream_output": true
-  },
-
-  "parallel": {
-    "max_workers": 2,
-    "p0_sequential": true,
-    "worktree_base": ".worktrees",
-    "state_file": ".parallel-manage-state.json",
-    "timeout_per_issue": 7200,
-    "max_merge_retries": 2,
-    "stream_subprocess_output": false,
-    "command_prefix": "/ll:",
-    "ready_command": "ready_issue {{issue_id}}",
-    "manage_command": "manage_issue {{issue_type}} {{action}} {{issue_id}}",
-    "worktree_copy_files": [".env"]
-  },
-
-  "commands": {
-    "pre_implement": null,
-    "post_implement": null,
-    "custom_verification": []
-  },
-
-  "scan": {
-    "focus_dirs": ["src/", "tests/"],
-    "exclude_patterns": ["**/node_modules/**", "**/__pycache__/**", "**/.git/**"],
-    "custom_agents": []
-  },
-
-  "workflow": {
-    "phase_gates": {
-      "enabled": true,
-      "auto_mode_skip": true
-    },
-    "deep_research": {
-      "enabled": true,
-      "quick_flag_skips": true,
-      "agents": ["codebase-locator", "codebase-analyzer", "codebase-pattern-finder"]
-    },
-    "plan_template": {
-      "sections_recommended": true,
-      "sections_mandatory": false
-    }
-  },
-
-  "prompt_optimization": {
-    "enabled": true,
-    "mode": "quick",
-    "confirm": true,
-    "bypass_prefix": "*",
-    "clarity_threshold": 6
-  },
-
-  "continuation": {
-    "enabled": true,
-    "auto_detect_on_session_start": true,
-    "include_todos": true,
-    "include_git_status": true,
-    "include_recent_files": true,
-    "max_continuations": 3,
-    "prompt_expiry_hours": 24
-  },
-
-  "context_monitor": {
-    "enabled": true,
-    "auto_handoff_threshold": 80,
-    "context_limit_estimate": 150000
-  },
-
-  "sprints": {
-    "sprints_dir": ".sprints",
-    "default_timeout": 3600,
-    "default_max_workers": 4
-  },
-
-  "sync": {
-    "enabled": false,
-    "provider": "github",
-    "github": {
-      "repo": null,
-      "label_mapping": {
-        "BUG": "bug",
-        "FEAT": "enhancement",
-        "ENH": "enhancement"
-      },
-      "priority_labels": true,
-      "sync_completed": false,
-      "state_file": ".claude/ll-sync-state.json"
-    }
-  },
-
-  "documents": {
-    "enabled": false,
-    "categories": {}
-  }
-}
-```
-
-### Configuration Sections
-
-#### `project`
-
-Project-level settings for commands:
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `name` | Directory name | Project name |
-| `src_dir` | `src/` | Source code directory |
-| `test_dir` | `tests` | Test directory path |
-| `test_cmd` | `pytest` | Command to run tests |
-| `lint_cmd` | `ruff check .` | Command to run linter |
-| `type_cmd` | `mypy` | Command for type checking |
-| `format_cmd` | `ruff format .` | Command to format code |
-| `build_cmd` | `null` | Optional build command |
-| `run_cmd` | `null` | Optional run/start command (smoke test) |
-
-#### `issues`
-
-Issue management settings:
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `base_dir` | `.issues` | Base directory for issues |
-| `categories` | See above | Issue category definitions |
-| `completed_dir` | `completed` | Where completed issues go |
-| `priorities` | `[P0-P5]` | Valid priority prefixes |
-| `templates_dir` | `null` | Directory for issue templates |
-| `capture_template` | `"full"` | Default template style for captured issues (`"full"` or `"minimal"`) |
-| `duplicate_detection.exact_threshold` | `0.8` | Jaccard similarity threshold for exact duplicates (0.5-1.0) |
-| `duplicate_detection.similar_threshold` | `0.5` | Jaccard similarity threshold for similar issues (0.1-0.9) |
-
-**Custom Categories**: The three core categories (bugs, features, enhancements) are always included automatically. You can add custom categories and they will be merged with the required ones:
-
-```json
-{
-  "issues": {
-    "categories": {
-      "documentation": {"prefix": "DOC", "dir": "documentation", "action": "document"},
-      "tech-debt": {"prefix": "TECH-DEBT", "dir": "tech-debt", "action": "address"}
-    }
-  }
-}
-```
-
-Each category requires a `prefix` (issue ID prefix), and optionally `dir` (subdirectory name, defaults to category key) and `action` (verb for commit messages, defaults to "address").
-
-#### `automation`
-
-Sequential automation settings (ll-auto):
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `timeout_seconds` | `3600` | Per-issue timeout |
-| `state_file` | `.auto-manage-state.json` | State persistence |
-| `worktree_base` | `.worktrees` | Git worktree directory |
-| `max_workers` | `2` | Parallel workers |
-| `stream_output` | `true` | Stream subprocess output |
-
-#### `parallel`
-
-Parallel automation settings with git worktree isolation (ll-parallel):
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `max_workers` | `2` | Number of parallel workers |
-| `p0_sequential` | `true` | Process P0 issues sequentially |
-| `worktree_base` | `.worktrees` | Git worktree directory |
-| `state_file` | `.parallel-manage-state.json` | State persistence |
-| `timeout_per_issue` | `3600` | Per-issue timeout in seconds |
-| `max_merge_retries` | `2` | Rebase attempts before failing |
-| `stream_subprocess_output` | `false` | Stream Claude CLI output |
-| `command_prefix` | `/ll:` | Prefix for slash commands |
-| `ready_command` | `ready_issue {{issue_id}}` | Ready command template |
-| `manage_command` | `manage_issue {{issue_type}} {{action}} {{issue_id}}` | Manage command template |
-| `worktree_copy_files` | `[".env"]` | Files to copy to worktrees (.claude/ is always copied automatically) |
-
-#### `product`
-
-Product analysis configuration for `/ll:scan_product`:
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enabled` | `false` | Enable product-focused issue analysis |
-| `goals_file` | `.claude/ll-goals.md` | Path to product goals/vision document |
-| `analyze_user_impact` | `true` | Include user impact assessment in issues |
-| `analyze_business_value` | `true` | Include business value scoring in issues |
-
-To enable product scanning, set `product.enabled: true` and create a goals file with your product vision, personas, and strategic priorities.
-
-#### `scan`
-
-Codebase scanning configuration:
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `focus_dirs` | `["src/", "tests/"]` | Directories to scan |
-| `exclude_patterns` | Standard patterns | Paths to exclude from scanning |
-
-#### `workflow`
-
-Workflow behavior settings (`/ll:manage_issue`, `/ll:ready_issue`):
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `phase_gates.enabled` | `true` | Enable phase gates for manual verification |
-| `phase_gates.auto_mode_skip` | `true` | Skip phase gates when --auto flag is used |
-| `deep_research.enabled` | `true` | Enable deep research by default |
-| `deep_research.quick_flag_skips` | `true` | Allow --quick flag to skip research |
-| `deep_research.agents` | 3 sub-agents | Sub-agents to spawn for research |
-| `plan_template.sections_recommended` | `true` | Show all template sections as recommended |
-| `plan_template.sections_mandatory` | `false` | Require all template sections |
-
-#### `prompt_optimization`
-
-Automatic prompt optimization settings (`/ll:toggle_autoprompt`):
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enabled` | `true` | Enable automatic prompt optimization |
-| `mode` | `"quick"` | Optimization mode (`"quick"` or `"thorough"`) |
-| `confirm` | `true` | Show diff and ask for confirmation before applying |
-| `bypass_prefix` | `*` | Prefix to bypass optimization |
-| `clarity_threshold` | `6` | Minimum clarity score (1-10) to pass through unchanged |
-
-#### `continuation`
-
-Session continuation and handoff settings (`/ll:handoff`, `/ll:resume`):
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enabled` | `true` | Enable continuation prompt features |
-| `auto_detect_on_session_start` | `true` | Check for continuation prompt when session starts |
-| `include_todos` | `true` | Include todo list state in continuation prompt |
-| `include_git_status` | `true` | Include git status in continuation prompt |
-| `include_recent_files` | `true` | Include recently modified files in continuation prompt |
-| `max_continuations` | `3` | Max automatic session continuations for CLI tools |
-| `prompt_expiry_hours` | `24` | Hours before continuation prompt is considered stale |
-
-#### `sprints`
-
-Sprint management settings (ll-sprint, `/ll:create_sprint`):
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `sprints_dir` | `.sprints` | Directory for sprint definitions |
-| `default_timeout` | `3600` | Default timeout per issue in seconds |
-| `default_max_workers` | `4` | Worker count for parallel execution within waves (1-8) |
-
-#### `sync`
-
-GitHub Issues synchronization for `/ll:sync_issues`:
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enabled` | `false` | Enable GitHub Issues sync feature |
-| `provider` | `"github"` | Issue tracking provider (currently only GitHub) |
-| `github.repo` | `null` | GitHub repository in owner/repo format (auto-detected if null) |
-| `github.label_mapping` | `{"BUG": "bug", ...}` | Map issue types to GitHub labels |
-| `github.priority_labels` | `true` | Add priority as GitHub label (e.g., "P1") |
-| `github.sync_completed` | `false` | Also sync completed issues (close on GitHub) |
-| `github.state_file` | `.claude/ll-sync-state.json` | File to track sync state |
-
-To enable sync, set `sync.enabled: true`. The repository is auto-detected from your git remote; set `sync.github.repo` to override.
-
-#### `documents`
-
-Document category tracking for `/ll:align_issues`:
-
-| Key | Default | Description |
-|-----|---------|-------------|
-| `enabled` | `false` | Enable document category tracking |
-| `categories` | `{}` | Document categories with file lists |
-
-To enable document tracking, set `documents.enabled: true` and define categories:
-
-```json
-{
-  "documents": {
-    "enabled": true,
-    "categories": {
-      "architecture": {
-        "description": "System design and technical decisions",
-        "files": ["docs/ARCHITECTURE.md", "docs/API.md"]
-      }
-    }
-  }
-}
-```
-
-Each category requires a `files` array of relative paths. The optional `description` field documents what the category covers.
+## What's Included
+
+- **34 slash commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
+- **8 specialized agents** for codebase analysis, pattern finding, and web research
+- **7 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
+- **10 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, etc.) for autonomous and parallel issue processing
+- **Configuration system** with project-type templates for Python, Node.js, Go, Rust, Java, and .NET
 
 ## Commands
 
@@ -546,8 +188,6 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 
 ## Skills
 
-Specialized workflows invoked via the Skill tool, organized by capability:
-
 | Skill | Capability Group | Description |
 |-------|-----------------|-------------|
 | `issue-workflow` | Issue Discovery / Refinement | Quick reference for issue management workflow |
@@ -560,16 +200,10 @@ Specialized workflows invoked via the Skill tool, organized by capability:
 
 ## CLI Tools
 
-**Requires Python 3.11+**
-
-After installing the Python package:
+**Requires Python 3.11+**. Install with:
 
 ```bash
-# Use the absolute path to your little-loops installation
 pip install /path/to/little-loops/scripts
-
-# Example with home directory
-pip install ~/code/little-loops/scripts
 ```
 
 ### ll-auto
@@ -581,11 +215,22 @@ ll-auto                          # Process all issues
 ll-auto --max-issues 5           # Limit to 5 issues
 ll-auto --resume                 # Resume from state
 ll-auto --dry-run                # Preview only
-ll-auto --category bugs          # Only process bugs
-ll-auto --only BUG-001,BUG-002   # Process specific issues only
-ll-auto --skip BUG-003           # Skip specific issues
-ll-auto --config /path/to/repo   # Specify project root
 ```
+
+Run `ll-auto --help` for all options.
+
+### ll-parallel
+
+Parallel issue processing with git worktree isolation:
+
+```bash
+ll-parallel                      # Process with default workers
+ll-parallel --workers 3          # Use 3 parallel workers
+ll-parallel --dry-run            # Preview what would be processed
+ll-parallel --resume             # Resume from previous state
+```
+
+Run `ll-parallel --help` for all options.
 
 ### ll-loop
 
@@ -593,101 +238,56 @@ FSM-based automation loop execution (create loops with `/ll:create_loop`):
 
 ```bash
 ll-loop run <loop-name>          # Execute a loop by name
-ll-loop run .loops/fix-types.yaml # Execute with full path
-ll-loop test-analyze-fix         # Quick execution shortcut
-ll-loop fix-types --max-iterations 5  # Set iteration limit
-ll-loop lint-cycle --background   # Run in background
-ll-loop run .loops/fix-types.yaml --dry-run  # Preview mode
 ll-loop list                     # List all available loops
-ll-loop list --running           # List only running loops
-ll-loop status <loop-name>       # Check loop status
 ll-loop stop <loop-name>         # Stop a running loop
-ll-loop resume <loop-name>       # Resume a stopped loop
-ll-loop history <loop-name>      # View loop execution history
 ```
 
-For loop authoring paradigms and examples, see [FSM Loop Guide](docs/generalized-fsm-loop.md).
+Run `ll-loop --help` for all options. See [FSM Loop Guide](docs/generalized-fsm-loop.md) for loop authoring.
 
-### ll-parallel
+### ll-sprint
 
-Parallel issue processing with git worktrees:
+Sprint-based issue processing:
 
 ```bash
-ll-parallel                          # Process with default workers
-ll-parallel --workers 3              # Use 3 parallel workers
-ll-parallel --dry-run                # Preview what would be processed
-ll-parallel --resume                 # Resume from previous state
-ll-parallel --priority P1,P2         # Only process P1 and P2 issues
-ll-parallel --priority P0,P1,P2      # Process P0, P1, and P2 (P0 processed sequentially by default)
-ll-parallel --max-issues 10          # Limit total issues to process
-ll-parallel --timeout 7200           # Timeout per issue in seconds
-ll-parallel --stream-output          # Stream Claude CLI output in real-time
-ll-parallel --show-model             # Display model info on worktree setup
-ll-parallel --cleanup                # Clean up worktrees and exit
-ll-parallel --only BUG-001,BUG-002   # Process specific issues only
-ll-parallel --skip BUG-003           # Skip specific issues
-ll-parallel --quiet                  # Suppress progress output
-ll-parallel --worktree-base /tmp/wt  # Custom worktree directory
-ll-parallel --config /path/to/repo   # Specify project root
+ll-sprint create sprint-1 --issues BUG-001,FEAT-010
+ll-sprint run sprint-1           # Execute a sprint
+ll-sprint list                   # List all sprints
 ```
+
+Run `ll-sprint --help` for all options.
 
 ### ll-messages
 
 Extract user messages from Claude Code session logs:
 
 ```bash
-ll-messages                          # Last 100 messages to file
-ll-messages -n 50                    # Last 50 messages
-ll-messages --since 2026-01-01       # Messages since date
-ll-messages -o output.jsonl          # Custom output path
-ll-messages --stdout                 # Print to terminal instead
-ll-messages --exclude-agents         # Exclude agent session files
-ll-messages --cwd /path/to/project   # Specify project directory
-ll-messages -v                       # Verbose progress output
+ll-messages                      # Last 100 messages to file
+ll-messages -n 50                # Last 50 messages
+ll-messages --since 2026-01-01   # Messages since date
 ```
 
-Output is JSONL format with message content and metadata (timestamp, session ID, working directory, git branch).
-
-### ll-history
-
-View completed issue statistics and history:
-
-```bash
-ll-history summary                   # Display issue statistics
-ll-history summary --json            # Output as JSON for scripting
-ll-history summary -d /path/to/.issues  # Custom issues directory
-```
-
-Shows total completed issues, date range, velocity (issues/day), and breakdowns by type (BUG/ENH/FEAT) and priority (P0-P5).
-
-### ll-sprint
-
-Manage and execute sprint/sequence definitions:
-
-```bash
-ll-sprint create sprint-1 --issues BUG-001,FEAT-010 --description "Q1 fixes"
-ll-sprint run sprint-1                # Execute a sprint
-ll-sprint run sprint-1 --dry-run      # Preview execution
-ll-sprint run sprint-1 --resume       # Resume interrupted sprint
-ll-sprint list                        # List all sprints
-ll-sprint show sprint-1               # Show sprint details
-ll-sprint delete sprint-1             # Delete a sprint
-```
+Run `ll-messages --help` for all options.
 
 ### ll-sync
 
 Sync local `.issues/` files with GitHub Issues:
 
 ```bash
-ll-sync status                        # Show sync status
-ll-sync push                          # Push all local issues to GitHub
-ll-sync push BUG-123                  # Push specific issue
-ll-sync pull                          # Pull GitHub Issues to local
-ll-sync pull --labels bug             # Pull filtered by labels
-ll-sync --dry-run status              # Preview without changes
+ll-sync status                   # Show sync status
+ll-sync push                     # Push all local issues to GitHub
+ll-sync pull                     # Pull GitHub Issues to local
 ```
 
-Requires `sync.enabled: true` in `.claude/ll-config.json`.
+Requires `sync.enabled: true` in config. Run `ll-sync --help` for all options.
+
+### ll-history
+
+View completed issue statistics:
+
+```bash
+ll-history summary               # Display issue statistics
+ll-history summary --json        # Output as JSON
+```
 
 ### ll-workflows
 
@@ -695,32 +295,6 @@ Workflow sequence analysis (step 2 of the workflow analysis pipeline):
 
 ```bash
 ll-workflows analyze --input messages.jsonl --patterns step1.yaml
-ll-workflows analyze -i messages.jsonl -p patterns.yaml -o output.yaml
-```
-
-Identifies multi-step workflows and cross-session patterns using entity-based clustering, time-gap weighted boundaries, and semantic similarity scoring.
-
-### ll-verify-docs
-
-Verify that documented counts (commands, agents, skills) match actual file counts:
-
-```bash
-ll-verify-docs                        # Check and show results
-ll-verify-docs --json                 # Output as JSON
-ll-verify-docs --format markdown      # Markdown report
-ll-verify-docs --fix                  # Auto-fix mismatches
-```
-
-### ll-check-links
-
-Check markdown documentation for broken links:
-
-```bash
-ll-check-links                        # Check all markdown files
-ll-check-links docs/                  # Check specific directory
-ll-check-links --json                 # Output as JSON
-ll-check-links --format markdown      # Markdown report
-ll-check-links --ignore 'http://localhost.*'  # Ignore pattern
 ```
 
 ### ll-deps
@@ -728,41 +302,26 @@ ll-check-links --ignore 'http://localhost.*'  # Ignore pattern
 Cross-issue dependency discovery and validation:
 
 ```bash
-ll-deps analyze                      # Full analysis with markdown output
-ll-deps analyze --format json        # JSON output for programmatic use
-ll-deps analyze --graph              # Include ASCII dependency graph
-ll-deps validate                     # Validate existing dependency references
-ll-deps -d /path/to/.issues analyze  # Custom issues directory
+ll-deps analyze                  # Full analysis with markdown output
+ll-deps analyze --graph          # Include ASCII dependency graph
+ll-deps validate                 # Validate existing dependency references
 ```
 
-## Command Override
+### ll-verify-docs / ll-check-links
 
-Projects can override plugin commands by placing files in `.claude/commands/ll/`.
-
-Override priority:
-1. Project `.claude/commands/ll/*.md` (highest)
-2. Plugin `commands/*.md`
-3. Default behavior
-
-### Example Override
-
-To add project-specific verification to `manage_issue`:
+Documentation verification utilities:
 
 ```bash
-# .claude/commands/ll/manage_issue.md
-# Copy from plugin and modify as needed
+ll-verify-docs                   # Check documented counts match actual
+ll-check-links                   # Check markdown for broken links
+ll-check-links docs/             # Check specific directory
 ```
 
-## Variable Substitution
+## Configuration
 
-Commands use `{{config.*}}` for configuration values:
+little-loops uses `.claude/ll-config.json` for project-specific settings. Run `/ll:init` to auto-detect your project type and generate a config, or `/ll:configure` for interactive editing. All settings have sensible defaults.
 
-```markdown
-# In command templates
-{{config.project.src_dir}}     # -> "src/"
-{{config.project.test_cmd}}    # -> "pytest"
-{{config.issues.base_dir}}     # -> ".issues"
-```
+For the full configuration reference — all sections, options, variable substitution, and command overrides — see [Configuration Reference](docs/CONFIGURATION.md).
 
 ## Project Examples
 
@@ -805,15 +364,6 @@ Commands use `{{config.*}}` for configuration values:
 }
 ```
 
-## Migration from Existing Setup
-
-If you have existing `.claude/commands/br/` files:
-
-1. Install little-loops
-2. Create `.claude/ll-config.json` with your project settings
-3. Keep project-specific commands as overrides
-4. Generic commands will now come from the plugin
-
 ## Quick Troubleshooting
 
 | Issue | Solution |
@@ -830,6 +380,7 @@ For detailed solutions, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 ## Documentation
 
 - [**Documentation Index**](docs/INDEX.md) - Complete reference for all documentation
+- [Configuration Reference](docs/CONFIGURATION.md) - Full config options and examples
 - [Command Reference](docs/COMMANDS.md) - All slash commands with usage
 - [FSM Loop Guide](docs/generalized-fsm-loop.md) - Automation loop system and authoring paradigms
 - [Session Handoff Guide](docs/SESSION_HANDOFF.md) - Context management and session continuation
@@ -840,106 +391,7 @@ For detailed solutions, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 
 ## Development
 
-### Plugin Structure
-
-```
-little-loops/
-├── .claude-plugin/
-│   └── plugin.json       # Plugin manifest
-├── config-schema.json    # Configuration schema
-├── README.md             # This file
-├── commands/             # Slash command templates (34 commands)
-├── agents/               # Agent definitions (8 agents)
-├── skills/               # Skill definitions (7 skills)
-├── hooks/                # Lifecycle hooks and validation scripts
-├── loops/                # Built-in FSM loop definitions
-│   ├── codebase-scan.yaml
-│   ├── issue-readiness-cycle.yaml
-│   ├── issue-verification.yaml
-│   ├── pre-pr-checks.yaml
-│   └── quality-gate.yaml
-├── templates/            # Project type config templates
-│   ├── python-generic.json
-│   ├── javascript.json
-│   ├── typescript.json
-│   ├── go.json
-│   ├── rust.json
-│   ├── java-maven.json
-│   ├── java-gradle.json
-│   ├── dotnet.json
-│   ├── generic.json
-│   └── issue-sections.json
-└── scripts/              # Python CLI tools
-    ├── pyproject.toml
-    └── little_loops/
-        ├── __init__.py
-        ├── cli/                 # CLI entrypoints package
-        │   ├── __init__.py
-        │   ├── auto.py          # ll-auto CLI
-        │   ├── docs.py          # ll-verify-docs, ll-check-links CLI
-        │   ├── history.py       # ll-history CLI
-        │   ├── loop.py          # ll-loop CLI
-        │   ├── messages.py      # ll-messages CLI
-        │   ├── parallel.py      # ll-parallel CLI
-        │   ├── sprint.py        # ll-sprint CLI
-        │   └── sync.py          # ll-sync CLI
-        ├── cli_args.py         # Argument parsing
-        ├── config.py           # Configuration loading
-        ├── state.py            # State persistence
-        ├── logger.py           # Logging utilities
-        ├── logo.py             # CLI logo display
-        ├── frontmatter.py      # YAML frontmatter parsing
-        ├── doc_counts.py       # Documentation count utilities
-        ├── link_checker.py     # Link validation
-        ├── session_log.py      # Session log utilities
-        ├── issue_manager.py    # Sequential automation
-        ├── issue_parser.py     # Issue file parsing
-        ├── issue_discovery.py  # Issue discovery and deduplication
-        ├── issue_lifecycle.py  # Issue lifecycle operations
-        ├── issue_history.py    # Issue history and statistics
-        ├── git_operations.py   # Git utilities
-        ├── work_verification.py # Verification helpers
-        ├── subprocess_utils.py # Subprocess handling
-        ├── sprint.py           # Sprint planning and execution
-        ├── sync.py             # GitHub Issues sync
-        ├── goals_parser.py     # Goals file parsing
-        ├── dependency_graph.py  # Dependency graph construction
-        ├── dependency_mapper.py # Cross-issue dependency discovery
-        ├── user_messages.py     # User message extraction
-        ├── workflow_sequence_analyzer.py  # Workflow analysis
-        ├── fsm/                 # FSM loop execution engine
-        │   ├── __init__.py
-        │   ├── schema.py
-        │   ├── fsm-loop-schema.json
-        │   ├── compilers.py
-        │   ├── concurrency.py
-        │   ├── evaluators.py
-        │   ├── executor.py
-        │   ├── interpolation.py
-        │   ├── validation.py
-        │   ├── persistence.py
-        │   ├── signal_detector.py
-        │   └── handoff_handler.py
-        └── parallel/           # Parallel processing
-            ├── __init__.py
-            ├── orchestrator.py
-            ├── worker_pool.py
-            ├── merge_coordinator.py
-            ├── priority_queue.py
-            ├── output_parsing.py
-            ├── git_lock.py
-            ├── file_hints.py
-            ├── overlap_detector.py
-            ├── types.py
-            └── tasks/          # Task templates for Claude CLI
-```
-
-### Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Make changes
-4. Submit a pull request
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, testing, and guidelines.
 
 ## License
 
