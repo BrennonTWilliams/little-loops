@@ -245,7 +245,9 @@ def _render_execution_plan(
             # Show blockers for this issue
             blockers = dep_graph.blocked_by.get(issue.issue_id, set())
             if blockers:
-                blocker_prefix = "      \u2514\u2500\u2500 " if is_last else "  \u2502   \u2514\u2500\u2500 "
+                blocker_prefix = (
+                    "      \u2514\u2500\u2500 " if is_last else "  \u2502   \u2514\u2500\u2500 "
+                )
                 blockers_str = ", ".join(sorted(blockers))
                 lines.append(f"{blocker_prefix}blocked by: {blockers_str}")
 

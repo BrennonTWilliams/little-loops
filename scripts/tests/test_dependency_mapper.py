@@ -852,9 +852,7 @@ class TestMainCLI:
 
     def test_nonexistent_issues_dir(self) -> None:
         """Test main() with nonexistent issues directory returns 1."""
-        with patch.object(
-            sys, "argv", ["ll-deps", "-d", "/nonexistent/path", "analyze"]
-        ):
+        with patch.object(sys, "argv", ["ll-deps", "-d", "/nonexistent/path", "analyze"]):
             result = main()
         assert result == 1
 
@@ -872,9 +870,7 @@ class TestMainCLI:
         claude_dir.mkdir()
         (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
-        with patch.object(
-            sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze"]
-        ):
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze"]):
             result = main()
         assert result == 0
 
@@ -891,9 +887,7 @@ class TestMainCLI:
         claude_dir.mkdir()
         (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
-        with patch.object(
-            sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate"]
-        ):
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "validate"]):
             result = main()
         assert result == 0
 
@@ -915,8 +909,6 @@ class TestMainCLI:
         claude_dir.mkdir()
         (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
 
-        with patch.object(
-            sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze"]
-        ):
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze"]):
             result = main()
         assert result == 0
