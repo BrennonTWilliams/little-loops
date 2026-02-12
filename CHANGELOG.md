@@ -13,6 +13,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.9.0] - 2026-02-11
+
+### Added
+
+- **Pre-implementation confidence-check skill** - New skill for validating implementation readiness before starting work (ENH-277)
+- **Session log linking** - Link Claude Code JSONL session logs to issue files for traceability (FEAT-323)
+- **Context monitor token tracking** - Track Claude output and user message tokens with compaction reset (ENH-330)
+
+### Fixed
+
+- **Config schema cleanup** - Remove 5 unused schema sections with no implementation (ENH-343)
+- **Hardcoded path removal** - Replace hardcoded paths with config template refs in commands and skills (ENH-341)
+- **Loops directory config** - Read loops directory path from ll-config.json instead of hardcoding (BUG-339)
+- **Hook directory config** - Read hook directory paths from ll-config.json (BUG-338)
+- **Help references** - Correct stale references in help.md (BUG-336)
+- **Create loop wizard** - Present paradigms instead of use-case templates in wizard (BUG-333)
+- **Context monitor compaction** - Reset token estimate after context compaction (BUG-329)
+- **Issue manager resume** - Use `--resume` flag for continuation sessions (BUG-327)
+
+### Changed
+
+- **CLI package split** - Split `cli.py` god module into `cli/` package for better maintainability (ENH-344)
+- **Dependency mapping delegation** - `map-dependencies` skill now delegates to `ll-deps` CLI (ENH-337)
+- **ASCII dependency graphs** - Replace mermaid dependency graphs with ASCII text diagrams (ENH-334)
+- **Documentation reorganization** - Organize commands and skills under 9 capability groupings (ENH-335)
+
+[1.9.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.8.0...v1.9.0
+
 ## [1.8.0] - 2026-02-11
 
 ### Added
