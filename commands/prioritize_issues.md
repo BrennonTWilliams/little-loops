@@ -52,47 +52,46 @@ for dir in {{config.issues.base_dir}}/*/; do
 done
 ```
 
-### 1.5. Check If All Issues Already Prioritized
+### 1.5. Gate: Check If All Issues Already Prioritized
 
-After scanning, determine if any unprioritized issues were found:
+After scanning, check whether any unprioritized issues were found. **You MUST branch here — do NOT continue linearly.**
 
-- If **unprioritized issues were found** → continue to Step 2 (existing flow)
-- If **all issues already have `P[0-5]-` prefixes** → proceed to the re-prioritize prompt below
+If **unprioritized issues were found**: skip to Step 2 (initial prioritization flow).
 
-#### Re-prioritize Prompt
+If **all issues already have `P[0-5]-` prefixes**: follow steps a–d below. **Do NOT skip to Step 2.**
 
-**If `AUTO_MODE` is true**: Skip the prompt and proceed directly to Step 2-RE (Re-evaluate all).
+a. If `AUTO_MODE` is true, skip to Step 2-RE (Re-evaluate all) immediately.
 
-**If `AUTO_MODE` is false**: Use the `AskUserQuestion` tool:
+b. Use the `AskUserQuestion` tool to ask the user:
+   ```yaml
+   questions:
+     - question: "All active issues are already prioritized. Would you like to re-evaluate priorities based on current context?"
+       header: "Re-prioritize"
+       multiSelect: false
+       options:
+         - label: "Re-evaluate all"
+           description: "Re-assess priorities for all active issues and update where changed"
+         - label: "View current"
+           description: "Show current priority distribution and exit"
+   ```
 
-```yaml
-questions:
-  - question: "All active issues are already prioritized. Would you like to re-evaluate priorities based on current context?"
-    header: "Re-prioritize"
-    multiSelect: false
-    options:
-      - label: "Re-evaluate all"
-        description: "Re-assess priorities for all active issues and update where changed"
-      - label: "View current"
-        description: "Show current priority distribution and exit"
-```
+c. Handle user response:
+   - **"Re-evaluate all"**: Continue to Step 2-RE below.
+   - **"View current"**: Output a summary of the current priority distribution across categories and **stop** (do not continue to Step 2 or 2-RE):
+     ```markdown
+     # Current Priority Distribution
 
-**If "View current"**: Output a summary of the current priority distribution across categories and stop:
+     | Priority | Bugs | Features | Enhancements | Total |
+     |----------|------|----------|--------------|-------|
+     | P0       | N    | N        | N            | N     |
+     | P1       | N    | N        | N            | N     |
+     | P2       | N    | N        | N            | N     |
+     | P3       | N    | N        | N            | N     |
+     | P4       | N    | N        | N            | N     |
+     | P5       | N    | N        | N            | N     |
+     ```
 
-```markdown
-# Current Priority Distribution
-
-| Priority | Bugs | Features | Enhancements | Total |
-|----------|------|----------|--------------|-------|
-| P0       | N    | N        | N            | N     |
-| P1       | N    | N        | N            | N     |
-| P2       | N    | N        | N            | N     |
-| P3       | N    | N        | N            | N     |
-| P4       | N    | N        | N            | N     |
-| P5       | N    | N        | N            | N     |
-```
-
-**If "Re-evaluate all"**: Continue to Step 2-RE below.
+d. **STOP here** — do not fall through to Step 2 (initial prioritization). The re-prioritize path is complete after Step 4-RE.
 
 ### 2-RE. Re-evaluate All Active Issues
 
