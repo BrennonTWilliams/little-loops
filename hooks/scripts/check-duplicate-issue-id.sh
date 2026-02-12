@@ -41,8 +41,12 @@ if [[ -z "$FILE_PATH" ]]; then
     allow_response
 fi
 
-# Only check files in .issues directory
-if [[ "$FILE_PATH" != *".issues/"* ]]; then
+# Read issues base dir from config, with fallback default
+CONFIG_FILE=".claude/ll-config.json"
+ISSUES_BASE_DIR=$(jq -r '.issues.base_dir // ".issues"' "$CONFIG_FILE" 2>/dev/null || echo ".issues")
+
+# Only check files in issues directory (uses configured path)
+if [[ "$FILE_PATH" != *"${ISSUES_BASE_DIR}/"* ]]; then
     allow_response
 fi
 
@@ -64,14 +68,14 @@ if [[ -z "$ISSUE_ID" ]]; then
     allow_response
 fi
 
-# Find the .issues directory (search up from current dir or use path from file)
+# Find the issues directory (search up from current dir or use path from file)
 ISSUES_DIR=""
 if [[ "$FILE_PATH" == /* ]]; then
-    # Absolute path - extract .issues directory
-    ISSUES_DIR=$(echo "$FILE_PATH" | grep -oE '.*/\.issues' | head -1)
+    # Absolute path - extract issues directory
+    ISSUES_DIR=$(echo "$FILE_PATH" | grep -oE ".*/${ISSUES_BASE_DIR##*/}" | head -1)
 else
-    # Relative path - use current directory
-    ISSUES_DIR=".issues"
+    # Relative path - use configured directory
+    ISSUES_DIR="$ISSUES_BASE_DIR"
 fi
 
 # Check if .issues directory exists

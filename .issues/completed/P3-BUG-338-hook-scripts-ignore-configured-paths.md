@@ -103,4 +103,22 @@ WORKTREE_BASE=$(jq -r '.parallel.worktree_base // ".worktrees"' "$CONFIG_FILE" 2
 
 ## Status
 
-**Open** | Created: 2026-02-11 | Priority: P3
+**Completed** | Created: 2026-02-11 | Completed: 2026-02-11 | Priority: P3
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-11
+- **Status**: Completed
+
+### Changes Made
+- `hooks/scripts/check-duplicate-issue-id.sh`: Read `issues.base_dir` from `ll-config.json` with `.issues` fallback
+- `hooks/scripts/session-cleanup.sh`: Read `parallel.worktree_base` from `ll-config.json` with `.worktrees` fallback
+- `commands/cleanup_worktrees.md`: Replace hardcoded `.worktrees` with `{{config.parallel.worktree_base}}`
+
+### Verification Results
+- Tests: PASS (2691 passed)
+- Lint: PASS
+- Shell syntax: PASS

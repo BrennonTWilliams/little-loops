@@ -21,7 +21,7 @@ This command uses project configuration from `.claude/ll-config.json`:
 
 ```bash
 MODE="${mode:-run}"
-WORKTREE_BASE=".worktrees"
+WORKTREE_BASE="{{config.parallel.worktree_base}}"
 
 echo "========================================"
 echo "WORKTREE CLEANUP"
