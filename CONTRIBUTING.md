@@ -164,7 +164,8 @@ little-loops/
     ├── tests/            # Test suite
     └── little_loops/     # Main package
         ├── cli.py        # CLI entry points (ll-auto, ll-parallel, ll-messages,
-        │                 #   ll-loop, ll-sprint, ll-sync, ll-history)
+        │                 #   ll-loop, ll-sprint, ll-sync, ll-history,
+        │                 #   ll-verify-docs, ll-check-links)
         ├── cli_args.py          # Argument parsing
         ├── config.py            # Configuration management
         ├── state.py             # State persistence

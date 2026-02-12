@@ -10,7 +10,7 @@ This document provides the public API for the little-loops Python package.
 ## Installation
 
 ```bash
-pip install /path/to/little-loops/scripts
+pip install -e "/path/to/little-loops/scripts[dev]"
 ```
 
 ## Module Overview

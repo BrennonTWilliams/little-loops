@@ -118,6 +118,13 @@ Iterate on existing implementation plans with updates.
 
 **Arguments:** `plan_path` (optional)
 
+### `/ll:refine_issue`
+Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation. Unlike `/ll:format_issue` (which aligns structure) or `/ll:ready_issue` (which validates accuracy), this command researches the codebase to identify and fill knowledge gaps.
+
+**Arguments:**
+- `issue_id` (required): Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
+- `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview)
+
 ### `/ll:tradeoff_review_issues`
 Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close.
 
@@ -285,6 +292,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 | `sync_issues` | Sync local issues with GitHub Issues |
 | `manage_issue` | Full issue lifecycle management |
 | `iterate_plan` | Update implementation plans |
+| `refine_issue` | Refine issues with codebase-driven research |
 | `tradeoff_review_issues` | Evaluate issues for utility vs complexity |
 | `audit_architecture` | Analyze code structure |
 | `audit_docs` | Check documentation accuracy |

@@ -52,7 +52,7 @@ For interactive editing, use `/ll:configure`.
     "p0_sequential": true,
     "worktree_base": ".worktrees",
     "state_file": ".parallel-manage-state.json",
-    "timeout_per_issue": 7200,
+    "timeout_per_issue": 3600,
     "max_merge_retries": 2,
     "stream_subprocess_output": false,
     "command_prefix": "/ll:",
@@ -251,6 +251,16 @@ Session continuation and handoff settings (`/ll:handoff`, `/ll:resume`):
 | `include_recent_files` | `true` | Include recently modified files in continuation prompt |
 | `max_continuations` | `3` | Max automatic session continuations for CLI tools |
 | `prompt_expiry_hours` | `24` | Hours before continuation prompt is considered stale |
+
+### `context_monitor`
+
+Context window monitoring for automatic session handoff. See [Session Handoff Guide](SESSION_HANDOFF.md) for full details.
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable context window monitoring |
+| `auto_handoff_threshold` | `80` | Context usage percentage to trigger handoff warning |
+| `context_limit_estimate` | `150000` | Estimated context window size in tokens |
 
 ### `sprints`
 

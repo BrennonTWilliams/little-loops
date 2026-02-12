@@ -21,7 +21,7 @@ The system consists of three main layers:
 ```mermaid
 flowchart TB
     subgraph "Claude Code Plugin"
-        CMD[Commands<br/>34 slash commands]
+        CMD[Commands<br/>35 slash commands]
         AGT[Agents<br/>8 specialized agents]
         SKL[Skills<br/>8 composable skills]
     end
@@ -64,7 +64,7 @@ little-loops/
 ├── .claude-plugin/
 │   └── plugin.json          # Plugin manifest
 ├── config-schema.json       # JSON Schema for validation
-├── commands/                # 34 slash command templates
+├── commands/                # 35 slash command templates
 │   ├── init.md
 │   ├── help.md
 │   ├── check_code.md
@@ -97,10 +97,13 @@ little-loops/
 │           └── common.sh    # Shared shell functions
 ├── loops/                   # Built-in FSM loop definitions
 │   ├── codebase-scan.yaml
+│   ├── history-reporting.yaml
 │   ├── issue-readiness-cycle.yaml
 │   ├── issue-verification.yaml
 │   ├── pre-pr-checks.yaml
-│   └── quality-gate.yaml
+│   ├── quality-gate.yaml
+│   ├── sprint-execution.yaml
+│   └── workflow-analysis.yaml
 ├── skills/                  # 8 skill definitions
 │   ├── analyze-history/
 │   │   └── SKILL.md
@@ -623,7 +626,7 @@ The `dependency_mapper` module complements `dependency_graph` by discovering new
 - **dependency_graph.py**: Execution ordering from existing `Blocked By` data
 - **dependency_mapper.py**: Discovery of new relationships via file overlap + semantic conflict analysis
 
-The `/ll:map_dependencies` skill uses `dependency_mapper` to analyze active issues, propose dependencies based on shared file references, validate existing dependency integrity (broken refs, missing backlinks, cycles), and write approved relationships to issue files.
+The `/ll:map-dependencies` skill uses `dependency_mapper` to analyze active issues, propose dependencies based on shared file references, validate existing dependency integrity (broken refs, missing backlinks, cycles), and write approved relationships to issue files.
 
 #### Semantic Conflict Analysis
 
