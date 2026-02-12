@@ -18,16 +18,16 @@ README.md claims "7 skills" but there are 8 skill directories. The Skills table 
 - **Line(s)**: 86, 186-193
 - **Section**: "What's Included" and "Skills" table
 
-## Current Content
+## Current Behavior
 
-Line 86:
+Line 86 states:
 ```markdown
 - **7 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
 ```
 
 Skills table (lines 186-193) lists 7 skills but omits `loop-suggester`.
 
-## Problem
+## Actual Behavior
 
 The `loop-suggester` skill exists at `skills/loop-suggester/SKILL.md` but is not counted or listed in the README Skills table. Current skills (8 total):
 
@@ -38,19 +38,31 @@ The `loop-suggester` skill exists at `skills/loop-suggester/SKILL.md` but is not
 5. `workflow-automation-proposer`
 6. `analyze-history`
 7. `confidence-check`
-8. `loop-suggester` (missing)
+8. `loop-suggester` (missing from README)
 
-## Expected Content
+## Steps to Reproduce
 
-Line 86:
+1. Count skill directories: `ls -d skills/*/` (returns 8)
+2. Read README.md line 86: says "7 skills"
+3. Read README.md Skills table (lines 186-193): lists only 7 entries
+4. Observe: `loop-suggester` is missing from both the count and the table
+
+## Expected Behavior
+
+Line 86 should state:
 ```markdown
 - **8 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
 ```
 
-Add to Skills table:
+Skills table should include an additional row:
 ```markdown
 | `loop-suggester` | Automation & Loops | Suggest FSM loops from user message history |
 ```
+
+## Proposed Solution
+
+1. Update line 86: change "7 skills" to "8 skills"
+2. Add `loop-suggester` row to the Skills table after the `confidence-check` row (or in alphabetical/group order under "Automation & Loops")
 
 ## Impact
 
@@ -64,6 +76,23 @@ Add to Skills table:
 
 ---
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-12
+- **Status**: Completed
+
+### Changes Made
+- `README.md`: Changed "7 skills" to "8 skills" on line 86
+- `README.md`: Added `loop-suggester` row to Skills table
+
+### Verification Results
+- Tests: PASS (2695 passed)
+- Lint: PASS
+- Types: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P2
+**Completed** | Created: 2026-02-12 | Priority: P2
