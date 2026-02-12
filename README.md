@@ -84,7 +84,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 - **34 slash commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
 - **7 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
-- **10 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, etc.) for autonomous and parallel issue processing
+- **11 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, etc.) for autonomous and parallel issue processing
 - **Configuration system** with project-type templates for Python, Node.js, Go, Rust, Java, and .NET
 
 ## Commands
@@ -120,13 +120,6 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 | `/ll:manage_issue <type> <action> [id]` | Full issue lifecycle (plan, implement, verify, complete) |
 | `/ll:iterate_plan [path]` | Update existing implementation plans |
 
-### Scanning & Analysis
-
-| Command | Description |
-|---------|-------------|
-| `/ll:find_dead_code` | Find unused code |
-| `/ll:analyze_log <log_file>` | Analyze ll-parallel/ll-auto log files for tool bugs |
-
 ### Code Quality
 
 | Command | Description |
@@ -134,6 +127,7 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 | `/ll:check_code [mode]` | Run linting, formatting, type checks |
 | `/ll:run_tests [scope]` | Run test suites |
 | `/ll:audit_docs [scope]` | Audit documentation for accuracy and completeness |
+| `/ll:find_dead_code` | Find unused code |
 
 ### Git & Release
 
@@ -203,7 +197,7 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 **Requires Python 3.11+**. Install with:
 
 ```bash
-pip install /path/to/little-loops/scripts
+pip install -e /path/to/little-loops/scripts
 ```
 
 ### ll-auto
@@ -370,7 +364,7 @@ For the full configuration reference — all sections, options, variable substit
 |-------|----------|
 | Config not loading | Run `/ll:init` or check `.claude/ll-config.json` exists |
 | Command not found | Verify plugin is enabled in `.claude/settings.local.json` |
-| `ll-auto`/`ll-parallel` not found | Run `pip install /path/to/little-loops/scripts` |
+| `ll-auto`/`ll-parallel` not found | Run `pip install -e /path/to/little-loops/scripts` |
 | Worktree errors | Run `ll-parallel --cleanup` then `git worktree prune` |
 | Issues not discovered | Check `issues.base_dir` config matches your `.issues/` path |
 | Resume not working | Delete state file (`.auto-manage-state.json` or `.parallel-manage-state.json`) |
