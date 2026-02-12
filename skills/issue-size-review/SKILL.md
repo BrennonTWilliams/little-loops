@@ -24,7 +24,7 @@ Proactively offer or invoke this skill when the user:
 Invoke this skill to review all active issues:
 
 ```
-/ll:issue_size_review
+/ll:issue-size-review
 ```
 
 ## Workflow
