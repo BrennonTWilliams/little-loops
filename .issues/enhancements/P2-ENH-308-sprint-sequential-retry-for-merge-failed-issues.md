@@ -97,7 +97,7 @@ This enhancement would:
 
 ## Blocked By
 
-- ENH-309: cli.py must be split into package first (structural change)
+- ENH-344: cli.py must be split into package first (structural change)
 
 ## Dependencies
 

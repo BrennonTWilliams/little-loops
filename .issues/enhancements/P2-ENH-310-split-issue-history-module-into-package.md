@@ -232,7 +232,7 @@ This enhancement would:
 - `scripts/tests/test_issue_history_advanced_analytics.py` - imports from `issue_history`
 
 ### Similar Patterns
-- ENH-309 (cli.py split) follows the same god-module-to-package pattern
+- ENH-344 (cli.py split) follows the same god-module-to-package pattern
 
 ### Tests
 - `scripts/tests/test_issue_history_advanced_analytics.py` - update imports if needed

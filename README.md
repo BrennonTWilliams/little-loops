@@ -168,7 +168,7 @@ little-loops uses `.claude/ll-config.json` for project-specific settings. All se
     "command_prefix": "/ll:",
     "ready_command": "ready_issue {{issue_id}}",
     "manage_command": "manage_issue {{issue_type}} {{action}} {{issue_id}}",
-    "worktree_copy_files": [".claude/settings.local.json", ".env"]
+    "worktree_copy_files": [".env"]
   },
 
   "commands": {
@@ -723,6 +723,18 @@ ll-check-links --format markdown      # Markdown report
 ll-check-links --ignore 'http://localhost.*'  # Ignore pattern
 ```
 
+### ll-deps
+
+Cross-issue dependency discovery and validation:
+
+```bash
+ll-deps analyze                      # Full analysis with markdown output
+ll-deps analyze --format json        # JSON output for programmatic use
+ll-deps analyze --graph              # Include ASCII dependency graph
+ll-deps validate                     # Validate existing dependency references
+ll-deps -d /path/to/.issues analyze  # Custom issues directory
+```
+
 ## Command Override
 
 Projects can override plugin commands by placing files in `.claude/commands/ll/`.
@@ -861,7 +873,16 @@ little-loops/
     ├── pyproject.toml
     └── little_loops/
         ├── __init__.py
-        ├── cli.py              # CLI entrypoints
+        ├── cli/                 # CLI entrypoints package
+        │   ├── __init__.py
+        │   ├── auto.py          # ll-auto CLI
+        │   ├── docs.py          # ll-verify-docs, ll-check-links CLI
+        │   ├── history.py       # ll-history CLI
+        │   ├── loop.py          # ll-loop CLI
+        │   ├── messages.py      # ll-messages CLI
+        │   ├── parallel.py      # ll-parallel CLI
+        │   ├── sprint.py        # ll-sprint CLI
+        │   └── sync.py          # ll-sync CLI
         ├── cli_args.py         # Argument parsing
         ├── config.py           # Configuration loading
         ├── state.py            # State persistence
@@ -870,6 +891,7 @@ little-loops/
         ├── frontmatter.py      # YAML frontmatter parsing
         ├── doc_counts.py       # Documentation count utilities
         ├── link_checker.py     # Link validation
+        ├── session_log.py      # Session log utilities
         ├── issue_manager.py    # Sequential automation
         ├── issue_parser.py     # Issue file parsing
         ├── issue_discovery.py  # Issue discovery and deduplication

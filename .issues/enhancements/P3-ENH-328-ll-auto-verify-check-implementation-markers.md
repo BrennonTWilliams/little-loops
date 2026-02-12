@@ -63,7 +63,7 @@ if not moved_to_completed:
 
 ## Blocked By
 
-- ENH-309: cli.py must be split into package first (structural change)
+- ENH-344: cli.py must be split into package first (structural change)
 
 ## Integration Map
 
@@ -107,4 +107,4 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 - **Verdict**: VALID
 - Verify phase logic is in `main_auto()` in `scripts/little_loops/cli.py`
 - No implementation marker checking exists — only file-move detection
-- Blocked by ENH-309 (cli.py split) confirmed — ENH-309 still open
+- Blocked by ENH-344 (cli.py split) confirmed — ENH-344 still open
