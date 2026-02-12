@@ -93,4 +93,7 @@ A pragmatic approach: remove sections with no near-term implementation plan, kee
 
 ## Status
 
-**Open** | Created: 2026-02-11 | Priority: P4
+**Completed** | Created: 2026-02-11 | Completed: 2026-02-11 | Priority: P4
+
+### Resolution
+Removed 5 unused schema sections: `issues.capture_template`, `issues.duplicate_detection`, `workflow.phase_gates`, `workflow.deep_research`, `workflow.plan_template`. Also removed the now-empty `workflow` top-level section. `prompt_optimization` was kept — it's already wired into `hooks/scripts/user-prompt-check.sh`. No dataclass changes needed in `config.py` (none of these had corresponding fields). All 60 config tests pass.
