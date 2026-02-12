@@ -26,6 +26,14 @@ This command uses project configuration from `.claude/ll-config.json`:
 
 ## Process
 
+### 0. Parse Flags
+
+```bash
+AUTO_MODE=false
+if [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then AUTO_MODE=true; fi
+if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
+```
+
 ### 1. Find Unprioritized Issues
 
 ```bash
@@ -53,7 +61,9 @@ After scanning, determine if any unprioritized issues were found:
 
 #### Re-prioritize Prompt
 
-When all active issues are already prioritized, use the `AskUserQuestion` tool:
+**If `AUTO_MODE` is true**: Skip the prompt and proceed directly to Step 2-RE (Re-evaluate all).
+
+**If `AUTO_MODE` is false**: Use the `AskUserQuestion` tool:
 
 ```yaml
 questions:
