@@ -16,6 +16,13 @@ The previously filed BUG-361 identified the dead `exit 0` on line 103 as a trivi
 
 - **File**: `hooks/scripts/user-prompt-check.sh:98-103`
 
+## Steps to Reproduce
+
+1. Enable prompt optimization in `.claude/ll-config.json` (`prompt_optimization.enabled: true`)
+2. Submit a normal prompt (>10 chars, no bypass prefix) in Claude Code
+3. `user-prompt-check.sh` fires, builds hook content, writes to stderr, and exits with code 2
+4. Observe: user's original prompt is erased from context
+
 ## Current Behavior
 
 ```bash
@@ -31,6 +38,10 @@ When prompt optimization triggers:
 1. The optimization template is written to stderr
 2. `exit 2` fires — Claude Code **blocks the prompt and erases it from context**
 3. stderr content is shown to Claude as an error, but the user's original prompt is gone
+
+## Actual Behavior
+
+The user's original prompt is destroyed. The optimization template content reaches Claude as an error message via stderr, but Claude has no access to the original prompt it was meant to enhance.
 
 ## Expected Behavior
 
@@ -49,6 +60,27 @@ jq -n --arg ctx "$HOOK_CONTENT" '{"hookSpecificOutput":{"hookEventName":"UserPro
 exit 0
 ```
 
+## Root Cause
+
+- **File**: `hooks/scripts/user-prompt-check.sh`
+- **Anchor**: lines 98-101 (the final output block)
+- **Cause**: The script uses `exit 2` + stderr to deliver hook content, but for `UserPromptSubmit`, exit 2 means "block and erase the prompt." The correct approach is `exit 0` + stdout, which adds content as context alongside the user's prompt.
+
+## Proposed Solution
+
+Change the output mechanism from stderr+exit 2 to stdout+exit 0:
+
+```bash
+# Output to stdout with exit 0 — added as context alongside the user's prompt
+echo "$HOOK_CONTENT"
+exit 0
+```
+
+Remove the dead `exit 0` on line 103. The fix is two changes in `user-prompt-check.sh`:
+1. Replace `echo "$HOOK_CONTENT" >&2` with `echo "$HOOK_CONTENT"` (stdout instead of stderr)
+2. Replace `exit 2` with `exit 0`
+3. Remove dead `exit 0` on line 103
+
 ## Reference
 
 - `docs/claude-code/hooks-reference.md` — "Exit code 2 behavior per event" table: `UserPromptSubmit — Yes [can block] — Blocks prompt processing and erases the prompt`
@@ -64,8 +96,25 @@ exit 0
 
 `bug`, `hooks`, `user-prompt-check`, `data-loss`
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-12
+- **Status**: Completed
+
+### Changes Made
+- `hooks/scripts/user-prompt-check.sh`: Changed output from stderr+exit 2 to stdout+exit 0, removed dead code
+- `scripts/tests/test_hooks_integration.py`: Updated test assertion to expect only exit code 0
+
+### Verification Results
+- Tests: PASS (30/30)
+- Lint: PASS
+
+## Session Log
+- `/ll:manage_issue` - 2026-02-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c3052a7-a34f-494d-9545-a1135642648a.jsonl`
+
 ---
 
 ## Status
 
-**Open** | Updated: 2026-02-12 | Priority: P2
+**Completed** | Updated: 2026-02-12 | Priority: P2

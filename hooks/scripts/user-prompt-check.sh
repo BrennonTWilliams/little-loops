@@ -95,9 +95,7 @@ HOOK_CONTENT="${HOOK_CONTENT//\{\{USER_PROMPT\}\}/$USER_PROMPT}"
 HOOK_CONTENT="${HOOK_CONTENT//\{\{MODE\}\}/$MODE}"
 HOOK_CONTENT="${HOOK_CONTENT//\{\{CONFIRM\}\}/$CONFIRM}"
 
-# Output to stderr with exit 2 to ensure it reaches Claude
-# Reference: https://github.com/anthropics/claude-code/issues/11224
-echo "$HOOK_CONTENT" >&2
-exit 2
-
+# Output to stdout with exit 0 — added as context alongside the user's prompt
+# Reference: docs/claude-code/hooks-reference.md (UserPromptSubmit decision control)
+echo "$HOOK_CONTENT"
 exit 0

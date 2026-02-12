@@ -187,11 +187,10 @@ class TestUserPromptCheck:
                 timeout=5,
             )
 
-            # Should exit cleanly (either 0 for skip or 2 for optimization)
-            assert result.returncode in (0, 2), f"Unexpected exit code: {result.returncode}"
+            # Should exit cleanly with 0 (skip or optimization context added)
+            assert result.returncode == 0, f"Unexpected exit code: {result.returncode}"
 
-            # No errors on stderr (except valid hook output)
-            # The hook may output prompts on stderr with exit 2
+            # No errors on stderr (optimization output goes to stdout)
             if result.returncode == 0:
                 # Skipped - no error output expected
                 pass
