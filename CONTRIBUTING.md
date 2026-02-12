@@ -123,14 +123,19 @@ little-loops/
 ├── hooks/                # Lifecycle hooks
 ├── loops/                # Built-in FSM loop definitions
 │   ├── codebase-scan.yaml
+│   ├── history-reporting.yaml
 │   ├── issue-readiness-cycle.yaml
 │   ├── issue-verification.yaml
 │   ├── pre-pr-checks.yaml
-│   └── quality-gate.yaml
-├── skills/               # 7 skill definitions (user-invocable workflows)
+│   ├── quality-gate.yaml
+│   ├── sprint-execution.yaml
+│   └── workflow-analysis.yaml
+├── skills/               # 8 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
+│   ├── confidence-check/             # Pre-implementation confidence check
 │   ├── issue-size-review/            # Evaluate issue complexity
 │   ├── issue-workflow/               # Issue lifecycle quick reference
+│   ├── loop-suggester/               # Suggest FSM loops from message history
 │   ├── map-dependencies/             # Discover and map issue dependencies
 │   ├── product-analyzer/             # Analyze codebase against product goals
 │   └── workflow-automation-proposer/ # Propose automations from patterns
@@ -140,14 +145,20 @@ little-loops/
 │   ├── ARCHITECTURE.md                  # System design diagrams
 │   ├── CLI-TOOLS-AUDIT.md               # CLI tools audit
 │   ├── COMMANDS.md                      # Command reference
+│   ├── CONFIGURATION.md                 # Configuration reference
 │   ├── E2E_TESTING.md                   # End-to-end testing guide
 │   ├── INDEX.md                         # Documentation index
+│   ├── ISSUE_TEMPLATE.md               # Issue template guide
+│   ├── MERGE-COORDINATOR.md            # Merge coordinator docs
 │   ├── SESSION_HANDOFF.md               # Context management guide
 │   ├── TESTING.md                       # Testing patterns and conventions
 │   ├── TROUBLESHOOTING.md              # Common issues and solutions
 │   ├── claude-cli-integration-mechanics.md
+│   ├── claude-code/                     # Claude Code documentation
+│   ├── demo/                            # Demo materials
 │   ├── demo-repo-rubric.md
-│   └── generalized-fsm-loop.md         # FSM loop system
+│   ├── generalized-fsm-loop.md         # FSM loop system
+│   └── research/                        # Research documents
 └── scripts/              # Python CLI tools
     ├── pyproject.toml    # Package configuration
     ├── tests/            # Test suite
