@@ -41,6 +41,14 @@ Replace the per-file loop with a single batched call and parse the combined outp
 - **Risk**: Low - git log supports multiple paths natively
 - **Breaking Change**: No
 
+## Blocked By
+
+- ENH-349: consolidate duplicated file path extraction (shared issue_discovery.py)
+
+## Blocks
+
+- ENH-387: add type flag to CLI processing tools (shared issue_discovery.py)
+
 ## Labels
 
 `enhancement`, `performance`, `captured`

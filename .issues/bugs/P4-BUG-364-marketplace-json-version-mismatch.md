@@ -33,6 +33,10 @@ Either:
 
 `bug`, `config`, `plugin-manifest`
 
+## Blocks
+
+- ENH-366: add agents directory to plugin.json (shared plugin.json)
+
 ---
 
 ## Status

@@ -76,6 +76,10 @@ Suggested statusMessage values:
 
 `enhancement`, `hooks`, `configuration`, `ux`
 
+## Blocked By
+
+- ENH-377: remove ignored matchers from UserPromptSubmit and Stop (shared hooks.json, hooks-reference.md)
+
 ---
 
 ## Status

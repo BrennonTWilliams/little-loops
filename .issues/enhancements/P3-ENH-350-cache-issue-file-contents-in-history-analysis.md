@@ -74,6 +74,10 @@ Add a `_load_issue_contents(issues: list[CompletedIssue]) -> dict[str, str]` hel
 
 `enhancement`, `performance`, `captured`
 
+## Blocks
+
+- ENH-351: use deque for BFS in coupling cluster builder (shared issue_history.py)
+
 ## Session Log
 - `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
 

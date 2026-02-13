@@ -84,6 +84,10 @@ Use the `dependency_mapper.py` version as the base (it's the most refined with p
 
 `enhancement`, `refactoring`, `captured`
 
+## Blocks
+
+- ENH-352: batch git log calls in files_modified_since_commit (shared issue_discovery.py)
+
 ## Session Log
 - `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
 

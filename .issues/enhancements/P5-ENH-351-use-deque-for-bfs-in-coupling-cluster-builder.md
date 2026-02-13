@@ -52,6 +52,10 @@ while queue:
 - **Risk**: Low - Standard Python optimization
 - **Breaking Change**: No
 
+## Blocked By
+
+- ENH-350: cache issue file contents in history analysis (shared issue_history.py)
+
 ## Labels
 
 `enhancement`, `performance`, `captured`

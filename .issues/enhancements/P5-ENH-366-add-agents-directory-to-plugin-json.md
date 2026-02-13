@@ -40,6 +40,13 @@ Note: This depends on whether the plugin.json schema supports an `agents` key. I
 - **Effort**: Trivial
 - **Risk**: None
 
+## Blocked By
+
+- BUG-364: marketplace.json version mismatch (shared plugin.json)
+- ENH-279: audit skill vs command allocation (shared plugin.json)
+- ENH-374: manifest missing agents and hooks declarations (shared plugin.json)
+- ENH-319: improve ll-analyze-workflows (shared plugin.json)
+
 ## Labels
 
 `enhancement`, `config`, `agents`

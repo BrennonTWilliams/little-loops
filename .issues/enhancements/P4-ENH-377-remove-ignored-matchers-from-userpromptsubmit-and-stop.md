@@ -63,6 +63,10 @@ Remove the `matcher` field from both entries:
 
 `enhancement`, `hooks`, `configuration`, `cleanup`
 
+## Blocks
+
+- ENH-371: add description and statusMessage to hooks.json (shared hooks.json, hooks-reference.md)
+
 ---
 
 ## Status

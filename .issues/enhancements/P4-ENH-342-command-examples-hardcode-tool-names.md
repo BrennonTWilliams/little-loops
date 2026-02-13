@@ -79,7 +79,11 @@ Either use `{{config.project.test_cmd}}` etc. in templates, or add a note like "
 
 ## Blocked By
 
-- ENH-341: Commands and skills use hardcoded paths instead of config refs (path refs before tool name refs in shared files)
+_None — ENH-341 (hardcoded paths) is now completed._
+
+## Blocks
+
+- BUG-359: sprints default_mode violates schema (shared ll-config.json)
 
 ## Labels
 

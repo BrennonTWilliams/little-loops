@@ -97,7 +97,11 @@ This enhancement would:
 
 ## Blocked By
 
-_None — previously blocked by ENH-319, but this audit can proceed independently. The skill-vs-command evaluation doesn't require workflow enhancements to be implemented first._
+- ENH-368: plugin-config-auditor missing hook event and handler types (shared docs/ARCHITECTURE.md)
+
+## Blocks
+
+- ENH-366: add agents directory to plugin.json (shared plugin.json)
 
 ## Labels
 

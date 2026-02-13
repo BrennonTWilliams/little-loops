@@ -26,6 +26,10 @@ Could be bundled with ENH-356 since both modify the same file.
 
 Low — documentation freshness improvement.
 
+## Blocked By
+
+- ENH-388: standardize issue priority range to P0-P8 (shared CLAUDE.md)
+
 ---
 
 ## Audit Update (2026-02-12)

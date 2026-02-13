@@ -186,7 +186,7 @@ All enhancements should be:
 
 ## Blocks
 
-_None — ENH-279 dependency removed (can proceed independently)._
+- ENH-366: add agents directory to plugin.json (shared plugin.json)
 
 ## Labels
 

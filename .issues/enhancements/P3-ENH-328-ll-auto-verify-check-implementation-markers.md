@@ -63,7 +63,7 @@ if not moved_to_completed:
 
 ## Blocked By
 
-- ENH-344: cli.py must be split into package first (structural change)
+- ENH-308: sprint sequential retry for merge-failed issues (shared cli.py)
 
 ## Integration Map
 

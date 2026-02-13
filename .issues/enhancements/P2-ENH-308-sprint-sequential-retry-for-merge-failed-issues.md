@@ -97,7 +97,11 @@ This enhancement would:
 
 ## Blocked By
 
-- ENH-344: cli.py must be split into package first (structural change)
+_None — ENH-344 (cli.py split into package) is now completed._
+
+## Blocks
+
+- ENH-328: ll-auto verify check implementation markers (shared cli.py)
 
 ## Dependencies
 
