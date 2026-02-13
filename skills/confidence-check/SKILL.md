@@ -7,6 +7,13 @@ description: |
   Complementary to /ll:ready_issue (which validates the issue file) — this skill validates the implementation approach and codebase readiness.
 
   Trigger keywords: "confidence check", "pre-implementation check", "ready to implement", "implementation readiness", "confidence score"
+model: sonnet
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Edit
+  - Bash(find:*)
 ---
 
 # Confidence Check Skill

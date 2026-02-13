@@ -7,11 +7,11 @@ discovered_by: audit_claude_config
 
 ## Summary
 
-All 8 skills in `skills/` have only `description` in their frontmatter. Per `docs/claude-code/skills.md`, skills support `allowed-tools` and `model` fields. Reference-only skills like `issue-workflow` and read-only CLI skills like `analyze-history` should restrict write tools. Simple reference skills could use `model: haiku` for cost savings.
+8 of 16 skills in `skills/` have only `description` in their frontmatter (the other 8 already have `allowed-tools`). Per `docs/claude-code/skills.md`, skills support `allowed-tools` and `model` fields. Reference-only skills like `issue-workflow` and read-only CLI skills like `analyze-history` should restrict write tools. Simple reference skills could use `model: haiku` for cost savings.
 
 ## Current Behavior
 
-Every skill SKILL.md has minimal frontmatter:
+The following 8 skills have only `description` in their frontmatter:
 ```yaml
 ---
 description: "..."
@@ -42,12 +42,16 @@ Skills should specify tool restrictions where appropriate:
 | `product-analyzer` | sonnet | No — read-only analysis | Read, Glob, Grep |
 | `workflow-automation-proposer` | sonnet | Yes — writes YAML output | Read, Write |
 
-Example (note: `allowed-tools` uses comma-separated string format per `docs/claude-code/skills.md:167`):
+Example (using YAML array format consistent with existing skills in this project):
 ```yaml
 ---
 description: "..."
 model: haiku
-allowed-tools: Read, Glob, Grep, Bash
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Bash
 ---
 ```
 
@@ -123,6 +127,7 @@ allowed-tools: Read, Glob, Grep, Bash
 ## Session Log
 - /ll:format_issue --all --auto - 2026-02-13
 - /ll:refine_issue - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f443c963-bde0-44b6-bee4-1a88f2ca6a7a.jsonl`
+- /ll:manage_issue - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcd8f655-b2b0-4574-8fb4-a00ac15f9d4d.jsonl`
 
 ## Verification Notes
 
@@ -135,6 +140,36 @@ allowed-tools: Read, Glob, Grep, Bash
 
 ---
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `skills/analyze-history/SKILL.md`: Added `model: haiku`, `allowed-tools: Bash(ll-history:*)`
+- `skills/confidence-check/SKILL.md`: Added `model: sonnet`, `allowed-tools: Read, Glob, Grep, Edit, Bash(find:*)`
+- `skills/issue-size-review/SKILL.md`: Added `model: sonnet`, `allowed-tools: Read, Glob, Bash(ll-next-id:*, git:*)`
+- `skills/issue-workflow/SKILL.md`: Added `model: haiku` (no allowed-tools — pure reference skill)
+- `skills/loop-suggester/SKILL.md`: Added `model: sonnet`, `allowed-tools: Read, Glob, Grep, Bash(ll-messages:*)`
+- `skills/map-dependencies/SKILL.md`: Added `model: sonnet`, `allowed-tools: Read, Glob, Grep, Bash(ll-deps:*, git:*)`
+- `skills/product-analyzer/SKILL.md`: Added `model: sonnet`, `allowed-tools: Read, Glob, Grep`
+- `skills/workflow-automation-proposer/SKILL.md`: Added `model: sonnet`, `allowed-tools: Read, Write, Glob, Grep`
+
+### Implementation Notes
+- Tool lists based on actual tool usage analysis of skill bodies (not just issue suggestions)
+- `confidence-check` needed Edit (writes confidence_score to frontmatter) and Bash(find:*) beyond what issue suggested
+- `issue-workflow` gets no `allowed-tools` since it makes zero tool calls (pure reference)
+- Bash tools use parameterized format consistent with existing skills (e.g., `Bash(ll-history:*)`)
+
+### Verification Results
+- Tests: PASS (2733 passed)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P4
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P4

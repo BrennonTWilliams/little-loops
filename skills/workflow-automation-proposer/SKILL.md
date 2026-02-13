@@ -7,6 +7,12 @@ description: |
   Output: step3-proposals.yaml
 
   Trigger keywords: "propose automations", "workflow proposals", "automation suggestions", "step 3 workflow analysis"
+model: sonnet
+allowed-tools:
+  - Read
+  - Write
+  - Glob
+  - Grep
 ---
 
 # Workflow Automation Proposer
