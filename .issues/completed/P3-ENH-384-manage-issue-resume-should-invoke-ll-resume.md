@@ -113,9 +113,25 @@ Instead of duplicating the file-read logic, `manage_issue --resume` could invoke
 
 ## Session Log
 - /ll:format_issue --all --auto - 2026-02-13
+- /ll:manage_issue - 2026-02-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38af4882-f822-4384-8eb2-3dfe1274a0a7.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `commands/manage_issue.md`: Added step 1 to `--resume` handling that reads `.claude/ll-continue-prompt.md` continuation prompt before scanning plan checkboxes, incorporating handoff context from previous sessions
+
+### Verification Results
+- Tests: PASS (2733 passed)
+- Lint: PASS
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Priority: P3

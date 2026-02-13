@@ -324,9 +324,23 @@ Write the plan using this structure (sections are recommended, skip if not appli
 
 If `--resume` flag is specified:
 
-1. **Locate existing plan** matching the issue ID pattern
-2. **Scan for progress** - look for `[x]` checkmarks in success criteria
-3. **Present resume status**:
+1. **Read continuation prompt** (if it exists):
+   - Check for `.claude/ll-continue-prompt.md`
+   - If found, read and display its content:
+     ```
+     Continuation context from previous session
+     ─────────────────────────────────────────────────────────────────
+
+     [Display full continuation prompt content]
+
+     ─────────────────────────────────────────────────────────────────
+     ```
+   - Check freshness: warn if older than 24 hours but still use it
+   - Incorporate the handoff details (in-flight work, errors encountered, next steps) into your understanding before proceeding
+
+2. **Locate existing plan** matching the issue ID pattern
+3. **Scan for progress** - look for `[x]` checkmarks in success criteria
+4. **Present resume status**:
    ```
    Resuming [ISSUE-ID] from Phase [N]
 
@@ -339,8 +353,8 @@ If `--resume` flag is specified:
 
    Verifying previous work is still valid...
    ```
-4. **Verify previous work** (only if something seems off)
-5. **Continue from first unchecked item**
+5. **Verify previous work** (only if something seems off)
+6. **Continue from first unchecked item**
 
 ### Implementation Process
 
