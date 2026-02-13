@@ -71,9 +71,9 @@ Replace `head -50` with `cat` in the non-merge path to match the Python merge pa
 
 ## Impact
 
-- **Priority**: P4
-- **Effort**: Trivial
-- **Risk**: Low — more context for Claude when config is large
+- **Priority**: P4 — Cosmetic inconsistency; does not affect correctness for most configs under 50 lines
+- **Effort**: Trivial — Single line change (`head -50` to `cat`)
+- **Risk**: Low — More context for Claude when config is large; no breaking change
 
 ## Labels
 
@@ -81,9 +81,28 @@ Replace `head -50` with `cat` in the non-merge path to match the Python merge pa
 
 ## Session Log
 - `/ll:format_issue --all --auto` - 2026-02-13
+- `/ll:manage_issue` - 2026-02-13T<!-- session --> - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/435eb0b2-be49-4f09-b3d4-728f4a9ecc98.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `hooks/scripts/session-start.sh:152`: Redirected diagnostic echo to stderr (`>&2`) for consistency with Python merge path
+- `hooks/scripts/session-start.sh:153`: Replaced `head -50 "$CONFIG_FILE"` with `cat "$CONFIG_FILE"` to output full config
+
+### Verification Results
+- Tests: PASS (2733 passed)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P4
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P4

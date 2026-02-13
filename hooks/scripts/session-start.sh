@@ -149,8 +149,8 @@ if [ -f "$CONFIG_FILE" ] || [ -f "$LOCAL_FILE" ]; then
         # Use Python to merge configs
         merge_local_config
     else
-        echo "[little-loops] Config loaded: $CONFIG_FILE"
-        head -50 "$CONFIG_FILE"
+        echo "[little-loops] Config loaded: $CONFIG_FILE" >&2
+        cat "$CONFIG_FILE"
     fi
     # Validate enabled features have required sub-configuration
     validate_enabled_features "$CONFIG_FILE"
