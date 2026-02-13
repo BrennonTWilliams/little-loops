@@ -31,50 +31,74 @@ This enhancement would:
 
 Skills should specify tool restrictions where appropriate:
 
-| Skill | Suggested model | Needs write tools? |
-|-------|----------------|-------------------|
-| `analyze-history` | haiku | No - read-only CLI analysis |
-| `confidence-check` | sonnet | No - read-only evaluation |
-| `issue-size-review` | sonnet | No - read-only analysis |
-| `issue-workflow` | haiku | No - reference-only |
-| `map-dependencies` | sonnet | Yes - writes dependency data |
-| `product-analyzer` | sonnet | No - read-only analysis |
-| `review-sprint` | sonnet | No - read-only review |
-| `workflow-automation-proposer` | sonnet | Yes - writes YAML output |
+| Skill | Suggested model | Needs write tools? | Actual tools used |
+|-------|----------------|-------------------|-------------------|
+| `analyze-history` | haiku | No — CLI orchestration | Bash |
+| `confidence-check` | sonnet | No — read-only evaluation | Glob, Grep |
+| `issue-size-review` | sonnet | No — read + Bash for git mv | Glob, Bash |
+| `issue-workflow` | haiku | No — reference-only, no tool calls | None |
+| `loop-suggester` | sonnet | No — reads input files | Read |
+| `map-dependencies` | sonnet | No — CLI orchestration | Bash |
+| `product-analyzer` | sonnet | No — read-only analysis | Read, Glob, Grep |
+| `workflow-automation-proposer` | sonnet | Yes — writes YAML output | Read, Write |
 
-Example:
+Example (note: `allowed-tools` uses comma-separated string format per `docs/claude-code/skills.md:167`):
 ```yaml
 ---
 description: "..."
 model: haiku
-allowed-tools: ["Read", "Glob", "Grep", "Bash"]
+allowed-tools: Read, Glob, Grep, Bash
 ---
 ```
 
 ## Integration Map
 
 ### Files to Modify
-- `skills/analyze-history/SKILL.md`
-- `skills/confidence-check/SKILL.md`
-- `skills/issue-size-review/SKILL.md`
-- `skills/issue-workflow/SKILL.md`
-- `skills/map-dependencies/SKILL.md`
-- `skills/product-analyzer/SKILL.md`
-- `skills/review-sprint/SKILL.md`
-- `skills/workflow-automation-proposer/SKILL.md`
+- `skills/analyze-history/SKILL.md` — add `model: haiku`, `allowed-tools: Bash, Read, Glob, Grep`
+- `skills/confidence-check/SKILL.md` — add `model: sonnet`, `allowed-tools: Read, Glob, Grep`
+- `skills/issue-size-review/SKILL.md` — add `model: sonnet`, `allowed-tools: Read, Glob, Grep, Bash`
+- `skills/issue-workflow/SKILL.md` — add `model: haiku`, `allowed-tools: Read`
+- `skills/loop-suggester/SKILL.md` — add `model: sonnet`, `allowed-tools: Read, Glob, Grep`
+- `skills/map-dependencies/SKILL.md` — add `model: sonnet`, `allowed-tools: Bash, Read, Glob, Grep`
+- `skills/product-analyzer/SKILL.md` — add `model: sonnet`, `allowed-tools: Read, Glob, Grep`
+- `skills/workflow-automation-proposer/SKILL.md` — add `model: sonnet`, `allowed-tools: Read, Write, Glob, Grep`
+
+### Similar Patterns
+- `commands/scan_codebase.md:1-5` — uses `allowed-tools: [Bash(git:*, gh:*), Task, TodoWrite]` (command array format)
+- `commands/analyze-workflows.md:1-9` — uses `allowed-tools: [Read, Write, Glob, Task, Bash, Skill, TodoWrite]`
+- `docs/claude-code/skills.md:162-168` — canonical skill frontmatter example with comma-separated string format
+
+### Dependent Files (Callers/Importers)
+- `agents/plugin-config-auditor.md:39,74` — audits `allowed_tools` and `model` fields; will validate these additions
+- `agents/consistency-checker.md` — cross-component validation may reference skill tool restrictions
 
 ### Tests
 - N/A — skill markdown files are not Python-testable; verified via manual invocation
+- Verify each skill still functions after adding restrictions by invoking it
 
 ### Documentation
 - N/A — frontmatter-only changes to existing skill files
+- `docs/claude-code/skills.md` — reference doc, no changes needed
 
 ## Implementation Steps
 
-1. Review each skill's body to determine actual tool usage
-2. Add `model` field (haiku for reference/simple skills, sonnet for analysis)
-3. Add `allowed-tools` where skills don't need write access
-4. Test each skill still works with restricted tools
+1. **Add frontmatter to reference-only skills** (no tool calls):
+   - `skills/issue-workflow/SKILL.md` — add `model: haiku` and `allowed-tools: Read` (purely reference, no tool invocations in body)
+
+2. **Add frontmatter to CLI-orchestration skills** (Bash-only):
+   - `skills/analyze-history/SKILL.md` — add `model: haiku`, `allowed-tools: Bash, Read, Glob, Grep` (runs `ll-history` CLI commands)
+   - `skills/map-dependencies/SKILL.md` — add `model: sonnet`, `allowed-tools: Bash, Read, Glob, Grep` (runs `ll-deps` CLI commands)
+
+3. **Add frontmatter to read-only analysis skills**:
+   - `skills/confidence-check/SKILL.md` — add `model: sonnet`, `allowed-tools: Read, Glob, Grep`
+   - `skills/product-analyzer/SKILL.md` — add `model: sonnet`, `allowed-tools: Read, Glob, Grep`
+   - `skills/loop-suggester/SKILL.md` — add `model: sonnet`, `allowed-tools: Read, Glob, Grep`
+
+4. **Add frontmatter to skills requiring Bash or Write**:
+   - `skills/issue-size-review/SKILL.md` — add `model: sonnet`, `allowed-tools: Read, Glob, Grep, Bash` (uses `git mv` for renaming)
+   - `skills/workflow-automation-proposer/SKILL.md` — add `model: sonnet`, `allowed-tools: Read, Write, Glob, Grep` (writes step3-proposals.yaml)
+
+5. **Test each skill** — invoke each skill to verify it still functions with restricted tools. Pay special attention to skills that spawn sub-agents (Task tool) — these may need `Task` in allowed-tools if Claude Code doesn't inherit it automatically
 
 ## Impact
 
@@ -90,7 +114,7 @@ allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 
 ## Blocked By
 
-- BUG-402: Commands reference $ARGUMENTS inconsistently — argument handling bug should be fixed before adding tool restrictions
+- ~~BUG-402: Commands reference $ARGUMENTS inconsistently~~ — **Resolved** (completed, in `.issues/completed/`)
 
 ## Labels
 
@@ -98,6 +122,7 @@ allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 
 ## Session Log
 - /ll:format_issue --all --auto - 2026-02-13
+- /ll:refine_issue - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f443c963-bde0-44b6-bee4-1a88f2ca6a7a.jsonl`
 
 ## Verification Notes
 

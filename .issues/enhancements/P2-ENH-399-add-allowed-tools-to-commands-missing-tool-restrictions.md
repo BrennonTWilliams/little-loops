@@ -7,7 +7,7 @@ discovered_by: audit_claude_config
 
 ## Summary
 
-27 of 36 commands (75%) lack `allowed-tools` in their frontmatter. Only 9 commands currently specify it. Per `docs/claude-code/skills.md`, `allowed-tools` restricts available tools during command execution — important for security scoping and preventing unintended side effects. The largest commands (`init` at 1142 lines, `configure` at 1044 lines) are all missing this field.
+25 of 36 commands (69%) lack `allowed-tools` in their frontmatter. Only 11 commands currently specify it. Per `docs/claude-code/skills.md`, `allowed-tools` restricts available tools during command execution — important for security scoping and preventing unintended side effects. The largest commands (`init` at 1142 lines, `configure` at 1044 lines) are all missing this field.
 
 ## Motivation
 
@@ -18,7 +18,7 @@ This enhancement would:
 
 ## Current Behavior
 
-75% of commands have no tool restrictions:
+69% of commands have no tool restrictions:
 ```yaml
 ---
 description: "..."
@@ -38,7 +38,7 @@ allowed-tools: ["Read", "Glob", "Grep", "Edit", "Write", "Bash"]
 ---
 ```
 
-## Commands Missing allowed-tools (27)
+## Commands Missing allowed-tools (25)
 
 1. `align_issues.md`
 2. `audit_architecture.md`
@@ -55,28 +55,27 @@ allowed-tools: ["Read", "Glob", "Grep", "Edit", "Write", "Bash"]
 13. `init.md`
 14. `iterate_plan.md`
 15. `loop-suggester.md`
-16. `manage_release.md`
-17. `normalize_issues.md`
-18. `prioritize_issues.md`
-19. `ready_issue.md`
-20. `refine_issue.md`
-21. `resume.md`
-22. `review_sprint.md`
-23. `run_tests.md`
-24. `toggle_autoprompt.md`
-25. `tradeoff_review_issues.md`
-26. `verify_issues.md`
+16. `normalize_issues.md`
+17. `prioritize_issues.md`
+18. `ready_issue.md`
+19. `refine_issue.md`
+20. `resume.md`
+21. `review_sprint.md`
+22. `run_tests.md`
+23. `toggle_autoprompt.md`
+24. `tradeoff_review_issues.md`
+25. `verify_issues.md`
 
-Note: The 26th was listed as a final count after deduplication. The plan originally listed 27 but `review_sprint` may be a skill command.
-
-## Commands Already Specifying allowed-tools (9)
+## Commands Already Specifying allowed-tools (11)
 
 These serve as reference for the pattern:
+- `analyze-workflows.md`
 - `check_code.md`
 - `commit.md`
 - `create_loop.md`
 - `create_sprint.md`
 - `manage_issue.md`
+- `manage_release.md`
 - `open_pr.md`
 - `scan_codebase.md`
 - `scan_product.md`
@@ -85,7 +84,7 @@ These serve as reference for the pattern:
 ## Integration Map
 
 ### Files to Modify
-- 27 files in `commands/` directory
+- 25 files in `commands/` directory
 
 ### Tests
 - N/A — command markdown frontmatter changes are not Python-testable; verified via manual invocation
@@ -132,13 +131,7 @@ These serve as reference for the pattern:
 ## Verification Notes
 
 - **Verified**: 2026-02-13
-- **Verdict**: NEEDS_UPDATE
-- **Counts changed**: Now 11 commands have `allowed-tools` (was 9), 25 missing (was 27)
-- **Two commands gained `allowed-tools`** since issue creation:
-  - `manage_release.md` — listed as "missing" in issue, now has allowed-tools
-  - `analyze-workflows.md` — not in either list, now has allowed-tools
-- The "Already Specifying" list should add `manage_release.md` and `analyze-workflows.md`
-- Remove `manage_release.md` from the "Commands Missing" list
+- **Verdict**: VERIFIED (counts updated to reflect current state)
 
 ---
 
