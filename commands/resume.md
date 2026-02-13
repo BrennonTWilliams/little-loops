@@ -118,6 +118,16 @@ The `.claude/ll-session-state.json` file contains:
 
 ---
 
+## Arguments
+
+$ARGUMENTS
+
+- **prompt_file** (optional, default: `.claude/ll-continue-prompt.md`): Path to continuation prompt file
+  - If provided, reads from specified path
+  - If omitted, checks default location then falls back to state file
+
+---
+
 ## Examples
 
 ```bash

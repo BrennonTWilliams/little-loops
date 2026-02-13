@@ -120,6 +120,18 @@ Other automatic bypasses:
 
 ---
 
+## Arguments
+
+$ARGUMENTS
+
+- **setting** (optional, default: `status`): Setting to toggle
+  - `status` - Display current settings
+  - `enabled` - Toggle auto-optimization on/off
+  - `mode` - Toggle between quick and thorough mode
+  - `confirm` - Toggle confirmation prompts on/off
+
+---
+
 ## Examples
 
 ```bash

@@ -11,14 +11,18 @@ Per `docs/claude-code/skills.md`, if a command doesn't contain `$ARGUMENTS` in i
 
 ## Current Behavior
 
-Commands like `manage_issue`, `format_issue`, and others define `arguments:` in frontmatter:
-```yaml
----
-arguments: "issue_file_path"
----
-```
+Six commands define `arguments:` in frontmatter but have no `$ARGUMENTS` placeholder in their body:
 
-But their body has no `$ARGUMENTS` placeholder. Claude Code appends the argument as `"ARGUMENTS: <value>"` at the end of the prompt, which may be ignored or misinterpreted depending on prompt structure.
+1. `commands/configure.md` — accepts `area` and `flags` arguments
+2. `commands/create_sprint.md` — accepts `name`, `description`, and `issues` arguments
+3. `commands/handoff.md` — accepts `context` and `flags` arguments
+4. `commands/resume.md` — accepts `prompt_file` argument
+5. `commands/sync_issues.md` — accepts `action` and `issue_id` arguments
+6. `commands/toggle_autoprompt.md` — accepts `setting` argument
+
+Claude Code appends arguments as `"ARGUMENTS: <value>"` at the end of the prompt, which may be ignored or misinterpreted depending on prompt structure.
+
+**Note**: Previously affected commands (`manage_issue`, `format_issue`, etc.) have since been fixed.
 
 ## Expected Behavior
 
@@ -48,7 +52,12 @@ This bug would:
 ## Integration Map
 
 ### Files to Modify
-- Commands in `commands/` that have `arguments:` frontmatter but no `$ARGUMENTS` in body
+- `commands/configure.md`
+- `commands/create_sprint.md`
+- `commands/handoff.md`
+- `commands/resume.md`
+- `commands/sync_issues.md`
+- `commands/toggle_autoprompt.md`
 
 ### Tests
 - N/A — command markdown frontmatter standardization; verified by invoking affected commands with arguments
@@ -69,7 +78,7 @@ This bug would:
 ## Impact
 
 - **Priority**: P4 - Correctness issue, but implicit append usually works
-- **Effort**: Small-Medium - Requires reading each command's body to place $ARGUMENTS correctly
+- **Effort**: Small - 6 remaining commands need $ARGUMENTS placement (21 others already fixed)
 - **Risk**: Low - Improving argument handling, unlikely to break existing usage
 - **Breaking Change**: No
 
@@ -89,9 +98,30 @@ This bug would:
 
 ---
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `commands/configure.md`: Added `## Arguments` section with `$ARGUMENTS` placeholder
+- `commands/create_sprint.md`: Added `## Arguments` section with `$ARGUMENTS` placeholder
+- `commands/handoff.md`: Added `## Arguments` section with `$ARGUMENTS` placeholder
+- `commands/resume.md`: Added `## Arguments` section with `$ARGUMENTS` placeholder
+- `commands/sync_issues.md`: Added `$ARGUMENTS` to existing `## Arguments` section
+- `commands/toggle_autoprompt.md`: Added `## Arguments` section with `$ARGUMENTS` placeholder
+
+### Verification Results
+- Tests: PASS (2728 passed)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS
+
 ## Session Log
 - `/ll:format_issue --all --auto` - 2026-02-13
+- `/ll:manage_issue` - 2026-02-13T01:47:24Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-bug-402-20260213-014724/613343a6-7a6e-4f0f-ab97-376e6544996d.jsonl`
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P4
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P4

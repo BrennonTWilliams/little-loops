@@ -216,6 +216,19 @@ Or copy the prompt content above to paste into a new session.
 
 ---
 
+## Arguments
+
+$ARGUMENTS
+
+- **context** (optional): Brief description of current work context
+  - Provides a hint for the conversation summary
+  - Example: `"Refactoring authentication module"`
+
+- **flags** (optional): Command behavior flags
+  - `--deep` - Validate and enrich with git status, todos, recent files
+
+---
+
 ## Examples
 
 ```bash
