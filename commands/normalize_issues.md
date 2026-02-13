@@ -154,15 +154,10 @@ Map directories to category prefixes based on configuration:
 
 ### 3. Find Next Available ID (Global)
 
-Find the highest existing ID number **across ALL issue types** (BUG, FEAT, ENH):
+Get the next globally unique issue number:
 
 ```bash
-# Find global maximum across all types and directories (including completed/)
-find {{config.issues.base_dir}} -name "*.md" -type f | \
-    grep -oE '(BUG|FEAT|ENH)-[0-9]{3,}' | \
-    grep -oE '[0-9]{3,}' | \
-    sort -n | \
-    tail -1
+ll-next-id
 ```
 
 **Important**: Issue IDs are globally unique across all types. If BUG-005, FEAT-007, and ENH-003 exist, the next ID for ANY type should be 008.

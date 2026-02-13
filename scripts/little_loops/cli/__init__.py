@@ -17,6 +17,7 @@ from little_loops.cli.docs import main_check_links, main_verify_docs
 from little_loops.cli.history import main_history
 from little_loops.cli.loop import main_loop
 from little_loops.cli.messages import main_messages
+from little_loops.cli.next_id import main_next_id
 from little_loops.cli.parallel import main_parallel
 from little_loops.cli.sprint import (
     _render_dependency_graph,
@@ -31,6 +32,7 @@ __all__ = [
     "main_history",
     "main_loop",
     "main_messages",
+    "main_next_id",
     "main_parallel",
     "main_sprint",
     "main_sync",

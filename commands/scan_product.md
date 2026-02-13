@@ -202,10 +202,9 @@ After the product-analyzer skill completes:
    - Low value or tangential → P3-P4
 
 4. **Assign globally unique sequential numbers**:
-   - Scan ALL `.issues/` subdirectories INCLUDING `{{config.issues.base_dir}}/completed/`
-   - Find the highest existing number across ALL issue types (BUG, FEAT, ENH)
-   - Use `global_max + 1` for each new issue regardless of type
-   - Example: If BUG-191 exists, next issue is 192 (e.g., FEAT-192 or ENH-192)
+   - Run `ll-next-id` to get the next available issue number
+   - Use that value for the first new issue, increment for subsequent issues
+   - Example: If `ll-next-id` prints `192`, assign 192, 193, 194, etc.
 
 ### 6. Create Issue Files
 

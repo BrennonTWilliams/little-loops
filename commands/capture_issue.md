@@ -308,14 +308,11 @@ Proceed directly to issue creation without user confirmation.
 
 1. **Get next globally unique issue number:**
 
-   Scan ALL issue directories including completed to find highest existing number:
    ```bash
-   # Find all issue files and extract numbers
-   # Note: Pattern uses default category prefixes (BUG, FEAT, ENH)
-   find {{config.issues.base_dir}} -name "*.md" -type f | grep -oE "(BUG|FEAT|ENH)-[0-9]+" | grep -oE "[0-9]+" | sort -n | tail -1
+   ll-next-id
    ```
 
-   The next issue number is `max_found + 1`. Format as 3 digits (e.g., 071).
+   This prints the next available issue number as 3 digits (e.g., 071).
 
 2. **Determine target directory based on type:**
    - BUG -> `{{config.issues.base_dir}}/bugs/`

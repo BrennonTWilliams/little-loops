@@ -244,8 +244,7 @@ After user approval:
 
 1. **Get next issue number** (globally unique across ALL types):
    ```bash
-   # Find highest number across ALL issue types (BUG, FEAT, ENH) in ALL directories
-   find .issues -name "*.md" | grep -oE '(BUG|FEAT|ENH)-[0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1
+   ll-next-id
    ```
 
 2. **Generate filenames** using the pattern: `P[4-5]-ENH-[NNN]-[slug].md`

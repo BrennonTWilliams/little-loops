@@ -111,10 +111,9 @@ For each approved decomposition:
 
 1. **Get next issue numbers**:
    ```bash
-   # Find highest existing issue number across all directories
-   find {{config.issues.base_dir}} -name "*.md" -type f | grep -oE "(BUG|FEAT|ENH)-[0-9]+" | grep -oE "[0-9]+" | sort -n | tail -1
+   ll-next-id
    ```
-   Next numbers are `max + 1`, `max + 2`, etc.
+   Next numbers are the printed value, +1, +2, etc. for multiple issues.
 
 2. **Create child issue files**:
    - Determine target directory based on type (bugs/, features/, enhancements/)
