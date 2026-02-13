@@ -33,9 +33,15 @@ Either:
 
 `bug`, `config`, `plugin-manifest`
 
+## Blocked By
+
+- ENH-319: improve ll-analyze-workflows with 6 enhancements (shared plugin.json)
+
 ## Blocks
 
 - ENH-366: add agents directory to plugin.json (shared plugin.json)
+- ENH-374: manifest missing agents and hooks declarations (shared plugin.json)
+- ENH-279: audit skill vs command allocation (shared plugin.json)
 
 ---
 

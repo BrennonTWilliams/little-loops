@@ -89,6 +89,10 @@ This fits naturally into the existing Wave 2 consistency checks alongside agent/
 
 `enhancement`, `captured`
 
+## Blocked By
+
+- BUG-391: dependency graph renders empty nodes without edges (shared ARCHITECTURE.md)
+
 ## Blocks
 
 - ENH-388: standardize issue priority range to P0-P8 (shared CONTRIBUTING.md)

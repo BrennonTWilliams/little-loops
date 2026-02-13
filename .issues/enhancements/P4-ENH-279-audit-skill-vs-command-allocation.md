@@ -99,6 +99,7 @@ This enhancement would:
 
 - ENH-368: plugin-config-auditor missing hook event and handler types (shared docs/ARCHITECTURE.md)
 - ENH-388: standardize issue priority range to P0-P8 (shared docs/ARCHITECTURE.md)
+- BUG-364: marketplace JSON version mismatch (shared plugin.json)
 
 ## Blocks
 

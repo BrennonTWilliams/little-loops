@@ -107,6 +107,17 @@ def _render_dependency_graph(waves, dep_graph):
 |----------|----------|-----------|
 | architecture | docs/ARCHITECTURE.md | Sprint system architecture |
 
+## Blocked By
+
+- ENH-308: sprint sequential retry for merge-failed issues (shared sprint.py, test_sprint_integration.py)
+
+## Blocks
+
+- ENH-388: standardize issue priority range to P0-P8 (shared ARCHITECTURE.md)
+- ENH-386: add command cross-reference validation to audit_claude_config (shared ARCHITECTURE.md)
+- ENH-387: add --type flag to CLI processing tools (shared sprint.py)
+- FEAT-324: SQLite history database for issues and sessions (shared ARCHITECTURE.md)
+
 ## Labels
 
 `bug`, `cli`, `sprint`, `captured`

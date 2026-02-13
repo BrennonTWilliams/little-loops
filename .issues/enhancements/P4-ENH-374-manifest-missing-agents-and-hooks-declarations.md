@@ -50,6 +50,10 @@ Option 1 is recommended — explicit declarations make the manifest a single sou
 
 `enhancement`, `config`, `plugin-manifest`
 
+## Blocked By
+
+- BUG-364: marketplace JSON version mismatch (shared plugin.json)
+
 ## Blocks
 
 - ENH-366: add agents directory to plugin.json (shared plugin.json)

@@ -102,6 +102,7 @@ _None — ENH-344 (cli.py split into package) is now completed._
 ## Blocks
 
 - ENH-328: ll-auto verify check implementation markers (shared cli.py)
+- BUG-391: dependency graph renders empty nodes without edges (shared sprint.py, test_sprint_integration.py)
 
 ## Dependencies
 

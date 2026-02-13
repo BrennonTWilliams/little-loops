@@ -90,6 +90,10 @@ TBD - requires investigation into `analyze_dependencies()` and `DependencyGraph.
 |----------|----------|-----------|
 | architecture | docs/ARCHITECTURE.md | Dependency system architecture |
 
+## Blocked By
+
+- ENH-388: standardize issue priority range to P0-P8 (shared ARCHITECTURE.md)
+
 ## Labels
 
 `bug`, `dependency-mapper`, `sprint`, `captured`

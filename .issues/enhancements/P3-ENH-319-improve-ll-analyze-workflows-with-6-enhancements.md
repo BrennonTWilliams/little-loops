@@ -187,6 +187,7 @@ All enhancements should be:
 ## Blocks
 
 - ENH-366: add agents directory to plugin.json (shared plugin.json)
+- BUG-364: marketplace JSON version mismatch (shared plugin.json)
 
 ## Labels
 
