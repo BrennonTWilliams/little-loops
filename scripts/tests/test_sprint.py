@@ -922,3 +922,393 @@ class TestSprintDependencyAnalysis:
         captured = capsys.readouterr()
         assert "Sprint: overlap-test" in captured.out
         assert "Dependency Analysis" not in captured.out
+
+
+class TestSprintEdit:
+    """Tests for _cmd_sprint_edit (ENH-393)."""
+
+    @staticmethod
+    def _setup_edit_project(tmp_path: Path) -> tuple[Path, Any, Any]:
+        """Set up a test project with config, issues, and sprint for edit tests."""
+        from little_loops.config import BRConfig
+        from little_loops.sprint import SprintManager
+
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+
+        for category in ["bugs", "features", "enhancements", "completed"]:
+            (issues_dir / category).mkdir()
+
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+
+        config_file = config_dir / "ll-config.json"
+        config_data = {
+            "project": {
+                "name": "test-project",
+                "src_dir": "src/",
+                "test_cmd": "pytest",
+                "lint_cmd": "ruff check",
+            },
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                    "enhancements": {
+                        "prefix": "ENH",
+                        "dir": "enhancements",
+                        "action": "improve",
+                    },
+                },
+                "completed_dir": "completed",
+            },
+        }
+
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        # Create sample issues
+        (issues_dir / "bugs" / "P1-BUG-001-test-bug.md").write_text(
+            "# BUG-001: Test Bug\n\n## Summary\nFix this bug."
+        )
+        (issues_dir / "features" / "P2-FEAT-010-test-feature.md").write_text(
+            "# FEAT-010: Test Feature\n\n## Summary\nImplement this."
+        )
+        (issues_dir / "enhancements" / "P3-ENH-020-test-enh.md").write_text(
+            "# ENH-020: Test Enhancement\n\n## Summary\nImprove this."
+        )
+
+        # Create sprint with BUG-001 and FEAT-010
+        sprints_dir = tmp_path / "sprints"
+        sprints_dir.mkdir()
+        sprint_data = {
+            "name": "test-sprint",
+            "description": "Test sprint",
+            "created": "2026-01-01T00:00:00Z",
+            "issues": ["BUG-001", "FEAT-010"],
+        }
+        with open(sprints_dir / "test-sprint.yaml", "w") as f:
+            yaml.dump(sprint_data, f, default_flow_style=False, sort_keys=False)
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=sprints_dir, config=config)
+
+        return sprints_dir, config, manager
+
+    def test_edit_add_issues(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """Adding issues to a sprint updates the YAML file."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="test-sprint",
+            add="ENH-020",
+            remove=None,
+            prune=False,
+            revalidate=False,
+            config=None,
+        )
+
+        result = cli._cmd_sprint_edit(args, manager)
+        assert result == 0
+
+        sprint = manager.load("test-sprint")
+        assert sprint is not None
+        assert "ENH-020" in sprint.issues
+        assert len(sprint.issues) == 3
+
+    def test_edit_remove_issues(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """Removing issues from a sprint updates the YAML file."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="test-sprint",
+            add=None,
+            remove="BUG-001",
+            prune=False,
+            revalidate=False,
+            config=None,
+        )
+
+        result = cli._cmd_sprint_edit(args, manager)
+        assert result == 0
+
+        sprint = manager.load("test-sprint")
+        assert sprint is not None
+        assert "BUG-001" not in sprint.issues
+        assert sprint.issues == ["FEAT-010"]
+
+    def test_edit_add_validates_existence(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Adding non-existent issue IDs warns and skips them."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="test-sprint",
+            add="FAKE-999",
+            remove=None,
+            prune=False,
+            revalidate=False,
+            config=None,
+        )
+
+        result = cli._cmd_sprint_edit(args, manager)
+        assert result == 0
+
+        # Sprint unchanged
+        sprint = manager.load("test-sprint")
+        assert sprint is not None
+        assert len(sprint.issues) == 2
+
+        captured = capsys.readouterr()
+        assert "not found" in captured.out.lower()
+
+    def test_edit_add_skips_duplicates(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Adding an already-present issue warns about duplicate."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="test-sprint",
+            add="BUG-001",
+            remove=None,
+            prune=False,
+            revalidate=False,
+            config=None,
+        )
+
+        result = cli._cmd_sprint_edit(args, manager)
+        assert result == 0
+
+        sprint = manager.load("test-sprint")
+        assert sprint is not None
+        assert sprint.issues.count("BUG-001") == 1
+
+        captured = capsys.readouterr()
+        assert "Already in sprint" in captured.out
+
+    def test_edit_remove_nonexistent_warns(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Removing an ID not in the sprint warns."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="test-sprint",
+            add=None,
+            remove="ENH-999",
+            prune=False,
+            revalidate=False,
+            config=None,
+        )
+
+        result = cli._cmd_sprint_edit(args, manager)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        assert "Not in sprint" in captured.out
+
+    def test_edit_prune_removes_invalid(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """Prune removes issues whose files don't exist."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        # Add a non-existent issue directly to the YAML
+        sprint = manager.load("test-sprint")
+        assert sprint is not None
+        sprint.issues.append("BUG-999")
+        sprint.save(sprints_dir)
+
+        args = argparse.Namespace(
+            sprint="test-sprint",
+            add=None,
+            remove=None,
+            prune=True,
+            revalidate=False,
+            config=None,
+        )
+
+        result = cli._cmd_sprint_edit(args, manager)
+        assert result == 0
+
+        sprint = manager.load("test-sprint")
+        assert sprint is not None
+        assert "BUG-999" not in sprint.issues
+        assert "BUG-001" in sprint.issues
+        assert "FEAT-010" in sprint.issues
+
+    def test_edit_prune_removes_completed(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Prune removes issues that are in the completed directory."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        # Move BUG-001 to completed
+        completed_dir = tmp_path / ".issues" / "completed"
+        (completed_dir / "P1-BUG-001-test-bug.md").write_text("# BUG-001: Done")
+        # Remove from active
+        (tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md").unlink()
+
+        args = argparse.Namespace(
+            sprint="test-sprint",
+            add=None,
+            remove=None,
+            prune=True,
+            revalidate=False,
+            config=None,
+        )
+
+        result = cli._cmd_sprint_edit(args, manager)
+        assert result == 0
+
+        sprint = manager.load("test-sprint")
+        assert sprint is not None
+        assert "BUG-001" not in sprint.issues
+        assert "FEAT-010" in sprint.issues
+
+        captured = capsys.readouterr()
+        output = captured.out.lower()
+        assert "pruned" in output or "prune" in output
+
+    def test_edit_prune_nothing_to_prune(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Prune with all-valid sprint reports nothing to prune."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="test-sprint",
+            add=None,
+            remove=None,
+            prune=True,
+            revalidate=False,
+            config=None,
+        )
+
+        result = cli._cmd_sprint_edit(args, manager)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        assert "Nothing to prune" in captured.out
+
+    def test_edit_no_flags_returns_error(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Returns error when no edit flags are specified."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="test-sprint",
+            add=None,
+            remove=None,
+            prune=False,
+            revalidate=False,
+            config=None,
+        )
+
+        result = cli._cmd_sprint_edit(args, manager)
+        assert result == 1
+
+        captured = capsys.readouterr()
+        assert "No edit flags specified" in captured.err
+
+    def test_edit_sprint_not_found(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """Returns error for nonexistent sprint."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(
+            sprint="nonexistent",
+            add="BUG-001",
+            remove=None,
+            prune=False,
+            revalidate=False,
+            config=None,
+        )
+
+        result = cli._cmd_sprint_edit(args, manager)
+        assert result == 1
+
+    def test_edit_combined_flags(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """Combining --add, --remove, and --prune works together."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        sprints_dir, _, manager = self._setup_edit_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        # Add a non-existent issue to the sprint for pruning
+        sprint = manager.load("test-sprint")
+        assert sprint is not None
+        sprint.issues.append("BUG-999")
+        sprint.save(sprints_dir)
+
+        args = argparse.Namespace(
+            sprint="test-sprint",
+            add="ENH-020",
+            remove="FEAT-010",
+            prune=True,
+            revalidate=False,
+            config=None,
+        )
+
+        result = cli._cmd_sprint_edit(args, manager)
+        assert result == 0
+
+        sprint = manager.load("test-sprint")
+        assert sprint is not None
+        assert "ENH-020" in sprint.issues
+        assert "FEAT-010" not in sprint.issues
+        assert "BUG-999" not in sprint.issues
+        assert "BUG-001" in sprint.issues
