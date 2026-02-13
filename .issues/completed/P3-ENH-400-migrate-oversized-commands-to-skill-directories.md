@@ -23,13 +23,13 @@ This enhancement would:
 | Command | Lines | Over by |
 |---------|-------|---------|
 | `create_loop.md` | 1,249 | +749 |
-| `init.md` | 1,142 | +642 |
-| `configure.md` | 1,044 | +544 |
-| `manage_issue.md` | 740 | +240 |
-| `format_issue.md` | 713 | +213 |
-| `audit_claude_config.md` | 628 | +128 |
-| `capture_issue.md` | 614 | +114 |
-| `audit_docs.md` | 506 | +6 |
+| `init.md` | 1,148 | +648 |
+| `configure.md` | 1,071 | +571 |
+| `manage_issue.md` | 754 | +254 |
+| `format_issue.md` | 718 | +218 |
+| `audit_claude_config.md` | 635 | +135 |
+| `capture_issue.md` | 620 | +120 |
+| `audit_docs.md` | 513 | +13 |
 
 ## Expected Behavior
 
@@ -95,9 +95,9 @@ For the issue template, read `skills/init/templates.md`
 - **In scope**: Converting oversized commands to skill directories with supporting files
 - **Out of scope**: Rewriting command logic or changing behavior; `audit_docs.md` at 506 lines is borderline and could be deferred
 
-## Blocks
+## Blocked By
 
-- BUG-402: Commands reference $ARGUMENTS inconsistently — command restructuring should complete before fixing argument references
+_None — BUG-402 (previously a blocker) has been completed._
 
 ## Related Issues
 
@@ -109,9 +109,33 @@ For the issue template, read `skills/init/templates.md`
 
 ## Session Log
 - /ll:format_issue --all --auto - 2026-02-13
+- `/ll:manage_issue` - 2026-02-13T16:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a39d0f52-f614-4bb0-a3ce-9b3ae5687c16.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `commands/create_loop.md` -> `skills/create-loop/` (SKILL.md + templates.md + paradigms.md + reference.md)
+- `commands/init.md` -> `skills/init/` (SKILL.md + presets.md + interactive.md)
+- `commands/configure.md` -> `skills/configure/` (SKILL.md + show-output.md + areas.md)
+- `commands/manage_issue.md` -> `skills/manage-issue/` (SKILL.md + templates.md)
+- `commands/format_issue.md` -> `skills/format-issue/` (SKILL.md + templates.md)
+- `commands/audit_claude_config.md` -> `skills/audit-claude-config/` (SKILL.md + report-template.md)
+- `commands/capture_issue.md` -> `skills/capture-issue/` (SKILL.md + templates.md)
+- `commands/audit_docs.md` -> `skills/audit-docs/` (SKILL.md + templates.md)
+
+### Verification Results
+- Tests: PASS (2733 passed)
+- Lint: PASS
+- Types: PASS
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P3

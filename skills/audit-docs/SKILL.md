@@ -96,58 +96,7 @@ bash -n <<< "[extracted script]"
 
 ### 4. Output Report
 
-```markdown
-# Documentation Audit Report
-
-## Summary
-- **Files audited**: X
-- **Issues found**: Y
-  - Critical: N
-  - Warning: N
-  - Info: N
-
-## Results by File
-
-### README.md
-
-| Check | Status | Details |
-|-------|--------|---------|
-| Code examples | PASS | All examples run |
-| File paths | WARN | 2 broken links |
-| API refs | PASS | Match codebase |
-| Commands | FAIL | Install command outdated |
-
-#### Issues
-1. **[CRITICAL]** Line 45: Install command uses deprecated flag
-2. **[WARNING]** Line 72: Link to docs/guide.md is broken
-3. **[INFO]** Line 100: Consider adding example output
-
-### docs/api.md
-[Similar breakdown]
-
-## Recommended Fixes
-
-### Critical (Must Fix)
-1. Update install command in README.md:45
-   - Old: `pip install old-syntax`
-   - New: `pip install new-syntax`
-
-### Warnings (Should Fix)
-2. Fix broken link in README.md:72
-3. Update version number in docs/install.md
-
-### Suggestions
-4. Add example output for commands
-5. Include troubleshooting section
-
-## Auto-Fixable Issues
-The following can be automatically corrected:
-- [ ] Update version numbers
-- [ ] Fix relative links
-- [ ] Format code blocks
-
-Run with `--fix` to apply automatic corrections.
-```
+Generate a comprehensive audit report using the format defined in [templates.md](templates.md) (see "Audit Report Format" section).
 
 ### 4.5. Direct Fix Option
 
@@ -155,7 +104,7 @@ After generating the report, classify each finding and offer direct fixes for au
 
 #### Finding Classification
 
-Classify each finding from the report:
+Classify each finding from the report using the classification table in [templates.md](templates.md):
 
 | Category | Criteria | Examples |
 |----------|----------|----------|
@@ -177,27 +126,7 @@ Remaining: Y findings (need issue tracking)
 
 Then proceed to Phase 5 with only the non-fixable findings.
 
-**Otherwise**: Present findings grouped by fixability:
-
-```markdown
-## Auto-Fixable Findings (N)
-
-These can be corrected directly:
-
-| # | File:Line | Finding | Fix |
-|---|-----------|---------|-----|
-| 1 | README.md:45 | Outdated install command | `old-syntax` → `new-syntax` |
-| 2 | README.md:72 | Broken relative link | `docs/guide.md` → `docs/user-guide.md` |
-
-## Findings Needing Issues (M)
-
-These require investigation or design:
-
-| # | File:Line | Finding | Suggested Issue Type |
-|---|-----------|---------|---------------------|
-| 3 | README.md:100 | Missing example output | ENH (P4) |
-| 4 | docs/api.md:30 | Incomplete API docs | ENH (P3) |
-```
+**Otherwise**: Present findings grouped by fixability using the format in [templates.md](templates.md) (see "Auto-Fixable Findings Format" section).
 
 Use the AskUserQuestion tool with single-select:
 - Question: "How would you like to handle the auto-fixable findings?"
@@ -268,20 +197,7 @@ After generating the report, offer to create, update, or reopen issues for docum
 
 #### Finding-to-Issue Mapping
 
-| Finding Severity | Finding Type | Issue Type | Priority |
-|-----------------|--------------|------------|----------|
-| CRITICAL | Wrong/outdated command | BUG | P1 |
-| CRITICAL | Incorrect API reference | BUG | P1 |
-| CRITICAL | Broken installation steps | BUG | P1 |
-| WARNING | Broken link | BUG | P2 |
-| WARNING | Outdated version number | BUG | P2 |
-| WARNING | Missing error handling docs | ENH | P3 |
-| INFO | Missing example output | ENH | P4 |
-| INFO | Could add troubleshooting | ENH | P4 |
-
-**Rule of thumb**:
-- **BUG**: Information is *wrong* or *broken* - needs fixing to be accurate
-- **ENH**: Information is *missing* or *incomplete* - needs addition to be complete
+Use the mapping table defined in [templates.md](templates.md) (see "Finding-to-Issue Mapping" section).
 
 #### Deduplication
 
@@ -314,59 +230,7 @@ Before creating issues, search for existing issues that cover the same problem:
 
 #### Issue File Format
 
-```markdown
----
-discovered_commit: [GIT_HASH]
-discovered_branch: [BRANCH_NAME]
-discovered_date: [ISO_TIMESTAMP]
-discovered_by: audit_docs
-doc_file: [path/to/doc.md]
----
-
-# [BUG|ENH]-XXX: [Title describing doc issue]
-
-## Summary
-
-Documentation issue found by `/ll:audit_docs`.
-
-## Location
-
-- **File**: `README.md`
-- **Line(s)**: 45
-- **Section**: Installation
-
-## Current Content
-
-```markdown
-pip install old-package --deprecated-flag
-```
-
-## Problem
-
-The install command uses a deprecated flag that no longer works.
-
-## Expected Content
-
-```markdown
-pip install new-package
-```
-
-## Impact
-
-- **Severity**: High (blocks new user setup)
-- **Effort**: Small
-- **Risk**: Low
-
-## Labels
-
-`bug|enhancement`, `documentation`, `auto-generated`
-
----
-
-## Status
-
-**Open** | Created: [DATE] | Priority: P1
-```
+Use the issue file template defined in [templates.md](templates.md) (see "Issue File Template" section).
 
 ### 6. Reopen Logic
 
@@ -382,54 +246,11 @@ If a completed issue matches a new finding:
    git mv .issues/completed/P2-BUG-XXX-broken-link.md .issues/bugs/
    ```
 
-3. **Append Reopened section**:
-   ```markdown
-   ---
-
-   ## Reopened
-
-   - **Date**: [TODAY]
-   - **By**: audit_docs
-   - **Reason**: Documentation issue recurred
-
-   ### New Findings
-
-   The same broken link issue was found again at README.md:72.
-   This may indicate the fix was incomplete or regressed.
-   ```
+3. **Append Reopened section** using the template in [templates.md](templates.md) (see "Reopened Section Template").
 
 ### 7. User Approval
 
-Present a summary before making any changes:
-
-```markdown
-## Proposed Issue Changes
-
-Based on documentation audit findings:
-
-### New Issues to Create (N)
-
-| Type | Priority | Title | File:Line |
-|------|----------|-------|-----------|
-| BUG | P1 | Outdated install command | README.md:45 |
-| BUG | P2 | Broken link to guide.md | README.md:72 |
-| ENH | P4 | Add example output for CLI | README.md:100 |
-
-### Existing Issues to Update (N)
-
-| Issue | Update Reason |
-|-------|---------------|
-| BUG-023 | Found additional broken link in same file |
-
-### Completed Issues to Reopen (N)
-
-| Issue | Reopen Reason |
-|-------|---------------|
-| BUG-015 | Link broken again after previous fix |
-
----
-
-```
+Present a summary before making any changes using the format in [templates.md](templates.md) (see "Proposed Issue Changes Format" section).
 
 Use the AskUserQuestion tool with single-select:
 - Question: "Proceed with issue changes?"
