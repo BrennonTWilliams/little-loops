@@ -1007,8 +1007,7 @@ class TestMainCLI:
         sprints_dir = tmp_path / ".sprints"
         sprints_dir.mkdir()
         (sprints_dir / "my-sprint.yaml").write_text(
-            "name: my-sprint\ndescription: Test sprint\nissues:\n"
-            "  - BUG-001\n  - ENH-010\n"
+            "name: my-sprint\ndescription: Test sprint\nissues:\n  - BUG-001\n  - ENH-010\n"
         )
         (sprints_dir / "empty-sprint.yaml").write_text(
             "name: empty-sprint\ndescription: Empty\nissues: []\n"
@@ -1021,7 +1020,8 @@ class TestMainCLI:
         issues_dir = self._setup_sprint_project(tmp_path)
 
         with patch.object(
-            sys, "argv",
+            sys,
+            "argv",
             ["ll-deps", "-d", str(issues_dir), "analyze", "--sprint", "my-sprint"],
         ):
             result = main()
@@ -1038,7 +1038,8 @@ class TestMainCLI:
         issues_dir = self._setup_sprint_project(tmp_path)
 
         with patch.object(
-            sys, "argv",
+            sys,
+            "argv",
             ["ll-deps", "-d", str(issues_dir), "validate", "--sprint", "my-sprint"],
         ):
             result = main()
@@ -1049,7 +1050,8 @@ class TestMainCLI:
         issues_dir = self._setup_sprint_project(tmp_path)
 
         with patch.object(
-            sys, "argv",
+            sys,
+            "argv",
             ["ll-deps", "-d", str(issues_dir), "analyze", "--sprint", "nonexistent"],
         ):
             result = main()
@@ -1060,7 +1062,8 @@ class TestMainCLI:
         issues_dir = self._setup_sprint_project(tmp_path)
 
         with patch.object(
-            sys, "argv",
+            sys,
+            "argv",
             ["ll-deps", "-d", str(issues_dir), "analyze", "--sprint", "empty-sprint"],
         ):
             result = main()
@@ -1071,7 +1074,8 @@ class TestMainCLI:
         issues_dir = self._setup_sprint_project(tmp_path)
 
         with patch.object(
-            sys, "argv",
+            sys,
+            "argv",
             ["ll-deps", "-d", str(issues_dir), "analyze"],
         ):
             result = main()

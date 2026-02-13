@@ -493,9 +493,7 @@ github_issue: 1
         with patch("little_loops.sync._check_gh_auth") as mock_auth:
             mock_auth.return_value = True
             with patch("little_loops.sync._run_gh_command") as mock_run:
-                mock_run.side_effect = subprocess.CalledProcessError(
-                    1, "gh", stderr="API error"
-                )
+                mock_run.side_effect = subprocess.CalledProcessError(1, "gh", stderr="API error")
                 status = manager.get_status()
 
         assert status.github_total == 0

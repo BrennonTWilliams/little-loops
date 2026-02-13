@@ -1079,9 +1079,7 @@ class TestSprintEdit:
         captured = capsys.readouterr()
         assert "not found" in captured.out.lower()
 
-    def test_edit_add_skips_duplicates(
-        self, tmp_path: Path, monkeypatch: Any, capsys: Any
-    ) -> None:
+    def test_edit_add_skips_duplicates(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
         """Adding an already-present issue warns about duplicate."""
         import argparse
 

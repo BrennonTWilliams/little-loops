@@ -92,9 +92,7 @@ class TestDependencyGraphConstruction:
         """Test that a blocker in all_known_ids but not in graph produces no warning."""
         issue = make_issue("BUG-359", blocked_by=["ENH-342"])
 
-        graph = DependencyGraph.from_issues(
-            [issue], all_known_ids={"BUG-359", "ENH-342"}
-        )
+        graph = DependencyGraph.from_issues([issue], all_known_ids={"BUG-359", "ENH-342"})
 
         # ENH-342 is not in the graph but exists on disk — no warning
         assert "ENH-342" not in graph.blocked_by["BUG-359"]
@@ -104,9 +102,7 @@ class TestDependencyGraphConstruction:
         """Test that a blocker not in all_known_ids still produces a warning."""
         issue = make_issue("BUG-001", blocked_by=["NONEXISTENT-999"])
 
-        graph = DependencyGraph.from_issues(
-            [issue], all_known_ids={"BUG-001", "ENH-342"}
-        )
+        graph = DependencyGraph.from_issues([issue], all_known_ids={"BUG-001", "ENH-342"})
 
         assert "NONEXISTENT-999" not in graph.blocked_by["BUG-001"]
         assert "blocked by unknown issue NONEXISTENT-999" in caplog.text

@@ -48,9 +48,7 @@ class TestMainNextIdIntegration:
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
 
-        with patch.object(
-            sys, "argv", ["ll-next-id", "--config", str(temp_project_dir)]
-        ):
+        with patch.object(sys, "argv", ["ll-next-id", "--config", str(temp_project_dir)]):
             from little_loops.cli import main_next_id
 
             result = main_next_id()
@@ -77,9 +75,7 @@ class TestMainNextIdIntegration:
         (bugs_dir / "P0-BUG-003-test.md").write_text("# BUG-003")
         (features_dir / "P2-FEAT-007-test.md").write_text("# FEAT-007")
 
-        with patch.object(
-            sys, "argv", ["ll-next-id", "--config", str(temp_project_dir)]
-        ):
+        with patch.object(sys, "argv", ["ll-next-id", "--config", str(temp_project_dir)]):
             from little_loops.cli import main_next_id
 
             result = main_next_id()
@@ -102,9 +98,7 @@ class TestMainNextIdIntegration:
         bugs_dir.mkdir(parents=True)
         (bugs_dir / "P1-BUG-042-test.md").write_text("# BUG-042")
 
-        with patch.object(
-            sys, "argv", ["ll-next-id", "--config", str(temp_project_dir)]
-        ):
+        with patch.object(sys, "argv", ["ll-next-id", "--config", str(temp_project_dir)]):
             from little_loops.cli import main_next_id
 
             result = main_next_id()

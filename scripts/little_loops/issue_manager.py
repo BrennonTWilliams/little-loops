@@ -667,9 +667,7 @@ class AutoManager:
             all_known_ids = gather_all_issue_ids(issues_dir)
         except (AttributeError, TypeError):
             pass
-        self.dep_graph = DependencyGraph.from_issues(
-            all_issues, all_known_ids=all_known_ids
-        )
+        self.dep_graph = DependencyGraph.from_issues(all_issues, all_known_ids=all_known_ids)
 
         # Warn about any cycles
         if self.dep_graph.has_cycles():

@@ -92,8 +92,7 @@ Examples:
     add_skip_arg(
         create_parser,
         help_text=(
-            "Comma-separated list of issue IDs to exclude from sprint"
-            " (e.g., BUG-003,FEAT-004)"
+            "Comma-separated list of issue IDs to exclude from sprint (e.g., BUG-003,FEAT-004)"
         ),
     )
 
@@ -109,8 +108,7 @@ Examples:
     add_skip_arg(
         run_parser,
         help_text=(
-            "Comma-separated list of issue IDs to skip during execution"
-            " (e.g., BUG-003,FEAT-004)"
+            "Comma-separated list of issue IDs to skip during execution (e.g., BUG-003,FEAT-004)"
         ),
     )
     add_skip_analysis_arg(run_parser)
@@ -324,9 +322,7 @@ def _render_dependency_graph(
     # Don't render graph if there are no actual dependency edges
     # (waves > 1 can happen from file contention splitting alone)
     all_ids = {issue.issue_id for wave in waves for issue in wave}
-    has_edges = any(
-        dep_graph.blocks.get(issue_id, set()) & all_ids for issue_id in all_ids
-    )
+    has_edges = any(dep_graph.blocks.get(issue_id, set()) & all_ids for issue_id in all_ids)
     if not has_edges:
         return ""
 
@@ -409,17 +405,11 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
     from little_loops.dependency_mapper import gather_all_issue_ids
 
     config = manager.config
-    issues_dir = (
-        config.project_root / config.issues.base_dir
-        if config
-        else Path(".issues")
-    )
+    issues_dir = config.project_root / config.issues.base_dir if config else Path(".issues")
     all_known_ids = gather_all_issue_ids(issues_dir)
 
     if issue_infos:
-        dep_graph = DependencyGraph.from_issues(
-            issue_infos, all_known_ids=all_known_ids
-        )
+        dep_graph = DependencyGraph.from_issues(issue_infos, all_known_ids=all_known_ids)
         has_cycles = dep_graph.has_cycles()
 
         if not has_cycles:
@@ -453,9 +443,7 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
         from little_loops.dependency_mapper import analyze_dependencies
 
         issue_contents = _build_issue_contents(issue_infos)
-        dep_report = analyze_dependencies(
-            issue_infos, issue_contents, all_known_ids=all_known_ids
-        )
+        dep_report = analyze_dependencies(issue_infos, issue_contents, all_known_ids=all_known_ids)
         _render_dependency_analysis(dep_report, logger)
 
     if sprint.options:
@@ -570,9 +558,7 @@ def _cmd_sprint_edit(args: argparse.Namespace, manager: SprintManager) -> int:
 
             _config = manager.config
             _issues_dir = (
-                _config.project_root / _config.issues.base_dir
-                if _config
-                else Path(".issues")
+                _config.project_root / _config.issues.base_dir if _config else Path(".issues")
             )
             _all_known_ids = gather_all_issue_ids(_issues_dir)
             issue_contents = _build_issue_contents(issue_infos)
@@ -769,9 +755,7 @@ def _cmd_sprint_run(
         from little_loops.dependency_mapper import analyze_dependencies
 
         issue_contents = _build_issue_contents(issue_infos)
-        dep_report = analyze_dependencies(
-            issue_infos, issue_contents, all_known_ids=all_known_ids
-        )
+        dep_report = analyze_dependencies(issue_infos, issue_contents, all_known_ids=all_known_ids)
         _render_dependency_analysis(dep_report, logger)
 
     # Build dependency graph
