@@ -48,6 +48,29 @@ Remove the `matcher` field from both entries:
 ]
 ```
 
+## Motivation
+
+This enhancement would:
+- Improve configuration clarity by removing misleading fields that are silently ignored
+- Business value: Future maintainers won't be confused by `"matcher": "*"` on events that don't support matching
+- Technical debt: Eliminates dead configuration that contradicts the hooks reference documentation
+
+## Implementation Steps
+
+1. **Remove matcher from UserPromptSubmit**: Delete `"matcher": "*"` from the UserPromptSubmit entry at `hooks/hooks.json:17`
+2. **Remove matcher from Stop**: Delete `"matcher": "*"` from the Stop entry at `hooks/hooks.json:53`
+3. **Validate hooks.json**: Ensure the resulting `hooks.json` is valid JSON and all hooks still trigger correctly
+4. **Manual verification**: Confirm UserPromptSubmit and Stop hooks fire as expected without matcher fields
+
+## Integration Map
+
+- **Files to Modify**: `hooks/hooks.json`
+- **Dependent Files (Callers/Importers)**: Claude Code hook event system (reads hooks.json)
+- **Similar Patterns**: Other hook entries in `hooks/hooks.json` that correctly omit matchers
+- **Tests**: N/A (manual verification of hook firing)
+- **Documentation**: `docs/claude-code/hooks-reference.md`
+- **Configuration**: `hooks/hooks.json`
+
 ## Reference
 
 - `docs/claude-code/hooks-reference.md` — Matcher patterns table: `UserPromptSubmit, Stop, TeammateIdle, TaskCompleted | no matcher support | always fires on every occurrence`
@@ -66,6 +89,9 @@ Remove the `matcher` field from both entries:
 ## Blocks
 
 - ENH-371: add description and statusMessage to hooks.json (shared hooks.json, hooks-reference.md)
+
+## Session Log
+- `/ll:format_issue --all --auto` - 2026-02-13
 
 ---
 

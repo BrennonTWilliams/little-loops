@@ -9,6 +9,13 @@ discovered_by: audit_claude_config
 
 27 of 36 commands (75%) lack `allowed-tools` in their frontmatter. Only 9 commands currently specify it. Per `docs/claude-code/skills.md`, `allowed-tools` restricts available tools during command execution — important for security scoping and preventing unintended side effects. The largest commands (`init` at 1142 lines, `configure` at 1044 lines) are all missing this field.
 
+## Motivation
+
+This enhancement would:
+- Improve security by preventing unintended tool access during command execution
+- Business value: Reduces risk of commands accidentally modifying files or running shell commands they should not need
+- Technical debt: Ensures all 36 commands consistently specify tool restrictions per documented best practices
+
 ## Current Behavior
 
 75% of commands have no tool restrictions:
@@ -114,6 +121,20 @@ These serve as reference for the pattern:
 ## Labels
 
 `enhancement`, `commands`, `security`, `configuration`
+
+## Session Log
+- /ll:format_issue --all --auto - 2026-02-13
+
+## Verification Notes
+
+- **Verified**: 2026-02-13
+- **Verdict**: NEEDS_UPDATE
+- **Counts changed**: Now 11 commands have `allowed-tools` (was 9), 25 missing (was 27)
+- **Two commands gained `allowed-tools`** since issue creation:
+  - `manage_release.md` — listed as "missing" in issue, now has allowed-tools
+  - `analyze-workflows.md` — not in either list, now has allowed-tools
+- The "Already Specifying" list should add `manage_release.md` and `analyze-workflows.md`
+- Remove `manage_release.md` from the "Commands Missing" list
 
 ---
 

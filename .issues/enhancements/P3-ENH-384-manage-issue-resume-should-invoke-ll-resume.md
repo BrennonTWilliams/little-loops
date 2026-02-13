@@ -91,6 +91,11 @@ Instead of duplicating the file-read logic, `manage_issue --resume` could invoke
 - **Risk**: Low - Additive behavior, no existing logic changes
 - **Breaking Change**: No
 
+## Scope Boundaries
+
+- **In scope**: Adding continuation prompt reading to `--resume` handling in `manage_issue.md`
+- **Out of scope**: Changing `/ll:resume` behavior or `ll-auto`'s continuation mechanism
+
 ## Related Key Documentation
 
 | Category | Document | Relevance |
@@ -105,6 +110,9 @@ Instead of duplicating the file-read logic, `manage_issue --resume` could invoke
 ## Labels
 
 `enhancement`, `commands`, `resume`, `captured`
+
+## Session Log
+- /ll:format_issue --all --auto - 2026-02-13
 
 ---
 

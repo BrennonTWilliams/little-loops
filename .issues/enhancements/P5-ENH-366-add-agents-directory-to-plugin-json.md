@@ -34,6 +34,29 @@ The `agents/` directory contains 8 agent definition files actively referenced by
 
 Note: This depends on whether the plugin.json schema supports an `agents` key. If not, this is informational only.
 
+## Motivation
+
+This enhancement would:
+- Ensure manifest completeness for plugin component discovery — all directories are explicitly declared
+- Business value: The plugin manifest becomes a single source of truth for the component inventory, improving discoverability for contributors
+- Technical debt: Eliminates inconsistency where some component directories are declared and others rely on auto-discovery
+
+## Implementation Steps
+
+1. **Verify plugin.json schema**: Confirm the Claude Code plugin schema supports an `"agents"` key in `plugin.json`
+2. **Add agents entry**: Add `"agents": ["./agents"]` to `.claude-plugin/plugin.json`
+3. **Verify agent discovery**: Confirm all 8 agents in `agents/` are still discovered and functional after the change
+4. **Update documentation**: If any docs reference the plugin manifest structure, update them to reflect the new key
+
+## Integration Map
+
+- **Files to Modify**: `.claude-plugin/plugin.json`
+- **Dependent Files (Callers/Importers)**: Commands referencing `subagent_type` (5+ commands)
+- **Similar Patterns**: ENH-374 (manifest missing agents and hooks declarations)
+- **Tests**: N/A (manual verification of agent discovery)
+- **Documentation**: `docs/ARCHITECTURE.md` (if it documents plugin.json structure)
+- **Configuration**: `.claude-plugin/plugin.json`
+
 ## Impact
 
 - **Priority**: P5
@@ -50,6 +73,9 @@ Note: This depends on whether the plugin.json schema supports an `agents` key. I
 ## Labels
 
 `enhancement`, `config`, `agents`
+
+## Session Log
+- `/ll:format_issue --all --auto` - 2026-02-13
 
 ---
 

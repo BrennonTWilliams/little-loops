@@ -20,6 +20,13 @@ description: "..."
 
 No `allowed-tools` or `model` fields are specified.
 
+## Motivation
+
+This enhancement would:
+- Improve security scoping by restricting each skill to only the tools it needs
+- Business value: Cost optimization by using `haiku` for simple reference and CLI skills instead of defaulting to the parent model
+- Technical debt: Aligns skill frontmatter with all documented fields in the skills reference
+
 ## Expected Behavior
 
 Skills should specify tool restrictions where appropriate:
@@ -85,6 +92,18 @@ allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 ## Labels
 
 `enhancement`, `skills`, `security`, `configuration`
+
+## Session Log
+- /ll:format_issue --all --auto - 2026-02-13
+
+## Verification Notes
+
+- **Verified**: 2026-02-13
+- **Verdict**: NEEDS_UPDATE
+- **`review-sprint` is a command, not a skill** — listed in table but `skills/review-sprint/` does not exist; it is `commands/review_sprint.md`
+- **`loop-suggester` missing from table** — exists at `skills/loop-suggester/SKILL.md` but not listed
+- Correct 8 skills: `analyze-history`, `confidence-check`, `issue-size-review`, `issue-workflow`, `loop-suggester`, `map-dependencies`, `product-analyzer`, `workflow-automation-proposer`
+- Core issue still valid: no skills have `allowed-tools` or `model` in frontmatter
 
 ---
 

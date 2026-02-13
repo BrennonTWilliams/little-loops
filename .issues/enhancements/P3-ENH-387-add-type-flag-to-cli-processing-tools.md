@@ -108,7 +108,7 @@ When running batch processing, users frequently want to target a specific issue 
 ## Blocked By
 
 - ENH-352: batch git log calls in files_modified_since_commit (shared issue_discovery.py)
-- BUG-391: dependency graph renders empty nodes without edges (shared sprint.py)
+- BUG-403: dependency graph renders empty nodes without edges (shared sprint.py)
 
 ## Related Key Documentation
 

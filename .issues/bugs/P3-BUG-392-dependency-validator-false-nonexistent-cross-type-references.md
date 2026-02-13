@@ -70,6 +70,13 @@ TBD - requires investigation into `analyze_dependencies()` and `DependencyGraph.
 ### Configuration
 - N/A
 
+## Motivation
+
+This bug would:
+- Eliminate false positive "nonexistent" warnings that erode trust in the dependency validation output
+- Business value: Ensures sprint planning decisions are based on accurate dependency data, not misleading warnings
+- Technical debt: Fixes a lookup scope limitation that will produce more false positives as cross-type dependencies become more common
+
 ## Implementation Steps
 
 1. Trace the "unknown issue" and "nonexistent" warnings to their source functions
@@ -100,6 +107,7 @@ TBD - requires investigation into `analyze_dependencies()` and `DependencyGraph.
 
 ## Session Log
 - `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab030831-19f7-4fb7-8753-c1c282a30c99.jsonl`
+- `/ll:format_issue --all --auto` - 2026-02-13
 
 ---
 

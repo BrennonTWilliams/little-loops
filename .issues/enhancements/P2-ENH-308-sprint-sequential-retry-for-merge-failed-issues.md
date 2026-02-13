@@ -102,7 +102,7 @@ _None — ENH-344 (cli.py split into package) is now completed._
 ## Blocks
 
 - ENH-328: ll-auto verify check implementation markers (shared cli.py)
-- BUG-391: dependency graph renders empty nodes without edges (shared sprint.py, test_sprint_integration.py)
+- BUG-403: dependency graph renders empty nodes without edges (shared sprint.py, test_sprint_integration.py)
 
 ## Dependencies
 
@@ -126,16 +126,17 @@ _None — ENH-344 (cli.py split into package) is now completed._
 
 ## Verification Notes
 
-- **Verified**: 2026-02-12
+- **Verified**: 2026-02-13 (updated from 2026-02-12)
 - **Verdict**: NEEDS_UPDATE
 - **ENH-344 blocker resolved**: ENH-344 (cli.py split into package) is now completed. `Blocked By` should be marked resolved.
 - **File references stale**: All `cli.py` references should now point to `scripts/little_loops/cli/sprint.py`:
-  - `_cmd_sprint_run()` is at `cli/sprint.py:533` (not `cli.py`)
-  - Single-issue wave processing is at `cli/sprint.py:698-705` (not `cli.py:2005` or `cli.py:2023`)
-  - Multi-issue wave processing with failures is at `cli/sprint.py:740-767`
+  - `_cmd_sprint_run()` is at `cli/sprint.py:688` (not `cli.py` or previous note's 533)
+  - Single-issue wave processing is at `cli/sprint.py:851-860` (not `cli.py:2005` or previous note's 698-705)
+  - Multi-issue wave processing with failures is at `cli/sprint.py:881-923` (not previous note's 740-767)
 - Confirmed: no retry logic for merge-failed issues exists — core enhancement still needed
 - Confirmed: `process_issue_inplace()` exists at `issue_manager.py:249` and is available for reuse
 - BUG-307 dependency satisfied (completed 2026-02-09)
+- BUG-403 (in Blocks) remains open — commit 3d7713c did not fix the bug
 
 ---
 

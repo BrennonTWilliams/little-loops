@@ -71,6 +71,41 @@ The hooks reference also documents a `once` field (`docs/claude-code/hooks-refer
 - `docs/claude-code/hooks-reference.md` — Common fields: `statusMessage | no | Custom spinner message displayed while the hook runs`
 - `docs/claude-code/hooks-reference.md:257` — Common fields: `once | no | If true, runs only once per session then is removed. Skills only, not agents.`
 
+## Motivation
+
+This enhancement would:
+- Provide better plugin attribution and user feedback during hook execution
+- Business value: Users see meaningful spinner text instead of generic messages, improving perceived quality and debuggability
+- Technical debt: Aligns hooks.json with all documented optional fields in the hooks reference
+
+## Implementation Steps
+
+1. Add top-level `"description"` field to `hooks/hooks.json`
+2. Add `"statusMessage"` to each hook entry with context-appropriate spinner text
+3. Evaluate `"once"` field for applicable hooks (e.g., one-time initialization hooks)
+4. Validate hooks.json against the hooks reference schema
+
+## Integration Map
+
+### Files to Modify
+- `hooks/hooks.json`
+
+### Dependent Files
+- N/A
+
+### Similar Patterns
+- N/A
+
+### Tests
+- Verify spinner text appears during hook execution
+- Verify plugin description appears in `/hooks` menu
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Impact
 
 - **Priority**: P5
@@ -84,6 +119,9 @@ The hooks reference also documents a `once` field (`docs/claude-code/hooks-refer
 ## Blocked By
 
 - ENH-377: remove ignored matchers from UserPromptSubmit and Stop (shared hooks.json, hooks-reference.md)
+
+## Session Log
+- /ll:format_issue --all --auto - 2026-02-13
 
 ---
 

@@ -61,6 +61,40 @@ completed_issues=list(data.get("completed_issues", [])),
 failed_issues=dict(data.get("failed_issues", {})),
 ```
 
+## Motivation
+
+This bug would:
+- Prevent mutation bugs in state management where modifying a `ProcessingState` inadvertently corrupts the source data dictionary
+- Business value: Ensures reliable state handling in automated issue processing pipelines
+- Technical debt: Eliminates a latent shared-reference hazard that could surface as hard-to-diagnose bugs if callers begin mutating state objects
+
+## Implementation Steps
+
+1. Wrap list/dict values in copy constructors in `ProcessingState.from_dict()` (e.g., `list(data.get(...))`, `dict(data.get(...))`)
+2. Add a unit test that verifies mutating the returned state does not alias back to the original `data` dict
+3. Verify all existing state tests still pass
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/state.py` — `ProcessingState.from_dict()` method
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/auto.py` — calls `ProcessingState.from_dict()`
+- `scripts/little_loops/cli/loop.py` — calls `ProcessingState.from_dict()`
+
+### Similar Patterns
+- Any other `from_dict()` class methods that pass mutable defaults without copying
+
+### Tests
+- `scripts/tests/` — add aliasing prevention test for `ProcessingState.from_dict()`
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Impact
 
 - **Priority**: P4 - Requires specific usage pattern to trigger; current callers may not mutate
@@ -74,6 +108,7 @@ failed_issues=dict(data.get("failed_issues", {})),
 
 ## Session Log
 - `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
+- `/ll:format_issue --all --auto` - 2026-02-13
 
 
 ---

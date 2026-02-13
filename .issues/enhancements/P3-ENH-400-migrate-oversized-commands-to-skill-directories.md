@@ -9,6 +9,13 @@ discovered_by: audit_claude_config
 
 Per `docs/claude-code/skills.md`, files should be under 500 lines with reference content in supporting files. 8 commands far exceed this limit. The skill directory structure (`<name>/SKILL.md` + supporting files) recommended in `docs/claude-code/create-plugin.md` allows extracting templates, examples, and reference sections into separate files read via `Read` tool references.
 
+## Motivation
+
+This enhancement would:
+- Improve maintainability by splitting oversized commands into focused core logic and separate reference files
+- Business value: Smaller files are easier to review, test, and iterate on; reduces cognitive load for contributors
+- Technical debt: Adheres to the documented 500-line file size best practice and skill directory structure recommendation
+
 ## Current Behavior
 
 8 commands exceed the 500-line recommendation:
@@ -95,6 +102,9 @@ For the issue template, read `skills/init/templates.md`
 ## Labels
 
 `enhancement`, `commands`, `skills`, `refactoring`
+
+## Session Log
+- /ll:format_issue --all --auto - 2026-02-13
 
 ---
 

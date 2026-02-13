@@ -41,6 +41,29 @@ while queue:
     node = queue.popleft()
 ```
 
+## Motivation
+
+This enhancement would:
+- Correct BFS time complexity from O(n^2) to O(n) by replacing `list.pop(0)` with `deque.popleft()`
+- Business value: Proper algorithmic complexity for graph traversal, even though current graph sizes are small
+- Technical debt: Eliminates a well-known Python anti-pattern (`list.pop(0)`) that could become a bottleneck as data grows
+
+## Implementation Steps
+
+1. **Import deque**: Add `from collections import deque` at the top of `scripts/little_loops/issue_history.py`
+2. **Replace list with deque**: Change `queue = [start]` to `queue = deque([start])` in `_build_coupling_clusters`
+3. **Replace pop(0) with popleft()**: Change `queue.pop(0)` to `queue.popleft()`
+4. **Run tests**: Execute `python -m pytest scripts/tests/test_issue_history.py` to verify no regressions
+
+## Integration Map
+
+- **Files to Modify**: `scripts/little_loops/issue_history.py`
+- **Dependent Files (Callers/Importers)**: Internal function called by coupling analysis in `issue_history.py`
+- **Similar Patterns**: N/A
+- **Tests**: `scripts/tests/test_issue_history.py`
+- **Documentation**: N/A
+- **Configuration**: N/A
+
 ## Scope Boundaries
 
 - Only change the queue data structure, no algorithmic changes
@@ -62,6 +85,7 @@ while queue:
 
 ## Session Log
 - `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
+- `/ll:format_issue --all --auto` - 2026-02-13
 
 
 ---

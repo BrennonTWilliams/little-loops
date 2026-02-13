@@ -38,6 +38,13 @@ allowed-tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
 ```
 
+## Motivation
+
+This enhancement would:
+- Improve security scoping by restricting each agent to only the tools it needs
+- Business value: Cost optimization by using `haiku` for simple agents instead of defaulting to the parent model
+- Technical debt: Aligns agent frontmatter with all documented fields in the custom-subagents reference
+
 ## Agents to Update
 
 | Agent | Suggested model | Tool profile |
@@ -89,6 +96,9 @@ allowed-tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ## Labels
 
 `enhancement`, `agents`, `security`, `configuration`
+
+## Session Log
+- /ll:format_issue --all --auto - 2026-02-13
 
 ---
 

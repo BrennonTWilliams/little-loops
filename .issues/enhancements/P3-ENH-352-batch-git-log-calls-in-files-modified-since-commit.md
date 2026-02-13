@@ -30,6 +30,29 @@ A single `git log` call with all file paths: `git log --pretty=format:%H --name-
 
 Replace the per-file loop with a single batched call and parse the combined output to determine which files were modified.
 
+## Motivation
+
+This enhancement would:
+- Reduce subprocess overhead during issue verification by replacing N subprocess calls with a single batched call
+- Business value: Faster issue discovery and verification workflows, especially in repositories with many tracked files
+- Technical debt: Eliminates an inefficient per-file subprocess pattern in favor of git's native multi-path support
+
+## Implementation Steps
+
+1. **Replace per-file loop with batched call**: Refactor `_get_files_modified_since_commit` to invoke a single `git log --pretty=format:%H --name-only {commit}..HEAD -- file1 file2 ...`
+2. **Parse combined output**: Process the batched git log output to determine which files were modified
+3. **Preserve return contract**: Ensure the function returns the same data structure as before
+4. **Run tests**: Execute `python -m pytest scripts/tests/test_issue_discovery.py` to verify no regressions
+
+## Integration Map
+
+- **Files to Modify**: `scripts/little_loops/issue_discovery.py`
+- **Dependent Files (Callers/Importers)**: Internal callers within `issue_discovery.py` that use `_get_files_modified_since_commit`
+- **Similar Patterns**: N/A
+- **Tests**: `scripts/tests/test_issue_discovery.py`
+- **Documentation**: N/A
+- **Configuration**: N/A
+
 ## Scope Boundaries
 
 - Only batch the git log calls, do not change the function's return contract
@@ -55,6 +78,7 @@ Replace the per-file loop with a single batched call and parse the combined outp
 
 ## Session Log
 - `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
+- `/ll:format_issue --all --auto` - 2026-02-13
 
 
 ---

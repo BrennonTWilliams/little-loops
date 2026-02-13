@@ -127,6 +127,7 @@ This enhancement would:
 - Assessment table should be updated to include both new skills
 - The 4 migration candidates (`workflow-automation-proposer`, `product-analyzer`, `analyze-history`, `issue-workflow`) still exist in `skills/` — none have been migrated
 - The 2 "keep as skill" recommendations (`issue-size-review`, `map-dependencies`) still exist
+- BUG-364 (in Blocked By) is now RESOLVED — marketplace version mismatch fixed
 
 ---
 

@@ -35,6 +35,13 @@ argument-hint: "<issue-file>"
 
 This shows in the `/` menu as: `/ll:manage_issue <issue-file>`
 
+## Motivation
+
+This enhancement would:
+- Provide better UX with autocomplete hints visible in the `/` command menu
+- Business value: Users immediately see what input a command expects without consulting documentation
+- Technical debt: Aligns command frontmatter with all documented optional fields in the skills reference
+
 ## Integration Map
 
 ### Files to Modify
@@ -60,6 +67,11 @@ This shows in the `/` menu as: `/ll:manage_issue <issue-file>`
 - **Risk**: None
 - **Breaking Change**: No
 
+## Scope Boundaries
+
+- **In scope**: Adding `argument-hint` frontmatter to commands that have `arguments`
+- **Out of scope**: Changing command argument parsing or adding new arguments to commands
+
 ## Blocked By
 
 - BUG-402: Commands reference $ARGUMENTS inconsistently — $ARGUMENTS placement must be resolved before adding argument-hints
@@ -67,6 +79,9 @@ This shows in the `/` menu as: `/ll:manage_issue <issue-file>`
 ## Labels
 
 `enhancement`, `commands`, `ux`, `configuration`
+
+## Session Log
+- /ll:format_issue --all --auto - 2026-02-13
 
 ---
 

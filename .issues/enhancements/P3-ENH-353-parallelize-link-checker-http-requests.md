@@ -30,6 +30,31 @@ URLs are checked concurrently using a thread pool with configurable concurrency 
 
 Use `concurrent.futures.ThreadPoolExecutor(max_workers=10)` to check URLs in parallel. The existing `check_url()` function is stateless and thread-safe.
 
+## Motivation
+
+This enhancement would:
+- Significantly reduce wall-clock time for documentation audits with many external links
+- Business value: Faster feedback loops during `ll-check-links` and `audit_docs` workflows
+- Technical debt: None introduced — uses stdlib `concurrent.futures` with no new dependencies
+
+## Implementation Steps
+
+1. **Import ThreadPoolExecutor**: Add `from concurrent.futures import ThreadPoolExecutor, as_completed` to `link_checker.py`
+2. **Add max_workers parameter**: Add optional `max_workers: int = 10` parameter to `check_markdown_links`
+3. **Wrap check_url calls in executor**: Replace the sequential URL checking loop with `ThreadPoolExecutor` submission and result collection
+4. **Preserve result ordering**: Collect results from futures and map back to original URLs
+5. **Verify thread safety**: Confirm `check_url()` remains stateless with no shared mutable state
+6. **Update tests**: Add test cases for concurrent execution and edge cases (timeouts, mixed results)
+
+## Integration Map
+
+- **Files to Modify**: `scripts/little_loops/link_checker.py`
+- **Dependent Files (Callers/Importers)**: `scripts/little_loops/cli/check_links.py` (CLI entry point)
+- **Similar Patterns**: N/A
+- **Tests**: `scripts/tests/test_link_checker.py`
+- **Documentation**: N/A
+- **Configuration**: N/A
+
 ## Scope Boundaries
 
 - Only parallelize HTTP checks, not file-based link validation
@@ -48,6 +73,7 @@ Use `concurrent.futures.ThreadPoolExecutor(max_workers=10)` to check URLs in par
 
 ## Session Log
 - `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
+- `/ll:format_issue --all --auto` - 2026-02-13
 
 
 ---

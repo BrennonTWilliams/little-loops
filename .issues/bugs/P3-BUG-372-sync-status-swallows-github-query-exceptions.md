@@ -78,6 +78,14 @@ Replace the bare `except Exception: pass` with either:
 ### Configuration
 - N/A
 
+## Implementation Steps
+
+1. Replace bare `except Exception: pass` with specific exception handling (`subprocess.CalledProcessError`, `json.JSONDecodeError`, `KeyError`)
+2. Add `logger.warning(f"Failed to query GitHub: {e}")` for caught exceptions
+3. Add an optional `error` field to the status dataclass to communicate partial failures to callers
+4. Add test in `scripts/tests/test_sync.py` for the error case (mock a failing GitHub query)
+5. Verify existing sync status tests still pass
+
 ## Impact
 
 - **Priority**: P3 - Low severity, affects observability not correctness
@@ -93,5 +101,6 @@ Replace the bare `except Exception: pass` with either:
 
 ## Session Log
 - `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
+- `/ll:format_issue --all --auto` - 2026-02-13
 
 **Open** | Created: 2026-02-12 | Priority: P3

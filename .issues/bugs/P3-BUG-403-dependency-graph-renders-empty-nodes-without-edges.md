@@ -3,7 +3,7 @@ discovered_date: 2026-02-12
 discovered_by: capture_issue
 ---
 
-# BUG-391: Dependency graph renders empty isolated nodes when no edges exist
+# BUG-403: Dependency graph renders empty isolated nodes when no edges exist
 
 ## Summary
 
@@ -88,6 +88,13 @@ def _render_dependency_graph(waves, dep_graph):
 ### Configuration
 - N/A
 
+## Motivation
+
+This bug would:
+- Eliminate confusing output that makes the sprint tool look broken when there are no intra-sprint dependencies
+- Business value: Improves user confidence in the sprint management tool by suppressing meaningless output
+- Technical debt: Fixes an incomplete guard condition that fails to account for waves created by file contention refinement
+
 ## Implementation Steps
 
 1. Add edge-existence check to `_render_dependency_graph()` after the existing wave count guard
@@ -124,8 +131,16 @@ def _render_dependency_graph(waves, dep_graph):
 
 ## Session Log
 - `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab030831-19f7-4fb7-8753-c1c282a30c99.jsonl`
+- `/ll:format_issue --all --auto` - 2026-02-13
 
 ---
+
+## Verification Notes
+
+- **Verified**: 2026-02-13
+- **Verdict**: VALID
+- Commit `3d7713c` attempted a fix at `sprint.py:324-331` but did not resolve the bug
+- The bug remains: empty dependency graphs with isolated nodes still render when no intra-sprint edges exist
 
 ## Status
 

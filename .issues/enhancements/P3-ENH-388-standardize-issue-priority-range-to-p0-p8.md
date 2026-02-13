@@ -95,7 +95,7 @@ TBD - requires investigation
 - ENH-386: add command cross-reference validation to audit_claude_config (shared CONTRIBUTING.md)
 - ENH-368: plugin-config-auditor missing hook event and handler types (shared docs/ARCHITECTURE.md)
 - ENH-384: manage_issue --resume should invoke /ll:resume (shared CONTRIBUTING.md, docs/ARCHITECTURE.md)
-- BUG-391: dependency graph renders empty nodes without edges (shared ARCHITECTURE.md)
+- BUG-403: dependency graph renders empty nodes without edges (shared ARCHITECTURE.md)
 
 ## Blocks
 

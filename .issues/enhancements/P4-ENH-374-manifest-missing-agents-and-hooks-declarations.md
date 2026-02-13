@@ -40,6 +40,30 @@ Either:
 
 Option 1 is recommended — explicit declarations make the manifest a single source of truth for the plugin's component inventory.
 
+## Motivation
+
+This enhancement would:
+- Make the plugin manifest the single source of truth for the complete component inventory
+- Business value: Contributors and tooling can inspect `plugin.json` to discover all plugin components without guessing about auto-discovery conventions
+- Technical debt: Eliminates inconsistency where `commands` and `skills` are declared but `agents` and `hooks` rely on implicit auto-discovery
+
+## Implementation Steps
+
+1. **Add agents declaration**: Add `"agents": ["./agents"]` to `.claude-plugin/plugin.json`
+2. **Add hooks declaration**: Add `"hooks": "./hooks/hooks.json"` to `.claude-plugin/plugin.json`
+3. **Verify schema compatibility**: Confirm the plugin.json schema supports `agents` and `hooks` keys
+4. **Verify component discovery**: Ensure all 8 agents and 6 hooks are still discovered and functional after the change
+5. **Test plugin loading**: Verify the plugin loads correctly with the updated manifest
+
+## Integration Map
+
+- **Files to Modify**: `.claude-plugin/plugin.json`
+- **Dependent Files (Callers/Importers)**: Claude Code plugin loader, `hooks/hooks.json`, `agents/` directory
+- **Similar Patterns**: ENH-366 (add agents directory to plugin.json — subset of this issue)
+- **Tests**: N/A (manual verification of plugin loading)
+- **Documentation**: `docs/ARCHITECTURE.md` (if it documents plugin.json structure)
+- **Configuration**: `.claude-plugin/plugin.json`
+
 ## Impact
 
 - **Priority**: P4
@@ -57,6 +81,9 @@ Option 1 is recommended — explicit declarations make the manifest a single sou
 ## Blocks
 
 - ENH-366: add agents directory to plugin.json (shared plugin.json)
+
+## Session Log
+- `/ll:format_issue --all --auto` - 2026-02-13
 
 ---
 

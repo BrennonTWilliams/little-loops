@@ -53,6 +53,26 @@ Update `agents/plugin-config-auditor.md`:
 3. Add validation of additional handler fields (`async`, `statusMessage`, `once`, `model`)
 4. Change timeout recommendation from blanket `<5s` to type-specific defaults
 
+## Integration Map
+
+### Files to Modify
+- `agents/plugin-config-auditor.md`
+
+### Dependent Files
+- N/A
+
+### Similar Patterns
+- N/A
+
+### Tests
+- Run `/ll:audit_claude_config` and verify no false positives for valid hook event types and handler types
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Implementation Steps
 
 1. Update recognized event types in `agents/plugin-config-auditor.md`
@@ -89,6 +109,7 @@ Update `agents/plugin-config-auditor.md`:
 
 ## Session Log
 - `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00ffa686-5907-4ed1-8765-93f478b14da2.jsonl`
+- /ll:format_issue --all --auto - 2026-02-13
 
 ---
 

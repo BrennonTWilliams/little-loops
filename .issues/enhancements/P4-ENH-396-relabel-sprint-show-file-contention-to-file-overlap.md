@@ -103,6 +103,17 @@ The chosen glyph must render correctly in common terminal emulators (iTerm2, Ter
 
 ## Session Log
 - `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d505908-8129-431d-a9c6-108fc6753c82.jsonl`
+- /ll:format_issue --all --auto - 2026-02-13
+
+## Verification Notes
+
+- **Verified**: 2026-02-13
+- **Verdict**: NEEDS_UPDATE
+- **All line numbers stale** (off by ~16 lines due to code growth since discovery):
+  - Display string: line 297 (not 290)
+  - Comments in sprint.py: lines 292, 325, 759-760 (not 285, 389, 743)
+  - Test assertions in test_cli.py: lines 1082, 1100, 1135 (not 1066, 1084, 1119)
+- Content and behavior descriptions remain accurate — only line numbers drifted
 
 ---
 

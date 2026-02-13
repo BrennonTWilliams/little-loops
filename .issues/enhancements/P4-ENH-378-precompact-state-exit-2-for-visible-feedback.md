@@ -27,6 +27,28 @@ echo "[ll] Task state preserved before context compaction..." >&2
 exit 2  # PreCompact: non-blocking, "Shows stderr to user only"
 ```
 
+## Motivation
+
+This enhancement would:
+- Provide user-visible feedback during context compaction so users know their task state was preserved
+- Business value: Improved user experience — users see confirmation that state preservation occurred without needing verbose mode
+- Technical debt: Aligns exit code usage with hooks reference documentation for correct semantics
+
+## Implementation Steps
+
+1. **Change exit code**: Replace `exit 0` with `exit 2` in `hooks/scripts/precompact-state.sh` at line 84
+2. **Verify message visibility**: Confirm the stderr message "[ll] Task state preserved before context compaction..." is shown to the user (not just in verbose mode)
+3. **Test compaction flow**: Ensure exit 2 does not block compaction (PreCompact is non-blocking by design)
+
+## Integration Map
+
+- **Files to Modify**: `hooks/scripts/precompact-state.sh`
+- **Dependent Files (Callers/Importers)**: `hooks/hooks.json` (PreCompact event triggers this script)
+- **Similar Patterns**: Other hook scripts using exit codes (`hooks/scripts/session-start.sh`, `hooks/scripts/postcommit-update.sh`)
+- **Tests**: N/A (shell script; manual verification)
+- **Documentation**: `docs/claude-code/hooks-reference.md`
+- **Configuration**: N/A
+
 ## Reference
 
 - `docs/claude-code/hooks-reference.md` — Exit code 2 behavior table: `PreCompact | No [can't block] | Shows stderr to user only`
@@ -42,6 +64,9 @@ PreCompact exit 2 is safe — the event cannot block compaction. Exit 2 simply m
 ## Labels
 
 `enhancement`, `hooks`, `precompact`, `ux`
+
+## Session Log
+- `/ll:format_issue --all --auto` - 2026-02-13
 
 ---
 

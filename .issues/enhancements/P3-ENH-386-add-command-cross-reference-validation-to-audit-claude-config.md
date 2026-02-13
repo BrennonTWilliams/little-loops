@@ -91,7 +91,7 @@ This fits naturally into the existing Wave 2 consistency checks alongside agent/
 
 ## Blocked By
 
-- BUG-391: dependency graph renders empty nodes without edges (shared ARCHITECTURE.md)
+- BUG-403: dependency graph renders empty nodes without edges (shared ARCHITECTURE.md)
 
 ## Blocks
 

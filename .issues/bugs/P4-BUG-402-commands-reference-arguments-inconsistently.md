@@ -32,6 +32,19 @@ Process the issue at: $ARGUMENTS
 
 This ensures arguments are placed at a semantically appropriate location in the prompt rather than appended as an afterthought.
 
+## Motivation
+
+This bug would:
+- Ensure consistent and reliable argument handling across all commands that accept arguments
+- Business value: Improves command UX by placing arguments at semantically appropriate locations in prompts
+- Technical debt: Eliminates reliance on implicit append behavior that can cause arguments to be ignored or misinterpreted
+
+## Root Cause
+
+- **File**: Multiple command files in `commands/`
+- **Anchor**: `in frontmatter and body`
+- **Cause**: Commands define `arguments:` in frontmatter but omit `$ARGUMENTS` in their body, relying on Claude Code's implicit behavior of appending `"ARGUMENTS: <value>"` at the end of the prompt rather than placing the argument at a well-defined location
+
 ## Integration Map
 
 ### Files to Modify
@@ -72,6 +85,9 @@ This ensures arguments are placed at a semantically appropriate location in the 
 `bug`, `commands`, `configuration`, `ux`
 
 ---
+
+## Session Log
+- `/ll:format_issue --all --auto` - 2026-02-13
 
 ## Status
 

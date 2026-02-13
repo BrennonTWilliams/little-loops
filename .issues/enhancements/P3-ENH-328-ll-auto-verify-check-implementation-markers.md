@@ -103,11 +103,11 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 
 ## Verification Notes
 
-- **Verified**: 2026-02-12
+- **Verified**: 2026-02-13 (updated from 2026-02-12)
 - **Verdict**: NEEDS_UPDATE
 - **ENH-344 blocker resolved**: ENH-344 (cli.py split into package) is now completed. `Blocked By` should be marked resolved.
 - **File references stale**: Verify phase logic is in `scripts/little_loops/issue_manager.py:540-597` (inside `process_issue_inplace()`), NOT in `main_auto()` or `cli.py`. `main_auto()` in `cli/auto.py` is a thin wrapper delegating to `AutoManager.run()`.
-- **Current behavior overstated**: The issue says "only checks whether the issue file was moved to completed/". In reality, the verify phase already has fallback logic:
+- **Current behavior overstated**: The issue says "only checks whether the issue file was moved to completed/". In reality, the verify phase already has 4 fallback checks:
   1. Checks `verify_issue_completed()` (file moved)
   2. If returncode 0 but not verified, checks for plan creation (`detect_plan_creation()`)
   3. If no plan, calls `verify_work_was_done()` to check git evidence of code changes
