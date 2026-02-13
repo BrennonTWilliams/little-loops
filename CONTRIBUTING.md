@@ -163,9 +163,17 @@ little-loops/
     ├── pyproject.toml    # Package configuration
     ├── tests/            # Test suite
     └── little_loops/     # Main package
-        ├── cli.py        # CLI entry points (ll-auto, ll-parallel, ll-messages,
-        │                 #   ll-loop, ll-sprint, ll-sync, ll-history,
-        │                 #   ll-verify-docs, ll-check-links)
+        ├── cli/                 # CLI entry points
+        │   ├── __init__.py
+        │   ├── auto.py
+        │   ├── docs.py
+        │   ├── history.py
+        │   ├── loop.py
+        │   ├── messages.py
+        │   ├── next_id.py
+        │   ├── parallel.py
+        │   ├── sprint.py
+        │   └── sync.py
         ├── cli_args.py          # Argument parsing
         ├── config.py            # Configuration management
         ├── state.py             # State persistence
