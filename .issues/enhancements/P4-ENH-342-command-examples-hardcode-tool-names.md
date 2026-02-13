@@ -99,9 +99,10 @@ _None — ENH-341 (hardcoded paths) is now completed._
 
 ## Verification Notes
 
-- **Verified**: 2026-02-11
+- **Verified**: 2026-02-13
 - **Verdict**: VALID
 - `create_loop.md` hardcodes `pytest`, `ruff`, `mypy` in template examples (confirmed)
-- `iterate_plan.md` and `loop-suggester.md` also use literal tool names
+- `iterate_plan.md` hardcodes `pytest tests/` and `ruff check .` at lines 125-126 (confirmed)
+- `loop-suggester.md` hardcodes tool names at line 60 (confirmed)
 - `check_code.md` already uses `{{config.project.*}}` refs — pattern exists to follow
-- Blocked by ENH-341 (confirmed open)
+- **ENH-341 blocker resolved**: ENH-341 (hardcoded paths) is now completed — this issue is unblocked

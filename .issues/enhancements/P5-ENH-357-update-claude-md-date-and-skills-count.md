@@ -79,7 +79,8 @@ Consider fixing all three files together for consistency.
 
 - **Verified**: 2026-02-13
 - **Verdict**: NEEDS_UPDATE
-- Core issue still valid: CLAUDE.md date is `2026-02-06` (stale), skills count is 8 (confirmed)
+- Core issue still valid: CLAUDE.md date is `2026-02-06` (stale)
+- **Skills count outdated**: Issue says 8 skills, but now **16 skills** exist in `skills/` directory
 - **Stale references**: BUG-381, BUG-382, and ENH-356 are all now **completed** — the "Audit Update" note about fixing "all three files together" and "bundled with ENH-356" is outdated
 - Only the CLAUDE.md date/skills count updates remain; README and CONTRIBUTING are already fixed
 

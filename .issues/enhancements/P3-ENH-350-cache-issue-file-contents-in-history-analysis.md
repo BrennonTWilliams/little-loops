@@ -86,8 +86,9 @@ Add a `_load_issue_contents(issues: list[CompletedIssue]) -> dict[str, str]` hel
 
 - **Verified**: 2026-02-13
 - **Verdict**: NEEDS_UPDATE
-- **Line numbers slightly off**: Actual `read_text()` calls are at lines 1390, 1436, 1550, 1685, 1898 (off by 1-2 from issue's 1388, 1434, 1548, 1684, 1897)
-- **Scope underestimated**: Issue says "5+ analysis functions" but actually **9+** functions read from disk in `calculate_analysis()`: `_analyze_subsystems`, `analyze_hotspots`, `analyze_coupling`, `analyze_regression_clustering`, `analyze_rejection_rates`, `detect_manual_patterns`, `analyze_agent_effectiveness`, `analyze_complexity_proxy`, `detect_cross_cutting_smells`
+- **Line numbers drifted**: Actual `read_text()` calls at lines 1390, 1436, 1550, 1685, 1898, 2077, 2165, 2399, 2554 (off by 1-2 from issue's stated lines)
+- **Scope underestimated**: Issue says "5+ analysis functions" but actually **9** functions read from disk in `calculate_analysis()`: `_analyze_subsystems`, `analyze_hotspots`, `analyze_coupling`, `analyze_regression_clustering`, `analyze_rejection_rates`, `detect_manual_patterns`, `detect_cross_cutting_smells`, `analyze_agent_effectiveness`, `analyze_complexity_proxy`
+- **Impact greater than stated**: ~9N file reads instead of ~5N, making the caching optimization even more valuable
 - Core issue remains valid — multiple independent `issue.path.read_text()` calls for the same files
 
 ---
