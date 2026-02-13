@@ -1014,6 +1014,29 @@ View: /ll:configure [area] --show
 
 ---
 
+## Arguments
+
+$ARGUMENTS
+
+- **area** (optional): Configuration area to modify
+  - `project` - Test, lint, format, type-check, build commands
+  - `issues` - Base dir, categories, templates, capture style
+  - `parallel` - ll-parallel: workers, timeouts, worktree files
+  - `automation` - ll-auto: workers, timeouts, streaming
+  - `documents` - Key document categories for issue alignment
+  - `continuation` - Session handoff: auto-detect, includes, expiry
+  - `context` - Context monitoring: threshold, limits
+  - `prompt` - Prompt optimization: mode, confirm, bypass
+  - `scan` - Focus dirs, exclude patterns
+  - `sync` - GitHub Issues sync: enabled, label mapping, priorities
+
+- **flags** (optional): Command behavior flags
+  - `--list` - Display all configuration areas with status
+  - `--show` - Display current values for specified area
+  - `--reset` - Remove section from config, reverting to defaults
+
+---
+
 ## Examples
 
 ```bash

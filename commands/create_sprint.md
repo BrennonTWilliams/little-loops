@@ -450,6 +450,23 @@ ll-sprint show ${SPRINT_NAME}
 ll-sprint list
 ```
 
+---
+
+## Arguments
+
+$ARGUMENTS
+
+- **name** (optional): Sprint name following `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$` pattern
+  - If omitted, prompted interactively or derived from auto-grouping
+
+- **description** (optional): Human-readable description of the sprint's purpose
+
+- **issues** (optional): Comma-separated list of issue IDs to include
+  - Example: `BUG-001,FEAT-010,ENH-042`
+  - If omitted, issues are selected interactively or via auto-grouping
+
+---
+
 ## Examples
 
 ```bash

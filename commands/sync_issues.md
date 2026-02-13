@@ -43,8 +43,11 @@ If not authenticated, instruct user to run `gh auth login`.
 
 ## Arguments
 
+$ARGUMENTS
+
 - **action** (required): `push`, `pull`, or `status`
 - **issue_id** (optional): Specific issue ID to sync (e.g., `BUG-123`)
+  - If omitted, syncs all issues
 
 ## Actions
 
