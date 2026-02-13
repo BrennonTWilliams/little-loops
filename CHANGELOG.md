@@ -13,6 +13,57 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.10.0] - 2026-02-12
+
+### Added
+
+- **Auto-mode for prioritize_issues** - Run priority assignment without interactive prompts (FEAT-380, ENH-389)
+- **Re-prioritize option** - Re-prioritize already-prioritized issues when backlog shifts (ENH-389)
+- **Refine issue command** - New `refine_issue` with codebase-driven research for deeper issue refinement (FEAT-380)
+- **`ll-loop show` command** - Inspect loop configuration details from the CLI (FEAT-345)
+- **CLI tool loop templates** - Ship built-in loop templates for common CLI tool workflows (ENH-332)
+- **Pre-implementation confidence check** - Validate implementation readiness before coding begins (ENH-277)
+- **Abstract base classes for CLI commands** - Shared ABC for CLI command structure (FEAT-001)
+- **Session log linking** - Link session JSONL logs to issue files for traceability (FEAT-323)
+
+### Fixed
+
+- **Prioritize issues gate logic** - Simplify and fix re-prioritize gate wording and AskUserQuestion reliability (BUG-361)
+- **Normalize issues duplicate detection** - Include `completed/` directory in duplicate ID detection (BUG-382)
+- **Configure phantom section** - Remove phantom workflow configuration section (BUG-367)
+- **Sprint issue parsing** - Log warning when issue file parsing fails instead of crashing (BUG-348)
+- **Hook timeout values** - Correct timeout values from milliseconds to seconds (BUG-376)
+- **Hook prompt handling** - Use `exit 0` + stdout instead of `exit 2` + stderr in user-prompt-check (BUG-361)
+- **Absolute path removal** - Replace absolute paths with relative/generic paths for public repo distribution (BUG-338)
+- **Issue size review reference** - Correct command reference in issue-size-review skill (BUG-358)
+- **README skills count** - Fix skills count (7 vs 8) and add missing loop-suggester to table (BUG-381)
+- **CONTRIBUTING directory trees** - Update outdated directory trees for skills, loops, and docs (BUG-382)
+- **Help references** - Correct multiple stale and missing references in help.md (BUG-336)
+- **Create loop wizard** - Present paradigms instead of use-case templates (BUG-333)
+- **Context monitor compaction** - Reset token estimate after context compaction (BUG-329)
+- **Manage issue improve action** - Clarify that improve action requires full implementation (BUG-326, BUG-327)
+
+### Changed
+
+- **Behavioral rules extraction** - Split CLAUDE.md behavioral rules into core docs (ENH-278)
+- **Test file splitting** - Split large test files into focused modules (ENH-311)
+- **Text dependency graphs** - Replace mermaid dependency graphs with ASCII text diagrams in CLI (ENH-334)
+- **Documentation reorganization** - Organize docs with command and skill groupings (ENH-335)
+- **Dependency mapping delegation** - `map-dependencies` skill delegates to `dependency_mapper.py` (ENH-337)
+- **Configurable continuation path** - Continuation prompt path now configurable (ENH-340)
+- **CLI package split** - Split `cli.py` into `cli/` package for maintainability (ENH-344)
+- **Serialization mixin** - Extract serialization mixin for dataclass `to_dict` boilerplate (ENH-354)
+- **Agent model fields** - Add missing `model` field to all agent frontmatter (ENH-355)
+- **CLAUDE.md completeness** - Document orphan commands and CLI tools (ENH-356)
+- **Settings validation** - `audit_claude_config` now validates `settings.json` content (ENH-369)
+- **Command examples** - Add missing Examples sections to commit and tradeoff_review_issues commands (ENH-373)
+- **Remove .mcp.json placeholder** - Remove empty `.mcp.json` placeholder file (ENH-375)
+- **Rename refine_issue** - Rename `refine_issue` to `format_issue` for honest naming (ENH-379)
+- **Audit docs direct fix** - Add direct fix option for auto-fixable findings in audit_docs (ENH-383)
+- **Context monitor tracking** - Track Claude output and user message tokens (ENH-330)
+
+[1.10.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.9.0...v1.10.0
+
 ## [1.9.0] - 2026-02-11
 
 ### Added
