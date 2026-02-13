@@ -85,6 +85,7 @@ Update `agents/plugin-config-auditor.md`:
 ## Blocks
 
 - ENH-279: audit skill vs command allocation (shared docs/ARCHITECTURE.md)
+- ENH-388: standardize issue priority range to P0-P8 (shared docs/ARCHITECTURE.md)
 
 ## Session Log
 - `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00ffa686-5907-4ed1-8765-93f478b14da2.jsonl`

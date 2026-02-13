@@ -98,6 +98,10 @@ Instead of duplicating the file-read logic, `manage_issue --resume` could invoke
 | architecture | docs/ARCHITECTURE.md | Resume/handoff lifecycle |
 | guidelines | CONTRIBUTING.md | Skill development conventions |
 
+## Blocks
+
+- ENH-388: standardize issue priority range to P0-P8 (shared CONTRIBUTING.md, docs/ARCHITECTURE.md)
+
 ## Labels
 
 `enhancement`, `commands`, `resume`, `captured`

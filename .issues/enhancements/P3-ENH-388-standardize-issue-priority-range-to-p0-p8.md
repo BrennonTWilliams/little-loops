@@ -93,10 +93,13 @@ TBD - requires investigation
 ## Blocked By
 
 - ENH-386: add command cross-reference validation to audit_claude_config (shared CONTRIBUTING.md)
+- ENH-368: plugin-config-auditor missing hook event and handler types (shared docs/ARCHITECTURE.md)
+- ENH-384: manage_issue --resume should invoke /ll:resume (shared CONTRIBUTING.md, docs/ARCHITECTURE.md)
 
 ## Blocks
 
 - ENH-357: update CLAUDE.md date and skills count (shared CLAUDE.md)
+- ENH-279: audit skill vs command allocation (shared docs/ARCHITECTURE.md)
 
 ## Session Log
 - `/ll:capture_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb9342d2-9c23-4b31-8822-f890ead72957.jsonl`
