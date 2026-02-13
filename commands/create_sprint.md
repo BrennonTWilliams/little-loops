@@ -137,6 +137,9 @@ For each issue file found, extract:
 - **Type**: From directory (bugs, features, enhancements)
 - **ID**: From filename (e.g., BUG-001, FEAT-042)
 - **Title**: From first `# ` heading in file content
+- **Summary**: First paragraph from the `## Summary` section (if exists)
+- **File Paths**: Backtick-enclosed file paths found in issue content (e.g., from `## Integration Map` or `### Files to Modify` sections). Extract the top-level directory from each path (e.g., `commands/create_sprint.md` → `commands/`).
+- **Goal Alignment**: From frontmatter `goal_alignment` field (if exists)
 - **Blocked By**: From `## Blocked By` section (if exists)
 
 Store parsed issues in a list for analysis.
@@ -163,18 +166,42 @@ Analyze the parsed issues and generate 2-4 distinct groupings. Skip any grouping
 - Criteria: Issues with no `Blocked By` entries
 - Only suggest if 3+ issues match
 
-**Grouping Strategy 4: Theme Cluster**
-- Detect themes by matching keywords in issue titles (case-insensitive):
+**Grouping Strategy 4: Theme Clusters**
+- Detect themes by matching keywords in issue **titles AND summaries** (case-insensitive):
   - Keywords containing "test" → Name: `test-coverage`, Description: "Test coverage improvements"
   - Keywords: "performance", "speed", "slow", "fast", "optimize" → Name: `performance`, Description: "Performance-related issues"
   - Keywords: "security", "auth", "permission", "access" → Name: `security`, Description: "Security-related issues"
-  - Keywords: "doc", "readme", "comment" → Name: `documentation`, Description: "Documentation improvements"
+  - Keywords: "doc", "readme", "comment", "documentation" → Name: `documentation`, Description: "Documentation improvements"
+  - Keywords: "sprint", "workflow", "automation", "loop", "pipeline" → Name: `workflow-automation`, Description: "Workflow and automation improvements"
+  - Keywords: "config", "setting", "option", "schema", "manifest" → Name: `config-cleanup`, Description: "Configuration and settings improvements"
+  - Keywords: "hook", "lifecycle", "event", "trigger" → Name: `hook-system`, Description: "Hook and lifecycle improvements"
+  - Keywords: "cli", "command", "flag", "argument", "prompt" → Name: `cli-polish`, Description: "CLI and command improvements"
+  - Keywords: "error", "log", "debug", "trace", "warning" → Name: `error-handling`, Description: "Error handling and logging improvements"
 - Only suggest if 2+ issues match a theme
-- Only include the largest theme cluster
+- Include **all qualifying** theme clusters (not just the largest)
+
+**Grouping Strategy 5: Component Cluster**
+- Group issues by the top-level codebase directory they reference (from extracted **File Paths**):
+  - For each issue, use the top-level directory of each referenced file path (e.g., `commands/`, `scripts/`, `hooks/`, `skills/`, `docs/`)
+  - Assign each issue to the directory it references most frequently
+  - Name: derived from directory (e.g., `commands-updates`, `scripts-improvements`, `hooks-changes`)
+  - Description: "[Directory] related improvements"
+- Only suggest if 2+ issues reference the same top-level directory
+- Include the top 2 component groupings by issue count
+
+**Grouping Strategy 6: Goal-Aligned**
+- **SKIP entirely** if `product.enabled` is not `true` in `.claude/ll-config.json` or `product.goals_file` (default `.claude/ll-goals.md`) does not exist
+- Read the goals file and extract priority names from its YAML frontmatter `priorities` list
+- For each issue, check if its `goal_alignment` frontmatter field matches a goal name, OR if its title/summary mentions a goal name (case-insensitive)
+- Group issues by matching goal
+- Name: kebab-case of goal name (e.g., `goal-developer-experience`, `goal-reliability`)
+- Description: "Issues aligned to [goal name]"
+- Only suggest if 2+ issues match a goal
 
 **Scoring & Selection:**
 - Prioritize groupings by distinctiveness (issues not in other groupings)
-- Select top 3-4 groupings with size >= 2
+- When more than 4 groupings qualify, prefer a mix: up to 2 mechanical (Strategies 1-3) + up to 2 theme/component/goal-based (Strategies 4-6), selecting the largest from each category
+- Select top 4 groupings with size >= 2 (AskUserQuestion supports up to 4 options)
 - Always include "Select manually" as the last option
 
 #### Step 1.5.3: Present Suggestions
@@ -199,11 +226,11 @@ questions:
 ```
 Based on 23 active issues, here are suggested sprint groupings:
 
-1. critical-fixes (4 issues)
-   All P0-P1 priority issues: BUG-001, BUG-015, FEAT-040...
+1. cli-polish (5 issues)
+   CLI and command improvements: ENH-387, ENH-276, ENH-346...
 
-2. bug-fixes (8 issues)
-   All active bugs: BUG-001, BUG-015, BUG-023...
+2. config-cleanup (4 issues)
+   Configuration and settings improvements: ENH-374, ENH-370, ENH-377...
 
 3. parallel-ready (12 issues)
    Issues with no blockers: ENH-004, ENH-146, ENH-147...
