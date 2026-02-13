@@ -1,4 +1,5 @@
 {
+  "description": "little-loops development workflow hooks",
   "hooks": {
     "SessionStart": [
       {
@@ -7,7 +8,8 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-start.sh",
-            "timeout": 5
+            "timeout": 5,
+            "statusMessage": "Loading ll config..."
           }
         ]
       }
@@ -18,7 +20,8 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/user-prompt-check.sh",
-            "timeout": 3
+            "timeout": 3,
+            "statusMessage": "Checking prompt..."
           }
         ]
       }
@@ -30,7 +33,8 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/check-duplicate-issue-id.sh",
-            "timeout": 5
+            "timeout": 5,
+            "statusMessage": "Checking for duplicate issue IDs..."
           }
         ]
       }
@@ -42,7 +46,8 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/context-monitor.sh",
-            "timeout": 5
+            "timeout": 5,
+            "statusMessage": "Monitoring context usage..."
           }
         ]
       }
@@ -53,7 +58,8 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session-cleanup.sh",
-            "timeout": 15
+            "timeout": 15,
+            "statusMessage": "Cleaning up session..."
           }
         ]
       }
@@ -65,7 +71,8 @@
           {
             "type": "command",
             "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/precompact-state.sh",
-            "timeout": 5
+            "timeout": 5,
+            "statusMessage": "Preserving task state..."
           }
         ]
       }

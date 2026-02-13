@@ -78,6 +78,19 @@ This enhancement would:
 - Business value: Users see meaningful spinner text instead of generic messages, improving perceived quality and debuggability
 - Technical debt: Aligns hooks.json with all documented optional fields in the hooks reference
 
+## Proposed Solution
+
+Add the three optional fields to `hooks/hooks.json`:
+
+1. Add a top-level `"description": "little-loops development workflow hooks"` field
+2. Add `"statusMessage"` to each hook entry with context-appropriate spinner text (see Expected Behavior for values)
+3. Evaluate whether any hooks should use `"once": true` (likely none in current set — all hooks are per-event, not one-time initialization)
+
+## Scope Boundaries
+
+- **In scope**: Adding `description`, `statusMessage`, and evaluating `once` field for existing hooks in `hooks/hooks.json`
+- **Out of scope**: Changing hook behavior, modifying hook scripts, adding new hooks, or restructuring hooks.json
+
 ## Implementation Steps
 
 1. Add top-level `"description"` field to `hooks/hooks.json`
@@ -107,9 +120,10 @@ This enhancement would:
 
 ## Impact
 
-- **Priority**: P5
-- **Effort**: Trivial
-- **Risk**: None
+- **Priority**: P5 - UX polish only; no functional impact
+- **Effort**: Trivial - Single file edit adding JSON fields
+- **Risk**: None - Adding optional metadata fields with no behavioral changes
+- **Breaking Change**: No
 
 ## Labels
 
@@ -117,13 +131,31 @@ This enhancement would:
 
 ## Blocked By
 
-- ENH-377: remove ignored matchers from UserPromptSubmit and Stop (shared hooks.json, hooks-reference.md)
+- ~~ENH-377: remove ignored matchers from UserPromptSubmit and Stop~~ (completed)
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `hooks/hooks.json`: Added top-level `"description": "little-loops development workflow hooks"` field
+- `hooks/hooks.json`: Added `"statusMessage"` to all 6 hook handlers with context-appropriate spinner text
+- `once` field evaluated — not applicable (all hooks are per-event, not one-time initialization)
+
+### Verification Results
+- Tests: PASS (2733 passed)
+- Lint: PASS
+- JSON validation: PASS
+- Integration: PASS
 
 ## Session Log
 - /ll:format_issue --all --auto - 2026-02-13
+- /ll:manage_issue - 2026-02-13T18:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0fbcbd8f-a6b8-4235-a420-cb48a1a42320.jsonl`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P5
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P5
