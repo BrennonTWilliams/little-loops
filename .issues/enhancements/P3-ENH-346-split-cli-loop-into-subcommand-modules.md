@@ -47,6 +47,10 @@ Extract subcommand handlers into a `cli/loop/` package with separate modules per
 - **Risk**: Low
 - **Breaking Change**: No
 
+## Blocked By
+
+- ENH-390: split issue_history module into package (shared __init__.py)
+
 ## Labels
 
 `enhancement`, `architecture`, `refactoring`, `auto-generated`

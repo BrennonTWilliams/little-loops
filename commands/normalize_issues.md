@@ -120,11 +120,11 @@ done
 
 ### 1b. Detect Cross-Type Duplicate IDs
 
-Issue IDs must be **globally unique** across all types (BUG, FEAT, ENH). Scan for ID numbers used by multiple types:
+Issue IDs must be **globally unique** across all types (BUG, FEAT, ENH) and all directories (including `completed/`). Scan for ID numbers used by multiple files:
 
 ```bash
-# Build a map of ID numbers to files
-find {{config.issues.base_dir}} -name "*.md" -type f ! -path "*/completed/*" | while read file; do
+# Build a map of ID numbers to files (include completed/ to catch reused IDs)
+find {{config.issues.base_dir}} -name "*.md" -type f | while read file; do
     basename=$(basename "$file")
     # Extract the numeric ID (e.g., 007 from BUG-007 or FEAT-007)
     id_num=$(echo "$basename" | grep -oE '(BUG|FEAT|ENH)-[0-9]{3,}' | grep -oE '[0-9]{3,}')
@@ -133,14 +133,14 @@ find {{config.issues.base_dir}} -name "*.md" -type f ! -path "*/completed/*" | w
     fi
 done | sort -t: -k1,1n > /tmp/issue_id_map.txt
 
-# Find duplicate ID numbers (same number, different prefixes)
+# Find duplicate ID numbers (same number across any files/directories)
 cut -d: -f1 /tmp/issue_id_map.txt | uniq -d | while read dup_id; do
     echo "DUPLICATE ID $dup_id:"
     grep "^$dup_id:" /tmp/issue_id_map.txt | cut -d: -f2
 done
 ```
 
-**Cross-type duplicates** (e.g., BUG-007, FEAT-007, ENH-007 all existing) violate global uniqueness and must be renumbered.
+**Duplicate IDs** — whether cross-type (BUG-007 vs FEAT-007) or active-vs-completed (active ENH-310 vs completed ENH-310) — violate global uniqueness and must be renumbered. The completed/older file keeps its ID; active duplicates get reassigned.
 
 ### 2. Determine Category Mapping
 

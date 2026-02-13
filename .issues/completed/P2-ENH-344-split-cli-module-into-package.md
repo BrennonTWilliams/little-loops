@@ -157,7 +157,7 @@ This enhancement would:
 - `scripts/tests/test_cli_e2e.py` - ~4 imports
 
 ### Similar Patterns
-- ENH-310 (issue_history.py split) follows the same god-module-to-package pattern
+- ENH-390 (issue_history.py split) follows the same god-module-to-package pattern
 
 ### Tests
 - `scripts/tests/test_cli.py` - update imports if needed

@@ -69,7 +69,7 @@ tests/cli/
 
 ## Implementation Steps
 
-1. **Wait for production code refactoring** (ENH-309, ENH-310)
+1. **Wait for production code refactoring** (ENH-309, ENH-390)
 2. **Split test_cli.py** to match new cli/ structure
 3. **Split test_issue_history_advanced_analytics.py** to match new issue_history/ structure
 4. **Optionally split other large test files** if maintainers see value
@@ -93,7 +93,7 @@ tests/cli/
 ## Notes
 
 - This is OPTIONAL and LOW PRIORITY
-- Only do this after production code refactoring (ENH-309, ENH-310)
+- Only do this after production code refactoring (ENH-309, ENH-390)
 - Test files are less critical than production code
 - Large test files are more acceptable than large production files
 - Focus effort on high-impact improvements first
@@ -101,7 +101,7 @@ tests/cli/
 ## Dependencies
 
 - **Blocks**: None
-- **Blocked by**: ENH-309, ENH-310 (should refactor production code first)
+- **Blocked by**: ENH-309, ENH-390 (should refactor production code first)
 
 ## Labels
 
@@ -127,7 +127,7 @@ tests/cli/
   - test_issue_manager.py: 2,083 lines (reported: 2,079)
   - test_fsm_executor.py: 1,925 lines (reported: 1,925)
   - test_worker_pool.py: 1,737 lines (reported: 1,739)
-- Dependencies (ENH-309, ENH-310) not yet completed — test splitting not started
+- Dependencies (ENH-309, ENH-390) not yet completed — test splitting not started
 
 ---
 
@@ -145,4 +145,4 @@ tests/cli/
 - Maintenance Overhead: LOW
 
 ### Rationale
-Explicitly optional and low-priority per the issue itself. Blocked by ENH-309 and ENH-310. Large test files are more acceptable than large production files. Reopen only if test navigation becomes a real pain point.
+Explicitly optional and low-priority per the issue itself. Blocked by ENH-309 and ENH-390. Large test files are more acceptable than large production files. Reopen only if test navigation becomes a real pain point.

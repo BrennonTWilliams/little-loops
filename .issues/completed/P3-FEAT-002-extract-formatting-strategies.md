@@ -14,7 +14,7 @@ Architectural improvement found by `/ll:audit_architecture`. Extract formatting 
 
 ## Location
 
-- **Current**: `scripts/little_loops/issue_history.py` (after ENH-310: `issue_history/formatting.py`)
+- **Current**: `scripts/little_loops/issue_history.py` (after ENH-390: `issue_history/formatting.py`)
 - **New files**: `scripts/little_loops/issue_history/formatters/`
 - **Module**: `little_loops.issue_history`
 
@@ -249,7 +249,7 @@ register_analysis_formatter(JsonAnalysisFormatter)
 ### 4. Maintain Backward Compatibility
 
 ```python
-# scripts/little_loops/issue_history/formatting.py (after ENH-310)
+# scripts/little_loops/issue_history/formatting.py (after ENH-390)
 """Formatting functions for history summaries and analysis.
 
 This module provides backward-compatible function-based API
@@ -278,7 +278,7 @@ def format_summary_json(summary: HistorySummary) -> str:
 
 ## Implementation Steps
 
-1. **Create formatters/base.py with protocols** (after ENH-310)
+1. **Create formatters/base.py with protocols** (after ENH-390)
 2. **Extract text formatters** (text.py)
 3. **Extract JSON formatters** (json.py)
 4. **Extract markdown formatter** (markdown.py)
@@ -314,7 +314,7 @@ After this feature:
 ## Dependencies
 
 - **Blocks**: None
-- **Blocked by**: ENH-310 (should split issue_history.py first for cleaner structure)
+- **Blocked by**: ENH-390 (should split issue_history.py first for cleaner structure)
 
 ## Labels
 
@@ -335,7 +335,7 @@ After this feature:
 - scripts/little_loops/issue_history/formatters/ directory does not exist
 - Formatting functions remain in issue_history.py as standalone functions
 - No formatter protocol or registry implemented
-- Dependency ENH-310 not yet completed — implementation blocked
+- Dependency ENH-390 not yet completed — implementation blocked
 
 ---
 
@@ -353,4 +353,4 @@ After this feature:
 - Maintenance Overhead: LOW (set-and-forget)
 
 ### Rationale
-Current formatting functions work fine; no user demand for additional formats (HTML, CSV, XML mentioned as "future"). This is premature optimization for a hypothetical use case. Also blocked by ENH-310 which is not yet complete.
+Current formatting functions work fine; no user demand for additional formats (HTML, CSV, XML mentioned as "future"). This is premature optimization for a hypothetical use case. Also blocked by ENH-390 which is not yet complete.

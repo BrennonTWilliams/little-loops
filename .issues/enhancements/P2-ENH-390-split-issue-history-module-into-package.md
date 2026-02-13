@@ -6,7 +6,7 @@ discovered_by: audit_architecture
 focus_area: large-files
 ---
 
-# ENH-310: Split issue_history.py into issue_history/ package
+# ENH-390: Split issue_history.py into issue_history/ package
 
 ## Summary
 
@@ -257,6 +257,10 @@ This enhancement would:
 3. **Easier testing** - Tests can be organized by module
 4. **Reduced cognitive load** - Developers work with ~1000 line files instead of 3800
 5. **Better git history** - Changes isolated to specific concerns
+
+## Blocks
+
+- ENH-346: split cli/loop.py into subcommand modules (shared __init__.py)
 
 ## Labels
 
