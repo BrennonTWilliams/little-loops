@@ -106,7 +106,6 @@ def sample_config() -> dict[str, Any]:
         },
         "sprints": {
             "sprints_dir": ".sprints",
-            "default_mode": "auto",
             "default_timeout": 3600,
             "default_max_workers": 4,
         },
