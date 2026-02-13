@@ -151,6 +151,16 @@ Create a sprint definition with a curated list of issues.
 
 **Output:** Creates `.sprints/<name>.yaml` with issue list and execution options.
 
+### `/ll:review_sprint`
+AI-guided sprint health check that analyzes a sprint's current state and suggests improvements.
+
+**Arguments:**
+- `sprint_name` (optional): Sprint name to review (e.g., "my-sprint"). If omitted, lists available sprints.
+
+**Trigger keywords:** "review sprint", "sprint health", "sprint review", "check sprint", "sprint suggestions", "optimize sprint"
+
+**Output:** Recommendations for removing stale issues, adding related backlog issues, and resolving dependency or contention problems.
+
 ---
 
 ## Auditing & Analysis
@@ -308,6 +318,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 | `create_loop` | Interactive FSM loop creation |
 | `loop-suggester` | Suggest loops from message history |
 | `create_sprint` | Create sprint with curated issue list |
+| `review_sprint` | Review sprint health and suggest improvements |
 
 ---
 

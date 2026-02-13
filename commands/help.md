@@ -74,6 +74,9 @@ PLANNING & IMPLEMENTATION
 /ll:create_sprint [name] [--issues]
     Create sprint definition with curated list of issues
 
+/ll:review_sprint [sprint_name]
+    AI-guided sprint health check and optimization
+
 /ll:manage_issue <type> <action> [issue_id]
     Autonomously manage issues - plan, implement, verify, complete
     Types: bug, feature, enhancement
@@ -188,7 +191,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 
 **Issue Discovery**: `capture_issue`, `scan_codebase`, `scan_product`, `audit_architecture`
 **Issue Refinement**: `normalize_issues`, `prioritize_issues`, `align_issues`, `format_issue`, `refine_issue`, `verify_issues`, `tradeoff_review_issues`, `ready_issue`
-**Planning & Implementation**: `create_sprint`, `manage_issue`, `iterate_plan`
+**Planning & Implementation**: `create_sprint`, `review_sprint`, `manage_issue`, `iterate_plan`
 **Scanning & Analysis**: `find_dead_code`
 **Code Quality**: `check_code`, `run_tests`, `audit_docs`
 **Git & Release**: `commit`, `open_pr`, `describe_pr`, `manage_release`, `sync_issues`, `cleanup_worktrees`

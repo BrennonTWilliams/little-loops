@@ -118,6 +118,7 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 | Command | Description |
 |---------|-------------|
 | `/ll:create_sprint [name] [--issues]` | Create sprint (explicit or auto-suggested) |
+| `/ll:review_sprint [name]` | Review sprint health and suggest improvements |
 | `/ll:manage_issue <type> <action> [id]` | Full issue lifecycle (plan, implement, verify, complete) |
 | `/ll:iterate_plan [path]` | Update existing implementation plans |
 
