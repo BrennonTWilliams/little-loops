@@ -80,9 +80,7 @@ This bug would:
 
 ## Blocks
 
-- ENH-366: add agents directory to plugin.json (shared plugin.json)
-- ENH-374: manifest missing agents and hooks declarations (shared plugin.json)
-- ENH-279: audit skill vs command allocation (shared plugin.json)
+_None — all downstream issues updated to remove this resolved blocker._
 
 ---
 

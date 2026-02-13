@@ -65,7 +65,6 @@ This enhancement would:
 
 ## Blocked By
 
-- BUG-364: marketplace.json version mismatch (shared plugin.json)
 - ENH-279: audit skill vs command allocation (shared plugin.json)
 - ENH-374: manifest missing agents and hooks declarations (shared plugin.json)
 - ENH-319: improve ll-analyze-workflows (shared plugin.json)
@@ -76,6 +75,15 @@ This enhancement would:
 
 ## Session Log
 - `/ll:format_issue --all --auto` - 2026-02-13
+
+## Verification Notes
+
+- **Verified**: 2026-02-13
+- **Verdict**: NEEDS_UPDATE
+- Core issue valid: `plugin.json` still only declares `commands` and `skills`
+- 8 agents confirmed in `agents/` directory
+- **BUG-364 blocker resolved**: marketplace version mismatch fixed — should be removed from Blocked By
+- **Schema verification still needed**: Issue correctly notes this depends on whether plugin.json schema supports `agents` key — should verify before implementing
 
 ---
 

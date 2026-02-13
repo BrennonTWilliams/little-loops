@@ -7,11 +7,17 @@ discovered_by: capture_issue
 
 ## Summary
 
-The `ll-auto` verify phase (Phase 3) only checks whether the issue file was moved to `.issues/completed/`. This misses cases where implementation succeeded but the file wasn't moved (e.g., due to BUG-327). The verify phase should also check for implementation markers in the issue file content and in the Claude session output.
+The `ll-auto` verify phase (Phase 3) already has 4 fallback checks (file-move, plan detection, git evidence, auto-complete). This enhancement adds issue file content marker checking (e.g., "Status: Implemented") as an additional fallback signal for cases where implementation succeeded but existing checks don't catch it.
 
 ## Current Behavior
 
-Phase 3 checks: "Was the issue file moved to `completed/`?" If not, it reports the issue as not processed, even when the implementation session output clearly shows successful implementation.
+Phase 3 already has 4 fallback checks:
+1. `verify_issue_completed()` — checks if file was moved to `completed/`
+2. `detect_plan_creation()` — checks if a plan was created (returncode 0 but not verified)
+3. `verify_work_was_done()` — checks git evidence of code changes
+4. `complete_issue_lifecycle()` — auto-completes if work was confirmed
+
+However, there is no check for implementation markers in the issue file content itself (e.g., "Status: Implemented"). This means cases where the issue file was updated with implementation status but git evidence is ambiguous are not caught.
 
 ## Expected Behavior
 
@@ -68,7 +74,7 @@ if not moved_to_completed:
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli.py` - Add fallback checks to verify phase in `main_auto()`
+- `scripts/little_loops/issue_manager.py` - Add content marker check to verify logic in `process_issue_inplace()`
 
 ### Dependent Files (Callers/Importers)
 - N/A - verify phase is internal to ll-auto
@@ -103,9 +109,8 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 
 ## Verification Notes
 
-- **Verified**: 2026-02-13 (updated from 2026-02-12)
+- **Verified**: 2026-02-13
 - **Verdict**: NEEDS_UPDATE
-- **ENH-344 blocker resolved**: ENH-344 (cli.py split into package) is now completed. `Blocked By` should be marked resolved.
 - **File references stale**: Verify phase logic is in `scripts/little_loops/issue_manager.py:540-597` (inside `process_issue_inplace()`), NOT in `main_auto()` or `cli.py`. `main_auto()` in `cli/auto.py` is a thin wrapper delegating to `AutoManager.run()`.
 - **Current behavior overstated**: The issue says "only checks whether the issue file was moved to completed/". In reality, the verify phase already has 4 fallback checks:
   1. Checks `verify_issue_completed()` (file moved)
@@ -113,6 +118,7 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
   3. If no plan, calls `verify_work_was_done()` to check git evidence of code changes
   4. If work was done, calls `complete_issue_lifecycle()` to auto-complete
 - **Still valid**: No check for implementation markers in issue file content (e.g., "Status: Implemented") exists. Enhancement scope should be narrowed to: "add issue file content marker checking as an additional fallback signal."
+- **Blocker ENH-308 note**: ENH-308 still open but its own ENH-344 blocker is now resolved
 
 ---
 

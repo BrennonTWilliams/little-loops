@@ -260,7 +260,7 @@ This enhancement would:
 
 ## Blocks
 
-- ENH-346: split cli/loop.py into subcommand modules (shared __init__.py)
+_None_
 
 ## Labels
 

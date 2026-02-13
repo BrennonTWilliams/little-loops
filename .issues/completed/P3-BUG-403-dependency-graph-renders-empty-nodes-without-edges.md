@@ -116,7 +116,7 @@ This bug would:
 
 ## Blocked By
 
-- ENH-308: sprint sequential retry for merge-failed issues (shared sprint.py, test_sprint_integration.py)
+_None_
 
 ## Blocks
 

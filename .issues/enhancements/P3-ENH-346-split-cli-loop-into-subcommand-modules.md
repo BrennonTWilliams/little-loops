@@ -73,7 +73,7 @@ This enhancement would:
 
 ## Blocked By
 
-- ENH-390: split issue_history module into package (shared __init__.py)
+_None_
 
 ## Labels
 
@@ -86,9 +86,9 @@ This enhancement would:
 
 - **Verified**: 2026-02-13
 - **Verdict**: NEEDS_UPDATE
-- **Line count**: Now 1,036 lines (was 1,034 at discovery — grew by 2 lines)
+- **Line count**: Now 1,036 lines (was 1,034 at discovery — grew by 2 lines). Core issue still valid.
 - **12 subcommands confirmed**: `cmd_run`, `cmd_compile`, `cmd_validate`, `cmd_list`, `cmd_install`, `cmd_status`, `cmd_stop`, `cmd_resume`, `cmd_history`, `cmd_test`, `cmd_simulate`, `cmd_show`
-- **Spurious dependency**: Blocked By ENH-390 citing "shared `__init__.py`" appears incorrect — `issue_history/` and `cli/loop/` are entirely different packages with no shared `__init__.py`
+- **Spurious dependency**: Blocked By ENH-390 citing "shared `__init__.py`" appears incorrect — `issue_history/` and `cli/loop/` are entirely different packages with no shared `__init__.py`. Recommend removing this blocker.
 
 ---
 

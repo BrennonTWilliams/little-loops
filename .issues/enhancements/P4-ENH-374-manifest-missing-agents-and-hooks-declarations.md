@@ -76,7 +76,7 @@ This enhancement would:
 
 ## Blocked By
 
-- BUG-364: marketplace JSON version mismatch (shared plugin.json)
+_None_
 
 ## Blocks
 
@@ -84,6 +84,14 @@ This enhancement would:
 
 ## Session Log
 - `/ll:format_issue --all --auto` - 2026-02-13
+
+## Verification Notes
+
+- **Verified**: 2026-02-13
+- **Verdict**: VALID
+- `plugin.json` still only declares `commands` and `skills` (confirmed)
+- `agents/` directory has 8 agents, `hooks/hooks.json` has 6 hooks — both undeclared
+- **BUG-364 blocker resolved**: marketplace JSON version mismatch fixed — this issue is unblocked
 
 ---
 
