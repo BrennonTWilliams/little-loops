@@ -1,5 +1,6 @@
 ---
 description: Initialize little-loops configuration for a project
+argument-hint: "[flags]"
 allowed-tools:
   - Read
   - Glob

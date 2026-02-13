@@ -1,5 +1,6 @@
 ---
 description: Generate comprehensive PR descriptions following repository templates
+argument-hint: "[base-branch]"
 allowed-tools:
   - Read
   - Bash(git:*, gh:*)

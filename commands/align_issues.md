@@ -1,5 +1,6 @@
 ---
 description: Validate active issues against key documents for relevance and alignment
+argument-hint: "[category]"
 allowed-tools:
   - Read
   - Glob

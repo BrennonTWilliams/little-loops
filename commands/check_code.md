@@ -1,5 +1,6 @@
 ---
 description: Run code quality checks (lint, format, types, build)
+argument-hint: "[mode]"
 allowed-tools:
   - Bash(ruff:*, mypy:*, python:*, npm:*, cargo:*, go:*, dotnet:*, mvn:*, ./gradlew:*, make:*)
 arguments:

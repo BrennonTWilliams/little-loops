@@ -1,5 +1,6 @@
 ---
 description: Create a sprint definition with a curated list of issues
+argument-hint: "[sprint-name]"
 allowed-tools:
   - Bash(mkdir:*)
 arguments:

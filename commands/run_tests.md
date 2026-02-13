@@ -1,5 +1,6 @@
 ---
 description: Run test suites with common patterns
+argument-hint: "[scope]"
 allowed-tools:
   - Bash(python:*, pytest:*, npm:*, cargo:*, go:*, make:*, git:*)
 arguments:

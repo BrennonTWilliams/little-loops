@@ -1,5 +1,6 @@
 ---
 description: Generate continuation prompt for session handoff
+argument-hint: "[context]"
 allowed-tools:
   - Read
   - Write

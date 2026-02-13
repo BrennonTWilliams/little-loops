@@ -1,5 +1,6 @@
 ---
 description: Interactively configure specific areas in ll-config.json
+argument-hint: "[area]"
 allowed-tools:
   - Read
   - Edit

@@ -1,5 +1,6 @@
 ---
 description: Resume from a previous session's continuation prompt
+argument-hint: "[prompt-file]"
 allowed-tools:
   - Read
 arguments:

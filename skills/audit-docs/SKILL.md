@@ -1,5 +1,6 @@
 ---
 description: Audit documentation for accuracy and completeness
+argument-hint: "[scope]"
 allowed-tools:
   - Read
   - Glob

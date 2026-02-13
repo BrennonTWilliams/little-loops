@@ -1,5 +1,6 @@
 ---
 description: Autonomously manage issues - plan, implement, verify, and complete
+argument-hint: "[type] [action] [issue-id]"
 allowed-tools:
   - Bash(git:*)
 arguments:

@@ -1,5 +1,6 @@
 ---
 description: Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid
+argument-hint: "[issue-id]"
 allowed-tools:
   - Read
   - Glob

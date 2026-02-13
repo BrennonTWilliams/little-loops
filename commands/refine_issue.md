@@ -1,5 +1,6 @@
 ---
 description: Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation
+argument-hint: "[issue-id]"
 allowed-tools:
   - Read
   - Glob

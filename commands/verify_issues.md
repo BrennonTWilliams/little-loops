@@ -1,5 +1,6 @@
 ---
 description: Verify issue files for accuracy, relevance, and completeness by testing claims against actual code
+argument-hint: "[issue-id]"
 allowed-tools:
   - Read
   - Glob

@@ -1,5 +1,6 @@
 ---
 description: Analyze codebase architecture for patterns, organization, and improvements
+argument-hint: "[focus-area]"
 allowed-tools:
   - Read
   - Glob

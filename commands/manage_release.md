@@ -4,6 +4,7 @@ description: |
   Integrates with Issue Management to include completed issues in release notes.
 
   Trigger keywords: "manage release", "create release", "new release", "tag release", "publish release", "make release", "bump version"
+argument-hint: "[action] [version]"
 arguments:
   - name: action
     description: "Action to perform (tag|changelog|release|bump|full). Omit for interactive mode."

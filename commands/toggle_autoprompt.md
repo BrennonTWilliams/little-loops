@@ -1,5 +1,6 @@
 ---
 description: Toggle automatic prompt optimization settings
+argument-hint: "[setting]"
 allowed-tools:
   - Read
   - Edit

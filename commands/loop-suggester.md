@@ -3,6 +3,7 @@ description: |
   Analyze user message history to suggest FSM loop configurations automatically. Uses ll-messages output to identify repeated workflows and generate ready-to-use loop YAML.
 
   Trigger keywords: "suggest loops", "loop from history", "automate workflow", "create loop from messages", "analyze messages for loops", "ll-messages loop", "suggest automation", "detect patterns for loops"
+argument-hint: "[messages.jsonl]"
 allowed-tools:
   - Read
   - Write

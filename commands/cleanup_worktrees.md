@@ -1,5 +1,6 @@
 ---
 description: Clean orphaned git worktrees from interrupted ll-parallel runs
+argument-hint: "[mode]"
 allowed-tools:
   - Bash(git:*, find:*, rm:*)
 arguments:

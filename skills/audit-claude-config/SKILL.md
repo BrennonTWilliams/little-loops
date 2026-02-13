@@ -1,5 +1,6 @@
 ---
 description: Comprehensive audit of Claude Code plugin configuration with parallel sub-agents
+argument-hint: "[scope]"
 allowed-tools:
   - Read
   - Glob

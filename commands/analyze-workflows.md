@@ -1,5 +1,6 @@
 ---
 description: Analyze user message history to identify patterns, workflows, and automation opportunities
+argument-hint: "[messages.jsonl]"
 allowed-tools:
   - Read
   - Write

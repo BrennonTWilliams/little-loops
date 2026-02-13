@@ -1,5 +1,6 @@
 ---
 description: Format issue files to align with template v2.0 structure through interactive Q&A or auto mode
+argument-hint: "[issue-id]"
 allowed-tools:
   - Read
   - Glob

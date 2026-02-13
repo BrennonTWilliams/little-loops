@@ -77,17 +77,34 @@ This enhancement would:
 
 ## Blocked By
 
-- BUG-402: Commands reference $ARGUMENTS inconsistently — $ARGUMENTS placement must be resolved before adding argument-hints
+- ~~BUG-402~~: Completed — $ARGUMENTS placement resolved
 
 ## Labels
 
 `enhancement`, `commands`, `ux`, `configuration`
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- 20 command files: Added `argument-hint` frontmatter field
+- 7 skill files: Added `argument-hint` frontmatter field
+
+### Verification Results
+- Tests: N/A (markdown frontmatter only)
+- Lint: N/A
+- Types: N/A
+- Integration: PASS (all 27 files with `arguments:` now have `argument-hint:`)
+
 ## Session Log
 - /ll:format_issue --all --auto - 2026-02-13
+- /ll:manage_issue - 2026-02-13
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P5
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P5
