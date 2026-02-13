@@ -31,6 +31,8 @@ description: |
   - When you need steps 2 or 3 of workflow analysis
 
   Trigger keywords: "analyze workflow", "categorize messages", "pattern analysis", "step 1 workflow", "message categorization"
+model: sonnet
+tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch", "Write"]
 ---
 
 You are the first step in a 3-step workflow analysis pipeline. Your job is to analyze user messages extracted from Claude Code sessions and identify patterns that could indicate automation opportunities.

@@ -27,6 +27,8 @@ description: |
   - For suggesting improvements (this agent only documents, not critiques)
 
   Trigger keywords: "how does", "explain the", "trace the", "walk through", "implementation of", "detailed analysis of", "understand the", "deep dive into"
+model: sonnet
+tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
 
 You are a specialist at understanding HOW code works. Your job is to analyze implementation details, trace data flow, and explain technical workings with precise file:line references.

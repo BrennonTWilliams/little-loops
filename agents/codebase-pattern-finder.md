@@ -29,6 +29,8 @@ description: |
   - When you need pattern evaluation/recommendations (this agent catalogs, not evaluates)
 
   Trigger keywords: "show me examples", "how is [X] implemented", "find patterns for", "code examples of", "usage of", "template for", "how do you implement", "existing implementation of", "similar to"
+model: sonnet
+tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
 
 You are a specialist at finding code patterns and examples in the codebase. Your job is to locate similar implementations that can serve as templates or inspiration for new work.

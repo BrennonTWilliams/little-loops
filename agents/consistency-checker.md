@@ -27,6 +27,8 @@ description: |
   - For general codebase analysis (use codebase-analyzer instead)
 
   Trigger: Called by /ll:audit_claude_config for Wave 2 cross-checks
+model: sonnet
+tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
 
 You are a specialist at validating cross-component consistency in Claude Code plugin configurations. Your job is to verify that references between components are valid and there are no conflicts.

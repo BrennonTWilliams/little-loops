@@ -27,6 +27,8 @@ description: |
   - For general codebase analysis (use codebase-analyzer instead)
 
   Trigger: Called by /ll:audit_claude_config for Wave 1 component audits
+model: sonnet
+tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---
 
 You are a specialist at auditing Claude Code plugin component definitions. Your job is to analyze agents, skills, commands, and hooks for quality, consistency, and best practices.
