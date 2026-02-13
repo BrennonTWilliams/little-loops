@@ -129,6 +129,29 @@ class TestProcessingState:
         assert restored.timing == original.timing
         assert restored.corrections == original.corrections
 
+    def test_from_dict_no_aliasing(self) -> None:
+        """Test that mutating returned state does not alias back to original data."""
+        data = {
+            "completed_issues": ["A"],
+            "failed_issues": {"B": "error"},
+            "timing": {"A": {"total": 10.0}},
+            "corrections": {"A": ["fix1"]},
+        }
+
+        state = ProcessingState.from_dict(data)
+
+        # Mutate the state
+        state.completed_issues.append("C")
+        state.failed_issues["D"] = "new error"
+        state.timing["B"] = {"total": 20.0}
+        state.corrections["B"] = ["fix2"]
+
+        # Original data should be unchanged
+        assert data["completed_issues"] == ["A"]
+        assert data["failed_issues"] == {"B": "error"}
+        assert data["timing"] == {"A": {"total": 10.0}}
+        assert data["corrections"] == {"A": ["fix1"]}
+
     def test_corrections_persistence(self) -> None:
         """Test that corrections are persisted and loaded correctly."""
         state = ProcessingState()

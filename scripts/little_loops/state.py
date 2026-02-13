@@ -65,11 +65,11 @@ class ProcessingState:
             current_issue=data.get("current_issue", ""),
             phase=data.get("phase", "idle"),
             timestamp=data.get("timestamp", ""),
-            completed_issues=data.get("completed_issues", []),
-            failed_issues=data.get("failed_issues", {}),
+            completed_issues=list(data.get("completed_issues", [])),
+            failed_issues=dict(data.get("failed_issues", {})),
             attempted_issues=set(data.get("attempted_issues", [])),
-            timing=data.get("timing", {}),
-            corrections=data.get("corrections", {}),
+            timing=dict(data.get("timing", {})),
+            corrections=dict(data.get("corrections", {})),
         )
 
 

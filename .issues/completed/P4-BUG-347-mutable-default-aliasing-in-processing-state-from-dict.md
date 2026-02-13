@@ -14,7 +14,7 @@ discovered_by: scan_codebase
 ## Location
 
 - **File**: `scripts/little_loops/state.py`
-- **Line(s)**: 64-73 (at scan commit: be30013)
+- **Line(s)**: 62-73 (at scan commit: be30013)
 - **Anchor**: `in ProcessingState.from_dict()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/be30013d0e2446b479c121af1d58a2309b3cfeb5/scripts/little_loops/state.py#L64-L73)
 - **Code**:
@@ -25,6 +25,9 @@ return cls(
     timestamp=data.get("timestamp", ""),
     completed_issues=data.get("completed_issues", []),
     failed_issues=data.get("failed_issues", {}),
+    attempted_issues=set(data.get("attempted_issues", [])),
+    timing=data.get("timing", {}),
+    corrections=data.get("corrections", {}),
 )
 ```
 
@@ -59,6 +62,9 @@ Copy mutable values:
 ```python
 completed_issues=list(data.get("completed_issues", [])),
 failed_issues=dict(data.get("failed_issues", {})),
+attempted_issues=set(data.get("attempted_issues", [])),
+timing={k: dict(v) for k, v in data.get("timing", {}).items()},
+corrections={k: list(v) for k, v in data.get("corrections", {}).items()},
 ```
 
 ## Motivation
@@ -80,8 +86,8 @@ This bug would:
 - `scripts/little_loops/state.py` — `ProcessingState.from_dict()` method
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/auto.py` — calls `ProcessingState.from_dict()`
-- `scripts/little_loops/cli/loop.py` — calls `ProcessingState.from_dict()`
+- `scripts/little_loops/state.py` — `StateManager.load()` calls `ProcessingState.from_dict()`
+- `scripts/little_loops/issue_manager.py` — uses `StateManager` which wraps `ProcessingState.from_dict()`
 
 ### Similar Patterns
 - Any other `from_dict()` class methods that pass mutable defaults without copying
@@ -106,11 +112,28 @@ This bug would:
 
 `bug`, `state`, `captured`
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/state.py`: Wrapped mutable `data.get()` calls in `list()` and `dict()` copy constructors in `ProcessingState.from_dict()`
+- `scripts/tests/test_state.py`: Added `test_from_dict_no_aliasing` test verifying mutations don't propagate back to original data
+
+### Verification Results
+- Tests: PASS (33/33)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS
+
 ## Session Log
 - `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
 - `/ll:format_issue --all --auto` - 2026-02-13
+- `/ll:manage_issue` - 2026-02-13T01:33:28Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-bug-347-20260213-013328/ffc37e42-1502-48e2-bbfa-ca344b0fcf60.jsonl`
 
 
 ---
 
-**Open** | Created: 2026-02-12 | Priority: P4
+**Completed** | Created: 2026-02-12 | Priority: P4
