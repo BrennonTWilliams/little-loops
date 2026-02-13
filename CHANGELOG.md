@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.11.1] - 2026-02-13
+
+### Fixed
+
+- fix(docs): update CONTRIBUTING.md project tree cli.py → cli/ package (703da46)
+- fix(docs): add review_sprint to all command documentation (76498c8)
+
+### Other
+
+- docs: fix README counts and create issues for undocumented commands/tools (a641b33)
+- style: apply ruff format to scripts (925b8ce)
+
+[1.11.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.11.0...v1.11.1
+
 ## [1.11.0] - 2026-02-13
 
 ### Added
