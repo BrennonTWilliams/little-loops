@@ -912,3 +912,106 @@ class TestMainCLI:
         with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "analyze"]):
             result = main()
         assert result == 0
+
+    def _setup_sprint_project(self, tmp_path: Path) -> Path:
+        """Set up a test project with issues and a sprint YAML."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        bugs_dir = issues_dir / "bugs"
+        bugs_dir.mkdir()
+        enh_dir = issues_dir / "enhancements"
+        enh_dir.mkdir()
+        (issues_dir / "features").mkdir()
+        (issues_dir / "completed").mkdir()
+
+        (bugs_dir / "P1-BUG-001-test-bug.md").write_text(
+            "# BUG-001: Test Bug\n\n## Summary\n\nFix `scripts/config.py`\n"
+        )
+        (bugs_dir / "P2-BUG-002-other-bug.md").write_text(
+            "# BUG-002: Other Bug\n\n## Summary\n\nFix `scripts/other.py`\n"
+        )
+        (enh_dir / "P3-ENH-010-enhancement.md").write_text(
+            "# ENH-010: Enhancement\n\n## Summary\n\nImprove `scripts/config.py`\n"
+        )
+
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        (claude_dir / "ll-config.json").write_text(
+            '{"issues": {"base_dir": ".issues"}, "sprints": {"sprints_dir": ".sprints"}}'
+        )
+
+        sprints_dir = tmp_path / ".sprints"
+        sprints_dir.mkdir()
+        (sprints_dir / "my-sprint.yaml").write_text(
+            "name: my-sprint\ndescription: Test sprint\nissues:\n"
+            "  - BUG-001\n  - ENH-010\n"
+        )
+        (sprints_dir / "empty-sprint.yaml").write_text(
+            "name: empty-sprint\ndescription: Empty\nissues: []\n"
+        )
+
+        return issues_dir
+
+    def test_analyze_with_sprint(self, tmp_path: Path, capsys: object) -> None:
+        """Test analyze --sprint filters to sprint issues only."""
+        issues_dir = self._setup_sprint_project(tmp_path)
+
+        with patch.object(
+            sys, "argv",
+            ["ll-deps", "-d", str(issues_dir), "analyze", "--sprint", "my-sprint"],
+        ):
+            result = main()
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        # BUG-001 and ENH-010 are in the sprint
+        assert "BUG-001" in captured.out
+        assert "ENH-010" in captured.out
+        # BUG-002 is NOT in the sprint
+        assert "BUG-002" not in captured.out
+
+    def test_validate_with_sprint(self, tmp_path: Path) -> None:
+        """Test validate --sprint filters to sprint issues only."""
+        issues_dir = self._setup_sprint_project(tmp_path)
+
+        with patch.object(
+            sys, "argv",
+            ["ll-deps", "-d", str(issues_dir), "validate", "--sprint", "my-sprint"],
+        ):
+            result = main()
+        assert result == 0
+
+    def test_sprint_not_found(self, tmp_path: Path) -> None:
+        """Test --sprint with nonexistent sprint returns error."""
+        issues_dir = self._setup_sprint_project(tmp_path)
+
+        with patch.object(
+            sys, "argv",
+            ["ll-deps", "-d", str(issues_dir), "analyze", "--sprint", "nonexistent"],
+        ):
+            result = main()
+        assert result == 1
+
+    def test_sprint_empty_issues(self, tmp_path: Path) -> None:
+        """Test --sprint with empty issue list returns 0."""
+        issues_dir = self._setup_sprint_project(tmp_path)
+
+        with patch.object(
+            sys, "argv",
+            ["ll-deps", "-d", str(issues_dir), "analyze", "--sprint", "empty-sprint"],
+        ):
+            result = main()
+        assert result == 0
+
+    def test_analyze_without_sprint_unchanged(self, tmp_path: Path, capsys: object) -> None:
+        """Test analyze without --sprint still returns all issues."""
+        issues_dir = self._setup_sprint_project(tmp_path)
+
+        with patch.object(
+            sys, "argv",
+            ["ll-deps", "-d", str(issues_dir), "analyze"],
+        ):
+            result = main()
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        # All three issues should be analyzed (report header shows count)
+        assert "Issues analyzed**: 3" in captured.out

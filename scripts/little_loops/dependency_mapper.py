@@ -899,11 +899,15 @@ def _add_to_section(file_path: Path, section_name: str, issue_id: str) -> None:
     file_path.write_text(content, encoding="utf-8")
 
 
-def _load_issues(issues_dir: Path) -> tuple[list[IssueInfo], dict[str, str], set[str]]:
+def _load_issues(
+    issues_dir: Path,
+    only_ids: set[str] | None = None,
+) -> tuple[list[IssueInfo], dict[str, str], set[str]]:
     """Load issues from directory for CLI use.
 
     Args:
         issues_dir: Path to the issues base directory (e.g., .issues)
+        only_ids: If provided, only include issues with these IDs
 
     Returns:
         Tuple of (active issues, issue contents map, completed issue IDs)
@@ -918,7 +922,7 @@ def _load_issues(issues_dir: Path) -> tuple[list[IssueInfo], dict[str, str], set
         project_root = issues_dir.parent
 
     config = BRConfig(project_root)
-    issues = find_issues(config)
+    issues = find_issues(config, only_ids=only_ids)
 
     # Build contents map
     issue_contents: dict[str, str] = {}
@@ -961,7 +965,9 @@ Examples:
   %(prog)s analyze                    # Full analysis with markdown output
   %(prog)s analyze --format json      # JSON output for programmatic use
   %(prog)s analyze --graph            # Include ASCII dependency graph
+  %(prog)s analyze --sprint my-sprint # Analyze only issues in a sprint
   %(prog)s validate                   # Validation only (broken refs, cycles)
+  %(prog)s validate --sprint my-sprint # Validate only sprint issue deps
 """,
     )
 
@@ -993,11 +999,23 @@ Examples:
         action="store_true",
         help="Include ASCII dependency graph in output",
     )
+    analyze_parser.add_argument(
+        "--sprint",
+        type=str,
+        default=None,
+        help="Restrict analysis to issues in the named sprint",
+    )
 
     # validate subcommand
-    subparsers.add_parser(
+    validate_parser = subparsers.add_parser(
         "validate",
         help="Validate existing dependency references only",
+    )
+    validate_parser.add_argument(
+        "--sprint",
+        type=str,
+        default=None,
+        help="Restrict validation to issues in the named sprint",
     )
 
     args = parser.parse_args()
@@ -1011,8 +1029,31 @@ Examples:
         print(f"Error: Issues directory not found: {issues_dir}", file=sys.stderr)
         return 1
 
+    # Sprint-scoped filtering
+    only_ids: set[str] | None = None
+    if getattr(args, "sprint", None):
+        from little_loops.config import BRConfig as _BRConfig
+        from little_loops.sprint import Sprint
+
+        project_root = issues_dir.resolve().parent
+        if issues_dir.name != ".issues":
+            project_root = issues_dir.parent
+        _config = _BRConfig(project_root)
+        sprints_dir = Path(_config.sprints.sprints_dir)
+        if not sprints_dir.is_absolute():
+            sprints_dir = project_root / sprints_dir
+
+        sprint = Sprint.load(sprints_dir, args.sprint)
+        if sprint is None:
+            print(f"Error: Sprint not found: {args.sprint}", file=sys.stderr)
+            return 1
+        only_ids = set(sprint.issues)
+        if not only_ids:
+            print(f"Sprint '{args.sprint}' has no issues.")
+            return 0
+
     try:
-        issues, issue_contents, completed_ids = _load_issues(issues_dir)
+        issues, issue_contents, completed_ids = _load_issues(issues_dir, only_ids=only_ids)
     except Exception as e:
         print(f"Error loading issues: {e}", file=sys.stderr)
         return 1

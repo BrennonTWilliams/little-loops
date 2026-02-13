@@ -45,6 +45,15 @@ For programmatic access:
 ll-deps analyze --format json
 ```
 
+### Sprint-Scoped Analysis
+
+Restrict analysis to only issues in a named sprint:
+```bash
+ll-deps analyze --sprint my-sprint
+ll-deps analyze --sprint my-sprint --graph
+ll-deps validate --sprint my-sprint
+```
+
 ### Validation Only
 
 Check existing dependency references for broken refs, cycles, and missing backlinks:
@@ -68,6 +77,8 @@ ll-deps -d path/to/issues analyze
 | "Show dependency graph" | `ll-deps analyze --graph` |
 | "Are there broken dependency links?" | `ll-deps validate` |
 | "Prepare for sprint planning" | `ll-deps analyze --graph` |
+| "Analyze deps for my sprint" | `ll-deps analyze --sprint <name>` |
+| "Validate sprint dependencies" | `ll-deps validate --sprint <name>` |
 | "Which issues conflict?" | `ll-deps analyze` |
 
 ## Interpreting Results
@@ -121,6 +132,7 @@ Uses project configuration from `.claude/ll-config.json`:
 - `issues.base_dir` - Base directory for issues (default: `.issues`)
 - `issues.categories` - Bug/feature/enhancement directory config
 - `issues.completed_dir` - Completed issues directory (default: `completed`)
+- `sprints.sprints_dir` - Sprint definitions directory (default: `.sprints`)
 
 ## Integration
 
