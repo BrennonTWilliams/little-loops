@@ -70,6 +70,7 @@ class SyncStatus:
     local_unsynced: int = 0
     github_total: int = 0
     github_only: int = 0
+    github_error: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -81,6 +82,7 @@ class SyncStatus:
             "local_unsynced": self.local_unsynced,
             "github_total": self.github_total,
             "github_only": self.github_only,
+            "github_error": self.github_error,
         }
 
 
@@ -725,7 +727,8 @@ discovered_by: github_sync
 
                 github_numbers = {issue["number"] for issue in github_issues}
                 status.github_only = len(github_numbers - local_github_numbers)
-            except Exception:
-                pass
+            except Exception as e:
+                status.github_error = f"Failed to query GitHub: {e}"
+                self.logger.warning(status.github_error)
 
         return status

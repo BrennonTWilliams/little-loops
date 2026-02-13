@@ -116,6 +116,9 @@ def _print_sync_status(status: SyncStatus, logger: Logger) -> None:
     logger.info("")
     logger.info(f"Unsynced local:   {status.local_unsynced}  (local only, not on GitHub)")
     logger.info(f"GitHub-only:      {status.github_only}  (on GitHub, not local)")
+    if status.github_error:
+        logger.info("")
+        logger.warning(f"GitHub data may be incomplete: {status.github_error}")
     logger.info("=" * 80)
 
 

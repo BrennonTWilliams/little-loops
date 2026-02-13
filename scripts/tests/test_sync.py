@@ -482,6 +482,27 @@ github_issue: 1
         assert status.local_unsynced == 1
         assert status.github_total == 2
         assert status.github_only == 1  # Issue #2 is not tracked locally
+        assert status.github_error is None
+
+    def test_get_status_github_error(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Status reports error when GitHub query fails."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.side_effect = subprocess.CalledProcessError(
+                    1, "gh", stderr="API error"
+                )
+                status = manager.get_status()
+
+        assert status.github_total == 0
+        assert status.github_only == 0
+        assert status.github_error is not None
+        assert "Failed to query GitHub" in status.github_error
+        mock_logger.warning.assert_called()
 
     def test_get_local_issues_excludes_completed(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path

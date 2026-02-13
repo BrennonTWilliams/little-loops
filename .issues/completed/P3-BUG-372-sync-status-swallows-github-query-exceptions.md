@@ -64,7 +64,7 @@ Replace the bare `except Exception: pass` with either:
 - `scripts/little_loops/sync.py` (the `get_status` method)
 
 ### Dependent Files (Callers/Importers)
-- `skills/sync_issues.md` (calls status display)
+- `commands/sync_issues.md` (calls status display)
 
 ### Similar Patterns
 - Other `except Exception: pass` patterns in the codebase should be reviewed
@@ -99,8 +99,25 @@ Replace the bare `except Exception: pass` with either:
 
 ---
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/sync.py`: Added `github_error: str | None = None` field to `SyncStatus` dataclass, included it in `to_dict()`, replaced bare `except Exception: pass` with proper error handling that sets `github_error` and logs a warning
+- `scripts/little_loops/cli/sync.py`: Updated `_print_sync_status()` to display a warning when `github_error` is set
+- `scripts/tests/test_sync.py`: Added `test_get_status_github_error` test verifying error propagation
+
+### Verification Results
+- Tests: PASS (48 passed)
+- Lint: PASS
+- Types: PASS
+
 ## Session Log
 - `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
 - `/ll:format_issue --all --auto` - 2026-02-13
+- `/ll:manage_issue` - 2026-02-13T01:33:28Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-bug-372-20260213-013328/1e60717f-541e-47d7-bf88-b2856ee0a74a.jsonl`
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P3
