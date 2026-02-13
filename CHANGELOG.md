@@ -13,6 +13,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.11.0] - 2026-02-13
+
+### Added
+
+- **Parallel merge for BUG-402** - Enable parallel merge workflow for bug fix processing (27ee877)
+
+### Fixed
+
+- **Config test fixtures** - Remove stale default_mode from test fixtures (8063ff6)
+- **Cross-type issue references** - Resolve false "nonexistent" warnings for cross-type issue references (ff50bc6)
+- **Command $ARGUMENTS placement** - Add explicit $ARGUMENTS placement to 6 command files (e339afe)
+- **Sync status errors** - Surface GitHub query failures in sync status (aa3b2a3)
+- **Mutable default aliasing** - Prevent mutable default aliasing in ProcessingState.from_dict (37c05c3)
+- **Scan command tools** - Add missing tools to allowed-tools in scan commands (6c3af0b)
+- **Sprint dependency graph** - Suppress flat dependency graph when no intra-sprint edges exist (3d7713c)
+
+### Other
+
+- close(bugs): BUG-403 - Closed - Already Fixed (2ab0411)
+- close(bugs): BUG-365 - Closed - Invalid (09ca349)
+- docs(issues): add test and documentation coverage to 29 active issues (36b4241)
+- docs(issues): resolve BUG-364 marketplace version mismatch (c1bc313)
+- docs(issues): auto-format and verify 42 active issues (b689764)
+- docs(issues): add cross-issue dependency references for command/skill audit issues (72d6326)
+
+[1.11.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.10.1...v1.11.0
+
 ## [1.10.1] - 2026-02-12
 
 ### Added
