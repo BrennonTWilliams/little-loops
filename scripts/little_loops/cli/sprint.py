@@ -405,8 +405,21 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
     contention_notes: list[WaveContentionNote | None] | None = None
     has_cycles = False
 
+    # Gather all issue IDs on disk to avoid false "nonexistent" warnings
+    from little_loops.dependency_mapper import gather_all_issue_ids
+
+    config = manager.config
+    issues_dir = (
+        config.project_root / config.issues.base_dir
+        if config
+        else Path(".issues")
+    )
+    all_known_ids = gather_all_issue_ids(issues_dir)
+
     if issue_infos:
-        dep_graph = DependencyGraph.from_issues(issue_infos)
+        dep_graph = DependencyGraph.from_issues(
+            issue_infos, all_known_ids=all_known_ids
+        )
         has_cycles = dep_graph.has_cycles()
 
         if not has_cycles:
@@ -440,7 +453,9 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
         from little_loops.dependency_mapper import analyze_dependencies
 
         issue_contents = _build_issue_contents(issue_infos)
-        dep_report = analyze_dependencies(issue_infos, issue_contents)
+        dep_report = analyze_dependencies(
+            issue_infos, issue_contents, all_known_ids=all_known_ids
+        )
         _render_dependency_analysis(dep_report, logger)
 
     if sprint.options:
@@ -548,10 +563,22 @@ def _cmd_sprint_edit(args: argparse.Namespace, manager: SprintManager) -> int:
         valid = manager.validate_issues(sprint.issues)
         issue_infos = manager.load_issue_infos(list(valid.keys()))
         if issue_infos:
-            from little_loops.dependency_mapper import analyze_dependencies
+            from little_loops.dependency_mapper import (
+                analyze_dependencies,
+                gather_all_issue_ids,
+            )
 
+            _config = manager.config
+            _issues_dir = (
+                _config.project_root / _config.issues.base_dir
+                if _config
+                else Path(".issues")
+            )
+            _all_known_ids = gather_all_issue_ids(_issues_dir)
             issue_contents = _build_issue_contents(issue_infos)
-            dep_report = analyze_dependencies(issue_infos, issue_contents)
+            dep_report = analyze_dependencies(
+                issue_infos, issue_contents, all_known_ids=_all_known_ids
+            )
             _render_dependency_analysis(dep_report, logger)
         else:
             logger.info("No valid issues to analyze")
@@ -731,16 +758,24 @@ def _cmd_sprint_run(
         logger.error("No issue files found")
         return 1
 
+    # Gather all issue IDs on disk to avoid false "nonexistent" warnings
+    from little_loops.dependency_mapper import gather_all_issue_ids
+
+    issues_dir = config.project_root / config.issues.base_dir
+    all_known_ids = gather_all_issue_ids(issues_dir)
+
     # Dependency analysis (ENH-301)
     if not getattr(args, "skip_analysis", False):
         from little_loops.dependency_mapper import analyze_dependencies
 
         issue_contents = _build_issue_contents(issue_infos)
-        dep_report = analyze_dependencies(issue_infos, issue_contents)
+        dep_report = analyze_dependencies(
+            issue_infos, issue_contents, all_known_ids=all_known_ids
+        )
         _render_dependency_analysis(dep_report, logger)
 
     # Build dependency graph
-    dep_graph = DependencyGraph.from_issues(issue_infos)
+    dep_graph = DependencyGraph.from_issues(issue_infos, all_known_ids=all_known_ids)
 
     # Detect cycles
     if dep_graph.has_cycles():

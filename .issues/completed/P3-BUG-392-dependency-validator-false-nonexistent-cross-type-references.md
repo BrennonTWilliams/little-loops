@@ -105,12 +105,32 @@ This bug would:
 
 `bug`, `dependency-mapper`, `sprint`, `captured`
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/dependency_mapper.py`: Added `gather_all_issue_ids()` utility; added `all_known_ids` parameter to `validate_dependencies()` and `analyze_dependencies()`
+- `scripts/little_loops/dependency_graph.py`: Added `all_known_ids` parameter to `DependencyGraph.from_issues()` to suppress false warnings for known issues
+- `scripts/little_loops/cli/sprint.py`: Updated `_cmd_sprint_show()`, `_cmd_sprint_run()`, and revalidate path to gather all issue IDs and pass them through
+- `scripts/little_loops/issue_manager.py`: Updated `AutoManager.__init__()` to pass `all_known_ids`
+- `scripts/tests/test_dependency_mapper.py`: Added tests for cross-type ref validation and `gather_all_issue_ids()`
+- `scripts/tests/test_dependency_graph.py`: Added tests for `all_known_ids` parameter in `from_issues()`
+
+### Verification Results
+- Tests: PASS (2726 passed)
+- Lint: PASS
+- Types: PASS
+
 ## Session Log
 - `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab030831-19f7-4fb7-8753-c1c282a30c99.jsonl`
 - `/ll:format_issue --all --auto` - 2026-02-13
+- `/ll:manage_issue` - 2026-02-13
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P3
