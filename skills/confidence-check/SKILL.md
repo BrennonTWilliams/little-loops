@@ -2,6 +2,8 @@
 description: |
   Pre-implementation confidence check that validates readiness before coding begins. Evaluates 5 criteria: no duplicate implementations, architecture compliance, root cause identified, issue well-specified, and dependencies satisfied. Produces a score (0-100) with go/no-go recommendation.
 
+  Supports --all (batch all active issues) and --auto (non-interactive) flags. Persists confidence_score to issue frontmatter after evaluation.
+
   Complementary to /ll:ready_issue (which validates the issue file) — this skill validates the implementation approach and codebase readiness.
 
   Trigger keywords: "confidence check", "pre-implementation check", "ready to implement", "implementation readiness", "confidence score"
@@ -22,7 +24,98 @@ Pre-implementation assessment that validates readiness to begin coding. Uses res
 
 $ARGUMENTS
 
-If arguments provided, parse as issue ID (e.g., `ENH-277`). Otherwise, expect to be invoked within a manage_issue context where research findings are already available.
+Parse arguments for issue ID and flags:
+
+```bash
+ISSUE_ID=""
+AUTO_MODE=false
+ALL_MODE=false
+
+# Auto-enable in automation contexts
+if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]]; then AUTO_MODE=true; fi
+
+# Explicit flags
+if [[ "$ARGUMENTS" == *"--auto"* ]]; then AUTO_MODE=true; fi
+if [[ "$ARGUMENTS" == *"--all"* ]]; then ALL_MODE=true; fi
+
+# Extract issue ID (non-flag argument)
+for token in $ARGUMENTS; do
+    case "$token" in
+        --*) ;; # skip flags
+        *) ISSUE_ID="$token" ;;
+    esac
+done
+
+# Validate: --all cannot be combined with a specific issue ID
+if [[ "$ALL_MODE" == true ]] && [[ -n "$ISSUE_ID" ]]; then
+    echo "Error: --all flag cannot be combined with a specific issue ID"
+    echo "Usage: /ll:confidence-check --all --auto"
+    exit 1
+fi
+
+# Validate: --all requires --auto
+if [[ "$ALL_MODE" == true ]] && [[ "$AUTO_MODE" == false ]]; then
+    echo "Error: --all flag requires --auto mode for non-interactive batch processing"
+    echo "Usage: /ll:confidence-check --all --auto"
+    exit 1
+fi
+```
+
+- **issue_id** (optional): Issue ID to evaluate (e.g., `ENH-277`, `BUG-042`)
+  - If provided, evaluates that specific issue
+  - If omitted with `--all`, processes all active issues
+  - If omitted without `--all`, expects to be invoked within a manage_issue context
+
+- **flags** (optional): Command behavior flags
+  - `--auto` — Non-interactive mode (skip user prompts, use defaults)
+  - `--all` — Evaluate all active issues (bugs/, features/, enhancements/), skip completed/. Requires `--auto`.
+
+## Issue Discovery
+
+### Single Issue Mode (default)
+
+If `ISSUE_ID` is provided, locate the issue file across active categories:
+
+```bash
+FILE=""
+for dir in {{config.issues.base_dir}}/{bugs,features,enhancements}/; do
+    if [ -d "$dir" ]; then
+        FILE=$(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | grep -E "[-_]${ISSUE_ID}[-_.]" | head -1)
+        if [ -n "$FILE" ]; then break; fi
+    fi
+done
+
+if [ -z "$FILE" ]; then
+    echo "Error: Issue $ISSUE_ID not found in active issues"
+    exit 1
+fi
+```
+
+If no `ISSUE_ID` and not `--all`: expect to be invoked within a manage_issue context where research findings are already available.
+
+### Batch Mode (--all)
+
+When `ALL_MODE` is true, collect all active issue files:
+
+```bash
+declare -a ISSUE_FILES
+for dir in {{config.issues.base_dir}}/{bugs,features,enhancements}/; do
+    if [ -d "$dir" ]; then
+        while IFS= read -r file; do
+            ISSUE_FILES+=("$file")
+        done < <(find "$dir" -maxdepth 1 -name "*.md" 2>/dev/null | sort)
+    fi
+done
+
+if [[ ${#ISSUE_FILES[@]} -eq 0 ]]; then
+    echo "No active issues found"
+    exit 0
+fi
+
+echo "Found ${#ISSUE_FILES[@]} active issues to evaluate"
+```
+
+When in batch mode, iterate through `ISSUE_FILES` and run the full workflow (Phases 1-4) for each issue, collecting results for the batch summary.
 
 ## Workflow
 
@@ -143,6 +236,51 @@ Sum all criterion scores (max 100):
 | **50-69** | STOP — ADDRESS GAPS | List gaps that must be resolved before implementation |
 | **0-49** | STOP — NOT READY | Mark issue as NOT_READY with specific reasons |
 
+### Phase 4: Update Frontmatter
+
+After scoring, update the issue file's YAML frontmatter with the confidence score.
+
+If the issue file has existing frontmatter (starts with `---`):
+- Add or update the `confidence_score` field within the frontmatter block
+- Use the Edit tool to replace the frontmatter section
+
+Example — if frontmatter is:
+```yaml
+---
+discovered_date: 2026-02-13
+discovered_by: capture_issue
+---
+```
+
+Update to:
+```yaml
+---
+discovered_date: 2026-02-13
+discovered_by: capture_issue
+confidence_score: 85
+---
+```
+
+If `confidence_score` already exists, replace its value with the new score.
+
+If the issue file has no frontmatter, add one:
+```yaml
+---
+confidence_score: 85
+---
+```
+
+### Auto Mode Behavior
+
+When `AUTO_MODE` is true:
+- Skip any AskUserQuestion prompts (make autonomous decisions)
+- Do not pause for user confirmation between issues in batch mode
+- Use defaults for any decisions that would normally require user input
+- Continue processing even if individual issues score below threshold
+
+When `AUTO_MODE` is false (interactive, single issue):
+- Behavior unchanged from current implementation
+
 ## Output Format
 
 ```
@@ -174,6 +312,38 @@ CONFIDENCE CHECK: [ISSUE-ID]
 ================================================================================
 ```
 
+## Batch Output Format (--all mode)
+
+When processing all issues, output a summary table after all individual evaluations:
+
+```
+================================================================================
+CONFIDENCE CHECK BATCH REPORT: --all mode
+================================================================================
+
+## SUMMARY
+- Issues evaluated: XX
+- PROCEED (90-100): X
+- PROCEED WITH CAUTION (70-89): X
+- STOP — ADDRESS GAPS (50-69): X
+- STOP — NOT READY (0-49): X
+
+## RESULTS
+
+| Issue ID | Title | Score | Recommendation | Key Concern |
+|----------|-------|-------|----------------|-------------|
+| BUG-001 | Fix login | 85/100 | PROCEED WITH CAUTION | Partial impl exists |
+| FEAT-042 | Add dark mode | 92/100 | PROCEED | — |
+| ENH-089 | Improve perf | 55/100 | STOP — ADDRESS GAPS | Vague requirements |
+
+## FRONTMATTER UPDATES
+- .issues/bugs/P2-BUG-001-fix-login.md — confidence_score: 85
+- .issues/features/P1-FEAT-042-add-dark-mode.md — confidence_score: 92
+- .issues/enhancements/P3-ENH-089-improve-perf.md — confidence_score: 55
+
+================================================================================
+```
+
 ## Integration with /ll:manage_issue
 
 This skill is referenced in `/ll:manage_issue` Phase 2 as a recommended pre-planning step. When invoked within manage_issue:
@@ -185,9 +355,27 @@ This skill is referenced in `/ll:manage_issue` Phase 2 as a recommended pre-plan
 
 ## Examples
 
+### Single Issue
+
 | Scenario | Expected Outcome |
 |----------|-----------------|
 | Well-researched bug with clear root cause | 85-100: PROCEED |
 | Feature request with vague "improve X" | 40-60: STOP — needs clearer requirements |
 | Enhancement with existing partial implementation | 70-80: PROCEED WITH CAUTION — note existing code |
 | Issue blocked by unresolved dependency | 50-65: STOP — dependency must be resolved first |
+
+### Usage Patterns
+
+```bash
+# Single issue, interactive
+/ll:confidence-check ENH-277
+
+# Single issue, non-interactive
+/ll:confidence-check ENH-277 --auto
+
+# All active issues, non-interactive (batch mode)
+/ll:confidence-check --all --auto
+
+# Error: --all requires --auto
+/ll:confidence-check --all
+```
