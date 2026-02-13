@@ -110,9 +110,29 @@ Update `agents/plugin-config-auditor.md`:
 ## Session Log
 - `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00ffa686-5907-4ed1-8765-93f478b14da2.jsonl`
 - /ll:format_issue --all --auto - 2026-02-13
+- `/ll:manage_issue` - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/555274a8-9270-48f6-b8b7-d3afad84af8e.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `agents/plugin-config-auditor.md`: Updated event types list from 8 to all 14 official types, added handler type validation (command/prompt/agent), added handler field validation (async, statusMessage, once, model), replaced blanket "<5s" timeout with type-specific defaults (600s command, 30s prompt, 60s agent), expanded hook audit checklist
+- `commands/audit_claude_config.md`: Updated hook audit prompt with handler types and type-specific timeout defaults
+
+### Verification Results
+- Tests: N/A (markdown-only changes)
+- Lint: PASS
+- Types: N/A
+- Run: N/A
+- Integration: PASS
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P3

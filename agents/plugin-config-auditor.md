@@ -54,8 +54,12 @@ You are a specialist at auditing Claude Code plugin component definitions. Your 
 
 4. **Audit Hook Configuration** (`hooks/hooks.json`)
    - Valid JSON syntax
-   - Recognized event types (PreToolUse, PostToolUse, Stop, SessionStart, UserPromptSubmit, PreCompact, SubagentStop, Notification)
-   - Timeout values (<5s recommended for most hooks)
+   - Recognized event types: SessionStart, UserPromptSubmit, PreToolUse, PermissionRequest, PostToolUse, PostToolUseFailure, Notification, SubagentStart, SubagentStop, Stop, TeammateIdle, TaskCompleted, PreCompact, SessionEnd
+   - Recognized handler types: `command`, `prompt`, `agent`
+   - Common handler fields: `type` (required), `timeout`, `statusMessage`, `once`
+   - Command hook fields: `command` (required), `async`
+   - Prompt/agent hook fields: `prompt` (required), `model`
+   - Timeout defaults by type: 600s for command, 30s for prompt, 60s for agent
    - Script/prompt file existence
    - No dangerous patterns (arbitrary code execution risks)
 
@@ -89,8 +93,11 @@ You are a specialist at auditing Claude Code plugin component definitions. Your 
 ### For Hooks Configuration
 
 - [ ] Valid JSON syntax
-- [ ] All event types are recognized
-- [ ] Timeouts are reasonable (<5000ms for most)
+- [ ] All event types are one of the 14 recognized types
+- [ ] Handler type is `command`, `prompt`, or `agent`
+- [ ] Required fields present per handler type (`command` for command hooks, `prompt` for prompt/agent hooks)
+- [ ] Timeouts are reasonable for handler type (defaults: 600s command, 30s prompt, 60s agent)
+- [ ] Optional fields are valid when present (`async`, `statusMessage`, `once`, `model`)
 - [ ] Referenced scripts/prompts exist
 - [ ] No shell injection vulnerabilities
 - [ ] Graceful error handling
