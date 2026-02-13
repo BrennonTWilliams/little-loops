@@ -20,6 +20,12 @@ Proactively offer or invoke this skill when the user:
 - Asks whether a sprint "still makes sense"
 - Wants to know if any sprint issues are completed or missing
 
+## Arguments
+
+$ARGUMENTS
+
+If arguments provided, parse as sprint name (e.g., `my-sprint`). If no arguments provided, list available sprints and ask which to review.
+
 ## How to Use
 
 Invoke this skill with a sprint name:
