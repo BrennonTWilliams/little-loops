@@ -91,7 +91,10 @@ Examples:
     add_timeout_arg(create_parser, default=3600)
     add_skip_arg(
         create_parser,
-        help_text="Comma-separated list of issue IDs to exclude from sprint (e.g., BUG-003,FEAT-004)",
+        help_text=(
+            "Comma-separated list of issue IDs to exclude from sprint"
+            " (e.g., BUG-003,FEAT-004)"
+        ),
     )
 
     # run subcommand
@@ -105,7 +108,10 @@ Examples:
     add_quiet_arg(run_parser)
     add_skip_arg(
         run_parser,
-        help_text="Comma-separated list of issue IDs to skip during execution (e.g., BUG-003,FEAT-004)",
+        help_text=(
+            "Comma-separated list of issue IDs to skip during execution"
+            " (e.g., BUG-003,FEAT-004)"
+        ),
     )
     add_skip_analysis_arg(run_parser)
 
@@ -192,7 +198,8 @@ def _cmd_sprint_create(args: argparse.Namespace, manager: SprintManager) -> int:
         skipped = original_count - len(issues)
         if skipped > 0:
             logger.info(
-                f"Skipping {skipped} issue(s): {', '.join(sorted(skip_ids & set(issues) | skip_ids))}"
+                f"Skipping {skipped} issue(s): "
+                f"{', '.join(sorted(skip_ids & set(issues) | skip_ids))}"
             )
 
     # Validate issues exist
