@@ -1,17 +1,21 @@
 ---
 description: |
-  AI-guided sprint health check that analyzes a sprint's current state and suggests improvements — removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create_sprint` pairs with `ll-sprint create` (intelligence).
+  AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create_sprint` pairs with `ll-sprint create` (intelligence).
 
   Trigger keywords: "review sprint", "sprint health", "sprint review", "check sprint", "sprint suggestions", "optimize sprint", "sprint health check", "is my sprint still good"
+arguments:
+  - name: sprint_name
+    description: Sprint name to review (e.g., "my-sprint"). If omitted, lists available sprints.
+    required: false
 ---
 
-# Review Sprint Skill
+# Review Sprint
 
-This skill analyzes a sprint definition and provides intelligent recommendations for improving it — identifying stale issues to remove, related backlog issues to add, dependency warnings to resolve, and wave structure optimizations.
+This command analyzes a sprint definition and provides intelligent recommendations for improving it - identifying stale issues to remove, related backlog issues to add, dependency warnings to resolve, and wave structure optimizations.
 
 ## When to Activate
 
-Proactively offer or invoke this skill when the user:
+Proactively offer or invoke this command when the user:
 
 - Asks to review or check a sprint's health
 - Mentions a sprint may be outdated or stale
@@ -28,7 +32,7 @@ If arguments provided, parse as sprint name (e.g., `my-sprint`). If no arguments
 
 ## How to Use
 
-Invoke this skill with a sprint name:
+Invoke this command with a sprint name:
 
 ```
 /ll:review_sprint my-sprint
@@ -42,7 +46,7 @@ ll-sprint list
 
 ## Workflow
 
-The skill follows a 6-phase workflow:
+The command follows a 6-phase workflow:
 
 ### Phase 1: Load & Health Check
 
@@ -246,10 +250,10 @@ SPRINT REVIEW: [sprint-name]
 ## RECOMMENDATIONS
 
 ### Remove (N issues)
-- [ISSUE-ID]: [Title] — [Reason: completed/invalid/misaligned/low-priority]
+- [ISSUE-ID]: [Title] - [Reason: completed/invalid/misaligned/low-priority]
 
 ### Add (N issues)
-- [ISSUE-ID]: [Title] (P[X]) — [Reason: theme match/priority/parallelism]
+- [ISSUE-ID]: [Title] (P[X]) - [Reason: theme match/priority/parallelism]
 
 ### Warnings
 - [Warning description]
@@ -301,13 +305,13 @@ After reviewing a sprint:
 ### Good Reviews
 
 - Run before sprint execution to catch stale issues
-- Pay attention to priority drift — the backlog may have shifted since sprint creation
-- Consider sprint age — sprints older than a week benefit most from review
+- Pay attention to priority drift - the backlog may have shifted since sprint creation
+- Consider sprint age - sprints older than a week benefit most from review
 - Use the revalidation step to confirm dependency health after changes
 
 ### Avoid
 
-- Blindly accepting all addition recommendations — keep sprints focused
+- Blindly accepting all addition recommendations - keep sprints focused
 - Over-stuffing sprints with too many issues (diminishing returns on parallelism)
-- Removing issues just because they're low priority — they may still be in scope
+- Removing issues just because they're low priority - they may still be in scope
 - Running review on a sprint currently being executed (wait for completion)
