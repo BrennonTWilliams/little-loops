@@ -81,10 +81,11 @@ This enhancement would:
 - N/A
 
 ### Tests
-- Verify migrated commands are accessible after migration
+- N/A — skill/command markdown migrations are not Python-testable; verified by invoking migrated commands post-migration
 
 ### Documentation
-- `docs/ARCHITECTURE.md` - Update skill/command listing
+- `docs/ARCHITECTURE.md` — update skill/command listing with final allocations
+- `.claude/CLAUDE.md` — update skills and commands counts if allocations change
 
 ### Configuration
 - `.claude-plugin/plugin.json` - Remove migrated skill entries

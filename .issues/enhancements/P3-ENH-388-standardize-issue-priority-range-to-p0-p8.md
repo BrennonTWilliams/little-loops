@@ -45,10 +45,15 @@ TBD - requires investigation
 - TBD - search for consistency
 
 ### Tests
-- TBD - identify test files to update
+- `scripts/tests/test_issue_id.py` — update priority validation tests for P0-P8 range
+- `scripts/tests/test_issue_scanner.py` — update any priority parsing/filtering tests
+- `scripts/tests/test_prioritize.py` — update priority assignment tests for expanded range
 
 ### Documentation
-- TBD - docs that need updates
+- `.claude/CLAUDE.md` — update "P0 (critical) to P5 (low)" to P0-P8
+- `docs/ISSUE_TEMPLATE.md` — update priority references and examples
+- `CONTRIBUTING.md` — update priority range references
+- `docs/ARCHITECTURE.md` — update issue management priority scheme
 
 ### Configuration
 - N/A or list config files

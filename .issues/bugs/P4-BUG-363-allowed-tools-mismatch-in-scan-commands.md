@@ -62,10 +62,10 @@ This bug would:
 - Other commands with `allowed-tools` that may also be out of date (see BUG-365)
 
 ### Tests
-- N/A (manual verification by running scan commands)
+- N/A — frontmatter-only change; verified by running affected scan commands
 
 ### Documentation
-- N/A
+- N/A — internal configuration fix
 
 ### Configuration
 - N/A

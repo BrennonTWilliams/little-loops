@@ -88,7 +88,11 @@ These serve as reference for the pattern:
 - 27 files in `commands/` directory
 
 ### Tests
-- Verify commands still function correctly after adding tool restrictions
+- N/A — command markdown frontmatter changes are not Python-testable; verified via manual invocation
+
+### Documentation
+- `.claude/CLAUDE.md` — update command list if any commands change names
+- `docs/COMMANDS.md` — update command documentation for tool restriction additions
 
 ## Implementation Steps
 

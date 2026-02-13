@@ -71,10 +71,12 @@ This enhancement would:
 - `commands/manage_issue.md` already supports `--plan-only`, `--resume`, `--gates` flags
 
 ### Tests
-- Manual testing of flag parsing in each command
+- N/A — command markdown files are not Python-testable; verified via manual invocation
 
 ### Documentation
-- `commands/help.md` - Flag convention reference
+- `commands/help.md` — add flag convention reference section
+- `docs/COMMANDS.md` — document standard flags (--quick, --deep, --focus, --dry-run)
+- `CONTRIBUTING.md` — add flag convention guidelines for command authors
 
 ### Configuration
 - N/A

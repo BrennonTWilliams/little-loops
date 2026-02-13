@@ -84,7 +84,8 @@ This enhancement would:
 - `scripts/tests/test_sprint_integration.py` - Test retry behavior
 
 ### Documentation
-- N/A
+- `docs/COMMANDS.md` — document retry behavior for ll-sprint
+- `README.md` — update ll-sprint feature description if retry changes user workflow
 
 ### Configuration
 - N/A

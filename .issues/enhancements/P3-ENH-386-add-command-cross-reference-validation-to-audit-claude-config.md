@@ -44,7 +44,7 @@ This fits naturally into the existing Wave 2 consistency checks alongside agent/
 - Existing Wave 2 cross-checks in `audit_claude_config` (agent tool validation, MCP reference checks)
 
 ### Tests
-- N/A — command behavior, not Python code
+- N/A — skill prompt changes; validation is performed by the audit skill itself
 
 ### Documentation
 - `commands/help.md` — update `audit_claude_config` description if scope text changes

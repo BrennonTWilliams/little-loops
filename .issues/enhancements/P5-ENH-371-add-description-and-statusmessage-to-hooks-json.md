@@ -97,11 +97,10 @@ This enhancement would:
 - N/A
 
 ### Tests
-- Verify spinner text appears during hook execution
-- Verify plugin description appears in `/hooks` menu
+- N/A — hooks.json metadata additions; verified by observing spinner text during hook execution and plugin description in `/hooks` menu
 
 ### Documentation
-- N/A
+- N/A — UX polish, no user-facing documentation needed
 
 ### Configuration
 - N/A

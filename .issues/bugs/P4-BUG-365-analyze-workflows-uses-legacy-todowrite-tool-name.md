@@ -57,10 +57,10 @@ This bug would:
 - Other commands may also reference `TodoWrite` (see BUG-363)
 
 ### Tests
-- N/A (manual verification)
+- N/A — command markdown frontmatter change; verified by running /ll:analyze-workflows
 
 ### Documentation
-- N/A
+- N/A — internal tool name fix
 
 ### Configuration
 - N/A

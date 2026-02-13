@@ -68,7 +68,11 @@ For the issue template, read `skills/init/templates.md`
 - `CLAUDE.md` — update command/skill references
 
 ### Tests
-- Verify each migrated skill still invokable via `/ll:*`
+- N/A — skill markdown files are not Python-testable; verified via manual invocation
+
+### Documentation
+- `.claude/CLAUDE.md` — update skill references if count/names change
+- `docs/COMMANDS.md` — update command documentation for migrated commands
 
 ## Implementation Steps
 

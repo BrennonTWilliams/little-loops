@@ -53,8 +53,8 @@ This enhancement would:
 - **Files to Modify**: `.claude-plugin/plugin.json`
 - **Dependent Files (Callers/Importers)**: Commands referencing `subagent_type` (5+ commands)
 - **Similar Patterns**: ENH-374 (manifest missing agents and hooks declarations)
-- **Tests**: N/A (manual verification of agent discovery)
-- **Documentation**: `docs/ARCHITECTURE.md` (if it documents plugin.json structure)
+- **Tests**: N/A — plugin.json metadata addition; verified by Claude Code plugin loading and agent discovery
+- **Documentation**: N/A — plugin manifest metadata improvement
 - **Configuration**: `.claude-plugin/plugin.json`
 
 ## Impact

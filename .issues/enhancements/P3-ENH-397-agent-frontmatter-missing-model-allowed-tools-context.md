@@ -71,7 +71,11 @@ This enhancement would:
 - `agents/workflow-pattern-analyzer.md`
 
 ### Tests
-- Verify each agent still functions correctly after adding tool restrictions
+- N/A — agent markdown files are not Python-testable; verified via manual invocation of dependent skills/commands
+
+### Documentation
+- `.claude/CLAUDE.md` — update agent references if count/names change
+- `docs/ARCHITECTURE.md` — update agent architecture section
 
 ## Implementation Steps
 

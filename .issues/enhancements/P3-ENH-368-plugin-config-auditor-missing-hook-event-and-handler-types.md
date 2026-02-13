@@ -65,10 +65,10 @@ Update `agents/plugin-config-auditor.md`:
 - N/A
 
 ### Tests
-- Run `/ll:audit_claude_config` and verify no false positives for valid hook event types and handler types
+- N/A — agent markdown audit; verified by running /ll:audit_claude_config
 
 ### Documentation
-- N/A
+- N/A — internal cleanup of agent prompt content
 
 ### Configuration
 - N/A

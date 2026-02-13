@@ -59,11 +59,11 @@ This bug would:
 - Other config keys that may exist in config but not in schema
 
 ### Tests
-- `scripts/tests/conftest.py` — update fixtures
-- `scripts/tests/test_cli_e2e.py` — update fixtures
+- `scripts/tests/conftest.py` — remove stale `default_mode` from test fixtures
+- `scripts/tests/test_cli_e2e.py` — remove stale `default_mode` from test fixtures
 
 ### Documentation
-- N/A
+- N/A — config cleanup, no user-facing doc changes
 
 ### Configuration
 - `.claude/ll-config.json` — sprints section

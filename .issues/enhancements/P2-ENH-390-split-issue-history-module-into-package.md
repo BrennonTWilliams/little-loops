@@ -235,7 +235,7 @@ This enhancement would:
 - ENH-344 (cli.py split) follows the same god-module-to-package pattern
 
 ### Tests
-- `scripts/tests/test_issue_history_advanced_analytics.py` - update imports if needed
+- `scripts/tests/test_issue_history_advanced_analytics.py` — update imports to resolve against new package structure
 
 ### Documentation
 - `docs/API.md` - update module references

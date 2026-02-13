@@ -45,7 +45,7 @@ This enhancement would:
 - **Files to Modify**: `hooks/scripts/precompact-state.sh`
 - **Dependent Files (Callers/Importers)**: `hooks/hooks.json` (PreCompact event triggers this script)
 - **Similar Patterns**: Other hook scripts using exit codes (`hooks/scripts/session-start.sh`, `hooks/scripts/postcommit-update.sh`)
-- **Tests**: N/A (shell script; manual verification)
+- **Tests**: N/A — shell script exit code change; verified by triggering PreCompact hook and observing stderr visibility
 - **Documentation**: `docs/claude-code/hooks-reference.md`
 - **Configuration**: N/A
 

@@ -35,6 +35,26 @@ This enhancement would:
 
 Could be bundled with ENH-356 since both modify the same file.
 
+## Integration Map
+
+### Files to Modify
+- `.claude/CLAUDE.md` — update last-updated date and skills count
+
+### Dependent Files (Callers/Importers)
+- N/A
+
+### Similar Patterns
+- N/A
+
+### Tests
+- N/A — documentation-only change
+
+### Documentation
+- `.claude/CLAUDE.md` — update last-updated date and skills count (this IS the change)
+
+### Configuration
+- N/A
+
 ## Impact
 
 Low — documentation freshness improvement.

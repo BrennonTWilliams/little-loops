@@ -48,7 +48,10 @@ This enhancement would:
 - All command files in `commands/` that have `arguments:` in frontmatter
 
 ### Tests
-- Visual verification that hints appear in `/` menu
+- N/A — command markdown frontmatter additions are not Python-testable; verified by checking hints appear in `/` menu
+
+### Documentation
+- N/A — UX polish, no user-facing documentation needed
 
 ## Implementation Steps
 

@@ -64,7 +64,10 @@ allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 - `skills/workflow-automation-proposer/SKILL.md`
 
 ### Tests
-- Verify each skill still functions correctly after adding restrictions
+- N/A — skill markdown files are not Python-testable; verified via manual invocation
+
+### Documentation
+- N/A — frontmatter-only changes to existing skill files
 
 ## Implementation Steps
 

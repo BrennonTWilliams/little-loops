@@ -67,7 +67,7 @@ This enhancement would:
 - **Files to Modify**: `hooks/hooks.json`
 - **Dependent Files (Callers/Importers)**: Claude Code hook event system (reads hooks.json)
 - **Similar Patterns**: Other hook entries in `hooks/hooks.json` that correctly omit matchers
-- **Tests**: N/A (manual verification of hook firing)
+- **Tests**: N/A — hook configuration cleanup; verified by triggering UserPromptSubmit and Stop hooks
 - **Documentation**: `docs/claude-code/hooks-reference.md`
 - **Configuration**: `hooks/hooks.json`
 

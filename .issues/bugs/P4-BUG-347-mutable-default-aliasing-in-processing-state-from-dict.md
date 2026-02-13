@@ -87,10 +87,10 @@ This bug would:
 - Any other `from_dict()` class methods that pass mutable defaults without copying
 
 ### Tests
-- `scripts/tests/` — add aliasing prevention test for `ProcessingState.from_dict()`
+- `scripts/tests/test_state.py` — add aliasing prevention test verifying mutating returned state does not alias back to the original data dict
 
 ### Documentation
-- N/A
+- N/A — internal bug fix, no user-facing doc changes
 
 ### Configuration
 - N/A

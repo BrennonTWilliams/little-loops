@@ -51,7 +51,10 @@ This bug would:
 - Commands in `commands/` that have `arguments:` frontmatter but no `$ARGUMENTS` in body
 
 ### Tests
-- Invoke each affected command with an argument and verify it's handled correctly
+- N/A — command markdown frontmatter standardization; verified by invoking affected commands with arguments
+
+### Documentation
+- `docs/COMMANDS.md` — document $ARGUMENTS convention if not already covered
 
 ## Implementation Steps
 

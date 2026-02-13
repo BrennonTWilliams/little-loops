@@ -62,7 +62,7 @@ Either use `{{config.project.test_cmd}}` etc. in templates, or add a note like "
 - `commands/check_code.md` already uses `{{config.project.*}}` references
 
 ### Tests
-- Manual review of rendered command output
+- N/A — command markdown template changes are not Python-testable; verified by reviewing rendered command output
 
 ### Documentation
 - N/A

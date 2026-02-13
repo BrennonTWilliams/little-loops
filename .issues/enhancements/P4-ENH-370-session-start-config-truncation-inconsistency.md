@@ -55,7 +55,7 @@ Replace `head -50` with `cat` in the non-merge path to match the Python merge pa
 - **Files to Modify**: `hooks/scripts/session-start.sh`
 - **Dependent Files (Callers/Importers)**: `hooks/hooks.json` (SessionStart event triggers this script)
 - **Similar Patterns**: N/A
-- **Tests**: N/A (shell script; manual verification)
+- **Tests**: N/A — shell script change; verified by triggering SessionStart hook with and without local overrides
 - **Documentation**: `docs/claude-code/hooks-reference.md`
 - **Configuration**: `.claude/ll-config.json`, `.claude/ll.local.md`
 

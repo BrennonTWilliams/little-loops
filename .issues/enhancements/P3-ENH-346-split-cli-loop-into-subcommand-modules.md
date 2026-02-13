@@ -60,8 +60,8 @@ This enhancement would:
 - **Files to Modify**: `scripts/little_loops/cli/loop.py` (split into `scripts/little_loops/cli/loop/` package)
 - **Dependent Files (Callers/Importers)**: `scripts/little_loops/cli/__init__.py` (registers loop CLI), `pyproject.toml` (entry points)
 - **Similar Patterns**: ENH-390 (split issue_history module into package — same restructuring pattern)
-- **Tests**: `scripts/tests/test_loop.py` (if exists), integration tests that invoke `ll-loop`
-- **Documentation**: `docs/ARCHITECTURE.md` (module structure)
+- **Tests**: `scripts/tests/test_loop_runner.py` — update imports to resolve against new package structure
+- **Documentation**: `docs/ARCHITECTURE.md` — update module structure for cli/loop package
 - **Configuration**: N/A
 
 ## Impact Assessment

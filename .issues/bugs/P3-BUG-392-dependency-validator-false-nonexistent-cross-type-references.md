@@ -61,11 +61,11 @@ TBD - requires investigation into `analyze_dependencies()` and `DependencyGraph.
 - `scripts/little_loops/cli/sprint.py` — calls `analyze_dependencies()`, displays warnings
 
 ### Tests
-- `scripts/tests/test_dependency_graph.py` — add cross-type reference test
-- May need new test for `dependency_mapper` validation
+- `scripts/tests/test_dependency_graph.py` — add cross-type reference test for BUG-referencing-ENH scenario
+- `scripts/tests/test_dependency_mapper.py` — add validation test for cross-category issue reference resolution
 
 ### Documentation
-- N/A
+- N/A — internal bug fix, no user-facing doc changes
 
 ### Configuration
 - N/A

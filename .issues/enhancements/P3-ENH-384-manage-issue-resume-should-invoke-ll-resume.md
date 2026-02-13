@@ -70,7 +70,7 @@ Instead of duplicating the file-read logic, `manage_issue --resume` could invoke
 - `commands/resume.md` — Reads the same `.claude/ll-continue-prompt.md` file with staleness checks
 
 ### Tests
-- Manual testing: trigger context handoff, then run `/ll:manage_issue ... --resume` in new session
+- N/A — command markdown prompt change; verified by triggering context handoff and running `/ll:manage_issue ... --resume` in a new session
 
 ### Documentation
 - N/A

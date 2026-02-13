@@ -60,8 +60,8 @@ This enhancement would:
 - **Files to Modify**: `.claude-plugin/plugin.json`
 - **Dependent Files (Callers/Importers)**: Claude Code plugin loader, `hooks/hooks.json`, `agents/` directory
 - **Similar Patterns**: ENH-366 (add agents directory to plugin.json — subset of this issue)
-- **Tests**: N/A (manual verification of plugin loading)
-- **Documentation**: `docs/ARCHITECTURE.md` (if it documents plugin.json structure)
+- **Tests**: N/A — plugin.json metadata addition; verified by Claude Code plugin loading
+- **Documentation**: N/A — plugin manifest metadata improvement
 - **Configuration**: `.claude-plugin/plugin.json`
 
 ## Impact

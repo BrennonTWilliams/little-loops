@@ -168,10 +168,13 @@ All enhancements should be:
 - N/A
 
 ### Tests
-- Manual testing of new flags and modes
+- `scripts/tests/test_workflow_sequence_analyzer.py` — unit tests for incremental analysis, caching, filtering logic
+- `scripts/tests/test_workflow_sequence_analyzer_integration.py` — integration test for end-to-end pipeline with --incremental, --fresh flags
 
 ### Documentation
-- `docs/ARCHITECTURE.md` - Update workflow analysis section
+- `docs/ARCHITECTURE.md` — update workflow analysis section with incremental/caching architecture
+- `docs/COMMANDS.md` — document new flags (--incremental, --fresh, --since, --focus, --auto-implement)
+- `.claude/CLAUDE.md` — update analyze-workflows description with new capabilities
 
 ### Configuration
 - `.claude/ll-config.json` - Potential new workflow analysis settings
