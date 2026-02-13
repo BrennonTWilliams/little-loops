@@ -2,6 +2,8 @@
 description: Scan codebase for product-focused issues based on goals document
 allowed-tools:
   - Bash(git:*, gh:*)
+  - Skill
+  - TodoWrite
 ---
 
 # Scan Product
