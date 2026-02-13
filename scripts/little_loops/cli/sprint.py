@@ -287,8 +287,7 @@ def _render_execution_plan(
         if is_contention:
             # Multiple sub-waves from contention splitting
             lines.append(
-                f"Wave {logical_num} ({group_count} issues, "
-                f"serialized \u2014 file contention):"
+                f"Wave {logical_num} ({group_count} issues, serialized \u2014 file contention):"
             )
             step = 0
             for widx in group:
@@ -532,7 +531,9 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
     # Options on a single compact line right after metadata
     if sprint.options:
         opts = sprint.options
-        print(f"Options: max_workers={opts.max_workers}, timeout={opts.timeout}s, max_iterations={opts.max_iterations}")
+        print(
+            f"Options: max_workers={opts.max_workers}, timeout={opts.timeout}s, max_iterations={opts.max_iterations}"
+        )
 
     # Dependency analysis (ENH-301) - run before health summary so we can reference it
     dep_report: Any = None
@@ -551,7 +552,10 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
     # Sprint health summary
     if waves:
         health = _render_health_summary(
-            waves, contention_notes, has_cycles, invalid,
+            waves,
+            contention_notes,
+            has_cycles,
+            invalid,
             dep_report=dep_report,
             issue_to_wave=issue_to_wave if issue_to_wave else None,
         )
@@ -844,14 +848,9 @@ def _render_dependency_analysis(
             total = len(report.proposals)
             if not novel:
                 dep_word = "dependency" if total == 1 else "dependencies"
-                logger.info(
-                    f"All {total} potential {dep_word} "
-                    f"already handled by wave ordering."
-                )
+                logger.info(f"All {total} potential {dep_word} already handled by wave ordering.")
             else:
-                logger.info(
-                    f"({satisfied_count} additional already handled by wave ordering)"
-                )
+                logger.info(f"({satisfied_count} additional already handled by wave ordering)")
 
     if report.validation.has_issues:
         v = report.validation

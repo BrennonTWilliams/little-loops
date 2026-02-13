@@ -1185,16 +1185,22 @@ class TestSprintShowDependencyVisualization:
         waves = [[issue1], [issue2], [issue3]]
         notes: list[WaveContentionNote | None] = [
             WaveContentionNote(
-                contended_paths=["CLAUDE.md"], sub_wave_index=0,
-                total_sub_waves=3, parent_wave_index=0,
+                contended_paths=["CLAUDE.md"],
+                sub_wave_index=0,
+                total_sub_waves=3,
+                parent_wave_index=0,
             ),
             WaveContentionNote(
-                contended_paths=["CLAUDE.md"], sub_wave_index=1,
-                total_sub_waves=3, parent_wave_index=0,
+                contended_paths=["CLAUDE.md"],
+                sub_wave_index=1,
+                total_sub_waves=3,
+                parent_wave_index=0,
             ),
             WaveContentionNote(
-                contended_paths=["CLAUDE.md"], sub_wave_index=2,
-                total_sub_waves=3, parent_wave_index=0,
+                contended_paths=["CLAUDE.md"],
+                sub_wave_index=2,
+                total_sub_waves=3,
+                parent_wave_index=0,
             ),
         ]
 
@@ -1218,12 +1224,16 @@ class TestSprintShowDependencyVisualization:
         waves = [[issue1], [issue2]]
         notes: list[WaveContentionNote | None] = [
             WaveContentionNote(
-                contended_paths=["a.py"], sub_wave_index=0,
-                total_sub_waves=2, parent_wave_index=0,
+                contended_paths=["a.py"],
+                sub_wave_index=0,
+                total_sub_waves=2,
+                parent_wave_index=0,
             ),
             WaveContentionNote(
-                contended_paths=["a.py"], sub_wave_index=1,
-                total_sub_waves=2, parent_wave_index=0,
+                contended_paths=["a.py"],
+                sub_wave_index=1,
+                total_sub_waves=2,
+                parent_wave_index=0,
             ),
         ]
 
