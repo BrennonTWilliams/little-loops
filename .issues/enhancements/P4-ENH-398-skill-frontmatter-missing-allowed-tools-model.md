@@ -78,6 +78,10 @@ allowed-tools: ["Read", "Glob", "Grep", "Bash"]
 - **In scope**: Adding frontmatter fields to existing skill files
 - **Out of scope**: Rewriting skill body content or changing skill behavior
 
+## Blocked By
+
+- BUG-402: Commands reference $ARGUMENTS inconsistently — argument handling bug should be fixed before adding tool restrictions
+
 ## Labels
 
 `enhancement`, `skills`, `security`, `configuration`

@@ -106,6 +106,11 @@ These serve as reference for the pattern:
 - **In scope**: Adding `allowed-tools` frontmatter to commands that lack it
 - **Out of scope**: Changing command behavior or refactoring command content
 
+## Blocks
+
+- BUG-402: Commands reference $ARGUMENTS inconsistently — allowed-tools audit touches same command files
+- BUG-363: Allowed-tools mismatch in scan commands — broader audit should land first
+
 ## Labels
 
 `enhancement`, `commands`, `security`, `configuration`

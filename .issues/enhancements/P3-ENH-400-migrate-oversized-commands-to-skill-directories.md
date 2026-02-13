@@ -84,6 +84,10 @@ For the issue template, read `skills/init/templates.md`
 - **In scope**: Converting oversized commands to skill directories with supporting files
 - **Out of scope**: Rewriting command logic or changing behavior; `audit_docs.md` at 506 lines is borderline and could be deferred
 
+## Blocks
+
+- BUG-402: Commands reference $ARGUMENTS inconsistently — command restructuring should complete before fixing argument references
+
 ## Related Issues
 
 - ENH-279: Audit skill vs command allocation (broader skill/command allocation review)

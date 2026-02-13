@@ -34,6 +34,10 @@ Note: Also update `TodoWrite` references to current `TaskCreate`/`TaskUpdate`/`T
 - **Effort**: Small
 - **Risk**: Low
 
+## Blocked By
+
+- ENH-399: Add allowed-tools to commands — broader allowed-tools audit should complete first to avoid conflicting changes
+
 ## Labels
 
 `bug`, `commands`, `config`

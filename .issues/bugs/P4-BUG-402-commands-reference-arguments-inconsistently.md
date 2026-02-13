@@ -57,6 +57,16 @@ This ensures arguments are placed at a semantically appropriate location in the 
 - **Risk**: Low - Improving argument handling, unlikely to break existing usage
 - **Breaking Change**: No
 
+## Blocked By
+
+- ENH-399: Add allowed-tools to commands — modifies same command files, should complete first
+- ENH-400: Migrate oversized commands to skill directories — restructures command files
+
+## Blocks
+
+- ENH-398: Skill frontmatter missing allowed-tools — BUG-402 argument fix should land first
+- ENH-401: Add argument-hint to commands — depends on $ARGUMENTS placement being resolved
+
 ## Labels
 
 `bug`, `commands`, `configuration`, `ux`

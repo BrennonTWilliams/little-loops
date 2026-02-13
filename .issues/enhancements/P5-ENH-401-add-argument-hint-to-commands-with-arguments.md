@@ -60,6 +60,10 @@ This shows in the `/` menu as: `/ll:manage_issue <issue-file>`
 - **Risk**: None
 - **Breaking Change**: No
 
+## Blocked By
+
+- BUG-402: Commands reference $ARGUMENTS inconsistently — $ARGUMENTS placement must be resolved before adding argument-hints
+
 ## Labels
 
 `enhancement`, `commands`, `ux`, `configuration`
