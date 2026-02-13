@@ -18,6 +18,7 @@ from little_loops.dependency_mapper import (
     find_file_overlaps,
     format_report,
     format_text_graph,
+    gather_all_issue_ids,
     main,
     validate_dependencies,
 )
@@ -473,6 +474,69 @@ class TestValidateDependencies:
         result = validate_dependencies(issues, completed_ids={"FEAT-001"})
         assert len(result.broken_refs) == 0
         assert ("FEAT-002", "FEAT-001") in result.stale_completed_refs
+
+    def test_cross_type_ref_not_broken_with_all_known_ids(self) -> None:
+        """Test that a ref to an issue outside the working set is not broken when all_known_ids is provided."""
+        issues = [
+            make_issue("BUG-359", blocked_by=["ENH-342"]),
+        ]
+        # ENH-342 is not in the issues list but exists on disk
+        result = validate_dependencies(issues, all_known_ids={"BUG-359", "ENH-342"})
+        assert len(result.broken_refs) == 0
+
+    def test_truly_nonexistent_ref_still_broken_with_all_known_ids(self) -> None:
+        """Test that a ref to a truly nonexistent issue is still flagged as broken."""
+        issues = [
+            make_issue("BUG-001", blocked_by=["FEAT-999"]),
+        ]
+        # FEAT-999 is not in all_known_ids either
+        result = validate_dependencies(issues, all_known_ids={"BUG-001", "ENH-342"})
+        assert ("BUG-001", "FEAT-999") in result.broken_refs
+
+    def test_all_known_ids_backward_compatible(self) -> None:
+        """Test that omitting all_known_ids preserves original behavior."""
+        issues = [
+            make_issue("FEAT-001", blocked_by=["BUG-999"]),
+        ]
+        result = validate_dependencies(issues)
+        assert ("FEAT-001", "BUG-999") in result.broken_refs
+
+
+# =============================================================================
+# gather_all_issue_ids tests
+# =============================================================================
+
+
+class TestGatherAllIssueIds:
+    """Tests for gathering issue IDs from filesystem."""
+
+    def test_scans_all_categories(self, tmp_path: Path) -> None:
+        """Test that IDs are gathered from bugs, features, enhancements, and completed."""
+        (tmp_path / "bugs").mkdir()
+        (tmp_path / "features").mkdir()
+        (tmp_path / "enhancements").mkdir()
+        (tmp_path / "completed").mkdir()
+
+        (tmp_path / "bugs" / "P1-BUG-001-test.md").write_text("# BUG-001")
+        (tmp_path / "features" / "P2-FEAT-010-feature.md").write_text("# FEAT-010")
+        (tmp_path / "enhancements" / "P3-ENH-100-improve.md").write_text("# ENH-100")
+        (tmp_path / "completed" / "P1-BUG-002-done.md").write_text("# BUG-002")
+
+        ids = gather_all_issue_ids(tmp_path)
+        assert ids == {"BUG-001", "FEAT-010", "ENH-100", "BUG-002"}
+
+    def test_empty_directory(self, tmp_path: Path) -> None:
+        """Test with no subdirectories."""
+        ids = gather_all_issue_ids(tmp_path)
+        assert ids == set()
+
+    def test_missing_subdirectories(self, tmp_path: Path) -> None:
+        """Test gracefully handles missing category directories."""
+        (tmp_path / "bugs").mkdir()
+        (tmp_path / "bugs" / "P1-BUG-001-test.md").write_text("# BUG-001")
+        # features, enhancements, completed don't exist
+        ids = gather_all_issue_ids(tmp_path)
+        assert ids == {"BUG-001"}
 
 
 # =============================================================================

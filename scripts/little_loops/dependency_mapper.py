@@ -528,6 +528,7 @@ def find_file_overlaps(
 def validate_dependencies(
     issues: list[IssueInfo],
     completed_ids: set[str] | None = None,
+    all_known_ids: set[str] | None = None,
 ) -> ValidationResult:
     """Validate existing dependency references for integrity.
 
@@ -540,6 +541,10 @@ def validate_dependencies(
     Args:
         issues: List of parsed issue objects
         completed_ids: Set of completed issue IDs
+        all_known_ids: Set of all issue IDs that exist on disk (across all
+            categories and completed). When provided, references to issues
+            in this set are not flagged as broken even if they are not in
+            the working ``issues`` list.
 
     Returns:
         ValidationResult with all detected problems
@@ -549,6 +554,8 @@ def validate_dependencies(
 
     active_ids = {issue.issue_id for issue in issues}
     all_known = active_ids | completed
+    if all_known_ids:
+        all_known = all_known | all_known_ids
 
     # Build lookup maps
     blocked_by_map: dict[str, set[str]] = {}
@@ -572,7 +579,7 @@ def validate_dependencies(
                     result.missing_backlinks.append((issue.issue_id, ref_id))
 
     # Cycle detection using DependencyGraph
-    graph = DependencyGraph.from_issues(issues, completed)
+    graph = DependencyGraph.from_issues(issues, completed, all_known_ids=all_known_ids)
     result.cycles = graph.detect_cycles()
 
     return result
@@ -582,6 +589,7 @@ def analyze_dependencies(
     issues: list[IssueInfo],
     issue_contents: dict[str, str],
     completed_ids: set[str] | None = None,
+    all_known_ids: set[str] | None = None,
 ) -> DependencyReport:
     """Run full dependency analysis: discovery and validation.
 
@@ -589,12 +597,13 @@ def analyze_dependencies(
         issues: List of parsed issue objects
         issue_contents: Mapping from issue_id to file content
         completed_ids: Set of completed issue IDs
+        all_known_ids: Set of all issue IDs that exist on disk
 
     Returns:
         Comprehensive dependency report
     """
     proposals, parallel_safe = find_file_overlaps(issues, issue_contents)
-    validation = validate_dependencies(issues, completed_ids)
+    validation = validate_dependencies(issues, completed_ids, all_known_ids)
 
     existing_dep_count = sum(len(issue.blocked_by) for issue in issues)
 
@@ -899,6 +908,30 @@ def _add_to_section(file_path: Path, section_name: str, issue_id: str) -> None:
     file_path.write_text(content, encoding="utf-8")
 
 
+def gather_all_issue_ids(issues_dir: Path) -> set[str]:
+    """Scan all issue directories for issue IDs (lightweight, filename-only).
+
+    Scans bugs/, features/, enhancements/, and completed/ subdirectories
+    for markdown files with issue ID patterns in their filenames.
+
+    Args:
+        issues_dir: Path to the issues base directory (e.g., .issues)
+
+    Returns:
+        Set of all issue IDs found across all categories and completed.
+    """
+    ids: set[str] = set()
+    for subdir in ["bugs", "features", "enhancements", "completed"]:
+        d = issues_dir / subdir
+        if not d.exists():
+            continue
+        for f in d.glob("*.md"):
+            match = re.search(r"(BUG|FEAT|ENH)-(\d+)", f.name)
+            if match:
+                ids.add(f"{match.group(1)}-{match.group(2)}")
+    return ids
+
+
 def _load_issues(
     issues_dir: Path,
     only_ids: set[str] | None = None,
@@ -1062,8 +1095,12 @@ Examples:
         print("No active issues found.")
         return 0
 
+    # Gather all issue IDs on disk to avoid false "nonexistent" warnings
+    # when sprint-scoped analysis references issues outside the sprint
+    all_known_ids = gather_all_issue_ids(issues_dir)
+
     if args.command == "analyze":
-        report = analyze_dependencies(issues, issue_contents, completed_ids)
+        report = analyze_dependencies(issues, issue_contents, completed_ids, all_known_ids)
 
         if args.format == "json":
             data = {
@@ -1111,7 +1148,7 @@ Examples:
         return 0
 
     if args.command == "validate":
-        result = validate_dependencies(issues, completed_ids)
+        result = validate_dependencies(issues, completed_ids, all_known_ids)
 
         if not result.has_issues:
             print("No validation issues found.")

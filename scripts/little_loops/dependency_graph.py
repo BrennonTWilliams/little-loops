@@ -52,6 +52,7 @@ class DependencyGraph:
         cls,
         issues: list[IssueInfo],
         completed_ids: set[str] | None = None,
+        all_known_ids: set[str] | None = None,
     ) -> DependencyGraph:
         """Build graph from list of issues.
 
@@ -64,6 +65,9 @@ class DependencyGraph:
         Args:
             issues: List of IssueInfo objects with blocked_by/blocks fields
             completed_ids: Set of completed issue IDs (treated as resolved)
+            all_known_ids: Set of all issue IDs that exist on disk. When
+                provided, references to issues in this set are silently
+                skipped (not warned) even if they are not in the graph.
 
         Returns:
             Constructed DependencyGraph
@@ -89,9 +93,13 @@ class DependencyGraph:
                 # Skip completed blockers (already satisfied)
                 if blocker_id in completed:
                     continue
-                # Skip missing blockers with warning
+                # Skip blockers not in the graph
                 if blocker_id not in all_issue_ids:
-                    logger.warning(f"Issue {issue.issue_id} blocked by unknown issue {blocker_id}")
+                    # Only warn if the issue truly doesn't exist on disk
+                    if all_known_ids is None or blocker_id not in all_known_ids:
+                        logger.warning(
+                            f"Issue {issue.issue_id} blocked by unknown issue {blocker_id}"
+                        )
                     continue
                 # Add bidirectional edge
                 graph.blocked_by[issue.issue_id].add(blocker_id)

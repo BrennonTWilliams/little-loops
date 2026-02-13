@@ -88,6 +88,37 @@ class TestDependencyGraphConstruction:
         assert "NONEXISTENT-999" not in graph.blocked_by["FEAT-001"]
         assert "blocked by unknown issue NONEXISTENT-999" in caplog.text
 
+    def test_known_id_not_in_graph_no_warning(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that a blocker in all_known_ids but not in graph produces no warning."""
+        issue = make_issue("BUG-359", blocked_by=["ENH-342"])
+
+        graph = DependencyGraph.from_issues(
+            [issue], all_known_ids={"BUG-359", "ENH-342"}
+        )
+
+        # ENH-342 is not in the graph but exists on disk — no warning
+        assert "ENH-342" not in graph.blocked_by["BUG-359"]
+        assert "unknown issue" not in caplog.text
+
+    def test_truly_unknown_id_still_warns(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that a blocker not in all_known_ids still produces a warning."""
+        issue = make_issue("BUG-001", blocked_by=["NONEXISTENT-999"])
+
+        graph = DependencyGraph.from_issues(
+            [issue], all_known_ids={"BUG-001", "ENH-342"}
+        )
+
+        assert "NONEXISTENT-999" not in graph.blocked_by["BUG-001"]
+        assert "blocked by unknown issue NONEXISTENT-999" in caplog.text
+
+    def test_all_known_ids_backward_compatible(self, caplog: pytest.LogCaptureFixture) -> None:
+        """Test that omitting all_known_ids preserves original warning behavior."""
+        issue = make_issue("FEAT-001", blocked_by=["NONEXISTENT-999"])
+
+        DependencyGraph.from_issues([issue])
+
+        assert "blocked by unknown issue NONEXISTENT-999" in caplog.text
+
     def test_completed_blocker_not_added(self) -> None:
         """Test that completed blockers are not added as edges."""
         issue_a = make_issue("FEAT-001")
