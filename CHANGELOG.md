@@ -13,6 +13,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.10.1] - 2026-02-12
+
+### Added
+
+- **Plugin config audit issues** - Add plugin config audit issues and update ENH-371 with once field (130dd65)
+- **Cross-issue dependency mappings** - Add cross-issue dependency mappings and ENH-396 issue (c14cbc4)
+- **`ll-next-id` command** - Consolidate issue ID assignment with new CLI command (cc50082)
+- **Sprint review skill** - Add `/ll:review_sprint` skill for AI-guided sprint health checks (c4b6b11)
+- **Sprint edit subcommand** - Add `ll-sprint edit` subcommand for sprint modifications (6c195f2)
+- **Sprint-scoped dependency analysis** - Add `--sprint` flag to `ll-deps` for sprint-scoped analysis (dee0890)
+
+### Fixed
+
+- **Sprint review plugin discovery** - Move review_sprint from skill to command for plugin discovery (264a3de)
+- **Sprint skill arguments** - Add missing `$ARGUMENTS` section to review_sprint skill (1dd0c1c)
+- **Documentation module listings** - Update ARCHITECTURE and API module listings from audit (2c063eb)
+
+### Other
+
+- docs: add Claude Code reference documentation for hooks, plugins, and skills (f54a723)
+- style(cli): fix line length formatting in loop and sprint modules (4550a0a)
+
+[1.10.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.10.0...v1.10.1
+
 ## [1.10.0] - 2026-02-12
 
 ### Added
