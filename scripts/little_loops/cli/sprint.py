@@ -321,6 +321,15 @@ def _render_dependency_graph(
     if not waves or len(waves) <= 1:
         return ""
 
+    # Don't render graph if there are no actual dependency edges
+    # (waves > 1 can happen from file contention splitting alone)
+    all_ids = {issue.issue_id for wave in waves for issue in wave}
+    has_edges = any(
+        dep_graph.blocks.get(issue_id, set()) & all_ids for issue_id in all_ids
+    )
+    if not has_edges:
+        return ""
+
     lines: list[str] = []
     lines.append("")
     lines.append("=" * 70)

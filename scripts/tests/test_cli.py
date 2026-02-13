@@ -1021,6 +1021,22 @@ class TestSprintShowDependencyVisualization:
         # Single wave means no dependencies to show
         assert output == ""
 
+    def test_render_dependency_graph_multi_wave_no_edges(self) -> None:
+        """Multiple waves from contention but no dependency edges -> empty."""
+        from little_loops.cli import _render_dependency_graph
+        from little_loops.dependency_graph import DependencyGraph
+
+        # Create issues with no dependencies between them
+        issue1 = self._make_issue("BUG-001", priority="P0", title="Bug fix A")
+        issue2 = self._make_issue("BUG-002", priority="P1", title="Bug fix B")
+
+        graph = DependencyGraph.from_issues([issue1, issue2])
+        # Simulate contention splitting: 2 waves but no dep edges
+        waves = [[issue1], [issue2]]
+
+        output = _render_dependency_graph(waves, graph)
+        assert output == ""
+
     def test_render_execution_plan_title_truncation(self) -> None:
         """Long titles are truncated."""
         from little_loops.cli import _render_execution_plan
