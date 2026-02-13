@@ -61,10 +61,15 @@ Suggested statusMessage values:
 - Stop: `"Cleaning up session..."`
 - PreCompact: `"Preserving task state..."`
 
+## Additional Opportunity: `once` field
+
+The hooks reference also documents a `once` field (`docs/claude-code/hooks-reference.md:257`): if `true`, the hook runs only once per session then is removed. This is useful for skills-only hooks (not agents). Consider whether any skill-defined hooks should use `once: true` for one-time initialization.
+
 ## Reference
 
 - `docs/claude-code/hooks-reference.md` — Plugin scripts: "Define plugin hooks in hooks/hooks.json with an optional top-level `description` field"
 - `docs/claude-code/hooks-reference.md` — Common fields: `statusMessage | no | Custom spinner message displayed while the hook runs`
+- `docs/claude-code/hooks-reference.md:257` — Common fields: `once | no | If true, runs only once per session then is removed. Skills only, not agents.`
 
 ## Impact
 
