@@ -81,4 +81,4 @@ fi
 # Output feedback to help Claude resume after compaction
 echo "[ll] Task state preserved before context compaction. Check .claude/ll-precompact-state.json if resuming work." >&2
 
-exit 0
+exit 2  # PreCompact: non-blocking, shows stderr to user

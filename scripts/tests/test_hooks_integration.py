@@ -602,8 +602,8 @@ class TestPrecompactState:
                 timeout=5,
             )
 
-            # Should succeed
-            assert result.returncode == 0
+            # Should succeed with exit 2 (PreCompact: non-blocking, shows stderr to user)
+            assert result.returncode == 2
 
             # State file should exist with valid JSON
             state_file = tmp_path / ".claude" / "ll-precompact-state.json"
@@ -640,8 +640,8 @@ class TestPrecompactState:
                 futures = [executor.submit(run_hook, i) for i in range(5)]
                 results = [f.result() for f in as_completed(futures)]
 
-            # All should succeed
-            assert all(r.returncode == 0 for r in results)
+            # All should succeed with exit 2 (PreCompact: non-blocking, shows stderr)
+            assert all(r.returncode == 2 for r in results)
 
             # State file should have valid JSON (last write wins)
             state_file = tmp_path / ".claude" / "ll-precompact-state.json"
