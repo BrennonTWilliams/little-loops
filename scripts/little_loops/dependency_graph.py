@@ -24,6 +24,7 @@ class WaveContentionNote:
     contended_paths: list[str]
     sub_wave_index: int
     total_sub_waves: int
+    parent_wave_index: int = 0
 
 
 @dataclass
@@ -359,7 +360,7 @@ def refine_waves_for_contention(
     refined: list[list[IssueInfo]] = []
     annotations: list[WaveContentionNote | None] = []
 
-    for wave in waves:
+    for orig_idx, wave in enumerate(waves):
         if len(wave) <= 1:
             refined.append(wave)
             annotations.append(None)
@@ -414,6 +415,7 @@ def refine_waves_for_contention(
                         contended_paths=contended_paths,
                         sub_wave_index=c,
                         total_sub_waves=total_sub_waves,
+                        parent_wave_index=orig_idx,
                     )
                 )
 

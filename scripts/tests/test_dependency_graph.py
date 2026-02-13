@@ -790,10 +790,12 @@ class TestRefineWavesForContention:
         assert notes[0] is not None
         assert notes[0].sub_wave_index == 0
         assert notes[0].total_sub_waves == 2
+        assert notes[0].parent_wave_index == 0
         assert "src/cli.py" in notes[0].contended_paths
         assert notes[1] is not None
         assert notes[1].sub_wave_index == 1
         assert notes[1].total_sub_waves == 2
+        assert notes[1].parent_wave_index == 0
 
     def test_contention_notes_mixed_waves(self) -> None:
         """Notes should be None for non-split waves and populated for split ones."""
@@ -807,5 +809,7 @@ class TestRefineWavesForContention:
         assert len(notes) == 3  # 1 passthrough + 2 sub-waves
         assert notes[0] is None  # single issue wave
         assert notes[1] is not None  # sub-wave 1
+        assert notes[1].parent_wave_index == 1  # from original wave index 1
         assert notes[2] is not None  # sub-wave 2
+        assert notes[2].parent_wave_index == 1
         assert "src/b.py" in notes[1].contended_paths

@@ -22,6 +22,7 @@ from little_loops.cli.parallel import main_parallel
 from little_loops.cli.sprint import (
     _render_dependency_graph,
     _render_execution_plan,
+    _render_health_summary,
     main_sprint,
 )
 from little_loops.cli.sync import main_sync
@@ -40,4 +41,5 @@ __all__ = [
     # Re-exported for backward compatibility (used in tests)
     "_render_execution_plan",
     "_render_dependency_graph",
+    "_render_health_summary",
 ]

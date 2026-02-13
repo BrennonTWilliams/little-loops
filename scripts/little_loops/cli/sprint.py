@@ -249,56 +249,108 @@ def _render_execution_plan(
     if not waves:
         return ""
 
+    # Build logical wave groups: consecutive sub-waves from the same
+    # parent_wave_index are grouped together.
+    logical_waves: list[list[int]] = []  # each entry is list of indices into waves
+    notes = contention_notes or [None] * len(waves)
+
+    for idx in range(len(waves)):
+        note = notes[idx] if idx < len(notes) else None
+        if note is not None:
+            # Check if this belongs to the same parent as the previous group
+            if logical_waves and notes[logical_waves[-1][0]] is not None:
+                prev_note = notes[logical_waves[-1][0]]
+                if prev_note and prev_note.parent_wave_index == note.parent_wave_index:
+                    logical_waves[-1].append(idx)
+                    continue
+            logical_waves.append([idx])
+        else:
+            logical_waves.append([idx])
+
     total_issues = sum(len(wave) for wave in waves)
+    num_logical = len(logical_waves)
     lines: list[str] = []
 
     lines.append("")
     lines.append("=" * 70)
-    lines.append(f"EXECUTION PLAN ({total_issues} issues, {len(waves)} waves)")
+    wave_word = "wave" if num_logical == 1 else "waves"
+    lines.append(f"EXECUTION PLAN ({total_issues} issues, {num_logical} {wave_word})")
     lines.append("=" * 70)
 
-    for wave_num, wave in enumerate(waves, 1):
+    for logical_idx, group in enumerate(logical_waves):
         lines.append("")
-        if wave_num == 1:
-            parallel_note = "(parallel)" if len(wave) > 1 else ""
+        logical_num = logical_idx + 1
+        group_issues = [issue for widx in group for issue in waves[widx]]
+        group_count = len(group_issues)
+        is_contention = len(group) > 1
+
+        if is_contention:
+            # Multiple sub-waves from contention splitting
+            lines.append(
+                f"Wave {logical_num} ({group_count} issues, "
+                f"serialized \u2014 file contention):"
+            )
+            step = 0
+            for widx in group:
+                for issue in waves[widx]:
+                    step += 1
+                    lines.append(f"  Step {step}/{group_count}:")
+
+                    # Truncate title if too long
+                    title = issue.title
+                    if len(title) > 45:
+                        title = title[:42] + "..."
+
+                    lines.append(
+                        f"    \u2514\u2500\u2500 {issue.issue_id}: {title} ({issue.priority})"
+                    )
+
+                    # Show blockers for this issue
+                    blockers = dep_graph.blocked_by.get(issue.issue_id, set())
+                    if blockers:
+                        blockers_str = ", ".join(sorted(blockers))
+                        lines.append(f"        blocked by: {blockers_str}")
+
+            # Show contended files once at the end of the group
+            first_note = notes[group[0]]
+            if first_note:
+                paths_str = ", ".join(first_note.contended_paths[:2])
+                extra = len(first_note.contended_paths) - 2
+                if extra > 0:
+                    paths_str += f" +{extra} more"
+                lines.append(f"  Contended files: {paths_str}")
         else:
-            parallel_note = f"(after Wave {wave_num - 1})"
-            if len(wave) > 1:
-                parallel_note += " parallel"
-        lines.append(f"Wave {wave_num} {parallel_note}:".strip())
+            # Single wave (no contention splitting)
+            widx = group[0]
+            wave = waves[widx]
 
-        for i, issue in enumerate(wave):
-            is_last = i == len(wave) - 1
-            prefix = "  \u2514\u2500\u2500 " if is_last else "  \u251c\u2500\u2500 "
+            if logical_num == 1:
+                parallel_note = "(parallel)" if len(wave) > 1 else ""
+            else:
+                parallel_note = f"(after Wave {logical_num - 1})"
+                if len(wave) > 1:
+                    parallel_note += " parallel"
+            lines.append(f"Wave {logical_num} {parallel_note}:".strip())
 
-            # Truncate title if too long
-            title = issue.title
-            if len(title) > 45:
-                title = title[:42] + "..."
+            for i, issue in enumerate(wave):
+                is_last = i == len(wave) - 1
+                prefix = "  \u2514\u2500\u2500 " if is_last else "  \u251c\u2500\u2500 "
 
-            lines.append(f"{prefix}{issue.issue_id}: {title} ({issue.priority})")
+                # Truncate title if too long
+                title = issue.title
+                if len(title) > 45:
+                    title = title[:42] + "..."
 
-            # Show blockers for this issue
-            blockers = dep_graph.blocked_by.get(issue.issue_id, set())
-            if blockers:
-                blocker_prefix = (
-                    "      \u2514\u2500\u2500 " if is_last else "  \u2502   \u2514\u2500\u2500 "
-                )
-                blockers_str = ", ".join(sorted(blockers))
-                lines.append(f"{blocker_prefix}blocked by: {blockers_str}")
+                lines.append(f"{prefix}{issue.issue_id}: {title} ({issue.priority})")
 
-        # Show file contention annotation if this wave was split
-        if contention_notes and wave_num <= len(contention_notes):
-            note = contention_notes[wave_num - 1]
-            if note:
-                lines.append(
-                    f"  \u26a0  File contention \u2014 sub-wave "
-                    f"{note.sub_wave_index + 1}/{note.total_sub_waves}"
-                )
-                paths_str = ", ".join(note.contended_paths[:3])
-                if len(note.contended_paths) > 3:
-                    paths_str += f" +{len(note.contended_paths) - 3} more"
-                lines.append(f"     Contended: {paths_str}")
+                # Show blockers for this issue
+                blockers = dep_graph.blocked_by.get(issue.issue_id, set())
+                if blockers:
+                    blocker_prefix = (
+                        "      \u2514\u2500\u2500 " if is_last else "  \u2502   \u2514\u2500\u2500 "
+                    )
+                    blockers_str = ", ".join(sorted(blockers))
+                    lines.append(f"{blocker_prefix}blocked by: {blockers_str}")
 
     return "\n".join(lines)
 
@@ -382,6 +434,63 @@ def _render_dependency_graph(
     return "\n".join(lines)
 
 
+def _render_health_summary(
+    waves: list[list[Any]],
+    contention_notes: list[WaveContentionNote | None] | None,
+    has_cycles: bool,
+    invalid: set[str],
+    dep_report: Any | None = None,
+    issue_to_wave: dict[str, int] | None = None,
+) -> str:
+    """Render a one-line sprint health summary.
+
+    Returns:
+        Health summary string like "OK -- 5 issues in 1 wave, contention serialized"
+    """
+    total_issues = sum(len(w) for w in waves)
+
+    if has_cycles:
+        return "BLOCKED -- dependency cycles detected"
+
+    if invalid:
+        return f"WARNING -- {len(invalid)} issue(s) not found on disk"
+
+    # Check for novel (unsatisfied) high-confidence proposals
+    if dep_report and dep_report.proposals and issue_to_wave is not None:
+        novel_count = 0
+        for p in dep_report.proposals:
+            target_wave = issue_to_wave.get(p.target_id)
+            source_wave = issue_to_wave.get(p.source_id)
+            if target_wave is None or source_wave is None or target_wave >= source_wave:
+                if p.confidence >= 0.5:
+                    novel_count += 1
+        if novel_count > 0:
+            return f"REVIEW -- {novel_count} potential dependency(ies) to review"
+
+    # Count logical waves (group contention sub-waves)
+    notes = contention_notes or [None] * len(waves)
+    logical_count = 0
+    has_contention = False
+    prev_parent: int | None = None
+    for idx in range(len(waves)):
+        note = notes[idx] if idx < len(notes) else None
+        if note is not None:
+            has_contention = True
+            if prev_parent is None or note.parent_wave_index != prev_parent:
+                logical_count += 1
+                prev_parent = note.parent_wave_index
+        else:
+            logical_count += 1
+            prev_parent = None
+
+    wave_word = "wave" if logical_count == 1 else "waves"
+    suffix = ", contention serialized" if has_contention else ", all parallelizable"
+    if logical_count == 1 and total_issues == 1:
+        suffix = ""
+
+    return f"OK -- {total_issues} issues in {logical_count} {wave_word}{suffix}"
+
+
 def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
     """Show sprint details with dependency visualization."""
     logger = Logger()
@@ -420,6 +529,34 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
     print(f"Description: {sprint.description or '(none)'}")
     print(f"Created: {sprint.created}")
 
+    # Options on a single compact line right after metadata
+    if sprint.options:
+        opts = sprint.options
+        print(f"Options: max_workers={opts.max_workers}, timeout={opts.timeout}s, max_iterations={opts.max_iterations}")
+
+    # Dependency analysis (ENH-301) - run before health summary so we can reference it
+    dep_report: Any = None
+    issue_to_wave: dict[str, int] = {}
+    if issue_infos and not args.skip_analysis:
+        from little_loops.dependency_mapper import analyze_dependencies
+
+        issue_contents = _build_issue_contents(issue_infos)
+        dep_report = analyze_dependencies(issue_infos, issue_contents, all_known_ids=all_known_ids)
+
+        # Build wave ordering map so we can filter already-satisfied proposals
+        for wave_idx, wave in enumerate(waves):
+            for issue in wave:
+                issue_to_wave[issue.issue_id] = wave_idx
+
+    # Sprint health summary
+    if waves:
+        health = _render_health_summary(
+            waves, contention_notes, has_cycles, invalid,
+            dep_report=dep_report,
+            issue_to_wave=issue_to_wave if issue_to_wave else None,
+        )
+        print(f"Sprint health: {health}")
+
     # Show execution plan if we have dependency info and no cycles
     if waves and dep_graph:
         print(_render_execution_plan(waves, dep_graph, contention_notes))
@@ -438,19 +575,11 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
             for cycle in cycles:
                 print(f"  {' -> '.join(cycle)}")
 
-    # Dependency analysis (ENH-301)
-    if issue_infos and not args.skip_analysis:
-        from little_loops.dependency_mapper import analyze_dependencies
-
-        issue_contents = _build_issue_contents(issue_infos)
-        dep_report = analyze_dependencies(issue_infos, issue_contents, all_known_ids=all_known_ids)
-        _render_dependency_analysis(dep_report, logger)
-
-    if sprint.options:
-        print("\nOptions:")
-        print(f"  Max iterations: {sprint.options.max_iterations}")
-        print(f"  Timeout: {sprint.options.timeout}s")
-        print(f"  Max workers: {sprint.options.max_workers}")
+    # Render dependency analysis output
+    if dep_report is not None:
+        _render_dependency_analysis(
+            dep_report, logger, issue_to_wave=issue_to_wave if issue_to_wave else None
+        )
 
     if invalid:
         print(f"\nWarning: {len(invalid)} issue(s) not found")
@@ -656,31 +785,73 @@ def _build_issue_contents(issue_infos: list) -> dict[str, str]:
     return {info.issue_id: info.path.read_text() for info in issue_infos if info.path.exists()}
 
 
-def _render_dependency_analysis(report: Any, logger: Logger) -> None:
-    """Display dependency analysis results in CLI format."""
+def _render_dependency_analysis(
+    report: Any,
+    logger: Logger,
+    issue_to_wave: dict[str, int] | None = None,
+) -> None:
+    """Display dependency analysis results in CLI format.
+
+    Args:
+        report: DependencyReport from analyze_dependencies()
+        logger: Logger instance
+        issue_to_wave: Optional mapping of issue_id -> wave index. When
+            provided, proposals where the target already runs before the
+            source in wave ordering are counted as "already handled".
+    """
     if not report.proposals and not report.validation.has_issues:
         return
 
     logger.header("Dependency Analysis", char="-", width=60)
 
     if report.proposals:
-        logger.warning(f"Found {len(report.proposals)} potential missing dependency(ies):")
+        # Partition proposals into novel vs already-satisfied
+        novel: list[Any] = []
+        satisfied_count = 0
         for p in report.proposals:
-            if p.conflict_score >= 0.7:
-                conflict = "HIGH"
-            elif p.conflict_score >= 0.4:
-                conflict = "MEDIUM"
+            if issue_to_wave is not None:
+                target_wave = issue_to_wave.get(p.target_id)
+                source_wave = issue_to_wave.get(p.source_id)
+                if (
+                    target_wave is not None
+                    and source_wave is not None
+                    and target_wave < source_wave
+                ):
+                    satisfied_count += 1
+                    continue
+            novel.append(p)
+
+        if novel:
+            logger.warning(f"Found {len(novel)} potential missing dependency(ies):")
+            for p in novel:
+                if p.conflict_score >= 0.7:
+                    conflict = "HIGH"
+                elif p.conflict_score >= 0.4:
+                    conflict = "MEDIUM"
+                else:
+                    conflict = "LOW"
+                logger.warning(
+                    f"  {p.source_id} may depend on {p.target_id} "
+                    f"({conflict} conflict, {p.confidence:.0%} confidence)"
+                )
+                if p.overlapping_files:
+                    files = ", ".join(p.overlapping_files[:3])
+                    if len(p.overlapping_files) > 3:
+                        files += " and more"
+                    logger.info(f"    Shared files: {files}")
+
+        if satisfied_count > 0:
+            total = len(report.proposals)
+            if not novel:
+                dep_word = "dependency" if total == 1 else "dependencies"
+                logger.info(
+                    f"All {total} potential {dep_word} "
+                    f"already handled by wave ordering."
+                )
             else:
-                conflict = "LOW"
-            logger.warning(
-                f"  {p.source_id} may depend on {p.target_id} "
-                f"({conflict} conflict, {p.confidence:.0%} confidence)"
-            )
-            if p.overlapping_files:
-                files = ", ".join(p.overlapping_files[:3])
-                if len(p.overlapping_files) > 3:
-                    files += " and more"
-                logger.info(f"    Shared files: {files}")
+                logger.info(
+                    f"({satisfied_count} additional already handled by wave ordering)"
+                )
 
     if report.validation.has_issues:
         v = report.validation

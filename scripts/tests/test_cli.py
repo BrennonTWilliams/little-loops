@@ -944,7 +944,7 @@ class TestSprintShowDependencyVisualization:
 
         output = _render_execution_plan(waves, graph)
 
-        assert "EXECUTION PLAN (2 issues, 1 waves)" in output
+        assert "EXECUTION PLAN (2 issues, 1 wave)" in output
         assert "Wave 1 (parallel):" in output
         assert "BUG-001" in output
         assert "FEAT-002" in output
@@ -1055,7 +1055,7 @@ class TestSprintShowDependencyVisualization:
         assert "A" * 60 not in output
 
     def test_render_execution_plan_with_contention_notes(self) -> None:
-        """Contention notes should display warning and contended files."""
+        """Contention notes should display as nested steps under a logical wave."""
         from little_loops.cli import _render_execution_plan
         from little_loops.dependency_graph import DependencyGraph, WaveContentionNote
 
@@ -1069,20 +1069,24 @@ class TestSprintShowDependencyVisualization:
                 contended_paths=["src/cli.py"],
                 sub_wave_index=0,
                 total_sub_waves=2,
+                parent_wave_index=0,
             ),
             WaveContentionNote(
                 contended_paths=["src/cli.py"],
                 sub_wave_index=1,
                 total_sub_waves=2,
+                parent_wave_index=0,
             ),
         ]
 
         output = _render_execution_plan(waves, graph, notes)
 
-        assert "File contention" in output
-        assert "sub-wave 1/2" in output
-        assert "sub-wave 2/2" in output
-        assert "src/cli.py" in output
+        assert "file contention" in output
+        assert "Step 1/2" in output
+        assert "Step 2/2" in output
+        assert "Contended files: src/cli.py" in output
+        # Should be 1 logical wave, not 2
+        assert "1 wave" in output
 
     def test_render_execution_plan_no_contention_notes(self) -> None:
         """No contention notes means no warnings displayed."""
@@ -1097,11 +1101,11 @@ class TestSprintShowDependencyVisualization:
 
         output = _render_execution_plan(waves, graph, None)
 
-        assert "File contention" not in output
-        assert "sub-wave" not in output
+        assert "file contention" not in output
+        assert "Contended files" not in output
 
     def test_render_execution_plan_mixed_contention(self) -> None:
-        """Mix of split and non-split waves shows warnings only where needed."""
+        """Mix of split and non-split waves: contention grouped under logical wave."""
         from little_loops.cli import _render_execution_plan
         from little_loops.dependency_graph import DependencyGraph, WaveContentionNote
 
@@ -1117,42 +1121,144 @@ class TestSprintShowDependencyVisualization:
                 contended_paths=["src/page.tsx"],
                 sub_wave_index=0,
                 total_sub_waves=2,
+                parent_wave_index=1,
             ),
             WaveContentionNote(
                 contended_paths=["src/page.tsx"],
                 sub_wave_index=1,
                 total_sub_waves=2,
+                parent_wave_index=1,
             ),
         ]
 
         output = _render_execution_plan(waves, graph, notes)
 
-        # Both split waves should have contention notes
-        assert "sub-wave 1/2" in output
-        assert "sub-wave 2/2" in output
-        assert "src/page.tsx" in output
-        # The contention notes appear exactly twice (one per sub-wave)
-        assert output.count("File contention") == 2
+        # Contention sub-waves grouped as steps under one logical wave
+        assert "Step 1/2" in output
+        assert "Step 2/2" in output
+        assert "Contended files: src/page.tsx" in output
+        # Should be 2 logical waves (1 normal + 1 contention group)
+        assert "2 waves" in output
+        # "file contention" appears once in the wave header
+        assert "file contention" in output
 
     def test_render_execution_plan_contention_path_truncation(self) -> None:
-        """More than 3 contended paths should be truncated."""
+        """More than 2 contended paths should be truncated."""
         from little_loops.cli import _render_execution_plan
         from little_loops.dependency_graph import DependencyGraph, WaveContentionNote
 
-        issue = self._make_issue("BUG-001", priority="P0", title="Bug fix")
-        graph = DependencyGraph.from_issues([issue])
-        waves = [[issue]]
+        issue1 = self._make_issue("BUG-001", priority="P0", title="Bug fix A")
+        issue2 = self._make_issue("BUG-002", priority="P1", title="Bug fix B")
+        graph = DependencyGraph.from_issues([issue1, issue2])
+        waves = [[issue1], [issue2]]
         notes: list[WaveContentionNote | None] = [
             WaveContentionNote(
                 contended_paths=["a.py", "b.py", "c.py", "d.py", "e.py"],
                 sub_wave_index=0,
                 total_sub_waves=2,
+                parent_wave_index=0,
+            ),
+            WaveContentionNote(
+                contended_paths=["a.py", "b.py", "c.py", "d.py", "e.py"],
+                sub_wave_index=1,
+                total_sub_waves=2,
+                parent_wave_index=0,
             ),
         ]
 
         output = _render_execution_plan(waves, graph, notes)
 
-        assert "+2 more" in output
+        assert "+3 more" in output
+        assert "Contended files:" in output
+
+    def test_render_execution_plan_sub_wave_grouping(self) -> None:
+        """Sub-waves from same parent wave are grouped under one logical wave."""
+        from little_loops.cli import _render_execution_plan
+        from little_loops.dependency_graph import DependencyGraph, WaveContentionNote
+
+        issue1 = self._make_issue("ENH-001", priority="P3", title="First enhancement")
+        issue2 = self._make_issue("ENH-002", priority="P3", title="Second enhancement")
+        issue3 = self._make_issue("ENH-003", priority="P4", title="Third enhancement")
+
+        graph = DependencyGraph.from_issues([issue1, issue2, issue3])
+        # 3 sub-waves from splitting one original wave
+        waves = [[issue1], [issue2], [issue3]]
+        notes: list[WaveContentionNote | None] = [
+            WaveContentionNote(
+                contended_paths=["CLAUDE.md"], sub_wave_index=0,
+                total_sub_waves=3, parent_wave_index=0,
+            ),
+            WaveContentionNote(
+                contended_paths=["CLAUDE.md"], sub_wave_index=1,
+                total_sub_waves=3, parent_wave_index=0,
+            ),
+            WaveContentionNote(
+                contended_paths=["CLAUDE.md"], sub_wave_index=2,
+                total_sub_waves=3, parent_wave_index=0,
+            ),
+        ]
+
+        output = _render_execution_plan(waves, graph, notes)
+
+        # All grouped under 1 logical wave
+        assert "1 wave" in output
+        assert "3 issues, serialized" in output
+        assert "Step 1/3" in output
+        assert "Step 2/3" in output
+        assert "Step 3/3" in output
+        assert "Contended files: CLAUDE.md" in output
+
+    def test_render_health_summary_ok_contention(self) -> None:
+        """Health summary for contention-serialized sprint."""
+        from little_loops.cli import _render_health_summary
+        from little_loops.dependency_graph import WaveContentionNote
+
+        issue1 = self._make_issue("ENH-001", priority="P3", title="A")
+        issue2 = self._make_issue("ENH-002", priority="P3", title="B")
+        waves = [[issue1], [issue2]]
+        notes: list[WaveContentionNote | None] = [
+            WaveContentionNote(
+                contended_paths=["a.py"], sub_wave_index=0,
+                total_sub_waves=2, parent_wave_index=0,
+            ),
+            WaveContentionNote(
+                contended_paths=["a.py"], sub_wave_index=1,
+                total_sub_waves=2, parent_wave_index=0,
+            ),
+        ]
+
+        result = _render_health_summary(waves, notes, False, set())
+        assert result.startswith("OK")
+        assert "contention serialized" in result
+
+    def test_render_health_summary_ok_parallel(self) -> None:
+        """Health summary when all issues are parallelizable."""
+        from little_loops.cli import _render_health_summary
+
+        issue1 = self._make_issue("ENH-001", priority="P3", title="A")
+        issue2 = self._make_issue("ENH-002", priority="P3", title="B")
+        waves = [[issue1, issue2]]
+
+        result = _render_health_summary(waves, None, False, set())
+        assert result.startswith("OK")
+        assert "all parallelizable" in result
+
+    def test_render_health_summary_blocked(self) -> None:
+        """Health summary when cycles detected."""
+        from little_loops.cli import _render_health_summary
+
+        result = _render_health_summary([], None, True, set())
+        assert result.startswith("BLOCKED")
+
+    def test_render_health_summary_warning(self) -> None:
+        """Health summary when invalid issues exist."""
+        from little_loops.cli import _render_health_summary
+
+        issue1 = self._make_issue("ENH-001", priority="P3", title="A")
+        waves = [[issue1]]
+
+        result = _render_health_summary(waves, None, False, {"ENH-999"})
+        assert result.startswith("WARNING")
 
 
 # =============================================================================
