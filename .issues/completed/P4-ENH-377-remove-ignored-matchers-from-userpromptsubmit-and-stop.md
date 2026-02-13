@@ -76,11 +76,17 @@ This enhancement would:
 - `docs/claude-code/hooks-reference.md` — Matcher patterns table: `UserPromptSubmit, Stop, TeammateIdle, TaskCompleted | no matcher support | always fires on every occurrence`
 - `docs/claude-code/hooks-reference.md`: "UserPromptSubmit and Stop don't support matchers and always fire on every occurrence. If you add a matcher field to these events, it is silently ignored."
 
+## Scope Boundaries
+
+- Only removes `"matcher"` from `UserPromptSubmit` and `Stop` entries
+- Does NOT change matchers on events that support them (SessionStart, PreToolUse, PostToolUse, PreCompact)
+- No behavioral changes — these matchers are already silently ignored
+
 ## Impact
 
-- **Priority**: P4
-- **Effort**: Trivial
-- **Risk**: None — no behavioral change
+- **Priority**: P4 — Cosmetic cleanup, no functional impact
+- **Effort**: Trivial — Two field deletions in a single JSON file
+- **Risk**: None — No behavioral change; matchers are already silently ignored
 
 ## Labels
 
@@ -90,11 +96,28 @@ This enhancement would:
 
 - ENH-371: add description and statusMessage to hooks.json (shared hooks.json, hooks-reference.md)
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `hooks/hooks.json`: Removed `"matcher": "*"` from UserPromptSubmit entry (was line 17)
+- `hooks/hooks.json`: Removed `"matcher": "*"` from Stop entry (was line 53)
+
+### Verification Results
+- Tests: PASS (2733 passed)
+- Lint: PASS
+- Types: PASS
+- JSON valid: PASS
+
 ## Session Log
 - `/ll:format_issue --all --auto` - 2026-02-13
+- `/ll:manage_issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b84001d-543c-479a-9355-6c74404e57f1.jsonl`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P4
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P4
