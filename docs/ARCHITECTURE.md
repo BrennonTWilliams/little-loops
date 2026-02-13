@@ -130,11 +130,21 @@ little-loops/
 │   ├── java-maven.json
 │   ├── java-gradle.json
 │   ├── dotnet.json
+│   ├── issue-sections.json
 │   └── generic.json
 └── scripts/                 # Python package
     └── little_loops/
         ├── __init__.py
-        ├── cli.py               # CLI entrypoints
+        ├── cli/                 # CLI entrypoints (package)
+        │   ├── __init__.py
+        │   ├── auto.py
+        │   ├── parallel.py
+        │   ├── messages.py
+        │   ├── sync.py
+        │   ├── docs.py
+        │   ├── history.py
+        │   ├── sprint.py
+        │   └── loop.py
         ├── cli_args.py          # Argument parsing
         ├── config.py            # Configuration loading
         ├── state.py             # State persistence
@@ -156,6 +166,7 @@ little-loops/
         ├── goals_parser.py      # Goals file parsing
         ├── dependency_graph.py  # Dependency graph construction
         ├── dependency_mapper.py # Cross-issue dependency discovery
+        ├── session_log.py       # Session log linking for issues
         ├── user_messages.py     # User message extraction
         ├── workflow_sequence_analyzer.py  # Workflow analysis
         ├── fsm/                  # FSM loop execution engine
