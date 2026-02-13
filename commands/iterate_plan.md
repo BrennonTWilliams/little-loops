@@ -1,5 +1,10 @@
 ---
 description: Iterate on existing implementation plans with thorough research and updates
+allowed-tools:
+  - Read
+  - Edit
+  - Task
+  - Bash(ls:*)
 arguments:
   - name: plan_path
     description: Path to existing plan file to iterate on

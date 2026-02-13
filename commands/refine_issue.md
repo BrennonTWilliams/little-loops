@@ -1,5 +1,11 @@
 ---
 description: Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation
+allowed-tools:
+  - Read
+  - Glob
+  - Edit
+  - Task
+  - Bash(git:*)
 arguments:
   - name: issue_id
     description: Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)

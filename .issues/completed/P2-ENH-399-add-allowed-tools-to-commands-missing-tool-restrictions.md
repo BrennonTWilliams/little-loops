@@ -3,7 +3,7 @@ discovered_date: 2026-02-12
 discovered_by: audit_claude_config
 ---
 
-# ENH-399: Add allowed-tools to 27 commands missing tool restrictions
+# ENH-399: Add allowed-tools to 25 commands missing tool restrictions
 
 ## Summary
 
@@ -106,8 +106,8 @@ These serve as reference for the pattern:
 
 ## Impact
 
-- **Priority**: P3 - Security improvement across most commands
-- **Effort**: Medium - Requires auditing 27 command files
+- **Priority**: P2 - Security improvement across most commands
+- **Effort**: Medium - Requires auditing 25 command files
 - **Risk**: Low - Additive frontmatter changes, but overly restrictive tools could break commands
 - **Breaking Change**: No
 
@@ -116,17 +116,57 @@ These serve as reference for the pattern:
 - **In scope**: Adding `allowed-tools` frontmatter to commands that lack it
 - **Out of scope**: Changing command behavior or refactoring command content
 
-## Blocks
+## Blocked By
 
-- BUG-402: Commands reference $ARGUMENTS inconsistently — allowed-tools audit touches same command files
-- BUG-363: Allowed-tools mismatch in scan commands — broader audit should land first
+- ~~BUG-402~~: Commands reference $ARGUMENTS inconsistently — ✅ Completed
+- ~~BUG-363~~: Allowed-tools mismatch in scan commands — ✅ Completed
 
 ## Labels
 
 `enhancement`, `commands`, `security`, `configuration`
 
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `commands/help.md`: Added `allowed-tools: [Read, Glob]`
+- `commands/resume.md`: Added `allowed-tools: [Read]`
+- `commands/toggle_autoprompt.md`: Added `allowed-tools: [Read, Edit]`
+- `commands/handoff.md`: Added `allowed-tools: [Read, Write, Bash(git:*)]`
+- `commands/align_issues.md`: Added `allowed-tools: [Read, Glob, Grep, Edit, Bash(git:*)]`
+- `commands/format_issue.md`: Added `allowed-tools: [Read, Glob, Edit, Bash(git:*)]`
+- `commands/normalize_issues.md`: Added `allowed-tools: [Read, Glob, Edit, Bash(git:*, ll-next-id:*)]`
+- `commands/prioritize_issues.md`: Added `allowed-tools: [Read, Glob, Bash(git:*)]`
+- `commands/verify_issues.md`: Added `allowed-tools: [Read, Glob, Grep, Edit, Bash(git:*)]`
+- `commands/capture_issue.md`: Added `allowed-tools: [Read, Glob, Grep, Write, Bash(ll-next-id:*, git:*)]`
+- `commands/ready_issue.md`: Added `allowed-tools: [Read, Glob, Edit, Task, Bash(git:*)]`
+- `commands/refine_issue.md`: Added `allowed-tools: [Read, Glob, Edit, Task, Bash(git:*)]`
+- `commands/tradeoff_review_issues.md`: Added `allowed-tools: [Read, Glob, Edit, Task, Bash(git:*)]`
+- `commands/review_sprint.md`: Added `allowed-tools: [Read, Glob, Bash(ll-sprint:*)]`
+- `commands/audit_architecture.md`: Added `allowed-tools: [Read, Glob, Grep, Write, Edit, Bash(ruff:*, wc:*, git:*)]`
+- `commands/audit_docs.md`: Added `allowed-tools: [Read, Glob, Grep, Edit, Write, Bash(git:*)]`
+- `commands/audit_claude_config.md`: Added `allowed-tools: [Read, Glob, Edit, Task, Bash(git:*)]`
+- `commands/find_dead_code.md`: Added `allowed-tools: [Read, Glob, Grep, Write, Bash(ruff:*)]`
+- `commands/configure.md`: Added `allowed-tools: [Read, Edit, Bash(mkdir:*)]`
+- `commands/init.md`: Added `allowed-tools: [Read, Glob, Write, Edit, Bash(mkdir:*)]`
+- `commands/cleanup_worktrees.md`: Added `allowed-tools: [Bash(git:*, find:*, rm:*)]`
+- `commands/describe_pr.md`: Added `allowed-tools: [Read, Bash(git:*, gh:*)]`
+- `commands/iterate_plan.md`: Added `allowed-tools: [Read, Edit, Task, Bash(ls:*)]`
+- `commands/loop-suggester.md`: Added `allowed-tools: [Read, Write, Bash(ll-messages:*)]`
+- `commands/run_tests.md`: Added `allowed-tools: [Bash(python:*, pytest:*, npm:*, cargo:*, go:*, make:*, git:*)]`
+
+### Verification Results
+- Tests: PASS (2733 passed)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS
+
 ## Session Log
 - /ll:format_issue --all --auto - 2026-02-13
+- /ll:manage_issue enhancement improve ENH-399 - 2026-02-13
 
 ## Verification Notes
 
@@ -137,4 +177,4 @@ These serve as reference for the pattern:
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P2

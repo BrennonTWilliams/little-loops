@@ -1,5 +1,9 @@
 ---
 description: Generate continuation prompt for session handoff
+allowed-tools:
+  - Read
+  - Write
+  - Bash(git:*)
 arguments:
   - name: context
     description: Brief description of current work context (optional)

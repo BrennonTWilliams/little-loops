@@ -1,5 +1,8 @@
 ---
 description: Toggle automatic prompt optimization settings
+allowed-tools:
+  - Read
+  - Edit
 arguments:
   - name: setting
     description: "enabled|mode|confirm|status (default: status)"

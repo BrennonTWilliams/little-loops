@@ -1,5 +1,9 @@
 ---
 description: Analyze issues and prepend priority levels (P0-P5) to filenames
+allowed-tools:
+  - Read
+  - Glob
+  - Bash(git:*)
 ---
 
 # Prioritize Issues

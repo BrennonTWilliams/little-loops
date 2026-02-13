@@ -1,5 +1,7 @@
 ---
 description: Clean orphaned git worktrees from interrupted ll-parallel runs
+allowed-tools:
+  - Bash(git:*, find:*, rm:*)
 arguments:
   - name: mode
     description: Execution mode (run|dry-run)

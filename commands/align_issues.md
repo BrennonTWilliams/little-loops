@@ -1,5 +1,11 @@
 ---
 description: Validate active issues against key documents for relevance and alignment
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Edit
+  - Bash(git:*)
 arguments:
   - name: category
     description: "Document category, document path (.md), or omit to check each issue's linked docs. Use --all for all categories."

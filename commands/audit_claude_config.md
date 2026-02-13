@@ -1,5 +1,11 @@
 ---
 description: Comprehensive audit of Claude Code plugin configuration with parallel sub-agents
+allowed-tools:
+  - Read
+  - Glob
+  - Edit
+  - Task
+  - Bash(git:*)
 arguments:
   - name: scope
     description: Audit scope (all|managed|user|project|hooks|mcp|agents|commands|skills)

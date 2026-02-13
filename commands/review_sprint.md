@@ -3,6 +3,10 @@ description: |
   AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create_sprint` pairs with `ll-sprint create` (intelligence).
 
   Trigger keywords: "review sprint", "sprint health", "sprint review", "check sprint", "sprint suggestions", "optimize sprint", "sprint health check", "is my sprint still good"
+allowed-tools:
+  - Read
+  - Glob
+  - Bash(ll-sprint:*)
 arguments:
   - name: sprint_name
     description: Sprint name to review (e.g., "my-sprint"). If omitted, lists available sprints.

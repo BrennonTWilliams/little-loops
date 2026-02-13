@@ -1,5 +1,11 @@
 ---
 description: Verify issue files for accuracy, relevance, and completeness by testing claims against actual code
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Edit
+  - Bash(git:*)
 arguments:
   - name: issue_id
     description: Optional specific issue ID to verify

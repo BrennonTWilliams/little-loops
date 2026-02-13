@@ -1,5 +1,11 @@
 ---
 description: Analyze codebase for deprecated, unused, or dead code that can be safely removed
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  - Bash(ruff:*)
 ---
 
 # Find Dead Code

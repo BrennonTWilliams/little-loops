@@ -1,5 +1,12 @@
 ---
 description: Analyze codebase architecture for patterns, organization, and improvements
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  - Edit
+  - Bash(ruff:*, wc:*, git:*)
 arguments:
   - name: focus
     description: Focus area (large-files|integration|patterns|organization|all)

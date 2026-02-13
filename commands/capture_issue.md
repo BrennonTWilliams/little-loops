@@ -3,6 +3,12 @@ description: |
   Capture issues from conversation or natural language description.
 
   Trigger keywords: "capture issue", "create issue", "log issue", "record bug", "save this as issue", "capture this bug", "track this problem", "note this enhancement", "add to issues"
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  - Bash(ll-next-id:*, git:*)
 arguments:
   - name: input
     description: Natural language description of the issue (optional - analyzes conversation if omitted)

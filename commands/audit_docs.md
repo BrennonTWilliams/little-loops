@@ -1,5 +1,12 @@
 ---
 description: Audit documentation for accuracy and completeness
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Edit
+  - Write
+  - Bash(git:*)
 arguments:
   - name: scope
     description: Audit scope (full|readme|file:<path>)

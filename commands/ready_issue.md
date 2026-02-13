@@ -1,5 +1,11 @@
 ---
 description: Analyze and validate an issue file for accuracy, utility, and completeness, then auto-correct to make implementation-ready or close if invalid
+allowed-tools:
+  - Read
+  - Glob
+  - Edit
+  - Task
+  - Bash(git:*)
 arguments:
   - name: issue_id
     description: Issue ID to validate (e.g., BUG-004, FEAT-001)

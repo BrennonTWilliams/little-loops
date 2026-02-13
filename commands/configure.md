@@ -1,5 +1,9 @@
 ---
 description: Interactively configure specific areas in ll-config.json
+allowed-tools:
+  - Read
+  - Edit
+  - Bash(mkdir:*)
 arguments:
   - name: area
     description: "project|issues|parallel|automation|documents|continuation|context|prompt|scan|sync (optional - prompts if omitted)"

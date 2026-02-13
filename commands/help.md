@@ -1,5 +1,8 @@
 ---
 description: List all available little-loops commands with descriptions
+allowed-tools:
+  - Read
+  - Glob
 ---
 
 # Little Loops Help

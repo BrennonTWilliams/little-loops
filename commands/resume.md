@@ -1,5 +1,7 @@
 ---
 description: Resume from a previous session's continuation prompt
+allowed-tools:
+  - Read
 arguments:
   - name: prompt_file
     description: "Path to continuation prompt file (default: .claude/ll-continue-prompt.md)"

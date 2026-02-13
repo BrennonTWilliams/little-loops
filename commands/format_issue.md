@@ -1,5 +1,10 @@
 ---
 description: Format issue files to align with template v2.0 structure through interactive Q&A or auto mode
+allowed-tools:
+  - Read
+  - Glob
+  - Edit
+  - Bash(git:*)
 arguments:
   - name: issue_id
     description: Issue ID to format (e.g., BUG-071, FEAT-225, ENH-042)

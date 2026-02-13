@@ -1,5 +1,8 @@
 ---
 description: Generate comprehensive PR descriptions following repository templates
+allowed-tools:
+  - Read
+  - Bash(git:*, gh:*)
 arguments:
   - name: base_branch
     description: "Base branch for comparison (default: auto-detect from origin/HEAD)"

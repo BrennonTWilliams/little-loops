@@ -1,5 +1,11 @@
 ---
 description: Initialize little-loops configuration for a project
+allowed-tools:
+  - Read
+  - Glob
+  - Write
+  - Edit
+  - Bash(mkdir:*)
 arguments:
   - name: flags
     description: Optional flags (--interactive, --yes, --force)

@@ -1,5 +1,7 @@
 ---
 description: Run test suites with common patterns
+allowed-tools:
+  - Bash(python:*, pytest:*, npm:*, cargo:*, go:*, make:*, git:*)
 arguments:
   - name: scope
     description: Test scope (unit|integration|all|affected)
