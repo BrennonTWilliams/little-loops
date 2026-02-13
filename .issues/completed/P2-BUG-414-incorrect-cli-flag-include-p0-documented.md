@@ -6,7 +6,7 @@ discovered_by: audit_docs
 doc_file: README.md
 ---
 
-# BUG-318: Incorrect CLI flag `--include-p0` documented in README
+# BUG-414: Incorrect CLI flag `--include-p0` documented in README
 
 ## Summary
 

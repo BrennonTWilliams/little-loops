@@ -6,7 +6,7 @@ discovered_by: audit_architecture
 focus_area: patterns
 ---
 
-# FEAT-001: Add abstract base classes for CLI commands
+# FEAT-411: Add abstract base classes for CLI commands
 
 ## Summary
 

@@ -107,9 +107,33 @@ This enhancement would:
 
 ## Session Log
 - /ll:format_issue --all --auto - 2026-02-13
+- `/ll:manage_issue` - 2026-02-13T$(date -u +%H:%M:%SZ) - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2b13850-f9ae-4a64-804e-64400913263a.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `agents/codebase-analyzer.md`: Added `model: sonnet` and read-only `tools` array
+- `agents/codebase-locator.md`: Added `model: inherit` and read-only `tools` array
+- `agents/codebase-pattern-finder.md`: Added `model: sonnet` and read-only `tools` array
+- `agents/consistency-checker.md`: Added `model: sonnet` and read-only `tools` array
+- `agents/plugin-config-auditor.md`: Added `model: sonnet` and read-only `tools` array
+- `agents/prompt-optimizer.md`: Added `model: sonnet` and read-only+Write `tools` array
+- `agents/web-search-researcher.md`: Added `model: sonnet` and read-only `tools` array
+- `agents/workflow-pattern-analyzer.md`: Added `model: sonnet` and read-only+Write `tools` array
+
+### Verification Results
+- Tests: PASS (2733 passed)
+- Lint: PASS
+- Integration: PASS
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P3

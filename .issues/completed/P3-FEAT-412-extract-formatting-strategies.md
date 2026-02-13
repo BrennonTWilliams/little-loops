@@ -6,7 +6,7 @@ discovered_by: audit_architecture
 focus_area: patterns
 ---
 
-# FEAT-002: Extract formatting strategies from issue_history
+# FEAT-412: Extract formatting strategies from issue_history
 
 ## Summary
 
