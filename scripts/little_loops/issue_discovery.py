@@ -442,6 +442,8 @@ def _get_files_modified_since_commit(
 ) -> tuple[list[str], list[str]]:
     """Find which target files have been modified since a given commit.
 
+    Uses a single batched git log call instead of per-file subprocess calls.
+
     Args:
         since_commit: SHA of the commit to check since
         target_files: List of file paths to check
@@ -454,22 +456,35 @@ def _get_files_modified_since_commit(
     if not target_files:
         return [], []
 
-    modified_files: list[str] = []
+    # Single batched git log call with all file paths
+    result = subprocess.run(
+        ["git", "log", "--pretty=format:%H", "--name-only", f"{since_commit}..HEAD", "--"]
+        + target_files,
+        capture_output=True,
+        text=True,
+    )
+
+    if result.returncode != 0 or not result.stdout.strip():
+        return [], []
+
+    # Parse output: blocks separated by blank lines, each block is SHA followed by file names
+    target_set = set(target_files)
+    modified_set: set[str] = set()
     related_commits: set[str] = set()
 
-    for file_path in target_files:
-        # Get commits that modified this file since the fix commit
-        result = subprocess.run(
-            ["git", "log", "--pretty=format:%H", f"{since_commit}..HEAD", "--", file_path],
-            capture_output=True,
-            text=True,
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            modified_files.append(file_path)
-            for sha in result.stdout.strip().split("\n"):
-                if sha:
-                    related_commits.add(sha[:8])  # Short SHA
+    for block in result.stdout.strip().split("\n\n"):
+        lines = block.strip().split("\n")
+        if not lines:
+            continue
+        commit_sha = lines[0]
+        related_commits.add(commit_sha[:8])
+        for file_name in lines[1:]:
+            file_name = file_name.strip()
+            if file_name in target_set:
+                modified_set.add(file_name)
 
+    # Preserve original order from target_files
+    modified_files = [f for f in target_files if f in modified_set]
     return modified_files, list(related_commits)
 
 

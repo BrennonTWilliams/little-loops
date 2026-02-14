@@ -14,7 +14,7 @@ discovered_by: scan-codebase
 ## Location
 
 - **File**: `scripts/little_loops/issue_discovery.py`
-- **Line(s)**: 462-496 (at scan commit: be30013)
+- **Line(s)**: 439-473 (at ready-issue: 60dfdce)
 - **Anchor**: `_get_files_modified_since_commit`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/be30013d0e2446b479c121af1d58a2309b3cfeb5/scripts/little_loops/issue_discovery.py#L462-L496)
 
@@ -76,11 +76,33 @@ This enhancement would:
 
 `enhancement`, `performance`, `captured`
 
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-14
+- **Status**: Completed
+
+### Changes Made
+- Replaced per-file `git log` subprocess loop with a single batched call using `--name-only` flag
+- Parsed combined output (SHA + file name blocks separated by blank lines) to determine modified files
+- Preserved return contract: `tuple[list[str], list[str]]` → `(modified_files, related_commits)`
+- Preserved original ordering of `modified_files` by filtering against `target_files`
+
+### Files Changed
+- `scripts/little_loops/issue_discovery.py`
+
+### Verification
+- 56/56 tests passed (`test_issue_discovery.py`)
+- Lint: clean (`ruff check`)
+- Types: clean (`mypy`)
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
 - `/ll:format-issue --all --auto` - 2026-02-13
-
+- `/ll:manage-issue enhance improve ENH-352` - 2026-02-14
 
 ---
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-14 | Priority: P3
