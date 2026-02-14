@@ -13,6 +13,43 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.12.0] - 2026-02-13
+
+### Added
+
+- **Sprint show improvements** - Nested sub-wave display and health summary in `ll-sprint show` (7f000dc)
+- **Confidence check batch mode** - `--all` and `--auto` flags for batch processing (ENH-408)
+- **Sprint theme grouping** - Theme-based grouping options in `create_sprint` (ENH-407)
+
+### Fixed
+
+- **Sprint dependency graph** - Use structural root detection in dependency graph rendering (588ff3d)
+- **Issue heading IDs** - Correct mismatched IDs in issue headings (cd4e206)
+- **Dependency references** - Clean up resolved blockers and stale dependency references (9c7f22f)
+- **Plugin config auditor** - Complete hook event types and handler validation (ENH-368)
+
+### Changed
+
+- **Skills --all flag** - `--all` flag implicitly enables `--auto` behavior (ENH-416)
+- **Confidence check labels** - Type-specific criterion 3 labels and rubrics (ENH-418)
+- **Hooks configuration** - Add description and statusMessage fields to hooks.json (ENH-371)
+- **Hook matchers** - Remove silently-ignored matchers from UserPromptSubmit and Stop events (a706be4)
+- **Hook feedback** - Use exit 2 in precompact-state.sh for user-visible feedback (d646559)
+- **Command frontmatter** - Add argument-hint frontmatter to 27 command/skill files (ENH-401)
+- **Skill frontmatter** - Add model and allowed-tools frontmatter to 8 skills (ENH-398)
+- **Skill migration** - Migrate 8 oversized commands to skill directories (ENH-400)
+- **Agent frontmatter** - Add model and tools frontmatter fields to all agents (ENH-355)
+- **Command tools** - Add allowed-tools frontmatter to 25 commands (ENH-399)
+- **Manage issue resume** - Read continuation prompt on `--resume` (cf788e1)
+
+### Other
+
+- docs(cli): document ll-next-id in README, CLAUDE.md, and cli/__init__.py (b9aaae5)
+- docs(issues): capture ENH-418, ENH-416, FEAT-417, ENH-405 (352f022, 7f42a6c)
+- style(sprint): auto-format and fix line length in sprint modules (4123c21, ad3867f)
+
+[1.12.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.11.1...v1.12.0
+
 ## [1.11.1] - 2026-02-13
 
 ### Fixed
