@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class WaveContentionNote:
-    """Annotation for a wave that was split due to file contention."""
+    """Annotation for a wave that was split due to file overlap."""
 
     contended_paths: list[str]
     sub_wave_index: int
@@ -339,7 +339,7 @@ class DependencyGraph:
 def refine_waves_for_contention(
     waves: list[list[IssueInfo]],
 ) -> tuple[list[list[IssueInfo]], list[WaveContentionNote | None]]:
-    """Refine execution waves by splitting on file contention.
+    """Refine execution waves by splitting on file overlap.
 
     For each wave with multiple issues, extracts file hints from issue
     content and checks for pairwise overlaps. Overlapping issues are
@@ -419,6 +419,6 @@ def refine_waves_for_contention(
                     )
                 )
 
-        logger.info(f"  Wave split into {total_sub_waves} sub-waves due to file contention")
+        logger.info(f"  Wave split into {total_sub_waves} sub-waves due to file overlap")
 
     return refined, annotations

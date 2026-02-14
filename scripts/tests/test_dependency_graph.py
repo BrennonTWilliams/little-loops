@@ -671,7 +671,7 @@ class TestRefineWavesForContention:
         assert notes[0] is None
 
     def test_no_overlaps_unchanged(self) -> None:
-        """Multi-issue wave with no file contention stays as one wave."""
+        """Multi-issue wave with no file overlap stays as one wave."""
         a = _make_issue_with_content("FEAT-001", "modifies src/cli.py")
         b = _make_issue_with_content("FEAT-002", "modifies src/sprint.py")
         waves: list[list[IssueInfo]] = [[a, b]]

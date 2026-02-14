@@ -1107,7 +1107,7 @@ class TestSprintShowDependencyVisualization:
 
         output = _render_execution_plan(waves, graph, notes)
 
-        assert "file contention" in output
+        assert "file overlap" in output
         assert "Step 1/2" in output
         assert "Step 2/2" in output
         assert "Contended files: src/cli.py" in output
@@ -1127,7 +1127,7 @@ class TestSprintShowDependencyVisualization:
 
         output = _render_execution_plan(waves, graph, None)
 
-        assert "file contention" not in output
+        assert "file overlap" not in output
         assert "Contended files" not in output
 
     def test_render_execution_plan_mixed_contention(self) -> None:
@@ -1165,8 +1165,8 @@ class TestSprintShowDependencyVisualization:
         assert "Contended files: src/page.tsx" in output
         # Should be 2 logical waves (1 normal + 1 contention group)
         assert "2 waves" in output
-        # "file contention" appears once in the wave header
-        assert "file contention" in output
+        # "file overlap" appears once in the wave header
+        assert "file overlap" in output
 
     def test_render_execution_plan_contention_path_truncation(self) -> None:
         """More than 2 contended paths should be truncated."""
@@ -1265,7 +1265,7 @@ class TestSprintShowDependencyVisualization:
 
         result = _render_health_summary(waves, notes, False, set())
         assert result.startswith("OK")
-        assert "contention serialized" in result
+        assert "overlap serialized" in result
 
     def test_render_health_summary_ok_parallel(self) -> None:
         """Health summary when all issues are parallelizable."""

@@ -298,9 +298,9 @@ def _render_execution_plan(
         is_contention = len(group) > 1
 
         if is_contention:
-            # Multiple sub-waves from contention splitting
+            # Multiple sub-waves from overlap splitting
             lines.append(
-                f"Wave {logical_num} ({group_count} issues, serialized \u2014 file contention):"
+                f"Wave {logical_num} ({group_count} issues, serialized \u2014 file overlap):"
             )
             step = 0
             for widx in group:
@@ -332,7 +332,7 @@ def _render_execution_plan(
                     paths_str += f" +{extra} more"
                 lines.append(f"  Contended files: {paths_str}")
         else:
-            # Single wave (no contention splitting)
+            # Single wave (no overlap splitting)
             widx = group[0]
             wave = waves[widx]
 
@@ -384,7 +384,7 @@ def _render_dependency_graph(
         return ""
 
     # Don't render graph if there are no actual dependency edges
-    # (waves > 1 can happen from file contention splitting alone)
+    # (waves > 1 can happen from file overlap splitting alone)
     all_ids = {issue.issue_id for wave in waves for issue in wave}
     has_edges = any(dep_graph.blocks.get(issue_id, set()) & all_ids for issue_id in all_ids)
     if not has_edges:
@@ -488,7 +488,7 @@ def _render_health_summary(
             prev_parent = None
 
     wave_word = "wave" if logical_count == 1 else "waves"
-    suffix = ", contention serialized" if has_contention else ", all parallelizable"
+    suffix = ", overlap serialized" if has_contention else ", all parallelizable"
     if logical_count == 1 and total_issues == 1:
         suffix = ""
 
@@ -959,7 +959,7 @@ def _cmd_sprint_run(
         logger.error(str(e))
         return 1
 
-    # Refine waves for file contention (ENH-306)
+    # Refine waves for file overlap (ENH-306)
     waves, contention_notes = refine_waves_for_contention(waves)
 
     # Display execution plan
