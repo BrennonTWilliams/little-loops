@@ -48,7 +48,7 @@ This enhancement would:
 ## Integration Map
 
 - **Files to Modify**: `scripts/little_loops/link_checker.py`
-- **Dependent Files (Callers/Importers)**: `scripts/little_loops/cli/check_links.py` (CLI entry point)
+- **Dependent Files (Callers/Importers)**: `scripts/little_loops/cli/docs.py` (CLI entry point)
 - **Similar Patterns**: N/A
 - **Tests**: `scripts/tests/test_link_checker.py`
 - **Documentation**: N/A
@@ -84,6 +84,22 @@ This enhancement would:
 - `check_url()` is stateless and thread-safe — ready for parallelization
 - Core issue remains valid
 
+## Resolution
+
+- **Status**: Completed
+- **Date**: 2026-02-14
+- **Action**: improve
+
+### Changes Made
+- `scripts/little_loops/link_checker.py`: Added `concurrent.futures` import, restructured `check_markdown_links` into two-pass approach (classify then check concurrently), added `max_workers` parameter
+- `scripts/little_loops/cli/docs.py`: Added `--workers`/`-w` CLI argument, passed to `check_markdown_links`
+- `scripts/tests/test_link_checker.py`: Added 3 tests for concurrent execution (max_workers forwarding, mixed results, sequential fallback)
+
+### Verification
+- 38/38 tests pass
+- Lint: clean
+- Types: clean
+
 ---
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-14 | Priority: P3

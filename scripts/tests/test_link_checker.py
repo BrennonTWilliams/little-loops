@@ -298,6 +298,61 @@ class TestCheckMarkdownLinks:
         assert result.total_links == 0
         assert result.valid_links == 0
 
+    def test_check_with_max_workers(self, tmp_path: Path) -> None:
+        """max_workers parameter is forwarded to ThreadPoolExecutor."""
+        (tmp_path / "test.md").write_text("[Link](https://example.com)\n")
+
+        with (
+            patch("little_loops.link_checker.check_url") as mock_check,
+            patch("little_loops.link_checker.ThreadPoolExecutor") as mock_executor_cls,
+        ):
+            mock_check.return_value = (True, None)
+            # Set up the executor context manager mock
+            mock_executor = Mock()
+            mock_executor_cls.return_value.__enter__ = Mock(return_value=mock_executor)
+            mock_executor_cls.return_value.__exit__ = Mock(return_value=False)
+            mock_future = Mock()
+            mock_future.result.return_value = (True, None)
+            mock_executor.submit.return_value = mock_future
+
+            with patch("little_loops.link_checker.as_completed", return_value=[mock_future]):
+                check_markdown_links(tmp_path, [], timeout=10, max_workers=5)
+
+            mock_executor_cls.assert_called_once_with(max_workers=5)
+
+    def test_check_concurrent_mixed_results(self, tmp_path: Path) -> None:
+        """Concurrent checking handles mixed valid/broken results."""
+        (tmp_path / "test.md").write_text(
+            "[Good](https://good.com)\n[Bad](https://bad.com)\n"
+        )
+
+        def mock_check_url(url: str, timeout: int = 10) -> tuple[bool, str | None]:
+            if "good" in url:
+                return True, None
+            return False, "HTTP 404"
+
+        with patch("little_loops.link_checker.check_url", side_effect=mock_check_url):
+            result = check_markdown_links(tmp_path, [], timeout=10, max_workers=2)
+
+        assert result.total_links == 2
+        assert result.valid_links == 1
+        assert result.broken_links == 1
+
+    def test_check_sequential_with_max_workers_1(self, tmp_path: Path) -> None:
+        """max_workers=1 works correctly (sequential fallback)."""
+        (tmp_path / "test.md").write_text(
+            "[A](https://a.com)\n[B](https://b.com)\n[C](https://c.com)\n"
+        )
+
+        with patch("little_loops.link_checker.check_url") as mock_check:
+            mock_check.return_value = (True, None)
+
+            result = check_markdown_links(tmp_path, [], timeout=10, max_workers=1)
+
+        assert result.total_links == 3
+        assert result.valid_links == 3
+        assert mock_check.call_count == 3
+
 
 class TestLoadIgnorePatterns:
     """Tests for load_ignore_patterns function."""

@@ -10,6 +10,7 @@ import json
 import re
 import urllib.error
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -182,6 +183,7 @@ def check_markdown_links(
     ignore_patterns: list[str] | None = None,
     timeout: int = 10,
     verbose: bool = False,
+    max_workers: int = 10,
 ) -> LinkCheckResult:
     """Check all markdown files for broken links.
 
@@ -190,6 +192,7 @@ def check_markdown_links(
         ignore_patterns: List of regex patterns to ignore
         timeout: Request timeout in seconds
         verbose: Whether to show progress
+        max_workers: Maximum concurrent HTTP requests
 
     Returns:
         LinkCheckResult with all findings
@@ -202,7 +205,9 @@ def check_markdown_links(
     # Find all markdown files
     md_files = list(base_dir.rglob("*.md"))
 
-    # Check each file
+    # Pass 1: Classify links, collect HTTP URLs for concurrent checking
+    http_checks: list[tuple[str, str | None, int, str]] = []  # (url, link_text, line, file)
+
     for md_file in md_files:
         try:
             content = md_file.read_text()
@@ -241,8 +246,32 @@ def check_markdown_links(
                     )
                     continue
 
-                # Check HTTP/HTTPS URL
-                is_valid, error = check_url(url, timeout)
+                # Collect HTTP/HTTPS URLs for concurrent checking
+                http_checks.append((url, link_text, line_num, file_str))
+
+        except Exception as e:
+            # File read error - log as broken entry for this file
+            result.results.append(
+                LinkResult(
+                    url="",
+                    file=str(md_file.relative_to(base_dir)),
+                    line=0,
+                    status="broken",
+                    error=f"File read error: {e}",
+                )
+            )
+
+    # Pass 2: Check HTTP URLs concurrently
+    if http_checks:
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_meta = {
+                executor.submit(check_url, url, timeout): (url, link_text, line_num, file_str)
+                for url, link_text, line_num, file_str in http_checks
+            }
+
+            for future in as_completed(future_to_meta):
+                url, link_text, line_num, file_str = future_to_meta[future]
+                is_valid, error = future.result()
 
                 if is_valid:
                     result.valid_links += 1
@@ -267,18 +296,6 @@ def check_markdown_links(
                             link_text=link_text,
                         )
                     )
-
-        except Exception as e:
-            # File read error - log as broken entry for this file
-            result.results.append(
-                LinkResult(
-                    url="",
-                    file=str(md_file.relative_to(base_dir)),
-                    line=0,
-                    status="broken",
-                    error=f"File read error: {e}",
-                )
-            )
 
     return result
 

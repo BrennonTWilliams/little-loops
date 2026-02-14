@@ -171,6 +171,14 @@ Exit codes:
     )
 
     parser.add_argument(
+        "-w",
+        "--workers",
+        type=int,
+        default=10,
+        help="Maximum concurrent HTTP requests (default: 10)",
+    )
+
+    parser.add_argument(
         "-v",
         "--verbose",
         action="store_true",
@@ -187,7 +195,9 @@ Exit codes:
     ignore_patterns.extend(args.ignore)
 
     # Run link check
-    result = check_markdown_links(base_dir, ignore_patterns, args.timeout, args.verbose)
+    result = check_markdown_links(
+        base_dir, ignore_patterns, args.timeout, args.verbose, args.workers
+    )
 
     # Format output
     if args.json or args.format == "json":
