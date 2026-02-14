@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-02-06 -->
+<!-- Last updated: 2026-02-14 -->
 # little-loops (ll) - Claude Code Plugin
 
 Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing.
@@ -35,7 +35,7 @@ Personal development preferences.
 ```
 commands/       # Slash commands (/ll:*)
 agents/         # Subagent definitions
-skills/         # Skill definitions
+skills/         # Skill definitions (15 skills)
 hooks/          # Lifecycle hooks and prompts
 scripts/        # Python package (little_loops)
 templates/      # Project-type config templates
