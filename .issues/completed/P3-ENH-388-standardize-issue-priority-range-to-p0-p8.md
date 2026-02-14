@@ -115,4 +115,6 @@ TBD - requires investigation
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Closed (won't-fix)** | Created: 2026-02-12 | Closed: 2026-02-13 | Priority: P3
+
+**Reason**: Expanding from P0-P5 to P0-P8 adds complexity without purpose. The issue explicitly puts semantic meaning for P6-P8 out of scope, meaning new levels would be undefined. Six priority levels is already generous — most teams struggle to distinguish 3-4. Touches many files across the codebase for zero functional benefit.

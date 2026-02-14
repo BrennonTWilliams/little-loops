@@ -61,7 +61,7 @@ Low — documentation freshness improvement.
 
 ## Blocked By
 
-- ENH-388: standardize issue priority range to P0-P8 (shared CLAUDE.md)
+_None — ENH-388 closed (won't-fix)._
 
 ---
 

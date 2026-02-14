@@ -89,7 +89,9 @@ This enhancement would:
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P5
+**Closed (won't-fix)** | Created: 2026-02-12 | Closed: 2026-02-13 | Priority: P5
+
+**Reason**: Duplicate of ENH-374 which covers this same change plus hooks. Schema support for the `agents` key is unverified. Having both issues creates confusion and unnecessary blocking chains.
 
 ---
 

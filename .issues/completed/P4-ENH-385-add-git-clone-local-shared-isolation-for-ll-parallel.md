@@ -150,4 +150,6 @@ Add the feature behind a flag with the intent to promote to default if proven:
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Closed (won't-fix)** | Created: 2026-02-12 | Closed: 2026-02-13 | Priority: P4
+
+**Reason**: All referenced worktree pain points (BUG-007, BUG-140, BUG-142, BUG-180, ENH-262, FEAT-081) have already been solved individually. Adding a second isolation mechanism creates a dual maintenance path (two code paths, double test surface, branching logic in orchestrator) for problems that no longer exist.

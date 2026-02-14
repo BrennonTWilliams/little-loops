@@ -95,7 +95,7 @@ This fits naturally into the existing Wave 2 consistency checks alongside agent/
 
 ## Blocks
 
-- ENH-388: standardize issue priority range to P0-P8 (shared CONTRIBUTING.md)
+_None — ENH-388 closed (won't-fix)._
 
 ## Session Log
 - `/ll:capture_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/c0d92ce3-b9a6-4888-8b14-5f5d2b2b2715.jsonl`

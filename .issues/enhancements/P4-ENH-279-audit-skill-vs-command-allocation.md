@@ -109,11 +109,10 @@ This enhancement would:
 ## Blocked By
 
 - ENH-368: plugin-config-auditor missing hook event and handler types (shared docs/ARCHITECTURE.md)
-- ENH-388: standardize issue priority range to P0-P8 (shared docs/ARCHITECTURE.md)
 
 ## Blocks
 
-- ENH-366: add agents directory to plugin.json (shared plugin.json)
+_None — ENH-366 closed (won't-fix)._
 
 ## Labels
 

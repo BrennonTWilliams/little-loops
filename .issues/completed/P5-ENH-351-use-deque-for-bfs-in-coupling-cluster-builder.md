@@ -90,4 +90,6 @@ This enhancement would:
 
 ---
 
-**Open** | Created: 2026-02-12 | Priority: P4
+**Closed (won't-fix)** | Created: 2026-02-12 | Closed: 2026-02-13 | Priority: P5
+
+**Reason**: Premature optimization. The issue itself acknowledges "graph sizes are typically small." The overhead of tracking, reviewing, and verifying this issue exceeds the value of the 2-line code change. Can be made incidentally if someone edits issue_history.py for another reason.

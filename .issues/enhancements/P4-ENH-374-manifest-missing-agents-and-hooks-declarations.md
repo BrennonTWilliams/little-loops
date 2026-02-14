@@ -59,7 +59,7 @@ This enhancement would:
 
 - **Files to Modify**: `.claude-plugin/plugin.json`
 - **Dependent Files (Callers/Importers)**: Claude Code plugin loader, `hooks/hooks.json`, `agents/` directory
-- **Similar Patterns**: ENH-366 (add agents directory to plugin.json — subset of this issue)
+- **Similar Patterns**: ENH-366 (closed as duplicate of this issue)
 - **Tests**: N/A — plugin.json metadata addition; verified by Claude Code plugin loading
 - **Documentation**: N/A — plugin manifest metadata improvement
 - **Configuration**: `.claude-plugin/plugin.json`
@@ -80,7 +80,7 @@ _None_
 
 ## Blocks
 
-- ENH-366: add agents directory to plugin.json (shared plugin.json)
+_None — ENH-366 closed (won't-fix, duplicate of this issue)._
 
 ## Session Log
 - `/ll:format_issue --all --auto` - 2026-02-13
