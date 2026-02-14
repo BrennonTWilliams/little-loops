@@ -105,4 +105,25 @@ Edit `CONTRIBUTING.md` Project Structure section:
 
 ## Status
 
-**Completed** | Created: 2026-02-12 | Priority: P2
+**Reopened** | Created: 2026-02-12 | Priority: P2
+
+---
+
+## Reopened
+
+- **Date**: 2026-02-14
+- **By**: audit-docs
+- **Reason**: Documentation issue recurred
+
+### New Findings
+
+Skills directory tree outdated again after 7 new skills were added since the original fix:
+- Comment said "8 skill definitions" — now corrected to "15 skill definitions" (auto-fixed)
+- Tree listing shows 8 directories but there are actually 15
+- `loop-suggester/` is listed in the tree but doesn't exist as a skill directory
+- Missing from tree: `capture-issue/`, `audit-claude-config/`, `audit-docs/`, `configure/`, `format-issue/`, `init/`, `manage-issue/`, `create-loop/`
+
+### Remaining Work
+
+- Update skills directory tree to list all 15 skill directories
+- Remove `loop-suggester/` from the tree (no skill directory exists)

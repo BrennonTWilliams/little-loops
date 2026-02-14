@@ -95,4 +95,25 @@ Skills table should include an additional row:
 
 ## Status
 
-**Completed** | Created: 2026-02-12 | Priority: P2
+**Reopened** | Created: 2026-02-12 | Priority: P2
+
+---
+
+## Reopened
+
+- **Date**: 2026-02-14
+- **By**: audit-docs
+- **Reason**: Documentation issue recurred
+
+### New Findings
+
+Skills count drifted again after 7 new skills were added since the original fix:
+- README.md line 86: was "8 skills", now corrected to "15 skills" (auto-fixed)
+- Skills table (lines 186-196) still only lists 8 of 15 skills
+- Missing from table: `capture-issue`, `audit-claude-config`, `audit-docs`, `configure`, `format-issue`, `init`, `manage-issue`, `create-loop`
+- `loop-suggester` is listed in the Skills table but no longer has a `skills/loop-suggester/SKILL.md` file (it's a command only)
+
+### Remaining Work
+
+- Update Skills table to include all 15 skills (or the subset not already in Commands tables)
+- Remove or correct `loop-suggester` entry in Skills table (no skill directory exists)

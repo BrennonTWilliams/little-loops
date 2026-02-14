@@ -130,7 +130,7 @@ little-loops/
 │   ├── quality-gate.yaml
 │   ├── sprint-execution.yaml
 │   └── workflow-analysis.yaml
-├── skills/               # 8 skill definitions (user-invocable workflows)
+├── skills/               # 15 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── confidence-check/             # Pre-implementation confidence check
 │   ├── issue-size-review/            # Evaluate issue complexity
