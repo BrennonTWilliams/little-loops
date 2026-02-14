@@ -1923,3 +1923,261 @@ class TestSimulationActionRunner:
         assert "run_check" in sim_runner.calls[0]
         assert "run_fix" in sim_runner.calls[1]
         assert "run_check" in sim_runner.calls[2]
+
+
+class TestExecutionResultToDict:
+    """Tests for ExecutionResult.to_dict edge cases."""
+
+    def test_to_dict_with_handoff(self) -> None:
+        """to_dict includes handoff flag when True."""
+        result = ExecutionResult(
+            final_state="done",
+            iterations=1,
+            terminated_by="handoff",
+            duration_ms=100,
+            captured={},
+            handoff=True,
+        )
+        d = result.to_dict()
+        assert d["handoff"] is True
+
+    def test_to_dict_with_continuation_prompt(self) -> None:
+        """to_dict includes continuation_prompt when set."""
+        result = ExecutionResult(
+            final_state="done",
+            iterations=1,
+            terminated_by="handoff",
+            duration_ms=100,
+            captured={},
+            continuation_prompt="Continue from here",
+        )
+        d = result.to_dict()
+        assert d["continuation_prompt"] == "Continue from here"
+
+    def test_to_dict_without_optional_fields(self) -> None:
+        """to_dict omits optional fields when not set."""
+        result = ExecutionResult(
+            final_state="done",
+            iterations=1,
+            terminated_by="terminal",
+            duration_ms=100,
+            captured={},
+        )
+        d = result.to_dict()
+        assert "handoff" not in d
+        assert "continuation_prompt" not in d
+        assert "error" not in d
+
+
+class TestHandoffDetection:
+    """Tests for handoff signal detection in executor."""
+
+    def test_handoff_signal_terminates_loop(self) -> None:
+        """Executor returns with handoff when signal detected."""
+        from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
+
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="echo CONTEXT_HANDOFF: continue here",
+                    on_success="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("echo", output="CONTEXT_HANDOFF: continue here")
+
+        mock_detector = MagicMock(spec=SignalDetector)
+        mock_detector.detect_first.return_value = DetectedSignal(
+            signal_type="handoff",
+            payload="continue here",
+            raw_match="CONTEXT_HANDOFF: continue here",
+        )
+
+        executor = FSMExecutor(
+            fsm,
+            action_runner=mock_runner,
+            signal_detector=mock_detector,
+        )
+        result = executor.run()
+
+        assert result.terminated_by == "handoff"
+        assert result.handoff is True
+        assert result.continuation_prompt == "continue here"
+
+    def test_handoff_with_handler(self) -> None:
+        """Executor invokes handoff handler when configured."""
+        from little_loops.fsm.handoff_handler import HandoffHandler
+        from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
+
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="echo CONTEXT_HANDOFF: prompt",
+                    on_success="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("echo", output="CONTEXT_HANDOFF: prompt")
+
+        mock_detector = MagicMock(spec=SignalDetector)
+        mock_detector.detect_first.return_value = DetectedSignal(
+            signal_type="handoff",
+            payload="prompt",
+            raw_match="CONTEXT_HANDOFF: prompt",
+        )
+
+        mock_handler = MagicMock(spec=HandoffHandler)
+        mock_handler_result = MagicMock()
+        mock_handler_result.spawned_process = None
+        mock_handler.handle.return_value = mock_handler_result
+
+        executor = FSMExecutor(
+            fsm,
+            action_runner=mock_runner,
+            signal_detector=mock_detector,
+            handoff_handler=mock_handler,
+        )
+        result = executor.run()
+
+        assert result.terminated_by == "handoff"
+        mock_handler.handle.assert_called_once_with("test", "prompt")
+
+
+class TestRoutingEdgeCases:
+    """Tests for routing edge cases in executor."""
+
+    def test_route_with_error_verdict_uses_error_route(self) -> None:
+        """Error verdict routes to error state when configured in route table."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    route=RouteConfig(
+                        routes={"success": "done"},
+                        error="error_state",
+                    ),
+                ),
+                "done": StateConfig(terminal=True),
+                "error_state": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("check.sh", exit_code=2)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.final_state == "error_state"
+
+    def test_route_with_default_fallback(self) -> None:
+        """Unmatched verdict uses default route."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    route=RouteConfig(
+                        routes={"success": "done"},
+                        default="fallback",
+                    ),
+                ),
+                "done": StateConfig(terminal=True),
+                "fallback": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("check.sh", exit_code=1)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.final_state == "fallback"
+
+    def test_no_valid_transition_returns_error(self) -> None:
+        """Returns error when no valid transition found."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    route=RouteConfig(
+                        routes={"custom_verdict": "done"},
+                    ),
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("check.sh", exit_code=1)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.terminated_by == "error"
+
+
+class TestMaintainMode:
+    """Tests for maintain mode in executor."""
+
+    def test_maintain_mode_restarts_on_null_transition(self) -> None:
+        """Maintain mode returns to initial when transition is null."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            max_iterations=3,
+            maintain=True,
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    on_success="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        # Should loop back from terminal to initial via maintain
+        assert result.terminated_by == "max_iterations"
+        assert result.iterations == 3
+
+
+class TestShutdownRequest:
+    """Tests for graceful shutdown."""
+
+    def test_shutdown_terminates_loop(self) -> None:
+        """Shutdown request terminates the loop."""
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="work.sh",
+                    on_success="work",
+                ),
+            },
+        )
+        mock_runner = MockActionRunner()
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.request_shutdown()
+        result = executor.run()
+
+        assert result.terminated_by == "signal"
