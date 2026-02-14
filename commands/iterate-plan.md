@@ -29,7 +29,7 @@ if [ -z "$PLAN_PATH" ]; then
 fi
 
 if [ -z "$PLAN_PATH" ]; then
-    echo "No plan file found. Use /ll:manage_issue to create one."
+    echo "No plan file found. Use /ll:manage-issue to create one."
     exit 1
 fi
 
@@ -198,10 +198,10 @@ $ARGUMENTS
 
 ```bash
 # Iterate on most recent plan
-/ll:iterate_plan
+/ll:iterate-plan
 
 # Iterate on specific plan
-/ll:iterate_plan thoughts/shared/plans/2024-01-15-BUG-042-management.md
+/ll:iterate-plan thoughts/shared/plans/2024-01-15-BUG-042-management.md
 ```
 
 ---
@@ -209,7 +209,7 @@ $ARGUMENTS
 ## Integration
 
 Use this when:
-- `/ll:manage_issue` was interrupted
+- `/ll:manage-issue` was interrupted
 - Requirements changed mid-implementation
 - Blockers were encountered
 - Codebase changed since plan creation

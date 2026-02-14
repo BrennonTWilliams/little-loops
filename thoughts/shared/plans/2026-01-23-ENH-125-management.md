@@ -289,8 +289,8 @@ Also update the step numbering in the header (line 14) to reflect the new step:
 - [ ] The allowed-tools pattern still matches ll-loop commands
 
 **Manual Verification**:
-- [ ] Run `/ll:create_loop`, complete wizard, accept test iteration - see test output
-- [ ] Run `/ll:create_loop`, complete wizard, skip test iteration - no test run
+- [ ] Run `/ll:create-loop`, complete wizard, accept test iteration - see test output
+- [ ] Run `/ll:create-loop`, complete wizard, skip test iteration - no test run
 - [ ] Test iteration shows helpful output for both working and failing loops
 
 ---
@@ -355,8 +355,8 @@ name: test-slash
 paradigm: goal
 goal: slash command works
 tools:
-  - "/ll:check_code"
-  - "/ll:check_code fix"
+  - "/ll:check-code"
+  - "/ll:check-code fix"
 max_iterations: 5
 """
         (loops_dir / "test-slash.yaml").write_text(loop_yaml)

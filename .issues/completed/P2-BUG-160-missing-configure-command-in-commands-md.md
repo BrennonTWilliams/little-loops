@@ -10,7 +10,7 @@ doc_file: docs/COMMANDS.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`.
+Documentation issue found by `/ll:audit-docs`.
 
 The `/ll:configure` command exists in `commands/configure.md` but is not documented in the command reference at `docs/COMMANDS.md`.
 

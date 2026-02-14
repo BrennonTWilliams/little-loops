@@ -10,7 +10,7 @@ doc_file: docs/
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. No automated link checking exists to catch broken documentation links before they reach users.
+Documentation issue found by `/ll:audit-docs`. No automated link checking exists to catch broken documentation links before they reach users.
 
 ## Location
 

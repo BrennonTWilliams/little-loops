@@ -75,7 +75,7 @@ Add detailed command documentation and Quick Reference entry.
 
 **File**: `docs/COMMANDS.md`
 
-**Change 1**: Add detailed section after `/ll:audit_claude_config` (around line 111)
+**Change 1**: Add detailed section after `/ll:audit-claude-config` (around line 111)
 
 ```markdown
 ### `/ll:analyze-workflows`

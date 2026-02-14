@@ -11,7 +11,7 @@ Add `--flag` style modifier conventions to existing commands so users can adjust
 
 ## Current Behavior
 
-Most commands have fixed behavior with no way to modify depth, focus area, or execution mode from user input. `/ll:manage_issue` is the exception — it already supports `--plan-only`, `--resume`, and `--gates` flags. However, this pattern is not standardized or documented as a convention, and other commands like `/ll:scan_codebase` and `/ll:audit_architecture` have no flag support.
+Most commands have fixed behavior with no way to modify depth, focus area, or execution mode from user input. `/ll:manage-issue` is the exception — it already supports `--plan-only`, `--resume`, and `--gates` flags. However, this pattern is not standardized or documented as a convention, and other commands like `/ll:scan-codebase` and `/ll:audit-architecture` have no flag support.
 
 ## Expected Behavior
 
@@ -25,9 +25,9 @@ Define a standard set of flags parsed from the user's text input (not actual CLI
 Commands should document supported flags in their help text. Flags are optional — commands work unchanged without them.
 
 ### Priority commands to update:
-- `/ll:scan_codebase` — `--quick`, `--deep`, `--focus [area]`
-- `/ll:manage_issue` — `--dry-run`, `--quick`
-- `/ll:audit_architecture` — `--focus [area]`, `--deep`
+- `/ll:scan-codebase` — `--quick`, `--deep`, `--focus [area]`
+- `/ll:manage-issue` — `--dry-run`, `--quick`
+- `/ll:audit-architecture` — `--focus [area]`, `--deep`
 
 ## Files to Modify
 
@@ -108,7 +108,7 @@ This enhancement would:
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-11 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-11 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |
@@ -130,7 +130,7 @@ Update first - Needs scope clarification before implementation:
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-12 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-12 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |

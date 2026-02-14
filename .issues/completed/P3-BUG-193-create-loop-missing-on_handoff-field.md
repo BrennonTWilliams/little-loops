@@ -1,4 +1,4 @@
-# Missing `on_handoff` Feature Documentation in /ll:create_loop
+# Missing `on_handoff` Feature Documentation in /ll:create-loop
 
 ## Type
 BUG
@@ -11,7 +11,7 @@ OPEN
 
 ## Description
 
-The `/ll:create_loop` command documentation does not mention the `on_handoff` field that configures behavior when context handoff signals are detected during loop execution.
+The `/ll:create-loop` command documentation does not mention the `on_handoff` field that configures behavior when context handoff signals are detected during loop execution.
 
 **Available options:**
 - `pause` (default) - Pause execution when handoff detected
@@ -24,7 +24,7 @@ The `/ll:create_loop` command documentation does not mention the `on_handoff` fi
 - Command documentation has no mention of this field
 
 **Impact:**
-Users cannot configure context handoff behavior through the `/ll:create_loop` wizard. This is particularly important for loops that use slash commands which may trigger context handoffs.
+Users cannot configure context handoff behavior through the `/ll:create-loop` wizard. This is particularly important for loops that use slash commands which may trigger context handoffs.
 
 ## Files Affected
 - `commands/create_loop.md`

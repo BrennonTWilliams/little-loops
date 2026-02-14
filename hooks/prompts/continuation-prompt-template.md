@@ -29,7 +29,7 @@ The agent should fill in the bracketed sections with actual values.
 
 ## Resume Command
 ```bash
-/ll:manage_issue [type] [action] [ISSUE-ID] --resume
+/ll:manage-issue [type] [action] [ISSUE-ID] --resume
 ```
 
 Or continue manually from the plan.

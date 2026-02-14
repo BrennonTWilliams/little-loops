@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The README "Commands" section lists 30 commands in its categorized tables but claims 34 slash commands. Four commands are missing from the tables while correctly listed in `docs/COMMANDS.md`.
+Documentation issue found by `/ll:audit-docs`. The README "Commands" section lists 30 commands in its categorized tables but claims 34 slash commands. Four commands are missing from the tables while correctly listed in `docs/COMMANDS.md`.
 
 ## Location
 
@@ -41,10 +41,10 @@ README tables list only 30 of 34 commands. The 4 missing commands are documented
 
 | Command | Category | In COMMANDS.md |
 |---------|----------|---------------|
-| `/ll:open_pr` | Git & Workflow | Yes |
-| `/ll:manage_release` | Git & Workflow | Yes |
+| `/ll:open-pr` | Git & Workflow | Yes |
+| `/ll:manage-release` | Git & Workflow | Yes |
 | `/ll:loop-suggester` | Automation Loops | Yes |
-| `/ll:tradeoff_review_issues` | Issue Management | Yes |
+| `/ll:tradeoff-review-issues` | Issue Management | Yes |
 
 ## Proposed Fix
 
@@ -79,9 +79,9 @@ Add the 4 missing commands to their appropriate tables:
 
 ### Changes Made
 - `README.md`: Added 4 missing command rows to command tables
-  - `/ll:tradeoff_review_issues` → Issue Management
-  - `/ll:open_pr` → Git & Workflow
-  - `/ll:manage_release` → Git & Workflow
+  - `/ll:tradeoff-review-issues` → Issue Management
+  - `/ll:open-pr` → Git & Workflow
+  - `/ll:manage-release` → Git & Workflow
   - `/ll:loop-suggester` → Git & Workflow
 
 ### Verification Results

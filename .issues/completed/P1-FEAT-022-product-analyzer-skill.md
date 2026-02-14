@@ -37,7 +37,7 @@ The `product-analyzer` skill bridges this gap by:
 - Single-purpose analysis with fixed input/output
 - No autonomous multi-step decision-making needed
 - No sub-agent spawning required
-- Command `/ll:scan_product` orchestrates; skill provides instructions
+- Command `/ll:scan-product` orchestrates; skill provides instructions
 
 ## Proposed Implementation
 
@@ -135,7 +135,7 @@ findings:
 
 ### 2. Skill Behavior Specification
 
-When invoked (via `/ll:scan_product` or directly), the skill should:
+When invoked (via `/ll:scan-product` or directly), the skill should:
 
 **Read First**:
 1. `.claude/ll-goals.md` - Product goals (required)
@@ -159,11 +159,11 @@ The `product-analyzer` skill complements technical analysis but runs separately:
 
 | Component | Type | Focus | Finds | Used By |
 |-----------|------|-------|-------|---------|
-| `codebase-analyzer` | Agent | Implementation | Bugs, tech debt | `/ll:scan_codebase` |
-| `codebase-pattern-finder` | Agent | Architecture | Patterns, anti-patterns | `/ll:scan_codebase` |
-| `product-analyzer` | **Skill** | Product | Feature gaps, UX issues | `/ll:scan_product` |
+| `codebase-analyzer` | Agent | Implementation | Bugs, tech debt | `/ll:scan-codebase` |
+| `codebase-pattern-finder` | Agent | Architecture | Patterns, anti-patterns | `/ll:scan-codebase` |
+| `product-analyzer` | **Skill** | Product | Feature gaps, UX issues | `/ll:scan-product` |
 
-**Separation of Concerns**: Technical and product scanning are kept separate. `/ll:scan_codebase` remains focused on technical issues. `/ll:scan_product` is the dedicated command for product-focused analysis.
+**Separation of Concerns**: Technical and product scanning are kept separate. `/ll:scan-codebase` remains focused on technical issues. `/ll:scan-product` is the dedicated command for product-focused analysis.
 
 **Why a Skill here but Agents for codebase analysis?**
 - Codebase analyzers need autonomous exploration across many files with dynamic decisions

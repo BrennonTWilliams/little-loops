@@ -7,11 +7,11 @@ discovered_by: capture_issue
 
 ## Summary
 
-Add a `/ll:sync_issues` slash command and corresponding Agent Skill that enables bidirectional synchronization between local `.issues/` files and GitHub Issues. When enabled via configuration, users can push local issues to GitHub and pull GitHub Issues into local files.
+Add a `/ll:sync-issues` slash command and corresponding Agent Skill that enables bidirectional synchronization between local `.issues/` files and GitHub Issues. When enabled via configuration, users can push local issues to GitHub and pull GitHub Issues into local files.
 
 ## Context
 
-User description: "Sync-Issues feature - if enabled, allows a `/ll:sync_issues` slash command + Agent Skill that push/pulls Issues from our `.issues/` Issue files to/from Github Issues"
+User description: "Sync-Issues feature - if enabled, allows a `/ll:sync-issues` slash command + Agent Skill that push/pulls Issues from our `.issues/` Issue files to/from Github Issues"
 
 This would bridge the gap between the local file-based issue tracking system and GitHub's issue tracking, enabling teams to:
 - Share issues with non-CLI users via GitHub's web interface
@@ -57,7 +57,7 @@ Add to `ll-config.json`:
 
 ### Components
 
-1. **Skill**: `skills/sync-issues.md` - User-invocable `/ll:sync_issues` command
+1. **Skill**: `skills/sync-issues.md` - User-invocable `/ll:sync-issues` command
 2. **Agent**: `agents/sync-issues-agent.md` - For complex sync operations
 3. **Python CLI**: `scripts/little_loops/ll_sync.py` - Core sync logic using `gh` CLI
 
@@ -87,7 +87,7 @@ sync_hash: abc123
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+_No documents linked. Run `/ll:align-issues` to discover relevant docs._
 
 ## Labels
 
@@ -113,7 +113,7 @@ _No documents linked. Run `/ll:align_issues` to discover relevant docs._
 - `skills/sync-issues/SKILL.md`: Created skill definition with trigger keywords
 - `commands/sync_issues.md`: Created command with push/pull/status actions
 - `scripts/tests/test_config.py`: Added 13 tests for sync configuration
-- `.claude/CLAUDE.md`: Documented new `/ll:sync_issues` command
+- `.claude/CLAUDE.md`: Documented new `/ll:sync-issues` command
 
 ### Verification Results
 - Tests: PASS (2416 tests, 13 new sync tests)

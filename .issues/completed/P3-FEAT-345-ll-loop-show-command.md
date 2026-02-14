@@ -121,9 +121,9 @@ Key functions to reuse:
 `feature`, `captured`, `cli`, `ll-loop`
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-11T00:00:00Z - `~/.claude/projects/<project>/09f8643a-95e5-4842-b201-dae40adfb54e.jsonl`
-- `/ll:refine_issue` - 2026-02-11 - `~/.claude/projects/<project>/dbd89ffd-0647-4b4f-a35c-b8b09dd4813c.jsonl`
-- `/ll:manage_issue` - 2026-02-11 - `~/.claude/projects/<project>/311ea8fc-ed1c-4a87-aab3-fe7b1501ab13.jsonl`
+- `/ll:capture-issue` - 2026-02-11T00:00:00Z - `~/.claude/projects/<project>/09f8643a-95e5-4842-b201-dae40adfb54e.jsonl`
+- `/ll:refine-issue` - 2026-02-11 - `~/.claude/projects/<project>/dbd89ffd-0647-4b4f-a35c-b8b09dd4813c.jsonl`
+- `/ll:manage-issue` - 2026-02-11 - `~/.claude/projects/<project>/311ea8fc-ed1c-4a87-aab3-fe7b1501ab13.jsonl`
 
 ---
 

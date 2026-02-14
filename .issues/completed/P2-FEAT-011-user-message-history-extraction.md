@@ -194,10 +194,10 @@ def suggest_commands(messages: list[UserMessage]) -> list[CommandSuggestion]:
     """Analyze message patterns and suggest relevant ll commands.
 
     Patterns to detect:
-    - "run tests" / "check tests" → /ll:run_tests
+    - "run tests" / "check tests" → /ll:run-tests
     - "commit" / "create commit" → /ll:commit
-    - "fix lint" / "format code" → /ll:check_code fix
-    - "create issue" / "bug report" → /ll:scan_codebase
+    - "fix lint" / "format code" → /ll:check-code fix
+    - "create issue" / "bug report" → /ll:scan-codebase
     """
     ...
 ```
@@ -263,7 +263,7 @@ $ ll-messages --format yaml    # YAML list
 # Future: Command suggestions
 $ ll-messages suggest
 Based on your recent messages, you might find these commands useful:
-  /ll:run_tests - You frequently ask to "run tests" (12 times this week)
+  /ll:run-tests - You frequently ask to "run tests" (12 times this week)
   /ll:commit - You often request commits manually (8 times)
 
 # Future: Usage statistics

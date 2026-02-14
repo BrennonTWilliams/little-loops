@@ -13,7 +13,7 @@ When issues fail due to merge conflicts during a parallel wave, the sprint curre
 
 Identified from root cause analysis of a sprint failure. FEAT-031 failed due to merge conflict and was never retried. ENH-032 and ENH-033 also initially failed but were manually retried sequentially and succeeded. This retry pattern should be automated.
 
-The `process_issue_inplace()` function already exists in `issue_manager.py` and handles single-issue processing in the working tree (no worktree overhead). The sprint runner already uses it for single-issue waves at `cli.py:2005`.
+The `process_issue_inplace()` function already exists in `issue_manager.py:249` and handles single-issue processing in the working tree (no worktree overhead). The sprint runner already uses it for single-issue waves at `cli/sprint.py:1032`.
 
 ## Current Behavior
 
@@ -34,7 +34,7 @@ The `process_issue_inplace()` function already exists in `issue_manager.py` and 
 
 ## Proposed Solution
 
-In `_cmd_sprint_run()`, after the multi-issue wave block, add retry logic:
+In `_cmd_sprint_run()` (at `cli/sprint.py:863`), after the multi-issue wave block (lines 1062-1111), add retry logic:
 
 ```python
 # After orchestrator.run() returns with failures:
@@ -64,7 +64,7 @@ This enhancement would:
 
 ## Implementation Steps
 
-1. Add retry detection logic after `orchestrator.run()` in `_cmd_sprint_run()`
+1. Add retry detection logic after `orchestrator.run()` in `_cmd_sprint_run()` (`cli/sprint.py:863`)
 2. For each merge-failed issue, call `process_issue_inplace()` sequentially
 3. Update sprint state tracking (move retried successes from failed to completed)
 4. Add logging for retry attempts and outcomes
@@ -72,13 +72,13 @@ This enhancement would:
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli.py` - Add retry logic in `_cmd_sprint_run()`
+- `scripts/little_loops/cli/sprint.py` - Add retry logic in `_cmd_sprint_run()` (line 863)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_manager.py` - Reuse `process_issue_inplace()` (no changes needed)
 
 ### Similar Patterns
-- Single-issue wave processing at `cli.py:2005` already uses `process_issue_inplace()`
+- Single-issue wave processing at `cli/sprint.py:1032` already uses `process_issue_inplace()`
 
 ### Tests
 - `scripts/tests/test_sprint_integration.py` - Test retry behavior
@@ -110,7 +110,7 @@ _None — ENH-344 (cli.py split into package) is now completed._
 
 ## Files
 
-- `scripts/little_loops/cli.py` — Add retry logic in `_cmd_sprint_run()`
+- `scripts/little_loops/cli/sprint.py` — Add retry logic in `_cmd_sprint_run()`
 - `scripts/little_loops/issue_manager.py` — Reuse `process_issue_inplace()` (no changes needed)
 - `scripts/tests/test_sprint_integration.py` — Test retry behavior
 
@@ -126,22 +126,22 @@ _None — ENH-344 (cli.py split into package) is now completed._
 
 ## Verification Notes
 
-- **Verified**: 2026-02-13
-- **Verdict**: NEEDS_UPDATE
-- **File references stale**: All `cli.py` references should now point to `scripts/little_loops/cli/sprint.py`:
-  - `_cmd_sprint_run()` is at `cli/sprint.py:871`
-  - Single-issue wave processing is at `cli/sprint.py:1042-1049`
-  - Multi-issue wave processing with failures is at `cli/sprint.py:1081-1124`
-- **Blockers resolved**: ENH-344 (cli.py split into package) completed; BUG-403 resolved as already_fixed
+- **Verified**: 2026-02-13 (ready_issue)
+- **Verdict**: CORRECTED
+- **File references updated**: All `cli.py` references corrected to `scripts/little_loops/cli/sprint.py`:
+  - `_cmd_sprint_run()` at `cli/sprint.py:863`
+  - Single-issue wave processing at `cli/sprint.py:1032-1054`
+  - Multi-issue wave processing with failures at `cli/sprint.py:1062-1111`
+- **Blockers resolved**: ENH-344 (cli.py split into package) completed; BUG-307 completed (2026-02-09)
 - Confirmed: no retry logic for merge-failed issues exists — core enhancement still needed
 - Confirmed: `process_issue_inplace()` exists at `issue_manager.py:249` and is available for reuse
-- BUG-307 dependency satisfied (completed 2026-02-09)
+- Confirmed: `orchestrator.queue.failed_ids` available at `cli/sprint.py:1081`
 
 ---
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-12 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-12 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |

@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-The `/ll:audit_claude_config` command validates JSON syntax and path references in config files but does not validate `settings.json` contents against the documented Claude Code settings schema. It also has no awareness of managed settings or `~/.claude.json`. Adding content validation would catch typos in setting keys and invalid configuration values.
+The `/ll:audit-claude-config` command validates JSON syntax and path references in config files but does not validate `settings.json` contents against the documented Claude Code settings schema. It also has no awareness of managed settings or `~/.claude.json`. Adding content validation would catch typos in setting keys and invalid configuration values.
 
 ## Current Behavior
 
@@ -76,7 +76,7 @@ Add a new validation step to the Config Files Auditor task that checks settings.
 `enhancement`, `captured`, `audit`, `config`
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00ffa686-5907-4ed1-8765-93f478b14da2.jsonl`
+- `/ll:capture-issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00ffa686-5907-4ed1-8765-93f478b14da2.jsonl`
 
 ---
 

@@ -46,9 +46,9 @@ discovered_by: capture_issue
 ```
 
 ### How to Verify
-- Running `/ll:capture_issue "test bug"` uses full template by default
+- Running `/ll:capture-issue "test bug"` uses full template by default
 - Adding `capture_template: "minimal"` to ll-config.json uses minimal template
-- Running `/ll:capture_issue "test bug" --quick` uses minimal template regardless of config
+- Running `/ll:capture-issue "test bug" --quick` uses minimal template regardless of config
 
 ## What We're NOT Doing
 
@@ -288,10 +288,10 @@ Add examples showing the --quick flag usage.
 Add after existing examples:
 ```markdown
 # Capture with minimal template (quick mode)
-/ll:capture_issue "Quick note: cache is slow" --quick
+/ll:capture-issue "Quick note: cache is slow" --quick
 
 # Analyze conversation and use minimal templates
-/ll:capture_issue --quick
+/ll:capture-issue --quick
 ```
 
 #### Success Criteria
@@ -304,10 +304,10 @@ Add after existing examples:
 ## Testing Strategy
 
 ### Manual Verification
-1. Run `/ll:capture_issue "test bug"` - should create full template
+1. Run `/ll:capture-issue "test bug"` - should create full template
 2. Add `"capture_template": "minimal"` to `.claude/ll-config.json`
-3. Run `/ll:capture_issue "test bug 2"` - should create minimal template
-4. Run `/ll:capture_issue "test bug 3" --quick` - should create minimal template regardless of config
+3. Run `/ll:capture-issue "test bug 2"` - should create minimal template
+4. Run `/ll:capture-issue "test bug 3" --quick` - should create minimal template regardless of config
 5. Remove config addition and verify default is full template
 
 ### Cleanup

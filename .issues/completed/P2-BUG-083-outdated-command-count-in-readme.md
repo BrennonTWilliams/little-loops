@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The README claims "21 slash commands" but there are now **24 commands** after multiple additions since the original fix.
+Documentation issue found by `/ll:audit-docs`. The README claims "21 slash commands" but there are now **24 commands** after multiple additions since the original fix.
 
 ## Location
 
@@ -75,7 +75,7 @@ ls commands/*.md | wc -l
 ## Completed
 
 - **Date**: 2026-01-20
-- **Fixed by**: /ll:ready_issue auto-correction
+- **Fixed by**: /ll:ready-issue auto-correction
 - **Resolution**: Updated command counts from 21 to 24 in all three locations
 
 ### Changes Made

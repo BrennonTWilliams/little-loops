@@ -14,7 +14,7 @@ cmd_test in cli.py
 
 ## Description
 
-The `/ll:create_loop` command documentation describes the `ll-loop test` output format in one way, but the actual CLI implementation produces different output.
+The `/ll:create-loop` command documentation describes the `ll-loop test` output format in one way, but the actual CLI implementation produces different output.
 
 **Documentation describes (lines 985-990):**
 - Check command and exit code

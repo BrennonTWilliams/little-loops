@@ -128,7 +128,7 @@ Create `templates/issue-sections.json` that consolidates all section definitions
     "Related Key Documentation": {
       "required": false,
       "description": "Links to relevant project documentation",
-      "creation_template": "_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._"
+      "creation_template": "_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._"
     }
   },
   "type_sections": {

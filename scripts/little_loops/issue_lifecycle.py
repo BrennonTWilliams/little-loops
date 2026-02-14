@@ -466,7 +466,7 @@ Implementation should complete without errors.
 Discovered during automated processing of `{parent_info.path}`.
 
 ## Steps to Reproduce
-1. Run: `/ll:manage_issue {parent_info.issue_type} fix {parent_info.issue_id}`
+1. Run: `/ll:manage-issue {parent_info.issue_type} fix {parent_info.issue_id}`
 2. Observe error
 
 ## Proposed Solution

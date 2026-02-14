@@ -8,7 +8,7 @@ discovered_date: 2026-01-06T20:47:28Z
 
 ## Summary
 
-Create a dedicated `/ll:scan_product` command for product-focused analysis. This command is the product counterpart to `/ll:scan_codebase`, maintaining clear separation between technical and product workflows.
+Create a dedicated `/ll:scan-product` command for product-focused analysis. This command is the product counterpart to `/ll:scan-codebase`, maintaining clear separation between technical and product workflows.
 
 ## Motivation
 
@@ -16,18 +16,18 @@ Create a dedicated `/ll:scan_product` command for product-focused analysis. This
 
 | Command | Focus | Users | When to Use |
 |---------|-------|-------|-------------|
-| `/ll:scan_codebase` | Technical issues | All users | Regular development |
-| `/ll:scan_product` | Product gaps | Product-enabled users | Strategic planning |
+| `/ll:scan-codebase` | Technical issues | All users | Regular development |
+| `/ll:scan-product` | Product gaps | Product-enabled users | Strategic planning |
 
 Keeping these separate ensures:
-1. `/ll:scan_codebase` remains fast and focused for all users
+1. `/ll:scan-codebase` remains fast and focused for all users
 2. Product analysis is opt-in and explicit
 3. Users can run product scans at appropriate times (e.g., sprint planning)
 4. No confusion about what each command produces
 
 ## Proposed Implementation
 
-### 1. Create `/ll:scan_product` Command
+### 1. Create `/ll:scan-product` Command
 
 New command `commands/scan_product.md`:
 
@@ -41,7 +41,7 @@ description: Scan codebase for product-focused issues based on goals document
 Analyze the codebase against product goals to identify feature gaps,
 user experience improvements, and business value opportunities.
 
-This command is the product counterpart to `/ll:scan_codebase`.
+This command is the product counterpart to `/ll:scan-codebase`.
 
 ## Prerequisites
 
@@ -199,13 +199,13 @@ Display summary after scanning:
 
 1. Review created issues for accuracy
 2. Adjust priorities based on business context
-3. Use `/ll:manage_issue` to implement high-priority items
+3. Use `/ll:manage-issue` to implement high-priority items
 ```
 ```
 
-### 2. No Changes to `/ll:scan_codebase`
+### 2. No Changes to `/ll:scan-codebase`
 
-The existing `/ll:scan_codebase` command remains unchanged:
+The existing `/ll:scan-codebase` command remains unchanged:
 - Continues to spawn 3 technical agents (bug, enhancement, feature scanners)
 - Does not include product-analyzer
 - Works identically whether product is enabled or not
@@ -217,17 +217,17 @@ Product and technical workflows remain cleanly separated:
 
 ```
 Technical Workflow (all users):
-  /ll:scan_codebase → BUG/FEAT/ENH issues → /ll:manage_issue
+  /ll:scan-codebase → BUG/FEAT/ENH issues → /ll:manage-issue
 
 Product Workflow (product-enabled users):
-  /ll:scan_product → FEAT/ENH issues with product context → /ll:manage_issue
+  /ll:scan-product → FEAT/ENH issues with product context → /ll:manage-issue
 ```
 
 Both workflows feed into the same issue management commands, but discovery is separate.
 
 ### 4. Priority Considerations
 
-Issues created by `/ll:scan_product` use product-aware prioritization:
+Issues created by `/ll:scan-product` use product-aware prioritization:
 
 ```markdown
 ## Priority Assignment
@@ -251,16 +251,16 @@ Mapping:
 
 ## Current Behavior
 
-- `/ll:scan_codebase` performs technical-only analysis with 3 agents
+- `/ll:scan-codebase` performs technical-only analysis with 3 agents
 - No product-focused scanning capability exists
 
 ## Expected Behavior
 
 When product analysis is enabled:
-- `/ll:scan_product` available for dedicated product scanning
+- `/ll:scan-product` available for dedicated product scanning
 - Creates FEAT/ENH issues with product context fields
 - Scan report shows goal alignment summary
-- `/ll:scan_codebase` continues to work exactly as before
+- `/ll:scan-codebase` continues to work exactly as before
 
 ## Impact
 

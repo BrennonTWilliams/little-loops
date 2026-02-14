@@ -113,8 +113,8 @@ This bug would:
 - Integration: PASS
 
 ## Session Log
-- `/ll:format_issue --all --auto` - 2026-02-13
-- `/ll:manage_issue` - 2026-02-13T01:35:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-bug-363-20260213-013329/688220dc-7b35-4713-b5d9-56fef6be4510.jsonl`
+- `/ll:format-issue --all --auto` - 2026-02-13
+- `/ll:manage-issue` - 2026-02-13T01:35:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-bug-363-20260213-013329/688220dc-7b35-4713-b5d9-56fef6be4510.jsonl`
 
 ## Status
 

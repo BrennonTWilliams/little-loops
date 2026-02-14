@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The README.md Commands section tables are missing entries for 6 commands that exist in the `commands/` directory.
+Documentation issue found by `/ll:audit-docs`. The README.md Commands section tables are missing entries for 6 commands that exist in the `commands/` directory.
 
 ## Location
 
@@ -24,12 +24,12 @@ The following commands exist in `commands/*.md` but are not documented in the RE
 
 | Missing Command | Description | Should Be In Section |
 |-----------------|-------------|---------------------|
-| `/ll:capture_issue` | Capture issues from conversation or natural language | Issue Management |
-| `/ll:align_issues` | Validate issues against key documents | Issue Management |
-| `/ll:audit_claude_config` | Audit Claude Code plugin configuration | Documentation & Analysis |
-| `/ll:cleanup_worktrees` | Clean orphaned git worktrees from interrupted ll-parallel runs | Git & Workflow |
-| `/ll:create_loop` | Create FSM loop configurations interactively | New section or Automation |
-| `/ll:toggle_autoprompt` | Toggle automatic prompt optimization settings | Session Management |
+| `/ll:capture-issue` | Capture issues from conversation or natural language | Issue Management |
+| `/ll:align-issues` | Validate issues against key documents | Issue Management |
+| `/ll:audit-claude-config` | Audit Claude Code plugin configuration | Documentation & Analysis |
+| `/ll:cleanup-worktrees` | Clean orphaned git worktrees from interrupted ll-parallel runs | Git & Workflow |
+| `/ll:create-loop` | Create FSM loop configurations interactively | New section or Automation |
+| `/ll:toggle-autoprompt` | Toggle automatic prompt optimization settings | Session Management |
 
 ## Current State
 
@@ -40,26 +40,26 @@ README shows 24 commands in the overview (line 13: "24 slash commands"), but the
 Add to **Issue Management** section:
 
 ```markdown
-| `/ll:capture_issue [input]` | Capture issues from conversation |
-| `/ll:align_issues [category]` | Validate issues against key documents |
+| `/ll:capture-issue [input]` | Capture issues from conversation |
+| `/ll:align-issues [category]` | Validate issues against key documents |
 ```
 
 Add to **Documentation & Analysis** section:
 
 ```markdown
-| `/ll:audit_claude_config` | Audit Claude Code plugin configuration |
+| `/ll:audit-claude-config` | Audit Claude Code plugin configuration |
 ```
 
 Add to **Git & Workflow** section:
 
 ```markdown
-| `/ll:cleanup_worktrees` | Clean orphaned git worktrees |
+| `/ll:cleanup-worktrees` | Clean orphaned git worktrees |
 ```
 
 Add to **Session Management** section:
 
 ```markdown
-| `/ll:toggle_autoprompt` | Toggle automatic prompt optimization |
+| `/ll:toggle-autoprompt` | Toggle automatic prompt optimization |
 ```
 
 Add new **Automation** section:
@@ -69,7 +69,7 @@ Add new **Automation** section:
 
 | Command | Description |
 |---------|-------------|
-| `/ll:create_loop` | Interactive FSM loop creation |
+| `/ll:create-loop` | Interactive FSM loop creation |
 ```
 
 ## Impact
@@ -100,10 +100,10 @@ ls commands/*.md | wc -l               # Should be 24
 
 ### Changes Made
 - `README.md`: Added 6 missing commands to command tables:
-  - Issue Management: `/ll:capture_issue`, `/ll:align_issues`
-  - Documentation & Analysis: `/ll:audit_claude_config`
-  - Git & Workflow: `/ll:cleanup_worktrees`, `/ll:create_loop`
-  - Session Management: `/ll:toggle_autoprompt`
+  - Issue Management: `/ll:capture-issue`, `/ll:align-issues`
+  - Documentation & Analysis: `/ll:audit-claude-config`
+  - Git & Workflow: `/ll:cleanup-worktrees`, `/ll:create-loop`
+  - Session Management: `/ll:toggle-autoprompt`
 
 ### Verification Results
 - Commands documented: 24/24
@@ -111,8 +111,8 @@ ls commands/*.md | wc -l               # Should be 24
 - All counts match
 
 ### Notes
-- `/ll:create_loop` placed in Git & Workflow (not a new Automation section) since it creates workflow configurations
-- `/ll:align_issues` uses `<category>` (required argument) not `[category]` (optional) per command definition
+- `/ll:create-loop` placed in Git & Workflow (not a new Automation section) since it creates workflow configurations
+- `/ll:align-issues` uses `<category>` (required argument) not `[category]` (optional) per command definition
 
 ---
 

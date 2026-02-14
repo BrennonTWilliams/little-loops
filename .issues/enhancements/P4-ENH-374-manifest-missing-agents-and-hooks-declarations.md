@@ -83,7 +83,7 @@ _None_
 _None — ENH-366 closed (won't-fix, duplicate of this issue)._
 
 ## Session Log
-- `/ll:format_issue --all --auto` - 2026-02-13
+- `/ll:format-issue --all --auto` - 2026-02-13
 
 ## Verification Notes
 

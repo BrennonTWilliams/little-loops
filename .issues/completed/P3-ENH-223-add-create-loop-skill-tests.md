@@ -1,8 +1,8 @@
-# Add Tests for /ll:create_loop Skill
+# Add Tests for /ll:create-loop Skill
 
 ## Problem
 
-The `/ll:create_loop` interactive loop creation wizard has no test coverage. While loop execution (`ll-loop` CLI) has 200+ tests across 7 test files, the loop creation pathway is completely untested.
+The `/ll:create-loop` interactive loop creation wizard has no test coverage. While loop execution (`ll-loop` CLI) has 200+ tests across 7 test files, the loop creation pathway is completely untested.
 
 This creates a gap where the primary user entry point for creating loops could break without detection.
 
@@ -19,7 +19,7 @@ This creates a gap where the primary user entry point for creating loops could b
 - `test_fsm_compilers.py` - Paradigm compilation
 
 **Untested (loop creation):**
-- `/ll:create_loop` command (`commands/create_loop.md`)
+- `/ll:create-loop` command (`commands/create_loop.md`)
 
 ## Expected Behavior
 
@@ -51,7 +51,7 @@ Create a test file `test_create_loop.py` covering:
 
 ## Files to Examine
 
-- `commands/create_loop.md` - Command definition (implements /ll:create_loop)
+- `commands/create_loop.md` - Command definition (implements /ll:create-loop)
 - `scripts/little_loops/fsm/` - FSM modules for reference
 - `scripts/tests/test_ll_loop*.py` - Existing test patterns to follow
 
@@ -92,7 +92,7 @@ P3 - The loop creation feature works but lacks regression protection. Not blocki
 - `thoughts/shared/plans/2026-02-04-ENH-223-management.md`: Implementation plan
 
 ### Note on Test Scope
-Since `/ll:create_loop` is a prompt-based skill (markdown instructions for Claude), the interactive wizard flow cannot be directly unit tested. The tests validate the **artifacts** produced by the command:
+Since `/ll:create-loop` is a prompt-based skill (markdown instructions for Claude), the interactive wizard flow cannot be directly unit tested. The tests validate the **artifacts** produced by the command:
 1. Template YAML definitions compile to valid FSMs
 2. Example YAML patterns from the command documentation are valid
 3. CLI validation works on generated loop files

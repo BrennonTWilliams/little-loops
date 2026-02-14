@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-The sprint system (`ll-sprint` CLI and `/ll:create_sprint` command) and the dependency mapper (`dependency_mapper.py`) have zero direct code-level integration. The sprint system only consumes dependency data already written to issue files — it never calls `dependency_mapper.analyze_dependencies()` or `find_file_overlaps()` to discover missing dependencies before building execution waves. Meanwhile, `/ll:create_sprint` re-implements basic dependency parsing in its Step 4.5 rather than leveraging the mapper's richer analysis (file overlap detection, semantic conflict scoring, validation). This enhancement would wire the dependency mapper into the sprint workflow so missing dependencies are automatically discovered before sprint execution.
+The sprint system (`ll-sprint` CLI and `/ll:create-sprint` command) and the dependency mapper (`dependency_mapper.py`) have zero direct code-level integration. The sprint system only consumes dependency data already written to issue files — it never calls `dependency_mapper.analyze_dependencies()` or `find_file_overlaps()` to discover missing dependencies before building execution waves. Meanwhile, `/ll:create-sprint` re-implements basic dependency parsing in its Step 4.5 rather than leveraging the mapper's richer analysis (file overlap detection, semantic conflict scoring, validation). This enhancement would wire the dependency mapper into the sprint workflow so missing dependencies are automatically discovered before sprint execution.
 
 ## Context
 
@@ -22,7 +22,7 @@ Identified from conversation analyzing the relationship between the sprint syste
 ## Current Behavior
 
 - `ll-sprint run` builds execution waves from whatever `blocked_by`/`blocks` data is already in issue files — it does not discover missing dependencies
-- `/ll:create_sprint` Step 4.5 does ad-hoc parsing of `## Blocked By`/`## Blocks` sections without calling `dependency_mapper` functions
+- `/ll:create-sprint` Step 4.5 does ad-hoc parsing of `## Blocked By`/`## Blocks` sections without calling `dependency_mapper` functions
 - Users must manually run `/ll:map-dependencies` before sprint creation/execution to get dependency discovery
 - Sprint execution can produce conflicting parallel waves when undiscovered dependencies exist between issues
 
@@ -30,7 +30,7 @@ Identified from conversation analyzing the relationship between the sprint syste
 
 - `ll-sprint run` optionally runs `dependency_mapper.analyze_dependencies()` before building waves, warning about discovered but unapplied dependencies
 - `ll-sprint show` includes dependency analysis summary (missing deps, conflict scores) alongside wave structure
-- `/ll:create_sprint` Step 4.5 calls `dependency_mapper.find_file_overlaps()` and `compute_conflict_score()` instead of re-implementing dependency parsing
+- `/ll:create-sprint` Step 4.5 calls `dependency_mapper.find_file_overlaps()` and `compute_conflict_score()` instead of re-implementing dependency parsing
 - A `--skip-analysis` flag allows skipping dependency discovery for speed when dependencies are known to be current
 
 ## Proposed Solution
@@ -43,7 +43,7 @@ Before building the `DependencyGraph`, call `analyze_dependencies()` on the spri
 
 After displaying wave structure, run `find_file_overlaps()` and show any potential missing dependencies between sprint issues.
 
-### 3. Update `/ll:create_sprint` Step 4.5
+### 3. Update `/ll:create-sprint` Step 4.5
 
 Replace the ad-hoc dependency parsing with calls to `dependency_mapper` functions — specifically `find_file_overlaps()`, `validate_dependencies()`, and `compute_conflict_score()` — to provide richer analysis during sprint creation.
 

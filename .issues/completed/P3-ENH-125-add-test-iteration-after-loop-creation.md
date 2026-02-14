@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-After the `/ll:create_loop` wizard saves a new loop, offer to run one test iteration to verify the loop actually works before the user relies on it.
+After the `/ll:create-loop` wizard saves a new loop, offer to run one test iteration to verify the loop actually works before the user relies on it.
 
 ## Context
 

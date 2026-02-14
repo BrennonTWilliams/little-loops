@@ -33,7 +33,7 @@ argument-hint: "<issue-file>"
 ---
 ```
 
-This shows in the `/` menu as: `/ll:manage_issue <issue-file>`
+This shows in the `/` menu as: `/ll:manage-issue <issue-file>`
 
 ## Motivation
 
@@ -100,8 +100,8 @@ This enhancement would:
 - Integration: PASS (all 27 files with `arguments:` now have `argument-hint:`)
 
 ## Session Log
-- /ll:format_issue --all --auto - 2026-02-13
-- /ll:manage_issue - 2026-02-13
+- /ll:format-issue --all --auto - 2026-02-13
+- /ll:manage-issue - 2026-02-13
 
 ---
 

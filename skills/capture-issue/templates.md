@@ -158,7 +158,7 @@ discovered_by: capture_issue
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 [For "full" template only:]
 
@@ -250,8 +250,8 @@ ISSUE CAPTURED
 
 ## Next Steps
 - Review: `cat [path]`
-- Validate: `/ll:ready_issue [ID]`
-- Implement: `/ll:manage_issue [type] [action] [ID]`
+- Validate: `/ll:ready-issue [ID]`
+- Implement: `/ll:manage-issue [type] [action] [ID]`
 
 ================================================================================
 ```
@@ -273,7 +273,7 @@ ISSUES CAPTURED: [N] total
 
 ## Next Steps
 - Review all: `ls {{config.issues.base_dir}}/*/P*-*-07*.md`
-- Validate: `/ll:ready_issue`
+- Validate: `/ll:ready-issue`
 - Commit: `/ll:commit`
 
 ================================================================================

@@ -12,7 +12,7 @@
 - Skills are located in `skills/<name>/SKILL.md` with YAML frontmatter containing `description` and trigger keywords
 - The `ll-messages` CLI outputs JSONL with `UserMessage` containing `content`, `timestamp`, `session_id`, and optional `response_metadata` (tools_used, files_modified)
 - FSM loops use paradigms: `goal`, `invariants`, `convergence`, `imperative` - compiled via `scripts/little_loops/fsm/compilers.py`
-- The `/ll:create_loop` wizard requires interactive paradigm selection, multi-step questions, and confirmation prompts
+- The `/ll:create-loop` wizard requires interactive paradigm selection, multi-step questions, and confirmation prompts
 - Existing `workflow-automation-proposer` skill provides a template for structured YAML output generation
 
 ### Patterns to Follow
@@ -40,7 +40,7 @@ A new skill at `skills/loop-suggester/SKILL.md` that:
 
 ## What We're NOT Doing
 
-- Not modifying `/ll:create_loop` - this is a parallel path, not a replacement
+- Not modifying `/ll:create-loop` - this is a parallel path, not a replacement
 - Not creating Python code - this is a skill (prompt-based), not a CLI tool
 - Not implementing complex ML pattern detection - using heuristic rules
 - Not auto-executing suggested loops - output is for user review
@@ -50,7 +50,7 @@ A new skill at `skills/loop-suggester/SKILL.md` that:
 
 Users with established workflows captured in their message history must manually:
 1. Notice repetitive patterns in their work
-2. Navigate the `/ll:create_loop` interactive wizard
+2. Navigate the `/ll:create-loop` interactive wizard
 3. Translate observed patterns into paradigm parameters
 
 This skill automates steps 1-3 by analyzing message history directly.
@@ -281,7 +281,7 @@ Example 1: Goal paradigm (type error fix loop)
     goal: "No type errors in source"
     tools:
       - "mypy scripts/"
-      - "/ll:manage_issue bug fix"
+      - "/ll:manage-issue bug fix"
     max_iterations: 20
     evaluator:
       type: exit_code
@@ -305,10 +305,10 @@ Example 2: Invariants paradigm (quality gate)
         fix: "ruff check --fix scripts/"
       - name: "types"
         check: "mypy scripts/"
-        fix: "/ll:manage_issue bug fix"
+        fix: "/ll:manage-issue bug fix"
       - name: "tests"
         check: "pytest scripts/tests/"
-        fix: "/ll:manage_issue bug fix"
+        fix: "/ll:manage-issue bug fix"
     max_iterations: 30
 ```
 

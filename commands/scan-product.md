@@ -10,7 +10,7 @@ allowed-tools:
 
 You are tasked with scanning the codebase against product goals to identify feature gaps, user experience improvements, and business value opportunities, then creating issue files for tracking.
 
-This command is the product counterpart to `/ll:scan_codebase`.
+This command is the product counterpart to `/ll:scan-codebase`.
 
 ## Configuration
 
@@ -381,7 +381,7 @@ Generate a comprehensive product scan report:
 ## Next Steps
 1. Review created issues for accuracy
 2. Adjust priorities based on business context
-3. Run `/ll:manage_issue` to start processing
+3. Run `/ll:manage-issue` to start processing
 ```
 
 ---
@@ -390,13 +390,13 @@ Generate a comprehensive product scan report:
 
 ```bash
 # Scan codebase for product issues
-/ll:scan_product
+/ll:scan-product
 
 # Review created issues
 ls {{config.issues.base_dir}}/*/
 
 # Start processing issues
-/ll:manage_issue feature implement
+/ll:manage-issue feature implement
 ```
 
 ---
@@ -406,7 +406,7 @@ ls {{config.issues.base_dir}}/*/
 After scanning:
 1. Review created issues for accuracy
 2. Adjust priorities based on business context
-3. Use `/ll:manage_issue` to process issues
+3. Use `/ll:manage-issue` to process issues
 4. Commit new issues: `/ll:commit`
 
 ## Workflow Separation
@@ -415,10 +415,10 @@ Product and technical workflows remain cleanly separated:
 
 ```
 Technical Workflow (all users):
-  /ll:scan_codebase → BUG/FEAT/ENH issues → /ll:manage_issue
+  /ll:scan-codebase → BUG/FEAT/ENH issues → /ll:manage-issue
 
 Product Workflow (product-enabled users):
-  /ll:scan_product → FEAT/ENH issues with product context → /ll:manage_issue
+  /ll:scan-product → FEAT/ENH issues with product context → /ll:manage-issue
 ```
 
 Both workflows feed into the same issue management commands, but discovery is separate.

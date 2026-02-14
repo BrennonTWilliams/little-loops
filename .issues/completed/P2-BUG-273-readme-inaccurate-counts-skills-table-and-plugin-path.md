@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. Multiple inaccuracies in README.md:
+Documentation issue found by `/ll:audit-docs`. Multiple inaccuracies in README.md:
 
 1. **Command count** says "34 slash commands" — actual count is **35**
 2. **Skills table** lists 4 agents as skills and includes `capture-issue` (a command) as a skill

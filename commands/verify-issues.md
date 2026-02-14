@@ -196,13 +196,13 @@ $ARGUMENTS
 
 ```bash
 # Verify all open issues
-/ll:verify_issues
+/ll:verify-issues
 
 # Verify a specific issue
-/ll:verify_issues BUG-042
+/ll:verify-issues BUG-042
 
 # After verification, process resolved issues
-/ll:manage_issue bug fix RESOLVED-ISSUE-ID
+/ll:manage-issue bug fix RESOLVED-ISSUE-ID
 
 # Update issues that need correction
 # Then commit: /ll:commit
@@ -213,6 +213,6 @@ $ARGUMENTS
 ## Integration
 
 Works well with:
-- `/ll:scan_codebase` - Find new issues after verification
-- `/ll:prioritize_issues` - Re-prioritize after verification
-- `/ll:manage_issue` - Process verified issues
+- `/ll:scan-codebase` - Find new issues after verification
+- `/ll:prioritize-issues` - Re-prioritize after verification
+- `/ll:manage-issue` - Process verified issues

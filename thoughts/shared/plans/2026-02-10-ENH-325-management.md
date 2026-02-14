@@ -8,10 +8,10 @@
 
 ## Current State Analysis
 
-The `/ll:refine_issue` command is currently **interactive only**. It uses `AskUserQuestion` for Q&A-based refinement and has the following limitations:
+The `/ll:refine-issue` command is currently **interactive only**. It uses `AskUserQuestion` for Q&A-based refinement and has the following limitations:
 
 1. **No automation support**: ll-auto, ll-parallel, and ll-sprint cannot use refine_issue (hangs waiting for user input)
-2. **Template alignment delayed**: Template v2.0 alignment (section renaming) happens in `/ll:ready_issue` at execution time, not during refinement
+2. **Template alignment delayed**: Template v2.0 alignment (section renaming) happens in `/ll:ready-issue` at execution time, not during refinement
 3. **No batch processing**: Cannot refine multiple issues at once
 4. **No preview mode**: Users cannot see proposed changes before applying them
 
@@ -44,7 +44,7 @@ The `/ll:refine_issue` command is currently **interactive only**. It uses `AskUs
 
 ## Desired End State
 
-With `--auto` flag, `/ll:refine_issue` should:
+With `--auto` flag, `/ll:refine-issue` should:
 
 1. **Fix old section names** (v1.0 → v2.0): Rename deprecated sections to their v2.0 equivalents
 2. **Intelligently add missing v2.0 sections**: Infer content from existing issue content
@@ -56,18 +56,18 @@ With `--auto` flag, `/ll:refine_issue` should:
 
 ### How to Verify
 
-1. **Test auto mode on single issue**: `/ll:refine_issue BUG-071 --auto`
+1. **Test auto mode on single issue**: `/ll:refine-issue BUG-071 --auto`
    - Old section names renamed to v2.0
    - Missing v2.0 sections added with inferred content
    - No interactive prompts
    - Summary of changes displayed
 
-2. **Test --all flag**: `/ll:refine_issue --all --auto`
+2. **Test --all flag**: `/ll:refine-issue --all --auto`
    - All active issues processed
    - Aggregate report generated
    - Completed/ issues skipped
 
-3. **Test --dry-run**: `/ll:refine_issue BUG-071 --auto --dry-run`
+3. **Test --dry-run**: `/ll:refine-issue BUG-071 --auto --dry-run`
    - Shows diff of proposed changes
    - No files modified
    - No changes staged
@@ -82,7 +82,7 @@ With `--auto` flag, `/ll:refine_issue` should:
 - **Not forced migration of existing issues**: Users opt-in to auto-refinement per issue or batch
 - **Not automated code analysis for Integration Map**: Using placeholder inference, not deep codebase scanning (future enhancement)
 - **Not integration with codebase-locator or codebase-analyzer agents**: That's scope expansion for future work
-- **Not changes to `/ll:ready_issue` validation logic**: ready_issue's auto-correction remains unchanged
+- **Not changes to `/ll:ready-issue` validation logic**: ready_issue's auto-correction remains unchanged
 
 ## Problem Analysis
 
@@ -226,8 +226,8 @@ if [[ "$FLAGS" == *"--template-align-only"* ]]; then TEMPLATE_ALIGN_ONLY=true; f
 - [ ] Command accepts new flags without errors
 
 **Manual Verification**:
-- [ ] Running `/ll:refine_issue BUG-071 --auto` does NOT prompt for user input
-- [ ] Running `/ll:refine_issue BUG-071` (without --auto) still uses interactive mode
+- [ ] Running `/ll:refine-issue BUG-071 --auto` does NOT prompt for user input
+- [ ] Running `/ll:refine-issue BUG-071` (without --auto) still uses interactive mode
 
 ---
 
@@ -463,9 +463,9 @@ For each change:
 - [ ] Interactive mode unchanged
 
 **Manual Verification**:
-- [ ] `/ll:refine_issue BUG-071 --auto` applies changes without prompts
-- [ ] `/ll:refine_issue BUG-071 --auto --dry-run` shows changes but doesn't modify file
-- [ ] `/ll:refine_issue BUG-071` (no flags) still uses interactive mode
+- [ ] `/ll:refine-issue BUG-071 --auto` applies changes without prompts
+- [ ] `/ll:refine-issue BUG-071 --auto --dry-run` shows changes but doesn't modify file
+- [ ] `/ll:refine-issue BUG-071` (no flags) still uses interactive mode
 
 ---
 
@@ -543,7 +543,7 @@ AUTO-REFINE BATCH REPORT: --all mode
 - [ ] Aggregate report includes all processed issues
 
 **Manual Verification**:
-- [ ] `/ll:refine_issue --all --auto` processes all bugs, features, enhancements
+- [ ] `/ll:refine-issue --all --auto` processes all bugs, features, enhancements
 - [ ] Completed/ issues are not processed
 - [ ] Report shows summary with counts
 
@@ -575,11 +575,11 @@ fi
 #### Success Criteria
 
 **Automated Verification**:
-- [ ] Automation scripts can call `/ll:refine_issue ISSUE_ID --auto` without hanging
+- [ ] Automation scripts can call `/ll:refine-issue ISSUE_ID --auto` without hanging
 - [ ] No AskUserQuestion calls in auto mode
 
 **Manual Verification**:
-- [ ] Running `claude --dangerously-skip-permissions -p "/ll:refine_issue BUG-071 --auto"` completes without prompts
+- [ ] Running `claude --dangerously-skip-permissions -p "/ll:refine-issue BUG-071 --auto"` completes without prompts
 - [ ] Integration with ll-auto/ll-parallel works without modification
 
 ---
@@ -639,7 +639,7 @@ AUTO-REFINE: [ISSUE-ID]
 - [Staged | Not staged]
 
 ## NEXT STEPS
-- Run `/ll:ready_issue [ID]` to validate
+- Run `/ll:ready-issue [ID]` to validate
 - Run `/ll:commit` to commit changes
 ================================================================================
 ```
@@ -672,23 +672,23 @@ Update command examples to show new flags.
 
 ```bash
 # Interactive refinement (existing behavior)
-/ll:refine_issue BUG-042
+/ll:refine-issue BUG-042
 
 # Auto-refine single issue
-/ll:refine_issue BUG-042 --auto
+/ll:refine-issue BUG-042 --auto
 
 # Auto-refine with dry-run (preview changes)
-/ll:refine_issue BUG-042 --auto --dry-run
+/ll:refine-issue BUG-042 --auto --dry-run
 
 # Auto-refine all active issues
-/ll:refine_issue --all --auto
+/ll:refine-issue --all --auto
 
 # Auto-refine with template alignment only
-/ll:refine_issue BUG-042 --auto --template-align-only
+/ll:refine-issue BUG-042 --auto --template-align-only
 
 # Automation: --dangerously-skip-permissions implies --auto
 # (used by ll-auto, ll-parallel, ll-sprint)
-/ll:refine_issue BUG-042 --dangerously-skip-permissions
+/ll:refine-issue BUG-042 --dangerously-skip-permissions
 ```
 ```
 
@@ -713,9 +713,9 @@ Update command examples to show new flags.
 - **Dry run mode**: Verify changes are tracked but not applied
 
 ### Integration Tests
-- **End-to-end auto refinement**: Run `/ll:refine_issue BUG-XXX --auto` and verify output
-- **Batch processing**: Run `/ll:refine_issue --all --auto` and verify all issues processed
-- **Interactive mode unchanged**: Run `/ll:refine_issue BUG-XXX` (no flags) and verify Q&A still works
+- **End-to-end auto refinement**: Run `/ll:refine-issue BUG-XXX --auto` and verify output
+- **Batch processing**: Run `/ll:refine-issue --all --auto` and verify all issues processed
+- **Interactive mode unchanged**: Run `/ll:refine-issue BUG-XXX` (no flags) and verify Q&A still works
 - **Dry run verification**: Run with --dry-run and verify file unchanged
 
 ### Edge Cases

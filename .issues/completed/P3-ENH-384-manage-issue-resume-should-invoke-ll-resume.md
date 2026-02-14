@@ -12,7 +12,7 @@ When `manage_issue` is invoked with `--resume`, it only reads plan file checkbox
 ## Current Behavior
 
 1. `manage_issue` exhausts context, writes `.claude/ll-continue-prompt.md` with detailed handoff state
-2. User starts new session, runs `/ll:manage_issue [type] [action] [ID] --resume`
+2. User starts new session, runs `/ll:manage-issue [type] [action] [ID] --resume`
 3. `--resume` logic (manage_issue.md:324-345) only scans the plan file for `[x]` checkboxes
 4. The continuation prompt in `.claude/ll-continue-prompt.md` is never read
 5. Detailed context about in-flight work, errors encountered, and next steps is lost
@@ -70,7 +70,7 @@ Instead of duplicating the file-read logic, `manage_issue --resume` could invoke
 - `commands/resume.md` — Reads the same `.claude/ll-continue-prompt.md` file with staleness checks
 
 ### Tests
-- N/A — command markdown prompt change; verified by triggering context handoff and running `/ll:manage_issue ... --resume` in a new session
+- N/A — command markdown prompt change; verified by triggering context handoff and running `/ll:manage-issue ... --resume` in a new session
 
 ### Documentation
 - N/A
@@ -112,8 +112,8 @@ Instead of duplicating the file-read logic, `manage_issue --resume` could invoke
 `enhancement`, `commands`, `resume`, `captured`
 
 ## Session Log
-- /ll:format_issue --all --auto - 2026-02-13
-- /ll:manage_issue - 2026-02-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38af4882-f822-4384-8eb2-3dfe1274a0a7.jsonl`
+- /ll:format-issue --all --auto - 2026-02-13
+- /ll:manage-issue - 2026-02-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38af4882-f822-4384-8eb2-3dfe1274a0a7.jsonl`
 
 ---
 

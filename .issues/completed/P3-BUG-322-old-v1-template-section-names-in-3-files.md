@@ -33,7 +33,7 @@ Template consistency is critical for the issue management pipeline. `ready_issue
 
 ## Steps to Reproduce
 
-1. Trigger an implementation failure during `/ll:manage_issue` (e.g., via `ll-auto` or `ll-parallel`)
+1. Trigger an implementation failure during `/ll:manage-issue` (e.g., via `ll-auto` or `ll-parallel`)
 2. Observe the auto-generated bug issue file
 3. Note it uses `## Reproduction Steps` and `## Proposed Fix` instead of v2.0 names
 

@@ -83,7 +83,7 @@ Insert between `scan` section (ends at line 319) and `continuation` section (sta
 ```markdown
 #### `workflow`
 
-Workflow behavior settings (`/ll:manage_issue`, `/ll:ready_issue`):
+Workflow behavior settings (`/ll:manage-issue`, `/ll:ready-issue`):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -97,7 +97,7 @@ Workflow behavior settings (`/ll:manage_issue`, `/ll:ready_issue`):
 
 #### `prompt_optimization`
 
-Automatic prompt optimization settings (`/ll:toggle_autoprompt`):
+Automatic prompt optimization settings (`/ll:toggle-autoprompt`):
 
 | Key | Default | Description |
 |-----|---------|-------------|

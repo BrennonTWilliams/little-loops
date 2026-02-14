@@ -13,21 +13,21 @@ Quick reference for managing issues with the little-loops plugin.
 ## Issue Lifecycle
 
 ```
-                        /ll:scan_codebase
-                        /ll:scan_product
-                        /ll:capture_issue
-                        /ll:audit_architecture
+                        /ll:scan-codebase
+                        /ll:scan-product
+                        /ll:capture-issue
+                        /ll:audit-architecture
                                │
                                ▼
                         ┌─────────────┐
                         │  Discovered  │◀──────────────────┐
                         └──────┬──────┘                    │
-                               │ /ll:prioritize_issues     │ Fix issue file
+                               │ /ll:prioritize-issues     │ Fix issue file
                                ▼                           │
                         ┌─────────────┐                    │
                         │ Prioritized  │                    │
                         └──────┬──────┘                    │
-                               │ /ll:ready_issue           │
+                               │ /ll:ready-issue           │
                                ▼                           │
                         ┌─────────────┐                    │
                         │  Validating  │                    │
@@ -38,7 +38,7 @@ Quick reference for managing issues with the little-loops plugin.
                 │              └───────▶ completed/         │
                 ▼                                           │
          ┌─────────────┐                                    │
-         │  InProgress  │ /ll:manage_issue                  │
+         │  InProgress  │ /ll:manage-issue                  │
          └──────┬──────┘                                    │
                 │ Implementation done                       │
                 ▼                                           │
@@ -58,41 +58,41 @@ Quick reference for managing issues with the little-loops plugin.
 
 ### 1. Discovery Phase
 ```bash
-/ll:scan_codebase              # Find bugs, enhancements, features (technical)
-/ll:scan_product               # Find issues from product goals perspective
-/ll:capture_issue "desc"       # Capture issue from conversation or description
-/ll:audit_architecture [focus] # Analyze architecture for patterns and improvements
+/ll:scan-codebase              # Find bugs, enhancements, features (technical)
+/ll:scan-product               # Find issues from product goals perspective
+/ll:capture-issue "desc"       # Capture issue from conversation or description
+/ll:audit-architecture [focus] # Analyze architecture for patterns and improvements
 ```
 
 ### 2. Refinement Phase
 ```bash
-/ll:normalize_issues           # Fix invalid issue filenames
-/ll:prioritize_issues          # Assign P0-P5 priorities
-/ll:align_issues <category>   # Validate issues against key documents
-/ll:format_issue [id]          # Align issue with template v2.0 structure
-/ll:refine_issue [id]          # Enrich issue with codebase research findings
-/ll:verify_issues              # Verify all issues against current codebase
-/ll:tradeoff_review_issues     # Evaluate utility vs complexity trade-offs
-/ll:ready_issue [id]           # Final validation before implementation
+/ll:normalize-issues           # Fix invalid issue filenames
+/ll:prioritize-issues          # Assign P0-P5 priorities
+/ll:align-issues <category>   # Validate issues against key documents
+/ll:format-issue [id]          # Align issue with template v2.0 structure
+/ll:refine-issue [id]          # Enrich issue with codebase research findings
+/ll:verify-issues              # Verify all issues against current codebase
+/ll:tradeoff-review-issues     # Evaluate utility vs complexity trade-offs
+/ll:ready-issue [id]           # Final validation before implementation
 ```
 
 ### 3. Planning & Implementation Phase
 ```bash
-/ll:create_sprint [name]       # Create sprint with curated issue list
-/ll:manage_issue bug fix       # Fix highest priority bug
-/ll:manage_issue bug fix BUG-001        # Fix specific bug
-/ll:manage_issue feature implement      # Implement highest priority feature
-/ll:manage_issue enhancement improve    # Improve highest priority enhancement
-/ll:iterate_plan [path]        # Update existing implementation plans
+/ll:create-sprint [name]       # Create sprint with curated issue list
+/ll:manage-issue bug fix       # Fix highest priority bug
+/ll:manage-issue bug fix BUG-001        # Fix specific bug
+/ll:manage-issue feature implement      # Implement highest priority feature
+/ll:manage-issue enhancement improve    # Improve highest priority enhancement
+/ll:iterate-plan [path]        # Update existing implementation plans
 ```
 
 ### 4. Completion Phase
 ```bash
-/ll:check_code                 # Run lint, format, type checks
-/ll:run_tests                  # Run test suite
+/ll:check-code                 # Run lint, format, type checks
+/ll:run-tests                  # Run test suite
 /ll:commit                     # Commit changes
-/ll:describe_pr                # Generate PR description
-/ll:open_pr                    # Open pull request
+/ll:describe-pr                # Generate PR description
+/ll:open-pr                    # Open pull request
 ```
 
 ## manage_issue Reference
@@ -161,8 +161,8 @@ Install: `pip install -e "./scripts[dev]"`
 ## Quick Tips
 
 - Run refinement commands (`normalize`, `prioritize`, `align`, `format`, `refine`, `verify`) before `ready_issue`
-- Always run `/ll:ready_issue` before `/ll:manage_issue`
-- Use `/ll:create_sprint` to group related issues for focused execution
-- Use `/ll:tradeoff_review_issues` to prune low-value issues before sprints
+- Always run `/ll:ready-issue` before `/ll:manage-issue`
+- Use `/ll:create-sprint` to group related issues for focused execution
+- Use `/ll:tradeoff-review-issues` to prune low-value issues before sprints
 - Issues move to `completed/` automatically when done
 - Use CLI tools (`ll-auto`, `ll-parallel`, `ll-sprint`) for batch processing

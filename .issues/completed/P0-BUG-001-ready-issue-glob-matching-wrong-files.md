@@ -50,7 +50,7 @@ This glob pattern is too loose and matches any file containing the ID as a subst
 1. Have two issue files with similar ID patterns:
    - `.issues/bugs/P1-BUG-1-foo.md`
    - `.issues/bugs/P1-BUG-10-bar.md`
-2. Run `/ll:ready_issue BUG-1`
+2. Run `/ll:ready-issue BUG-1`
 3. Observe that BUG-10 may be matched and processed instead
 
 ## Proposed Fix

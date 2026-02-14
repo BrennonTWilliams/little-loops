@@ -70,8 +70,8 @@ def compile_goal(spec: dict) -> dict:
       paradigm: goal
       goal: "No type errors in src/"
       tools:
-        - /ll:check_code types
-        - /ll:manage_issue bug fix
+        - /ll:check-code types
+        - /ll:manage-issue bug fix
       max_iterations: 20
 
     Output: evaluate/fix/done FSM
@@ -111,7 +111,7 @@ def compile_convergence(spec: dict) -> dict:
       name: "reduce-lint-errors"
       check: "ruff check src/ --output-format=json | jq '.count'"
       toward: 0
-      using: "/ll:check_code fix"
+      using: "/ll:check-code fix"
       tolerance: 0
     """
     return {
@@ -161,10 +161,10 @@ def compile_invariants(spec: dict) -> dict:
       constraints:
         - name: "tests-pass"
           check: "pytest"
-          fix: "/ll:manage_issue bug fix"
+          fix: "/ll:manage-issue bug fix"
         - name: "lint-clean"
           check: "ruff check src/"
-          fix: "/ll:check_code fix"
+          fix: "/ll:check-code fix"
       maintain: true
     """
     states = {}
@@ -214,8 +214,8 @@ def compile_imperative(spec: dict) -> dict:
       paradigm: imperative
       name: "fix-all-types"
       steps:
-        - /ll:check_code types
-        - /ll:manage_issue bug fix
+        - /ll:check-code types
+        - /ll:manage-issue bug fix
       until:
         check: "mypy src/"
         passes: true

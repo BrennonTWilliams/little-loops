@@ -205,16 +205,16 @@ This research analyzed state-of-the-art techniques for AI-driven product/busines
 
 ### FEAT-004: Product Scanning Integration
 
-**Current Plan**: Separate `/ll:scan_product` command parallel to `/ll:scan_codebase`.
+**Current Plan**: Separate `/ll:scan-product` command parallel to `/ll:scan-codebase`.
 
 **Problems Identified**:
 1. Fragments workflow with two scan commands
 2. Users will forget to run it or run wrong one
-3. Duplicates logic from `/ll:scan_codebase`
+3. Duplicates logic from `/ll:scan-codebase`
 4. Creates artificial separation that doesn't serve users
 
 **Research-Based Recommendation**:
-- Enhance `/ll:scan_codebase` to include product insights when context exists
+- Enhance `/ll:scan-codebase` to include product insights when context exists
 - Single command, richer output when product context available
 - No separate product scanning command
 
@@ -275,7 +275,7 @@ Given these constraints, the system must:
 
 **Purpose**: Automatically discover project goals from existing artifacts.
 
-**Trigger**: During `/ll:init` or on first `/ll:scan_codebase`
+**Trigger**: During `/ll:init` or on first `/ll:scan-codebase`
 
 **Sources** (in priority order):
 1. `README.md` - Project purpose, features, target users
@@ -353,7 +353,7 @@ Given these constraints, the system must:
 
 **Implementation**:
 - `agents/product-context-wrapper.md` - Wrapper agent definition
-- Hook into `/ll:scan_codebase` post-processing
+- Hook into `/ll:scan-codebase` post-processing
 - DSPy signature for goal correlation:
 
 ```python

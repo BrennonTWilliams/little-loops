@@ -7,7 +7,7 @@ discovered_by: audit
 
 ## Summary
 
-The `/ll:create_sprint` command uses `{{config.sprints.*}}` template syntax that doesn't auto-interpolate. The command should explicitly instruct Claude to read the config file first.
+The `/ll:create-sprint` command uses `{{config.sprints.*}}` template syntax that doesn't auto-interpolate. The command should explicitly instruct Claude to read the config file first.
 
 ## Context
 

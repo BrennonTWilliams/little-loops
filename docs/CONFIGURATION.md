@@ -206,7 +206,7 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 
 ### `product`
 
-Product analysis configuration for `/ll:scan_product`:
+Product analysis configuration for `/ll:scan-product`:
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -228,7 +228,7 @@ Codebase scanning configuration:
 
 ### `prompt_optimization`
 
-Automatic prompt optimization settings (`/ll:toggle_autoprompt`):
+Automatic prompt optimization settings (`/ll:toggle-autoprompt`):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -264,7 +264,7 @@ Context window monitoring for automatic session handoff. See [Session Handoff Gu
 
 ### `sprints`
 
-Sprint management settings (ll-sprint, `/ll:create_sprint`):
+Sprint management settings (ll-sprint, `/ll:create-sprint`):
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -274,7 +274,7 @@ Sprint management settings (ll-sprint, `/ll:create_sprint`):
 
 ### `sync`
 
-GitHub Issues synchronization for `/ll:sync_issues`:
+GitHub Issues synchronization for `/ll:sync-issues`:
 
 | Key | Default | Description |
 |-----|---------|-------------|
@@ -290,7 +290,7 @@ To enable sync, set `sync.enabled: true`. The repository is auto-detected from y
 
 ### `documents`
 
-Document category tracking for `/ll:align_issues`:
+Document category tracking for `/ll:align-issues`:
 
 | Key | Default | Description |
 |-----|---------|-------------|

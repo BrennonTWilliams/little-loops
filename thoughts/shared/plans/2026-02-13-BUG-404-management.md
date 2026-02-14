@@ -1,4 +1,4 @@
-# BUG-404: `/ll:review_sprint` missing from README command tables and COMMANDS.md - Implementation Plan
+# BUG-404: `/ll:review-sprint` missing from README command tables and COMMANDS.md - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/bugs/P2-BUG-404-review-sprint-missing-from-docs.md`
@@ -50,7 +50,7 @@ The `review_sprint` command exists in `commands/review_sprint.md` but is absent 
 1. Line 84: Change "36 slash commands" to "37 slash commands"
 2. Line 120-121: Add `review_sprint` row after `create_sprint` in Planning & Implementation table:
    ```markdown
-   | `/ll:review_sprint [name]` | Review sprint health and suggest improvements |
+   | `/ll:review-sprint [name]` | Review sprint health and suggest improvements |
    ```
 
 ### Phase 2: Update docs/COMMANDS.md
@@ -59,7 +59,7 @@ The `review_sprint` command exists in `commands/review_sprint.md` but is absent 
 
 1. After line 153 (after `create_sprint` section's `---`): Add new detailed section:
    ```markdown
-   ### `/ll:review_sprint`
+   ### `/ll:review-sprint`
    AI-guided sprint health check that analyzes a sprint's current state and suggests improvements.
 
    **Arguments:**
@@ -83,7 +83,7 @@ The `review_sprint` command exists in `commands/review_sprint.md` but is absent 
 
 1. After line 75 (after `create_sprint` entry): Add:
    ```
-   /ll:review_sprint [sprint_name]
+   /ll:review-sprint [sprint_name]
        AI-guided sprint health check and optimization
    ```
 

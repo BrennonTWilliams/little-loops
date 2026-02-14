@@ -7,7 +7,7 @@ discovered_by: manual_review
 
 ## Summary
 
-The `/ll:capture_issue` command hardcodes directory paths and issue type prefixes instead of using `{{config.issues.*}}` template variables, making it inconsistent with other commands and breaking if users customize their config.
+The `/ll:capture-issue` command hardcodes directory paths and issue type prefixes instead of using `{{config.issues.*}}` template variables, making it inconsistent with other commands and breaking if users customize their config.
 
 ## Current Behavior
 

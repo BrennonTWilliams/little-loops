@@ -6,7 +6,7 @@ discovered_by: audit_docs
 doc_file: README.md
 ---
 
-# BUG-404: `/ll:review_sprint` missing from README command tables and COMMANDS.md
+# BUG-404: `/ll:review-sprint` missing from README command tables and COMMANDS.md
 
 ## Summary
 
@@ -36,12 +36,12 @@ The `review_sprint` command exists in `commands/review_sprint.md` but is complet
 ## Expected Behavior
 
 - README should list `review_sprint` in the "Planning & Implementation" table (or a new "Sprint Management" row)
-- `docs/COMMANDS.md` should have a detailed section for `/ll:review_sprint` under Sprint Management and include it in the Quick Reference table
+- `docs/COMMANDS.md` should have a detailed section for `/ll:review-sprint` under Sprint Management and include it in the Quick Reference table
 
 ## Proposed Solution
 
 1. Add `review_sprint` to README.md command tables (under Planning & Implementation alongside `create_sprint`)
-2. Add detailed `/ll:review_sprint` section to `docs/COMMANDS.md` under Sprint Management
+2. Add detailed `/ll:review-sprint` section to `docs/COMMANDS.md` under Sprint Management
 3. Add `review_sprint` to the Quick Reference table in `docs/COMMANDS.md`
 
 ## Impact
@@ -55,7 +55,7 @@ The `review_sprint` command exists in `commands/review_sprint.md` but is complet
 `bug`, `documentation`, `auto-generated`
 
 ## Session Log
-- `/ll:manage_issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e133534-9c00-4318-b32b-af5c69e96dad.jsonl`
+- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e133534-9c00-4318-b32b-af5c69e96dad.jsonl`
 
 ## Resolution
 

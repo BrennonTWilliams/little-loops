@@ -25,18 +25,18 @@
 
 1. `config-schema.json` supports `documents` section with categories
 2. `/ll:init` wizard includes document tracking setup (new Round 5)
-3. New `/ll:align_issues` command validates issues against key documents
+3. New `/ll:align-issues` command validates issues against key documents
 4. Issues can be systematically checked for alignment with documented goals/rules/designs
 
 ### How to Verify
 - Run JSON schema validation on config-schema.json
 - Test `/ll:init --interactive` to see document tracking questions
-- Run `/ll:align_issues architecture` to see alignment report
+- Run `/ll:align-issues architecture` to see alignment report
 
 ## What We're NOT Doing
 
-- Not integrating with `/ll:ready_issue` (deferred - optional integration per issue spec)
-- Not integrating with `/ll:scan_codebase` (deferred - optional integration per issue spec)
+- Not integrating with `/ll:ready-issue` (deferred - optional integration per issue spec)
+- Not integrating with `/ll:scan-codebase` (deferred - optional integration per issue spec)
 - Not updating templates/*.json with document examples (keep them minimal)
 - Not creating complex content parsing - using LLM-based analysis
 
@@ -240,7 +240,7 @@ Add:
 
 ---
 
-### Phase 3: Create /ll:align_issues Command
+### Phase 3: Create /ll:align-issues Command
 
 #### Overview
 Create new command file for issue alignment validation against key documents.
@@ -447,16 +447,16 @@ For each issue with score below 80%, include detailed analysis:
 
 ```bash
 # Check architecture alignment for all active issues
-/ll:align_issues architecture
+/ll:align-issues architecture
 
 # Check product/roadmap alignment
-/ll:align_issues product
+/ll:align-issues product
 
 # Check all configured categories
-/ll:align_issues --all
+/ll:align-issues --all
 
 # Verbose output with detailed analysis
-/ll:align_issues architecture --verbose
+/ll:align-issues architecture --verbose
 ```
 
 ---
@@ -465,9 +465,9 @@ For each issue with score below 80%, include detailed analysis:
 
 This command works well with:
 - `/ll:init --interactive` - Set up document tracking
-- `/ll:verify_issues` - Verify issue accuracy before alignment check
-- `/ll:ready_issue` - (Future) Include alignment check in readiness validation
-- `/ll:scan_codebase` - (Future) Reference key documents when creating issues
+- `/ll:verify-issues` - Verify issue accuracy before alignment check
+- `/ll:ready-issue` - (Future) Include alignment check in readiness validation
+- `/ll:scan-codebase` - (Future) Reference key documents when creating issues
 
 ---
 
@@ -511,17 +511,17 @@ Update README.md and COMMANDS.md to document the new feature and command.
 Add entry for new command:
 
 ```markdown
-### /ll:align_issues
+### /ll:align-issues
 
 Validate active issues against key documents for alignment with goals, rules, and designs.
 
 **Usage:**
 ```bash
-/ll:align_issues <category>           # Check specific category
-/ll:align_issues architecture         # Check architecture alignment
-/ll:align_issues product              # Check product alignment
-/ll:align_issues --all                # Check all categories
-/ll:align_issues architecture --verbose  # Detailed analysis
+/ll:align-issues <category>           # Check specific category
+/ll:align-issues architecture         # Check architecture alignment
+/ll:align-issues product              # Check product alignment
+/ll:align-issues --all                # Check all categories
+/ll:align-issues architecture --verbose  # Detailed analysis
 ```
 
 **Prerequisites:**
@@ -548,8 +548,8 @@ Search for any hardcoded command counts and update them.
 ### Manual Testing
 1. Run `/ll:init --interactive` and test document tracking wizard
 2. Create test configuration with document categories
-3. Run `/ll:align_issues architecture` and verify output format
-4. Run `/ll:align_issues --all` and verify multi-category output
+3. Run `/ll:align-issues architecture` and verify output format
+4. Run `/ll:align-issues --all` and verify multi-category output
 
 ### Edge Cases
 - No documents configured (should show helpful message)

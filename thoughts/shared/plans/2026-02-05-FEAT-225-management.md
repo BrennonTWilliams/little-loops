@@ -1,4 +1,4 @@
-# FEAT-225: Add /ll:refine_issue skill for interactive issue clarification - Implementation Plan
+# FEAT-225: Add /ll:refine-issue skill for interactive issue clarification - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/features/P3-FEAT-225-refine-issue-skill.md`
@@ -9,10 +9,10 @@
 ## Current State Analysis
 
 The little-loops plugin has a robust issue management workflow with skills for:
-- **Capture**: `/ll:capture_issue` - Creates new issues from conversation context
-- **Validation**: `/ll:ready_issue` - Validates issues for accuracy and completeness
-- **Implementation**: `/ll:manage_issue` - Full lifecycle management
-- **Size Review**: `/ll:issue_size_review` - Evaluates complexity and proposes decomposition
+- **Capture**: `/ll:capture-issue` - Creates new issues from conversation context
+- **Validation**: `/ll:ready-issue` - Validates issues for accuracy and completeness
+- **Implementation**: `/ll:manage-issue` - Full lifecycle management
+- **Size Review**: `/ll:issue-size-review` - Evaluates complexity and proposes decomposition
 
 ### Key Discoveries
 - Skills are defined in `skills/[name]/SKILL.md` with YAML frontmatter (`skills/issue-size-review/SKILL.md:1-6`)
@@ -21,11 +21,11 @@ The little-loops plugin has a robust issue management workflow with skills for:
 - Existing skills follow consistent structure: frontmatter, When to Activate, How to Use, Workflow, Output Format, Examples, Integration
 
 ### Gap Identified
-No dedicated step exists between capture and validation/implementation for **interactive clarification** of vague or incomplete issues. Users must manually review and edit issues before `/ll:ready_issue` can validate them.
+No dedicated step exists between capture and validation/implementation for **interactive clarification** of vague or incomplete issues. Users must manually review and edit issues before `/ll:ready-issue` can validate them.
 
 ## Desired End State
 
-A new `/ll:refine_issue` skill that:
+A new `/ll:refine-issue` skill that:
 1. Accepts an Issue ID as argument (e.g., `FEAT-225`, `BUG-071`)
 2. Locates and reads the issue file
 3. Analyzes content for gaps based on issue type (BUG/FEAT/ENH)
@@ -37,14 +37,14 @@ A new `/ll:refine_issue` skill that:
 ### How to Verify
 - Skill file exists at `skills/refine-issue/SKILL.md`
 - Skill appears in CLAUDE.md system reminders
-- Invoking `/ll:refine_issue FEAT-225` locates the issue file
+- Invoking `/ll:refine-issue FEAT-225` locates the issue file
 - Questions are generated based on issue type and content gaps
 - Answers are incorporated into the issue file
 
 ## What We're NOT Doing
 
-- Not modifying the `/ll:capture_issue` command - this is a separate step
-- Not modifying the `/ll:ready_issue` command - this skill is complementary
+- Not modifying the `/ll:capture-issue` command - this is a separate step
+- Not modifying the `/ll:ready-issue` command - this skill is complementary
 - Not adding Python CLI tools - this is a prompt-only skill
 - Not changing issue file format - working within existing structure
 - Not adding automatic triggers from other commands - integration is manual
@@ -56,12 +56,12 @@ Issues captured from conversation or scanning often lack:
 - **FEATs**: Clear user stories, acceptance criteria, edge cases
 - **ENHs**: Pain point descriptions, success metrics, scope boundaries
 
-The `/ll:ready_issue` command validates but doesn't interactively gather missing information. Users must manually edit issues, which is less efficient than guided Q&A.
+The `/ll:ready-issue` command validates but doesn't interactively gather missing information. Users must manually edit issues, which is less efficient than guided Q&A.
 
 ## Solution Approach
 
 Create a skill that:
-1. Uses the same issue file location pattern as `/ll:ready_issue`
+1. Uses the same issue file location pattern as `/ll:ready-issue`
 2. Analyzes content sections against issue-type-specific templates
 3. Generates dynamic AskUserQuestion prompts based on gaps
 4. Uses Edit tool to update the issue file with refined content
@@ -96,14 +96,14 @@ Proactively offer or invoke this skill when the user:
 - Mentions an issue needs more detail
 - Says "this issue is vague" or "unclear requirements"
 - Asks to "clarify" or "refine" an issue before implementation
-- Mentions an issue failed `/ll:ready_issue` validation
+- Mentions an issue failed `/ll:ready-issue` validation
 
 ## How to Use
 
 Refine a specific issue:
 
 ```
-/ll:refine_issue FEAT-225
+/ll:refine-issue FEAT-225
 ```
 
 ## Arguments
@@ -274,7 +274,7 @@ ISSUE REFINED: [ISSUE-ID]
 - [Staged|Not staged]
 
 ## NEXT STEPS
-- Run `/ll:ready_issue [ID]` to validate
+- Run `/ll:ready-issue [ID]` to validate
 - Run `/ll:commit` to commit changes
 ================================================================================
 ```
@@ -283,10 +283,10 @@ ISSUE REFINED: [ISSUE-ID]
 
 | User Says | Action |
 |-----------|--------|
-| "Refine FEAT-225" | `/ll:refine_issue FEAT-225` |
-| "This bug needs more detail" | Offer to run `/ll:refine_issue [ID]` |
-| "Add acceptance criteria to the feature" | `/ll:refine_issue [ID]` |
-| "Clarify the enhancement before implementing" | `/ll:refine_issue [ID]` |
+| "Refine FEAT-225" | `/ll:refine-issue FEAT-225` |
+| "This bug needs more detail" | Offer to run `/ll:refine-issue [ID]` |
+| "Add acceptance criteria to the feature" | `/ll:refine-issue [ID]` |
+| "Clarify the enhancement before implementing" | `/ll:refine-issue [ID]` |
 
 ## Configuration
 
@@ -299,13 +299,13 @@ Uses project configuration from `.claude/ll-config.json`:
 
 After refining an issue:
 
-- Validate with `/ll:ready_issue [ID]`
+- Validate with `/ll:ready-issue [ID]`
 - Commit with `/ll:commit`
-- Implement with `/ll:manage_issue`
+- Implement with `/ll:manage-issue`
 
 Typical workflow:
 ```
-/ll:capture_issue "description" → /ll:refine_issue [ID] → /ll:ready_issue [ID] → /ll:manage_issue
+/ll:capture-issue "description" → /ll:refine-issue [ID] → /ll:ready-issue [ID] → /ll:manage-issue
 ```
 ```
 
@@ -352,7 +352,7 @@ Manually test the skill by invoking it on the FEAT-225 issue itself.
 
 1. Start a new conversation
 2. Verify skill appears in available skills list
-3. Invoke: `/ll:refine_issue FEAT-225`
+3. Invoke: `/ll:refine-issue FEAT-225`
 4. Verify:
    - Issue file is located correctly
    - Gap analysis identifies appropriate sections
@@ -367,7 +367,7 @@ Manually test the skill by invoking it on the FEAT-225 issue itself.
 - [ ] Tests pass: `python -m pytest scripts/tests/`
 
 **Manual Verification**:
-- [ ] `/ll:refine_issue FEAT-225` locates the issue
+- [ ] `/ll:refine-issue FEAT-225` locates the issue
 - [ ] Questions appropriate for FEAT type are generated
 - [ ] User can answer or skip questions
 - [ ] Issue file is updated with new content

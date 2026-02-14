@@ -297,7 +297,7 @@ ISSUE FORMATTED: [ISSUE-ID]
 - [Staged|Not staged]
 
 ## NEXT STEPS
-- Run `/ll:ready_issue [ID]` to validate
+- Run `/ll:ready-issue [ID]` to validate
 - Run `/ll:commit` to commit changes
 ================================================================================
 ```
@@ -343,7 +343,7 @@ AUTO-FORMAT: [ISSUE-ID]
 - [Staged | Not staged]
 
 ## NEXT STEPS
-- Run `/ll:ready_issue [ID]` to validate
+- Run `/ll:ready-issue [ID]` to validate
 - Run `/ll:commit` to commit changes
 ================================================================================
 ```
@@ -390,7 +390,7 @@ AUTO-FORMAT BATCH REPORT: --all mode
 
 ## NEXT STEPS
 - Review changes in each file
-- Run `/ll:ready_issue --all` to validate all issues
+- Run `/ll:ready-issue --all` to validate all issues
 - Run `/ll:commit` to commit changes
 ================================================================================
 ```

@@ -176,7 +176,7 @@ Use this decision guide when a detected pattern could map to multiple paradigms:
 ## Integration
 
 - **`/ll:loop-suggester`**: The command that invokes this skill. Handles message loading, pattern detection, confidence scoring, and output generation. Defers to this skill for YAML template details.
-- **`/ll:create_loop`**: Interactive loop creation wizard. Use when the user already knows what loop they want. Loop-suggester discovers opportunities; create_loop builds them.
+- **`/ll:create-loop`**: Interactive loop creation wizard. Use when the user already knows what loop they want. Loop-suggester discovers opportunities; create_loop builds them.
 - **`/ll:analyze-workflows`**: Broader workflow analysis pipeline. Loop-suggester focuses specifically on FSM loop opportunities from that analysis.
 
 ## Examples

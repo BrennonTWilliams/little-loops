@@ -7,24 +7,24 @@ discovered_by: capture_issue
 
 ## Summary
 
-Add a `--auto` flag to `/ll:refine_issue` that enables non-interactive, intelligent refinement with automatic template v2.0 alignment. This moves template correction earlier in the workflow (Refinement phase) instead of at execution time.
+Add a `--auto` flag to `/ll:refine-issue` that enables non-interactive, intelligent refinement with automatic template v2.0 alignment. This moves template correction earlier in the workflow (Refinement phase) instead of at execution time.
 
 ## Context
 
-Identified from conversation discussing workflow phases. Currently, `/ll:ready_issue` validates and auto-corrects template issues at execution time (immediately before implementation). Template v2.0 alignment should happen earlier in the Refinement phase, and automated workflows (ll-auto, ll-parallel, ll-sprint) need non-interactive refinement support.
+Identified from conversation discussing workflow phases. Currently, `/ll:ready-issue` validates and auto-corrects template issues at execution time (immediately before implementation). Template v2.0 alignment should happen earlier in the Refinement phase, and automated workflows (ll-auto, ll-parallel, ll-sprint) need non-interactive refinement support.
 
 **Direct mode**: User description: "Add auto mode to refine_issue for template v2.0 alignment"
 
 ## Current Behavior
 
-- `/ll:refine_issue` is **interactive only** — uses AskUserQuestion for Q&A
-- Template v2.0 alignment happens in `/ll:ready_issue` at execution time
+- `/ll:refine-issue` is **interactive only** — uses AskUserQuestion for Q&A
+- Template v2.0 alignment happens in `/ll:ready-issue` at execution time
 - Automated workflows cannot use refine_issue (hangs waiting for user input)
 - Old v1.0 section names persist until ready_issue auto-corrects them
 
 ## Expected Behavior
 
-With `--auto` flag, `/ll:refine_issue` should:
+With `--auto` flag, `/ll:refine-issue` should:
 
 1. **Fix old section names** (v1.0 → v2.0):
    - `Reproduction Steps` → `Steps to Reproduce`
@@ -50,7 +50,7 @@ With `--auto` flag, `/ll:refine_issue` should:
 
 ## Proposed Solution
 
-Add `--auto` flag to `/ll:refine_issue` command:
+Add `--auto` flag to `/ll:refine-issue` command:
 
 ### Phase 1: Template v2.0 Alignment
 
@@ -101,20 +101,20 @@ For missing v2.0 sections, infer content from existing issue content:
 
 ```bash
 # Auto-refine single issue
-/ll:refine_issue BUG-071 --auto
+/ll:refine-issue BUG-071 --auto
 
 # Auto-refine all active issues
-/ll:refine_issue --all --auto
+/ll:refine-issue --all --auto
 
 # Preview changes before applying
-/ll:refine_issue BUG-071 --auto --dry-run
+/ll:refine-issue BUG-071 --auto --dry-run
 
 # Auto-refine with specific focus
-/ll:refine_issue BUG-071 --auto --template-align-only
+/ll:refine-issue BUG-071 --auto --template-align-only
 
 # Automation: --dangerously-skip-permissions implies --auto
-/ll:refine_issue BUG-071 --dangerously-skip-permissions
-# Equivalent to: /ll:refine_issue BUG-071 --auto
+/ll:refine-issue BUG-071 --dangerously-skip-permissions
+# Equivalent to: /ll:refine-issue BUG-071 --auto
 ```
 
 ## Integration Map
@@ -126,8 +126,8 @@ For missing v2.0 sections, infer content from existing issue content:
 - No callers depend on refine_issue behavior; this is additive
 
 ### Similar Patterns
-- `/ll:normalize_issues` — has --include-completed flag pattern to follow
-- `/ll:ready_issue` — has auto-correction logic that can be referenced
+- `/ll:normalize-issues` — has --include-completed flag pattern to follow
+- `/ll:ready-issue` — has auto-correction logic that can be referenced
 
 ### Tests
 - `scripts/tests/test_cli.py` — add tests for --auto mode behavior
@@ -167,7 +167,7 @@ For missing v2.0 sections, infer content from existing issue content:
 - Forced migration of existing issues (optional enhancement)
 - Automated code analysis for Integration Map population (future enhancement)
 - Integration with codebase-locator or codebase-analyzer agents (future enhancement)
-- Changes to `/ll:ready_issue` validation logic
+- Changes to `/ll:ready-issue` validation logic
 
 ## Impact
 
@@ -222,14 +222,14 @@ For missing v2.0 sections, infer content from existing issue content:
 ### Usage Examples
 ```bash
 # Auto-refine single issue
-/ll:refine_issue BUG-042 --auto
+/ll:refine-issue BUG-042 --auto
 
 # Auto-refine all active issues
-/ll:refine_issue --all --auto
+/ll:refine-issue --all --auto
 
 # Preview changes before applying
-/ll:refine_issue BUG-042 --auto --dry-run
+/ll:refine-issue BUG-042 --auto --dry-run
 
 # Template alignment only (rename old sections)
-/ll:refine_issue ENH-015 --auto --template-align-only
+/ll:refine-issue ENH-015 --auto --template-align-only
 ```

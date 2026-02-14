@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`.
+Documentation issue found by `/ll:audit-docs`.
 
 The README.md uses inconsistent naming for the create_loop command.
 
@@ -24,7 +24,7 @@ The README.md uses inconsistent naming for the create_loop command.
 
 Line 301 (Commands table):
 ```markdown
-| `/ll:create_loop` | Interactive FSM loop creation |
+| `/ll:create-loop` | Interactive FSM loop creation |
 ```
 
 Line 357 (CLI Tools section):
@@ -34,13 +34,13 @@ FSM-based automation loop execution (create loops with `/ll:create-loop`):
 
 ## Problem
 
-The command is referenced with a hyphen (`/ll:create-loop`) in one place and with an underscore (`/ll:create_loop`) in another. The actual command file is `commands/create_loop.md`, so the underscore version is correct.
+The command is referenced with a hyphen (`/ll:create-loop`) in one place and with an underscore (`/ll:create-loop`) in another. The actual command file is `commands/create_loop.md`, so the underscore version is correct.
 
 ## Expected Content
 
 Line 357 should use the underscore version:
 ```markdown
-FSM-based automation loop execution (create loops with `/ll:create_loop`):
+FSM-based automation loop execution (create loops with `/ll:create-loop`):
 ```
 
 ## Impact
@@ -63,9 +63,9 @@ FSM-based automation loop execution (create loops with `/ll:create_loop`):
 
 ## Verification Notes
 
-**Validated**: 2026-01-23 by `/ll:ready_issue`
+**Validated**: 2026-01-23 by `/ll:ready-issue`
 
-- Confirmed `README.md` line 301 uses underscore (`/ll:create_loop`) ✓
+- Confirmed `README.md` line 301 uses underscore (`/ll:create-loop`) ✓
 - Confirmed `README.md` line 357 uses hyphen (`/ll:create-loop`) - inconsistency verified ✓
 - Confirmed `commands/create_loop.md` exists (underscore version is correct)
 - Line numbers are accurate as of current code
@@ -79,7 +79,7 @@ FSM-based automation loop execution (create loops with `/ll:create_loop`):
 - **Status**: Completed
 
 ### Changes Made
-- `README.md`: Fixed line 357 to use `/ll:create_loop` (underscore) instead of `/ll:create-loop` (hyphen)
+- `README.md`: Fixed line 357 to use `/ll:create-loop` (underscore) instead of `/ll:create-loop` (hyphen)
 
 ### Verification Results
 - Visual inspection: PASS - Both references now use consistent underscore naming

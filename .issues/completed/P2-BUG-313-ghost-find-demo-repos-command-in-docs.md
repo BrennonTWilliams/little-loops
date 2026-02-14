@@ -10,7 +10,7 @@ doc_file: docs/COMMANDS.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The command `/ll:find_demo_repos` is fully documented in `docs/COMMANDS.md` (lines 169-176) with description, arguments, and defaults, but no corresponding `commands/find_demo_repos.md` file exists. Users cannot run this command.
+Documentation issue found by `/ll:audit-docs`. The command `/ll:find_demo_repos` is fully documented in `docs/COMMANDS.md` (lines 169-176) with description, arguments, and defaults, but no corresponding `commands/find_demo_repos.md` file exists. Users cannot run this command.
 
 This also causes a command count mismatch: COMMANDS.md documents 35 commands but only 34 command files exist.
 

@@ -49,7 +49,7 @@ if not moved_to_completed:
 
 ## Scope Boundaries
 
-- Only applies to `ll-auto` verify phase, not interactive `/ll:manage_issue`
+- Only applies to `ll-auto` verify phase, not interactive `/ll:manage-issue`
 - Should not attempt to re-run failed implementations
 - Should not modify issue content, only move files if implementation markers found
 
@@ -93,7 +93,7 @@ if not moved_to_completed:
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Labels
 
@@ -124,7 +124,7 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-12 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-12 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |

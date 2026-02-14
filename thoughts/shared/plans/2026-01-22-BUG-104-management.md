@@ -18,7 +18,7 @@ The command file is named `ll_create_sprint.md`, making the actual invocation `/
 
 ### Files Requiring Updates
 1. `.claude/commands/ll_create_sprint.md` → rename to `create_sprint.md`
-2. Update examples in the renamed file from `/ll:create-sprint` to `/ll:create_sprint`
+2. Update examples in the renamed file from `/ll:create-sprint` to `/ll:create-sprint`
 3. Update references in related issue files:
    - `.issues/bugs/P2-BUG-105-ll-create-sprint-references-undefined-priority-argument.md`
    - `.issues/enhancements/P3-ENH-106-ll-create-sprint-uses-unsupported-template-syntax.md`
@@ -28,7 +28,7 @@ The command file is named `ll_create_sprint.md`, making the actual invocation `/
 ## Desired End State
 
 - Command file renamed to `create_sprint.md`
-- All examples use `/ll:create_sprint` (consistent with filename)
+- All examples use `/ll:create-sprint` (consistent with filename)
 - Related issue files updated to reference the new command name
 - No broken references remain
 
@@ -80,7 +80,7 @@ git mv .claude/commands/ll_create_sprint.md .claude/commands/create_sprint.md
 ### Phase 2: Update Examples in Command File
 
 #### Overview
-Fix the three example lines to use `/ll:create_sprint` instead of `/ll:create-sprint`.
+Fix the three example lines to use `/ll:create-sprint` instead of `/ll:create-sprint`.
 
 #### Changes Required
 
@@ -94,16 +94,16 @@ Fix the three example lines to use `/ll:create_sprint` instead of `/ll:create-sp
 /ll:create-sprint critical-fixes --priority P0
 
 # After:
-/ll:create_sprint sprint-1 --issues "BUG-001,BUG-002,FEAT-010" --description "Q1 fixes"
-/ll:create_sprint q1-features --description "Q1 feature work"
-/ll:create_sprint critical-fixes --priority P0
+/ll:create-sprint sprint-1 --issues "BUG-001,BUG-002,FEAT-010" --description "Q1 fixes"
+/ll:create-sprint q1-features --description "Q1 feature work"
+/ll:create-sprint critical-fixes --priority P0
 ```
 
 #### Success Criteria
 
 **Automated Verification**:
 - [ ] No occurrences of `/ll:create-sprint` in command file
-- [ ] Three occurrences of `/ll:create_sprint` in examples section
+- [ ] Three occurrences of `/ll:create-sprint` in examples section
 
 ---
 
@@ -116,19 +116,19 @@ Update active issue files that reference the old command name.
 
 **File**: `.issues/bugs/P2-BUG-105-ll-create-sprint-references-undefined-priority-argument.md`
 - Update title references from `ll_create_sprint` to `create_sprint`
-- Update `/ll:ll_create_sprint` to `/ll:create_sprint`
+- Update `/ll:ll_create_sprint` to `/ll:create-sprint`
 
 **File**: `.issues/enhancements/P3-ENH-106-ll-create-sprint-uses-unsupported-template-syntax.md`
 - Update title references from `ll_create_sprint` to `create_sprint`
-- Update `/ll:ll_create_sprint` to `/ll:create_sprint`
+- Update `/ll:ll_create_sprint` to `/ll:create-sprint`
 
 **File**: `.issues/enhancements/P3-ENH-107-add-sprints-configuration-to-config-schema.md`
-- Update `/ll:ll_create_sprint` to `/ll:create_sprint`
+- Update `/ll:ll_create_sprint` to `/ll:create-sprint`
 - Update `ll_create_sprint.md` to `create_sprint.md`
 
 **File**: `.issues/enhancements/P4-ENH-108-ll-create-sprint-use-claude-tools-instead-of-bash.md`
 - Update title references from `ll_create_sprint` to `create_sprint`
-- Update `/ll:ll_create_sprint` to `/ll:create_sprint`
+- Update `/ll:ll_create_sprint` to `/ll:create-sprint`
 
 #### Success Criteria
 

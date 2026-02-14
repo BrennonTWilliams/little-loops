@@ -10,7 +10,7 @@ doc_file: .claude/CLAUDE.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`.
+Documentation issue found by `/ll:audit-docs`.
 
 The `.claude/CLAUDE.md` file lists only 3 CLI tools but there are actually 7 tools available.
 

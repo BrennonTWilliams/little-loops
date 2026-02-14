@@ -3,11 +3,11 @@ discovered_date: 2026-02-12
 discovered_by: manual
 ---
 
-# ENH-394: Add `/ll:review_sprint` skill for AI-guided sprint health checks
+# ENH-394: Add `/ll:review-sprint` skill for AI-guided sprint health checks
 
 ## Summary
 
-Add an interactive `/ll:review_sprint` skill that uses Claude's intelligence to analyze a sprint and suggest improvements — reordering waves for efficiency, swapping issues based on priority changes, recommending issues to remove or add from the backlog, and resolving dependency conflicts. This goes beyond the deterministic edits in `ll-sprint edit` (ENH-393) by providing opinionated, context-aware recommendations.
+Add an interactive `/ll:review-sprint` skill that uses Claude's intelligence to analyze a sprint and suggest improvements — reordering waves for efficiency, swapping issues based on priority changes, recommending issues to remove or add from the backlog, and resolving dependency conflicts. This goes beyond the deterministic edits in `ll-sprint edit` (ENH-393) by providing opinionated, context-aware recommendations.
 
 ## Current Behavior
 
@@ -18,7 +18,7 @@ Sprint review is limited to:
 
 ## Expected Behavior
 
-A `/ll:review_sprint` skill that:
+A `/ll:review-sprint` skill that:
 - Loads a sprint and analyzes its current health (invalid refs, completed issues, dependency warnings)
 - Suggests wave reordering based on updated dependency analysis and file contention
 - Recommends removing issues that are completed, blocked, or low-value relative to the sprint goal
@@ -29,7 +29,7 @@ A `/ll:review_sprint` skill that:
 
 ## Motivation
 
-After a sprint sits for a while, the backlog evolves — issues get completed, priorities shift, new related issues appear. A user needs AI-assisted judgment to review whether the sprint still makes sense, not just mechanical validation. This pairs with `ll-sprint edit` (ENH-393) the way `/ll:create_sprint` pairs with `ll-sprint create` — the CLI handles the mechanics, the skill handles the intelligence.
+After a sprint sits for a while, the backlog evolves — issues get completed, priorities shift, new related issues appear. A user needs AI-assisted judgment to review whether the sprint still makes sense, not just mechanical validation. This pairs with `ll-sprint edit` (ENH-393) the way `/ll:create-sprint` pairs with `ll-sprint create` — the CLI handles the mechanics, the skill handles the intelligence.
 
 ## Proposed Solution
 
@@ -102,7 +102,7 @@ Create a new skill in `skills/review_sprint.md` that:
 - Types: PASS
 
 ## Session Log
-- `/ll:manage_issue` - 2026-02-12T00:00:00Z
+- `/ll:manage-issue` - 2026-02-12T00:00:00Z
 
 ---
 

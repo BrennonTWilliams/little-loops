@@ -266,7 +266,7 @@ Implementing [issue title]. Reached end of context during [phase].
 - Tests: `[test-file]`
 
 ## Resume Command
-/ll:manage_issue [type] [action] [ISSUE-ID] --resume
+/ll:manage-issue [type] [action] [ISSUE-ID] --resume
 
 ## Critical Context
 - [Decision 1 made during implementation]
@@ -308,7 +308,7 @@ Overall: PASS / WARN (with actionable findings)
 
 ```markdown
 ## Session Log
-- `/ll:manage_issue` - [ISO timestamp] - `[path to current session JSONL]`
+- `/ll:manage-issue` - [ISO timestamp] - `[path to current session JSONL]`
 ```
 
 To find the current session JSONL path: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), then find the most recently modified `.jsonl` file (excluding files starting with `agent-`).

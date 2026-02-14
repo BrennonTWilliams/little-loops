@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:create_loop` wizard gathers paradigm-specific parameters (check/fix commands, max iterations, etc.) but never asks users HOW success should be determined for check commands. All paradigms except convergence use implicit exit code evaluation.
+The `/ll:create-loop` wizard gathers paradigm-specific parameters (check/fix commands, max iterations, etc.) but never asks users HOW success should be determined for check commands. All paradigms except convergence use implicit exit code evaluation.
 
 ### Key Discoveries
 - Wizard questions are in `commands/create_loop.md:27-344`
@@ -137,7 +137,7 @@ Also update the paradigm YAML templates to include optional evaluator field.
 - [ ] Lint passes: `ruff check commands/`
 
 **Manual Verification**:
-- [ ] Run `/ll:create_loop` and verify evaluator question appears after check command selection
+- [ ] Run `/ll:create-loop` and verify evaluator question appears after check command selection
 
 ---
 

@@ -26,7 +26,7 @@ description: |
   - For modifying configurations (this agent validates only)
   - For general codebase analysis (use codebase-analyzer instead)
 
-  Trigger: Called by /ll:audit_claude_config for Wave 2 cross-checks
+  Trigger: Called by /ll:audit-claude-config for Wave 2 cross-checks
 model: sonnet
 tools: ["Read", "Glob", "Grep", "WebFetch", "WebSearch"]
 ---

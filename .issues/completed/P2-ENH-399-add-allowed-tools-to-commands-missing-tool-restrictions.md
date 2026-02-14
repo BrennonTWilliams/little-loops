@@ -165,8 +165,8 @@ These serve as reference for the pattern:
 - Integration: PASS
 
 ## Session Log
-- /ll:format_issue --all --auto - 2026-02-13
-- /ll:manage_issue enhancement improve ENH-399 - 2026-02-13
+- /ll:format-issue --all --auto - 2026-02-13
+- /ll:manage-issue enhancement improve ENH-399 - 2026-02-13
 
 ## Verification Notes
 

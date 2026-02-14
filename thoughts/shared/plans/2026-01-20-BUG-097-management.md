@@ -1,4 +1,4 @@
-# BUG-097: COMMANDS.md missing /ll:create_loop documentation - Implementation Plan
+# BUG-097: COMMANDS.md missing /ll:create-loop documentation - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/bugs/P3-BUG-097-commands-md-missing-create-loop.md`
@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `docs/COMMANDS.md` file documents 22 commands but is missing the `/ll:create_loop` command which exists at `commands/create_loop.md`.
+The `docs/COMMANDS.md` file documents 22 commands but is missing the `/ll:create-loop` command which exists at `commands/create_loop.md`.
 
 ### Key Discoveries
 - `commands/create_loop.md` exists with full implementation (542 lines)
@@ -20,7 +20,7 @@ The `docs/COMMANDS.md` file documents 22 commands but is missing the `/ll:create
 ## Desired End State
 
 `docs/COMMANDS.md` will include:
-1. A new "Automation Loops" section with `/ll:create_loop` documentation
+1. A new "Automation Loops" section with `/ll:create-loop` documentation
 2. An entry in the Quick Reference table
 
 ### How to Verify
@@ -37,7 +37,7 @@ The `docs/COMMANDS.md` file documents 22 commands but is missing the `/ll:create
 
 Add documentation following the established patterns in COMMANDS.md:
 1. Add new H2 section "Automation Loops" between "Session Management" and "Quick Reference"
-2. Add H3 subsection for `/ll:create_loop` with description
+2. Add H3 subsection for `/ll:create-loop` with description
 3. Add entry to Quick Reference table
 
 ## Implementation Phases
@@ -45,7 +45,7 @@ Add documentation following the established patterns in COMMANDS.md:
 ### Phase 1: Add Automation Loops Section
 
 #### Overview
-Add the new section with `/ll:create_loop` documentation.
+Add the new section with `/ll:create-loop` documentation.
 
 #### Changes Required
 
@@ -55,7 +55,7 @@ Add the new section with `/ll:create_loop` documentation.
 ```markdown
 ## Automation Loops
 
-### `/ll:create_loop`
+### `/ll:create-loop`
 Create FSM loop configurations interactively.
 
 **Workflow:**

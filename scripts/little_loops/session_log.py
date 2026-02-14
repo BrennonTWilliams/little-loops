@@ -47,7 +47,7 @@ def append_session_log_entry(
 
     Args:
         issue_path: Path to the issue markdown file.
-        command: Command name (e.g., ``/ll:manage_issue``).
+        command: Command name (e.g., ``/ll:manage-issue``).
         session_jsonl: Path to session JSONL file. If None, auto-detected.
 
     Returns:

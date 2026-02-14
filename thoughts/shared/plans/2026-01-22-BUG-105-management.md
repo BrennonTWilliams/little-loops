@@ -8,11 +8,11 @@
 
 ## Current State Analysis
 
-The `/ll:create_sprint` command at `.claude/commands/create_sprint.md` contains three examples in the Examples section (lines 147-156):
+The `/ll:create-sprint` command at `.claude/commands/create_sprint.md` contains three examples in the Examples section (lines 147-156):
 
-1. Line 149: `/ll:create_sprint sprint-1 --issues "BUG-001,BUG-002,FEAT-010" --description "Q1 fixes"` - **Valid**
-2. Line 152: `/ll:create_sprint q1-features --description "Q1 feature work"` - **Valid**
-3. Line 155: `/ll:create_sprint critical-fixes --priority P0` - **Invalid - argument not defined**
+1. Line 149: `/ll:create-sprint sprint-1 --issues "BUG-001,BUG-002,FEAT-010" --description "Q1 fixes"` - **Valid**
+2. Line 152: `/ll:create-sprint q1-features --description "Q1 feature work"` - **Valid**
+3. Line 155: `/ll:create-sprint critical-fixes --priority P0` - **Invalid - argument not defined**
 
 ### Key Discoveries
 - The `--issues` and `--description` arguments are defined in frontmatter (lines 7-12)
@@ -60,13 +60,13 @@ Current content (lines 145-156):
 
 ```bash
 # Create sprint with explicit issue list
-/ll:create_sprint sprint-1 --issues "BUG-001,BUG-002,FEAT-010" --description "Q1 fixes"
+/ll:create-sprint sprint-1 --issues "BUG-001,BUG-002,FEAT-010" --description "Q1 fixes"
 
 # Create sprint interactively (select issues)
-/ll:create_sprint q1-features --description "Q1 feature work"
+/ll:create-sprint q1-features --description "Q1 feature work"
 
 # Create sprint with all P0 bugs
-/ll:create_sprint critical-fixes --priority P0
+/ll:create-sprint critical-fixes --priority P0
 ```
 ```
 
@@ -76,10 +76,10 @@ After edit (lines 145-153):
 
 ```bash
 # Create sprint with explicit issue list
-/ll:create_sprint sprint-1 --issues "BUG-001,BUG-002,FEAT-010" --description "Q1 fixes"
+/ll:create-sprint sprint-1 --issues "BUG-001,BUG-002,FEAT-010" --description "Q1 fixes"
 
 # Create sprint interactively (select issues)
-/ll:create_sprint q1-features --description "Q1 feature work"
+/ll:create-sprint q1-features --description "Q1 feature work"
 ```
 ```
 

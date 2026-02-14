@@ -14,14 +14,14 @@ Closed - Won't Do
 
 The issue correctly identified that the current behavior is working as intended:
 - Schema allows `paradigm: None` for flexibility (hand-authored FSM files)
-- `/ll:create_loop` always sets paradigm (correct for generated files)
+- `/ll:create-loop` always sets paradigm (correct for generated files)
 - Executor handles missing paradigm gracefully (defaults to "fsm" in compile_paradigm)
 
 No action required.
 
 ## Description
 
-The `paradigm` field in `FSMLoop` schema is optional (`str | None = None`), but the `/ll:create_loop` command assumes every loop will have a paradigm.
+The `paradigm` field in `FSMLoop` schema is optional (`str | None = None`), but the `/ll:create-loop` command assumes every loop will have a paradigm.
 
 **Schema definition (schema.py:354):**
 ```python
@@ -42,7 +42,7 @@ paradigm: str | None = None
 - `commands/create_loop.md` - All examples include `paradigm`
 
 **Impact:**
-Extremely minor. The `/ll:create_loop` command always sets the paradigm field (correctly). Hand-authored FSM files can omit it. The executor doesn't require it.
+Extremely minor. The `/ll:create-loop` command always sets the paradigm field (correctly). Hand-authored FSM files can omit it. The executor doesn't require it.
 
 ## Files Affected
 - `scripts/little_loops/fsm/schema.py`
@@ -50,7 +50,7 @@ Extremely minor. The `/ll:create_loop` command always sets the paradigm field (c
 
 ## Recommendation
 No action needed. This is working as intended:
-- `/ll:create_loop` always sets paradigm (correct for its use case)
+- `/ll:create-loop` always sets paradigm (correct for its use case)
 - Schema allows None for hand-authored files (correct flexibility)
 - Executor works with or without it
 

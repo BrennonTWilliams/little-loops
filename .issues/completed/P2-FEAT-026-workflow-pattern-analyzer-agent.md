@@ -148,7 +148,7 @@ tool_references:
   - tool: "/ll:commit"
     count: 15
     category: git_operation
-  - tool: "/ll:run_tests"
+  - tool: "/ll:run-tests"
     count: 8
     category: testing
   - tool: "grep"
@@ -167,7 +167,7 @@ entity_inventory:
   commands:
     - entity: "/ll:commit"
       mentions: 15
-    - entity: "/ll:run_tests"
+    - entity: "/ll:run-tests"
       mentions: 8
   concepts:
     - entity: "authentication"

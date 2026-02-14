@@ -284,4 +284,4 @@ Changes take effect immediately. Commands that read from `.claude/ll-config.json
 
 Related commands:
 - `/ll:init` - Full interactive initialization wizard
-- `/ll:toggle_autoprompt` - Quick toggle for prompt optimization settings
+- `/ll:toggle-autoprompt` - Quick toggle for prompt optimization settings

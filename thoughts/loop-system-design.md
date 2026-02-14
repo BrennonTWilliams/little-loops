@@ -25,8 +25,8 @@ Or more generalized:
 ```yaml
 name: "fix-types"
 steps:
-  - /ll:check_code types
-  - /ll:manage_issue bug fix   # Find highest priority type issue
+  - /ll:check-code types
+  - /ll:manage-issue bug fix   # Find highest priority type issue
 condition:
   type: "exit_code"
   target: 0
@@ -54,8 +54,8 @@ That flips it from imperative to **declarative/goal-oriented**:
 ```yaml
 goal: "No type errors in src/"
 tools:
-  - /ll:check_code types
-  - /ll:manage_issue bug fix
+  - /ll:check-code types
+  - /ll:manage-issue bug fix
 ```
 
 The system figures out the loop. You declare the end state.
@@ -72,7 +72,7 @@ A loop is really just: **apply f(x) until f(x) = x** (fixed point)
 converge:
   check: "ruff check src/ --output-format=json | jq '.count'"
   toward: 0
-  using: "/ll:check_code fix"
+  using: "/ll:check-code fix"
 ```
 
 No explicit steps. Just: "keep applying this until that metric stops changing or hits target."
@@ -85,7 +85,7 @@ No explicit steps. Just: "keep applying this until that metric stops changing or
 
 ```yaml
 watch: "src/**/*.py"
-on_change: "/ll:check_code lint"
+on_change: "/ll:check-code lint"
 until: "clean"
 ```
 
@@ -130,11 +130,11 @@ name: "lint-fix-cycle"
 initial: "check"
 states:
   check:
-    action: "/ll:check_code lint"
+    action: "/ll:check-code lint"
     on_fail: "fix"
     on_pass: "done"
   fix:
-    action: "/ll:check_code fix"
+    action: "/ll:check-code fix"
     next: "check"
   done:
     terminal: true

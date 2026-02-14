@@ -222,12 +222,12 @@ sequenceDiagram
         Manager->>Manager: Find highest priority issue
 
         Note over Manager,Claude: Phase 1: Validation
-        Manager->>Claude: /ll:ready_issue ISSUE-ID
+        Manager->>Claude: /ll:ready-issue ISSUE-ID
         Claude-->>Manager: READY / NOT_READY / CLOSE
 
         alt READY
             Note over Manager,Claude: Phase 2: Implementation
-            Manager->>Claude: /ll:manage_issue type action id
+            Manager->>Claude: /ll:manage-issue type action id
             Claude->>Git: Make changes
             Claude->>Git: Create commit
             Claude-->>Manager: Success
@@ -486,16 +486,16 @@ flowchart LR
 
 ```mermaid
 stateDiagram-v2
-    [*] --> Discovered: /ll:scan_codebase
+    [*] --> Discovered: /ll:scan-codebase
 
-    Discovered --> Prioritized: /ll:prioritize_issues
-    Prioritized --> Validating: /ll:ready_issue
+    Discovered --> Prioritized: /ll:prioritize-issues
+    Prioritized --> Validating: /ll:ready-issue
 
     Validating --> Ready: READY verdict
     Validating --> NotReady: NOT_READY verdict
     Validating --> ShouldClose: CLOSE verdict
 
-    Ready --> InProgress: /ll:manage_issue
+    Ready --> InProgress: /ll:manage-issue
     InProgress --> Verifying: Implementation done
     Verifying --> Completed: Tests pass
     Verifying --> Failed: Tests fail

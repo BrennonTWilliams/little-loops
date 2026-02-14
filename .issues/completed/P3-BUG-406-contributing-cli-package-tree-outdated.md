@@ -68,7 +68,7 @@ The Project Structure tree in CONTRIBUTING.md is outdated — it still reference
 `bug`, `documentation`, `auto-generated`
 
 ## Session Log
-- `/ll:manage_issue` - 2026-02-13T06:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f19a9876-85ae-4986-a578-ae352431c67e.jsonl`
+- `/ll:manage-issue` - 2026-02-13T06:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f19a9876-85ae-4986-a578-ae352431c67e.jsonl`
 
 ---
 

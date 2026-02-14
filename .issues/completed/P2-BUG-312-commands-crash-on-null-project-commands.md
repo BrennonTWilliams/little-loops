@@ -22,7 +22,7 @@ ENH-310 added a null guard for `build_cmd` in `check_code` ("Run build verificat
 ## Steps to Reproduce
 
 1. Configure a project using a template with null commands (e.g., `generic.json` sets `test_cmd`, `lint_cmd`, `type_cmd`, `format_cmd` all to `null`)
-2. Run `/ll:check_code` (or `/ll:manage_issue bug fix` which hits Phase 4 verification)
+2. Run `/ll:check-code` (or `/ll:manage-issue bug fix` which hits Phase 4 verification)
 3. Observe that the null command is interpolated into bash, producing an invalid command execution
 
 ## Actual Behavior
@@ -45,7 +45,7 @@ When a nullable command (e.g., `type_cmd: null`) is interpolated into a bash blo
 {{config.project.type_cmd}} {{config.project.src_dir}}
 ```
 
-A Go project running `/ll:check_code` will fail on the types block. A Java project will fail on lint, format, and types. A general-fallback project will fail on nearly everything.
+A Go project running `/ll:check-code` will fail on the types block. A Java project will fail on lint, format, and types. A general-fallback project will fail on nearly everything.
 
 ## Expected Behavior
 

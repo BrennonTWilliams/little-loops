@@ -33,7 +33,7 @@ Enhanced `/ll:analyze-workflows` should:
 - Offer interactive proposal refinement (let user select which to implement)
 - Auto-implement small/high-priority proposals with user permission
 - Track trends and compare with previous analysis runs
-- Offer to create issues from proposals via existing `/ll:capture_issue`
+- Offer to create issues from proposals via existing `/ll:capture-issue`
 
 ## Proposed Solution
 
@@ -68,7 +68,7 @@ Implement 6 enhancements grouped into three categories:
      - "Which proposals interest you?" (multi-select)
      - "What priority threshold to implement?" (HIGH only? MEDIUM+?)
      - "Auto-implement SMALL effort proposals?" (yes/no)
-   - Offer to create issues from selected proposals via `/ll:capture_issue`
+   - Offer to create issues from selected proposals via `/ll:capture-issue`
 
 4. **Auto-Implementation Mode** (QUICK WIN)
    - For proposals with `effort: SMALL` and `priority: HIGH`:
@@ -99,7 +99,7 @@ Implement 6 enhancements grouped into three categories:
      ```markdown
      ## Trend Analysis
      - "create issue" pattern: 8 → 3 occurrences (-62%)
-       ✓ Likely reduced by /ll:capture_issue implementation
+       ✓ Likely reduced by /ll:capture-issue implementation
      - "run tests" pattern: 12 → 15 occurrences (+25%)
        ⚠ Consider test automation improvements
      ```
@@ -210,7 +210,7 @@ All enhancements should be:
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-10 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-10 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |
@@ -237,7 +237,7 @@ This allows incremental delivery and clearer progress tracking.
 
 ## Tradeoff Review Note (2026-02-11)
 
-**Reviewed**: 2026-02-11 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-11 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |
@@ -259,7 +259,7 @@ Update first - 6 enhancements in one issue is too broad. Decompose into smaller 
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-12 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-12 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |

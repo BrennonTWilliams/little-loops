@@ -11,7 +11,7 @@ OPEN
 
 ## Description
 
-There is a minor terminology inconsistency between the `/ll:create_loop` command documentation and the `ll-loop` CLI help text.
+There is a minor terminology inconsistency between the `/ll:create-loop` command documentation and the `ll-loop` CLI help text.
 
 **Command documentation (lines 1101-1107):**
 ```

@@ -18,7 +18,7 @@ arguments:
 
 # Refine Issue
 
-Enrich issue files with codebase-driven research findings. Unlike `/ll:format_issue` (which aligns structure) or `/ll:ready_issue` (which validates accuracy), this command **researches the codebase** to identify and fill knowledge gaps needed for successful implementation.
+Enrich issue files with codebase-driven research findings. Unlike `/ll:format-issue` (which aligns structure) or `/ll:ready-issue` (which validates accuracy), this command **researches the codebase** to identify and fill knowledge gaps needed for successful implementation.
 
 The core workflow: read the issue, research the codebase, identify what an implementer needs to know that isn't in the issue, then fill those gaps with actual findings (file paths, function signatures, behavioral analysis).
 
@@ -59,7 +59,7 @@ if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
 
 if [[ -z "$ISSUE_ID" ]]; then
     echo "Error: issue_id is required"
-    echo "Usage: /ll:refine_issue [ISSUE_ID] [--auto] [--dry-run]"
+    echo "Usage: /ll:refine-issue [ISSUE_ID] [--auto] [--dry-run]"
     exit 1
 fi
 ```
@@ -294,7 +294,7 @@ When a section already has meaningful content:
 ```markdown
 ### Codebase Research Findings
 
-_Added by `/ll:refine_issue` — based on codebase analysis:_
+_Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - [Finding 1 with file:line reference]
 - [Finding 2 with file:line reference]
@@ -387,7 +387,7 @@ After updating the issue, append a session log entry:
 
 ```markdown
 ## Session Log
-- `/ll:refine_issue` - [ISO timestamp] - `[path to current session JSONL]`
+- `/ll:refine-issue` - [ISO timestamp] - `[path to current session JSONL]`
 ```
 
 To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
@@ -438,8 +438,8 @@ ISSUE REFINED: [ISSUE-ID]
 - [Modified | Not modified (--dry-run)]
 
 ## NEXT STEPS
-- Run `/ll:ready_issue [ID]` to validate the enriched issue
-- Run `/ll:manage_issue` to implement
+- Run `/ll:ready-issue [ID]` to validate the enriched issue
+- Run `/ll:manage-issue` to implement
 
 ================================================================================
 ```
@@ -450,13 +450,13 @@ ISSUE REFINED: [ISSUE-ID]
 
 ```bash
 # Interactive refinement with codebase research
-/ll:refine_issue FEAT-225
+/ll:refine-issue FEAT-225
 
 # Auto-refine with codebase research (non-interactive)
-/ll:refine_issue BUG-042 --auto
+/ll:refine-issue BUG-042 --auto
 
 # Dry-run to preview what research would produce
-/ll:refine_issue ENH-015 --auto --dry-run
+/ll:refine-issue ENH-015 --auto --dry-run
 ```
 
 ---
@@ -466,22 +466,22 @@ ISSUE REFINED: [ISSUE-ID]
 ### Pipeline Position
 
 ```
-/ll:capture_issue → /ll:format_issue → /ll:refine_issue → /ll:verify_issues → /ll:ready_issue → /ll:manage_issue
+/ll:capture-issue → /ll:format-issue → /ll:refine-issue → /ll:verify-issues → /ll:ready-issue → /ll:manage-issue
 ```
 
-- **Before**: `/ll:format_issue` — ensures structural template compliance
-- **After**: `/ll:verify_issues` or `/ll:ready_issue` — validates accuracy and completeness
+- **Before**: `/ll:format-issue` — ensures structural template compliance
+- **After**: `/ll:verify-issues` or `/ll:ready-issue` — validates accuracy and completeness
 
 ### Typical Workflows
 
 **Interactive workflow** (developer preparing an issue):
 ```
-/ll:capture_issue "description" → /ll:format_issue [ID] → /ll:refine_issue [ID] → /ll:ready_issue [ID]
+/ll:capture-issue "description" → /ll:format-issue [ID] → /ll:refine-issue [ID] → /ll:ready-issue [ID]
 ```
 
 **Automated workflow** (pipeline):
 ```
-/ll:capture_issue → /ll:format_issue [ID] --auto → /ll:refine_issue [ID] --auto → /ll:ready_issue [ID]
+/ll:capture-issue → /ll:format-issue [ID] --auto → /ll:refine-issue [ID] --auto → /ll:ready-issue [ID]
 ```
 
 ### Key Differences from Related Commands

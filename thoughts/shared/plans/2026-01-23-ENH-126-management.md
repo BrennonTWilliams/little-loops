@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:create_loop` wizard in `commands/create_loop.md` currently guides users through:
+The `/ll:create-loop` wizard in `commands/create_loop.md` currently guides users through:
 1. Paradigm selection (goal, invariants, convergence, imperative)
 2. Paradigm-specific parameter gathering
 3. Loop naming with auto-suggestions
@@ -30,14 +30,14 @@ The `/ll:create_loop` wizard in `commands/create_loop.md` currently guides users
 
 ## Desired End State
 
-The `/ll:create_loop` wizard will:
+The `/ll:create-loop` wizard will:
 1. First ask "Template or custom?" as step 0
 2. If template: present categorized template list and apply selected template
 3. After template selection: allow customization of source directory and max iterations
 4. Continue with existing preview/save/validate flow
 
 ### How to Verify
-- Run `/ll:create_loop` and select template mode
+- Run `/ll:create-loop` and select template mode
 - Verify templates are presented with clear descriptions
 - Verify template selection populates correct YAML
 - Verify customization step works
@@ -97,7 +97,7 @@ questions:
 - [ ] File syntax valid (no markdown parsing errors)
 
 **Manual Verification**:
-- [ ] Running `/ll:create_loop` shows the new creation mode question first
+- [ ] Running `/ll:create-loop` shows the new creation mode question first
 - [ ] Selecting "Build from paradigm" proceeds to existing paradigm selection flow
 
 ---
@@ -146,7 +146,7 @@ constraints:
     fix: "ruff check --fix {{src_dir}}"
   - name: "types"
     check: "mypy {{src_dir}}"
-    fix: "echo 'Fix type errors manually or use /ll:manage_issue bug fix'"
+    fix: "echo 'Fix type errors manually or use /ll:manage-issue bug fix'"
   - name: "format"
     check: "ruff format --check {{src_dir}}"
     fix: "ruff format {{src_dir}}"
@@ -178,7 +178,7 @@ name: "tests-until-passing"
 goal: "All tests pass"
 tools:
   - "{{test_cmd}}"
-  - "/ll:manage_issue bug fix"
+  - "/ll:manage-issue bug fix"
 max_iterations: {{max_iterations}}
 ```
 
@@ -190,10 +190,10 @@ name: "full-quality-gate"
 constraints:
   - name: "tests"
     check: "{{test_cmd}}"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
   - name: "types"
     check: "{{type_cmd}}"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
   - name: "lint"
     check: "{{lint_cmd}}"
     fix: "{{lint_fix_cmd}}"
@@ -341,7 +341,7 @@ Update the Quick Reference section to include template selection guidance.
 ## Testing Strategy
 
 ### Manual Tests
-1. Run `/ll:create_loop` and select "Start from template"
+1. Run `/ll:create-loop` and select "Start from template"
 2. Select each template in turn and verify YAML generation
 3. Verify customization (source dir, max iterations) applies correctly
 4. Verify "Build from paradigm" still works as before

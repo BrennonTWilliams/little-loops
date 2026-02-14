@@ -10,7 +10,7 @@ doc_file: CONTRIBUTING.md
 
 ## Summary
 
-Documentation enhancement found by `/ll:audit_docs`. The project structure in CONTRIBUTING.md doesn't include the `fsm/` subpackage under `little_loops/`.
+Documentation enhancement found by `/ll:audit-docs`. The project structure in CONTRIBUTING.md doesn't include the `fsm/` subpackage under `little_loops/`.
 
 ## Location
 

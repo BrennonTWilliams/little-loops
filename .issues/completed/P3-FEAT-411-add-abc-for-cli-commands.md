@@ -10,7 +10,7 @@ focus_area: patterns
 
 ## Summary
 
-Architectural improvement found by `/ll:audit_architecture`. Add abstract base classes to enable plugin architecture and improve extensibility for CLI commands.
+Architectural improvement found by `/ll:audit-architecture`. Add abstract base classes to enable plugin architecture and improve extensibility for CLI commands.
 
 ## Location
 
@@ -241,7 +241,7 @@ def list_commands() -> list[str]:
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-10 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-10 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |

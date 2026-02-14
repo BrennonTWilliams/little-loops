@@ -1083,8 +1083,8 @@ paradigm: goal
 name: test-slash
 goal: slash command works
 tools:
-  - "/ll:check_code"
-  - "/ll:check_code fix"
+  - "/ll:check-code"
+  - "/ll:check-code fix"
 max_iterations: 5
 """
         (loops_dir / "test-slash.yaml").write_text(loop_yaml)

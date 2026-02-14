@@ -78,7 +78,7 @@ This bug would:
 ---
 
 ## Session Log
-- `/ll:format_issue --all --auto` - 2026-02-13
+- `/ll:format-issue --all --auto` - 2026-02-13
 
 ## Status
 

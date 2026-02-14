@@ -10,7 +10,7 @@ doc_file: docs/API.md
 
 ## Summary
 
-Documentation enhancement identified by `/ll:audit_docs`.
+Documentation enhancement identified by `/ll:audit-docs`.
 
 The `little_loops.workflow_sequence_analyzer` module exists in the codebase but is not documented in the API reference.
 

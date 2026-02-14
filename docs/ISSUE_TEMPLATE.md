@@ -336,7 +336,7 @@ Update docs → Complete change → No breakage
 
 High-level outline that guides the implementation agent. Keep it to 3-8 major phases.
 
-**Important**: This is NOT a replacement for the detailed implementation plan that `/ll:manage_issue` creates. Think of it as an outline the agent will expand.
+**Important**: This is NOT a replacement for the detailed implementation plan that `/ll:manage-issue` creates. Think of it as an outline the agent will expand.
 
 **Good Example (High-Level)**:
 ```markdown
@@ -523,14 +523,14 @@ As a user, I want the sprint to retry failures so that I don't have to manually 
 
 ### For New Issues
 
-Use `/ll:capture_issue` or `/ll:format_issue` - they automatically use the v2.0 template.
+Use `/ll:capture-issue` or `/ll:format-issue` - they automatically use the v2.0 template.
 
 ### For Existing Issues
 
 Existing issues continue to work without changes. Deprecated sections are still parsed.
 
 To upgrade an existing issue to v2.0:
-1. Run `/ll:format_issue <issue-file>` - it will offer to add new sections
+1. Run `/ll:format-issue <issue-file>` - it will offer to add new sections
 2. Manually migrate:
    - Add "Motivation" if you had "Current Pain Point" (ENH)
    - Add "Implementation Steps" if you want to guide the agent
@@ -837,8 +837,8 @@ Backward compatible with v1.0. Includes deprecated sections.
 4. **Link docs**: Help reviewers find context quickly
 
 ### For Issue Quality
-1. **PASS /ll:ready_issue**: Auto-validation catches common issues
-2. **Use /ll:format_issue**: Interactive Q&A improves quality
+1. **PASS /ll:ready-issue**: Auto-validation catches common issues
+2. **Use /ll:format-issue**: Interactive Q&A improves quality
 3. **Include Motivation**: Helps prioritization and buy-in
 4. **Write Implementation Steps**: Guides the agent, speeds implementation
 
@@ -850,7 +850,7 @@ Backward compatible with v1.0. Includes deprecated sections.
 A: Yes. Deprecated sections are still parsed for backward compatibility.
 
 **Q: Should I migrate all existing issues?**
-A: No. Only migrate when actively working on them. `/ll:format_issue` offers optional migration.
+A: No. Only migrate when actively working on them. `/ll:format-issue` offers optional migration.
 
 **Q: What happened to "User Story"?**
 A: Renamed to "Use Case" to encourage concrete scenarios over generic templates.

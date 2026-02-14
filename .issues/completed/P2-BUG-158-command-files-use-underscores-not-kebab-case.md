@@ -8,11 +8,11 @@
 
 1. **Not a hard requirement**: Claude Code official documentation shows command files can use either underscores or kebab-case. The filename simply becomes the command name with no validation enforcing kebab-case.
 
-2. **Breaking change**: Renaming `manage_issue.md` to `manage-issue.md` would change the slash command from `/ll:manage_issue` to `/ll:manage-issue`, breaking 100+ references across documentation, scripts, CHANGELOG, issue files, and user workflows.
+2. **Breaking change**: Renaming `manage_issue.md` to `manage-issue.md` would change the slash command from `/ll:manage-issue` to `/ll:manage-issue`, breaking 100+ references across documentation, scripts, CHANGELOG, issue files, and user workflows.
 
 3. **Style vs Bug**: This is a style preference, not a functional bug. The commands work correctly with underscore naming.
 
-4. **Established convention**: The `/ll:manage_issue` format is documented and established throughout the project. Changing it would cause user confusion and break muscle memory.
+4. **Established convention**: The `/ll:manage-issue` format is documented and established throughout the project. Changing it would cause user confusion and break muscle memory.
 
 ---
 
@@ -97,7 +97,7 @@ git mv verify_issues.md verify-issues.md
 
 - Single-word commands (`commit.md`, `help.md`, `init.md`, `resume.md`, `handoff.md`) are already compliant
 - This change may affect any external documentation or scripts referencing these commands by filename
-- The slash command names (e.g., `/ll:manage_issue`) are separate from filenames and may need consideration
+- The slash command names (e.g., `/ll:manage-issue`) are separate from filenames and may need consideration
 
 ## References
 

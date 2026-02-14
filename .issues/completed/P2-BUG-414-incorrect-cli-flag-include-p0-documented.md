@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The README documents a CLI flag `--include-p0` for ll-parallel that doesn't exist in the actual implementation.
+Documentation issue found by `/ll:audit-docs`. The README documents a CLI flag `--include-p0` for ll-parallel that doesn't exist in the actual implementation.
 
 ## Steps to Reproduce
 

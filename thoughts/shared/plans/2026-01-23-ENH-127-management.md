@@ -75,7 +75,7 @@ Would have executed 4 commands
 
 ## Problem Analysis
 
-Users creating loops via `/ll:create_loop` can't verify FSM behavior before running. The existing `--dry-run` shows structure but not execution flow. Users need to trace through the state machine interactively to understand transitions and catch infinite loops.
+Users creating loops via `/ll:create-loop` can't verify FSM behavior before running. The existing `--dry-run` shows structure but not execution flow. Users need to trace through the state machine interactively to understand transitions and catch infinite loops.
 
 ## Solution Approach
 

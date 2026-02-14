@@ -1,4 +1,4 @@
-# FEAT-268: Add /ll:manage_release Command - Implementation Plan
+# FEAT-268: Add /ll:manage-release Command - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/features/P3-FEAT-268-manage-release-command.md`
@@ -28,7 +28,7 @@
 
 ## Desired End State
 
-A new `/ll:manage_release` command file at `commands/manage_release.md` that:
+A new `/ll:manage-release` command file at `commands/manage_release.md` that:
 1. Creates annotated git tags following semver
 2. Generates categorized changelogs from commits + completed issues since last tag
 3. Creates GitHub releases via `gh` CLI
@@ -39,8 +39,8 @@ A new `/ll:manage_release` command file at `commands/manage_release.md` that:
 
 ### How to Verify
 - Command file exists at `commands/manage_release.md` with valid frontmatter
-- Running `/ll:manage_release` triggers interactive mode
-- Running `/ll:manage_release tag v1.4.0 --dry-run` shows tag preview
+- Running `/ll:manage-release` triggers interactive mode
+- Running `/ll:manage-release tag v1.4.0 --dry-run` shows tag preview
 - Wave pattern spawns 3 agents in a single message
 - Completed issues appear categorized in changelog output
 
@@ -134,8 +134,8 @@ Add entry for the new command in the `[Unreleased]` section.
 ## Testing Strategy
 
 ### Manual Testing
-- Run `/ll:manage_release` without args to verify interactive mode
-- Run `/ll:manage_release tag v1.4.0 --dry-run` to verify dry-run
+- Run `/ll:manage-release` without args to verify interactive mode
+- Run `/ll:manage-release tag v1.4.0 --dry-run` to verify dry-run
 - Verify wave pattern spawns 3 agents concurrently
 
 ## References

@@ -380,20 +380,20 @@ $ARGUMENTS
 
 ```bash
 # Fix highest priority bug
-/ll:manage_issue bug fix
+/ll:manage-issue bug fix
 
 # Implement specific feature
-/ll:manage_issue feature implement FEAT-042
+/ll:manage-issue feature implement FEAT-042
 
 # Create plan only, don't implement
-/ll:manage_issue feature implement FEAT-042 --plan-only
+/ll:manage-issue feature implement FEAT-042 --plan-only
 
 # Resume interrupted work from checkpoint
-/ll:manage_issue bug fix BUG-123 --resume
+/ll:manage-issue bug fix BUG-123 --resume
 
 # Enable phase gates for careful manual verification
-/ll:manage_issue feature implement FEAT-042 --gates
+/ll:manage-issue feature implement FEAT-042 --gates
 
 # Just verify an issue (no implementation)
-/ll:manage_issue bug verify BUG-123
+/ll:manage-issue bug verify BUG-123
 ```

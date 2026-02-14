@@ -43,7 +43,7 @@ paradigm: goal
 goal: "No type errors"
 tools:
   - "mypy src/"
-  - "/ll:manage_issue bug fix"
+  - "/ll:manage-issue bug fix"
 """
         input_file = tmp_path / "goal.paradigm.yaml"
         input_file.write_text(paradigm_yaml)

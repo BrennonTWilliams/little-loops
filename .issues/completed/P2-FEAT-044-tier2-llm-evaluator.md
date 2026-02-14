@@ -20,7 +20,7 @@ P2 - Required for slash command evaluation
 
 ## Description
 
-Slash commands (like `/ll:manage_issue`) produce natural language output that cannot be evaluated deterministically. The `llm_structured` evaluator uses Claude's tool use with a defined schema to extract structured verdicts from this output.
+Slash commands (like `/ll:manage-issue`) produce natural language output that cannot be evaluated deterministically. The `llm_structured` evaluator uses Claude's tool use with a defined schema to extract structured verdicts from this output.
 
 ### Design Principles
 
@@ -173,7 +173,7 @@ Users can define custom verdicts for domain-specific evaluation:
 ```yaml
 states:
   analyze:
-    action: "/ll:audit_architecture patterns"
+    action: "/ll:audit-architecture patterns"
     evaluate:
       type: llm_structured
       schema:
@@ -201,7 +201,7 @@ With `uncertain_suffix: true`, low-confidence verdicts get a suffix:
 ```yaml
 states:
   fix:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     evaluate:
       type: llm_structured
       min_confidence: 0.7

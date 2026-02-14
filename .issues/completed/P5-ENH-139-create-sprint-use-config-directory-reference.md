@@ -7,7 +7,7 @@ discovered_by: audit
 
 ## Summary
 
-The `/ll:create_sprint` command hardcodes `.sprints` in the directory creation step instead of using the configured `sprints_dir` value.
+The `/ll:create-sprint` command hardcodes `.sprints` in the directory creation step instead of using the configured `sprints_dir` value.
 
 ## Context
 

@@ -105,7 +105,7 @@ questions:
 
 **Manual Verification**:
 - [ ] Create a sprint file manually: `.sprints/test-conflict.yaml` with any valid content
-- [ ] Run `/ll:create_sprint test-conflict --description "Test"`
+- [ ] Run `/ll:create-sprint test-conflict --description "Test"`
 - [ ] Verify the overwrite prompt appears with three options
 - [ ] Verify "Overwrite" proceeds to write
 - [ ] Verify "Choose different name" prompts for new name

@@ -11,7 +11,7 @@
 The project currently has **no automated link checking** for documentation. Quality checks are performed manually through:
 
 1. **CLI-based documentation verification**: `ll-verify-docs` (scripts/little_loops/doc_counts.py:110-157) - verifies numerical counts only, NOT links
-2. **Manual documentation audit**: `/ll:audit_docs` command (commands/audit_docs.md) - mentions link checking but performs it manually
+2. **Manual documentation audit**: `/ll:audit-docs` command (commands/audit_docs.md) - mentions link checking but performs it manually
 3. **No GitHub Actions workflows**: The `.github/workflows/` directory does not exist
 4. **No pre-commit hooks**: `.pre-commit-config.yaml` does not exist
 
@@ -51,11 +51,11 @@ The project currently has **no automated link checking** for documentation. Qual
 - Not adding pre-commit hooks - the issue mentions this but the project doesn't use git pre-commit hooks (uses Claude Code plugin hooks instead)
 - Not using external link checker libraries - implementing pure Python solution for consistency with existing tools
 - Not creating `.github/` directory structure beyond the single workflow file needed
-- Not adding link checking to `/ll:audit_docs` command - that's a separate enhancement
+- Not adding link checking to `/ll:audit-docs` command - that's a separate enhancement
 
 ## Problem Analysis
 
-ENH-267 was created by `/ll:audit_docs` which manually checked links and found:
+ENH-267 was created by `/ll:audit-docs` which manually checked links and found:
 - No automated detection of broken links
 - No pre-commit hook for link validation
 - No CI job to catch broken links in PRs

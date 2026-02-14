@@ -28,7 +28,7 @@ Add `## Examples` sections to both commands, consistent with the 32 other comman
 ## Proposed Solution
 
 1. Add a `## Examples` section to `commands/commit.md` showing typical usage (e.g., `/ll:commit`)
-2. Add a `## Examples` section to `commands/tradeoff_review_issues.md` showing typical usage (e.g., `/ll:tradeoff_review_issues`)
+2. Add a `## Examples` section to `commands/tradeoff_review_issues.md` showing typical usage (e.g., `/ll:tradeoff-review-issues`)
 3. Add `arguments` field to `tradeoff_review_issues.md` frontmatter if applicable
 
 ## Scope Boundaries
@@ -48,7 +48,7 @@ Add `## Examples` sections to both commands, consistent with the 32 other comman
 `enhancement`, `commands`, `documentation`
 
 ## Session Log
-- `/ll:manage_issue` - 2026-02-12T00:00:00Z - managed via current session
+- `/ll:manage-issue` - 2026-02-12T00:00:00Z - managed via current session
 
 ---
 

@@ -143,7 +143,7 @@ Also update scanner prompts to request anchors:
 - [ ] Lint passes: `ruff check scripts/`
 
 **Manual Verification**:
-- [ ] Run `/ll:scan_codebase` on a test directory and verify new issues include Anchor field
+- [ ] Run `/ll:scan-codebase` on a test directory and verify new issues include Anchor field
 
 ---
 

@@ -258,7 +258,7 @@ Append review notes to the issue file:
 
 ## Tradeoff Review Note
 
-**Reviewed**: YYYY-MM-DD by `/ll:tradeoff_review_issues`
+**Reviewed**: YYYY-MM-DD by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |
@@ -322,7 +322,7 @@ Uses project configuration from `.claude/ll-config.json`:
 
 ## Overlap with Issue Size Review
 
-This command complements `/ll:issue_size_review`:
+This command complements `/ll:issue-size-review`:
 - **Issue size review** asks: "Is this too big?" (decompose large issues)
 - **Tradeoff review** asks: "Is this worth doing?" (prune low-value issues)
 
@@ -334,7 +334,7 @@ Both can be run as part of backlog grooming. Run tradeoff review first to prune,
 
 ```bash
 # Review all active issues for utility vs complexity trade-offs
-/ll:tradeoff_review_issues
+/ll:tradeoff-review-issues
 ```
 
 ---
@@ -345,4 +345,4 @@ After running tradeoff review:
 - Review closed issues in `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`
 - Review updated issues with review notes appended
 - Commit changes with `/ll:commit`
-- Process remaining issues with `/ll:manage_issue` or `/ll:create_sprint`
+- Process remaining issues with `/ll:manage-issue` or `/ll:create-sprint`

@@ -7,24 +7,24 @@ discovered_by: capture_issue
 
 ## Summary
 
-Fix incorrect guidance in `/ll:capture_issue` that tells users to run `/ll:align_issues` to discover relevant docs (it should reference `/ll:normalize_issues`), and update `/ll:align_issues` to support: (1) no-argument mode that checks each active issue against its already-linked Key Documents, and (2) document-path argument mode that checks all active issues against a specific document regardless of linked docs.
+Fix incorrect guidance in `/ll:capture-issue` that tells users to run `/ll:align-issues` to discover relevant docs (it should reference `/ll:normalize-issues`), and update `/ll:align-issues` to support: (1) no-argument mode that checks each active issue against its already-linked Key Documents, and (2) document-path argument mode that checks all active issues against a specific document regardless of linked docs.
 
 ## Context
 
-User description: "Currently, when we capture a new Issue, we tell the user to 'Run `/ll:align_issues` to discover relevant docs.' - this is NOT what `/ll:align_issues` is for! If Key Document tracking is enabled in `ll-config`, then `/ll:normalize_issues` should automatically link relevant key documents to Issues and add them to the Issue file's frontmatter. When we run `/ll:align_issues` with no argument provided, it should check each active Issue's alignment against its linked Key Document(s) (if present). Alternatively, the user can run `/ll:align_issues` with an argument like `/ll:align_issues docs/architecture-rules.md` or `/ll:align_issues architecture-rules.md`, and it will review each Active Issue against alignment to the passed document, regardless of each issue's linked Key Documents."
+User description: "Currently, when we capture a new Issue, we tell the user to 'Run `/ll:align-issues` to discover relevant docs.' - this is NOT what `/ll:align-issues` is for! If Key Document tracking is enabled in `ll-config`, then `/ll:normalize-issues` should automatically link relevant key documents to Issues and add them to the Issue file's frontmatter. When we run `/ll:align-issues` with no argument provided, it should check each active Issue's alignment against its linked Key Document(s) (if present). Alternatively, the user can run `/ll:align-issues` with an argument like `/ll:align-issues docs/architecture-rules.md` or `/ll:align-issues architecture-rules.md`, and it will review each Active Issue against alignment to the passed document, regardless of each issue's linked Key Documents."
 
 ## Current Behavior
 
-1. `capture_issue.md` lines 368 and 420 contain placeholder text: `_No documents linked. Run /ll:align_issues to discover relevant docs._` — this is incorrect since `align_issues` validates alignment, not discovers/links documents.
-2. `/ll:align_issues` requires a **category** argument (e.g., `architecture`, `product`, `--all`) — it cannot run without an argument, and it cannot accept a specific document path.
-3. `/ll:normalize_issues` already has Section 7b to auto-link documents when `documents.enabled` — this is the correct tool for document discovery.
+1. `capture_issue.md` lines 368 and 420 contain placeholder text: `_No documents linked. Run /ll:align-issues to discover relevant docs._` — this is incorrect since `align_issues` validates alignment, not discovers/links documents.
+2. `/ll:align-issues` requires a **category** argument (e.g., `architecture`, `product`, `--all`) — it cannot run without an argument, and it cannot accept a specific document path.
+3. `/ll:normalize-issues` already has Section 7b to auto-link documents when `documents.enabled` — this is the correct tool for document discovery.
 
 ## Expected Behavior
 
-1. `capture_issue.md` placeholder text should reference `/ll:normalize_issues` for document linking, not `/ll:align_issues`.
-2. `/ll:align_issues` with **no argument**: Check each active issue against its own linked Key Documents (from the "Related Key Documentation" section in the issue file). Skip issues with no linked documents.
-3. `/ll:align_issues` with a **document path** argument (e.g., `docs/architecture-rules.md`): Check all active issues against alignment with the specified document, regardless of each issue's linked Key Documents.
-4. `/ll:align_issues` with a **category** argument (existing behavior): Continue to work as today — check all issues against all documents in that category.
+1. `capture_issue.md` placeholder text should reference `/ll:normalize-issues` for document linking, not `/ll:align-issues`.
+2. `/ll:align-issues` with **no argument**: Check each active issue against its own linked Key Documents (from the "Related Key Documentation" section in the issue file). Skip issues with no linked documents.
+3. `/ll:align-issues` with a **document path** argument (e.g., `docs/architecture-rules.md`): Check all active issues against alignment with the specified document, regardless of each issue's linked Key Documents.
+4. `/ll:align-issues` with a **category** argument (existing behavior): Continue to work as today — check all issues against all documents in that category.
 
 ## Proposed Solution
 
@@ -32,18 +32,18 @@ User description: "Currently, when we capture a new Issue, we tell the user to '
 
 Change both occurrences (lines 368, 420) from:
 ```
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+_No documents linked. Run `/ll:align-issues` to discover relevant docs._
 ```
 To:
 ```
-_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 ```
 
 ### 2. Update `align_issues.md` argument handling
 
 Change the `category` argument from **required** to **optional** and add document path support:
 
-- **No argument**: Iterate active issues, read each issue's "Related Key Documentation" section, perform alignment checks against those specific linked documents. Skip issues with no linked docs (report them as "no linked docs — run `/ll:normalize_issues` first").
+- **No argument**: Iterate active issues, read each issue's "Related Key Documentation" section, perform alignment checks against those specific linked documents. Skip issues with no linked docs (report them as "no linked docs — run `/ll:normalize-issues` first").
 - **Document path argument** (detected by `.md` extension or `/` in argument): Read the specified document, check all active issues against it.
 - **Category argument** (existing): Unchanged behavior.
 - **`--all`**: Unchanged behavior.
@@ -87,7 +87,7 @@ ELSE:
 - **Status**: Completed
 
 ### Changes Made
-- `commands/capture_issue.md`: Changed both placeholder text occurrences (lines 368, 420) from referencing `/ll:align_issues` to `/ll:normalize_issues`
+- `commands/capture_issue.md`: Changed both placeholder text occurrences (lines 368, 420) from referencing `/ll:align-issues` to `/ll:normalize-issues`
 - `commands/align_issues.md`: Made `category` argument optional, added mode detection logic (linked-docs, specific-doc, category, all-categories), updated argument docs and examples
 
 ### Verification Results

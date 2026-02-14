@@ -35,7 +35,7 @@
 
 ## Desired End State
 
-A new `/ll:refine_issue` command at `commands/refine_issue.md` that:
+A new `/ll:refine-issue` command at `commands/refine_issue.md` that:
 1. Reads an issue file and extracts key concepts
 2. Researches the codebase using sub-agents to understand the problem space
 3. Identifies **knowledge gaps** (what an implementer needs to know that isn't in the issue)
@@ -137,7 +137,7 @@ Update related commands and documentation to reference the new `refine_issue` in
 #### Changes Required
 
 **File**: `skills/issue-workflow/SKILL.md`
-**Changes**: Add `/ll:refine_issue [id]` to the Refinement Phase command list, positioned after `format_issue` and before `verify_issues`.
+**Changes**: Add `/ll:refine-issue [id]` to the Refinement Phase command list, positioned after `format_issue` and before `verify_issues`.
 
 **File**: `commands/format_issue.md`
 **Changes**: Update the Integration section's workflow to include `refine_issue` between `format_issue` and `ready_issue`.
@@ -159,8 +159,8 @@ Update related commands and documentation to reference the new `refine_issue` in
 ## Testing Strategy
 
 ### Manual Testing
-- Invoke `/ll:refine_issue FEAT-380 --auto --dry-run` to verify research and gap analysis without modifying files
-- Invoke `/ll:refine_issue` on a sparse issue to verify it enriches content
+- Invoke `/ll:refine-issue FEAT-380 --auto --dry-run` to verify research and gap analysis without modifying files
+- Invoke `/ll:refine-issue` on a sparse issue to verify it enriches content
 - Verify existing non-empty sections are preserved
 
 ## References

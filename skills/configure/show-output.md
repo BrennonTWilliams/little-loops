@@ -122,7 +122,7 @@ Prompt Optimization Configuration
   clarity_threshold: {{config.prompt_optimization.clarity_threshold}}  (default: 6)
 
 Edit: /ll:configure prompt
-Toggle: /ll:toggle_autoprompt [enabled|mode|confirm]
+Toggle: /ll:toggle-autoprompt [enabled|mode|confirm]
 ```
 
 ## scan --show

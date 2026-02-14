@@ -10,9 +10,9 @@ doc_file: docs/COMMANDS.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`.
+Documentation issue found by `/ll:audit-docs`.
 
-The `docs/COMMANDS.md` command reference is missing the `/ll:create_sprint` command which exists at `.claude/commands/create_sprint.md`.
+The `docs/COMMANDS.md` command reference is missing the `/ll:create-sprint` command which exists at `.claude/commands/create_sprint.md`.
 
 ## Location
 
@@ -22,11 +22,11 @@ The `docs/COMMANDS.md` command reference is missing the `/ll:create_sprint` comm
 ## Current Content
 
 The Quick Reference table (line ~177-205) lists 24 commands but is missing:
-- `/ll:create_sprint`
+- `/ll:create-sprint`
 
 ## Problem
 
-The `/ll:create_sprint` command exists at `.claude/commands/create_sprint.md` but is not documented in the command reference. This command creates sprint definitions with curated lists of issues.
+The `/ll:create-sprint` command exists at `.claude/commands/create_sprint.md` but is not documented in the command reference. This command creates sprint definitions with curated lists of issues.
 
 ## Expected Content
 
@@ -39,7 +39,7 @@ Add the following to the Quick Reference table:
 And add a section in the appropriate category (likely under "Issue Management" or a new "Sprint Management" section):
 
 ```markdown
-### `/ll:create_sprint`
+### `/ll:create-sprint`
 Create a sprint definition with a curated list of issues.
 
 **Arguments:**
@@ -73,7 +73,7 @@ Create a sprint definition with a curated list of issues.
 - **Status**: Completed
 
 ### Changes Made
-- `docs/COMMANDS.md`: Added new "Sprint Management" section with `/ll:create_sprint` documentation (lines 101-113)
+- `docs/COMMANDS.md`: Added new "Sprint Management" section with `/ll:create-sprint` documentation (lines 101-113)
 - `docs/COMMANDS.md`: Added `create_sprint` entry to Quick Reference table (line 221)
 
 ### Verification Results

@@ -7,11 +7,11 @@ discovered_by: capture_issue
 
 ## Summary
 
-When running `/ll:prioritize_issues` and all active issues already have priority prefixes, the command should ask the user if they want to re-evaluate priorities instead of silently doing nothing. If the user approves, re-prioritize all active/open issues.
+When running `/ll:prioritize-issues` and all active issues already have priority prefixes, the command should ask the user if they want to re-evaluate priorities instead of silently doing nothing. If the user approves, re-prioritize all active/open issues.
 
 ## Current Behavior
 
-When `/ll:prioritize_issues` is run and all issues already have `P[0-5]-` prefixes, the command has no work to do and exits without offering further action.
+When `/ll:prioritize-issues` is run and all issues already have `P[0-5]-` prefixes, the command has no work to do and exits without offering further action.
 
 ## Expected Behavior
 
@@ -102,8 +102,8 @@ Likely approach: modify `commands/prioritize_issues.md` to add an early check th
 - Integration: PASS
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/172a6b11-d9ab-4e69-b5fe-af35d932426b.jsonl`
-- `/ll:manage_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27fdc52f-8cd6-4f26-9219-42d0cb57e9e1.jsonl`
+- `/ll:capture-issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/172a6b11-d9ab-4e69-b5fe-af35d932426b.jsonl`
+- `/ll:manage-issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27fdc52f-8cd6-4f26-9219-42d0cb57e9e1.jsonl`
 
 ---
 

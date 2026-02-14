@@ -32,9 +32,9 @@ All 34 commands appear in the README command tables. Count matches stated "34 sl
 ## Solution Approach
 
 Add 4 table rows to existing category tables in README.md:
-1. `/ll:tradeoff_review_issues` → Issue Management (after `create_sprint`)
-2. `/ll:open_pr [target_branch]` → Git & Workflow (after `commit`)
-3. `/ll:manage_release [action] [version]` → Git & Workflow (after `open_pr`)
+1. `/ll:tradeoff-review-issues` → Issue Management (after `create_sprint`)
+2. `/ll:open-pr [target_branch]` → Git & Workflow (after `commit`)
+3. `/ll:manage-release [action] [version]` → Git & Workflow (after `open_pr`)
 4. `/ll:loop-suggester [file]` → Git & Workflow (after `create_loop`)
 
 ## Implementation Phases
@@ -46,14 +46,14 @@ Add 4 table rows to existing category tables in README.md:
 **Change 1**: Add `tradeoff_review_issues` to Issue Management table after line 426 (`create_sprint`)
 
 ```markdown
-| `/ll:tradeoff_review_issues` | Evaluate issues for utility vs complexity |
+| `/ll:tradeoff-review-issues` | Evaluate issues for utility vs complexity |
 ```
 
 **Change 2**: Add `open_pr` and `manage_release` to Git & Workflow table after line 442 (`commit`)
 
 ```markdown
-| `/ll:open_pr [target_branch]` | Open pull request for current branch |
-| `/ll:manage_release [action] [version]` | Manage releases, tags, and changelogs |
+| `/ll:open-pr [target_branch]` | Open pull request for current branch |
+| `/ll:manage-release [action] [version]` | Manage releases, tags, and changelogs |
 ```
 
 **Change 3**: Add `loop-suggester` to Git & Workflow table after line 445 (`create_loop`)
@@ -66,7 +66,7 @@ Add 4 table rows to existing category tables in README.md:
 
 **Automated Verification**:
 - [ ] `grep -cE '^\| .*/ll:' README.md` returns 34
-- [ ] All 4 missing commands appear in output of `grep '/ll:open_pr\|/ll:manage_release\|/ll:loop-suggester\|/ll:tradeoff_review' README.md`
+- [ ] All 4 missing commands appear in output of `grep '/ll:open-pr\|/ll:manage-release\|/ll:loop-suggester\|/ll:tradeoff_review' README.md`
 
 ## References
 

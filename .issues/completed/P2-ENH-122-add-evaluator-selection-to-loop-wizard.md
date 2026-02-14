@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-The `/ll:create_loop` command creates loops that are technically valid but practically don't work because the wizard doesn't gather evaluator configuration. Users specify check commands but are never asked HOW to determine success/failure.
+The `/ll:create-loop` command creates loops that are technically valid but practically don't work because the wizard doesn't gather evaluator configuration. Users specify check commands but are never asked HOW to determine success/failure.
 
 ## Context
 

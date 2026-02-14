@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-Update `/ll:confidence-check` to support `--all` and `--auto` flags, matching the batch-processing pattern established by `/ll:ready_issue`. Additionally, ensure the skill updates a `confidence_score` field in the issue's YAML frontmatter after evaluation.
+Update `/ll:confidence-check` to support `--all` and `--auto` flags, matching the batch-processing pattern established by `/ll:ready-issue`. Additionally, ensure the skill updates a `confidence_score` field in the issue's YAML frontmatter after evaluation.
 
 ## Current Behavior
 
@@ -22,7 +22,7 @@ Update `/ll:confidence-check` to support `--all` and `--auto` flags, matching th
 
 ## Motivation
 
-Several commands (`/ll:format_issue`, `/ll:refine_issue`, `/ll:prioritize_issues`) already support `--all` and `--auto` for batch processing. `/ll:confidence-check` lacks these, creating an inconsistency in the issue refinement pipeline. Batch confidence checking is useful during sprint planning to quickly assess which issues are implementation-ready. Persisting the score to frontmatter enables downstream tools (sprint creation, prioritization) to filter by confidence.
+Several commands (`/ll:format-issue`, `/ll:refine-issue`, `/ll:prioritize-issues`) already support `--all` and `--auto` for batch processing. `/ll:confidence-check` lacks these, creating an inconsistency in the issue refinement pipeline. Batch confidence checking is useful during sprint planning to quickly assess which issues are implementation-ready. Persisting the score to frontmatter enables downstream tools (sprint creation, prioritization) to filter by confidence.
 
 ## Proposed Solution
 
@@ -96,8 +96,8 @@ Reference `commands/format_issue.md` for the `--all`/`--auto` pattern to replica
 `enhancement`, `captured`
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7b1d8ae-1301-4fdc-8b54-232d76034081.jsonl`
-- `/ll:manage_issue` - 2026-02-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/adf32343-217d-4a2b-bbda-bd1646f85efe.jsonl`
+- `/ll:capture-issue` - 2026-02-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7b1d8ae-1301-4fdc-8b54-232d76034081.jsonl`
+- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/adf32343-217d-4a2b-bbda-bd1646f85efe.jsonl`
 
 ---
 

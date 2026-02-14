@@ -1,4 +1,4 @@
-# ENH-223: Add Tests for /ll:create_loop Skill - Implementation Plan
+# ENH-223: Add Tests for /ll:create-loop Skill - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/enhancements/P3-ENH-223-add-create-loop-skill-tests.md`
@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:create_loop` skill is defined in `commands/create_loop.md` as an interactive wizard that guides users through creating FSM loop configurations. It's a **prompt-based skill** (markdown instructions that Claude follows), not Python code that can be directly unit tested.
+The `/ll:create-loop` skill is defined in `commands/create_loop.md` as an interactive wizard that guides users through creating FSM loop configurations. It's a **prompt-based skill** (markdown instructions that Claude follows), not Python code that can be directly unit tested.
 
 ### Key Discoveries
 
@@ -96,9 +96,9 @@ Create the test file with imports, fixtures, and basic structure.
 **Changes**: Create new file with test class structure
 
 ```python
-"""Tests for /ll:create_loop skill artifacts.
+"""Tests for /ll:create-loop skill artifacts.
 
-Since /ll:create_loop is a prompt-based skill (markdown instructions for Claude),
+Since /ll:create-loop is a prompt-based skill (markdown instructions for Claude),
 we cannot directly unit test the interactive wizard flow. Instead, we test:
 
 1. Template YAML definitions compile to valid FSMs
@@ -184,7 +184,7 @@ class TestTemplateDefinitions:
             "paradigm": "goal",
             "name": "tests-until-passing",
             "goal": "All tests pass",
-            "tools": ["pytest", "/ll:manage_issue bug fix"],
+            "tools": ["pytest", "/ll:manage-issue bug fix"],
             "max_iterations": 20,
         }
         fsm = compile_paradigm(spec)
@@ -198,8 +198,8 @@ class TestTemplateDefinitions:
             "paradigm": "invariants",
             "name": "full-quality-gate",
             "constraints": [
-                {"name": "tests", "check": "pytest", "fix": "/ll:manage_issue bug fix"},
-                {"name": "types", "check": "mypy src/", "fix": "/ll:manage_issue bug fix"},
+                {"name": "tests", "check": "pytest", "fix": "/ll:manage-issue bug fix"},
+                {"name": "types", "check": "mypy src/", "fix": "/ll:manage-issue bug fix"},
                 {"name": "lint", "check": "ruff check src/", "fix": "ruff check --fix src/"},
             ],
             "maintain": False,
@@ -237,7 +237,7 @@ class TestGoalParadigmGeneration:
             "paradigm": "goal",
             "name": "fix-types-and-lint",
             "goal": "Type and lint checks pass",
-            "tools": ["mypy src/ && ruff check src/", "/ll:check_code fix"],
+            "tools": ["mypy src/ && ruff check src/", "/ll:check-code fix"],
             "max_iterations": 10,
         }
         fsm = compile_paradigm(spec)
@@ -288,8 +288,8 @@ class TestInvariantsParadigmGeneration:
             "paradigm": "invariants",
             "name": "code-quality-guardian",
             "constraints": [
-                {"name": "tests-pass", "check": "pytest", "fix": "/ll:manage_issue bug fix"},
-                {"name": "types-valid", "check": "mypy src/", "fix": "/ll:manage_issue bug fix"},
+                {"name": "tests-pass", "check": "pytest", "fix": "/ll:manage-issue bug fix"},
+                {"name": "types-valid", "check": "mypy src/", "fix": "/ll:manage-issue bug fix"},
                 {"name": "lint-clean", "check": "ruff check src/", "fix": "ruff check --fix src/"},
             ],
             "maintain": False,
@@ -345,7 +345,7 @@ class TestConvergenceParadigmGeneration:
             "name": "eliminate-lint-errors",
             "check": "ruff check src/ 2>&1 | grep -c 'error' || echo 0",
             "toward": 0,
-            "using": "/ll:check_code fix",
+            "using": "/ll:check-code fix",
             "tolerance": 0,
             "max_iterations": 50,
         }
@@ -363,7 +363,7 @@ class TestConvergenceParadigmGeneration:
             "name": "improve-coverage",
             "check": "pytest --cov=src --cov-report=term | grep TOTAL | awk '{print $4}'",
             "toward": 80,
-            "using": "/ll:manage_issue feature implement",
+            "using": "/ll:manage-issue feature implement",
             "tolerance": 1,
             "max_iterations": 20,
         }
@@ -382,7 +382,7 @@ class TestImperativeParadigmGeneration:
         spec = {
             "paradigm": "imperative",
             "name": "fix-test-check",
-            "steps": ["/ll:check_code fix", "pytest", "mypy src/"],
+            "steps": ["/ll:check-code fix", "pytest", "mypy src/"],
             "until": {"check": "mypy src/ && ruff check src/ && pytest"},
             "max_iterations": 50,
             "backoff": 2,

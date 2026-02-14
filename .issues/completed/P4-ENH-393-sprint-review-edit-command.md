@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-After creating a sprint with `/ll:create_sprint` or `ll-sprint create`, there is no way to edit the sprint beyond `ll-sprint show` (read-only) or deleting and recreating. Add an `ll-sprint edit` subcommand for deterministic sprint YAML mutations — adding/removing issues, pruning invalid references, and re-running validation.
+After creating a sprint with `/ll:create-sprint` or `ll-sprint create`, there is no way to edit the sprint beyond `ll-sprint show` (read-only) or deleting and recreating. Add an `ll-sprint edit` subcommand for deterministic sprint YAML mutations — adding/removing issues, pruning invalid references, and re-running validation.
 
 ## Current Behavior
 
@@ -34,7 +34,7 @@ ll-sprint edit sprint-1 --revalidate     # re-run validation, show fixable issue
 
 ## Motivation
 
-When `/ll:create_sprint` suggests groupings via AskUserQuestion, the user selects quickly but the resulting sprint may have stale references, broken dependencies, or issues that have since been completed. The operations needed to fix these are deterministic YAML mutations that fit naturally as a CLI subcommand alongside the existing `create`, `show`, `delete` pattern.
+When `/ll:create-sprint` suggests groupings via AskUserQuestion, the user selects quickly but the resulting sprint may have stale references, broken dependencies, or issues that have since been completed. The operations needed to fix these are deterministic YAML mutations that fit naturally as a CLI subcommand alongside the existing `create`, `show`, `delete` pattern.
 
 ## Proposed Solution
 
@@ -93,8 +93,8 @@ Add an `edit` subcommand to `ll-sprint` in `scripts/little_loops/cli/sprint.py`.
 - Types: PASS
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab030831-19f7-4fb7-8753-c1c282a30c99.jsonl`
-- `/ll:manage_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a13b20f4-ebee-4f6b-a02a-30e13ee128d1.jsonl`
+- `/ll:capture-issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab030831-19f7-4fb7-8753-c1c282a30c99.jsonl`
+- `/ll:manage-issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a13b20f4-ebee-4f6b-a02a-30e13ee128d1.jsonl`
 
 ---
 

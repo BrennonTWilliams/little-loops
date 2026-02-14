@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`.
+Documentation issue found by `/ll:audit-docs`.
 
 The README.md claims little-loops has "25 slash commands" but there are actually 26 commands in the `commands/` directory.
 

@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The README Full Configuration Example on line 152 shows `"max_continuations": 3` under the `automation` section, but this property actually belongs under the `continuation` section per `config-schema.json`. The README automation config table (line 271) also lists it under automation.
+Documentation issue found by `/ll:audit-docs`. The README Full Configuration Example on line 152 shows `"max_continuations": 3` under the `automation` section, but this property actually belongs under the `continuation` section per `config-schema.json`. The README automation config table (line 271) also lists it under automation.
 
 ## Current Behavior
 

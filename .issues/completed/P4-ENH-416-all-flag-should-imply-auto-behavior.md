@@ -126,7 +126,7 @@ Also update documentation/usage sections that mention `--all` requiring `--auto`
 ## Success Metrics
 
 - `/ll:confidence-check --all` runs without error (auto-enables non-interactive mode)
-- `/ll:format_issue --all` runs without error (auto-enables non-interactive mode)
+- `/ll:format-issue --all` runs without error (auto-enables non-interactive mode)
 - `/ll:confidence-check --all --auto` still works (backwards compatible)
 
 ## Related Key Documentation
@@ -141,8 +141,8 @@ Also update documentation/usage sections that mention `--all` requiring `--auto`
 `enhancement`, `captured`
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/029370ae-e505-4752-bc55-4fd2b8896741.jsonl`
-- `/ll:manage_issue` - 2026-02-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/caefd7bf-6a76-4821-9e00-efef2915b5c2.jsonl`
+- `/ll:capture-issue` - 2026-02-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/029370ae-e505-4752-bc55-4fd2b8896741.jsonl`
+- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/caefd7bf-6a76-4821-9e00-efef2915b5c2.jsonl`
 
 ---
 

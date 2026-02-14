@@ -49,8 +49,8 @@ Output would show the FSM execution trace without running commands:
     Transition: evaluate → fix
 
 [2] State: fix
-    Action: /ll:check_code fix
-    [SIMULATED] Would execute: /ll:check_code fix
+    Action: /ll:check-code fix
+    [SIMULATED] Would execute: /ll:check-code fix
     Transition: fix → evaluate (unconditional)
 
 [3] State: evaluate

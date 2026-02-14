@@ -127,8 +127,8 @@ def load_sprint_issues(sprint_name: str, sprints_dir: str) -> set[str]:
 - Integration: PASS
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab030831-19f7-4fb7-8753-c1c282a30c99.jsonl`
-- `/ll:manage_issue` - 2026-02-12
+- `/ll:capture-issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ab030831-19f7-4fb7-8753-c1c282a30c99.jsonl`
+- `/ll:manage-issue` - 2026-02-12
 
 ---
 

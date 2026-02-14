@@ -132,7 +132,7 @@ class TestExampleYAMLFromSkill:
             "paradigm": "goal",
             "name": "type-error-fixer",
             "goal": "No type errors in source",
-            "tools": ["mypy scripts/", "/ll:manage_issue bug fix"],
+            "tools": ["mypy scripts/", "/ll:manage-issue bug fix"],
             "max_iterations": 20,
             "evaluator": {"type": "exit_code"},
         }
@@ -149,8 +149,8 @@ class TestExampleYAMLFromSkill:
             "name": "quality-gate",
             "constraints": [
                 {"name": "lint", "check": "ruff check scripts/", "fix": "ruff check --fix scripts/"},
-                {"name": "types", "check": "mypy scripts/", "fix": "/ll:manage_issue bug fix"},
-                {"name": "tests", "check": "pytest scripts/tests/", "fix": "/ll:manage_issue bug fix"},
+                {"name": "types", "check": "mypy scripts/", "fix": "/ll:manage-issue bug fix"},
+                {"name": "tests", "check": "pytest scripts/tests/", "fix": "/ll:manage-issue bug fix"},
             ],
             "maintain": False,
             "max_iterations": 30,
@@ -308,7 +308,7 @@ class TestActualGeneratedSuggestions:
         spec = {
             "paradigm": "imperative",
             "name": "issue-readiness-cycle",
-            "steps": ["/ll:ready_issue", "/ll:manage_issue"],
+            "steps": ["/ll:ready-issue", "/ll:manage-issue"],
             "until": {
                 "check": "ls .issues/bugs/*.md .issues/features/*.md .issues/enhancements/*.md 2>/dev/null | wc -l",
                 "passes": True,
@@ -329,8 +329,8 @@ class TestActualGeneratedSuggestions:
             "paradigm": "invariants",
             "name": "pre-pr-checks",
             "constraints": [
-                {"name": "code-quality", "check": "/ll:check_code", "fix": "ruff format && ruff check --fix"},
-                {"name": "tests-pass", "check": "/ll:run_tests", "fix": "Review failing tests"},
+                {"name": "code-quality", "check": "/ll:check-code", "fix": "ruff format && ruff check --fix"},
+                {"name": "tests-pass", "check": "/ll:run-tests", "fix": "Review failing tests"},
             ],
             "maintain": False,
             "max_iterations": 10,
@@ -348,8 +348,8 @@ class TestActualGeneratedSuggestions:
             "paradigm": "invariants",
             "name": "issue-verification-normalize",
             "constraints": [
-                {"name": "issues-verified", "check": "/ll:verify_issues", "fix": "Auto-correction"},
-                {"name": "issues-normalized", "check": "/ll:normalize_issues", "fix": "Rename files"},
+                {"name": "issues-verified", "check": "/ll:verify-issues", "fix": "Auto-correction"},
+                {"name": "issues-normalized", "check": "/ll:normalize-issues", "fix": "Rename files"},
             ],
             "maintain": False,
             "max_iterations": 20,
@@ -365,7 +365,7 @@ class TestActualGeneratedSuggestions:
         spec = {
             "paradigm": "imperative",
             "name": "codebase-scan-workflow",
-            "steps": ["/ll:commit", "/ll:scan_codebase", "/ll:verify_issues", "/ll:prioritize_issues"],
+            "steps": ["/ll:commit", "/ll:scan-codebase", "/ll:verify-issues", "/ll:prioritize-issues"],
             "until": {"check": "git status --porcelain", "passes": True},
             "max_iterations": 5,
         }

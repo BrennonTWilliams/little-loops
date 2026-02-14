@@ -9,7 +9,7 @@ discovered_by: audit_docs
 
 ## Summary
 
-Documentation enhancement found by `/ll:audit_docs`.
+Documentation enhancement found by `/ll:audit-docs`.
 
 Multiple documentation files have outdated directory structure diagrams that don't reflect the current project layout. Missing components include the `skills/` directory and several FSM modules.
 
@@ -118,7 +118,7 @@ little-loops/
 
 ## Verification Notes
 
-**Validated**: 2026-01-23 by `/ll:ready_issue`
+**Validated**: 2026-01-23 by `/ll:ready-issue`
 
 - Confirmed `skills/` directory exists with 4 skills
 - Confirmed `fsm/signal_detector.py` and `fsm/handoff_handler.py` exist

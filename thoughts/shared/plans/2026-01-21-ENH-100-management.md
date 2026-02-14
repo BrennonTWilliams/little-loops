@@ -10,8 +10,8 @@
 
 The key documents alignment feature (FEAT-075) exists but has usability issues:
 - Issues have no explicit link to relevant documentation
-- `/ll:align_issues` produces subjective 0-100% scores that are hard to action
-- No integration with `/ll:capture_issue` or `/ll:normalize_issues`
+- `/ll:align-issues` produces subjective 0-100% scores that are hard to action
+- No integration with `/ll:capture-issue` or `/ll:normalize-issues`
 
 ### Key Discoveries
 - `commands/capture_issue.md:338-419` - Issue templates have no "Related Key Documentation" section
@@ -26,23 +26,23 @@ The key documents alignment feature (FEAT-075) exists but has usability issues:
 ## Desired End State
 
 1. Issue templates include a "Related Key Documentation" section
-2. `/ll:capture_issue` suggests and links relevant docs at issue creation time (when `documents.enabled`)
-3. `/ll:normalize_issues` adds missing doc references during normalization (when `documents.enabled`)
-4. `/ll:align_issues` performs concrete relevance and alignment checks with actionable recommendations (no scores)
-5. `/ll:align_issues --fix` auto-fixes relevance issues
+2. `/ll:capture-issue` suggests and links relevant docs at issue creation time (when `documents.enabled`)
+3. `/ll:normalize-issues` adds missing doc references during normalization (when `documents.enabled`)
+4. `/ll:align-issues` performs concrete relevance and alignment checks with actionable recommendations (no scores)
+5. `/ll:align-issues --fix` auto-fixes relevance issues
 6. little-loops dogfoods the `documents` config
 
 ### How to Verify
 - Create a test issue and verify "Related Key Documentation" section is present
-- Run `/ll:align_issues` and verify output shows relevance checks (✓/⚠/✗) not percentage scores
-- Run `/ll:align_issues --fix` and verify it updates doc references
+- Run `/ll:align-issues` and verify output shows relevance checks (✓/⚠/✗) not percentage scores
+- Run `/ll:align-issues --fix` and verify it updates doc references
 
 ## What We're NOT Doing
 
 - Not changing the `documents` config schema - it already works
 - Not modifying `/ll:init` - Round 5 already handles document setup
 - Not adding new Python code - this is all command/skill updates
-- Not changing `/ll:ready_issue` or `/ll:verify_issues` - they don't need doc awareness
+- Not changing `/ll:ready-issue` or `/ll:verify-issues` - they don't need doc awareness
 
 ## Solution Approach
 
@@ -71,14 +71,14 @@ Add "Related Key Documentation" section to both minimal and full templates in `c
 ```markdown
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+_No documents linked. Run `/ll:align-issues` to discover relevant docs._
 ```
 
 **Full Template (insert before line 409):**
 ```markdown
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+_No documents linked. Run `/ll:align-issues` to discover relevant docs._
 ```
 
 #### Success Criteria
@@ -511,22 +511,22 @@ When checking all categories, produce combined report with per-category sections
 
 ```bash
 # Check architecture alignment for all active issues
-/ll:align_issues architecture
+/ll:align-issues architecture
 
 # Check product/roadmap alignment
-/ll:align_issues product
+/ll:align-issues product
 
 # Check all configured categories
-/ll:align_issues --all
+/ll:align-issues --all
 
 # Verbose output with detailed analysis
-/ll:align_issues architecture --verbose
+/ll:align-issues architecture --verbose
 
 # Auto-fix relevance issues (add missing docs, remove irrelevant)
-/ll:align_issues architecture --fix
+/ll:align-issues architecture --fix
 
 # Combined: verbose output and auto-fix
-/ll:align_issues --all --verbose --fix
+/ll:align-issues --all --verbose --fix
 ```
 
 ---
@@ -535,10 +535,10 @@ When checking all categories, produce combined report with per-category sections
 
 This command works well with:
 - `/ll:init --interactive` - Set up document tracking
-- `/ll:capture_issue` - Creates issues with doc references
-- `/ll:normalize_issues` - Adds doc references to existing issues
-- `/ll:verify_issues` - Verify issue accuracy before alignment check
-- `/ll:manage_issue` - Process issues after reviewing alignment
+- `/ll:capture-issue` - Creates issues with doc references
+- `/ll:normalize-issues` - Adds doc references to existing issues
+- `/ll:verify-issues` - Verify issue accuracy before alignment check
+- `/ll:manage-issue` - Process issues after reviewing alignment
 
 ---
 
@@ -641,20 +641,20 @@ To enable document linking:
 
 1. **Create test issue and verify template:**
    ```bash
-   /ll:capture_issue "Test issue for document linking"
+   /ll:capture-issue "Test issue for document linking"
    cat .issues/*/P*-*-test-issue*.md
    # Verify "Related Key Documentation" section exists
    ```
 
 2. **Test align_issues new format:**
    ```bash
-   /ll:align_issues architecture
+   /ll:align-issues architecture
    # Verify output shows ✓/⚠/✗ checks, not percentage scores
    ```
 
 3. **Test --fix flag:**
    ```bash
-   /ll:align_issues architecture --fix
+   /ll:align-issues architecture --fix
    # Verify it updates issue files
    ```
 

@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:audit_docs` command (`commands/audit_docs.md`) is a prompt template with 8 phases:
+The `/ll:audit-docs` command (`commands/audit_docs.md`) is a prompt template with 8 phases:
 
 1. Find documentation files
 2. Audit each document (accuracy, completeness, consistency, currency)
@@ -33,7 +33,7 @@ The `/ll:audit_docs` command (`commands/audit_docs.md`) is a prompt template wit
 
 ## Desired End State
 
-After implementation, `/ll:audit_docs` will:
+After implementation, `/ll:audit-docs` will:
 1. Present findings with a new "Action Selection" phase offering **three paths**: Fix directly, Create issues, or Skip
 2. For "Fix directly": apply auto-fixable corrections in-place, show diffs, stage files
 3. For "Create issues": continue with existing issue management flow unchanged
@@ -102,10 +102,10 @@ arguments:
 
 ```markdown
 # Auto-fix documentation issues
-/ll:audit_docs --fix
+/ll:audit-docs --fix
 
 # Full audit with auto-fix
-/ll:audit_docs full --fix
+/ll:audit-docs full --fix
 ```
 
 #### Success Criteria
@@ -301,7 +301,7 @@ After auditing:
 ## Testing Strategy
 
 ### Manual Verification
-- Run `/ll:audit_docs` on README.md and verify the new Phase 4.5 prompt appears
+- Run `/ll:audit-docs` on README.md and verify the new Phase 4.5 prompt appears
 - Test `--fix` flag to confirm auto-fixable items are applied without prompting
 - Test "Review each" to confirm per-finding prompts work
 - Verify "Create issues for all" still produces issues as before

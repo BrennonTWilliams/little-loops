@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:create_loop` command documentation includes a comprehensive "Tool Evaluator Defaults" table (lines 268-289) that shows recommended evaluator types for various tools (pytest, mypy, ruff, eslint, tsc, cargo test, go test).
+The `/ll:create-loop` command documentation includes a comprehensive "Tool Evaluator Defaults" table (lines 268-289) that shows recommended evaluator types for various tools (pytest, mypy, ruff, eslint, tsc, cargo test, go test).
 
 However, **there is no code** that implements automatic tool pattern detection. This table is purely human guidance for Claude during the wizard flow.
 

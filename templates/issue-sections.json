@@ -105,7 +105,7 @@
       "description": "Links to relevant project documentation",
       "ai_usage": "LOW",
       "human_value": "MEDIUM",
-      "creation_template": "_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._"
+      "creation_template": "_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._"
     },
     "Labels": {
       "required": true,

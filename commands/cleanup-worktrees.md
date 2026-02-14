@@ -92,7 +92,7 @@ if [ "$MODE" = "dry-run" ]; then
         fi
     done
     echo ""
-    echo "Run '/ll:cleanup_worktrees' (without dry-run) to execute cleanup."
+    echo "Run '/ll:cleanup-worktrees' (without dry-run) to execute cleanup."
     exit 0
 fi
 ```
@@ -179,8 +179,8 @@ $ARGUMENTS
 
 ```bash
 # Clean all orphaned worktrees
-/ll:cleanup_worktrees
+/ll:cleanup-worktrees
 
 # Preview what would be cleaned
-/ll:cleanup_worktrees dry-run
+/ll:cleanup-worktrees dry-run
 ```

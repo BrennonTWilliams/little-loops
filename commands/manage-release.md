@@ -434,31 +434,31 @@ $ARGUMENTS
 
 ```bash
 # Interactive mode — prompts for actions and version
-/ll:manage_release
+/ll:manage-release
 
 # Create a specific version tag
-/ll:manage_release tag v1.5.0
+/ll:manage-release tag v1.5.0
 
 # Generate changelog (auto-detect version from commits)
-/ll:manage_release changelog
+/ll:manage-release changelog
 
 # Full release pipeline with specific version
-/ll:manage_release full v1.5.0
+/ll:manage-release full v1.5.0
 
 # Full release with auto-detected version
-/ll:manage_release full
+/ll:manage-release full
 
 # Bump version only
-/ll:manage_release bump minor
+/ll:manage-release bump minor
 
 # Preview what a release would do
-/ll:manage_release full v1.5.0 --dry-run
+/ll:manage-release full v1.5.0 --dry-run
 
 # Create a draft GitHub release
-/ll:manage_release release v1.5.0 --draft
+/ll:manage-release release v1.5.0 --draft
 
 # Tag and push to remote
-/ll:manage_release tag v1.5.0 --push
+/ll:manage-release tag v1.5.0 --push
 ```
 
 ---
@@ -480,8 +480,8 @@ $ARGUMENTS
 
 This command works well with:
 - `/ll:commit` — Commit changes before releasing
-- `/ll:check_code` — Ensure code quality before releasing
-- `/ll:run_tests` — Verify tests pass before releasing
-- `/ll:manage_issue` — Complete issues that should be in the release
-- `/ll:sync_issues` — Sync issues with GitHub before including in release notes
-- `/ll:open_pr` — Open PR for release branch if using release branches
+- `/ll:check-code` — Ensure code quality before releasing
+- `/ll:run-tests` — Verify tests pass before releasing
+- `/ll:manage-issue` — Complete issues that should be in the release
+- `/ll:sync-issues` — Sync issues with GitHub before including in release notes
+- `/ll:open-pr` — Open PR for release branch if using release branches

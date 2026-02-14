@@ -11,7 +11,7 @@ The auto-prompt optimization feature is extensively documented across multiple f
 
 ## Context
 
-Identified during investigation of the `/ll:toggle_autoprompt` command and related prompt optimization functionality. User asked "Is it a real feature? Does it work?" - the answer is it's designed but non-functional.
+Identified during investigation of the `/ll:toggle-autoprompt` command and related prompt optimization functionality. User asked "Is it a real feature? Does it work?" - the answer is it's designed but non-functional.
 
 ## Current Behavior
 
@@ -26,7 +26,7 @@ Identified during investigation of the `/ll:toggle_autoprompt` command and relat
 - No `UserPromptSubmit` hook is registered in `hooks/hooks.json`
 - No Python backend executes the toggle logic
 - No script performs actual prompt optimization or clarity scoring
-- Running `/ll:toggle_autoprompt` would change settings that nothing reads
+- Running `/ll:toggle-autoprompt` would change settings that nothing reads
 
 ## Expected Behavior
 

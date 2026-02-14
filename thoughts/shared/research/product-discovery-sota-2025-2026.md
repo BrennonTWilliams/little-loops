@@ -483,7 +483,7 @@ Then [expected outcome].
    - Jina embeddings → Vector store
    - Dependency graph → Neo4j/NetworkX
 
-2. Discovery Phase (on /ll:scan_product)
+2. Discovery Phase (on /ll:scan-product)
    - Load product goals (llms.txt or ll-goals.md)
    - Capability extraction via RAG queries
    - Gap detection via semantic comparison

@@ -12,11 +12,11 @@ All 5 existing loop templates in `loops/` exclusively use `/ll:` skills. None re
 ## Current Behavior
 
 The 5 existing templates only use `/ll:` slash commands:
-- `codebase-scan.yaml` (imperative) - `/ll:scan_codebase`, `/ll:verify_issues`, `/ll:prioritize_issues`
-- `issue-readiness-cycle.yaml` (imperative) - `/ll:ready_issue`, `/ll:manage_issue`
-- `issue-verification.yaml` (invariants) - `/ll:verify_issues`, `/ll:normalize_issues`
-- `pre-pr-checks.yaml` (invariants) - `/ll:check_code`, `/ll:run_tests`
-- `quality-gate.yaml` (invariants) - `/ll:check_code`, `/ll:run_tests`
+- `codebase-scan.yaml` (imperative) - `/ll:scan-codebase`, `/ll:verify-issues`, `/ll:prioritize-issues`
+- `issue-readiness-cycle.yaml` (imperative) - `/ll:ready-issue`, `/ll:manage-issue`
+- `issue-verification.yaml` (invariants) - `/ll:verify-issues`, `/ll:normalize-issues`
+- `pre-pr-checks.yaml` (invariants) - `/ll:check-code`, `/ll:run-tests`
+- `quality-gate.yaml` (invariants) - `/ll:check-code`, `/ll:run-tests`
 
 No templates demonstrate shell-based actions using the project's CLI tools.
 
@@ -93,7 +93,7 @@ Mix paradigms to ensure coverage — especially if goal/convergence compilers ar
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Labels
 
@@ -106,7 +106,7 @@ _No documents linked. Run `/ll:normalize_issues` to discover and link relevant d
 **Open** | Created: 2026-02-11 | Priority: P3
 
 ## Session Log
-- `/ll:manage_issue` - 2026-02-11T22:14:00Z - `~/.claude/projects/<project>/9f38f197-afe1-4d5f-aac8-6babbc891bd2.jsonl`
+- `/ll:manage-issue` - 2026-02-11T22:14:00Z - `~/.claude/projects/<project>/9f38f197-afe1-4d5f-aac8-6babbc891bd2.jsonl`
 
 ---
 

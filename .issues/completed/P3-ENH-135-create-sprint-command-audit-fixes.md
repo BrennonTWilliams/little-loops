@@ -1,8 +1,8 @@
-# Fix /ll:create_sprint Command Issues from Audit
+# Fix /ll:create-sprint Command Issues from Audit
 
 ## Summary
 
-The `/ll:create_sprint` command has several consistency and documentation issues identified during an audit that should be addressed.
+The `/ll:create-sprint` command has several consistency and documentation issues identified during an audit that should be addressed.
 
 ## Context
 

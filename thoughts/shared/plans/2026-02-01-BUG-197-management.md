@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The FSM Compilation Reference in `/ll:create_loop` (lines 695-758) uses arrow notation (→) to represent state transitions. This is a **conceptual representation** that differs from actual YAML syntax.
+The FSM Compilation Reference in `/ll:create-loop` (lines 695-758) uses arrow notation (→) to represent state transitions. This is a **conceptual representation** that differs from actual YAML syntax.
 
 ### Key Discoveries
 - **Arrow notation location**: `commands/create_loop.md:695-758` - FSM Compilation Reference section
@@ -99,7 +99,7 @@ Insert between line 697 and 699:
 - [ ] No unintended changes to other sections: `git diff --stat` should show only this section
 
 **Manual Verification**:
-- [ ] View the updated documentation in `/ll:create_loop` command
+- [ ] View the updated documentation in `/ll:create-loop` command
 - [ ] Verify the legend appears before the paradigm examples
 - [ ] Confirm code blocks render correctly with proper markdown formatting
 - [ ] Check that the explanation clearly maps conceptual notation to YAML syntax
@@ -112,7 +112,7 @@ Insert between line 697 and 699:
 This is a documentation-only fix. No unit tests needed.
 
 ### Manual Testing
-1. Run `/ll:create_loop` and verify the FSM Compilation Reference section displays correctly
+1. Run `/ll:create-loop` and verify the FSM Compilation Reference section displays correctly
 2. Check that the notation legend is readable and helpful
 3. Ensure the examples below the legend remain unchanged and properly formatted
 

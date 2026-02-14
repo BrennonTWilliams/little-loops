@@ -29,14 +29,14 @@ But the command file is named `ll_create_sprint.md`, so the actual invocation is
 ## Expected Behavior
 
 Either:
-1. Rename the command file to `create_sprint.md` (so invocation is `/ll:create_sprint`)
+1. Rename the command file to `create_sprint.md` (so invocation is `/ll:create-sprint`)
 2. Or update all examples to use `/ll:ll_create_sprint`
 
 Option 1 is preferred as it follows the pattern of other commands and removes the redundant `ll_` prefix.
 
 ## Proposed Solution
 
-Rename `.claude/commands/ll_create_sprint.md` to `.claude/commands/create_sprint.md` and update examples to use `/ll:create_sprint` consistently.
+Rename `.claude/commands/ll_create_sprint.md` to `.claude/commands/create_sprint.md` and update examples to use `/ll:create-sprint` consistently.
 
 ## Impact
 
@@ -68,7 +68,7 @@ Rename `.claude/commands/ll_create_sprint.md` to `.claude/commands/create_sprint
 
 ### Changes Made
 - `.claude/commands/ll_create_sprint.md` → `.claude/commands/create_sprint.md`: Renamed command file to remove redundant `ll_` prefix
-- `.claude/commands/create_sprint.md`: Updated examples from `/ll:create-sprint` to `/ll:create_sprint` (3 occurrences)
+- `.claude/commands/create_sprint.md`: Updated examples from `/ll:create-sprint` to `/ll:create-sprint` (3 occurrences)
 - `.issues/bugs/P2-BUG-105-*.md`: Updated command references to new name
 - `.issues/enhancements/P3-ENH-106-*.md`: Updated command references to new name
 - `.issues/enhancements/P3-ENH-107-*.md`: Updated command references to new name

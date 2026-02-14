@@ -28,7 +28,7 @@ The sprint system (`_cmd_sprint_run`, `_cmd_sprint_show` in `cli.py`) and `depen
 - `ll-sprint run` runs `analyze_dependencies()` before building waves and warns about discovered dependencies
 - `ll-sprint show` includes dependency analysis summary alongside wave structure
 - A `--skip-analysis` flag allows skipping dependency discovery for speed
-- `/ll:create_sprint` Step 4.5 references `dependency_mapper` functions instead of ad-hoc parsing
+- `/ll:create-sprint` Step 4.5 references `dependency_mapper` functions instead of ad-hoc parsing
 
 ### How to Verify
 - `ll-sprint run --dry-run <sprint>` shows dependency analysis warnings when issues have file overlaps
@@ -214,7 +214,7 @@ Add dependency analysis to the show command, displaying analysis results after t
 
 ---
 
-### Phase 4: Update `/ll:create_sprint` Step 4.5
+### Phase 4: Update `/ll:create-sprint` Step 4.5
 
 #### Overview
 Update the create_sprint command's Step 4.5 to reference `dependency_mapper` functions for richer analysis.
@@ -258,7 +258,7 @@ The step will also retain the existing external-blocker check and cycle detectio
 - [ ] create_sprint.md parses correctly (no broken markdown)
 
 **Manual Verification**:
-- [ ] Running `/ll:create_sprint` with issues that have file overlaps shows richer analysis in Step 4.5
+- [ ] Running `/ll:create-sprint` with issues that have file overlaps shows richer analysis in Step 4.5
 
 ---
 

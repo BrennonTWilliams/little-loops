@@ -1,4 +1,4 @@
-# ENH-259: Add Content-Quality Analysis to /ll:refine_issue - Implementation Plan
+# ENH-259: Add Content-Quality Analysis to /ll:refine-issue - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/enhancements/P3-ENH-259-refine-issue-content-quality-analysis.md`
@@ -30,8 +30,8 @@ The `refine_issue` command at `commands/refine_issue.md` performs a 6-step proce
 After Step 3 (structural gap analysis), a new Step 3.5 runs content quality analysis on sections that **do** have content. This surfaces quality issues alongside structural gaps in Step 4's interactive refinement.
 
 ### How to Verify
-- Run `/ll:refine_issue` on an issue with vague content — quality issues should be identified
-- Run `/ll:refine_issue` on a well-written issue — no quality issues should be flagged
+- Run `/ll:refine-issue` on an issue with vague content — quality issues should be identified
+- Run `/ll:refine-issue` on a well-written issue — no quality issues should be flagged
 - The output format should include both structural gaps and content quality findings
 
 ## What We're NOT Doing
@@ -46,7 +46,7 @@ After Step 3 (structural gap analysis), a new Step 3.5 runs content quality anal
 
 The current `refine_issue` command has a blind spot: it only checks whether sections exist, not whether their content is actionable. An issue with all required sections filled in with vague text ("improve performance", "fix the API") passes gap analysis despite being unusable for implementation. This causes:
 1. Issues reach `ready_issue` in a low-quality state and get closed as `too_vague`
-2. Implementers must guess at requirements during `/ll:manage_issue`
+2. Implementers must guess at requirements during `/ll:manage-issue`
 
 ## Solution Approach
 
@@ -213,8 +213,8 @@ Add a `## QUALITY ISSUES` section between `## GAPS IDENTIFIED` and `## REFINEMEN
 ## Testing Strategy
 
 ### Manual Testing
-- Run `/ll:refine_issue` on an existing issue with vague content and verify quality issues are detected
-- Run `/ll:refine_issue` on a well-specified issue and verify no false positives
+- Run `/ll:refine-issue` on an existing issue with vague content and verify quality issues are detected
+- Run `/ll:refine-issue` on a well-specified issue and verify no false positives
 - Verify the output format includes the new QUALITY ISSUES section
 
 ### Regression Check

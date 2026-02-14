@@ -139,7 +139,7 @@ questions:
       - label: "Context monitoring"
         description: "Auto-handoff reminders at 80% context usage (works in all modes)"
       - label: "GitHub sync"
-        description: "Sync issues with GitHub Issues via /ll:sync_issues"
+        description: "Sync issues with GitHub Issues via /ll:sync-issues"
     multiSelect: true
 ```
 

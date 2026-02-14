@@ -122,9 +122,9 @@ except Exception as e:
 - Types: PASS
 
 ## Session Log
-- `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
-- `/ll:refine_issue` - 2026-02-12T21:45:00Z - `~/.claude/projects/<project>/446a4179-4573-4b61-85c3-1958df0adc7a.jsonl`
-- `/ll:manage_issue` - 2026-02-12T22:00:00Z - `~/.claude/projects/<project>/6385441f-a691-4106-82e2-4838a3bb81d8.jsonl`
+- `/ll:scan-codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
+- `/ll:refine-issue` - 2026-02-12T21:45:00Z - `~/.claude/projects/<project>/446a4179-4573-4b61-85c3-1958df0adc7a.jsonl`
+- `/ll:manage-issue` - 2026-02-12T22:00:00Z - `~/.claude/projects/<project>/6385441f-a691-4106-82e2-4838a3bb81d8.jsonl`
 
 ---
 

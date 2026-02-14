@@ -43,7 +43,7 @@ The `convergence` evaluator type already exists in `EvaluateConfig` (schema.py:3
 - Completes the original FEAT-041 design which explicitly listed all 4 paradigms
 - Enables goal-directed loops (e.g., "no type errors in src/") and metric convergence loops (e.g., "reduce test failures to 0")
 - Unblocks creation of loop templates that use these paradigms
-- The `/ll:create_loop` wizard already presents all 4 paradigms to users (per ENH-126) but 2 don't actually work
+- The `/ll:create-loop` wizard already presents all 4 paradigms to users (per ENH-126) but 2 don't actually work
 
 ## Proposed Solution
 
@@ -61,7 +61,7 @@ Register both in the `COMPILERS` dict.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli.py` - Uses `compile_paradigm()` (no changes needed, auto-discovers via registry)
-- `skills/ll:create_loop.md` - Already references all 4 paradigms in wizard
+- `skills/ll:create-loop.md` - Already references all 4 paradigms in wizard
 
 ### Tests
 - `scripts/tests/test_fsm_compilers.py` - Add tests for goal and convergence compilers
@@ -80,7 +80,7 @@ Register both in the `COMPILERS` dict.
 2. Implement `compile_convergence()` following the measure→apply→done template pattern
 3. Register both in the compiler registry
 4. Add unit tests and YAML fixtures
-5. Verify `/ll:create_loop` wizard works end-to-end with new paradigms
+5. Verify `/ll:create-loop` wizard works end-to-end with new paradigms
 
 ## Impact
 
@@ -91,7 +91,7 @@ Register both in the `COMPILERS` dict.
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Labels
 

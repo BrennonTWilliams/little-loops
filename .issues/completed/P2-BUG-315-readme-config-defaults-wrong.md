@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. Three configuration default values in README.md do not match the actual defaults in `config-schema.json` and source code.
+Documentation issue found by `/ll:audit-docs`. Three configuration default values in README.md do not match the actual defaults in `config-schema.json` and source code.
 
 ## Current Behavior
 

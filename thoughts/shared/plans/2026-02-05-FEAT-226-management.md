@@ -48,7 +48,7 @@ A fully functional `ll-sync` CLI tool that:
 
 ## Problem Analysis
 
-The sync command spec exists but has no execution layer. Users can configure sync settings, but when they run `/ll:sync_issues push`, nothing happens because there's no Python code to:
+The sync command spec exists but has no execution layer. Users can configure sync settings, but when they run `/ll:sync-issues push`, nothing happens because there's no Python code to:
 1. Invoke `gh` CLI commands
 2. Parse GitHub API responses (JSON from `gh --json`)
 3. Update issue frontmatter with sync metadata

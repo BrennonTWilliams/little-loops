@@ -41,7 +41,7 @@ User description: "In `ll-sprint` - track total duration (sum duration of each w
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+_No documents linked. Run `/ll:align-issues` to discover relevant docs._
 
 ## Labels
 

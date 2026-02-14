@@ -111,7 +111,7 @@ Remove the dead `exit 0` on line 103. The fix is two changes in `user-prompt-che
 - Lint: PASS
 
 ## Session Log
-- `/ll:manage_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/0c3052a7-a34f-494d-9545-a1135642648a.jsonl`
+- `/ll:manage-issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/0c3052a7-a34f-494d-9545-a1135642648a.jsonl`
 
 ---
 

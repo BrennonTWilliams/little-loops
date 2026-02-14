@@ -3,15 +3,15 @@ discovered_date: 2026-02-05
 discovered_by: capture_issue
 ---
 
-# FEAT-257: Add /ll:tradeoff_review_issues Skill for Issue Utility vs Complexity Evaluation
+# FEAT-257: Add /ll:tradeoff-review-issues Skill for Issue Utility vs Complexity Evaluation
 
 ## Summary
 
-Create a new Command `/ll:tradeoff_review_issues` in the little-loops plugin that sense-checks active Issues before implementation by evaluating their utility vs complexity trade-offs. The command launches subagents in waves to review all active Issues, scoring each on multiple dimensions, then presents recommendations to the user for approval before executing any changes.
+Create a new Command `/ll:tradeoff-review-issues` in the little-loops plugin that sense-checks active Issues before implementation by evaluating their utility vs complexity trade-offs. The command launches subagents in waves to review all active Issues, scoring each on multiple dimensions, then presents recommendations to the user for approval before executing any changes.
 
 ## Context
 
-**Direct mode**: User description: "Create a new Command in our `ll@little-loops` (`ll`) custom claude code plugin `/ll:tradeoff_review_issues` to sense-check Issues before implementation by evaluating their utility vs complexity trade-offs. The Command should launch subagents in waves to review all active Issues (as defined in `ll-config` file, default Issue folders are `.issues/bugs/`, `.issues/enhancements/`, and `.issues/features/`). Subagents should evaluate utility to the project, implementation effort, complexity added, technical debt added, maintenance overhead added, etc., on a LOW, MEDIUM, HIGH scale, then make a final determination on if the Issue should be implemented, updated/changed first, or closed as low-value/deferred. The command should present the changes to the user as a final step before executing changes to Issue files, with 'y/n' style review and approval."
+**Direct mode**: User description: "Create a new Command in our `ll@little-loops` (`ll`) custom claude code plugin `/ll:tradeoff-review-issues` to sense-check Issues before implementation by evaluating their utility vs complexity trade-offs. The Command should launch subagents in waves to review all active Issues (as defined in `ll-config` file, default Issue folders are `.issues/bugs/`, `.issues/enhancements/`, and `.issues/features/`). Subagents should evaluate utility to the project, implementation effort, complexity added, technical debt added, maintenance overhead added, etc., on a LOW, MEDIUM, HIGH scale, then make a final determination on if the Issue should be implemented, updated/changed first, or closed as low-value/deferred. The command should present the changes to the user as a final step before executing changes to Issue files, with 'y/n' style review and approval."
 
 ## User Story
 
@@ -33,7 +33,7 @@ There is no automated way to evaluate whether active issues are worth implementi
 
 ## Expected Behavior
 
-The `/ll:tradeoff_review_issues` command should:
+The `/ll:tradeoff-review-issues` command should:
 
 1. **Discover active issues** from configured issue directories (default: `.issues/bugs/`, `.issues/enhancements/`, `.issues/features/`)
 2. **Launch subagents in waves** to review issues in parallel batches (to manage context and API load)
@@ -105,7 +105,7 @@ Create a new skill at `skills/tradeoff-review-issues/SKILL.md` (per project pref
 
 ## Overlap Note
 
-The existing `/ll:issue_size_review` skill (in `skills/issue-size-review/SKILL.md`) evaluates issue **size/complexity** and proposes decomposition. This new feature evaluates **utility vs complexity trade-offs** to decide whether issues should be implemented, updated, or closed. The two are complementary: `issue-size-review` asks "is this too big?" while `tradeoff-review-issues` asks "is this worth doing?" Implementation should reference the existing skill as a pattern for subagent wave orchestration and user approval flow.
+The existing `/ll:issue-size-review` skill (in `skills/issue-size-review/SKILL.md`) evaluates issue **size/complexity** and proposes decomposition. This new feature evaluates **utility vs complexity trade-offs** to decide whether issues should be implemented, updated, or closed. The two are complementary: `issue-size-review` asks "is this too big?" while `tradeoff-review-issues` asks "is this worth doing?" Implementation should reference the existing skill as a pattern for subagent wave orchestration and user approval flow.
 
 ## Implementation Note
 

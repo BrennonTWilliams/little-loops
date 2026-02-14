@@ -301,5 +301,5 @@ This command creates FSM loop configurations that can be executed with the `ll-l
 Works well with:
 - `ll-loop <name>` - Execute the created loop
 - `ll-loop validate <name>` - Validate loop configuration
-- `/ll:check_code` - Often used as a fix action in loops
-- `/ll:manage_issue` - Used for complex bug fixes in loops
+- `/ll:check-code` - Often used as a fix action in loops
+- `/ll:manage-issue` - Used for complex bug fixes in loops

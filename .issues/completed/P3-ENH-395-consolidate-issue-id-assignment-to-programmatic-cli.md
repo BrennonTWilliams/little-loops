@@ -115,5 +115,5 @@ A single `ll-next-id` CLI entry point (or subcommand) wraps `get_next_issue_numb
 **Completed** | Created: 2026-02-12 | Completed: 2026-02-12 | Priority: P3
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12 - conversation context
-- `/ll:manage_issue` - 2026-02-12T18:00:00Z - implementation session
+- `/ll:capture-issue` - 2026-02-12 - conversation context
+- `/ll:manage-issue` - 2026-02-12T18:00:00Z - implementation session

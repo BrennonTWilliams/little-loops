@@ -34,7 +34,7 @@ class TestExampleYAMLFromSkill:
             "paradigm": "goal",
             "name": "type-error-fixer",
             "goal": "No type errors in source",
-            "tools": ["mypy scripts/", "/ll:manage_issue bug fix"],
+            "tools": ["mypy scripts/", "/ll:manage-issue bug fix"],
             "max_iterations": 20,
             "evaluator": {"type": "exit_code"},
         }
@@ -58,12 +58,12 @@ class TestExampleYAMLFromSkill:
                 {
                     "name": "types",
                     "check": "mypy scripts/",
-                    "fix": "/ll:manage_issue bug fix",
+                    "fix": "/ll:manage-issue bug fix",
                 },
                 {
                     "name": "tests",
                     "check": "pytest scripts/tests/",
-                    "fix": "/ll:manage_issue bug fix",
+                    "fix": "/ll:manage-issue bug fix",
                 },
             ],
             "maintain": False,
@@ -196,7 +196,7 @@ class TestActualGeneratedSuggestions:
         spec = {
             "paradigm": "imperative",
             "name": "issue-readiness-cycle",
-            "steps": ["/ll:ready_issue", "/ll:manage_issue"],
+            "steps": ["/ll:ready-issue", "/ll:manage-issue"],
             "until": {
                 "check": (
                     "ls .issues/bugs/*.md .issues/features/*.md "
@@ -222,12 +222,12 @@ class TestActualGeneratedSuggestions:
             "constraints": [
                 {
                     "name": "code-quality",
-                    "check": "/ll:check_code",
+                    "check": "/ll:check-code",
                     "fix": "ruff format && ruff check --fix",
                 },
                 {
                     "name": "tests-pass",
-                    "check": "/ll:run_tests",
+                    "check": "/ll:run-tests",
                     "fix": "Review failing tests",
                 },
             ],
@@ -249,12 +249,12 @@ class TestActualGeneratedSuggestions:
             "constraints": [
                 {
                     "name": "issues-verified",
-                    "check": "/ll:verify_issues",
+                    "check": "/ll:verify-issues",
                     "fix": "Auto-correction",
                 },
                 {
                     "name": "issues-normalized",
-                    "check": "/ll:normalize_issues",
+                    "check": "/ll:normalize-issues",
                     "fix": "Rename files",
                 },
             ],
@@ -274,9 +274,9 @@ class TestActualGeneratedSuggestions:
             "name": "codebase-scan-workflow",
             "steps": [
                 "/ll:commit",
-                "/ll:scan_codebase",
-                "/ll:verify_issues",
-                "/ll:prioritize_issues",
+                "/ll:scan-codebase",
+                "/ll:verify-issues",
+                "/ll:prioritize-issues",
             ],
             "until": {"check": "git status --porcelain", "passes": True},
             "max_iterations": 5,
@@ -576,8 +576,8 @@ class TestEdgeCases:
             "paradigm": "invariants",
             "name": "slash-commands",
             "constraints": [
-                {"name": "check", "check": "/ll:check_code", "fix": "/ll:check_code fix"},
-                {"name": "test", "check": "/ll:run_tests", "fix": "/ll:manage_issue bug fix"},
+                {"name": "check", "check": "/ll:check-code", "fix": "/ll:check-code fix"},
+                {"name": "test", "check": "/ll:run-tests", "fix": "/ll:manage-issue bug fix"},
             ],
         }
         fsm = compile_paradigm(spec)

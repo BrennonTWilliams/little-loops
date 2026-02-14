@@ -4,7 +4,7 @@ description: |
 
   Supports --all (batch all active issues) and --auto (non-interactive) flags. Persists confidence_score to issue frontmatter after evaluation.
 
-  Complementary to /ll:ready_issue (which validates the issue file) — this skill validates the implementation approach and codebase readiness.
+  Complementary to /ll:ready-issue (which validates the issue file) — this skill validates the implementation approach and codebase readiness.
 
   Trigger keywords: "confidence check", "pre-implementation check", "ready to implement", "implementation readiness", "confidence score"
 model: sonnet
@@ -22,7 +22,7 @@ Pre-implementation assessment that validates readiness to begin coding. Uses res
 
 ## When to Activate
 
-- Before implementation in `/ll:manage_issue` (recommended step in Phase 2)
+- Before implementation in `/ll:manage-issue` (recommended step in Phase 2)
 - When unsure whether an issue is ready for coding
 - After deep research, to evaluate whether findings support the approach
 - User asks "is this ready to implement?" or similar
@@ -375,9 +375,9 @@ CONFIDENCE CHECK BATCH REPORT: --all mode
 ================================================================================
 ```
 
-## Integration with /ll:manage_issue
+## Integration with /ll:manage-issue
 
-This skill is referenced in `/ll:manage_issue` Phase 2 as a recommended pre-planning step. When invoked within manage_issue:
+This skill is referenced in `/ll:manage-issue` Phase 2 as a recommended pre-planning step. When invoked within manage_issue:
 
 - Uses research findings from Phase 1.5 (no redundant searching)
 - Score >=70: proceed to plan creation

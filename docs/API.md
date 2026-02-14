@@ -1911,7 +1911,7 @@ WorkerPool(
 
 ### Output Parsing
 
-Utilities for parsing Claude's output from `/ll:ready_issue` commands. Located at `little_loops.parallel.output_parsing`.
+Utilities for parsing Claude's output from `/ll:ready-issue` commands. Located at `little_loops.parallel.output_parsing`.
 
 #### parse_ready_issue_output
 
@@ -1919,7 +1919,7 @@ Utilities for parsing Claude's output from `/ll:ready_issue` commands. Located a
 def parse_ready_issue_output(output: str) -> dict[str, Any]
 ```
 
-Parse the output from a `/ll:ready_issue` command to extract verdict and metadata.
+Parse the output from a `/ll:ready-issue` command to extract verdict and metadata.
 
 **Parameters:**
 - `output` - Raw stdout from Claude CLI
@@ -1946,7 +1946,7 @@ Parse the output from a `/ll:ready_issue` command to extract verdict and metadat
 ```python
 from little_loops.parallel.output_parsing import parse_ready_issue_output
 
-result = subprocess.run(["claude", "-p", "/ll:ready_issue BUG-001"], capture_output=True, text=True)
+result = subprocess.run(["claude", "-p", "/ll:ready-issue BUG-001"], capture_output=True, text=True)
 parsed = parse_ready_issue_output(result.stdout)
 
 if parsed["is_ready"]:
@@ -2077,7 +2077,7 @@ Build the ready_issue command string.
 **Parameters:**
 - `issue_id` - Issue identifier
 
-**Returns:** Complete command string (e.g., `"/ll:ready_issue BUG-001"`)
+**Returns:** Complete command string (e.g., `"/ll:ready-issue BUG-001"`)
 
 ##### get_manage_command
 
@@ -2426,8 +2426,8 @@ Extract entities from message content using regex patterns.
 ```python
 from little_loops.workflow_sequence_analyzer import extract_entities
 
-entities = extract_entities("Fix BUG-123 in src/utils.py using /ll:manage_issue")
-# Returns: {"BUG-123", "src/utils.py", "/ll:manage_issue"}
+entities = extract_entities("Fix BUG-123 in src/utils.py using /ll:manage-issue")
+# Returns: {"BUG-123", "src/utils.py", "/ll:manage-issue"}
 ```
 
 #### calculate_boundary_weight
@@ -2761,7 +2761,7 @@ fsm = FSMLoop(
             on_failure="fix",
         ),
         "fix": StateConfig(
-            action="/ll:manage_issue bug fix",
+            action="/ll:manage-issue bug fix",
             next="check",
         ),
         "done": StateConfig(terminal=True),
@@ -2895,7 +2895,7 @@ from little_loops.fsm import compile_paradigm
 spec = {
     "paradigm": "goal",
     "goal": "No type errors in src/",
-    "tools": ["/ll:check_code types", "/ll:manage_issue bug fix"],
+    "tools": ["/ll:check-code types", "/ll:manage-issue bug fix"],
     "max_iterations": 20,
 }
 fsm = compile_paradigm(spec)

@@ -7,11 +7,11 @@ discovered_by: capture_issue
 
 ## Summary
 
-Enhance `/ll:create_sprint` to offer traditional sprint-style grouping options that organize issues by themes or focus areas (e.g., "performance", "developer experience", "documentation"), in addition to the existing `parallel-ready` and issue type options.
+Enhance `/ll:create-sprint` to offer traditional sprint-style grouping options that organize issues by themes or focus areas (e.g., "performance", "developer experience", "documentation"), in addition to the existing `parallel-ready` and issue type options.
 
 ## Current Behavior
 
-When `/ll:create_sprint` is run with no argument, the user is presented with:
+When `/ll:create-sprint` is run with no argument, the user is presented with:
 - A `parallel-ready` option (group by parallelizability)
 - An Issue Type option (e.g., "enhancements", "bugs", "features")
 
@@ -19,7 +19,7 @@ These are useful but purely mechanical groupings. There is no option to create a
 
 ## Expected Behavior
 
-When `/ll:create_sprint` is run with no argument, in addition to current options, suggest theme-based sprint groupings such as:
+When `/ll:create-sprint` is run with no argument, in addition to current options, suggest theme-based sprint groupings such as:
 
 1. **Keyword/topic clusters** - Analyze issue titles and summaries to detect natural themes (e.g., "performance", "testing", "CLI tools", "documentation", "sprint system")
 2. **Component-based groupings** - Group issues by which part of the codebase they touch (e.g., "hooks system", "issue management", "sprint tooling")
@@ -124,8 +124,8 @@ TBD - requires investigation
 - Lint: PASS
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc5517c3-2785-4593-a080-7f98d0e59836.jsonl`
-- `/ll:manage_issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ea9ac4f-8c05-4d6f-98c3-8e1abe0a4fd8.jsonl`
+- `/ll:capture-issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dc5517c3-2785-4593-a080-7f98d0e59836.jsonl`
+- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ea9ac4f-8c05-4d6f-98c3-8e1abe0a4fd8.jsonl`
 
 ---
 

@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-When users select common tools in the `/ll:create_loop` wizard (pytest, mypy, ruff), the wizard should suggest appropriate evaluator configurations based on known tool behavior rather than always defaulting to exit code.
+When users select common tools in the `/ll:create-loop` wizard (pytest, mypy, ruff), the wizard should suggest appropriate evaluator configurations based on known tool behavior rather than always defaulting to exit code.
 
 ## Context
 

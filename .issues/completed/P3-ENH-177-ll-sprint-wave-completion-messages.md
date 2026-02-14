@@ -39,7 +39,7 @@ Update the wave completion output in the `ll-sprint` CLI tool to:
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+_No documents linked. Run `/ll:align-issues` to discover relevant docs._
 
 ## Labels
 

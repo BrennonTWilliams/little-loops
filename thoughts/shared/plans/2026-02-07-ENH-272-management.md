@@ -33,7 +33,7 @@ Three new integration analysis touchpoints in `commands/manage_issue.md`:
 
 ### How to Verify
 - Read `commands/manage_issue.md` and confirm all three insertion points exist
-- Run `/ll:manage_issue enhancement plan ENH-XXX --plan-only` and verify the plan template includes the new section
+- Run `/ll:manage-issue enhancement plan ENH-XXX --plan-only` and verify the plan template includes the new section
 - Run tests, lint, and types to confirm no regressions
 
 ## What We're NOT Doing
@@ -210,7 +210,7 @@ Also update the Final Report template to include integration review status in th
 - Existing tests should continue to pass (the change is to a markdown command template)
 
 ### Integration Tests
-- Verify the template renders correctly by running `/ll:manage_issue enhancement plan ENH-XXX --plan-only` on a test issue
+- Verify the template renders correctly by running `/ll:manage-issue enhancement plan ENH-XXX --plan-only` on a test issue
 
 ## Code Reuse & Integration
 

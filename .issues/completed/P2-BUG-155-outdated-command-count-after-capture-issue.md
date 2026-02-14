@@ -47,7 +47,7 @@ The actual command count is **21**, not 20. The following command exists in `com
 
 | Command | Description |
 |---------|-------------|
-| `/ll:capture_issue` | Capture issues from conversation or natural language description |
+| `/ll:capture-issue` | Capture issues from conversation or natural language description |
 
 ### Verification
 
@@ -109,7 +109,7 @@ docs/COMMANDS.md: Add capture_issue entry
    - Line 64: Change "20" to "21"
 
 3. **docs/COMMANDS.md**
-   - Add `/ll:capture_issue` to Issue Management section
+   - Add `/ll:capture-issue` to Issue Management section
 
 ## Impact
 
@@ -138,7 +138,7 @@ docs/COMMANDS.md: Add capture_issue entry
 ### Changes Made
 - README.md: Updated command count from 20 to 21 (lines 13 and 505)
 - docs/ARCHITECTURE.md: Updated command count from 20 to 21 (mermaid diagram and directory structure)
-- docs/COMMANDS.md: Added `/ll:capture_issue` entry in Issue Management section and Quick Reference table
+- docs/COMMANDS.md: Added `/ll:capture-issue` entry in Issue Management section and Quick Reference table
 
 ### Verification Results
 - Command count verified: 21 commands in commands/*.md

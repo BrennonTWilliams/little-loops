@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `docs/COMMANDS.md` file documents all `/ll:` commands but is missing the `/ll:create_sprint` command. The command definition exists at `.claude/commands/create_sprint.md`.
+The `docs/COMMANDS.md` file documents all `/ll:` commands but is missing the `/ll:create-sprint` command. The command definition exists at `.claude/commands/create_sprint.md`.
 
 ### Key Discoveries
 - Quick Reference table has 24 commands (lines 177-205) but excludes `create_sprint`
@@ -17,7 +17,7 @@ The `docs/COMMANDS.md` file documents all `/ll:` commands but is missing the `/l
 
 ## Desired End State
 
-The `/ll:create_sprint` command is fully documented in `docs/COMMANDS.md`:
+The `/ll:create-sprint` command is fully documented in `docs/COMMANDS.md`:
 1. Listed in the Quick Reference table
 2. Has a full section with description, arguments, and usage
 
@@ -33,7 +33,7 @@ The `/ll:create_sprint` command is fully documented in `docs/COMMANDS.md`:
 
 ## Solution Approach
 
-Add documentation for `/ll:create_sprint` in two places:
+Add documentation for `/ll:create-sprint` in two places:
 1. Add a new "Sprint Management" section after "Issue Management" (since sprints are related but distinct)
 2. Add entry to Quick Reference table
 
@@ -42,19 +42,19 @@ Add documentation for `/ll:create_sprint` in two places:
 ### Phase 1: Add Sprint Management Section
 
 #### Overview
-Add a new section documenting the `/ll:create_sprint` command.
+Add a new section documenting the `/ll:create-sprint` command.
 
 #### Changes Required
 
 **File**: `docs/COMMANDS.md`
-**Location**: After line 98 (after `/ll:iterate_plan` section, before `## Auditing & Analysis`)
+**Location**: After line 98 (after `/ll:iterate-plan` section, before `## Auditing & Analysis`)
 
 ```markdown
 ---
 
 ## Sprint Management
 
-### `/ll:create_sprint`
+### `/ll:create-sprint`
 Create a sprint definition with a curated list of issues.
 
 **Arguments:**

@@ -10,7 +10,7 @@ doc_file: README.md, ARCHITECTURE.md, CONTRIBUTING.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The project lacks automated verification for counts (commands, agents, skills) leading to potential drift between documented numbers and actual files.
+Documentation issue found by `/ll:audit-docs`. The project lacks automated verification for counts (commands, agents, skills) leading to potential drift between documented numbers and actual files.
 
 ## Location
 

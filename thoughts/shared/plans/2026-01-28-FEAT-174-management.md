@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:create_sprint` command (`commands/create_sprint.md:1-287`) currently offers three interactive options when the `--issues` argument is omitted:
+The `/ll:create-sprint` command (`commands/create_sprint.md:1-287`) currently offers three interactive options when the `--issues` argument is omitted:
 
 1. "Select from active issues" - Shows all active issues grouped by category/priority
 2. "Enter manually" - User types issue IDs
@@ -25,7 +25,7 @@ These options require the user to already know what they want. The command does 
 
 ## Desired End State
 
-When `/ll:create_sprint` is run without the `--issues` argument:
+When `/ll:create-sprint` is run without the `--issues` argument:
 
 1. Analyze all active issues (from bugs/, features/, enhancements/)
 2. Identify patterns and generate 2-4 suggested sprint groupings
@@ -33,7 +33,7 @@ When `/ll:create_sprint` is run without the `--issues` argument:
 4. Allow user to select a grouping or proceed with manual selection
 
 ### How to Verify
-- Run `/ll:create_sprint test-sprint` without `--issues` argument
+- Run `/ll:create-sprint test-sprint` without `--issues` argument
 - Observe suggested sprint groupings before interactive selection
 - Verify groupings are sensible (by priority, type, dependencies, or theme)
 
@@ -188,7 +188,7 @@ Based on 23 active issues, here are suggested sprint groupings:
 - [ ] Command file is valid markdown (no syntax errors)
 
 **Manual Verification**:
-- [ ] Run `/ll:create_sprint test-sprint` with no `--issues` - see grouping suggestions
+- [ ] Run `/ll:create-sprint test-sprint` with no `--issues` - see grouping suggestions
 - [ ] Selecting a grouping auto-fills issues and suggests sprint name
 - [ ] Selecting "manual" proceeds to original interactive flow
 
@@ -278,13 +278,13 @@ After the AskUserQuestion in Step 1.5.3, add handling:
 
 ```bash
 # Test with existing issues
-/ll:create_sprint test-auto
+/ll:create-sprint test-auto
 
 # Test with explicit issues (should skip suggestions)
-/ll:create_sprint test-explicit --issues "BUG-001,FEAT-002"
+/ll:create-sprint test-explicit --issues "BUG-001,FEAT-002"
 
 # Test cancellation
-/ll:create_sprint test-cancel  # then select "Select manually" then cancel
+/ll:create-sprint test-cancel  # then select "Select manually" then cancel
 ```
 
 ## References

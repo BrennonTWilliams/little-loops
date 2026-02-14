@@ -46,7 +46,7 @@ async def process_wave(self, wave: List[IssueInfo]) -> WaveResult:
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+_No documents linked. Run `/ll:align-issues` to discover relevant docs._
 
 ## Labels
 

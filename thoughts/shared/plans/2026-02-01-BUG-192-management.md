@@ -1,4 +1,4 @@
-# BUG-192: Missing `action_type` Field in /ll:create_loop Documentation - Implementation Plan
+# BUG-192: Missing `action_type` Field in /ll:create-loop Documentation - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/bugs/P3-BUG-192-create-loop-missing-action_type-field.md`
@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:create_loop` command documentation does not mention the `action_type` field that exists in the FSM schema. The field was added in ENH-109 (completed 2026-01-22) to support configuring how actions are executed, but it was never documented in the user-facing command wizard.
+The `/ll:create-loop` command documentation does not mention the `action_type` field that exists in the FSM schema. The field was added in ENH-109 (completed 2026-01-22) to support configuring how actions are executed, but it was never documented in the user-facing command wizard.
 
 ### Key Discoveries
 - **Schema definition**: `scripts/little_loops/fsm/schema.py:188` defines `action_type: Literal["prompt", "slash_command", "shell"] | None = None`
@@ -197,7 +197,7 @@ action_type: "prompt|slash_command|shell"  # Optional for the until: check
 ## Testing Strategy
 
 ### Manual Testing
-1. Run `/ll:create_loop` and verify it still works correctly
+1. Run `/ll:create-loop` and verify it still works correctly
 2. Check that the Quick Reference section is readable and well-formatted
 3. Verify YAML examples are valid and comments are clear
 

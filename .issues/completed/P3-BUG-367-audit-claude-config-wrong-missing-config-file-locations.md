@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-The `/ll:audit_claude_config` command and its sub-agents reference incorrect or incomplete config file locations when compared to the official Claude Code settings documentation. Three specific file path issues cause the audit to miss important configuration files and look in wrong locations.
+The `/ll:audit-claude-config` command and its sub-agents reference incorrect or incomplete config file locations when compared to the official Claude Code settings documentation. Three specific file path issues cause the audit to miss important configuration files and look in wrong locations.
 
 ## Current Behavior
 
@@ -23,7 +23,7 @@ The `/ll:audit_claude_config` command and its sub-agents reference incorrect or 
 
 ## Steps to Reproduce
 
-1. Run `/ll:audit_claude_config`
+1. Run `/ll:audit-claude-config`
 2. Observe that `CLAUDE.local.md` is never checked even if it exists
 3. Observe that `.claude/settings.json` (project shared settings) is not audited
 4. Observe that MCP user config is searched at wrong path
@@ -74,7 +74,7 @@ The audit produces incomplete results - missing entire configuration files from 
 `bug`, `captured`, `audit`, `config`
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00ffa686-5907-4ed1-8765-93f478b14da2.jsonl`
+- `/ll:capture-issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00ffa686-5907-4ed1-8765-93f478b14da2.jsonl`
 
 ---
 

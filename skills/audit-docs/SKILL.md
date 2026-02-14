@@ -304,19 +304,19 @@ $ARGUMENTS
 
 ```bash
 # Audit README and linked docs
-/ll:audit_docs
+/ll:audit-docs
 
 # Full documentation audit
-/ll:audit_docs full
+/ll:audit-docs full
 
 # Audit specific file
-/ll:audit_docs file:docs/api.md
+/ll:audit-docs file:docs/api.md
 
 # Auto-fix documentation issues
-/ll:audit_docs --fix
+/ll:audit-docs --fix
 
 # Full audit with auto-fix
-/ll:audit_docs full --fix
+/ll:audit-docs full --fix
 ```
 
 ---
@@ -330,6 +330,6 @@ After auditing:
 4. Use `/ll:commit` to save all changes (direct fixes + issue files)
 
 Works well with:
-- `/ll:scan_codebase` - May find related code issues
-- `/ll:verify_issues` - Validate existing doc-related issues
-- `/ll:manage_issue` - Process created documentation issues
+- `/ll:scan-codebase` - May find related code issues
+- `/ll:verify-issues` - Validate existing doc-related issues
+- `/ll:manage-issue` - Process created documentation issues

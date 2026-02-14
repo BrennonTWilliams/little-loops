@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:refine_issue` command exists at `commands/refine_issue.md` and is registered via directory convention (plugin.json reads all `.md` files from `./commands`). The command is referenced in 12 active files with ~42 total occurrences.
+The `/ll:refine-issue` command exists at `commands/refine_issue.md` and is registered via directory convention (plugin.json reads all `.md` files from `./commands`). The command is referenced in 12 active files with ~42 total occurrences.
 
 ### Key Discoveries
 - Commands registered by directory convention — renaming file is sufficient for plugin registration

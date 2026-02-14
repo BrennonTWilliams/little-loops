@@ -85,7 +85,7 @@ _None — all downstream issues updated to remove this resolved blocker._
 ---
 
 ## Session Log
-- `/ll:format_issue --all --auto` - 2026-02-13
+- `/ll:format-issue --all --auto` - 2026-02-13
 
 ## Verification Notes
 

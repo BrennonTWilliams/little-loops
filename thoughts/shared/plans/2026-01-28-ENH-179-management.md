@@ -19,7 +19,7 @@ The little-loops plugin currently has no automated way to identify and decompose
 
 ## Desired End State
 
-A new skill `/ll:issue_size_review` that:
+A new skill `/ll:issue-size-review` that:
 1. Scans all active issues
 2. Evaluates complexity using heuristics
 3. Proposes decomposition for large issues
@@ -27,7 +27,7 @@ A new skill `/ll:issue_size_review` that:
 5. Creates child issues and closes parent with decomposition note
 
 ### How to Verify
-- Run `/ll:issue_size_review` and verify it scans active issues
+- Run `/ll:issue-size-review` and verify it scans active issues
 - Verify large issues are identified with rationale
 - Verify proposals show clear decomposition plan
 - Verify approved decompositions create proper child issues
@@ -92,7 +92,7 @@ Proactively offer or invoke this skill when the user:
 Invoke this skill to review all active issues:
 
 ```
-/ll:issue_size_review
+/ll:issue-size-review
 ```
 
 ### Workflow
@@ -211,9 +211,9 @@ Uses project configuration from `.claude/ll-config.json`:
 
 After running issue size review:
 - Review created child issues
-- Validate with `/ll:ready_issue [ID]`
+- Validate with `/ll:ready-issue [ID]`
 - Commit changes with `/ll:commit`
-- Process with `/ll:manage_issue` or `/ll:create_sprint`
+- Process with `/ll:manage-issue` or `/ll:create-sprint`
 ```
 
 #### Success Criteria
@@ -245,7 +245,7 @@ No file changes - this is verification only.
 - [ ] Format passes: `ruff format scripts/ --check`
 
 **Manual Verification**:
-- [ ] `/ll:issue_size_review` invokes the skill
+- [ ] `/ll:issue-size-review` invokes the skill
 - [ ] Skill reads active issues correctly
 - [ ] Scoring heuristics produce reasonable results
 - [ ] AskUserQuestion prompts appear for large issues
@@ -262,7 +262,7 @@ Not applicable - this is a pure skill (markdown) with no Python code.
 ### Integration Tests
 - Manual testing of full workflow:
   1. Ensure at least one large issue exists (or create a test one)
-  2. Run `/ll:issue_size_review`
+  2. Run `/ll:issue-size-review`
   3. Verify scoring output
   4. Approve a decomposition
   5. Verify child issues created

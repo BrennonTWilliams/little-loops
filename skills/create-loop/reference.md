@@ -226,13 +226,13 @@ name: "full-quality-gate"
 constraints:
   - name: "types"
     check: "mypy src/"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
   - name: "lint"
     check: "ruff check src/"
     fix: "ruff check --fix src/"
   - name: "tests"
     check: "pytest"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
 maintain: false
 max_iterations: 30
 ```
@@ -243,7 +243,7 @@ paradigm: convergence
 name: "improve-coverage"
 check: "pytest --cov=src --cov-report=term | grep TOTAL | awk '{print $4}' | tr -d '%'"
 toward: 80
-using: "/ll:manage_issue feature implement"
+using: "/ll:manage-issue feature implement"
 tolerance: 1
 max_iterations: 20
 ```
@@ -312,7 +312,7 @@ name: "automated-quality-fix"
 goal: "All quality checks pass"
 tools:
   - "pytest && mypy src/ && ruff check src/"
-  - "/ll:manage_issue bug fix"
+  - "/ll:manage-issue bug fix"
 max_iterations: 20
 on_handoff: "spawn"  # Automatically continue in new session if context runs out
 ```
@@ -324,7 +324,7 @@ name: "quick-check-guardian"
 constraints:
   - name: "types"
     check: "mypy src/"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
 maintain: false
 max_iterations: 10
 on_handoff: "terminate"  # Stop if we run out of context

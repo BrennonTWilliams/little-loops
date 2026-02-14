@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. Several CLI tools and slash commands exist in the codebase but are not documented.
+Documentation issue found by `/ll:audit-docs`. Several CLI tools and slash commands exist in the codebase but are not documented.
 
 ## Missing CLI Tools
 
@@ -31,8 +31,8 @@ The following command files exist in `commands/` but are not listed in `docs/COM
 | Command | File |
 |---------|------|
 | `/ll:find_demo_repos` | `commands/find_demo_repos.md` |
-| `/ll:manage_release` | `commands/manage_release.md` |
-| `/ll:tradeoff_review_issues` | `commands/tradeoff_review_issues.md` |
+| `/ll:manage-release` | `commands/manage_release.md` |
+| `/ll:tradeoff-review-issues` | `commands/tradeoff_review_issues.md` |
 
 ## Missing API Modules from docs/API.md
 

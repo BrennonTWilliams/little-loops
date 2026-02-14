@@ -45,7 +45,7 @@ Autoprompt Settings
   confirm:  [ON|OFF]   (show diff before applying)
 
 Bypass: Start prompt with '*' to skip optimization
-Toggle: /ll:toggle_autoprompt [enabled|mode|confirm]
+Toggle: /ll:toggle-autoprompt [enabled|mode|confirm]
 ```
 
 #### enabled
@@ -76,7 +76,7 @@ When toggling, update `.claude/ll-config.json` with the new value.
 - **ON**: Hook analyzes every prompt for clarity
 - **OFF**: All prompts pass through unchanged
 
-When disabled, prompts are never optimized automatically. Users can always re-enable with `/ll:toggle_autoprompt enabled`.
+When disabled, prompts are never optimized automatically. Users can always re-enable with `/ll:toggle-autoprompt enabled`.
 
 ### mode (quick/thorough)
 
@@ -140,26 +140,26 @@ $ARGUMENTS
 
 ```bash
 # Show current status
-/ll:toggle_autoprompt
+/ll:toggle-autoprompt
 
 # Disable auto-optimization
-/ll:toggle_autoprompt enabled
+/ll:toggle-autoprompt enabled
 # Output: Autoprompt: DISABLED
 
 # Enable again
-/ll:toggle_autoprompt enabled
+/ll:toggle-autoprompt enabled
 # Output: Autoprompt: ENABLED
 
 # Switch to thorough mode (uses agent)
-/ll:toggle_autoprompt mode
+/ll:toggle-autoprompt mode
 # Output: Mode: thorough (spawns agent for deep codebase analysis)
 
 # Switch back to quick mode
-/ll:toggle_autoprompt mode
+/ll:toggle-autoprompt mode
 # Output: Mode: quick (uses config only)
 
 # Disable confirmation prompts
-/ll:toggle_autoprompt confirm
+/ll:toggle-autoprompt confirm
 # Output: Confirm: OFF (auto-apply optimized prompts)
 ```
 

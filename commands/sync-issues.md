@@ -242,14 +242,14 @@ SYNC {ACTION} COMPLETE
 
 ```bash
 # Check sync status
-/ll:sync_issues status
+/ll:sync-issues status
 
 # Push all local issues to GitHub
-/ll:sync_issues push
+/ll:sync-issues push
 
 # Push a specific issue
-/ll:sync_issues push BUG-123
+/ll:sync-issues push BUG-123
 
 # Pull all GitHub Issues to local
-/ll:sync_issues pull
+/ll:sync-issues pull
 ```

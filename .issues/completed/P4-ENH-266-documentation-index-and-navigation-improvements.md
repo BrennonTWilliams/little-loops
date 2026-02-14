@@ -10,7 +10,7 @@ doc_file: docs/
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The project lacks a central documentation index, making it harder for users to discover and navigate all available documentation.
+Documentation issue found by `/ll:audit-docs`. The project lacks a central documentation index, making it harder for users to discover and navigate all available documentation.
 
 ## Location
 

@@ -147,8 +147,8 @@ _None_
 - Integration: PASS
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff26efc-756f-45c9-b95d-159619b176d9.jsonl`
-- `/ll:manage_issue` - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b270f60-8f2c-476b-9a02-8a8bbc3c6ef2.jsonl`
+- `/ll:capture-issue` - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff26efc-756f-45c9-b95d-159619b176d9.jsonl`
+- `/ll:manage-issue` - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b270f60-8f2c-476b-9a02-8a8bbc3c6ef2.jsonl`
 
 ---
 

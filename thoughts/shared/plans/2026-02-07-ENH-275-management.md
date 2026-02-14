@@ -72,9 +72,9 @@ Add `tradeoff_review_issues`, `find_demo_repos`, and `manage_release` to both de
 **File**: `docs/COMMANDS.md`
 
 1. **Detailed section**: Insert entries in their category sections:
-   - `/ll:tradeoff_review_issues` → Issue Management section (after `/ll:iterate_plan`, line 114)
+   - `/ll:tradeoff-review-issues` → Issue Management section (after `/ll:iterate-plan`, line 114)
    - `/ll:find_demo_repos` → Auditing & Analysis section (after `/ll:analyze-workflows`, line 163)
-   - `/ll:manage_release` → Git & Workflow section (after `/ll:cleanup_worktrees`, line 187)
+   - `/ll:manage-release` → Git & Workflow section (after `/ll:cleanup-worktrees`, line 187)
 
 2. **Quick reference table**: Add rows at appropriate positions:
    - `tradeoff_review_issues` after `iterate_plan` (line 266)

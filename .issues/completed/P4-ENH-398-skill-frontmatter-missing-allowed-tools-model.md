@@ -125,9 +125,9 @@ allowed-tools:
 `enhancement`, `skills`, `security`, `configuration`
 
 ## Session Log
-- /ll:format_issue --all --auto - 2026-02-13
-- /ll:refine_issue - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f443c963-bde0-44b6-bee4-1a88f2ca6a7a.jsonl`
-- /ll:manage_issue - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcd8f655-b2b0-4574-8fb4-a00ac15f9d4d.jsonl`
+- /ll:format-issue --all --auto - 2026-02-13
+- /ll:refine-issue - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f443c963-bde0-44b6-bee4-1a88f2ca6a7a.jsonl`
+- /ll:manage-issue - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bcd8f655-b2b0-4574-8fb4-a00ac15f9d4d.jsonl`
 
 ## Verification Notes
 

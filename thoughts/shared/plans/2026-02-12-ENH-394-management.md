@@ -1,4 +1,4 @@
-# ENH-394: Add `/ll:review_sprint` skill for AI-guided sprint health checks - Implementation Plan
+# ENH-394: Add `/ll:review-sprint` skill for AI-guided sprint health checks - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/enhancements/P4-ENH-394-interactive-sprint-review-skill.md`
@@ -22,7 +22,7 @@ The sprint system has `ll-sprint show` for structural display and `ll-sprint edi
 
 ## Desired End State
 
-A new skill `/ll:review_sprint` that:
+A new skill `/ll:review-sprint` that:
 1. Loads a sprint and runs health checks (invalid refs, completed issues, dependency warnings)
 2. Recommends removing stale/completed/low-value issues
 3. Recommends adding related backlog issues that align with the sprint theme
@@ -97,7 +97,7 @@ Workflow phases:
 
 **Manual Verification**:
 - [ ] Skill appears in `/ll:help` output
-- [ ] Skill can be invoked with `/ll:review_sprint <sprint-name>`
+- [ ] Skill can be invoked with `/ll:review-sprint <sprint-name>`
 
 ## Testing Strategy
 

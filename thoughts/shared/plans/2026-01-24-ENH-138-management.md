@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:create_sprint` command at `commands/create_sprint.md:59-62` documents naming conventions but doesn't enforce them:
+The `/ll:create-sprint` command at `commands/create_sprint.md:59-62` documents naming conventions but doesn't enforce them:
 
 ```markdown
 **Validate sprint name:**
@@ -123,9 +123,9 @@ questions:
 - [ ] Types pass: `python -m mypy scripts/little_loops/`
 
 **Manual Verification**:
-- [ ] Running `/ll:create_sprint "Sprint 1"` triggers validation and offers `sprint-1` as correction
-- [ ] Running `/ll:create_sprint "--test--"` triggers validation and offers `test` as correction
-- [ ] Running `/ll:create_sprint "valid-name"` proceeds without validation prompt
+- [ ] Running `/ll:create-sprint "Sprint 1"` triggers validation and offers `sprint-1` as correction
+- [ ] Running `/ll:create-sprint "--test--"` triggers validation and offers `test` as correction
+- [ ] Running `/ll:create-sprint "valid-name"` proceeds without validation prompt
 - [ ] Choosing "Enter different name" allows re-entry and re-validation
 
 ---

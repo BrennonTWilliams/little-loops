@@ -9,7 +9,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-Add configurable document category tracking to `ll-config.json` with categories like `architecture` and `product`, where each category contains a list of key markdown documents. Integrate discovery into `/ll:init` wizard and create a new `/ll:align_issues` command to validate active issues against these key documents.
+Add configurable document category tracking to `ll-config.json` with categories like `architecture` and `product`, where each category contains a list of key markdown documents. Integrate discovery into `/ll:init` wizard and create a new `/ll:align-issues` command to validate active issues against these key documents.
 
 ## Motivation
 
@@ -129,16 +129,16 @@ questions:
 | architecture | `**/architecture*.md`, `**/design*.md`, `**/api*.md`, `docs/` | "## Architecture", "System Design" |
 | product | `**/goal*.md`, `**/roadmap*.md`, `**/product*.md`, `**/vision*.md` | "## Product", "User Stories" |
 
-### 3. New Command: `/ll:align_issues`
+### 3. New Command: `/ll:align-issues`
 
 Create `commands/align_issues.md`:
 
 **Usage:**
 ```bash
-/ll:align_issues <category>           # Align all active issues against category
-/ll:align_issues architecture         # Check architecture alignment
-/ll:align_issues product              # Check product alignment
-/ll:align_issues --all                # Check all configured categories
+/ll:align-issues <category>           # Align all active issues against category
+/ll:align-issues architecture         # Check architecture alignment
+/ll:align-issues product              # Check product alignment
+/ll:align-issues --all                # Check all configured categories
 ```
 
 **Process:**
@@ -195,11 +195,11 @@ Documents analyzed:
 
 ### 4. Integration with Existing Commands
 
-**`/ll:ready_issue`**: Add optional alignment check
+**`/ll:ready-issue`**: Add optional alignment check
 - If documents.enabled, run alignment check against relevant categories
 - Include alignment warnings in readiness report
 
-**`/ll:scan_codebase`**: Reference key documents
+**`/ll:scan-codebase`**: Reference key documents
 - When creating issues, check if related documents exist
 - Add document references to discovered issues
 
@@ -219,7 +219,7 @@ No document category tracking exists. Issues are not validated against key docum
 
 1. `ll-config.json` supports `documents.categories` configuration
 2. `/ll:init` wizard asks about document tracking with smart defaults
-3. `/ll:align_issues <category>` validates issues against category documents
+3. `/ll:align-issues <category>` validates issues against category documents
 4. Issues can be systematically checked for alignment with documented goals/rules/designs
 
 ## Acceptance Criteria
@@ -228,8 +228,8 @@ No document category tracking exists. Issues are not validated against key docum
 - [ ] `/ll:init` interactive mode prompts for document tracking setup
 - [ ] `/ll:init` scans codebase for `.md` files and suggests categorization
 - [ ] `/ll:init` allows custom category definition
-- [ ] New `/ll:align_issues` command created with full implementation
-- [ ] `/ll:align_issues` generates meaningful alignment reports
+- [ ] New `/ll:align-issues` command created with full implementation
+- [ ] `/ll:align-issues` generates meaningful alignment reports
 - [ ] Documentation updated (README.md, COMMANDS.md, ARCHITECTURE.md)
 - [ ] Example configuration added to templates
 

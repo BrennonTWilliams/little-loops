@@ -4,9 +4,9 @@ description: |
   Scan the codebase for new issues, verify discovered issues
   for accuracy, and assign priority levels.
 steps:
-  - "/ll:scan_codebase"
-  - "/ll:verify_issues"
-  - "/ll:prioritize_issues"
+  - "/ll:scan-codebase"
+  - "/ll:verify-issues"
+  - "/ll:prioritize-issues"
 until:
   check: "git status --porcelain"
   condition: "output_empty"

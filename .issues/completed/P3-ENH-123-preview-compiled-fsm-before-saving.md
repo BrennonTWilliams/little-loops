@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-The `/ll:create_loop` wizard shows the paradigm YAML before saving, but users can't see the actual FSM states and transitions that will be created. This makes it hard to verify the loop logic is correct.
+The `/ll:create-loop` wizard shows the paradigm YAML before saving, but users can't see the actual FSM states and transitions that will be created. This makes it hard to verify the loop logic is correct.
 
 ## Context
 
@@ -23,7 +23,7 @@ name: "fix-types"
 goal: "Type checks pass"
 tools:
   - "mypy src/"
-  - "/ll:check_code fix"
+  - "/ll:check-code fix"
 ```
 
 Users confirm this, but the actual compiled FSM has:

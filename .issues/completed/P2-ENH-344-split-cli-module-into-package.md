@@ -10,7 +10,7 @@ focus_area: large-files
 
 ## Summary
 
-Architectural issue found by `/ll:audit_architecture`. The cli.py module is a god module containing 2,624 lines with 9 different CLI entry points, violating the Single Responsibility Principle.
+Architectural issue found by `/ll:audit-architecture`. The cli.py module is a god module containing 2,624 lines with 9 different CLI entry points, violating the Single Responsibility Principle.
 
 ## Location
 

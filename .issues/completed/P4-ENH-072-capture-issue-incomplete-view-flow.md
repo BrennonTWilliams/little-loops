@@ -7,7 +7,7 @@ discovered_by: manual_review
 
 ## Summary
 
-Phase 3 of `/ll:capture_issue` offers "View Existing" and "View Completed" options but doesn't fully specify the follow-up interaction after displaying the file content.
+Phase 3 of `/ll:capture-issue` offers "View Existing" and "View Completed" options but doesn't fully specify the follow-up interaction after displaying the file content.
 
 ## Current Behavior
 

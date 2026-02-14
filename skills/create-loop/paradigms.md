@@ -177,7 +177,7 @@ name: "fix-types-and-lint"
 goal: "Type and lint checks pass"
 tools:
   - "mypy src/ && ruff check src/"
-  - "/ll:check_code fix"
+  - "/ll:check-code fix"
 max_iterations: 10
 ```
 
@@ -196,9 +196,9 @@ questions:
     multiSelect: true
     options:
       - label: "Tests pass (pytest)"
-        description: "Check: pytest, Fix: /ll:manage_issue bug fix"
+        description: "Check: pytest, Fix: /ll:manage-issue bug fix"
       - label: "Types valid (mypy)"
-        description: "Check: mypy src/, Fix: /ll:manage_issue bug fix"
+        description: "Check: mypy src/, Fix: /ll:manage-issue bug fix"
       - label: "Lint clean (ruff)"
         description: "Check: ruff check src/, Fix: ruff check --fix src/"
       - label: "Build succeeds"
@@ -220,8 +220,8 @@ questions:
 
 | Constraint | Check | Fix |
 |------------|-------|-----|
-| Tests pass | `pytest` | `/ll:manage_issue bug fix` |
-| Types valid | `mypy src/` | `/ll:manage_issue bug fix` |
+| Tests pass | `pytest` | `/ll:manage-issue bug fix` |
+| Types valid | `mypy src/` | `/ll:manage-issue bug fix` |
 | Lint clean | `ruff check src/` | `ruff check --fix src/` |
 | Build succeeds | Ask for build command | Ask for fix command |
 
@@ -280,10 +280,10 @@ name: "code-quality-guardian"
 constraints:
   - name: "tests-pass"
     check: "pytest"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
   - name: "types-valid"
     check: "mypy src/"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
   - name: "lint-clean"
     check: "ruff check src/"
     fix: "ruff check --fix src/"
@@ -337,9 +337,9 @@ questions:
     header: "Fix action"
     multiSelect: false
     options:
-      - label: "/ll:check_code fix (Recommended)"
+      - label: "/ll:check-code fix (Recommended)"
         description: "Auto-fix code issues"
-      - label: "/ll:manage_issue bug fix"
+      - label: "/ll:manage-issue bug fix"
         description: "Use issue management to fix bugs"
       - label: "Custom command"
         description: "Specify your own fix command"
@@ -366,7 +366,7 @@ paradigm: convergence
 name: "eliminate-lint-errors"
 check: "ruff check src/ 2>&1 | grep -c 'error' || echo 0"
 toward: 0
-using: "/ll:check_code fix"
+using: "/ll:check-code fix"
 tolerance: 0
 max_iterations: 50
 ```
@@ -460,7 +460,7 @@ backoff: 2
 paradigm: imperative
 name: "fix-test-check"
 steps:
-  - "/ll:check_code fix"
+  - "/ll:check-code fix"
   - "pytest"
   - "mypy src/"
 until:

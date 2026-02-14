@@ -59,7 +59,7 @@ If issue B modifies files that issue A also modifies, automatically infer a depe
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+_No documents linked. Run `/ll:align-issues` to discover relevant docs._
 
 ## Labels
 

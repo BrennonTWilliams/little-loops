@@ -63,7 +63,7 @@ The BUG-008 fix pattern:
 
 ### How to Verify
 - Run tests to ensure no regressions
-- Future `/ll:scan_codebase` runs should produce enhancement issues that pass validation without correction
+- Future `/ll:scan-codebase` runs should produce enhancement issues that pass validation without correction
 
 ## What We're NOT Doing
 

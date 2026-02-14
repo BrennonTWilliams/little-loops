@@ -24,7 +24,7 @@ Interactively configure specific areas in ll-config.json.
 
 ## Prompt Optimization
 
-### `/ll:toggle_autoprompt`
+### `/ll:toggle-autoprompt`
 Toggle automatic prompt optimization settings.
 
 **Settings:** `enabled`, `mode`, `confirm`, `status` (default: status)
@@ -33,31 +33,31 @@ Toggle automatic prompt optimization settings.
 
 ## Code Quality
 
-### `/ll:check_code`
+### `/ll:check-code`
 Run code quality checks (lint, format, types).
 
 **Modes:** `lint`, `format`, `types`, `all`, `fix`
 
-### `/ll:run_tests`
+### `/ll:run-tests`
 Run test suites with common patterns.
 
 **Arguments:**
 - `scope`: `unit`, `integration`, `all`, `affected`
 - `pattern`: optional pytest -k filter
 
-### `/ll:find_dead_code`
+### `/ll:find-dead-code`
 Analyze codebase for deprecated, unused, or dead code.
 
 ---
 
 ## Issue Management
 
-### `/ll:capture_issue`
+### `/ll:capture-issue`
 Capture issues from conversation or natural language description.
 
 **Arguments:** `input` (optional) - natural language description
 
-### `/ll:format_issue`
+### `/ll:format-issue`
 Format issue files to align with template v2.0 structure through section renaming, structural gap-filling, and boilerplate inference. Interactive by default, with optional `--auto` mode for non-interactive formatting.
 
 **Arguments:**
@@ -67,28 +67,28 @@ Format issue files to align with template v2.0 structure through section renamin
   - `--all` - Process all active issues
   - `--dry-run` - Preview changes without applying
 
-### `/ll:scan_codebase`
+### `/ll:scan-codebase`
 Scan codebase to identify bugs, enhancements, and features (technical analysis).
 
-### `/ll:scan_product`
+### `/ll:scan-product`
 Scan codebase for product-focused issues based on goals document (requires `product.enabled: true`).
 
 **Prerequisites:**
 - Product analysis enabled in config
 - Goals file exists (`.claude/ll-goals.md` by default)
 
-### `/ll:prioritize_issues`
+### `/ll:prioritize-issues`
 Analyze issues and assign priority levels (P0-P5).
 
-### `/ll:ready_issue`
+### `/ll:ready-issue`
 Validate issue file for accuracy and auto-correct problems.
 
 **Arguments:** `issue_id` (optional)
 
-### `/ll:verify_issues`
+### `/ll:verify-issues`
 Verify all issue files against current codebase state.
 
-### `/ll:align_issues`
+### `/ll:align-issues`
 Validate active issues against key documents for relevance and alignment.
 
 **Arguments:**
@@ -97,15 +97,15 @@ Validate active issues against key documents for relevance and alignment.
 
 **Prerequisites:** Configure document tracking via `/ll:init --interactive`
 
-### `/ll:normalize_issues`
+### `/ll:normalize-issues`
 Find and fix issue filenames lacking valid IDs (BUG-001, etc.).
 
-### `/ll:sync_issues`
+### `/ll:sync-issues`
 Sync local issues with GitHub Issues (push/pull/status).
 
 **Arguments:** `mode` (optional) - `push`, `pull`, or `status`
 
-### `/ll:manage_issue`
+### `/ll:manage-issue`
 Autonomously manage issues - plan, implement, verify, complete.
 
 **Arguments:**
@@ -113,19 +113,19 @@ Autonomously manage issues - plan, implement, verify, complete.
 - `action`: `fix`, `implement`, `improve`, `verify`
 - `issue_id` (optional)
 
-### `/ll:iterate_plan`
+### `/ll:iterate-plan`
 Iterate on existing implementation plans with updates.
 
 **Arguments:** `plan_path` (optional)
 
-### `/ll:refine_issue`
-Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation. Unlike `/ll:format_issue` (which aligns structure) or `/ll:ready_issue` (which validates accuracy), this command researches the codebase to identify and fill knowledge gaps.
+### `/ll:refine-issue`
+Refine issue files with codebase-driven research to fill knowledge gaps needed for implementation. Unlike `/ll:format-issue` (which aligns structure) or `/ll:ready-issue` (which validates accuracy), this command researches the codebase to identify and fill knowledge gaps.
 
 **Arguments:**
 - `issue_id` (required): Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
 - `flags` (optional): `--auto` (non-interactive), `--dry-run` (preview)
 
-### `/ll:tradeoff_review_issues`
+### `/ll:tradeoff-review-issues`
 Evaluate active issues for utility vs complexity trade-offs and recommend which to implement, update, or close.
 
 **Trigger keywords:** "tradeoff review", "review issues", "prune backlog", "sense check issues"
@@ -134,7 +134,7 @@ Evaluate active issues for utility vs complexity trade-offs and recommend which 
 
 ## Sprint Management
 
-### `/ll:create_sprint`
+### `/ll:create-sprint`
 Create a sprint definition with a curated list of issues.
 
 **Arguments:**
@@ -151,7 +151,7 @@ Create a sprint definition with a curated list of issues.
 
 **Output:** Creates `.sprints/<name>.yaml` with issue list and execution options.
 
-### `/ll:review_sprint`
+### `/ll:review-sprint`
 AI-guided sprint health check that analyzes a sprint's current state and suggests improvements.
 
 **Arguments:**
@@ -165,19 +165,19 @@ AI-guided sprint health check that analyzes a sprint's current state and suggest
 
 ## Auditing & Analysis
 
-### `/ll:audit_architecture`
+### `/ll:audit-architecture`
 Analyze codebase architecture for patterns and improvements.
 
 **Focus:** `large-files`, `integration`, `patterns`, `organization`, `all`
 
-### `/ll:audit_docs`
+### `/ll:audit-docs`
 Audit documentation for accuracy and completeness. Auto-fixable findings (wrong counts, outdated paths, broken links) can be fixed directly during the audit.
 
 **Scope:** `full`, `readme`, `file:<path>`
 
 **Flags:** `--fix` (auto-apply fixable corrections without prompting)
 
-### `/ll:audit_claude_config`
+### `/ll:audit-claude-config`
 Comprehensive audit of Claude Code plugin configuration with parallel sub-agents.
 
 **Scope:** `all`, `global`, `project`, `hooks`, `mcp`, `agents`, `commands`, `skills`
@@ -197,10 +197,10 @@ Analyze user message history to identify patterns, workflows, and automation opp
 ### `/ll:commit`
 Create git commits with user approval (no Claude attribution).
 
-### `/ll:describe_pr`
+### `/ll:describe-pr`
 Generate comprehensive PR descriptions from branch changes.
 
-### `/ll:open_pr`
+### `/ll:open-pr`
 Open a pull request for the current branch.
 
 **Arguments:**
@@ -208,13 +208,13 @@ Open a pull request for the current branch.
 
 **Flags:** `--draft` (create as draft PR)
 
-### `/ll:cleanup_worktrees`
+### `/ll:cleanup-worktrees`
 Clean up stale git worktrees and branches from parallel processing.
 
 **Arguments:**
 - `mode`: `run` (default), `dry-run`
 
-### `/ll:manage_release`
+### `/ll:manage-release`
 Manage releases — create git tags, generate changelogs, and create GitHub releases.
 
 **Arguments:**
@@ -243,7 +243,7 @@ Resume from a previous session's continuation prompt.
 
 ## Automation Loops
 
-### `/ll:create_loop`
+### `/ll:create-loop`
 Create FSM loop configurations interactively.
 
 **Workflow:**
@@ -329,19 +329,19 @@ Analyze user message history to suggest FSM loop configurations automatically.
 /ll:init
 
 # Run all code quality checks
-/ll:check_code
+/ll:check-code
 
 # Find and fix issues automatically
-/ll:scan_codebase            # Technical analysis
-/ll:scan_product             # Product analysis (if enabled)
-/ll:normalize_issues
-/ll:prioritize_issues
-/ll:format_issue --all --auto  # Auto-format all issues (template v2.0 alignment)
-/ll:manage_issue bug fix
+/ll:scan-codebase            # Technical analysis
+/ll:scan-product             # Product analysis (if enabled)
+/ll:normalize-issues
+/ll:prioritize-issues
+/ll:format-issue --all --auto  # Auto-format all issues (template v2.0 alignment)
+/ll:manage-issue bug fix
 
 # Prepare for a pull request
-/ll:run_tests all
-/ll:check_code
+/ll:run-tests all
+/ll:check-code
 /ll:commit
-/ll:open_pr
+/ll:open-pr
 ```

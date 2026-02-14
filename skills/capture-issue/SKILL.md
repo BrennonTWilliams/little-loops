@@ -133,7 +133,7 @@ questions:
 If no issues are identified, inform the user:
 ```
 No actionable issues found in this conversation. You can run this command with an input argument:
-/ll:capture_issue "description of the issue"
+/ll:capture-issue "description of the issue"
 ```
 
 ### Phase 2: Duplicate Detection
@@ -247,7 +247,7 @@ See [templates.md](templates.md) for the complete issue file template structure.
 
 ```markdown
 ## Session Log
-- `/ll:capture_issue` - [ISO timestamp] - `[path to current session JSONL]`
+- `/ll:capture-issue` - [ISO timestamp] - `[path to current session JSONL]`
 ```
 
 To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). Add the `## Session Log` section before the `---` / `## Status` footer.
@@ -341,22 +341,22 @@ See [templates.md](templates.md) for complete output report templates including:
 
 ```bash
 # Capture issue from explicit description (bug)
-/ll:capture_issue "The login button doesn't respond on mobile Safari"
+/ll:capture-issue "The login button doesn't respond on mobile Safari"
 
 # Capture issue from explicit description (feature)
-/ll:capture_issue "We should add dark mode support to the settings page"
+/ll:capture-issue "We should add dark mode support to the settings page"
 
 # Capture issue from explicit description (enhancement)
-/ll:capture_issue "The API response time could be improved with caching"
+/ll:capture-issue "The API response time could be improved with caching"
 
 # Analyze current conversation for issues to capture
-/ll:capture_issue
+/ll:capture-issue
 
 # Capture with minimal template (quick mode)
-/ll:capture_issue "Quick note: cache is slow" --quick
+/ll:capture-issue "Quick note: cache is slow" --quick
 
 # Analyze conversation and use minimal templates
-/ll:capture_issue --quick
+/ll:capture-issue --quick
 ```
 
 ---
@@ -365,7 +365,7 @@ See [templates.md](templates.md) for complete output report templates including:
 
 After capturing issues:
 1. **Review**: `cat [issue-path]` to verify content
-2. **Validate**: `/ll:ready_issue [ID]` to check accuracy
-3. **Prioritize**: `/ll:prioritize_issues` if priority needs adjustment
+2. **Validate**: `/ll:ready-issue [ID]` to check accuracy
+3. **Prioritize**: `/ll:prioritize-issues` if priority needs adjustment
 4. **Commit**: `/ll:commit` to save new issues
-5. **Process**: `/ll:manage_issue [type] [action] [ID]` to implement
+5. **Process**: `/ll:manage-issue [type] [action] [ID]` to implement

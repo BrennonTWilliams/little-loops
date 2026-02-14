@@ -7,11 +7,11 @@ discovered_by: capture_issue
 
 ## Summary
 
-The current `/ll:refine_issue` command primarily performs template v2.0 section alignment (renaming v1.0 sections to v2.0 names) and structural gap-filling with boilerplate content. Its name implies substantive refinement — researching the codebase, identifying knowledge gaps, gathering clarifying information — but its actual behavior is template format conversion. Rename it to `format_issue` (or `align_issue`) so the command name honestly reflects what it does.
+The current `/ll:refine-issue` command primarily performs template v2.0 section alignment (renaming v1.0 sections to v2.0 names) and structural gap-filling with boilerplate content. Its name implies substantive refinement — researching the codebase, identifying knowledge gaps, gathering clarifying information — but its actual behavior is template format conversion. Rename it to `format_issue` (or `align_issue`) so the command name honestly reflects what it does.
 
 ## Current Behavior
 
-`/ll:refine_issue` is named as if it performs deep issue refinement, but its center of gravity is:
+`/ll:refine-issue` is named as if it performs deep issue refinement, but its center of gravity is:
 - Step 2.5: Template v1.0 → v2.0 section header renaming
 - Step 3: Structural gap identification (missing template sections, not missing knowledge)
 - Step 3.6 (auto mode): Boilerplate inference from existing content (reformatting, not researching)
@@ -54,13 +54,13 @@ The command should be renamed to `format_issue` (or `align_issue`) with matching
 - `README.md` — command table reference (line 110)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/tests/test_session_log.py` — references `/ll:refine_issue` in session log append tests (lines 86, 92, 112, 117)
+- `scripts/tests/test_session_log.py` — references `/ll:refine-issue` in session log append tests (lines 86, 92, 112, 117)
 
 ### Similar Patterns
 - N/A
 
 ### Tests
-- `scripts/tests/test_session_log.py` — references `/ll:refine_issue` (lines 86, 92, 112, 117)
+- `scripts/tests/test_session_log.py` — references `/ll:refine-issue` (lines 86, 92, 112, 117)
 
 ### Documentation
 - `docs/COMMANDS.md` — references `refine_issue`
@@ -87,14 +87,14 @@ The command should be renamed to `format_issue` (or `align_issue`) with matching
 
 - `grep -r 'refine_issue' .` returns 0 hits outside `.issues/completed/`, `.git/`, and `thoughts/` (historical plans)
 - Every command, doc, config, and test file that referenced `refine_issue` now references `format_issue`
-- `/ll:format_issue` works identically to the current `/ll:refine_issue` (minus the removed `--template-align-only` flag)
+- `/ll:format-issue` works identically to the current `/ll:refine-issue` (minus the removed `--template-align-only` flag)
 
 ## Impact
 
 - **Priority**: P2 - Misleading naming actively confuses the pipeline; blocks FEAT-380
 - **Effort**: Small - File rename plus text find-and-replace across a known set of files
 - **Risk**: Low - No logic changes, purely naming
-- **Breaking Change**: Yes - Users of `/ll:refine_issue` will need to use `/ll:format_issue`
+- **Breaking Change**: Yes - Users of `/ll:refine-issue` will need to use `/ll:format-issue`
 
 ## Related Key Documentation
 
@@ -135,9 +135,9 @@ The command should be renamed to `format_issue` (or `align_issue`) with matching
 - Grep check: PASS (0 stray references outside excluded paths)
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12T12:00:00Z - `~/.claude/projects/<project>/d65a885a-6b92-4b2e-be03-ca8f0f08c767.jsonl`
-- `/ll:refine_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20b6856b-a7ac-47b6-8baa-a7778f9cdfe3.jsonl`
-- `/ll:manage_issue` - 2026-02-12T20:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08cd37d5-4064-41cb-84d2-76a97c6cb047.jsonl`
+- `/ll:capture-issue` - 2026-02-12T12:00:00Z - `~/.claude/projects/<project>/d65a885a-6b92-4b2e-be03-ca8f0f08c767.jsonl`
+- `/ll:refine-issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/20b6856b-a7ac-47b6-8baa-a7778f9cdfe3.jsonl`
+- `/ll:manage-issue` - 2026-02-12T20:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/08cd37d5-4064-41cb-84d2-76a97c6cb047.jsonl`
 
 ---
 

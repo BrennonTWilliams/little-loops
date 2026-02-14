@@ -275,7 +275,7 @@ The telemetry module generalizes this pattern across all CLI tools.
 
 ## Session Log
 
-- `/ll:capture_issue` - 2026-02-13T20:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0592a7db-5806-42c2-ab13-a65ef3818ff6.jsonl`
+- `/ll:capture-issue` - 2026-02-13T20:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0592a7db-5806-42c2-ab13-a65ef3818ff6.jsonl`
 
 ---
 

@@ -17,7 +17,7 @@ doc_file: [path/to/doc.md]
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`.
+Documentation issue found by `/ll:audit-docs`.
 
 ## Location
 

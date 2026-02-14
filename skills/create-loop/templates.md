@@ -37,7 +37,7 @@ constraints:
     fix: "ruff check --fix {{src_dir}}"
   - name: "types"
     check: "mypy {{src_dir}}"
-    fix: "echo 'Fix type errors manually or use /ll:manage_issue bug fix'"
+    fix: "echo 'Fix type errors manually or use /ll:manage-issue bug fix'"
   - name: "format"
     check: "ruff format --check {{src_dir}}"
     fix: "ruff format {{src_dir}}"
@@ -69,7 +69,7 @@ name: "tests-until-passing"
 goal: "All tests pass"
 tools:
   - "{{test_cmd}}"
-  - "/ll:manage_issue bug fix"
+  - "/ll:manage-issue bug fix"
 max_iterations: {{max_iterations}}
 ```
 
@@ -86,10 +86,10 @@ name: "full-quality-gate"
 constraints:
   - name: "tests"
     check: "{{test_cmd}}"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
   - name: "types"
     check: "{{type_cmd}}"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
   - name: "lint"
     check: "{{lint_cmd}}"
     fix: "{{lint_fix_cmd}}"

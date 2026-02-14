@@ -7,15 +7,15 @@ discovered_by: capture_issue
 
 ## Summary
 
-Automation tools (`/ll:manage_issue`, `ll-auto`, `ll-parallel`, `ll-sprint`) currently create "implementation-failure" bug issues for ALL failures, including transient failures like API quota limits, network errors, and timeouts. This can cause recursive automation failures that flood the project with non-actionable bug issues.
+Automation tools (`/ll:manage-issue`, `ll-auto`, `ll-parallel`, `ll-sprint`) currently create "implementation-failure" bug issues for ALL failures, including transient failures like API quota limits, network errors, and timeouts. This can cause recursive automation failures that flood the project with non-actionable bug issues.
 
 ## Context
 
-User description: We need to fix `/ll:manage_issue` and related systems in this project to not create "implementation-failure" issues when fixing an issues fails. This can cause a recursive automation failure that floods the project with `implementation-failure` issues when the problem was merely being out of AI Provider Usage.
+User description: We need to fix `/ll:manage-issue` and related systems in this project to not create "implementation-failure" issues when fixing an issues fails. This can cause a recursive automation failure that floods the project with `implementation-failure` issues when the problem was merely being out of AI Provider Usage.
 
 **Root cause pattern observed in external project:**
 
-1. Automated issue management tool (`/ll:manage_issue`) attempted to fix real bugs (BUG-1810, BUG-1811)
+1. Automated issue management tool (`/ll:manage-issue`) attempted to fix real bugs (BUG-1810, BUG-1811)
 2. Hit Claude API quota limit: "You're out of extra usage · resets 2pm"
 3. Tool created "implementation failure" bugs for each failed attempt
 4. Tool then tried to fix those implementation failure bugs
@@ -24,7 +24,7 @@ User description: We need to fix `/ll:manage_issue` and related systems in this 
 
 ## Current Behavior
 
-In `scripts/little_loops/issue_lifecycle.py:313-399`, the `create_issue_from_failure()` function is called for ANY non-zero returncode from `/ll:manage_issue`:
+In `scripts/little_loops/issue_lifecycle.py:313-399`, the `create_issue_from_failure()` function is called for ANY non-zero returncode from `/ll:manage-issue`:
 
 ```python
 # Handle implementation failure
@@ -51,7 +51,7 @@ The automation tool should distinguish between failure types:
 
 **Real failures** (CREATE ISSUE):
 - Syntax errors, type errors, test failures
-- Validation failures from `/ll:ready_issue`
+- Validation failures from `/ll:ready-issue`
 - Logic bugs during implementation
 - Missing dependencies or files
 - Git merge conflicts that can't be resolved

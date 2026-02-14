@@ -116,8 +116,8 @@ Replace the bare `except Exception: pass` with either:
 - Types: PASS
 
 ## Session Log
-- `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
-- `/ll:format_issue --all --auto` - 2026-02-13
-- `/ll:manage_issue` - 2026-02-13T01:33:28Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-bug-372-20260213-013328/1e60717f-541e-47d7-bf88-b2856ee0a74a.jsonl`
+- `/ll:scan-codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
+- `/ll:format-issue --all --auto` - 2026-02-13
+- `/ll:manage-issue` - 2026-02-13T01:33:28Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-bug-372-20260213-013328/1e60717f-541e-47d7-bf88-b2856ee0a74a.jsonl`
 
 **Completed** | Created: 2026-02-12 | Completed: 2026-02-13 | Priority: P3

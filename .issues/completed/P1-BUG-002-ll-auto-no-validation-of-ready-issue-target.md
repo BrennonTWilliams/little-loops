@@ -7,7 +7,7 @@ The `ll-auto` automation moves issue files to `completed/` based on the **origin
 ## Current Behavior
 
 1. `ll-auto` calls `find_highest_priority_issue()` which returns an `IssueInfo` with `path` and `issue_id`
-2. `ll-auto` runs `/ll:ready_issue {issue_id}`
+2. `ll-auto` runs `/ll:ready-issue {issue_id}`
 3. `ready_issue` finds and validates a **potentially different file** due to loose glob matching (see BUG-001)
 4. If `ready_issue` returns CLOSE verdict, `ll-auto` calls `close_issue(info, ...)` using the **original** `info.path`
 5. The **original file** gets moved to `completed/`, not the file that `ready_issue` validated

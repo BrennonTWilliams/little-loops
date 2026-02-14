@@ -7,11 +7,11 @@ discovered_by: manual_review
 
 ## Summary
 
-Add a confidence-check skill that gates implementation work. Before `/ll:manage_issue` begins coding, verify: no duplicate implementations exist, architecture compliance, root cause identified, issue is well-specified. Inspired by SuperClaude's confidence-check pattern. Claimed ROI: 100-200 tokens spent to save 5,000-50,000 on wrong-direction work.
+Add a confidence-check skill that gates implementation work. Before `/ll:manage-issue` begins coding, verify: no duplicate implementations exist, architecture compliance, root cause identified, issue is well-specified. Inspired by SuperClaude's confidence-check pattern. Claimed ROI: 100-200 tokens spent to save 5,000-50,000 on wrong-direction work.
 
 ## Current Behavior
 
-`/ll:manage_issue` proceeds directly from planning to implementation. The `/ll:ready_issue` command validates the issue file format and content, but there is no check for implementation readiness — whether the codebase is prepared, whether the approach is sound, or whether duplicate work already exists.
+`/ll:manage-issue` proceeds directly from planning to implementation. The `/ll:ready-issue` command validates the issue file format and content, but there is no check for implementation readiness — whether the codebase is prepared, whether the approach is sound, or whether duplicate work already exists.
 
 ## Expected Behavior
 
@@ -28,12 +28,12 @@ Create a `skills/confidence-check/SKILL.md` with a 5-point assessment:
 - **70-89%**: Present alternatives and concerns, ask user to confirm
 - **<70%**: Stop and ask user to address gaps before proceeding
 
-### Relationship to `/ll:ready_issue`:
-- `/ll:ready_issue` validates the issue file (format, required sections, content quality)
+### Relationship to `/ll:ready-issue`:
+- `/ll:ready-issue` validates the issue file (format, required sections, content quality)
 - `confidence-check` validates readiness to implement (codebase state, approach soundness)
 - They are complementary, not overlapping
 
-Integrate as a recommended step in `/ll:manage_issue` planning phase.
+Integrate as a recommended step in `/ll:manage-issue` planning phase.
 
 ## Files to Modify
 
@@ -45,7 +45,7 @@ Integrate as a recommended step in `/ll:manage_issue` planning phase.
 This enhancement would:
 - Prevent wasted implementation effort: catching wrong-direction work early saves 5,000-50,000 tokens
 - Improve implementation success rate: pre-checks catch duplicates, architecture mismatches, and underspecified issues
-- Complement existing quality gates: `/ll:ready_issue` validates the file, confidence-check validates the approach
+- Complement existing quality gates: `/ll:ready-issue` validates the file, confidence-check validates the approach
 
 ## Scope Boundaries
 
@@ -69,7 +69,7 @@ This enhancement would:
 - `commands/manage_issue.md` - Reference skill in planning phase
 
 ### Similar Patterns
-- `/ll:ready_issue` - Similar validation pattern but for file quality, not implementation readiness
+- `/ll:ready-issue` - Similar validation pattern but for file quality, not implementation readiness
 
 ### Tests
 - Manual testing with sample issues
@@ -109,14 +109,14 @@ Create `skills/confidence-check/SKILL.md` as described in Expected Behavior. Int
 - **Verdict**: VALID
 - Conceptual enhancement for new skill
 - skills/confidence-check/ does not exist yet
-- /ll:ready_issue exists but does not include implementation readiness checks
-- /ll:manage_issue exists but does not integrate confidence-check
+- /ll:ready-issue exists but does not include implementation readiness checks
+- /ll:manage-issue exists but does not integrate confidence-check
 
 ---
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-10 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-10 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |
@@ -142,7 +142,7 @@ Without concrete detection methods, the skill may give false confidence or be in
 
 ## Tradeoff Review Note (2026-02-11)
 
-**Reviewed**: 2026-02-11 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-11 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |

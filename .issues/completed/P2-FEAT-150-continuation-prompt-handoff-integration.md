@@ -13,14 +13,14 @@ Elevate the Continuation Prompt & Handoff mechanism from a tightly-coupled compo
 ## Motivation
 
 Currently, the continuation/handoff mechanism is:
-- **Tightly coupled** to `/ll:manage_issue` and `PreCompact` hook
+- **Tightly coupled** to `/ll:manage-issue` and `PreCompact` hook
 - **Not discoverable** - users don't know it exists unless they read the code
 - **Manual session friction** - users must copy/paste continuation prompt content
 - **Issue-workflow only** - general long conversations have no handoff mechanism
 - **No restoration command** - fresh sessions require manual context injection
 
 Compare this to the autoprompt feature which has:
-- Dedicated slash command (`/ll:toggle_autoprompt`)
+- Dedicated slash command (`/ll:toggle-autoprompt`)
 - Dedicated hook (`UserPromptSubmit`)
 - Dedicated configuration schema
 - Dedicated agent (`prompt-optimizer`)

@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-When `/ll:manage_issue` creates an implementation plan and asks for user approval, it:
+When `/ll:manage-issue` creates an implementation plan and asks for user approval, it:
 1. Returns exit code 0 (success)
 2. Creates a plan file in `thoughts/shared/plans/`
 3. Makes no code changes (no git diff)
@@ -90,7 +90,7 @@ For PLAN_CREATED outcome, ll-auto should:
 
 ## What We're NOT Doing
 
-- Not modifying `/ll:manage_issue` command behavior
+- Not modifying `/ll:manage-issue` command behavior
 - Not changing `verify_work_was_done()` function (works correctly)
 - Not creating a `--auto-approve-plans` flag (out of scope)
 - Not backfilling detection for other CLI tools (ll-parallel, ll-sprint) in this fix
@@ -151,7 +151,7 @@ if not verified and result.returncode == 0:
 ### Phase 1: Add Plan Detection Function
 
 #### Overview
-Create a detection function that identifies when `/ll:manage_issue` created a plan file without implementing it.
+Create a detection function that identifies when `/ll:manage-issue` created a plan file without implementing it.
 
 #### Changes Required
 
@@ -558,7 +558,7 @@ Tests to add:
 **Manual test scenario**:
 1. Create a test issue in `.issues/bugs/`
 2. Run `ll-auto --issue BUG-XXX` (or let it auto-select)
-3. Let `/ll:manage_issue` create a plan and stop
+3. Let `/ll:manage-issue` create a plan and stop
 4. Verify ll-auto logs "Plan created, awaiting approval"
 5. Verify issue is NOT in failed state
 6. Approve plan and re-run ll-auto

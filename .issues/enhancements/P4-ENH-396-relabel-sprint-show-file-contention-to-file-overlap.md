@@ -102,8 +102,8 @@ The chosen glyph must render correctly in common terminal emulators (iTerm2, Ter
 `enhancement`, `captured`, `cli`, `cosmetic`
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d505908-8129-431d-a9c6-108fc6753c82.jsonl`
-- /ll:format_issue --all --auto - 2026-02-13
+- `/ll:capture-issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d505908-8129-431d-a9c6-108fc6753c82.jsonl`
+- /ll:format-issue --all --auto - 2026-02-13
 
 ## Verification Notes
 

@@ -7,7 +7,7 @@ discovered_by: audit
 
 ## Summary
 
-The `/ll:create_sprint` command should check if a sprint file already exists and prompt the user before overwriting, similar to how `/ll:create_loop` handles this case.
+The `/ll:create-sprint` command should check if a sprint file already exists and prompt the user before overwriting, similar to how `/ll:create-loop` handles this case.
 
 ## Context
 

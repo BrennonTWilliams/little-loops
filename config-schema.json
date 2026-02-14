@@ -268,7 +268,7 @@
     },
     "prompt_optimization": {
       "type": "object",
-      "description": "Automatic prompt optimization settings (toggle with /ll:toggle_autoprompt)",
+      "description": "Automatic prompt optimization settings (toggle with /ll:toggle-autoprompt)",
       "properties": {
         "enabled": {
           "type": "boolean",

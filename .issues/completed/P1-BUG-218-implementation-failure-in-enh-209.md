@@ -15,7 +15,7 @@ Implementation should complete without errors.
 Discovered during automated processing of `.issues/enhancements/P1-ENH-209-improve-orchestrator-py-test-coverage.md`.
 
 ## Reproduction Steps
-1. Run: `/ll:manage_issue enhancements fix ENH-209`
+1. Run: `/ll:manage-issue enhancements fix ENH-209`
 2. Observe error
 
 ## Proposed Fix

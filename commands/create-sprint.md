@@ -499,10 +499,10 @@ $ARGUMENTS
 
 ```bash
 # Create sprint with explicit issue list
-/ll:create_sprint sprint-1 --issues "BUG-001,BUG-002,FEAT-010" --description "Q1 fixes"
+/ll:create-sprint sprint-1 --issues "BUG-001,BUG-002,FEAT-010" --description "Q1 fixes"
 
 # Create sprint interactively (select issues)
-/ll:create_sprint q1-features --description "Q1 feature work"
+/ll:create-sprint q1-features --description "Q1 feature work"
 ```
 
 ## Sprint Execution (Reference)

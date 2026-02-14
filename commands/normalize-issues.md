@@ -339,7 +339,7 @@ For each issue file:
 ## Next Steps
 1. Commit the renames: `/ll:commit`
 2. Update any external references to these issues
-3. Run `/ll:verify_issues` to validate content accuracy
+3. Run `/ll:verify-issues` to validate content accuracy
 ```
 
 ---
@@ -380,10 +380,10 @@ The `.issues/` directory must follow this structure:
 
 ```bash
 # Find and fix all invalid issue filenames
-/ll:normalize_issues
+/ll:normalize-issues
 
 # After normalization, verify and commit
-/ll:verify_issues
+/ll:verify-issues
 /ll:commit
 ```
 
@@ -392,9 +392,9 @@ The `.issues/` directory must follow this structure:
 ## Integration
 
 Works well with:
-- `/ll:scan_codebase` - Run normalize after scanning to fix any non-standard filenames
-- `/ll:verify_issues` - Run after normalizing to validate content
-- `/ll:prioritize_issues` - Normalizes IDs before prioritization handles priorities
+- `/ll:scan-codebase` - Run normalize after scanning to fix any non-standard filenames
+- `/ll:verify-issues` - Run after normalizing to validate content
+- `/ll:prioritize-issues` - Normalizes IDs before prioritization handles priorities
 
 ## Edge Cases
 

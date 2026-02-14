@@ -323,8 +323,8 @@ class ParallelConfig:
     show_model: bool = False  # Make API call to verify model on worktree setup
     # Configurable command templates
     command_prefix: str = "/ll:"
-    ready_command: str = "ready_issue {{issue_id}}"
-    manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+    ready_command: str = "ready-issue {{issue_id}}"
+    manage_command: str = "manage-issue {{issue_type}} {{action}} {{issue_id}}"
     # Issue ID filters
     only_ids: set[str] | None = None
     skip_ids: set[str] | None = None
@@ -422,9 +422,9 @@ class ParallelConfig:
             stream_subprocess_output=data.get("stream_subprocess_output", False),
             show_model=data.get("show_model", False),
             command_prefix=data.get("command_prefix", "/ll:"),
-            ready_command=data.get("ready_command", "ready_issue {{issue_id}}"),
+            ready_command=data.get("ready_command", "ready-issue {{issue_id}}"),
             manage_command=data.get(
-                "manage_command", "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+                "manage_command", "manage-issue {{issue_type}} {{action}} {{issue_id}}"
             ),
             only_ids=set(only_ids_data) if only_ids_data else None,
             skip_ids=set(skip_ids_data) if skip_ids_data else None,

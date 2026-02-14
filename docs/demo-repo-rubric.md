@@ -9,7 +9,7 @@ Rubric for evaluating public GitHub repositories as demo candidates for the `lit
 - Issue normalization, verification, and alignment with Key Product/Architectural Documents
 - Issue implementation with `ll-parallel`, `ll-auto`, and/or `ll-sprint`
 - Issue creation from unit, integration, and e2e tests
-- Loop creation with `/ll:create_loop`
+- Loop creation with `/ll:create-loop`
 - Loop execution with `ll-loop`
 
 ## Categories

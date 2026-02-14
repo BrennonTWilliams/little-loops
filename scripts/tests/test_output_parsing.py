@@ -626,7 +626,7 @@ Corrections made to the issue file. Line numbers updated.
         """Test extracting verdict from 'proceed to implementation' phrasing."""
         output = """
 ## NEXT_STEPS
-Proceed to implementation with: `/ll:manage_issue enhancement ENH-616`
+Proceed to implementation with: `/ll:manage-issue enhancement ENH-616`
 """
         result = parse_ready_issue_output(output)
 

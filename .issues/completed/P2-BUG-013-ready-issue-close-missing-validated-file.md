@@ -23,7 +23,7 @@ When `ready_issue` returns a CLOSE verdict, the model sometimes omits the requir
 
 ```
 [22:01:33] Phase 1: Verifying issue BUG-567...
-[22:01:33] Running: claude --dangerously-skip-permissions -p '/ll:ready_issue BUG-567'
+[22:01:33] Running: claude --dangerously-skip-permissions -p '/ll:ready-issue BUG-567'
         Issue BUG-567 has been validated and should be closed as **Already Fixed**. The documentation count discrepancy it was tracking has been resolved...
 [22:02:47] ready_issue verdict: CLOSE
 [22:02:47] Issue BUG-567 should be closed (reason: None)

@@ -16,7 +16,7 @@ The dependency **infrastructure** already exists (FEAT-030: `DependencyGraph`, `
 This gap means:
 1. Dependencies are often missing, leading to parallel waves that contain conflicting issues
 2. Sprint creation requires manual dependency curation
-3. New issues from `/ll:scan_codebase` have no dependency context
+3. New issues from `/ll:scan-codebase` have no dependency context
 
 ## Proposed Solution
 
@@ -52,11 +52,11 @@ Lightweight hooks that leverage the dependency analysis engine or validate exist
 
 | Skill | Integration | Trigger |
 |-------|-------------|---------|
-| `/ll:verify_issues` | Add dependency validation pass: check refs exist, detect cycles, flag missing backlinks, report broken links | Runs automatically as part of verification |
-| `/ll:create_sprint` | Show dependency graph for sprint issues, warn about missing deps within the sprint set, suggest wave structure | During sprint creation after issue selection |
-| `/ll:scan_codebase` | Cross-reference new findings during synthesis (Step 3) to auto-suggest `blocked_by` when issues touch overlapping files | During issue deduplication/synthesis phase |
-| `/ll:tradeoff_review_issues` | Factor "blocking bottleneck" into scoring — issues that block many others score higher utility | As additional scoring dimension |
-| `/ll:ready_issue` | Check if `blocked_by` issues are completed before marking ready; warn if blockers are still open | During validation phase |
+| `/ll:verify-issues` | Add dependency validation pass: check refs exist, detect cycles, flag missing backlinks, report broken links | Runs automatically as part of verification |
+| `/ll:create-sprint` | Show dependency graph for sprint issues, warn about missing deps within the sprint set, suggest wave structure | During sprint creation after issue selection |
+| `/ll:scan-codebase` | Cross-reference new findings during synthesis (Step 3) to auto-suggest `blocked_by` when issues touch overlapping files | During issue deduplication/synthesis phase |
+| `/ll:tradeoff-review-issues` | Factor "blocking bottleneck" into scoring — issues that block many others score higher utility | As additional scoring dimension |
+| `/ll:ready-issue` | Check if `blocked_by` issues are completed before marking ready; warn if blockers are still open | During validation phase |
 
 ### Implementation Shape
 
@@ -81,18 +81,18 @@ The Python module (`dependency_mapper.py`) sits alongside `dependency_graph.py`:
 
 - Dependencies must be manually authored in issue files
 - No automated discovery of cross-issue relationships
-- `/ll:verify_issues` does not validate dependency references
-- `/ll:create_sprint` does not warn about missing dependencies
-- `/ll:scan_codebase` creates isolated issues with no dependency context
-- `/ll:tradeoff_review_issues` does not consider blocking relationships in scoring
-- `/ll:ready_issue` does not check if blockers are completed
+- `/ll:verify-issues` does not validate dependency references
+- `/ll:create-sprint` does not warn about missing dependencies
+- `/ll:scan-codebase` creates isolated issues with no dependency context
+- `/ll:tradeoff-review-issues` does not consider blocking relationships in scoring
+- `/ll:ready-issue` does not check if blockers are completed
 
 ## Expected Behavior
 
 - `/ll:map_dependencies` analyzes all active issues and proposes dependency relationships
 - Proposed dependencies include rationale (file overlap, component dependency, etc.)
 - User confirms which dependencies to apply before any files are modified
-- Dependency validation is part of `/ll:verify_issues`
+- Dependency validation is part of `/ll:verify-issues`
 - Sprint creation shows dependency graph and warns about gaps
 - Codebase scanning cross-references findings for dependency suggestions
 - Tradeoff reviews highlight blocking bottleneck issues

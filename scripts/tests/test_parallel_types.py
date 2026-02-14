@@ -739,8 +739,8 @@ class TestParallelConfig:
         assert config.stream_subprocess_output is False
         assert config.show_model is False
         assert config.command_prefix == "/ll:"
-        assert config.ready_command == "ready_issue {{issue_id}}"
-        assert config.manage_command == "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+        assert config.ready_command == "ready-issue {{issue_id}}"
+        assert config.manage_command == "manage-issue {{issue_type}} {{action}} {{issue_id}}"
         assert config.only_ids is None
         assert config.skip_ids is None
         assert config.require_code_changes is True
@@ -777,7 +777,7 @@ class TestParallelConfig:
 
         cmd = config.get_ready_command("BUG-123")
 
-        assert cmd == "/ll:ready_issue BUG-123"
+        assert cmd == "/ll:ready-issue BUG-123"
 
     def test_get_ready_command_custom_prefix(self) -> None:
         """get_ready_command respects custom command_prefix."""
@@ -785,7 +785,7 @@ class TestParallelConfig:
 
         cmd = config.get_ready_command("FEAT-001")
 
-        assert cmd == "/custom:ready_issue FEAT-001"
+        assert cmd == "/custom:ready-issue FEAT-001"
 
     def test_get_ready_command_custom_template(self) -> None:
         """get_ready_command respects custom ready_command template."""
@@ -803,7 +803,7 @@ class TestParallelConfig:
 
         cmd = config.get_manage_command("bug", "fix", "BUG-123")
 
-        assert cmd == "/ll:manage_issue bug fix BUG-123"
+        assert cmd == "/ll:manage-issue bug fix BUG-123"
 
     def test_get_manage_command_all_substitutions(self) -> None:
         """get_manage_command substitutes all placeholders."""
@@ -811,7 +811,7 @@ class TestParallelConfig:
 
         cmd = config.get_manage_command("feature", "implement", "FEAT-999")
 
-        assert cmd == "/ll:manage_issue feature implement FEAT-999"
+        assert cmd == "/ll:manage-issue feature implement FEAT-999"
 
     def test_get_manage_command_custom_template(self) -> None:
         """get_manage_command respects custom manage_command template."""

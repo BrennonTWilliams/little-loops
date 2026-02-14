@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-Add a `run_cmd` field to the project config schema for starting/running the project (e.g., `npm start`, `python app.py`, `go run .`). Wire it into `/ll:manage_issue` verification phase so that after implementation, the project can be smoke-tested to confirm it still runs.
+Add a `run_cmd` field to the project config schema for starting/running the project (e.g., `npm start`, `python app.py`, `go run .`). Wire it into `/ll:manage-issue` verification phase so that after implementation, the project can be smoke-tested to confirm it still runs.
 
 ## Context
 
@@ -22,7 +22,7 @@ There is no `run_cmd` in the config schema. After implementing an issue via `man
 1. `run_cmd` exists in `config-schema.json` under `project` (nullable string, default null)
 2. Project templates populate `run_cmd` where applicable (e.g., `npm start` for TS, `go run .` for Go)
 3. `/ll:init` and `/ll:configure` support configuring `run_cmd`
-4. `/ll:manage_issue` verification phase runs `run_cmd` (if configured) as a smoke test
+4. `/ll:manage-issue` verification phase runs `run_cmd` (if configured) as a smoke test
 
 ## Proposed Solution
 
@@ -71,7 +71,7 @@ After implementing changes via `manage_issue`, there's no automated check that t
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Labels
 

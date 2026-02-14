@@ -33,7 +33,7 @@ When all active issues already have `P[0-5]-` prefixes:
 5. If declined, exits with a summary of current priority distribution
 
 ### How to Verify
-- Run `/ll:prioritize_issues` when all issues have priority prefixes → should prompt for re-evaluation
+- Run `/ll:prioritize-issues` when all issues have priority prefixes → should prompt for re-evaluation
 - Approve re-evaluation → should re-assess and report changes
 - Decline re-evaluation → should exit cleanly with summary
 
@@ -101,7 +101,7 @@ Add a new section between step 1 (Find Unprioritized Issues) and step 2 (Analyze
 - [ ] No syntax errors in bash code blocks
 
 **Manual Verification**:
-- [ ] Running `/ll:prioritize_issues` with all-prioritized issues shows AskUserQuestion prompt
+- [ ] Running `/ll:prioritize-issues` with all-prioritized issues shows AskUserQuestion prompt
 - [ ] Selecting "Re-evaluate all" triggers re-assessment of all active issues
 - [ ] Selecting "View current" shows priority distribution and exits
 - [ ] Priority changes are reported with before/after values
@@ -111,8 +111,8 @@ Add a new section between step 1 (Find Unprioritized Issues) and step 2 (Analyze
 ## Testing Strategy
 
 ### Manual Tests
-- Run `/ll:prioritize_issues` when all issues have `P[0-5]-` prefixes → verify prompt appears
-- Run `/ll:prioritize_issues` when some issues lack prefixes → verify existing behavior unchanged
+- Run `/ll:prioritize-issues` when all issues have `P[0-5]-` prefixes → verify prompt appears
+- Run `/ll:prioritize-issues` when some issues lack prefixes → verify existing behavior unchanged
 - Approve re-evaluation → verify changes are applied and reported
 - Decline re-evaluation → verify clean exit
 

@@ -257,13 +257,13 @@ skipped_issues:
 - **Be specific**: Titles should be actionable and clear
 - **Cite evidence**: Every observation needs a file:line reference
 - **Link to goals**: Each finding must reference a goal or persona
-- **Avoid technical debt**: That's what `/ll:scan_codebase` is for
+- **Avoid technical debt**: That's what `/ll:scan-codebase` is for
 - **Think like a PM**: Focus on user value and strategic alignment
 - **Be conservative**: Only mark `High` business value for clear blockers
 
 ## What NOT to Do
 
-- Don't suggest technical debt fixes (use `/ll:scan_codebase`)
+- Don't suggest technical debt fixes (use `/ll:scan-codebase`)
 - Don't propose findings without file:line evidence
 - Don't duplicate existing issues (check `.issues/` first)
 - Don't analyze if `product.enabled: false`

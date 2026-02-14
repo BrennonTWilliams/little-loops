@@ -173,7 +173,7 @@ Based on your usage patterns, consider these existing commands:
 | Your Pattern | Suggested Command | Frequency |
 |--------------|-------------------|-----------|
 | "commit changes" | /ll:commit | 50 |
-| "run tests" | /ll:run_tests | 12 |
+| "run tests" | /ll:run-tests | 12 |
 ...
 
 ## Next Steps

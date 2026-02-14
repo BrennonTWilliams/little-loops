@@ -21,7 +21,7 @@ Identified from issue discovered in a development project using `ll-auto` automa
 
 ## Current Behavior
 
-When running `/ll:manage_issue enhancement improve ENH-2079` (a documentation issue):
+When running `/ll:manage-issue enhancement improve ENH-2079` (a documentation issue):
 
 1. The command may skip to verification phase without implementing
 2. Exits with return code 0 (success) without making changes
@@ -36,7 +36,7 @@ The model interprets `improve` for documentation as a verification task rather t
 ## Steps to Reproduce
 
 1. Create a documentation-only enhancement issue (e.g., ENH-2079)
-2. Run `/ll:manage_issue enhancement improve ENH-2079` (no --gates flag)
+2. Run `/ll:manage-issue enhancement improve ENH-2079` (no --gates flag)
 3. Observe that the command may skip implementation and only verify
 4. Note return code 0 but no file changes were made
 5. ll-auto's verify_work_was_done() returns False

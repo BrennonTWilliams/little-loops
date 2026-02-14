@@ -192,7 +192,7 @@ git worktree prune
 **Solution**:
 1. Run command manually to see full output:
    ```bash
-   claude -p "/ll:ready_issue BUG-001"
+   claude -p "/ll:ready-issue BUG-001"
    ```
 2. Check if `--dangerously-skip-permissions` is working
 3. Verify API key/authentication status:
@@ -664,7 +664,7 @@ For comprehensive documentation, see [Session Handoff Guide](SESSION_HANDOFF.md)
 3. Ensure issue describes a concrete, actionable task
 4. Run manually to see full output:
    ```bash
-   claude -p "/ll:ready_issue BUG-001"
+   claude -p "/ll:ready-issue BUG-001"
    ```
 
 ### manage_issue completes but no changes

@@ -412,8 +412,8 @@ git mv "{{config.issues.base_dir}}/completed/[filename]" "{{config.issues.base_d
 
 ## Next Steps
 1. Review created issues for accuracy
-2. Run `/ll:prioritize_issues` if priority adjustments needed
-3. Use `/ll:manage_issue bug fix` to start addressing issues
+2. Run `/ll:prioritize-issues` if priority adjustments needed
+3. Use `/ll:manage-issue bug fix` to start addressing issues
 4. Consider running with `--dry-run` next time to catch issues earlier
 ```
 
@@ -478,6 +478,6 @@ git mv "{{config.issues.base_dir}}/completed/[filename]" "{{config.issues.base_d
 
 After analyzing logs:
 1. Review created issues for accuracy
-2. Run `/ll:manage_issue bug fix` to address critical bugs
+2. Run `/ll:manage-issue bug fix` to address critical bugs
 3. Consider patterns when planning ll tool improvements
 4. Save logs with descriptive names for future reference

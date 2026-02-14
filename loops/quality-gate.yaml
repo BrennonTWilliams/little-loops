@@ -5,16 +5,16 @@ description: |
   formatting, and tests all pass.
 constraints:
   - name: "lint"
-    check: "/ll:check_code lint"
+    check: "/ll:check-code lint"
     fix: "Auto-fix lint issues"
   - name: "types"
-    check: "/ll:check_code types"
+    check: "/ll:check-code types"
     fix: "Fix type errors"
   - name: "format"
-    check: "/ll:check_code format"
+    check: "/ll:check-code format"
     fix: "Auto-format code"
   - name: "tests"
-    check: "/ll:run_tests"
+    check: "/ll:run-tests"
     fix: "Fix failing tests"
 maintain: false
 max_iterations: 15

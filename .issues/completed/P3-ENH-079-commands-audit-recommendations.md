@@ -142,7 +142,7 @@ Split into multiple smaller tasks:
 **Item 6 - Added Arguments section to verify_issues.md**:
 - Added frontmatter `arguments` with `issue_id` parameter
 - Added `## Arguments` section with `$ARGUMENTS` placeholder and documentation
-- Added example: `/ll:verify_issues BUG-042`
+- Added example: `/ll:verify-issues BUG-042`
 
 **Item 11 - Added Integration sections**:
 - `commands/commit.md`: Added Integration section with related commands

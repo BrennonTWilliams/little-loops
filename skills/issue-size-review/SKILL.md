@@ -270,6 +270,6 @@ Uses project configuration from `.claude/ll-config.json`:
 After running issue size review:
 
 - Review created child issues with `cat [path]`
-- Validate with `/ll:ready_issue [ID]`
+- Validate with `/ll:ready-issue [ID]`
 - Commit changes with `/ll:commit`
-- Process with `/ll:manage_issue` or `/ll:create_sprint`
+- Process with `/ll:manage-issue` or `/ll:create-sprint`

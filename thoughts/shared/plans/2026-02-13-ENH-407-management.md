@@ -31,14 +31,14 @@ The `create_sprint` command at `commands/create_sprint.md` has an auto-grouping 
 
 ## Desired End State
 
-When `/ll:create_sprint` is run with no arguments, the auto-grouping section suggests **theme-based groupings** alongside existing mechanical groupings. Specifically:
+When `/ll:create-sprint` is run with no arguments, the auto-grouping section suggests **theme-based groupings** alongside existing mechanical groupings. Specifically:
 
 1. **Expanded keyword themes** (Strategy 4) - More theme keywords, matching against both title AND summary, returning multiple qualifying theme clusters (not just the largest)
 2. **Component-based grouping** (new Strategy 5) - Groups issues by which part of the codebase they reference (based on file paths found in issue content)
 3. **Goal-aligned grouping** (new Strategy 6) - If `ll-goals.md` exists and `product.enabled` is true, groups issues by which product goal they align to
 
 ### How to Verify
-- Run `/ll:create_sprint` with no arguments on a repo with active issues
+- Run `/ll:create-sprint` with no arguments on a repo with active issues
 - Verify theme-based groupings appear alongside existing options
 - Verify component-based groupings appear if issues reference file paths
 - Verify goal-aligned groupings are gracefully skipped when no goals file exists
@@ -209,7 +209,7 @@ Presentation changes:
 ## Testing Strategy
 
 ### Manual Testing
-- Run `/ll:create_sprint` with no arguments on the current backlog
+- Run `/ll:create-sprint` with no arguments on the current backlog
 - Verify theme groupings appear based on actual issue content
 - Verify component groupings appear if issues reference files
 - Verify goal groupings are skipped (no goals file exists)

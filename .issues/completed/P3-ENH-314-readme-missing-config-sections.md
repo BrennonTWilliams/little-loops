@@ -10,11 +10,11 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The README's "Full Configuration Example" and "Configuration Sections" are missing documentation for three config sections that exist in the schema and are actively used:
+Documentation issue found by `/ll:audit-docs`. The README's "Full Configuration Example" and "Configuration Sections" are missing documentation for three config sections that exist in the schema and are actively used:
 
-1. **`sync`** - GitHub Issues sync configuration (used by `ll-sync` and `/ll:sync_issues`)
-2. **`sprints`** - Sprint management configuration (used by `ll-sprint` and `/ll:create_sprint`)
-3. **`documents`** - Document tracking configuration (used by `/ll:align_issues`)
+1. **`sync`** - GitHub Issues sync configuration (used by `ll-sync` and `/ll:sync-issues`)
+2. **`sprints`** - Sprint management configuration (used by `ll-sprint` and `/ll:create-sprint`)
+3. **`documents`** - Document tracking configuration (used by `/ll:align-issues`)
 
 ## Current Pain Point
 

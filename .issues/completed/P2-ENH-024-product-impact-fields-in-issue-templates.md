@@ -8,7 +8,7 @@ discovered_date: 2026-01-06T20:47:28Z
 
 ## Summary
 
-Enhance existing issue file templates (BUG, FEAT, ENH) to optionally include product impact fields. These fields are populated by product workflows (`/ll:scan_product`) and provide business context without requiring a separate issue type.
+Enhance existing issue file templates (BUG, FEAT, ENH) to optionally include product impact fields. These fields are populated by product workflows (`/ll:scan-product`) and provide business context without requiring a separate issue type.
 
 ## Motivation
 
@@ -23,13 +23,13 @@ By adding optional product impact fields to issue templates:
 3. Issues can be filtered/sorted by business impact
 4. Technical and product perspectives coexist in a single issue format
 
-**Separation of Concerns**: Product impact fields are populated by product workflows (`/ll:scan_product`), not technical workflows (`/ll:scan_codebase`). This maintains clean separation while allowing both to produce compatible issue files.
+**Separation of Concerns**: Product impact fields are populated by product workflows (`/ll:scan-product`), not technical workflows (`/ll:scan-codebase`). This maintains clean separation while allowing both to produce compatible issue files.
 
 ## Proposed Implementation
 
 ### 1. Extended Issue Template Structure
 
-When product analysis is enabled and issues are created by `/ll:scan_product`, include product context:
+When product analysis is enabled and issues are created by `/ll:scan-product`, include product context:
 
 ```markdown
 ---
@@ -88,9 +88,9 @@ Product impact fields are populated based on which workflow created the issue:
 
 | Workflow | Command | Product Impact Fields |
 |----------|---------|----------------------|
-| Technical | `/ll:scan_codebase` | Not included |
-| Technical | `/ll:audit_architecture` | Not included |
-| Product | `/ll:scan_product` | Populated |
+| Technical | `/ll:scan-codebase` | Not included |
+| Technical | `/ll:audit-architecture` | Not included |
+| Product | `/ll:scan-product` | Populated |
 | Manual | User creates issue | Optional, user decides |
 
 This maintains separation of concerns:
@@ -137,10 +137,10 @@ Commands that process issues should recognize product impact when present:
 
 | Command | Behavior |
 |---------|----------|
-| `/ll:manage_issue` | Display product impact in issue review if present |
-| `/ll:prioritize_issues` | Consider business value for issues that have it |
+| `/ll:manage-issue` | Display product impact in issue review if present |
+| `/ll:prioritize-issues` | Consider business value for issues that have it |
 
-Note: Commands that CREATE issues are NOT modified except for `/ll:scan_product` (covered in FEAT-004).
+Note: Commands that CREATE issues are NOT modified except for `/ll:scan-product` (covered in FEAT-004).
 
 ### 6. Issue Parser Module Update
 
@@ -208,7 +208,7 @@ No connection to product goals, personas, or business value.
 ## Expected Behavior
 
 When product analysis is enabled:
-- Issues from `/ll:scan_product` include Product Impact section
+- Issues from `/ll:scan-product` include Product Impact section
 - Issues from technical commands remain unchanged (no product fields)
 - Parser recognizes and extracts product fields when present
 - Commands that read issues display/use product context if available

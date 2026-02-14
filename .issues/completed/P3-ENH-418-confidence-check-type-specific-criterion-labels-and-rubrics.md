@@ -98,8 +98,8 @@ Update `skills/confidence-check/SKILL.md` in three places:
 `enhancement`, `captured`, `confidence-check`, `skills`
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cbd4788d-c02e-4e79-954d-c4280452b2f2.jsonl`
-- `/ll:manage_issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3175cea9-640a-4fd6-b826-2217f1832ff7.jsonl`
+- `/ll:capture-issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cbd4788d-c02e-4e79-954d-c4280452b2f2.jsonl`
+- `/ll:manage-issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3175cea9-640a-4fd6-b826-2217f1832ff7.jsonl`
 
 ---
 

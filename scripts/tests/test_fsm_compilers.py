@@ -98,7 +98,7 @@ class TestGoalCompiler:
         spec = {
             "paradigm": "goal",
             "goal": "No type errors",
-            "tools": ["/ll:check_code types", "/ll:manage_issue bug fix"],
+            "tools": ["/ll:check-code types", "/ll:manage-issue bug fix"],
             "max_iterations": 20,
         }
         fsm = compile_goal(spec)
@@ -120,12 +120,12 @@ class TestGoalCompiler:
         spec = {
             "paradigm": "goal",
             "goal": "Clean",
-            "tools": ["/ll:check_code fix"],
+            "tools": ["/ll:check-code fix"],
         }
         fsm = compile_goal(spec)
 
-        assert fsm.states["evaluate"].action == "/ll:check_code fix"
-        assert fsm.states["fix"].action == "/ll:check_code fix"
+        assert fsm.states["evaluate"].action == "/ll:check-code fix"
+        assert fsm.states["fix"].action == "/ll:check-code fix"
 
     def test_goal_custom_name(self) -> None:
         """Goal with custom name uses it."""
@@ -210,7 +210,7 @@ class TestConvergenceCompiler:
             "name": "reduce-errors",
             "check": "mypy src/ | grep -c error",
             "toward": 0,
-            "using": "/ll:check_code fix",
+            "using": "/ll:check-code fix",
         }
         fsm = compile_convergence(spec)
 
@@ -788,7 +788,7 @@ class TestEvaluatorSupport:
                 {
                     "name": "types",
                     "check": "mypy src/",
-                    "fix": "/ll:manage_issue bug fix",
+                    "fix": "/ll:manage-issue bug fix",
                     # No evaluator - uses default
                 },
             ],

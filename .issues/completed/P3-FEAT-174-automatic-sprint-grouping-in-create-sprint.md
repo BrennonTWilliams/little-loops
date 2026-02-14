@@ -7,24 +7,24 @@ discovered_by: capture_issue
 
 ## Summary
 
-Add automatic sprint grouping to `/ll:create_sprint` that analyzes active issues and suggests natural sprint cohorts based on priority, category, dependencies, or theme patterns.
+Add automatic sprint grouping to `/ll:create-sprint` that analyzes active issues and suggests natural sprint cohorts based on priority, category, dependencies, or theme patterns.
 
 ## Context
 
-**Conversation mode**: Identified from conversation discussing: "Does our `/ll:create_sprint` command (or skill?) accept an optional title or description of the sprint that determines what Issue files to include?"
+**Conversation mode**: Identified from conversation discussing: "Does our `/ll:create-sprint` command (or skill?) accept an optional title or description of the sprint that determines what Issue files to include?"
 
 User asked if the command automatically identifies sprint groupings from existing Active Issues. The current implementation only offers interactive selection when `--issues` is omitted — it doesn't proactively suggest sprint groupings.
 
 ## Current Behavior
 
-When `/ll:create_sprint` is run without the `--issues` argument:
+When `/ll:create-sprint` is run without the `--issues` argument:
 - Requires a sprint name upfront (no auto-suggestion)
 - Offers interactive selection: "Select from active issues", "Enter manually", "Select by priority"
 - Does not analyze or suggest natural groupings
 
 ## Expected Behavior
 
-When `/ll:create_sprint` is run without arguments:
+When `/ll:create-sprint` is run without arguments:
 1. Analyze all active issues
 2. Identify patterns and suggest 2-3 sprint groupings:
    - By priority: "All P0-P1 critical issues", "All P2 bugs"

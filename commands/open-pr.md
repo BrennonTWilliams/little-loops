@@ -184,16 +184,16 @@ $ARGUMENTS
 
 ```bash
 # Open a PR for the current branch
-/ll:open_pr
+/ll:open-pr
 
 # Open a draft PR
-/ll:open_pr --draft
+/ll:open-pr --draft
 
 # Open a PR targeting a specific branch
-/ll:open_pr develop
+/ll:open-pr develop
 
 # Open a draft PR targeting a specific branch
-/ll:open_pr develop --draft
+/ll:open-pr develop --draft
 ```
 
 ---
@@ -213,6 +213,6 @@ $ARGUMENTS
 
 This command works well with:
 - `/ll:commit` - Commit changes before opening a PR
-- `/ll:check_code` - Ensure code quality before opening a PR
-- `/ll:run_tests` - Verify tests pass before opening a PR
-- `/ll:describe_pr` - For more detailed PR description generation with template support
+- `/ll:check-code` - Ensure code quality before opening a PR
+- `/ll:run-tests` - Verify tests pass before opening a PR
+- `/ll:describe-pr` - For more detailed PR description generation with template support

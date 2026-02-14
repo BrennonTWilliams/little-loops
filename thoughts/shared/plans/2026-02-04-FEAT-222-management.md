@@ -30,8 +30,8 @@ A fully functional GitHub Issues sync feature that allows users to:
 4. **Configure sync behavior**: Enable/disable via `ll-config.json`
 
 ### How to Verify
-- Running `/ll:sync_issues push` creates corresponding GitHub Issues
-- Running `/ll:sync_issues pull` creates local issue files from GitHub
+- Running `/ll:sync-issues push` creates corresponding GitHub Issues
+- Running `/ll:sync-issues pull` creates local issue files from GitHub
 - Frontmatter includes `github_issue`, `github_url`, `last_synced` fields after sync
 - Configuration can enable/disable the feature
 - Tests pass for new functionality
@@ -53,7 +53,7 @@ Users need to share issue tracking with team members who don't use Claude Code C
 Based on research findings and existing patterns:
 
 1. **Configuration**: Add `sync` section to schema and config module following existing patterns
-2. **Skill**: Create `/ll:sync_issues` skill that delegates to a command
+2. **Skill**: Create `/ll:sync-issues` skill that delegates to a command
 3. **Command**: Create `sync_issues.md` command with push/pull/status actions
 4. **Python CLI** (optional future): `ll-sync` for automation pipelines
 5. **Frontmatter extension**: Add GitHub sync fields to issue files
@@ -214,7 +214,7 @@ Update `to_dict()` method to include sync config.
 ### Phase 2: Skill Definition
 
 #### Overview
-Create the `/ll:sync_issues` skill that triggers when users want to sync with GitHub.
+Create the `/ll:sync-issues` skill that triggers when users want to sync with GitHub.
 
 #### Changes Required
 
@@ -246,7 +246,7 @@ Proactively offer or invoke this skill when the user:
 When this skill activates, invoke the command:
 
 ```
-/ll:sync_issues [action]
+/ll:sync-issues [action]
 ```
 
 ### Actions
@@ -261,10 +261,10 @@ When this skill activates, invoke the command:
 
 | User Says | Action |
 |-----------|--------|
-| "Sync our issues to GitHub" | `/ll:sync_issues push` |
-| "Pull issues from GitHub" | `/ll:sync_issues pull` |
-| "What's the sync status?" | `/ll:sync_issues status` |
-| "Push BUG-123 to GitHub" | `/ll:sync_issues push BUG-123` |
+| "Sync our issues to GitHub" | `/ll:sync-issues push` |
+| "Pull issues from GitHub" | `/ll:sync-issues pull` |
+| "What's the sync status?" | `/ll:sync-issues status` |
+| "Push BUG-123 to GitHub" | `/ll:sync-issues push BUG-123` |
 
 ## Prerequisites
 
@@ -305,7 +305,7 @@ After syncing:
 ### Phase 3: Command Implementation
 
 #### Overview
-Create the `/ll:sync_issues` command that performs the actual sync operations.
+Create the `/ll:sync-issues` command that performs the actual sync operations.
 
 #### Changes Required
 
@@ -549,9 +549,9 @@ SYNC {ACTION} COMPLETE
 - [ ] Lint passes: `ruff check scripts/`
 
 **Manual Verification**:
-- [ ] `/ll:sync_issues status` shows current sync state
-- [ ] `/ll:sync_issues push` creates GitHub issues from local files
-- [ ] `/ll:sync_issues pull` creates local files from GitHub issues
+- [ ] `/ll:sync-issues status` shows current sync state
+- [ ] `/ll:sync-issues push` creates GitHub issues from local files
+- [ ] `/ll:sync-issues pull` creates local files from GitHub issues
 
 ---
 
@@ -639,7 +639,7 @@ Update CLAUDE.md and help command to document the new feature.
 
 In the Commands section, add:
 ```markdown
-- `/ll:sync_issues` - Sync issues with GitHub Issues (requires `sync.enabled`)
+- `/ll:sync-issues` - Sync issues with GitHub Issues (requires `sync.enabled`)
 ```
 
 **File**: `commands/help.md`
@@ -670,7 +670,7 @@ In the Commands section, add:
 
 ### Manual Testing
 - Enable sync in config and verify no errors
-- Run `/ll:sync_issues status` to verify gh CLI integration
+- Run `/ll:sync-issues status` to verify gh CLI integration
 - Create a test issue and push to GitHub
 - Pull an issue from GitHub to verify local file creation
 

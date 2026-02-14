@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-The dependency graph output in `/ll:map_dependencies` and `/ll:create_sprint` uses mermaid code blocks which don't render in the terminal. Replace all mermaid graph output with generated ASCII/text diagrams that are readable directly in the CLI.
+The dependency graph output in `/ll:map_dependencies` and `/ll:create-sprint` uses mermaid code blocks which don't render in the terminal. Replace all mermaid graph output with generated ASCII/text diagrams that are readable directly in the CLI.
 
 ## Current Behavior
 
@@ -85,7 +85,7 @@ Replace `format_mermaid()` in `dependency_mapper.py` with a `format_text_graph()
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ---
 

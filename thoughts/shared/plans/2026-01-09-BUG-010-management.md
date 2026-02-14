@@ -17,7 +17,7 @@ At line 561, the manage_issue command uses `info.issue_id`, which still contains
 
 ### Key Discoveries
 - `issue_manager.py:420` - `relative_path = _compute_relative_path(info.path)` computes the path for fallback
-- `issue_manager.py:424` - Fallback retry uses `/ll:ready_issue {relative_path}`
+- `issue_manager.py:424` - Fallback retry uses `/ll:ready-issue {relative_path}`
 - `issue_manager.py:458-460` - Fallback success only updates `parsed`, not `info.issue_id`
 - `issue_manager.py:561` - `manage_issue` uses stale `info.issue_id`
 - The `_compute_relative_path` helper already exists and works correctly
@@ -99,7 +99,7 @@ else:
 
 # Use run_with_continuation to handle context exhaustion
 result = run_with_continuation(
-    f"/ll:manage_issue {type_name} {action} {issue_arg}",
+    f"/ll:manage-issue {type_name} {action} {issue_arg}",
     self.logger,
     timeout=self.config.automation.timeout_seconds,
     stream_output=self.config.automation.stream_output,
@@ -233,7 +233,7 @@ ISSUE MANAGED: DOC-001 - fix
 
     # First call: ready_issue with abstract ID
     assert call_history[0][0] == "run_claude_command"
-    assert "/ll:ready_issue BUG-1" in call_history[0][1]
+    assert "/ll:ready-issue BUG-1" in call_history[0][1]
 
     # Second call: ready_issue fallback with explicit path
     assert call_history[1][0] == "run_claude_command"

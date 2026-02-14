@@ -86,7 +86,7 @@ All other CLI tools are documented in README, CLAUDE.md, and CONTRIBUTING.md. Om
 - Types: PASS
 
 ## Session Log
-- `/ll:manage_issue` - 2026-02-13T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1cee0634-9d0d-48fe-a632-6f4f97ccb3c3.jsonl`
+- `/ll:manage-issue` - 2026-02-13T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1cee0634-9d0d-48fe-a632-6f4f97ccb3c3.jsonl`
 
 ---
 

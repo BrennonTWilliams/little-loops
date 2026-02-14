@@ -10,7 +10,7 @@ focus_area: large-files
 
 ## Summary
 
-Architectural issue found by `/ll:audit_architecture`. The `cli/loop.py` file has grown to 1,034 lines, containing all `ll-loop` subcommand handlers in a single file.
+Architectural issue found by `/ll:audit-architecture`. The `cli/loop.py` file has grown to 1,034 lines, containing all `ll-loop` subcommand handlers in a single file.
 
 ## Location
 
@@ -80,7 +80,7 @@ _None_
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
 ## Session Log
-- `/ll:format_issue --all --auto` - 2026-02-13
+- `/ll:format-issue --all --auto` - 2026-02-13
 
 ## Verification Notes
 

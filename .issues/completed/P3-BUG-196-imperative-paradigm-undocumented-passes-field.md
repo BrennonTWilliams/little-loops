@@ -11,7 +11,7 @@ RESOLVED
 
 ## Resolution
 
-The `passes` field has been removed from the `/ll:create_loop` command documentation templates. The field was vestigial - it appeared in YAML examples but was never read or used by the `compile_imperative()` function in `scripts/little_loops/fsm/compilers.py`.
+The `passes` field has been removed from the `/ll:create-loop` command documentation templates. The field was vestigial - it appeared in YAML examples but was never read or used by the `compile_imperative()` function in `scripts/little_loops/fsm/compilers.py`.
 
 **Changes made:**
 - Removed `passes: true` from imperative paradigm template at `commands/create_loop.md:656`
@@ -21,7 +21,7 @@ The FSM behavior remains unchanged: successful evaluation transitions to `done`,
 
 ## Description
 
-The imperative paradigm YAML template includes an `until.passes: true` field, but this field is **never explained** in the question workflow for the `/ll:create_loop` command.
+The imperative paradigm YAML template includes an `until.passes: true` field, but this field is **never explained** in the question workflow for the `/ll:create-loop` command.
 
 **Generated YAML (lines 647-665):**
 ```yaml

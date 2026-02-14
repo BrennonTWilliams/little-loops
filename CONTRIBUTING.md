@@ -299,17 +299,17 @@ The issue template has been optimized for AI implementation with **19 sections**
 
 **Create an issue**:
 ```bash
-/ll:capture_issue "Description of the issue"
+/ll:capture-issue "Description of the issue"
 ```
 
 **Format an issue**:
 ```bash
-/ll:format_issue .issues/bugs/P2-BUG-123-description.md
+/ll:format-issue .issues/bugs/P2-BUG-123-description.md
 ```
 
 **Validate an issue**:
 ```bash
-/ll:ready_issue .issues/bugs/P2-BUG-123-description.md
+/ll:ready-issue .issues/bugs/P2-BUG-123-description.md
 ```
 
 ### Issue Quality Checklist

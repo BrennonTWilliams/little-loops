@@ -1,6 +1,6 @@
 ---
 description: |
-  AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create_sprint` pairs with `ll-sprint create` (intelligence).
+  AI-guided sprint health check that analyzes a sprint's current state and suggests improvements - removing stale issues, adding related backlog issues, and identifying dependency or contention problems. Pairs with `ll-sprint edit` (mechanics) the way `/ll:create-sprint` pairs with `ll-sprint create` (intelligence).
 
   Trigger keywords: "review sprint", "sprint health", "sprint review", "check sprint", "sprint suggestions", "optimize sprint", "sprint health check", "is my sprint still good"
 argument-hint: "[sprint-name]"
@@ -40,7 +40,7 @@ If arguments provided, parse as sprint name (e.g., `my-sprint`). If no arguments
 Invoke this command with a sprint name:
 
 ```
-/ll:review_sprint my-sprint
+/ll:review-sprint my-sprint
 ```
 
 If no sprint name is provided, list available sprints and ask which to review:
@@ -301,7 +301,7 @@ After reviewing a sprint:
 
 - Execute with `ll-sprint run [name]`
 - Map dependencies with `/ll:map-dependencies`
-- Create a fresh sprint with `/ll:create_sprint`
+- Create a fresh sprint with `/ll:create-sprint`
 - Commit sprint changes with `/ll:commit`
 - Check issue sizes with `/ll:issue-size-review`
 

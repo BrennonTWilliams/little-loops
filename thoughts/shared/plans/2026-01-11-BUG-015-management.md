@@ -12,7 +12,7 @@ The `parse_ready_issue_output()` function in `scripts/little_loops/parallel/outp
 
 ### Key Discoveries
 - Root cause at `output_parsing.py:86-107`: The `phrasing_map` is missing the pattern "proceed to implementation"
-- The command prompt at `commands/ready_issue.md:220` instructs the LLM to use "Proceed to implementation with: `/ll:manage_issue`" in the `## NEXT_STEPS` section
+- The command prompt at `commands/ready_issue.md:220` instructs the LLM to use "Proceed to implementation with: `/ll:manage-issue`" in the `## NEXT_STEPS` section
 - When the LLM follows this template but skips the `## VERDICT` section, all 6 parsing strategies fail
 - Test patterns for phrasings are at `test_output_parsing.py:541-600` - no test exists for "proceed to implementation"
 
@@ -92,7 +92,7 @@ Add a test case for the new "proceed to implementation" pattern, following the e
         """Test extracting verdict from 'proceed to implementation' phrasing."""
         output = """
 ## NEXT_STEPS
-Proceed to implementation with: `/ll:manage_issue enhancement ENH-616`
+Proceed to implementation with: `/ll:manage-issue enhancement ENH-616`
 """
         result = parse_ready_issue_output(output)
 

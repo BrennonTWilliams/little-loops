@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-The `loop-suggester` skill at `skills/loop-suggester/SKILL.md` has no dedicated test coverage. This skill analyzes user message history to suggest FSM loop configurations automatically, bypassing the interactive `/ll:create_loop` wizard.
+The `loop-suggester` skill at `skills/loop-suggester/SKILL.md` has no dedicated test coverage. This skill analyzes user message history to suggest FSM loop configurations automatically, bypassing the interactive `/ll:create-loop` wizard.
 
 ## Context
 

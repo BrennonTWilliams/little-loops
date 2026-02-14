@@ -6,20 +6,20 @@ github_url: null
 last_synced: null
 ---
 
-# FEAT-268: Add /ll:manage_release Command for Release Management
+# FEAT-268: Add /ll:manage-release Command for Release Management
 
 ## Summary
 
-Add a new slash command `/ll:manage_release` to the little-loops Claude Code plugin for release management functionality, including creating git tags, generating changelogs, and managing GitHub releases. Integrates with the plugin's Issue Management system to include completed issues in release notes, supports an interactive no-argument mode via `AskUserQuestion`, and uses a parallel agent wave pattern for efficient data gathering.
+Add a new slash command `/ll:manage-release` to the little-loops Claude Code plugin for release management functionality, including creating git tags, generating changelogs, and managing GitHub releases. Integrates with the plugin's Issue Management system to include completed issues in release notes, supports an interactive no-argument mode via `AskUserQuestion`, and uses a parallel agent wave pattern for efficient data gathering.
 
 ## Context
 
-**Direct mode**: User description: "New Slash Command in our `ll@little-loops` (`ll`) claude code plugin, `/ll:manage_release`, for release management functionality (creating git tags, generating changelogs, managing releases). This command should match the same patterns as other similar commands in our `ll` plugin."
+**Direct mode**: User description: "New Slash Command in our `ll@little-loops` (`ll`) claude code plugin, `/ll:manage-release`, for release management functionality (creating git tags, generating changelogs, managing releases). This command should match the same patterns as other similar commands in our `ll` plugin."
 
 The user identified that the plugin lacks release management capabilities despite having commands for:
 - `/ll:commit` - Creating commits
-- `/ll:open_pr` - Opening pull requests
-- `/ll:sync_issues` - Syncing issues with GitHub
+- `/ll:open-pr` - Opening pull requests
+- `/ll:sync-issues` - Syncing issues with GitHub
 
 ## Current Behavior
 
@@ -51,7 +51,7 @@ As a solo developer, I want to automate my release process so I can ship faster 
 
 ## Expected Behavior
 
-A new `/ll:manage_release` command should provide:
+A new `/ll:manage-release` command should provide:
 
 1. **Git tag creation**: Create version tags following semantic versioning (vX.Y.Z)
 2. **Changelog generation**: Generate changelogs from commits since last tag
@@ -94,7 +94,7 @@ arguments:
 
 ### Interactive No-Argument Mode
 
-When `/ll:manage_release` is invoked without arguments, use `AskUserQuestion` to gather user preferences before executing. Pattern reference: `commands/create_sprint.md` (extensive `AskUserQuestion` usage).
+When `/ll:manage-release` is invoked without arguments, use `AskUserQuestion` to gather user preferences before executing. Pattern reference: `commands/create_sprint.md` (extensive `AskUserQuestion` usage).
 
 **Step 1**: Ask the user what release actions to perform and which version to target:
 
@@ -194,25 +194,25 @@ After Wave 1 agents complete:
 
 ```bash
 # Interactive mode — prompts for actions and version
-/ll:manage_release
+/ll:manage-release
 
 # Create a new release tag
-/ll:manage_release tag v1.5.0
+/ll:manage-release tag v1.5.0
 
 # Generate changelog for upcoming release
-/ll:manage_release changelog
+/ll:manage-release changelog
 
 # Create full GitHub release
-/ll:manage_release release v1.5.0
+/ll:manage-release release v1.5.0
 
 # Bump version and tag
-/ll:manage_release bump patch
+/ll:manage-release bump patch
 
 # Full release pipeline (tag + changelog + release + bump)
-/ll:manage_release full v1.5.0
+/ll:manage-release full v1.5.0
 
 # Create a draft GitHub release
-/ll:manage_release release v1.5.0 --draft
+/ll:manage-release release v1.5.0 --draft
 ```
 
 ## Impact

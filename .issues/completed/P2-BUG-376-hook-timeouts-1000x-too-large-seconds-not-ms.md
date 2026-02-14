@@ -84,7 +84,7 @@ Divide each timeout value by 1000:
 `bug`, `hooks`, `configuration`, `all-hooks`
 
 ## Session Log
-- `/ll:manage_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48db0381-0764-40ba-82b8-463944cc1eba.jsonl`
+- `/ll:manage-issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48db0381-0764-40ba-82b8-463944cc1eba.jsonl`
 
 ---
 

@@ -139,7 +139,7 @@ _None — ENH-366 closed (won't-fix)._
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-11 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-11 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |
@@ -161,7 +161,7 @@ Update first - The "proactive discovery" criterion needs validation with evidenc
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-12 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-12 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |

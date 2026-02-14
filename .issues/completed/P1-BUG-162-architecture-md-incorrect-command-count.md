@@ -10,7 +10,7 @@ doc_file: docs/ARCHITECTURE.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`.
+Documentation issue found by `/ll:audit-docs`.
 
 The ARCHITECTURE.md file states "25 slash commands" in two locations, but there are actually 26 commands in the `commands/` directory.
 

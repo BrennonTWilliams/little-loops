@@ -1,4 +1,4 @@
-# FEAT-081: Add /ll:cleanup_worktrees command - Implementation Plan
+# FEAT-081: Add /ll:cleanup-worktrees command - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/features/P3-FEAT-081-cleanup-worktrees-command.md`
@@ -24,11 +24,11 @@
 5. **Manual CLI cleanup**: `ll-parallel --cleanup` flag (requires Python environment)
 
 ### Gap Identified
-No user-facing command exists within Claude Code to manually clean worktrees without invoking `ll-parallel --cleanup` from the CLI. Users need a simple `/ll:cleanup_worktrees` command.
+No user-facing command exists within Claude Code to manually clean worktrees without invoking `ll-parallel --cleanup` from the CLI. Users need a simple `/ll:cleanup-worktrees` command.
 
 ## Desired End State
 
-A `/ll:cleanup_worktrees` command that:
+A `/ll:cleanup-worktrees` command that:
 1. Lists all git worktrees in the repository
 2. Identifies which are ll-parallel worktrees (pattern: `worker-*` in `.worktrees/`)
 3. Shows user what will be cleaned before taking action
@@ -36,8 +36,8 @@ A `/ll:cleanup_worktrees` command that:
 5. Reports what was cleaned
 
 ### How to Verify
-- Run `/ll:cleanup_worktrees` when orphaned worktrees exist - they should be removed
-- Run `/ll:cleanup_worktrees --dry-run` - should show what would be cleaned without removing
+- Run `/ll:cleanup-worktrees` when orphaned worktrees exist - they should be removed
+- Run `/ll:cleanup-worktrees --dry-run` - should show what would be cleaned without removing
 - Run when no worktrees exist - should report "No worktrees to clean"
 
 ## What We're NOT Doing
@@ -155,7 +155,7 @@ if [ "$MODE" = "dry-run" ]; then
         fi
     done
     echo ""
-    echo "Run '/ll:cleanup_worktrees' (without dry-run) to execute cleanup."
+    echo "Run '/ll:cleanup-worktrees' (without dry-run) to execute cleanup."
     exit 0
 fi
 ```
@@ -245,10 +245,10 @@ $ARGUMENTS
 
 ```bash
 # Clean all orphaned worktrees
-/ll:cleanup_worktrees
+/ll:cleanup-worktrees
 
 # Preview what would be cleaned
-/ll:cleanup_worktrees dry-run
+/ll:cleanup-worktrees dry-run
 ```
 ```
 
@@ -260,8 +260,8 @@ $ARGUMENTS
 - [ ] Types pass: `python -m mypy scripts/little_loops/`
 
 **Manual Verification**:
-- [ ] `/ll:cleanup_worktrees dry-run` shows worktrees without removing them
-- [ ] `/ll:cleanup_worktrees` removes orphaned worktrees
+- [ ] `/ll:cleanup-worktrees dry-run` shows worktrees without removing them
+- [ ] `/ll:cleanup-worktrees` removes orphaned worktrees
 
 ---
 
@@ -273,9 +273,9 @@ $ARGUMENTS
    mkdir -p .worktrees/worker-test-001-20260117-120000
    git worktree add -b parallel/test-001-20260117-120000 .worktrees/worker-test-001-20260117-120000
    ```
-2. Run `/ll:cleanup_worktrees dry-run` - should list the test worktree
-3. Run `/ll:cleanup_worktrees` - should remove the test worktree
-4. Run `/ll:cleanup_worktrees` again - should report "No worktrees to clean"
+2. Run `/ll:cleanup-worktrees dry-run` - should list the test worktree
+3. Run `/ll:cleanup-worktrees` - should remove the test worktree
+4. Run `/ll:cleanup-worktrees` again - should report "No worktrees to clean"
 
 ## References
 

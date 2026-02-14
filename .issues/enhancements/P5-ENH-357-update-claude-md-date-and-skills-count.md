@@ -85,4 +85,4 @@ Consider fixing all three files together for consistency.
 - Only the CLAUDE.md date/skills count updates remain; README and CONTRIBUTING are already fixed
 
 ## Session Log
-- `/ll:format_issue --all --auto` - 2026-02-13
+- `/ll:format-issue --all --auto` - 2026-02-13

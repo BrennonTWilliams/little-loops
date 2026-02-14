@@ -131,9 +131,9 @@ Add "Integration Map" section to `common_sections` in template, positioned betwe
 
 ### Dependent Files (Callers/Importers)
 - All commands reading template (already dynamic, no changes needed):
-  - `/ll:capture_issue` - Reads template, will auto-include Integration Map
-  - `/ll:refine_issue` - Reads template, will prompt for Integration Map
-  - `/ll:ready_issue` - Reads template, will validate Integration Map
+  - `/ll:capture-issue` - Reads template, will auto-include Integration Map
+  - `/ll:refine-issue` - Reads template, will prompt for Integration Map
+  - `/ll:ready-issue` - Reads template, will validate Integration Map
 
 ### Similar Patterns
 - N/A - Integration Map is unique concept, no similar sections exist

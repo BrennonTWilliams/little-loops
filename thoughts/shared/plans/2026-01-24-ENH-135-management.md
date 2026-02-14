@@ -1,4 +1,4 @@
-# ENH-135: Fix /ll:create_sprint Command Issues - Implementation Plan
+# ENH-135: Fix /ll:create-sprint Command Issues - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/enhancements/P3-ENH-135-create-sprint-command-audit-fixes.md`
@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:create_sprint` command has several consistency issues identified during an audit:
+The `/ll:create-sprint` command has several consistency issues identified during an audit:
 
 ### Key Discoveries
 1. **File location**: Command at `.claude/commands/create_sprint.md` while 26 other commands are in `commands/` directory
@@ -287,7 +287,7 @@ This command uses project configuration from `.claude/ll-config.json`:
 ## Testing Strategy
 
 ### Manual Verification
-- Run `/ll:create_sprint test-sprint` to verify command loads correctly
+- Run `/ll:create-sprint test-sprint` to verify command loads correctly
 - Check that directory creation works (`mkdir -p .sprints`)
 - Verify YAML output matches expected structure
 

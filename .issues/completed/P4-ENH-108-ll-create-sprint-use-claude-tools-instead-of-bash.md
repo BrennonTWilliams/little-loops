@@ -7,11 +7,11 @@ discovered_by: capture_issue
 
 ## Summary
 
-The `/ll:create_sprint` command instructs Claude to use bash `find` commands for file operations, but Claude Code has specialized tools (Glob, Grep, Read) that are preferred for these operations.
+The `/ll:create-sprint` command instructs Claude to use bash `find` commands for file operations, but Claude Code has specialized tools (Glob, Grep, Read) that are preferred for these operations.
 
 ## Context
 
-Identified during audit of the `/ll:create_sprint` slash command. Using bash commands may have permission issues or different behavior compared to Claude's built-in tools.
+Identified during audit of the `/ll:create-sprint` slash command. Using bash commands may have permission issues or different behavior compared to Claude's built-in tools.
 
 ## Current Behavior
 

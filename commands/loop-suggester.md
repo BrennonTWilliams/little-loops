@@ -16,7 +16,7 @@ arguments:
 
 # Loop Suggester
 
-Analyze user message history from `ll-messages` output to identify repeated workflows and suggest FSM loop configurations. This command bypasses the interactive `/ll:create_loop` wizard by automatically detecting patterns and generating ready-to-use loop YAML.
+Analyze user message history from `ll-messages` output to identify repeated workflows and suggest FSM loop configurations. This command bypasses the interactive `/ll:create-loop` wizard by automatically detecting patterns and generating ready-to-use loop YAML.
 
 ## Arguments
 
@@ -170,16 +170,16 @@ suggestions:
 - **DON'T** suggest for one-time complex tasks
 - **DON'T** suggest if no clear exit condition exists
 
-## Comparison with /ll:create_loop
+## Comparison with /ll:create-loop
 
-| Aspect | /ll:create_loop | /ll:loop-suggester |
+| Aspect | /ll:create-loop | /ll:loop-suggester |
 |--------|-----------------|-------------------|
 | Input | Interactive questions | Message history analysis |
 | Output | Single loop | Multiple suggestions |
 | Paradigm selection | User chooses | Auto-detected |
 | Best for | Known automation needs | Discovering automation opportunities |
 
-Use `/ll:create_loop` when you know what loop you want. Use `/ll:loop-suggester` when you want to discover what loops might help based on your actual usage patterns.
+Use `/ll:create-loop` when you know what loop you want. Use `/ll:loop-suggester` when you want to discover what loops might help based on your actual usage patterns.
 
 ## Examples
 
@@ -197,5 +197,5 @@ Use `/ll:create_loop` when you know what loop you want. Use `/ll:loop-suggester`
 ## See Also
 
 - Full skill documentation: `skills/loop-suggester/SKILL.md`
-- Create loops interactively: `/ll:create_loop`
+- Create loops interactively: `/ll:create-loop`
 - Workflow analysis: `/ll:analyze-workflows`

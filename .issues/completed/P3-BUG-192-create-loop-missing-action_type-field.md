@@ -1,4 +1,4 @@
-# Missing `action_type` Field in /ll:create_loop Documentation
+# Missing `action_type` Field in /ll:create-loop Documentation
 
 ## Type
 BUG
@@ -11,7 +11,7 @@ OPEN
 
 ## Description
 
-The `/ll:create_loop` command documentation (`commands/create_loop.md`) does not mention the `action_type` field that exists in the FSM schema. This field allows configuring how actions are executed with three options:
+The `/ll:create-loop` command documentation (`commands/create_loop.md`) does not mention the `action_type` field that exists in the FSM schema. This field allows configuring how actions are executed with three options:
 
 - `prompt` - Execute as a prompt
 - `slash_command` - Execute as a Claude slash command
@@ -23,14 +23,14 @@ The `/ll:create_loop` command documentation (`commands/create_loop.md`) does not
 - Command documentation (1108 lines) has no mention of this field
 
 **Impact:**
-Users cannot configure action execution type through the `/ll:create_loop` wizard. The field is only discoverable by reading the schema or directly editing YAML files.
+Users cannot configure action execution type through the `/ll:create-loop` wizard. The field is only discoverable by reading the schema or directly editing YAML files.
 
 ## Files Affected
 - `commands/create_loop.md`
 - `scripts/little_loops/fsm/schema.py`
 
 ## Steps to Reproduce
-1. Run `/ll:create_loop`
+1. Run `/ll:create-loop`
 2. Complete any workflow
 3. The generated YAML does not include `action_type` field
 4. There is no question or option to configure it

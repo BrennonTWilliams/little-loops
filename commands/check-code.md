@@ -163,7 +163,7 @@ if [ "$MODE" = "fix" ]; then
     echo "AUTO-FIX COMPLETE"
     echo "========================================"
     echo ""
-    echo "Run '/ll:check_code all' to verify all issues are resolved"
+    echo "Run '/ll:check-code all' to verify all issues are resolved"
     echo "Note: Type errors cannot be auto-fixed"
 fi
 ```
@@ -214,20 +214,20 @@ $ARGUMENTS
 
 ```bash
 # Run all checks
-/ll:check_code
+/ll:check-code
 
 # Just check linting
-/ll:check_code lint
+/ll:check-code lint
 
 # Just check formatting
-/ll:check_code format
+/ll:check-code format
 
 # Just type checking
-/ll:check_code types
+/ll:check-code types
 
 # Just build verification
-/ll:check_code build
+/ll:check-code build
 
 # Auto-fix issues
-/ll:check_code fix
+/ll:check-code fix
 ```

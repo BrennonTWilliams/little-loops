@@ -67,16 +67,16 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 /ll:init
 
 # Check code quality
-/ll:check_code all
+/ll:check-code all
 
 # Run tests
-/ll:run_tests unit
+/ll:run-tests unit
 
 # Scan for issues
-/ll:scan_codebase
+/ll:scan-codebase
 
 # Manage an issue end-to-end (plan, implement, verify, complete)
-/ll:manage_issue bug fix BUG-001
+/ll:manage-issue bug fix BUG-001
 ```
 
 ## What's Included
@@ -95,65 +95,65 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 
 | Command | Description |
 |---------|-------------|
-| `/ll:capture_issue [input]` | Capture issues from conversation or description |
-| `/ll:scan_codebase` | Find new issues (technical) |
-| `/ll:scan_product` | Find new issues (product-focused) |
-| `/ll:audit_architecture [focus]` | Analyze architecture for patterns and improvements |
+| `/ll:capture-issue [input]` | Capture issues from conversation or description |
+| `/ll:scan-codebase` | Find new issues (technical) |
+| `/ll:scan-product` | Find new issues (product-focused) |
+| `/ll:audit-architecture [focus]` | Analyze architecture for patterns and improvements |
 
 ### Issue Refinement
 
 | Command | Description |
 |---------|-------------|
-| `/ll:normalize_issues` | Fix invalid issue filenames |
-| `/ll:prioritize_issues` | Assign priorities (P0-P5) to issues |
-| `/ll:align_issues <category>` | Validate issues against key documents |
-| `/ll:format_issue [id]` | Format issue files to align with template v2.0 structure |
-| `/ll:refine_issue [id]` | Refine issue with codebase-driven research |
-| `/ll:verify_issues` | Verify issues against codebase |
-| `/ll:tradeoff_review_issues` | Evaluate issues for utility vs complexity |
-| `/ll:ready_issue [id]` | Validate issue for implementation |
+| `/ll:normalize-issues` | Fix invalid issue filenames |
+| `/ll:prioritize-issues` | Assign priorities (P0-P5) to issues |
+| `/ll:align-issues <category>` | Validate issues against key documents |
+| `/ll:format-issue [id]` | Format issue files to align with template v2.0 structure |
+| `/ll:refine-issue [id]` | Refine issue with codebase-driven research |
+| `/ll:verify-issues` | Verify issues against codebase |
+| `/ll:tradeoff-review-issues` | Evaluate issues for utility vs complexity |
+| `/ll:ready-issue [id]` | Validate issue for implementation |
 
 ### Planning & Implementation
 
 | Command | Description |
 |---------|-------------|
-| `/ll:create_sprint [name] [--issues]` | Create sprint (explicit or auto-suggested) |
-| `/ll:review_sprint [name]` | Review sprint health and suggest improvements |
-| `/ll:manage_issue <type> <action> [id]` | Full issue lifecycle (plan, implement, verify, complete) |
-| `/ll:iterate_plan [path]` | Update existing implementation plans |
+| `/ll:create-sprint [name] [--issues]` | Create sprint (explicit or auto-suggested) |
+| `/ll:review-sprint [name]` | Review sprint health and suggest improvements |
+| `/ll:manage-issue <type> <action> [id]` | Full issue lifecycle (plan, implement, verify, complete) |
+| `/ll:iterate-plan [path]` | Update existing implementation plans |
 
 ### Code Quality
 
 | Command | Description |
 |---------|-------------|
-| `/ll:check_code [mode]` | Run linting, formatting, type checks |
-| `/ll:run_tests [scope]` | Run test suites |
-| `/ll:audit_docs [scope] [--fix]` | Audit documentation for accuracy and completeness |
-| `/ll:find_dead_code` | Find unused code |
+| `/ll:check-code [mode]` | Run linting, formatting, type checks |
+| `/ll:run-tests [scope]` | Run test suites |
+| `/ll:audit-docs [scope] [--fix]` | Audit documentation for accuracy and completeness |
+| `/ll:find-dead-code` | Find unused code |
 
 ### Git & Release
 
 | Command | Description |
 |---------|-------------|
 | `/ll:commit` | Create commits with approval |
-| `/ll:open_pr [target_branch]` | Open pull request for current branch |
-| `/ll:describe_pr` | Generate PR description |
-| `/ll:manage_release [action] [version]` | Manage releases, tags, and changelogs |
-| `/ll:sync_issues [mode]` | Sync local issues with GitHub Issues |
-| `/ll:cleanup_worktrees [mode]` | Clean orphaned git worktrees |
+| `/ll:open-pr [target_branch]` | Open pull request for current branch |
+| `/ll:describe-pr` | Generate PR description |
+| `/ll:manage-release [action] [version]` | Manage releases, tags, and changelogs |
+| `/ll:sync-issues [mode]` | Sync local issues with GitHub Issues |
+| `/ll:cleanup-worktrees [mode]` | Clean orphaned git worktrees |
 
 ### Automation & Loops
 
 | Command | Description |
 |---------|-------------|
-| `/ll:create_loop` | Interactive FSM loop creation |
+| `/ll:create-loop` | Interactive FSM loop creation |
 | `/ll:loop-suggester [file]` | Suggest FSM loops from message history |
 
 ### Meta-Analysis
 
 | Command | Description |
 |---------|-------------|
-| `/ll:audit_claude_config [scope]` | Audit Claude Code plugin configuration |
+| `/ll:audit-claude-config [scope]` | Audit Claude Code plugin configuration |
 | `/ll:analyze-workflows [file]` | Analyze user message patterns for automation |
 
 ### Session & Config
@@ -165,7 +165,7 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 | `/ll:help` | Show available commands and usage |
 | `/ll:handoff [context]` | Generate continuation prompt for session handoff |
 | `/ll:resume [prompt_file]` | Resume from previous session's continuation prompt |
-| `/ll:toggle_autoprompt [setting]` | Toggle automatic prompt optimization |
+| `/ll:toggle-autoprompt [setting]` | Toggle automatic prompt optimization |
 
 **Automatic context monitoring**: Enable `context_monitor.enabled` to get warnings when context fills up (~80%). The system will remind you to run `/ll:handoff` before context exhaustion. See [Session Handoff Guide](docs/SESSION_HANDOFF.md) for details.
 
@@ -231,7 +231,7 @@ Run `ll-parallel --help` for all options.
 
 ### ll-loop
 
-FSM-based automation loop execution (create loops with `/ll:create_loop`):
+FSM-based automation loop execution (create loops with `/ll:create-loop`):
 
 ```bash
 ll-loop run <loop-name>          # Execute a loop by name

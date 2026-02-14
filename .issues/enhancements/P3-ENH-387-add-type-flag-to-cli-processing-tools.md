@@ -124,7 +124,7 @@ When running batch processing, users frequently want to target a specific issue 
 ---
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8142cb6f-4f83-42f3-9389-72d5e0cf1e75.jsonl`
+- `/ll:capture-issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8142cb6f-4f83-42f3-9389-72d5e0cf1e75.jsonl`
 
 ---
 

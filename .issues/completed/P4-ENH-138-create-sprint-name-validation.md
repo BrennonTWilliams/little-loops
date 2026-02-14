@@ -7,7 +7,7 @@ discovered_by: audit
 
 ## Summary
 
-The `/ll:create_sprint` command documents naming conventions but doesn't enforce them. Add explicit validation to catch invalid sprint names early.
+The `/ll:create-sprint` command documents naming conventions but doesn't enforce them. Add explicit validation to catch invalid sprint names early.
 
 ## Context
 

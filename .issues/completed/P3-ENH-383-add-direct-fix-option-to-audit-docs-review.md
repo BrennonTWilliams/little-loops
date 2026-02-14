@@ -7,15 +7,15 @@ discovered_by: capture_issue
 
 ## Summary
 
-When `/ll:audit_docs` presents findings for user review, it should include an option to fix the documentation issues directly (if applicable), rather than only offering to create Issues for those documentation changes. Many doc issues are straightforward corrections (wrong counts, outdated paths, missing entries) that could be applied immediately instead of going through the full issue lifecycle.
+When `/ll:audit-docs` presents findings for user review, it should include an option to fix the documentation issues directly (if applicable), rather than only offering to create Issues for those documentation changes. Many doc issues are straightforward corrections (wrong counts, outdated paths, missing entries) that could be applied immediately instead of going through the full issue lifecycle.
 
 ## Current Behavior
 
-`/ll:audit_docs` identifies documentation inaccuracies and presents findings to the user. The user can then review and create issue files for those findings. There is no option to apply fixes directly during the audit session.
+`/ll:audit-docs` identifies documentation inaccuracies and presents findings to the user. The user can then review and create issue files for those findings. There is no option to apply fixes directly during the audit session.
 
 ## Expected Behavior
 
-After presenting findings, `/ll:audit_docs` should offer the user a choice:
+After presenting findings, `/ll:audit-docs` should offer the user a choice:
 1. **Fix directly** - Apply the documentation correction in-place (for straightforward fixes like wrong counts, outdated paths, missing entries)
 2. **Create Issue** - Create an issue file for tracking (for complex changes that need investigation or planning)
 3. **Skip** - Ignore the finding
@@ -87,8 +87,8 @@ Likely approach: after each finding (or batch of findings), present an AskUserQu
 `enhancement`, `captured`
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/547d54cb-745d-4a90-b71c-54c2d5602d61.jsonl`
-- `/ll:manage_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0d57825-d932-44f0-8c62-28a1785050e2.jsonl`
+- `/ll:capture-issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/547d54cb-745d-4a90-b71c-54c2d5602d61.jsonl`
+- `/ll:manage-issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0d57825-d932-44f0-8c62-28a1785050e2.jsonl`
 
 ---
 

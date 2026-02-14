@@ -10,7 +10,7 @@ doc_file: docs/COMMANDS.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The `/ll:cleanup_worktrees` command exists at `commands/cleanup_worktrees.md` but is not documented in the COMMANDS.md reference.
+Documentation issue found by `/ll:audit-docs`. The `/ll:cleanup-worktrees` command exists at `commands/cleanup_worktrees.md` but is not documented in the COMMANDS.md reference.
 
 ## Location
 
@@ -26,7 +26,7 @@ The `cleanup_worktrees` command was added but not included in the command refere
 Add to Quick Reference table and Git & Workflow section:
 
 ```markdown
-### `/ll:cleanup_worktrees`
+### `/ll:cleanup-worktrees`
 Clean up stale git worktrees and branches from parallel processing.
 ```
 
@@ -60,7 +60,7 @@ Quick Reference entry:
 - **Status**: Completed
 
 ### Changes Made
-- `docs/COMMANDS.md`: Added `/ll:cleanup_worktrees` to Git & Workflow section with description and arguments
+- `docs/COMMANDS.md`: Added `/ll:cleanup-worktrees` to Git & Workflow section with description and arguments
 - `docs/COMMANDS.md`: Added `cleanup_worktrees` entry to Quick Reference table
 
 ### Verification Results

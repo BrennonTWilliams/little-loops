@@ -984,10 +984,10 @@ class TestExtractEntities:
 
     def test_slash_commands(self) -> None:
         """Extracts slash commands from content."""
-        content = "Run /ll:commit and then /ll:check_code"
+        content = "Run /ll:commit and then /ll:check-code"
         entities = extract_entities(content)
         assert "/ll:commit" in entities
-        assert "/ll:check_code" in entities
+        assert "/ll:check-code" in entities
 
     def test_issue_ids(self) -> None:
         """Extracts issue IDs from content."""

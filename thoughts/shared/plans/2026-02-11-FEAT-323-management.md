@@ -25,7 +25,7 @@ Issue files contain a `## Session Log` section with timestamped entries linking 
 
 ### How to Verify
 - Unit tests for utility functions pass
-- Manual: run `/ll:capture_issue` and check that the created issue has a Session Log entry
+- Manual: run `/ll:capture-issue` and check that the created issue has a Session Log entry
 
 ## What We're NOT Doing
 
@@ -107,7 +107,7 @@ def append_session_log_entry(
 
     Args:
         issue_path: Path to the issue markdown file.
-        command: Command name (e.g., '/ll:manage_issue').
+        command: Command name (e.g., '/ll:manage-issue').
         session_jsonl: Path to session JSONL file. If None, auto-detected.
 
     Returns:

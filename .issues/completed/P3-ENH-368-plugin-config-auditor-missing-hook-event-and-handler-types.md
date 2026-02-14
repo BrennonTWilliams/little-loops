@@ -65,7 +65,7 @@ Update `agents/plugin-config-auditor.md`:
 - N/A
 
 ### Tests
-- N/A — agent markdown audit; verified by running /ll:audit_claude_config
+- N/A — agent markdown audit; verified by running /ll:audit-claude-config
 
 ### Documentation
 - N/A — internal cleanup of agent prompt content
@@ -108,9 +108,9 @@ Update `agents/plugin-config-auditor.md`:
 - ENH-388: standardize issue priority range to P0-P8 (shared docs/ARCHITECTURE.md)
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00ffa686-5907-4ed1-8765-93f478b14da2.jsonl`
-- /ll:format_issue --all --auto - 2026-02-13
-- `/ll:manage_issue` - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/555274a8-9270-48f6-b8b7-d3afad84af8e.jsonl`
+- `/ll:capture-issue` - 2026-02-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/00ffa686-5907-4ed1-8765-93f478b14da2.jsonl`
+- /ll:format-issue --all --auto - 2026-02-13
+- `/ll:manage-issue` - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/555274a8-9270-48f6-b8b7-d3afad84af8e.jsonl`
 
 ---
 

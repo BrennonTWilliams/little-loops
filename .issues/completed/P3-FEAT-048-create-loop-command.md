@@ -138,9 +138,9 @@ questions:
     header: "Fix action"
     multiSelect: false
     options:
-      - label: "/ll:manage_issue bug fix"
+      - label: "/ll:manage-issue bug fix"
         description: "Use issue management to fix bugs"
-      - label: "/ll:check_code fix"
+      - label: "/ll:check-code fix"
         description: "Auto-fix code issues"
       - label: "Custom command"
         description: "Specify your own fix command"
@@ -187,10 +187,10 @@ name: "fix-types-and-lint"
 constraints:
   - name: "types-valid"
     check: "mypy src/"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
   - name: "lint-clean"
     check: "ruff check src/"
-    fix: "/ll:check_code fix"
+    fix: "/ll:check-code fix"
 max_iterations: 10
 ```
 
@@ -212,7 +212,7 @@ def generate_goal_yaml(checks: list[str], fix_tool: str, max_iter: int, name: st
     tools = []
     for check in checks:
         if check == "types":
-            tools.append("/ll:check_code types")
+            tools.append("/ll:check-code types")
         elif check == "lint":
             tools.append("ruff check src/")
         elif check == "tests":

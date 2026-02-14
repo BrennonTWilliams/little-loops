@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:create_loop` wizard at `commands/create_loop.md:369-394` shows only paradigm YAML before saving:
+The `/ll:create-loop` wizard at `commands/create_loop.md:369-394` shows only paradigm YAML before saving:
 
 ```
 Here's your loop configuration:
@@ -56,7 +56,7 @@ This will create: .loops/<name>.yaml
 ```
 
 ### How to Verify
-- Run `/ll:create_loop` and complete the wizard
+- Run `/ll:create-loop` and complete the wizard
 - At Step 4, FSM preview should appear alongside paradigm YAML
 - Preview should accurately reflect the states/transitions for the chosen paradigm
 
@@ -245,7 +245,7 @@ questions:
 - [ ] File is valid markdown
 
 **Manual Verification**:
-- [ ] Running `/ll:create_loop` and completing wizard shows FSM preview at Step 4
+- [ ] Running `/ll:create-loop` and completing wizard shows FSM preview at Step 4
 - [ ] Preview accurately reflects paradigm-specific states and transitions
 - [ ] Goal paradigm shows: evaluate → fix → done
 - [ ] Convergence paradigm shows: measure → apply → done with route verdicts
@@ -257,10 +257,10 @@ questions:
 ## Testing Strategy
 
 ### Manual Tests
-1. Run `/ll:create_loop` with goal paradigm - verify preview shows evaluate/fix/done
-2. Run `/ll:create_loop` with convergence paradigm - verify preview shows measure/apply/done
-3. Run `/ll:create_loop` with invariants paradigm - verify preview shows constraint chain
-4. Run `/ll:create_loop` with imperative paradigm - verify preview shows step sequence
+1. Run `/ll:create-loop` with goal paradigm - verify preview shows evaluate/fix/done
+2. Run `/ll:create-loop` with convergence paradigm - verify preview shows measure/apply/done
+3. Run `/ll:create-loop` with invariants paradigm - verify preview shows constraint chain
+4. Run `/ll:create-loop` with imperative paradigm - verify preview shows step sequence
 
 ### Verification
 - Compare preview output to actual compiled FSM (run `ll-loop compile` on saved file)

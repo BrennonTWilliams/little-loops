@@ -128,8 +128,8 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
         paradigm: goal
         goal: "No type errors in src/"
         tools:
-          - /ll:check_code types
-          - /ll:manage_issue bug fix
+          - /ll:check-code types
+          - /ll:manage-issue bug fix
         max_iterations: 20
 
     Args:
@@ -211,7 +211,7 @@ def compile_convergence(spec: dict[str, Any]) -> FSMLoop:
         name: "reduce-lint-errors"
         check: "ruff check src/ --output-format=json | jq '.count'"
         toward: 0
-        using: "/ll:check_code fix"
+        using: "/ll:check-code fix"
         tolerance: 0
 
     Args:
@@ -311,10 +311,10 @@ def compile_invariants(spec: dict[str, Any]) -> FSMLoop:
         constraints:
           - name: "tests-pass"
             check: "pytest"
-            fix: "/ll:manage_issue bug fix"
+            fix: "/ll:manage-issue bug fix"
           - name: "lint-clean"
             check: "ruff check src/"
-            fix: "/ll:check_code fix"
+            fix: "/ll:check-code fix"
         maintain: true
 
     Args:
@@ -415,8 +415,8 @@ def compile_imperative(spec: dict[str, Any]) -> FSMLoop:
         paradigm: imperative
         name: "fix-all-types"
         steps:
-          - /ll:check_code types
-          - /ll:manage_issue bug fix
+          - /ll:check-code types
+          - /ll:manage-issue bug fix
         until:
           check: "mypy src/"
           passes: true
@@ -599,7 +599,7 @@ class TestGoalCompiler:
         spec = {
             "paradigm": "goal",
             "goal": "No type errors",
-            "tools": ["/ll:check_code types", "/ll:manage_issue bug fix"],
+            "tools": ["/ll:check-code types", "/ll:manage-issue bug fix"],
             "max_iterations": 20,
         }
         fsm = compile_goal(spec)
@@ -621,12 +621,12 @@ class TestGoalCompiler:
         spec = {
             "paradigm": "goal",
             "goal": "Clean",
-            "tools": ["/ll:check_code fix"],
+            "tools": ["/ll:check-code fix"],
         }
         fsm = compile_goal(spec)
 
-        assert fsm.states["evaluate"].action == "/ll:check_code fix"
-        assert fsm.states["fix"].action == "/ll:check_code fix"
+        assert fsm.states["evaluate"].action == "/ll:check-code fix"
+        assert fsm.states["fix"].action == "/ll:check-code fix"
 
     def test_goal_custom_name(self) -> None:
         """Goal with custom name uses it."""
@@ -673,7 +673,7 @@ class TestConvergenceCompiler:
             "name": "reduce-errors",
             "check": "mypy src/ | grep -c error",
             "toward": 0,
-            "using": "/ll:check_code fix",
+            "using": "/ll:check-code fix",
         }
         fsm = compile_convergence(spec)
 

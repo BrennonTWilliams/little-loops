@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-Instead of only offering abstract paradigms (goal, invariants, convergence, imperative), the `/ll:create_loop` wizard should offer pre-built, tested loop configurations for common scenarios that users can select and customize.
+Instead of only offering abstract paradigms (goal, invariants, convergence, imperative), the `/ll:create-loop` wizard should offer pre-built, tested loop configurations for common scenarios that users can select and customize.
 
 ## Context
 

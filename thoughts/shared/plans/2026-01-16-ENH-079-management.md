@@ -200,9 +200,9 @@ Add Integration section following the established pattern.
 This command creates commits for work done in the current session.
 
 Works well with:
-- `/ll:check_code` - Run before committing to ensure code quality
-- `/ll:run_tests` - Verify tests pass before committing
-- `/ll:describe_pr` - After committing, generate PR description
+- `/ll:check-code` - Run before committing to ensure code quality
+- `/ll:run-tests` - Verify tests pass before committing
+- `/ll:describe-pr` - After committing, generate PR description
 ```
 
 #### Success Criteria

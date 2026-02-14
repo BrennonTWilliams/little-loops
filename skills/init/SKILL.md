@@ -214,11 +214,11 @@ Updated: .gitignore (added state file exclusions)
 
 Next steps:
   1. Review and customize: .claude/ll-config.json
-  2. Try a command: /ll:check_code
+  2. Try a command: /ll:check-code
   3. Set up issue tracking: mkdir -p {{config.issues.base_dir}}/{bugs,features,enhancements}
   4. Configure product goals: .claude/ll-goals.md      # Only show if product enabled
   5. Run parallel processing: ll-parallel      # Only show if parallel configured
-  6. Sync with GitHub: /ll:sync_issues push   # Only show if sync enabled
+  6. Sync with GitHub: /ll:sync-issues push   # Only show if sync enabled
 
 Documentation: https://github.com/BrennonTWilliams/little-loops
 

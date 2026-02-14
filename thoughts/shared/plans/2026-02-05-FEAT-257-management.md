@@ -1,4 +1,4 @@
-# FEAT-257: Add /ll:tradeoff_review_issues Skill - Implementation Plan
+# FEAT-257: Add /ll:tradeoff-review-issues Skill - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/features/P3-FEAT-257-utility-review-issues-command.md`
@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-No `/ll:tradeoff_review_issues` skill exists. The closest analog is `skills/issue-size-review/SKILL.md` which evaluates issue **size/complexity** and proposes decomposition. This new skill evaluates **utility vs complexity trade-offs** to decide whether issues should be implemented, updated, or closed.
+No `/ll:tradeoff-review-issues` skill exists. The closest analog is `skills/issue-size-review/SKILL.md` which evaluates issue **size/complexity** and proposes decomposition. This new skill evaluates **utility vs complexity trade-offs** to decide whether issues should be implemented, updated, or closed.
 
 ### Key Discoveries
 - Skills are auto-discovered from `./skills` directory via `plugin.json:20`
@@ -31,7 +31,7 @@ A new skill at `skills/tradeoff-review-issues/SKILL.md` that:
 
 ### How to Verify
 - Skill appears in `/ll:help` output
-- Running `/ll:tradeoff_review_issues` discovers active issues, evaluates them, and presents results
+- Running `/ll:tradeoff-review-issues` discovers active issues, evaluates them, and presents results
 - User can approve/reject individual recommendations
 - Approved closures move files to `completed/` with resolution note
 - Approved updates append review notes to issue files
@@ -97,7 +97,7 @@ The SKILL.md will contain:
 ## Testing Strategy
 
 ### Manual Testing
-- Invoke `/ll:tradeoff_review_issues` in a Claude Code session
+- Invoke `/ll:tradeoff-review-issues` in a Claude Code session
 - Verify it discovers active issues correctly
 - Verify subagent evaluation produces structured scores
 - Verify summary table renders clearly

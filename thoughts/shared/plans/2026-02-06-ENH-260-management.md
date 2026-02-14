@@ -9,7 +9,7 @@
 ## Current State Analysis
 
 ### Key Discoveries
-- `commands/capture_issue.md:368` and `:420` both contain incorrect placeholder text referencing `/ll:align_issues` for document discovery
+- `commands/capture_issue.md:368` and `:420` both contain incorrect placeholder text referencing `/ll:align-issues` for document discovery
 - `commands/align_issues.md:4-6` defines `category` as `required: true` — no way to run without an argument
 - `commands/align_issues.md:67-77` parses arguments with no default/fallback for missing category
 - `commands/normalize_issues.md:249-298` (Section 7b) already handles document linking/discovery — this is the correct tool to reference
@@ -22,7 +22,7 @@
 
 ## Desired End State
 
-1. `capture_issue.md` placeholder text references `/ll:normalize_issues` instead of `/ll:align_issues`
+1. `capture_issue.md` placeholder text references `/ll:normalize-issues` instead of `/ll:align-issues`
 2. `align_issues.md` supports three argument modes:
    - **No argument**: Check each active issue against its own linked Key Documents
    - **Document path** (contains `.md` or `/`): Check all active issues against that specific document
@@ -37,7 +37,7 @@
 
 - Not modifying Python code — these are markdown command files only
 - Not changing normalize_issues.md — it already works correctly
-- Not fixing existing issue files that contain the old placeholder text (those will be corrected when `/ll:normalize_issues` runs)
+- Not fixing existing issue files that contain the old placeholder text (those will be corrected when `/ll:normalize-issues` runs)
 - Not adding new test files — these are prompt-based commands, not executable code
 
 ## Implementation Phases
@@ -45,7 +45,7 @@
 ### Phase 1: Fix capture_issue.md Placeholder Text
 
 #### Overview
-Change two occurrences of incorrect guidance from referencing `/ll:align_issues` to `/ll:normalize_issues`.
+Change two occurrences of incorrect guidance from referencing `/ll:align-issues` to `/ll:normalize-issues`.
 
 #### Changes Required
 
@@ -53,14 +53,14 @@ Change two occurrences of incorrect guidance from referencing `/ll:align_issues`
 
 **Line 368** (minimal template):
 ```
-OLD: _No documents linked. Run `/ll:align_issues` to discover relevant docs._
-NEW: _No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+OLD: _No documents linked. Run `/ll:align-issues` to discover relevant docs._
+NEW: _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 ```
 
 **Line 420** (full template):
 ```
-OLD: _No documents linked. Run `/ll:align_issues` to discover relevant docs._
-NEW: _No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+OLD: _No documents linked. Run `/ll:align-issues` to discover relevant docs._
+NEW: _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 ```
 
 #### Success Criteria
@@ -128,7 +128,7 @@ Replace lines 79-100 with logic that handles three modes:
 
 For MODE=linked-docs:
 - Read each issue's "Related Key Documentation" section
-- If the issue has no linked documents, report: `Skipped: No linked documents — run /ll:normalize_issues first`
+- If the issue has no linked documents, report: `Skipped: No linked documents — run /ll:normalize-issues first`
 - For each linked document, perform the existing alignment check (step 5D)
 - Skip the relevance check (step 5B) and missing doc check (step 5C) since we're only checking what's already linked
 
@@ -140,16 +140,16 @@ For MODE=specific-doc:
 **2f. Examples section (lines 328-348)**: Add new usage examples:
 ```bash
 # Check each issue against its own linked documents (default)
-/ll:align_issues
+/ll:align-issues
 
 # Check all issues against a specific document
-/ll:align_issues docs/ARCHITECTURE.md
+/ll:align-issues docs/ARCHITECTURE.md
 
 # Existing: Check by category with auto-fix
-/ll:align_issues architecture
+/ll:align-issues architecture
 
 # Existing: Check all categories
-/ll:align_issues --all
+/ll:align-issues --all
 ```
 
 #### Success Criteria

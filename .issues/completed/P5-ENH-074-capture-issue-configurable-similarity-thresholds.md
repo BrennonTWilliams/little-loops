@@ -7,7 +7,7 @@ discovered_by: manual_review
 
 ## Summary
 
-The `/ll:capture_issue` command uses hardcoded Jaccard similarity thresholds (0.8 for exact duplicate, 0.5 for similar) for duplicate detection. These should be configurable to tune sensitivity per project.
+The `/ll:capture-issue` command uses hardcoded Jaccard similarity thresholds (0.8 for exact duplicate, 0.5 for similar) for duplicate detection. These should be configurable to tune sensitivity per project.
 
 ## Current Behavior
 

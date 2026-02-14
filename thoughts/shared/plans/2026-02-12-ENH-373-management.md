@@ -67,7 +67,7 @@ Insert `## Examples` section with `---` separators before `## Integration` (line
 
 ```bash
 # Review all active issues for utility vs complexity trade-offs
-/ll:tradeoff_review_issues
+/ll:tradeoff-review-issues
 ```
 
 ---

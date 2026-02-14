@@ -1,4 +1,4 @@
-# FEAT-228: Add /ll:open_pr Slash Command - Implementation Plan
+# FEAT-228: Add /ll:open-pr Slash Command - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/features/P3-FEAT-228-add-open-pr-slash-command.md`
@@ -9,7 +9,7 @@
 ## Current State Analysis
 
 ### Key Discoveries
-- `/ll:describe_pr` exists as a **command** at `commands/describe_pr.md` — it gathers branch info, analyzes commits, generates PR descriptions, and optionally creates the PR via `gh pr create`
+- `/ll:describe-pr` exists as a **command** at `commands/describe_pr.md` — it gathers branch info, analyzes commits, generates PR descriptions, and optionally creates the PR via `gh pr create`
 - The project uses two mechanisms: **commands** (`commands/*.md` with YAML frontmatter) for procedural instructions, and **skills** (`skills/*/SKILL.md`) as trigger/routing metadata that invoke commands
 - Skills auto-discover via the `"skills": ["./skills"]` entry in `plugin.json` — no individual registration needed
 - `describe_pr` already has the full PR creation flow (gather info → analyze → generate body → offer to create PR), but it's focused on description generation, not streamlined PR opening
@@ -24,7 +24,7 @@
 
 ## Desired End State
 
-A new `/ll:open_pr` command and corresponding skill that:
+A new `/ll:open-pr` command and corresponding skill that:
 1. Gathers branch/commit information
 2. Auto-generates a PR title and body
 3. Detects issue references from branch names and commits
@@ -33,7 +33,7 @@ A new `/ll:open_pr` command and corresponding skill that:
 6. Reports the resulting PR URL
 
 ### How to Verify
-- `/ll:open_pr` appears in help and can be invoked
+- `/ll:open-pr` appears in help and can be invoked
 - PR is created on GitHub with correct title, body, and linked issues
 - `--draft` flag creates a draft PR
 - Custom target branch works
@@ -41,7 +41,7 @@ A new `/ll:open_pr` command and corresponding skill that:
 
 ## What We're NOT Doing
 
-- Not modifying `/ll:describe_pr` — we'll incorporate similar logic directly in the new command
+- Not modifying `/ll:describe-pr` — we'll incorporate similar logic directly in the new command
 - Not adding Python backing code — this is a pure procedural command like `describe_pr`
 - Not adding reviewer assignment or label mapping (can be a future enhancement)
 - Not adding PR template detection (already handled by describe_pr; users can use describe_pr for template-based workflows)
@@ -90,8 +90,8 @@ Key design decisions:
 - [ ] Tests pass: `python -m pytest scripts/tests/`
 
 **Manual Verification**:
-- [ ] Invoke `/ll:open_pr` in Claude Code — it should gather info and present a PR preview
-- [ ] Invoke `/ll:open_pr --draft` — should include `--draft` flag in gh command
+- [ ] Invoke `/ll:open-pr` in Claude Code — it should gather info and present a PR preview
+- [ ] Invoke `/ll:open-pr --draft` — should include `--draft` flag in gh command
 
 ---
 
@@ -108,8 +108,8 @@ Create `skills/open-pr/SKILL.md` with trigger keywords and routing metadata.
 Structure:
 - YAML frontmatter with description and trigger keywords ("open pr", "create pull request", "submit pr", "create pr", "open pull request")
 - "When to Activate" section
-- "How to Use" section mapping user intents to `/ll:open_pr` invocations
-- "Integration" section linking to `/ll:commit`, `/ll:check_code`, `/ll:describe_pr`
+- "How to Use" section mapping user intents to `/ll:open-pr` invocations
+- "Integration" section linking to `/ll:commit`, `/ll:check-code`, `/ll:describe-pr`
 
 #### Success Criteria
 
@@ -126,21 +126,21 @@ Structure:
 ### Phase 3: Update Documentation
 
 #### Overview
-Add `/ll:open_pr` to help command and COMMANDS.md reference.
+Add `/ll:open-pr` to help command and COMMANDS.md reference.
 
 #### Changes Required
 
 **File**: `commands/help.md`
-**Changes**: Add `/ll:open_pr` entry in the "GIT & WORKFLOW" section (after `/ll:describe_pr`) and in the quick reference table
+**Changes**: Add `/ll:open-pr` entry in the "GIT & WORKFLOW" section (after `/ll:describe-pr`) and in the quick reference table
 
 **File**: `docs/COMMANDS.md`
-**Changes**: Add `/ll:open_pr` entry in the "Git & Workflow" section and quick reference table
+**Changes**: Add `/ll:open-pr` entry in the "Git & Workflow" section and quick reference table
 
 **File**: `commands/commit.md`
-**Changes**: Add `/ll:open_pr` to integration section
+**Changes**: Add `/ll:open-pr` to integration section
 
 **File**: `commands/describe_pr.md`
-**Changes**: Add `/ll:open_pr` to integration section
+**Changes**: Add `/ll:open-pr` to integration section
 
 #### Success Criteria
 
@@ -158,13 +158,13 @@ Add `/ll:open_pr` to help command and COMMANDS.md reference.
 ## Testing Strategy
 
 ### Manual Tests
-- Create a feature branch with commits, run `/ll:open_pr` to verify the full flow
+- Create a feature branch with commits, run `/ll:open-pr` to verify the full flow
 - Test `--draft` flag produces a draft PR
 - Test with a branch named like `feat/FEAT-228-description` to verify issue auto-linking
 - Test target branch override
 
 ### Integration
-- Verify `/ll:open_pr` works after `/ll:commit`
+- Verify `/ll:open-pr` works after `/ll:commit`
 - Verify skill triggers on natural language like "open a PR for this"
 
 ## References

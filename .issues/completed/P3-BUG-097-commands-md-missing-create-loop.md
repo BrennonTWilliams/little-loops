@@ -6,11 +6,11 @@ discovered_by: audit_docs
 doc_file: docs/COMMANDS.md
 ---
 
-# BUG-097: COMMANDS.md missing /ll:create_loop documentation
+# BUG-097: COMMANDS.md missing /ll:create-loop documentation
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The `docs/COMMANDS.md` command reference file is missing documentation for the `/ll:create_loop` command.
+Documentation issue found by `/ll:audit-docs`. The `docs/COMMANDS.md` command reference file is missing documentation for the `/ll:create-loop` command.
 
 ## Location
 
@@ -19,7 +19,7 @@ Documentation issue found by `/ll:audit_docs`. The `docs/COMMANDS.md` command re
 
 ## Problem
 
-The `/ll:create_loop` command exists in `commands/create_loop.md` but has no corresponding entry in the COMMANDS.md reference document.
+The `/ll:create-loop` command exists in `commands/create_loop.md` but has no corresponding entry in the COMMANDS.md reference document.
 
 ## Current State
 
@@ -34,7 +34,7 @@ Add to COMMANDS.md:
 ```markdown
 ## Automation Loops
 
-### `/ll:create_loop`
+### `/ll:create-loop`
 Create FSM loop configurations interactively.
 
 **Workflow:**
@@ -87,7 +87,7 @@ grep -c "create_loop" docs/COMMANDS.md  # Should be 0 currently
 - **Status**: Completed
 
 ### Changes Made
-- `docs/COMMANDS.md`: Added new "Automation Loops" section with `/ll:create_loop` documentation
+- `docs/COMMANDS.md`: Added new "Automation Loops" section with `/ll:create-loop` documentation
 - `docs/COMMANDS.md`: Added `create_loop` entry to Quick Reference table
 
 ### Verification Results

@@ -63,7 +63,7 @@ if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
 # Validate: --all requires issue_id to be omitted
 if [[ "$ALL_MODE" == true ]] && [[ -n "$ISSUE_ID" ]]; then
     echo "Error: --all flag requires issue_id to be omitted"
-    echo "Usage: /ll:format_issue --all"
+    echo "Usage: /ll:format-issue --all"
     exit 1
 fi
 
@@ -80,7 +80,7 @@ fi
 ```bash
 if [[ -z "$ISSUE_ID" ]]; then
     echo "Error: issue_id is required when not using --all flag"
-    echo "Usage: /ll:format_issue [ISSUE_ID] [--auto]"
+    echo "Usage: /ll:format-issue [ISSUE_ID] [--auto]"
     exit 1
 fi
 
@@ -257,7 +257,7 @@ After updating the issue, append a session log entry:
 
 ```markdown
 ## Session Log
-- `/ll:format_issue` - [ISO timestamp] - `[path to current session JSONL]`
+- `/ll:format-issue` - [ISO timestamp] - `[path to current session JSONL]`
 ```
 
 To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
@@ -306,51 +306,51 @@ See [templates.md](templates.md) for complete output format templates:
 
 ```bash
 # Interactive formatting (existing behavior)
-/ll:format_issue FEAT-225
+/ll:format-issue FEAT-225
 
 # Auto-format single issue (non-interactive)
-/ll:format_issue BUG-042 --auto
+/ll:format-issue BUG-042 --auto
 
 # Auto-format with dry-run (preview changes without applying)
-/ll:format_issue BUG-042 --auto --dry-run
+/ll:format-issue BUG-042 --auto --dry-run
 
 # Auto-format all active issues
-/ll:format_issue --all --auto
+/ll:format-issue --all --auto
 
 # Full auto-format: template alignment + content inference
-/ll:format_issue FEAT-225 --auto
+/ll:format-issue FEAT-225 --auto
 
 # Batch auto-format all issues with dry-run preview
-/ll:format_issue --all --auto --dry-run
+/ll:format-issue --all --auto --dry-run
 ```
 
 ## Integration
 
 After formatting an issue:
 
-- Enrich with codebase research: `/ll:refine_issue [ID]`
-- Validate with `/ll:ready_issue [ID]`
+- Enrich with codebase research: `/ll:refine-issue [ID]`
+- Validate with `/ll:ready-issue [ID]`
 - Commit with `/ll:commit`
-- Implement with `/ll:manage_issue`
+- Implement with `/ll:manage-issue`
 
 ### Typical Workflows
 
 **Interactive workflow** (manual formatting):
 ```
-/ll:capture_issue "description" → /ll:format_issue [ID] → /ll:refine_issue [ID] → /ll:ready_issue [ID] → /ll:manage_issue
+/ll:capture-issue "description" → /ll:format-issue [ID] → /ll:refine-issue [ID] → /ll:ready-issue [ID] → /ll:manage-issue
 ```
 
 **Auto-format workflow** (non-interactive):
 ```
-/ll:capture_issue "description" → /ll:format_issue [ID] --auto → /ll:refine_issue [ID] --auto → /ll:ready_issue [ID] → /ll:manage_issue
+/ll:capture-issue "description" → /ll:format-issue [ID] --auto → /ll:refine-issue [ID] --auto → /ll:ready-issue [ID] → /ll:manage-issue
 ```
 
 **Batch auto-format workflow** (all issues):
 ```
-/ll:format_issue --all --auto → /ll:ready_issue --all → /ll:commit
+/ll:format-issue --all --auto → /ll:ready-issue --all → /ll:commit
 ```
 
 **Automation integration** (ll-auto, ll-parallel, ll-sprint):
-- These automation scripts can now use `/ll:format_issue [ID] --auto` before implementation
+- These automation scripts can now use `/ll:format-issue [ID] --auto` before implementation
 - Template v2.0 alignment happens during formatting, not at execution time
 - Enables automated issue formatting without user interaction

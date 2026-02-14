@@ -26,7 +26,7 @@ COMPLETED
 
 ## Description
 
-The FSM Compilation Reference in `/ll:create_loop` uses arrow notation (→) for transitions that could be confused with the `route:` table syntax.
+The FSM Compilation Reference in `/ll:create-loop` uses arrow notation (→) for transitions that could be confused with the `route:` table syntax.
 
 **Reference shows (lines 685-748):**
 ```

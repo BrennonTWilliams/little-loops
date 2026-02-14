@@ -19,9 +19,9 @@ Understanding where issues come from enables:
 - Providing context when reviewing issues
 
 This is useful for ALL users, not just those with product analysis enabled. Currently, there's no way to distinguish between:
-- Issues from `/ll:scan_codebase`
-- Issues from `/ll:audit_architecture`
-- Issues from `/ll:scan_product` (when product enabled)
+- Issues from `/ll:scan-codebase`
+- Issues from `/ll:audit-architecture`
+- Issues from `/ll:scan-product` (when product enabled)
 - Manually created issues
 
 ## Proposed Implementation
@@ -45,10 +45,10 @@ discovered_by: scan_codebase  # NEW FIELD
 discovered_by:
   type: string
   enum:
-    - scan_codebase      # From /ll:scan_codebase
-    - scan_product       # From /ll:scan_product (product dimension)
-    - audit_architecture # From /ll:audit_architecture
-    - audit_docs         # From /ll:audit_docs
+    - scan_codebase      # From /ll:scan-codebase
+    - scan_product       # From /ll:scan-product (product dimension)
+    - audit_architecture # From /ll:audit-architecture
+    - audit_docs         # From /ll:audit-docs
     - manual             # User-created
   description: Which workflow discovered this issue
   optional: true
@@ -61,10 +61,10 @@ Update these commands to populate `discovered_by`:
 
 | Command | Value |
 |---------|-------|
-| `/ll:scan_codebase` | `scan_codebase` |
-| `/ll:audit_architecture` | `audit_architecture` |
-| `/ll:audit_docs` | `audit_docs` |
-| `/ll:scan_product` | `scan_product` |
+| `/ll:scan-codebase` | `scan_codebase` |
+| `/ll:audit-architecture` | `audit_architecture` |
+| `/ll:audit-docs` | `audit_docs` |
+| `/ll:scan-product` | `scan_product` |
 
 ### 4. Parser Update
 
@@ -102,8 +102,8 @@ New issues include `discovered_by` in frontmatter indicating their source comman
 ## Acceptance Criteria
 
 - [ ] `discovered_by` field added to issue parser
-- [ ] `/ll:scan_codebase` populates `discovered_by: scan_codebase`
-- [ ] `/ll:audit_architecture` populates `discovered_by: audit_architecture`
+- [ ] `/ll:scan-codebase` populates `discovered_by: scan_codebase`
+- [ ] `/ll:audit-architecture` populates `discovered_by: audit_architecture`
 - [ ] Existing issues without field parse correctly (null value)
 - [ ] Unit test for parsing issues with and without `discovered_by`
 

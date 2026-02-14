@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. Several config properties are missing from existing README tables, and two config sections defined in `config-schema.json` (`workflow`, `prompt_optimization`) have no README documentation.
+Documentation issue found by `/ll:audit-docs`. Several config properties are missing from existing README tables, and two config sections defined in `config-schema.json` (`workflow`, `prompt_optimization`) have no README documentation.
 
 ## Current Behavior
 
@@ -55,7 +55,7 @@ Phase gates, deep research, and plan template settings:
 
 ### `prompt_optimization`
 
-Automatic prompt optimization settings (toggle with `/ll:toggle_autoprompt`):
+Automatic prompt optimization settings (toggle with `/ll:toggle-autoprompt`):
 - `enabled` (default: true)
 - `mode` (enum: quick/thorough, default: "quick")
 - `confirm` (default: true)

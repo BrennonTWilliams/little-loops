@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-After ENH-122 was completed, the `/ll:create_loop` wizard asks users to select an evaluator type after check commands are determined. However, the default is always "Exit code (Recommended)" regardless of which tool is selected.
+After ENH-122 was completed, the `/ll:create-loop` wizard asks users to select an evaluator type after check commands are determined. However, the default is always "Exit code (Recommended)" regardless of which tool is selected.
 
 ### Key Discoveries
 - Evaluator selection flow exists at `commands/create_loop.md:268-344`
@@ -39,7 +39,7 @@ Recommended evaluator: Exit code (mypy returns non-zero on type errors)
 ```
 
 ### How to Verify
-- Run `/ll:create_loop`, select "Build from paradigm" → "Fix errors until clean"
+- Run `/ll:create-loop`, select "Build from paradigm" → "Fix errors until clean"
 - Select "Type errors (mypy)" as check target
 - Evaluator question should show "Exit code (Recommended for mypy)"
 - For custom commands matching known patterns, appropriate defaults should be suggested
@@ -123,10 +123,10 @@ questions:
 - [ ] Types pass: `python -m mypy scripts/little_loops/`
 
 **Manual Verification**:
-- [ ] Run `/ll:create_loop`, select goal paradigm with mypy - evaluator shows "Recommended for mypy"
-- [ ] Run `/ll:create_loop`, select goal paradigm with ruff - evaluator shows "Recommended for ruff"
-- [ ] Run `/ll:create_loop` with custom command matching pytest - evaluator shows "Recommended for pytest"
-- [ ] Run `/ll:create_loop` with unknown custom command - evaluator shows generic "Recommended"
+- [ ] Run `/ll:create-loop`, select goal paradigm with mypy - evaluator shows "Recommended for mypy"
+- [ ] Run `/ll:create-loop`, select goal paradigm with ruff - evaluator shows "Recommended for ruff"
+- [ ] Run `/ll:create-loop` with custom command matching pytest - evaluator shows "Recommended for pytest"
+- [ ] Run `/ll:create-loop` with unknown custom command - evaluator shows generic "Recommended"
 
 ---
 
@@ -158,8 +158,8 @@ Use the Tool Evaluator Defaults table above to customize the evaluator recommend
 - [ ] Types pass: `python -m mypy scripts/little_loops/`
 
 **Manual Verification**:
-- [ ] Run `/ll:create_loop` with invariants paradigm - each constraint shows tool-specific evaluator recommendation
-- [ ] Run `/ll:create_loop` with imperative paradigm - exit condition shows tool-specific evaluator recommendation
+- [ ] Run `/ll:create-loop` with invariants paradigm - each constraint shows tool-specific evaluator recommendation
+- [ ] Run `/ll:create-loop` with imperative paradigm - exit condition shows tool-specific evaluator recommendation
 
 ---
 

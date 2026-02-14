@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:create_sprint` command uses Handlebars-style `{{config...}}` template syntax that Claude Code does not support. The values are not substituted at runtime, causing Claude to attempt commands with literal template strings.
+The `/ll:create-sprint` command uses Handlebars-style `{{config...}}` template syntax that Claude Code does not support. The values are not substituted at runtime, causing Claude to attempt commands with literal template strings.
 
 ### Key Discoveries
 - Template syntax appears on 4 lines: 22, 23, 62, 74 in `.claude/commands/create_sprint.md`

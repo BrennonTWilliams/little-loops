@@ -10,10 +10,10 @@
 
 The README.md Commands section (lines 249-303) documents 18 commands across 6 sections:
 - Setup & Help (2 commands): `/ll:init`, `/ll:help`
-- Code Quality (3 commands): `/ll:check_code`, `/ll:run_tests`, `/ll:find_dead_code`
-- Issue Management (6 commands): `/ll:manage_issue`, `/ll:ready_issue`, `/ll:prioritize_issues`, `/ll:verify_issues`, `/ll:normalize_issues`, `/ll:scan_codebase`
-- Documentation & Analysis (3 commands): `/ll:audit_docs`, `/ll:audit_architecture`, `/ll:describe_pr`
-- Git & Workflow (2 commands): `/ll:commit`, `/ll:iterate_plan`
+- Code Quality (3 commands): `/ll:check-code`, `/ll:run-tests`, `/ll:find-dead-code`
+- Issue Management (6 commands): `/ll:manage-issue`, `/ll:ready-issue`, `/ll:prioritize-issues`, `/ll:verify-issues`, `/ll:normalize-issues`, `/ll:scan-codebase`
+- Documentation & Analysis (3 commands): `/ll:audit-docs`, `/ll:audit-architecture`, `/ll:describe-pr`
+- Git & Workflow (2 commands): `/ll:commit`, `/ll:iterate-plan`
 - Session Management (2 commands): `/ll:handoff`, `/ll:resume`
 
 ### Key Discoveries
@@ -35,17 +35,17 @@ All 24 commands in `commands/` directory should be documented in the README.md C
 
 - Not changing command file content - this is a documentation-only fix
 - Not reorganizing existing sections unless needed to add new commands
-- Not adding a new "Automation" section - `/ll:create_loop` fits better in Git & Workflow since it creates workflow configurations
+- Not adding a new "Automation" section - `/ll:create-loop` fits better in Git & Workflow since it creates workflow configurations
 
 ## Problem Analysis
 
 Six commands are missing from the README command tables:
-1. `/ll:capture_issue` - Issue Management (captures issues from conversation)
-2. `/ll:align_issues` - Issue Management (validates issues against documents)
-3. `/ll:audit_claude_config` - Documentation & Analysis (audits plugin config)
-4. `/ll:cleanup_worktrees` - Git & Workflow (cleans orphaned worktrees)
-5. `/ll:create_loop` - Git & Workflow (creates FSM loop configurations)
-6. `/ll:toggle_autoprompt` - Session Management (toggles prompt optimization)
+1. `/ll:capture-issue` - Issue Management (captures issues from conversation)
+2. `/ll:align-issues` - Issue Management (validates issues against documents)
+3. `/ll:audit-claude-config` - Documentation & Analysis (audits plugin config)
+4. `/ll:cleanup-worktrees` - Git & Workflow (cleans orphaned worktrees)
+5. `/ll:create-loop` - Git & Workflow (creates FSM loop configurations)
+6. `/ll:toggle-autoprompt` - Session Management (toggles prompt optimization)
 
 ## Solution Approach
 
@@ -56,74 +56,74 @@ Add entries for each missing command to the appropriate existing section, follow
 ### Phase 1: Add Missing Issue Management Commands
 
 #### Overview
-Add `/ll:capture_issue` and `/ll:align_issues` to the Issue Management section.
+Add `/ll:capture-issue` and `/ll:align-issues` to the Issue Management section.
 
 #### Changes Required
 
 **File**: `README.md`
-**Changes**: Add two rows to Issue Management table after line 280 (after `/ll:scan_codebase`)
+**Changes**: Add two rows to Issue Management table after line 280 (after `/ll:scan-codebase`)
 
 ```markdown
-| `/ll:capture_issue [input]` | Capture issues from conversation |
-| `/ll:align_issues <category>` | Validate issues against key documents |
+| `/ll:capture-issue [input]` | Capture issues from conversation |
+| `/ll:align-issues <category>` | Validate issues against key documents |
 ```
 
 #### Success Criteria
 
 **Automated Verification**:
-- [ ] `grep -c '^\| \`/ll:capture_issue' README.md` returns 1
-- [ ] `grep -c '^\| \`/ll:align_issues' README.md` returns 1
+- [ ] `grep -c '^\| \`/ll:capture-issue' README.md` returns 1
+- [ ] `grep -c '^\| \`/ll:align-issues' README.md` returns 1
 
 ---
 
 ### Phase 2: Add Missing Documentation & Analysis Command
 
 #### Overview
-Add `/ll:audit_claude_config` to the Documentation & Analysis section.
+Add `/ll:audit-claude-config` to the Documentation & Analysis section.
 
 #### Changes Required
 
 **File**: `README.md`
-**Changes**: Add one row to Documentation & Analysis table after line 288 (after `/ll:describe_pr`)
+**Changes**: Add one row to Documentation & Analysis table after line 288 (after `/ll:describe-pr`)
 
 ```markdown
-| `/ll:audit_claude_config [scope]` | Audit Claude Code plugin configuration |
+| `/ll:audit-claude-config [scope]` | Audit Claude Code plugin configuration |
 ```
 
 #### Success Criteria
 
 **Automated Verification**:
-- [ ] `grep -c '^\| \`/ll:audit_claude_config' README.md` returns 1
+- [ ] `grep -c '^\| \`/ll:audit-claude-config' README.md` returns 1
 
 ---
 
 ### Phase 3: Add Missing Git & Workflow Commands
 
 #### Overview
-Add `/ll:cleanup_worktrees` and `/ll:create_loop` to the Git & Workflow section.
+Add `/ll:cleanup-worktrees` and `/ll:create-loop` to the Git & Workflow section.
 
 #### Changes Required
 
 **File**: `README.md`
-**Changes**: Add two rows to Git & Workflow table after line 295 (after `/ll:iterate_plan`)
+**Changes**: Add two rows to Git & Workflow table after line 295 (after `/ll:iterate-plan`)
 
 ```markdown
-| `/ll:cleanup_worktrees [mode]` | Clean orphaned git worktrees |
-| `/ll:create_loop` | Interactive FSM loop creation |
+| `/ll:cleanup-worktrees [mode]` | Clean orphaned git worktrees |
+| `/ll:create-loop` | Interactive FSM loop creation |
 ```
 
 #### Success Criteria
 
 **Automated Verification**:
-- [ ] `grep -c '^\| \`/ll:cleanup_worktrees' README.md` returns 1
-- [ ] `grep -c '^\| \`/ll:create_loop' README.md` returns 1
+- [ ] `grep -c '^\| \`/ll:cleanup-worktrees' README.md` returns 1
+- [ ] `grep -c '^\| \`/ll:create-loop' README.md` returns 1
 
 ---
 
 ### Phase 4: Add Missing Session Management Command
 
 #### Overview
-Add `/ll:toggle_autoprompt` to the Session Management section.
+Add `/ll:toggle-autoprompt` to the Session Management section.
 
 #### Changes Required
 
@@ -131,13 +131,13 @@ Add `/ll:toggle_autoprompt` to the Session Management section.
 **Changes**: Add one row to Session Management table after line 302 (after `/ll:resume`)
 
 ```markdown
-| `/ll:toggle_autoprompt [setting]` | Toggle automatic prompt optimization |
+| `/ll:toggle-autoprompt [setting]` | Toggle automatic prompt optimization |
 ```
 
 #### Success Criteria
 
 **Automated Verification**:
-- [ ] `grep -c '^\| \`/ll:toggle_autoprompt' README.md` returns 1
+- [ ] `grep -c '^\| \`/ll:toggle-autoprompt' README.md` returns 1
 
 ---
 

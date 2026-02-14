@@ -3,11 +3,11 @@ discovered_date: 2026-02-05
 discovered_by: capture_issue
 ---
 
-# FEAT-225: Add /ll:refine_issue skill for interactive issue clarification
+# FEAT-225: Add /ll:refine-issue skill for interactive issue clarification
 
 ## Summary
 
-Create a new `/ll:refine_issue` skill that accepts an Issue ID (e.g., FEAT-XXX), reads the issue file, and asks the user clarifying questions to refine the issue before implementation.
+Create a new `/ll:refine-issue` skill that accepts an Issue ID (e.g., FEAT-XXX), reads the issue file, and asks the user clarifying questions to refine the issue before implementation.
 
 ## Context
 
@@ -15,11 +15,11 @@ User request to add a workflow step between issue capture and implementation tha
 
 ## Current Behavior
 
-Issues go directly from capture (`/ll:capture_issue`) or scanning (`/ll:scan_codebase`) to validation (`/ll:ready_issue`) and implementation (`/ll:manage_issue`). There's no dedicated interactive refinement step.
+Issues go directly from capture (`/ll:capture-issue`) or scanning (`/ll:scan-codebase`) to validation (`/ll:ready-issue`) and implementation (`/ll:manage-issue`). There's no dedicated interactive refinement step.
 
 ## Expected Behavior
 
-The `/ll:refine_issue FEAT-225` skill would:
+The `/ll:refine-issue FEAT-225` skill would:
 
 1. Accept an Issue ID as argument (e.g., `FEAT-225`, `BUG-071`)
 2. Read and parse the issue file from `.issues/` directories
@@ -61,7 +61,7 @@ The skill should generate questions tailored to:
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+_No documents linked. Run `/ll:align-issues` to discover relevant docs._
 
 ## Labels
 

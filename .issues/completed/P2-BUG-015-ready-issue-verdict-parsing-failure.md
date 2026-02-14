@@ -23,7 +23,7 @@ The ready_issue command's verdict parsing fails when the LLM returns advice text
 
 ```
 [22:01:25] ENH-616 failed: ready_issue verdict: UNKNOWN - Could not parse verdict. Output: ## NEXT_STEPS
-Proceed to implementation with: `/ll:manage_issue enhancement ENH-616`
+Proceed to implementation with: `/ll:manage-issue enhancement ENH-616`
 
 The issue is well-structured with:
 - Clear discovery context from `/cl:audit_abstractions`

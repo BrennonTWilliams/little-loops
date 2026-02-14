@@ -163,7 +163,7 @@ find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" | sort
 **If MODE is "linked-docs":**
 For each issue file, read its "Related Key Documentation" section. If the issue has no linked documents (section is missing, empty, or contains only placeholder text like `_No documents linked`), report:
 ```
-Skipped [ISSUE-ID]: No linked documents — run /ll:normalize_issues first
+Skipped [ISSUE-ID]: No linked documents — run /ll:normalize-issues first
 ```
 For issues WITH linked documents, read each linked document and perform only the **Alignment Check (Step 5D)** against those documents. Skip the Relevance Check (5B) and Missing Documentation Check (5C) — we are only validating alignment of already-linked docs.
 
@@ -379,28 +379,28 @@ When checking all categories, produce combined report with per-category sections
 
 ```bash
 # Check each issue against its own linked documents (no argument)
-/ll:align_issues
+/ll:align-issues
 
 # Check all issues against a specific document
-/ll:align_issues docs/ARCHITECTURE.md
+/ll:align-issues docs/ARCHITECTURE.md
 
 # Check and auto-fix alignment by category
-/ll:align_issues architecture
+/ll:align-issues architecture
 
 # Check product/roadmap alignment with auto-fix
-/ll:align_issues product
+/ll:align-issues product
 
 # Check all configured categories with auto-fix
-/ll:align_issues --all
+/ll:align-issues --all
 
 # Verbose output with detailed analysis and auto-fix
-/ll:align_issues architecture --verbose
+/ll:align-issues architecture --verbose
 
 # Dry-run: report only, no changes
-/ll:align_issues architecture --dry-run
+/ll:align-issues architecture --dry-run
 
 # Verbose dry-run for detailed analysis without changes
-/ll:align_issues --all --verbose --dry-run
+/ll:align-issues --all --verbose --dry-run
 ```
 
 ---
@@ -409,10 +409,10 @@ When checking all categories, produce combined report with per-category sections
 
 This command works well with:
 - `/ll:init --interactive` - Set up document tracking
-- `/ll:capture_issue` - Creates issues with doc references
-- `/ll:normalize_issues` - Adds doc references to existing issues
-- `/ll:verify_issues` - Verify issue accuracy before alignment check
-- `/ll:manage_issue` - Process issues after reviewing alignment
+- `/ll:capture-issue` - Creates issues with doc references
+- `/ll:normalize-issues` - Adds doc references to existing issues
+- `/ll:verify-issues` - Verify issue accuracy before alignment check
+- `/ll:manage-issue` - Process issues after reviewing alignment
 
 ---
 

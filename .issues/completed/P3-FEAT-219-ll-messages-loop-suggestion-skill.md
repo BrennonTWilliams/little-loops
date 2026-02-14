@@ -7,17 +7,17 @@ discovered_by: capture_issue
 
 ## Summary
 
-Create a new `/ll:` Agent Skill that uses `ll-messages` output to analyze user message history and suggest new FSM loops with 3-15 steps, bypassing the interactive `/ll:create_loop` wizard.
+Create a new `/ll:` Agent Skill that uses `ll-messages` output to analyze user message history and suggest new FSM loops with 3-15 steps, bypassing the interactive `/ll:create-loop` wizard.
 
 ## Context
 
-**Direct mode**: User description: "New `/ll:` Agent Skill that uses `ll-messages` to suggest new loops with 3-15 steps, bypassing `/ll:create_loop`"
+**Direct mode**: User description: "New `/ll:` Agent Skill that uses `ll-messages` to suggest new loops with 3-15 steps, bypassing `/ll:create-loop`"
 
-The `/ll:create_loop` command provides an interactive wizard for creating FSM loops, but for users who have existing workflow patterns captured in their message history, an automated suggestion system would be more efficient.
+The `/ll:create-loop` command provides an interactive wizard for creating FSM loops, but for users who have existing workflow patterns captured in their message history, an automated suggestion system would be more efficient.
 
 ## Current Behavior
 
-- `/ll:create_loop` requires interactive wizard input to select paradigm, configure steps, and define evaluator behavior
+- `/ll:create-loop` requires interactive wizard input to select paradigm, configure steps, and define evaluator behavior
 - No automated analysis of existing message patterns to suggest loop configurations
 - Users must manually identify repetitive workflows that could be automated as loops
 
@@ -48,7 +48,7 @@ Create a new Agent Skill `skills/loop-suggester/SKILL.md` that:
 
 ### Key Features
 
-- Bypass `/ll:create_loop` interactive wizard
+- Bypass `/ll:create-loop` interactive wizard
 - Suggest loops based on actual user behavior patterns
 - Support all existing loop paradigms
 - Generate valid YAML matching FSM schema
@@ -98,7 +98,7 @@ Create a new Agent Skill `skills/loop-suggester/SKILL.md` that:
 5. Complete paradigm templates for generated loop configurations
 6. Example suggestions demonstrating typical outputs
 7. Guidelines and limitations documentation
-8. Comparison with /ll:create_loop for user guidance
+8. Comparison with /ll:create-loop for user guidance
 
 ### Verification Results
 - File structure: PASS (skill directory and SKILL.md created)

@@ -30,7 +30,7 @@
 
 #### Issues
 1. **[CRITICAL]** Line 84: Says "34 slash commands" but there are **35** — `refine_issue` was re-created as a new command (FEAT-380) after the original was renamed to `format_issue` (ENH-379). The count and tables were never updated.
-2. **[CRITICAL]** Issue Refinement table (lines 104-113): Missing `/ll:refine_issue` — the codebase-driven research command that fills knowledge gaps in issue files.
+2. **[CRITICAL]** Issue Refinement table (lines 104-113): Missing `/ll:refine-issue` — the codebase-driven research command that fills knowledge gaps in issue files.
 
 ### docs/ARCHITECTURE.md
 
@@ -110,7 +110,7 @@
 
 ### Critical (Must Fix)
 1. **README.md:84** — Change "34 slash commands" to "35 slash commands"
-2. **README.md Issue Refinement table** — Add row: `/ll:refine_issue [id]` | Refine issue with codebase-driven research
+2. **README.md Issue Refinement table** — Add row: `/ll:refine-issue [id]` | Refine issue with codebase-driven research
 
 ### Warnings (Should Fix)
 3. **ARCHITECTURE.md:24,67** — Update "34" to "35" in diagram and directory listing

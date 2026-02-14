@@ -11,7 +11,7 @@ The issue management commands (`refine_issue`, `normalize_issues`, `capture_issu
 
 ## Context
 
-Identified from conversation analyzing where `/ll:refine_issue` gets its section checks. The checks are entirely inline in `commands/refine_issue.md` (lines 52-130) as markdown tables. Similarly, `capture_issue` has its own hard-coded "full" and "minimal" templates. There is no single source of truth for what sections each issue type should have.
+Identified from conversation analyzing where `/ll:refine-issue` gets its section checks. The checks are entirely inline in `commands/refine_issue.md` (lines 52-130) as markdown tables. Similarly, `capture_issue` has its own hard-coded "full" and "minimal" templates. There is no single source of truth for what sections each issue type should have.
 
 The `templates/` directory currently only contains project-type config templates (e.g., `typescript.json`, `python-generic.json`) — not issue structure templates.
 

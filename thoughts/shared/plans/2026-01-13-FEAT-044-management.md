@@ -51,7 +51,7 @@ A fully functional `evaluate_llm_structured()` function that:
 
 ## Problem Analysis
 
-Slash commands (like `/ll:manage_issue`) produce natural language output that cannot be evaluated deterministically. This evaluator bridges the gap by using Claude's structured output capability to extract a structured verdict.
+Slash commands (like `/ll:manage-issue`) produce natural language output that cannot be evaluated deterministically. This evaluator bridges the gap by using Claude's structured output capability to extract a structured verdict.
 
 ## Solution Approach
 

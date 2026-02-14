@@ -13,7 +13,7 @@ Example usage:
     >>> spec = {
     ...     "paradigm": "goal",
     ...     "goal": "No type errors in src/",
-    ...     "tools": ["/ll:check_code types", "/ll:manage_issue bug fix"],
+    ...     "tools": ["/ll:check-code types", "/ll:manage-issue bug fix"],
     ... }
     >>> fsm = compile_paradigm(spec)
     >>> fsm.initial
@@ -143,8 +143,8 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
         paradigm: goal
         goal: "No type errors in src/"
         tools:
-          - /ll:check_code types      # Check tool (first)
-          - /ll:manage_issue bug fix  # Fix tool (second, optional)
+          - /ll:check-code types      # Check tool (first)
+          - /ll:manage-issue bug fix  # Fix tool (second, optional)
         max_iterations: 50            # Optional, defaults to 50 (examples show 20 for brevity)
         name: "my-goal"               # Optional, auto-generated from goal
         evaluator:                    # Optional evaluator config
@@ -220,7 +220,7 @@ def compile_convergence(spec: dict[str, Any]) -> FSMLoop:
         name: "reduce-lint-errors"
         check: "ruff check src/ --output-format=json | jq '.count'"
         toward: 0
-        using: "/ll:check_code fix"
+        using: "/ll:check-code fix"
         tolerance: 0  # Optional, defaults to 0
 
     Args:
@@ -304,13 +304,13 @@ def compile_invariants(spec: dict[str, Any]) -> FSMLoop:
         constraints:
           - name: "tests-pass"
             check: "pytest"
-            fix: "/ll:manage_issue bug fix"
+            fix: "/ll:manage-issue bug fix"
             evaluator:               # Optional per-constraint
               type: output_contains
               pattern: "passed"
           - name: "lint-clean"
             check: "ruff check src/"
-            fix: "/ll:check_code fix"
+            fix: "/ll:check-code fix"
         maintain: true  # Optional, restarts after all valid
 
     Args:
@@ -402,8 +402,8 @@ def compile_imperative(spec: dict[str, Any]) -> FSMLoop:
         paradigm: imperative
         name: "fix-all-types"
         steps:
-          - /ll:check_code types
-          - /ll:manage_issue bug fix
+          - /ll:check-code types
+          - /ll:manage-issue bug fix
         until:
           check: "mypy src/"
           passes: true

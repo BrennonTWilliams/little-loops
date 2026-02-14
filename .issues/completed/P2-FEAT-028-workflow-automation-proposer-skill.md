@@ -269,7 +269,7 @@ proposals:
     implementation_sketch: |
       1. Add PreToolUse hook for Bash tool
       2. Match "git commit" commands
-      3. Prompt: "Have you run tests? Consider /ll:run_tests first."
+      3. Prompt: "Have you run tests? Consider /ll:run-tests first."
       4. User can proceed or run tests
     hooks_json_entry: |
       {
@@ -336,10 +336,10 @@ existing_command_suggestions:
     suggested_command: "/ll:commit"
     frequency: 50
   - user_pattern: "run tests"
-    suggested_command: "/ll:run_tests"
+    suggested_command: "/ll:run-tests"
     frequency: 12
   - user_pattern: "check lint"
-    suggested_command: "/ll:check_code"
+    suggested_command: "/ll:check-code"
     frequency: 8
 
 implementation_roadmap:

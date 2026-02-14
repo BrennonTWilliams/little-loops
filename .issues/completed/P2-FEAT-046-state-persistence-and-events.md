@@ -84,7 +84,7 @@ Events are appended to JSONL file, one event per line:
 {"event": "evaluate", "type": "exit_code", "verdict": "failure", "ts": "2024-01-15T10:30:03Z"}
 {"event": "route", "from": "check", "to": "fix", "verdict": "failure", "ts": "2024-01-15T10:30:03Z"}
 {"event": "state_enter", "state": "fix", "iteration": 1, "ts": "2024-01-15T10:30:03Z"}
-{"event": "action_start", "action": "/ll:manage_issue bug fix", "ts": "2024-01-15T10:30:04Z"}
+{"event": "action_start", "action": "/ll:manage-issue bug fix", "ts": "2024-01-15T10:30:04Z"}
 {"event": "action_complete", "duration_ms": 45000, "ts": "2024-01-15T10:31:49Z"}
 {"event": "evaluate", "type": "llm_structured", "verdict": "success", "confidence": 0.92, "ts": "2024-01-15T10:31:50Z"}
 {"event": "route", "from": "fix", "to": "verify", "verdict": "success", "ts": "2024-01-15T10:31:50Z"}

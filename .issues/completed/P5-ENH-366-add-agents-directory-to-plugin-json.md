@@ -74,7 +74,7 @@ This enhancement would:
 `enhancement`, `config`, `agents`
 
 ## Session Log
-- `/ll:format_issue --all --auto` - 2026-02-13
+- `/ll:format-issue --all --auto` - 2026-02-13
 
 ## Verification Notes
 
@@ -97,7 +97,7 @@ This enhancement would:
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-12 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-12 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |

@@ -80,7 +80,7 @@ TBD - requires investigation per module. General approach:
 `enhancement`, `testing`, `captured`
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff26efc-756f-45c9-b95d-159619b176d9.jsonl`
+- `/ll:capture-issue` - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff26efc-756f-45c9-b95d-159619b176d9.jsonl`
 
 ---
 

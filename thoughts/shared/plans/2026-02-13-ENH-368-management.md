@@ -27,7 +27,7 @@ The `plugin-config-auditor` agent (`agents/plugin-config-auditor.md`) validates 
 5. Audit command prompt also updated for consistency
 
 ### How to Verify
-- Run `/ll:audit_claude_config` and confirm no false positives on valid hook configurations
+- Run `/ll:audit-claude-config` and confirm no false positives on valid hook configurations
 - Review the updated agent file for completeness against `docs/claude-code/hooks-reference.md`
 
 ## What We're NOT Doing

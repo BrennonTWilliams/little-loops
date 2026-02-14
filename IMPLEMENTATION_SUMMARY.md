@@ -143,13 +143,13 @@ Successfully implemented the issue template optimization plan, reducing sections
 - ✅ Created documentation
 
 ### Phase 2: Ready to Deploy
-- New issues will automatically use v2.0 template via `/ll:capture_issue`
-- `/ll:format_issue` will offer new sections during interactive Q&A
-- `/ll:ready_issue` accepts both old and new formats
+- New issues will automatically use v2.0 template via `/ll:capture-issue`
+- `/ll:format-issue` will offer new sections during interactive Q&A
+- `/ll:ready-issue` accepts both old and new formats
 
 ### Phase 3: Gradual Migration (Optional)
 - Existing issues continue working (backward compatible)
-- `/ll:format_issue` can optionally migrate old issues
+- `/ll:format-issue` can optionally migrate old issues
 - No forced migration required
 
 ### Phase 4: Cleanup (Future, Optional)
@@ -166,23 +166,23 @@ Successfully implemented the issue template optimization plan, reducing sections
 
 2. **Backward Compatibility** ✅
    - Existing issues with old sections still validate
-   - `/ll:ready_issue` accepts both formats
+   - `/ll:ready-issue` accepts both formats
 
 3. **New Issue Creation** (Recommend Testing)
    ```bash
-   /ll:capture_issue "Test issue for v2.0 template"
+   /ll:capture-issue "Test issue for v2.0 template"
    ```
    - Should include new sections: Motivation, Implementation Steps
 
 4. **Issue Refinement** (Recommend Testing)
    ```bash
-   /ll:format_issue <existing-issue-id>
+   /ll:format-issue <existing-issue-id>
    ```
    - Should offer to add new sections
 
 5. **Agent Processing** (Recommend Testing)
    ```bash
-   /ll:manage_issue <issue-with-new-sections>
+   /ll:manage-issue <issue-with-new-sections>
    ```
    - Agent should use Implementation Steps and Root Cause effectively
 
@@ -198,7 +198,7 @@ Successfully implemented the issue template optimization plan, reducing sections
 
 **Target Metrics** (to measure after deployment):
 1. **Adoption**: >80% of new issues use v2.0 template within 30 days
-2. **Quality**: Average `/ll:ready_issue` CORRECTIONS_MADE decreases by >20%
+2. **Quality**: Average `/ll:ready-issue` CORRECTIONS_MADE decreases by >20%
 3. **Completeness**: Implementation Steps present in >60% of new issues
 4. **No regressions**: All existing issues still validate
 
@@ -220,18 +220,18 @@ Successfully implemented the issue template optimization plan, reducing sections
 
 1. **Test new issue creation**:
    ```bash
-   /ll:capture_issue "Add authentication to admin endpoints"
+   /ll:capture-issue "Add authentication to admin endpoints"
    ```
 
 2. **Test refinement on existing issue**:
    ```bash
-   /ll:format_issue FEAT-001
+   /ll:format-issue FEAT-001
    ```
 
 3. **Monitor adoption**:
    - Track percentage of new issues using Implementation Steps
    - Track percentage of new issues using Motivation
-   - Track `/ll:ready_issue` correction rate
+   - Track `/ll:ready-issue` correction rate
 
 4. **Gather feedback**:
    - Are new sections useful for AI agents?

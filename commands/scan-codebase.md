@@ -271,7 +271,7 @@ For each newly created issue file, append a session log entry:
 
 ```markdown
 ## Session Log
-- `/ll:scan_codebase` - [ISO timestamp] - `[path to current session JSONL]`
+- `/ll:scan-codebase` - [ISO timestamp] - `[path to current session JSONL]`
 ```
 
 To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). Add the `## Session Log` section before the `---` / `## Status` footer.
@@ -315,7 +315,7 @@ To find the current session JSONL: look in `~/.claude/projects/` for the directo
 ## Next Steps
 1. Review created issues for accuracy
 2. Adjust priorities as needed
-3. Run `/ll:manage_issue` to start processing
+3. Run `/ll:manage-issue` to start processing
 ```
 
 ---
@@ -324,13 +324,13 @@ To find the current session JSONL: look in `~/.claude/projects/` for the directo
 
 ```bash
 # Scan codebase for issues
-/ll:scan_codebase
+/ll:scan-codebase
 
 # Review created issues
 ls {{config.issues.base_dir}}/*/
 
 # Start processing issues
-/ll:manage_issue bug fix
+/ll:manage-issue bug fix
 ```
 
 ---
@@ -339,6 +339,6 @@ ls {{config.issues.base_dir}}/*/
 
 After scanning:
 1. Review created issues for accuracy
-2. Run `/ll:prioritize_issues` if needed
-3. Use `/ll:manage_issue` to process issues
+2. Run `/ll:prioritize-issues` if needed
+3. Use `/ll:manage-issue` to process issues
 4. Commit new issues: `/ll:commit`

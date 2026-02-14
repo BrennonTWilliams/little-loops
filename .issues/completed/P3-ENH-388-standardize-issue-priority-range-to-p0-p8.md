@@ -109,7 +109,7 @@ TBD - requires investigation
 - BUG-392: dependency validator false nonexistent cross-type references (shared ARCHITECTURE.md)
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb9342d2-9c23-4b31-8822-f890ead72957.jsonl`
+- `/ll:capture-issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bb9342d2-9c23-4b31-8822-f890ead72957.jsonl`
 
 ---
 

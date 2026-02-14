@@ -12,7 +12,7 @@
 - 6 existing skills in `skills/` follow consistent pattern: directory with single `SKILL.md`
 - Skills use YAML frontmatter with `description` field and trigger keywords
 - `commands/manage_issue.md` Phase 1.5 gathers research, Phase 2 creates plan — confidence check fits between them
-- `/ll:ready_issue` validates issue file format/content but not implementation readiness
+- `/ll:ready-issue` validates issue file format/content but not implementation readiness
 - No existing confidence or readiness check exists
 
 ### Patterns to Follow
@@ -33,7 +33,7 @@ A `skills/confidence-check/SKILL.md` that performs a 5-point pre-implementation 
 ## What We're NOT Doing
 
 - Not making the check mandatory/blocking in manage_issue
-- Not changing `/ll:ready_issue` behavior
+- Not changing `/ll:ready-issue` behavior
 - Not adding Python code or tests (skill is pure markdown)
 - Not adding configuration options
 

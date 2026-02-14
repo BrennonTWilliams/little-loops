@@ -40,7 +40,7 @@ The `improve` action should:
 
 ### How to Verify
 - Test with a documentation-only enhancement issue
-- Run `/ll:manage_issue enhancement improve [ISSUE-ID]` without --gates flag
+- Run `/ll:manage-issue enhancement improve [ISSUE-ID]` without --gates flag
 - Observe that the command implements changes directly, not just verification
 - Verify no `AskUserQuestion` prompts appear without --gates flag
 - Confirm ll-auto/ll-parallel automation succeeds
@@ -179,7 +179,7 @@ Since this is a prompt-only change, testing involves:
 3. **Future behavioral testing** when using ll-auto/ll-parallel on documentation issues
 
 ### Expected Behavior After Fix
-When running `/ll:manage_issue enhancement improve ENH-2079` (documentation issue):
+When running `/ll:manage-issue enhancement improve ENH-2079` (documentation issue):
 1. Should go through Plan → Implement → Verify → Complete phases
 2. Should edit/create documentation files
 3. Should NOT skip to verification only

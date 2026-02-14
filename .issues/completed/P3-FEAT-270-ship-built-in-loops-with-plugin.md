@@ -7,13 +7,13 @@ discovered_by: capture_issue
 
 ## Summary
 
-The plugin should include a set of ready-to-run loop YAML files that users can immediately execute via `ll-loop run` without needing to author loops from scratch or go through the `/ll:create_loop` wizard.
+The plugin should include a set of ready-to-run loop YAML files that users can immediately execute via `ll-loop run` without needing to author loops from scratch or go through the `/ll:create-loop` wizard.
 
 ## Context
 
 User description: "Create built-in loops that ship with the plugin"
 
-Investigation confirmed that while `ll-loop run` is fully functional infrastructure and `/ll:create_loop` offers template-guided creation (ENH-126), the plugin ships zero runnable `.yaml` loop files. The `.loops/` directory doesn't even exist. Users must create every loop themselves before they can use the loop system at all.
+Investigation confirmed that while `ll-loop run` is fully functional infrastructure and `/ll:create-loop` offers template-guided creation (ENH-126), the plugin ships zero runnable `.yaml` loop files. The `.loops/` directory doesn't even exist. Users must create every loop themselves before they can use the loop system at all.
 
 This creates a cold-start problem: the most powerful automation feature requires manual setup before it demonstrates any value.
 
@@ -38,8 +38,8 @@ After installing the plugin, users should be able to:
 
 | Loop | Paradigm | Description |
 |------|----------|-------------|
-| `issue-readiness-cycle` | imperative | Process issues through `/ll:ready_issue` then `/ll:manage_issue` |
-| `pre-pr-checks` | invariants | Run `/ll:check_code` + `/ll:run_tests` before PR |
+| `issue-readiness-cycle` | imperative | Process issues through `/ll:ready-issue` then `/ll:manage-issue` |
+| `pre-pr-checks` | invariants | Run `/ll:check-code` + `/ll:run-tests` before PR |
 | `issue-verification` | invariants | Verify + normalize issues until clean |
 | `codebase-scan` | imperative | Scan codebase, verify, and prioritize discovered issues |
 | `quality-gate` | invariants | Lint + types + format + tests must all pass |
@@ -71,7 +71,7 @@ After installing the plugin, users should be able to:
 
 ## Related Issues
 
-- ENH-126 (completed): Added loop templates to `/ll:create_loop` wizard — complementary but different scope
+- ENH-126 (completed): Added loop templates to `/ll:create-loop` wizard — complementary but different scope
 
 ## Labels
 

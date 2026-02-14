@@ -471,29 +471,29 @@ When generating the final audit report, read the template format from [report-te
 
 ```bash
 # Full interactive audit
-/ll:audit_claude_config
+/ll:audit-claude-config
 
 # Audit with auto-fix
-/ll:audit_claude_config --fix
+/ll:audit-claude-config --fix
 
 # Non-interactive for CI
-/ll:audit_claude_config --non-interactive
+/ll:audit-claude-config --non-interactive
 
 # Audit specific scope
-/ll:audit_claude_config project
-/ll:audit_claude_config hooks
-/ll:audit_claude_config agents
+/ll:audit-claude-config project
+/ll:audit-claude-config hooks
+/ll:audit-claude-config agents
 
 # Audit scope with auto-fix
-/ll:audit_claude_config commands --fix
+/ll:audit-claude-config commands --fix
 
 # Full audit, non-interactive
-/ll:audit_claude_config all --non-interactive
+/ll:audit-claude-config all --non-interactive
 ```
 
 ## Related Commands
 
 - `/ll:init` - Initialize project configuration
 - `/ll:help` - List all available commands
-- `/ll:audit_architecture` - Analyze code architecture
-- `/ll:audit_docs` - Audit documentation
+- `/ll:audit-architecture` - Analyze code architecture
+- `/ll:audit-docs` - Audit documentation

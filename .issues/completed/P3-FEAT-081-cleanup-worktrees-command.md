@@ -3,15 +3,15 @@ discovered_date: 2026-01-17
 discovered_by: capture_issue
 ---
 
-# FEAT-081: Add /ll:cleanup_worktrees command
+# FEAT-081: Add /ll:cleanup-worktrees command
 
 ## Summary
 
-Create a `/ll:cleanup_worktrees` command to manually clean orphaned git worktrees that may remain after interrupted or failed `ll-parallel` runs.
+Create a `/ll:cleanup-worktrees` command to manually clean orphaned git worktrees that may remain after interrupted or failed `ll-parallel` runs.
 
 ## Context
 
-User description: "A /ll:cleanup_worktrees command to manually clean orphaned worktrees"
+User description: "A /ll:cleanup-worktrees command to manually clean orphaned worktrees"
 
 The `ll-parallel` tool creates temporary git worktrees for parallel issue processing. When runs are interrupted, fail unexpectedly, or encounter errors during cleanup, orphaned worktrees can remain in the filesystem. Currently, users must manually identify and remove these using git commands.
 
@@ -23,7 +23,7 @@ The `ll-parallel` tool creates temporary git worktrees for parallel issue proces
 
 ## Expected Behavior
 
-A `/ll:cleanup_worktrees` command that:
+A `/ll:cleanup-worktrees` command that:
 1. Lists all git worktrees in the repository
 2. Identifies which are orphaned (no active ll-parallel process using them)
 3. Safely removes orphaned worktrees

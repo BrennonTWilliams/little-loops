@@ -1,4 +1,4 @@
-# BUG-193: Missing `on_handoff` Feature Documentation in /ll:create_loop - Implementation Plan
+# BUG-193: Missing `on_handoff` Feature Documentation in /ll:create-loop - Implementation Plan
 
 ## Issue Reference
 - **File**: `.issues/bugs/P3-BUG-193-create-loop-missing-on_handoff-field.md`
@@ -8,7 +8,7 @@
 
 ## Current State Analysis
 
-The `/ll:create_loop` command (`commands/create_loop.md`) provides comprehensive documentation for creating FSM loop configurations interactively. It documents:
+The `/ll:create-loop` command (`commands/create_loop.md`) provides comprehensive documentation for creating FSM loop configurations interactively. It documents:
 - Multiple paradigms (goal, invariants, convergence, imperative)
 - Template-based and custom creation modes
 - All FSM configuration fields including `max_iterations`, `maintain`, `action_type`, `evaluator`, etc.
@@ -44,7 +44,7 @@ The command documentation should include `on_handoff` as an optional advanced co
 
 ## Problem Analysis
 
-The `on_handoff` field was implemented in the schema but never added to the `/ll:create_loop` command documentation. This is a documentation-only bug - the functionality works, but users cannot discover it through the wizard.
+The `on_handoff` field was implemented in the schema but never added to the `/ll:create-loop` command documentation. This is a documentation-only bug - the functionality works, but users cannot discover it through the wizard.
 
 ## Solution Approach
 
@@ -86,7 +86,7 @@ name: "automated-quality-fix"
 goal: "All quality checks pass"
 tools:
   - "pytest && mypy src/ && ruff check src/"
-  - "/ll:manage_issue bug fix"
+  - "/ll:manage-issue bug fix"
 max_iterations: 20
 on_handoff: "spawn"  # Automatically continue in new session if context runs out
 ```
@@ -98,7 +98,7 @@ name: "quick-check-guardian"
 constraints:
   - name: "types"
     check: "mypy src/"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
 maintain: false
 max_iterations: 10
 on_handoff: "terminate"  # Stop if we run out of context

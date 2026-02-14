@@ -146,9 +146,9 @@ After running dependency mapping:
 
 - Review changes with `git diff`
 - Commit with `/ll:commit`
-- Use `/ll:create_sprint` for dependency-aware sprint planning
+- Use `/ll:create-sprint` for dependency-aware sprint planning
 - Run `ll-sprint show [name]` to see execution wave structure
-- Use `/ll:verify_issues` to validate dependency integrity
+- Use `/ll:verify-issues` to validate dependency integrity
 
 ## Best Practices
 

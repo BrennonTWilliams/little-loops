@@ -49,8 +49,8 @@ README includes all three missing config sections in both the Full Configuration
 
 Sections to add:
 1. `sprints` - Sprint management settings (ll-sprint)
-2. `sync` - GitHub Issues sync settings (/ll:sync_issues) — opt-in feature
-3. `documents` - Document tracking for /ll:align_issues — opt-in feature with categories sub-explanation
+2. `sync` - GitHub Issues sync settings (/ll:sync-issues) — opt-in feature
+3. `documents` - Document tracking for /ll:align-issues — opt-in feature with categories sub-explanation
 
 #### Success Criteria
 - [ ] Tables follow existing `| Key | Default | Description |` format

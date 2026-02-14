@@ -9,7 +9,7 @@ discovered_external_repo: <external-repo>
 
 ## Summary
 
-When `/ll:manage_issue` creates an implementation plan and waits for user approval to proceed, ll-auto's Phase 3 verification incorrectly treats this as a failure. The command returns exit code 0 (success) but makes no code changes because it's waiting for approval. ll-auto detects no changes and marks the issue as failed, even though the behavior is correct.
+When `/ll:manage-issue` creates an implementation plan and waits for user approval to proceed, ll-auto's Phase 3 verification incorrectly treats this as a failure. The command returns exit code 0 (success) but makes no code changes because it's waiting for approval. ll-auto detects no changes and marks the issue as failed, even though the behavior is correct.
 
 ## Evidence from Log
 
@@ -23,7 +23,7 @@ When `/ll:manage_issue` creates an implementation plan and waits for user approv
 
 ```
 [13:13:11] Phase 2: Implementing ENH-2028...
-[13:13:11] Running: claude --dangerously-skip-permissions -p '/ll:manage_issue enhancement improve ENH-2028'
+[13:13:11] Running: claude --dangerously-skip-permissions -p '/ll:manage-issue enhancement improve ENH-2028'
   I've created a comprehensive implementation plan for **ENH-2028: Socket timeout reduction causes body_unification phase failure**.
   The plan is complete and ready for implementation. Would you like me to:
   Let me know how you'd like to proceed!
@@ -43,7 +43,7 @@ ll-auto Phase 3 verification logic:
 2. If not moved, checks for code changes using `verify_work_was_done()`
 3. If no changes detected, reports verification failure and marks issue as failed
 
-When `/ll:manage_issue` creates a plan and asks for approval:
+When `/ll:manage-issue` creates a plan and asks for approval:
 - Command exits with code 0 (not an error)
 - No files are modified (plan wasn't implemented yet)
 - Issue file isn't moved (not complete)
@@ -59,7 +59,7 @@ ll-auto should distinguish between three outcomes:
 For outcome #2, ll-auto should either:
 - Option A: Detect that a plan was created (check for "Would you like me to" or similar in output) and mark as "plan ready, awaiting approval"
 - Option B: Add a flag to skip verification for issues that require interactive approval
-- Option C: Improve `/ll:manage_issue` to detect `--dangerously-skip-permissions` and proceed without asking
+- Option C: Improve `/ll:manage-issue` to detect `--dangerously-skip-permissions` and proceed without asking
 
 ## Affected Components
 
@@ -71,20 +71,20 @@ For outcome #2, ll-auto should either:
 
 1. Review Phase 3 verification logic in `issue_manager.py`
 2. Check if command output can be parsed to detect plan creation
-3. Consider adding a `--auto-approve-plans` flag to `/ll:manage_issue` for ll-auto context
+3. Consider adding a `--auto-approve-plans` flag to `/ll:manage-issue` for ll-auto context
 4. Add detection for "Would you like me to proceed?" patterns in command output
 
 ## Steps to Reproduce
 
 1. Run `ll-auto` with `--dangerously-skip-permissions` flag
-2. Let it process an issue that triggers `/ll:manage_issue` to create an implementation plan
-3. Observe that `/ll:manage_issue` creates a plan and asks "Would you like me to proceed?"
+2. Let it process an issue that triggers `/ll:manage-issue` to create an implementation plan
+3. Observe that `/ll:manage-issue` creates a plan and asks "Would you like me to proceed?"
 4. Observe that the command exits with code 0 (success) but makes no file changes
 5. See ll-auto Phase 3 verification mark the issue as failed
 
 ## Actual Behavior
 
-When `/ll:manage_issue` creates a plan and asks for approval:
+When `/ll:manage-issue` creates a plan and asks for approval:
 - Command exits with code 0 (not an error)
 - No files are modified (plan wasn't implemented yet)
 - Issue file isn't moved to completed/
@@ -95,7 +95,7 @@ When `/ll:manage_issue` creates a plan and asks for approval:
 - **Severity**: Medium (P2)
 - **Frequency**: 1 occurrence in single run, but likely affects any issue that requires plan approval
 - **User Impact**: False negatives cause issues to be skipped in future runs even though they just need approval to proceed
-- **Workaround**: Manually run `/ll:manage_issue` with plan approval, or edit issue to bypass planning phase
+- **Workaround**: Manually run `/ll:manage-issue` with plan approval, or edit issue to bypass planning phase
 
 ## Labels
 
@@ -149,4 +149,4 @@ This allows ll-auto to distinguish between:
 
 ### Impact
 
-This fix resolves the false negative verification failures when `/ll:manage_issue` creates implementation plans. Issues will now correctly remain in pending state for re-processing after user approves the plan, rather than being incorrectly marked as failed.
+This fix resolves the false negative verification failures when `/ll:manage-issue` creates implementation plans. Issues will now correctly remain in pending state for re-processing after user approves the plan, rather than being incorrectly marked as failed.

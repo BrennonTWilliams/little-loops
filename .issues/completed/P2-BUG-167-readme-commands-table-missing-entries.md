@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The Commands table in README.md is missing two commands that exist in the `commands/` directory.
+Documentation issue found by `/ll:audit-docs`. The Commands table in README.md is missing two commands that exist in the `commands/` directory.
 
 ## Location
 
@@ -22,14 +22,14 @@ Documentation issue found by `/ll:audit_docs`. The Commands table in README.md i
 
 The Commands tables list commands by category but are missing:
 - `/ll:configure` - Interactive configuration editor
-- `/ll:create_sprint` - Create sprint with curated issue list
+- `/ll:create-sprint` - Create sprint with curated issue list
 
 ## Problem
 
 Two valid commands are not documented in the README Commands section:
 
 1. **`/ll:configure`** - Exists at `commands/configure.md`, allows interactive configuration of specific areas in ll-config.json
-2. **`/ll:create_sprint`** - Exists at `commands/create_sprint.md`, creates sprint definitions with curated issue lists
+2. **`/ll:create-sprint`** - Exists at `commands/create_sprint.md`, creates sprint definitions with curated issue lists
 
 These commands are documented in `docs/COMMANDS.md` but not in the main README.
 
@@ -44,7 +44,7 @@ Add to "Setup & Help" section:
 Add to "Issue Management" or a new "Sprint Management" section:
 
 ```markdown
-| `/ll:create_sprint [name]` | Create sprint with curated issue list |
+| `/ll:create-sprint [name]` | Create sprint with curated issue list |
 ```
 
 ## Impact
@@ -73,7 +73,7 @@ Add to "Issue Management" or a new "Sprint Management" section:
 
 ### Changes Made
 - `README.md`: Added `/ll:configure [area]` to Setup & Help section
-- `README.md`: Added `/ll:create_sprint [name]` to Issue Management section
+- `README.md`: Added `/ll:create-sprint [name]` to Issue Management section
 
 ### Verification Results
 - Documentation: Both commands now appear in the Commands tables

@@ -8,7 +8,7 @@ related_issues: [FEAT-222]
 
 ## Summary
 
-Implement the missing execution layer for the `/ll:sync_issues` command. FEAT-222 established the configuration schema, skill definition, and command specification, but the actual Python code to perform sync operations was never implemented.
+Implement the missing execution layer for the `/ll:sync-issues` command. FEAT-222 established the configuration schema, skill definition, and command specification, but the actual Python code to perform sync operations was never implemented.
 
 ## Context
 
@@ -25,11 +25,11 @@ However, the command currently cannot execute any sync operations because there 
 - Update issue frontmatter with sync metadata
 - Track sync state
 
-When a user runs `/ll:sync_issues push`, the system loads the spec but has no handler to execute it.
+When a user runs `/ll:sync-issues push`, the system loads the spec but has no handler to execute it.
 
 ## Current Behavior
 
-- `/ll:sync_issues` command exists but cannot perform actual sync operations
+- `/ll:sync-issues` command exists but cannot perform actual sync operations
 - Configuration can be loaded and validated
 - No Python module exists to execute push/pull/status actions
 

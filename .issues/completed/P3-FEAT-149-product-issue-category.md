@@ -20,7 +20,7 @@ This feature has been deferred from the initial Product dimension implementation
 
 2. **Simpler Initial Scope**: The MVP product dimension focuses on:
    - Optional product impact fields in existing issue templates (ENH-005)
-   - A dedicated `/ll:scan_product` command separate from technical scanning
+   - A dedicated `/ll:scan-product` command separate from technical scanning
    - Goal-aligned prioritization without a new issue category
 
 3. **Workflow Clarity**: Users work with either technical workflows (`scan_codebase`, `manage_issue`) or product workflows (`scan_product`). Adding a PROD category would blur these boundaries.
@@ -50,9 +50,9 @@ Rather than a separate PROD category, the Product dimension:
 
 1. **Enriches existing issues** with optional product impact fields (goal alignment, persona impact, business value) via ENH-005
 
-2. **Creates FEAT/ENH issues** from `/ll:scan_product` with product context included, keeping them in standard directories
+2. **Creates FEAT/ENH issues** from `/ll:scan-product` with product context included, keeping them in standard directories
 
-3. **Maintains separation** between technical workflows (`/ll:scan_codebase`) and product workflows (`/ll:scan_product`)
+3. **Maintains separation** between technical workflows (`/ll:scan-codebase`) and product workflows (`/ll:scan-product`)
 
 ## Labels
 

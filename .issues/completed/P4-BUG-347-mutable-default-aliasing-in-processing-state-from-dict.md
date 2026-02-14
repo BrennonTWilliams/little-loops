@@ -129,9 +129,9 @@ This bug would:
 - Integration: PASS
 
 ## Session Log
-- `/ll:scan_codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
-- `/ll:format_issue --all --auto` - 2026-02-13
-- `/ll:manage_issue` - 2026-02-13T01:33:28Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-bug-347-20260213-013328/ffc37e42-1502-48e2-bbfa-ca344b0fcf60.jsonl`
+- `/ll:scan-codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
+- `/ll:format-issue --all --auto` - 2026-02-13
+- `/ll:manage-issue` - 2026-02-13T01:33:28Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-bug-347-20260213-013328/ffc37e42-1502-48e2-bbfa-ca344b0fcf60.jsonl`
 
 
 ---

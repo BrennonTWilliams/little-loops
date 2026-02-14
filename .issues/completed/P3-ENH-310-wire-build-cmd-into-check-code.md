@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-`build_cmd` is defined in the config schema and populated by project templates, but no skill or command actually consumes it. Wire it into `/ll:check_code` as an optional build verification step so projects with a build command get build-time error checking alongside lint/format/type checks.
+`build_cmd` is defined in the config schema and populated by project templates, but no skill or command actually consumes it. Wire it into `/ll:check-code` as an optional build verification step so projects with a build command get build-time error checking alongside lint/format/type checks.
 
 ## Context
 
@@ -15,11 +15,11 @@ Identified from conversation analyzing `config-schema.json` and grepping for `bu
 
 ## Current Behavior
 
-`/ll:check_code` runs lint, format, and type checking commands. `build_cmd` sits in config unused — it's dead config that was set up during init/configure but never consumed.
+`/ll:check-code` runs lint, format, and type checking commands. `build_cmd` sits in config unused — it's dead config that was set up during init/configure but never consumed.
 
 ## Expected Behavior
 
-`/ll:check_code` should run `build_cmd` (if configured and non-null) as a final verification step after lint/format/type checks, reporting build success or failure alongside the other checks.
+`/ll:check-code` should run `build_cmd` (if configured and non-null) as a final verification step after lint/format/type checks, reporting build success or failure alongside the other checks.
 
 ## Proposed Solution
 
@@ -46,7 +46,7 @@ Projects with build steps (TypeScript, Go, Java, Rust) configure `build_cmd` dur
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Labels
 

@@ -125,7 +125,7 @@ Commit with: `git commit -m "chore(issues): re-prioritize issues"`
 
 ## Next Steps
 1. Review priority changes for accuracy
-2. Run `/ll:manage_issue` to process highest priority
+2. Run `/ll:manage-issue` to process highest priority
 ```
 
 After outputting the report, **stop here** (do not continue to Step 2).
@@ -195,7 +195,7 @@ git mv "{{config.issues.base_dir}}/[category]/[old-name].md" \
 
 ## Next Steps
 1. Review assignments for accuracy
-2. Run `/ll:manage_issue` to process highest priority
+2. Run `/ll:manage-issue` to process highest priority
 ```
 
 ---
@@ -204,10 +204,10 @@ git mv "{{config.issues.base_dir}}/[category]/[old-name].md" \
 
 ```bash
 # Prioritize all unprioritized issues
-/ll:prioritize_issues
+/ll:prioritize-issues
 
 # Then manage the highest priority
-/ll:manage_issue bug fix
+/ll:manage-issue bug fix
 ```
 
 ---

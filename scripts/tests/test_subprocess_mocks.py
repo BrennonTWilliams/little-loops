@@ -85,7 +85,7 @@ class TestRunClaudeCommand:
                 from little_loops.issue_manager import run_claude_command
 
                 run_claude_command(
-                    "/ll:ready_issue BUG-001",
+                    "/ll:ready-issue BUG-001",
                     mock_logger,
                     timeout=60,
                     stream_output=False,
@@ -96,7 +96,7 @@ class TestRunClaudeCommand:
             "claude",
             "--dangerously-skip-permissions",
             "-p",
-            "/ll:ready_issue BUG-001",
+            "/ll:ready-issue BUG-001",
         ]
 
     def test_timeout_kills_process(self, mock_logger: MagicMock) -> None:

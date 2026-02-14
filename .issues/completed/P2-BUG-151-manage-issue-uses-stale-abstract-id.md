@@ -23,17 +23,17 @@ When `ready_issue` fails to match the correct file using an abstract issue ID (e
 
 ```
 Processing: BUG-1 - Fix layer count inconsistency in abstraction documentation
-[21:18:46] Running: claude --dangerously-skip-permissions -p '/ll:ready_issue BUG-1'
+[21:18:46] Running: claude --dangerously-skip-permissions -p '/ll:ready-issue BUG-1'
   ## VALIDATED_FILE
   .issues/completed/P3-BUG-001-misleading-claude-cli-install-message.md  <-- WRONG FILE
 [21:19:22] ready_issue verdict: CLOSE
 [21:19:22] Path mismatch: ready_issue validated '.issues/completed/P3-BUG-001-...' but expected '.../P1-DOC-001-...'
 [21:19:22] Attempting fallback: retrying ready_issue with explicit file path...
-[21:19:22] Running: claude --dangerously-skip-permissions -p '/ll:ready_issue .issues/bugs/P1-DOC-001-fix-layer-count-inconsistency.md'
+[21:19:22] Running: claude --dangerously-skip-permissions -p '/ll:ready-issue .issues/bugs/P1-DOC-001-fix-layer-count-inconsistency.md'
   ## VALIDATED_FILE
   `.issues/bugs/P1-DOC-001-fix-layer-count-inconsistency.md`  <-- CORRECT FILE
 [21:21:33] Fallback succeeded: validated correct file
-[21:21:33] Running: claude --dangerously-skip-permissions -p '/ll:manage_issue bug fix BUG-1'
+[21:21:33] Running: claude --dangerously-skip-permissions -p '/ll:manage-issue bug fix BUG-1'
   **Issue not found**: BUG-1 doesn't exist in the project.  <-- FAILURE: still using abstract ID
 ```
 
@@ -57,7 +57,7 @@ After the ready_issue fallback succeeds with an explicit path:
 In `scripts/little_loops/issue_manager.py:535`:
 ```python
 result = run_with_continuation(
-    f"/ll:manage_issue {type_name} {action} {info.issue_id}",  # <-- Uses stale info.issue_id
+    f"/ll:manage-issue {type_name} {action} {info.issue_id}",  # <-- Uses stale info.issue_id
 ```
 
 When the fallback at lines 374-437 updates `info.path` to the validated file, it doesn't update `info.issue_id`. The external repository uses a different ID scheme (`P1-DOC-001-*`) than what `ll-auto` generated (`BUG-1`).
@@ -82,7 +82,7 @@ Option A: Pass the validated path instead of abstract ID:
 # After fallback, use path for manage_issue
 issue_arg = str(info.path) if validated_via_fallback else info.issue_id
 result = run_with_continuation(
-    f"/ll:manage_issue {type_name} {action} {issue_arg}",
+    f"/ll:manage-issue {type_name} {action} {issue_arg}",
     ...
 )
 ```
@@ -98,7 +98,7 @@ Option C: Use relative path for both commands consistently:
 ```python
 relative_path = _compute_relative_path(info.path)
 result = run_with_continuation(
-    f"/ll:manage_issue {type_name} {action} {relative_path}",
+    f"/ll:manage-issue {type_name} {action} {relative_path}",
     ...
 )
 ```

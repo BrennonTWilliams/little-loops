@@ -11,7 +11,7 @@
 The `ll-auto` automation has a critical data integrity issue:
 
 1. `ll-auto` calls `find_highest_priority_issue()` which returns an `IssueInfo` with a specific file `path`
-2. `ll-auto` then runs `/ll:ready_issue {issue_id}` passing only the issue ID
+2. `ll-auto` then runs `/ll:ready-issue {issue_id}` passing only the issue ID
 3. If `ready_issue` matches a **different file** (due to loose matching), it validates that different file
 4. When `ready_issue` returns CLOSE verdict, `ll-auto` calls `close_issue(info, ...)` using the **original** `info.path`
 5. The **wrong file** gets moved to `completed/`

@@ -3,19 +3,19 @@ discovered_date: 2026-02-06
 discovered_by: capture_issue
 ---
 
-# ENH-259: Add content-quality analysis to /ll:refine_issue
+# ENH-259: Add content-quality analysis to /ll:refine-issue
 
 ## Summary
 
-Enhance `/ll:refine_issue` to analyze the **substance** of existing issue content, not just whether sections exist. Currently the skill only checks for missing/vague/incomplete sections (structural gaps). It should also identify issues within the content itself — ambiguous criteria, shallow descriptions, contradictory statements, missing specifics, etc.
+Enhance `/ll:refine-issue` to analyze the **substance** of existing issue content, not just whether sections exist. Currently the skill only checks for missing/vague/incomplete sections (structural gaps). It should also identify issues within the content itself — ambiguous criteria, shallow descriptions, contradictory statements, missing specifics, etc.
 
 ## Context
 
-User identified during a review of `/ll:refine_issue` that the skill only performs structural checks (are required sections present?) but does not evaluate the quality of the content within those sections. An issue could have all required sections filled in yet still be unclear or insufficiently detailed for implementation.
+User identified during a review of `/ll:refine-issue` that the skill only performs structural checks (are required sections present?) but does not evaluate the quality of the content within those sections. An issue could have all required sections filled in yet still be unclear or insufficiently detailed for implementation.
 
 ## Current Behavior
 
-`/ll:refine_issue` performs gap analysis against type-specific section checklists:
+`/ll:refine-issue` performs gap analysis against type-specific section checklists:
 - BUGs: Steps to Reproduce, Expected/Actual Behavior, Error Messages, etc.
 - FEATs: User Story, Acceptance Criteria, Edge Cases, etc.
 - ENHs: Current Pain Point, Success Metrics, Scope Boundaries, etc.
@@ -58,7 +58,7 @@ Surface these as additional refinement opportunities alongside the structural ga
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:align_issues` to discover relevant docs._
+_No documents linked. Run `/ll:align-issues` to discover relevant docs._
 
 ## Labels
 

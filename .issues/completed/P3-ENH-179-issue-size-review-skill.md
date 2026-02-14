@@ -7,11 +7,11 @@ discovered_by: capture_issue
 
 ## Summary
 
-Create a new skill `/ll:issue_size_review` that evaluates the size/complexity of active issues, identifies those unlikely to be completed in a single session, and proposes decomposition into multiple smaller issues with user approval.
+Create a new skill `/ll:issue-size-review` that evaluates the size/complexity of active issues, identifies those unlikely to be completed in a single session, and proposes decomposition into multiple smaller issues with user approval.
 
 ## Context
 
-**Direct mode**: User description: "New Skill `/ll:issue_size_review` that evaluates the size of each Active Issue. For substantial Issues (unlikely to be completed within a single session), propose decomposition of the Issue into multiple. Present all proposals for user review with (y/n) approval. If approved, create decomposed Issues and move each original large Issue to completed with a note that it was broken down into multiple Issues with a list of each Issue ID/name it was decomposed into."
+**Direct mode**: User description: "New Skill `/ll:issue-size-review` that evaluates the size of each Active Issue. For substantial Issues (unlikely to be completed within a single session), propose decomposition of the Issue into multiple. Present all proposals for user review with (y/n) approval. If approved, create decomposed Issues and move each original large Issue to completed with a note that it was broken down into multiple Issues with a list of each Issue ID/name it was decomposed into."
 
 ## Current Behavior
 
@@ -19,7 +19,7 @@ There is no automated way to identify and decompose large issues. Users must man
 
 ## Expected Behavior
 
-The `/ll:issue_size_review` skill should:
+The `/ll:issue-size-review` skill should:
 
 1. **Scan all active issues** across all categories (bugs, features, enhancements)
 2. **Evaluate size/complexity** using heuristics such as:

@@ -11,7 +11,7 @@ Create a SQLite database (e.g., `.ll/history.db`) that stores completed issue me
 
 ## Current Behavior
 
-Completed issues are stored as markdown files in `.issues/completed/`. Historical analysis relies on scanning these files at runtime. Duplicate detection in `/ll:capture_issue` uses simple word overlap on active issues only. There is no structured, queryable store of past work.
+Completed issues are stored as markdown files in `.issues/completed/`. Historical analysis relies on scanning these files at runtime. Duplicate detection in `/ll:capture-issue` uses simple word overlap on active issues only. There is no structured, queryable store of past work.
 
 ## Expected Behavior
 
@@ -21,7 +21,7 @@ A `.ll/history.db` SQLite database stores:
 - ~~**session_summaries** table~~: Deferred — tool usage and operational data per session is better served by FEAT-417 (Hybrid Telemetry), which captures fine-grained events queryable by issue_id. Avoids duplicating data between two stores.
 
 The database is queried by:
-- `/ll:capture_issue` for duplicate/regression detection against historical issues
+- `/ll:capture-issue` for duplicate/regression detection against historical issues
 - `/ll:analyze-history` for velocity, trends, and project health metrics
 - Sprint planning tools for effort estimation based on past similar work
 
@@ -31,14 +31,14 @@ The plugin generates valuable historical data through issue completion but curre
 
 ## Use Case
 
-A developer runs `/ll:capture_issue "API response caching is slow"`. The capture command queries `history.db` and finds that FEAT-187 (completed 3 months ago) implemented API caching and ENH-201 (completed 1 month ago) optimized cache TTLs. It surfaces these as potential duplicates/regressions, giving the developer immediate context on prior work.
+A developer runs `/ll:capture-issue "API response caching is slow"`. The capture command queries `history.db` and finds that FEAT-187 (completed 3 months ago) implemented API caching and ENH-201 (completed 1 month ago) optimized cache TTLs. It surfaces these as potential duplicates/regressions, giving the developer immediate context on prior work.
 
 ## Acceptance Criteria
 
 - [ ] `.ll/history.db` SQLite database is created and managed by the plugin
 - [ ] Completed issues are ingested into the `issues` table (on completion or via backfill)
 - [ ] Session log entries (from FEAT-323) are stored in the `sessions` table
-- [ ] `/ll:capture_issue` queries the DB for duplicate/regression detection against historical issues
+- [ ] `/ll:capture-issue` queries the DB for duplicate/regression detection against historical issues
 - [ ] `/ll:analyze-history` queries the DB instead of scanning files
 - [ ] A backfill command or migration ingests existing completed issues
 - [ ] `.ll/` directory is gitignored (local to each developer)
@@ -152,7 +152,7 @@ Storage location: `.ll/history.db` at project root (gitignored). This keeps it p
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-10 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-10 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |
@@ -177,7 +177,7 @@ Update first - High value but scope is too broad for a single issue. Needs refin
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-11 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-11 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |
@@ -195,7 +195,7 @@ Update first - High value but scope too broad. Split into Phase 1 (core issue me
 
 ## Tradeoff Review Note
 
-**Reviewed**: 2026-02-12 by `/ll:tradeoff_review_issues`
+**Reviewed**: 2026-02-12 by `/ll:tradeoff-review-issues`
 
 ### Scores
 | Dimension | Score |

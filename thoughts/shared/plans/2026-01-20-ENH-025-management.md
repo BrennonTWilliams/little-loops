@@ -28,7 +28,7 @@
 After implementation:
 1. `IssueInfo` dataclass has `discovered_by: Optional[str] = None` field
 2. `IssueParser.parse_file()` extracts `discovered_by` from YAML frontmatter
-3. `/ll:scan_codebase` includes `discovered_by: scan_codebase` in created issues
+3. `/ll:scan-codebase` includes `discovered_by: scan_codebase` in created issues
 4. Existing issues without `discovered_by` parse as `None` (backwards compatible)
 
 ### How to Verify

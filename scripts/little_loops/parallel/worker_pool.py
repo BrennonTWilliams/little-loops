@@ -646,7 +646,7 @@ class WorkerPool:
         """Run a Claude CLI command with real-time output streaming.
 
         Args:
-            command: The command to run (e.g., "/ll:ready_issue BUG-123")
+            command: The command to run (e.g., "/ll:ready-issue BUG-123")
             working_dir: Directory to run the command in
             issue_id: Optional issue ID for subprocess tracking
 

@@ -23,7 +23,7 @@
 | Imperative | 50 | 20 (template) | N/A | **No** |
 
 ### Root Cause
-The `/ll:create_loop` command documentation presents max_iterations options as "Recommended" (e.g., "10 (Recommended)" for goal paradigm), but these are actually **suggested explicit values** based on use case, not **implemented defaults**. When users omit `max_iterations` from their YAML, all paradigms default to 50.
+The `/ll:create-loop` command documentation presents max_iterations options as "Recommended" (e.g., "10 (Recommended)" for goal paradigm), but these are actually **suggested explicit values** based on use case, not **implemented defaults**. When users omit `max_iterations` from their YAML, all paradigms default to 50.
 
 ## Desired End State
 

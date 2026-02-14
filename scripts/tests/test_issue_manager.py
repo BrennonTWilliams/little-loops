@@ -399,7 +399,7 @@ READY
             call_history.append(("run_claude_command", command))
             result = MagicMock()
             result.returncode = 0
-            if "ready_issue" in command:
+            if "ready-issue" in command:
                 if expected_relative_path in command:
                     result.stdout = retry_output
                 else:
@@ -441,7 +441,7 @@ READY
 
         # First call: ready_issue with abstract ID
         assert call_history[0][0] == "run_claude_command"
-        assert "/ll:ready_issue BUG-1" in call_history[0][1]
+        assert "/ll:ready-issue BUG-1" in call_history[0][1]
 
         # Second call: ready_issue fallback with explicit path
         assert call_history[1][0] == "run_claude_command"
@@ -450,7 +450,7 @@ READY
         # Third call: manage_issue should use the path, NOT the stale BUG-1
         assert call_history[2][0] == "run_with_continuation"
         manage_cmd = call_history[2][1]
-        assert "manage_issue" in manage_cmd
+        assert "manage-issue" in manage_cmd
         # The key assertion: must use path, not stale ID
         assert expected_relative_path in manage_cmd, (
             f"Expected manage_issue to use '{expected_relative_path}', got: {manage_cmd}"
@@ -962,14 +962,14 @@ class TestRunWithContinuation:
                     return_value="# Some prompt content",
                 ):
                     run_with_continuation(
-                        "/ll:manage_issue bug fix BUG-327",
+                        "/ll:manage-issue bug fix BUG-327",
                         mock_logger,
                         max_continuations=3,
                     )
 
         assert len(commands_received) == 2
-        assert commands_received[0] == "/ll:manage_issue bug fix BUG-327"
-        assert commands_received[1] == "/ll:manage_issue bug fix BUG-327 --resume"
+        assert commands_received[0] == "/ll:manage-issue bug fix BUG-327"
+        assert commands_received[1] == "/ll:manage-issue bug fix BUG-327 --resume"
 
 
 class TestReadyIssueErrorHandling:

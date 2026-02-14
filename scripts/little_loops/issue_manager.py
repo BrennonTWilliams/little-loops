@@ -281,7 +281,7 @@ def process_issue_inplace(
     with timed_phase(logger, "Phase 1 (ready_issue)") as phase1_timing:
         if not dry_run:
             result = run_claude_command(
-                f"/ll:ready_issue {info.issue_id}",
+                f"/ll:ready-issue {info.issue_id}",
                 logger,
                 timeout=config.automation.timeout_seconds,
                 stream_output=config.automation.stream_output,
@@ -330,7 +330,7 @@ def process_issue_inplace(
 
                             # Retry with explicit path
                             retry_result = run_claude_command(
-                                f"/ll:ready_issue {relative_path}",
+                                f"/ll:ready-issue {relative_path}",
                                 logger,
                                 timeout=config.automation.timeout_seconds,
                                 stream_output=config.automation.stream_output,
@@ -461,7 +461,7 @@ def process_issue_inplace(
                 if parsed.get("was_corrected"):
                     logger.success(f"Issue {info.issue_id} corrected and ready for implementation")
         else:
-            logger.info(f"Would run: /ll:ready_issue {info.issue_id}")
+            logger.info(f"Would run: /ll:ready-issue {info.issue_id}")
     issue_timing["ready"] = phase1_timing.get("elapsed", 0.0)
 
     # Phase 2: Implement the issue (with automatic continuation on context handoff)
@@ -480,7 +480,7 @@ def process_issue_inplace(
 
             # Use run_with_continuation to handle context exhaustion
             result = run_with_continuation(
-                f"/ll:manage_issue {type_name} {action} {issue_arg}",
+                f"/ll:manage-issue {type_name} {action} {issue_arg}",
                 logger,
                 timeout=config.automation.timeout_seconds,
                 stream_output=config.automation.stream_output,
@@ -489,7 +489,7 @@ def process_issue_inplace(
                 idle_timeout=config.automation.idle_timeout_seconds,
             )
         else:
-            logger.info(f"Would run: /ll:manage_issue {info.issue_type} {action} {info.issue_id}")
+            logger.info(f"Would run: /ll:manage-issue {info.issue_type} {action} {info.issue_id}")
             result = subprocess.CompletedProcess(args=[], returncode=0)
     issue_timing["implement"] = phase2_timing.get("elapsed", 0.0)
 

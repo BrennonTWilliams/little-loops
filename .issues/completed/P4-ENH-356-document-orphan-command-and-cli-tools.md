@@ -48,7 +48,7 @@ All commands in `commands/` and all CLI tools in `pyproject.toml` should be docu
 `enhancement`, `documentation`
 
 ## Session Log
-- `/ll:manage_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/4f2cc317-481c-47c3-90c7-4ac9fc0391c9.jsonl`
+- `/ll:manage-issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/4f2cc317-481c-47c3-90c7-4ac9fc0391c9.jsonl`
 
 ---
 

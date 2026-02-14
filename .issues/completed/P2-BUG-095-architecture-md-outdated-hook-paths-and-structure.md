@@ -10,7 +10,7 @@ doc_file: docs/ARCHITECTURE.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The `docs/ARCHITECTURE.md` file has incorrect hook paths and outdated Python module listings that don't match the current codebase.
+Documentation issue found by `/ll:audit-docs`. The `docs/ARCHITECTURE.md` file has incorrect hook paths and outdated Python module listings that don't match the current codebase.
 
 ## Location
 

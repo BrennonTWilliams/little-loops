@@ -7,11 +7,11 @@ discovered_by: capture_issue
 
 ## Summary
 
-The `/ll:create_sprint` command uses Handlebars-style template syntax like `{{config.issues.base_dir}}` throughout the document, but Claude Code does not support this templating. The values are not substituted, causing Claude to attempt literal commands with `{{config...}}` in them.
+The `/ll:create-sprint` command uses Handlebars-style template syntax like `{{config.issues.base_dir}}` throughout the document, but Claude Code does not support this templating. The values are not substituted, causing Claude to attempt literal commands with `{{config...}}` in them.
 
 ## Context
 
-Identified during audit of the `/ll:create_sprint` slash command. Multiple lines reference config values using template syntax that doesn't work.
+Identified during audit of the `/ll:create-sprint` slash command. Multiple lines reference config values using template syntax that doesn't work.
 
 **File**: `.claude/commands/create_sprint.md`
 **Anchor**: `## Configuration`

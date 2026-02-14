@@ -7,11 +7,11 @@ discovered_by: capture_issue
 
 ## Summary
 
-Update `/ll:init` to include a question asking whether the user wants to enable GitHub Issue syncing via `/ll:sync_issues`. When enabled, this should configure the `sync` section in `ll-config.json`, defer to GitHub for correct Issue IDs, and make the setting editable via `/ll:configure`. All related issue commands and skills should respect this setting.
+Update `/ll:init` to include a question asking whether the user wants to enable GitHub Issue syncing via `/ll:sync-issues`. When enabled, this should configure the `sync` section in `ll-config.json`, defer to GitHub for correct Issue IDs, and make the setting editable via `/ll:configure`. All related issue commands and skills should respect this setting.
 
 ## Context
 
-User description: "Update `/ll:init` to add a question to enable syncing to github via the `/ll:sync_issues` command. This should include deferring to Github for the correct Issue IDs, editing this setting via the `/ll:configure` command, and all related Issue commands and Skills."
+User description: "Update `/ll:init` to add a question to enable syncing to github via the `/ll:sync-issues` command. This should include deferring to Github for the correct Issue IDs, editing this setting via the `/ll:configure` command, and all related Issue commands and Skills."
 
 ## Current Behavior
 

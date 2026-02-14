@@ -11,7 +11,7 @@ OPEN
 
 ## Description
 
-The `/ll:create_loop` command documentation suggests paradigm-specific default values for `max_iterations`, but the actual implementation uses a universal default of 50 for all paradigms.
+The `/ll:create-loop` command documentation suggests paradigm-specific default values for `max_iterations`, but the actual implementation uses a universal default of 50 for all paradigms.
 
 **Documentation suggests:**
 - Goal paradigm: "10 (Recommended)"
@@ -37,7 +37,7 @@ User confusion. Users selecting "10 (Recommended)" for goal paradigm will get 50
 - `scripts/little_loops/fsm/compilers.py`
 
 ## Steps to Reproduce
-1. Run `/ll:create_loop`
+1. Run `/ll:create-loop`
 2. Select "Fix errors until clean" (goal paradigm)
 3. Select "10 (Recommended)" for max iterations
 4. Skip to preview - the generated YAML may not include the explicit value

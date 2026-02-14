@@ -25,10 +25,10 @@
 
 ## Desired End State
 
-`/ll:check_code` has a new `build` mode and includes build verification in `all` mode when `build_cmd` is configured. The summary report includes a Build line. Projects without `build_cmd` see no change.
+`/ll:check-code` has a new `build` mode and includes build verification in `all` mode when `build_cmd` is configured. The summary report includes a Build line. Projects without `build_cmd` see no change.
 
 ### How to Verify
-- For this project (no `build_cmd`): `/ll:check_code all` works identically to before, summary may show `Build: [SKIP]`
+- For this project (no `build_cmd`): `/ll:check-code all` works identically to before, summary may show `Build: [SKIP]`
 - For a project with `build_cmd`: the build command runs as part of `all` mode and can be run standalone with `build` mode
 
 ## What We're NOT Doing
@@ -140,7 +140,7 @@ Add `build` to the mode list:
 
 ```bash
 # Just build verification
-/ll:check_code build
+/ll:check-code build
 ```
 
 #### Success Criteria
@@ -153,7 +153,7 @@ Add `build` to the mode list:
 **Manual Verification**:
 - [ ] The check_code.md file has correct markdown structure
 - [ ] The new build block follows the exact same pattern as the types block
-- [ ] Running `/ll:check_code all` on this project (no build_cmd) doesn't break anything
+- [ ] Running `/ll:check-code all` on this project (no build_cmd) doesn't break anything
 
 ## Testing Strategy
 

@@ -7,18 +7,18 @@ discovered_by: capture_issue
 
 ## Summary
 
-The `/ll:create_sprint` command shows an example using `--priority P0` but this argument is not defined in the command's frontmatter arguments section. The feature does not exist.
+The `/ll:create-sprint` command shows an example using `--priority P0` but this argument is not defined in the command's frontmatter arguments section. The feature does not exist.
 
 ## Context
 
-Identified during audit of the `/ll:create_sprint` slash command. The examples suggest functionality that was never implemented, misleading users.
+Identified during audit of the `/ll:create-sprint` slash command. The examples suggest functionality that was never implemented, misleading users.
 
 ## Current Behavior
 
 Line 155 of `.claude/commands/create_sprint.md`:
 ```bash
 # Create sprint with all P0 bugs
-/ll:create_sprint critical-fixes --priority P0
+/ll:create-sprint critical-fixes --priority P0
 ```
 
 But the frontmatter only defines these arguments:

@@ -10,7 +10,7 @@ focus_area: patterns
 
 ## Summary
 
-Architectural improvement found by `/ll:audit_architecture`. Extract formatting logic into strategy classes to improve extensibility for new output formats.
+Architectural improvement found by `/ll:audit-architecture`. Extract formatting logic into strategy classes to improve extensibility for new output formats.
 
 ## Location
 

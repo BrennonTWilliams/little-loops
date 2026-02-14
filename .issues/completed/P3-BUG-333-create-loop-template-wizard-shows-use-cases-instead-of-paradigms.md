@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-When running `/ll:create_loop` and selecting "Start from template (Recommended)", the wizard presents use-case specific templates (e.g., codebase-scan, pre-pr-checks) rather than the loop paradigm options. The template path should instead present the five loop paradigms with descriptions, since paradigms are the fundamental building blocks that users should choose from.
+When running `/ll:create-loop` and selecting "Start from template (Recommended)", the wizard presents use-case specific templates (e.g., codebase-scan, pre-pr-checks) rather than the loop paradigm options. The template path should instead present the five loop paradigms with descriptions, since paradigms are the fundamental building blocks that users should choose from.
 
 ## Current Behavior
 
@@ -39,7 +39,7 @@ Update the create_loop command's template selection step to present paradigm opt
 
 ## Steps to Reproduce
 
-1. Run `/ll:create_loop`
+1. Run `/ll:create-loop`
 2. Select "Start from template (Recommended)"
 3. Observe: wizard presents use-case templates (codebase-scan, quality-gate) instead of paradigm options
 

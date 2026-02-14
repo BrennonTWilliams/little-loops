@@ -11,7 +11,7 @@ The sprint feature stores files in `.sprints/` but this location is hardcoded. T
 
 ## Context
 
-Identified during audit of the `/ll:create_sprint` slash command. Other features like `issues`, `automation`, and `parallel` have configurable settings in the schema, but sprints does not.
+Identified during audit of the `/ll:create-sprint` slash command. Other features like `issues`, `automation`, and `parallel` have configurable settings in the schema, but sprints does not.
 
 ## Current Behavior
 

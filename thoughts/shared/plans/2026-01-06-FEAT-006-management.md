@@ -448,7 +448,7 @@ Write to `.claude/ll-continue-prompt.md`:
 - Tests: `[test file references if applicable]`
 
 ## Resume
-[If issue]: /ll:manage_issue [type] [action] [ISSUE-ID] --resume
+[If issue]: /ll:manage-issue [type] [action] [ISSUE-ID] --resume
 [If general]: /ll:resume or continue manually
 
 ## Important Context

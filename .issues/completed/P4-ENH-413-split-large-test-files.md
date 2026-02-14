@@ -10,7 +10,7 @@ focus_area: large-files
 
 ## Summary
 
-Architectural improvement found by `/ll:audit_architecture`. Several test files exceed 2,000 lines, making them harder to navigate. This is lower priority than production code splits.
+Architectural improvement found by `/ll:audit-architecture`. Several test files exceed 2,000 lines, making them harder to navigate. This is lower priority than production code splits.
 
 ## Location
 

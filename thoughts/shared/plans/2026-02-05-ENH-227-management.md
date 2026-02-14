@@ -11,7 +11,7 @@
 ### Key Discoveries
 - The sync configuration schema is **fully defined** in `config-schema.json:593-647` with `sync.enabled`, `sync.provider`, `sync.github.*` properties
 - The Python dataclasses (`SyncConfig`, `GitHubSyncConfig`) are **fully implemented** in `scripts/little_loops/config.py:305-346`
-- The `/ll:sync_issues` command (`commands/sync_issues.md`) and skill (`skills/sync-issues/SKILL.md`) are **fully operational**
+- The `/ll:sync-issues` command (`commands/sync_issues.md`) and skill (`skills/sync-issues/SKILL.md`) are **fully operational**
 - The `/ll:init` wizard (`commands/init.md`) has **no sync question** - it has Rounds 1-9 covering project, issues, features, product, advanced, documents, extended config
 - The `/ll:configure` command (`commands/configure.md`) is **missing the `sync` area** from its area mapping table (lines 41-52) and has no sync interactive configuration section
 
@@ -66,7 +66,7 @@ At line ~341, add a third option to the features multi-select:
 
 ```yaml
 - label: "GitHub sync"
-  description: "Sync issues with GitHub Issues via /ll:sync_issues"
+  description: "Sync issues with GitHub Issues via /ll:sync-issues"
 ```
 
 #### Success Criteria
@@ -168,7 +168,7 @@ Add sync section to the summary display and config writing rules.
 4. **Completion message** (around line 1039): Add sync next step
 
 ```
-  6. Sync with GitHub: /ll:sync_issues push   # Only show if sync enabled
+  6. Sync with GitHub: /ll:sync-issues push   # Only show if sync enabled
 ```
 
 #### Success Criteria

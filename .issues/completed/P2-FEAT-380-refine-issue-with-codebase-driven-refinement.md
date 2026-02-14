@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-Create a new `/ll:refine_issue` command that performs substantive issue refinement by researching the codebase to identify and fill knowledge gaps needed for successful implementation. Unlike the current command (being renamed to `format_issue` in ENH-379), this command would read source code, analyze implementation context, and produce genuinely useful content — not template boilerplate.
+Create a new `/ll:refine-issue` command that performs substantive issue refinement by researching the codebase to identify and fill knowledge gaps needed for successful implementation. Unlike the current command (being renamed to `format_issue` in ENH-379), this command would read source code, analyze implementation context, and produce genuinely useful content — not template boilerplate.
 
 ## Current Behavior
 
@@ -15,7 +15,7 @@ No command currently investigates the codebase to fill knowledge gaps for implem
 
 ## Expected Behavior
 
-A new `/ll:refine_issue` that:
+A new `/ll:refine-issue` that:
 - **Reads the issue**, then **researches the codebase** to understand the problem space
 - Identifies what information is missing for successful implementation (not which template sections are absent)
 - In **interactive mode**: asks targeted clarifying questions informed by codebase findings
@@ -46,13 +46,13 @@ A new `/ll:refine_issue` that:
 
 ```bash
 # Interactive refinement with codebase research
-/ll:refine_issue FEAT-225
+/ll:refine-issue FEAT-225
 
 # Auto-refine with codebase research (non-interactive)
-/ll:refine_issue BUG-042 --auto
+/ll:refine-issue BUG-042 --auto
 
 # Dry-run to preview what research would produce
-/ll:refine_issue ENH-015 --auto --dry-run
+/ll:refine-issue ENH-015 --auto --dry-run
 ```
 
 ## Motivation
@@ -154,8 +154,8 @@ Key difference from current `refine_issue`: the gap analysis is driven by **impl
 - Types: PASS
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12T12:00:00Z - `~/.claude/projects/<project>/d65a885a-6b92-4b2e-be03-ca8f0f08c767.jsonl`
-- `/ll:manage_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/current-session.jsonl`
+- `/ll:capture-issue` - 2026-02-12T12:00:00Z - `~/.claude/projects/<project>/d65a885a-6b92-4b2e-be03-ca8f0f08c767.jsonl`
+- `/ll:manage-issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/current-session.jsonl`
 
 ---
 

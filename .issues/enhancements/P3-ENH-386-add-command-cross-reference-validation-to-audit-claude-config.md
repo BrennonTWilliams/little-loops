@@ -15,7 +15,7 @@ Add a cross-reference validation check to `audit_claude_config` that verifies co
 
 ## Expected Behavior
 
-During skill auditing (Wave 1) or cross-component consistency checks (Wave 2), `audit_claude_config` should extract command references from skill files (e.g., `/ll:scan_codebase`, `/ll:manage_issue`) and verify each one exists in `commands/help.md`. Unrecognized commands should be flagged as warnings.
+During skill auditing (Wave 1) or cross-component consistency checks (Wave 2), `audit_claude_config` should extract command references from skill files (e.g., `/ll:scan-codebase`, `/ll:manage-issue`) and verify each one exists in `commands/help.md`. Unrecognized commands should be flagged as warnings.
 
 ## Motivation
 
@@ -98,7 +98,7 @@ This fits naturally into the existing Wave 2 consistency checks alongside agent/
 _None — ENH-388 closed (won't-fix)._
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/c0d92ce3-b9a6-4888-8b14-5f5d2b2b2715.jsonl`
+- `/ll:capture-issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/c0d92ce3-b9a6-4888-8b14-5f5d2b2b2715.jsonl`
 
 ---
 

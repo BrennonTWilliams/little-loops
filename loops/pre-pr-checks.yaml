@@ -5,11 +5,11 @@ description: |
   pass before proceeding to PR description generation.
 constraints:
   - name: "code-quality"
-    check: "/ll:check_code"
+    check: "/ll:check-code"
     fix: "Auto-fix via formatter and linter"
   - name: "tests-pass"
-    check: "/ll:run_tests"
+    check: "/ll:run-tests"
     fix: "Review and fix failing tests"
 maintain: false
-on_success: "/ll:describe_pr"
+on_success: "/ll:describe-pr"
 max_iterations: 10

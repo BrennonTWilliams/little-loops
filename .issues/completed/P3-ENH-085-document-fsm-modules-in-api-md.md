@@ -10,7 +10,7 @@ doc_file: docs/API.md
 
 ## Summary
 
-Documentation enhancement found by `/ll:audit_docs`. The FSM loop system modules (`little_loops.fsm.*`) and sprint module are implemented but not documented in API.md.
+Documentation enhancement found by `/ll:audit-docs`. The FSM loop system modules (`little_loops.fsm.*`) and sprint module are implemented but not documented in API.md.
 
 ## Location
 

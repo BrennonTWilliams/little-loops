@@ -54,8 +54,8 @@ Declare the desired end state. The system determines how to get there.
 paradigm: goal
 goal: "No type errors in src/"
 tools:
-  - /ll:check_code types
-  - /ll:manage_issue bug fix
+  - /ll:check-code types
+  - /ll:manage-issue bug fix
 max_iterations: 20
 ```
 
@@ -65,11 +65,11 @@ name: "goal-no-type-errors"
 initial: "evaluate"
 states:
   evaluate:
-    action: "/ll:check_code types"
+    action: "/ll:check-code types"
     on_success: "done"
     on_failure: "fix"
   fix:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     next: "evaluate"
   done:
     terminal: true
@@ -87,7 +87,7 @@ paradigm: convergence
 name: "reduce-lint-errors"
 check: "ruff check src/ --output-format=json | jq '.count'"
 toward: 0
-using: "/ll:check_code fix"
+using: "/ll:check-code fix"
 tolerance: 0  # optional: stop when within tolerance of target
 ```
 
@@ -113,7 +113,7 @@ states:
       progress: "apply"
       stall: "done"
   apply:
-    action: "/ll:check_code fix"
+    action: "/ll:check-code fix"
     next: "measure"
   done:
     terminal: true
@@ -131,13 +131,13 @@ name: "code-quality-guardian"
 constraints:
   - name: "tests-pass"
     check: "pytest"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
   - name: "lint-clean"
     check: "ruff check src/"
-    fix: "/ll:check_code fix"
+    fix: "/ll:check-code fix"
   - name: "types-valid"
     check: "mypy src/"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
 maintain: true  # continuous mode
 ```
 
@@ -151,21 +151,21 @@ states:
     on_success: "check_lint"
     on_failure: "fix_tests"
   fix_tests:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     next: "check_tests"
   check_lint:
     action: "ruff check src/"
     on_success: "check_types"
     on_failure: "fix_lint"
   fix_lint:
-    action: "/ll:check_code fix"
+    action: "/ll:check-code fix"
     next: "check_lint"
   check_types:
     action: "mypy src/"
     on_success: "all_valid"
     on_failure: "fix_types"
   fix_types:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     next: "check_types"
   all_valid:
     terminal: true
@@ -183,8 +183,8 @@ Sequential steps with explicit condition and iteration control.
 paradigm: imperative
 name: "fix-all-types"
 steps:
-  - /ll:check_code types
-  - /ll:manage_issue bug fix
+  - /ll:check-code types
+  - /ll:manage-issue bug fix
 until:
   check: "mypy src/"
   passes: true
@@ -198,10 +198,10 @@ name: "fix-all-types"
 initial: "step_0"
 states:
   step_0:
-    action: "/ll:check_code types"
+    action: "/ll:check-code types"
     next: "step_1"
   step_1:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     next: "check_done"
   check_done:
     action: "mypy src/"
@@ -225,11 +225,11 @@ name: "lint-fix-cycle"
 initial: "check"
 states:
   check:
-    action: "/ll:check_code lint"
+    action: "/ll:check-code lint"
     on_success: "done"
     on_failure: "fix"
   fix:
-    action: "/ll:check_code fix"
+    action: "/ll:check-code fix"
     next: "check"
   done:
     terminal: true
@@ -348,8 +348,8 @@ If users later need paradigms that don't fit the four templates—or want to ski
 paradigm: natural
 description: "Fix all type errors, prioritizing the API module first"
 tools:
-  - /ll:check_code types
-  - /ll:manage_issue bug fix
+  - /ll:check-code types
+  - /ll:manage-issue bug fix
 ```
 
 ---
@@ -362,7 +362,7 @@ All loops compile to this schema. Compilation from paradigm syntax to FSM is han
 
 Actions can be either:
 - **Shell commands**: `pytest`, `ruff check src/`, `npm run build`
-- **Claude Code slash commands**: `/ll:manage_issue`, `/ll:check_code fix`
+- **Claude Code slash commands**: `/ll:manage-issue`, `/ll:check-code fix`
 
 The executor detects slash commands by the leading `/` and routes them appropriately.
 
@@ -514,7 +514,7 @@ When you need more than three outcomes:
 ```yaml
 states:
   fix:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     evaluate:
       type: llm_structured
     route:
@@ -710,7 +710,7 @@ You can route on confidence:
 ```yaml
 states:
   fix:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     evaluate:
       type: llm_structured
       min_confidence: 0.7
@@ -727,7 +727,7 @@ Or create compound routing with confidence:
 ```yaml
 states:
   fix:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     evaluate:
       type: llm_structured
       min_confidence: 0.7
@@ -920,7 +920,7 @@ Example - logging evaluation details:
 ```yaml
 states:
   fix:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     evaluate:
       type: llm_structured
     route:
@@ -1006,7 +1006,7 @@ states:
     on_failure: "fix"
   
   fix:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     # Default: evaluate with llm_structured, route success/failure
     on_success: "check"
     on_failure: "check"    # Retry even on failure (up to max_iterations)
@@ -1023,7 +1023,7 @@ name: "smart-fix"
 initial: "fix"
 states:
   fix:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     evaluate:
       type: llm_structured
       min_confidence: 0.7
@@ -1081,7 +1081,7 @@ states:
       stall: "done"
 
   fix:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     next: "measure"
 
   done:
@@ -1137,7 +1137,7 @@ llm:
 
 states:
   analyze:
-    action: "/ll:audit_architecture patterns"
+    action: "/ll:audit-architecture patterns"
     evaluate:
       type: llm_structured
       schema:
@@ -1158,7 +1158,7 @@ states:
       _: "done"
 
   refactor:
-    action: "/ll:manage_issue enhancement implement"
+    action: "/ll:manage-issue enhancement implement"
     evaluate:
       type: llm_structured
       min_confidence: 0.8
@@ -1248,7 +1248,7 @@ When LLM evaluation fails (API error, timeout, invalid response):
 ```yaml
 states:
   fix:
-    action: "/ll:manage_issue bug fix"
+    action: "/ll:manage-issue bug fix"
     evaluate:
       type: llm_structured
     route:
@@ -1368,7 +1368,7 @@ The `.issues/` directory is **separate** and serves a different purpose:
 | Directory | Purpose | Used By |
 |-----------|---------|---------|
 | `.loops/` | FSM loop definitions | `ll-loop` |
-| `.issues/` | Issue tracking files | `ll-auto`, `ll-parallel`, `/ll:manage_issue` |
+| `.issues/` | Issue tracking files | `ll-auto`, `ll-parallel`, `/ll:manage-issue` |
 
 FSM loops can orchestrate tools that consume `.issues/`, but the directories remain independent.
 
@@ -1473,7 +1473,7 @@ Events stream to `.loops/.running/<name>.events.jsonl`:
 {"event": "evaluate", "type": "exit_code", "verdict": "failure", "ts": "..."}
 {"event": "route", "from": "check", "to": "fix", "verdict": "failure", "ts": "..."}
 {"event": "state_enter", "state": "fix", "iteration": 1, "ts": "..."}
-{"event": "action_start", "action": "/ll:manage_issue bug fix", "ts": "..."}
+{"event": "action_start", "action": "/ll:manage-issue bug fix", "ts": "..."}
 {"event": "action_complete", "duration_ms": 45000, "ts": "..."}
 {"event": "evaluate", "type": "llm_structured", "verdict": "success", "confidence": 0.92, "ts": "..."}
 {"event": "route", "from": "fix", "to": "verify", "verdict": "success", "ts": "..."}
@@ -1487,7 +1487,7 @@ $ ll-loop run fix-types.yaml
 [1/20] check → mypy src/
        ✗ failure (exit 1)
        → fix
-[1/20] fix → /ll:manage_issue bug fix
+[1/20] fix → /ll:manage-issue bug fix
        ✓ success (confidence: 0.92)
        → verify
 [1/20] verify → pytest tests/
@@ -1541,7 +1541,7 @@ class TestConvergenceCompiler:
             "name": "reduce-errors",
             "check": "mypy src/ | grep -c error",
             "toward": 0,
-            "using": "/ll:check_code fix"
+            "using": "/ll:check-code fix"
         }
         fsm = compile_convergence(spec)
 
@@ -1805,10 +1805,10 @@ name: "fix-types-and-lint"
 constraints:
   - name: "types-valid"
     check: "mypy src/"
-    fix: "/ll:manage_issue bug fix"
+    fix: "/ll:manage-issue bug fix"
   - name: "lint-clean"
     check: "ruff check src/"
-    fix: "/ll:check_code fix"
+    fix: "/ll:check-code fix"
 max_iterations: 10
 ```
 
@@ -1857,7 +1857,7 @@ The command uses `AskUserQuestion` with various patterns:
 ## Related Skills
 
 ### `/ll:loop-suggester`
-Analyzes user message history from `ll-messages` output to automatically suggest FSM loop configurations. Instead of manually identifying patterns and using `/ll:create_loop`, this skill detects repeated workflows and generates ready-to-use loop YAML.
+Analyzes user message history from `ll-messages` output to automatically suggest FSM loop configurations. Instead of manually identifying patterns and using `/ll:create-loop`, this skill detects repeated workflows and generates ready-to-use loop YAML.
 
 **When to use:**
 - You want to discover automation opportunities from your existing work patterns

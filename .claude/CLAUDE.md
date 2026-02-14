@@ -48,14 +48,14 @@ docs/           # Architecture, API, troubleshooting
 
 Run `/ll:help` for full list. Key commands by capability:
 
-- **Issue Discovery**: `capture_issue`, `scan_codebase`, `scan_product`, `audit_architecture`
-- **Issue Refinement**: `normalize_issues`, `prioritize_issues`, `align_issues`, `format_issue`, `refine_issue`, `verify_issues`, `tradeoff_review_issues`, `ready_issue`
-- **Planning & Implementation**: `create_sprint`, `review_sprint`, `manage_issue`, `iterate_plan`
-- **Code Quality**: `check_code`, `run_tests`, `audit_docs`, `find_dead_code`
-- **Git & Release**: `commit`, `open_pr`, `describe_pr`, `manage_release`, `sync_issues`, `cleanup_worktrees`
-- **Automation & Loops**: `create_loop`, `loop-suggester`
-- **Meta-Analysis**: `audit_claude_config`, `analyze-workflows`
-- **Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle_autoprompt`
+- **Issue Discovery**: `capture-issue`, `scan-codebase`, `scan-product`, `audit-architecture`
+- **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`
+- **Planning & Implementation**: `create-sprint`, `review-sprint`, `manage-issue`, `iterate-plan`
+- **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `find-dead-code`
+- **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
+- **Automation & Loops**: `create-loop`, `loop-suggester`
+- **Meta-Analysis**: `audit-claude-config`, `analyze-workflows`
+- **Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`
 
 ## Development
 

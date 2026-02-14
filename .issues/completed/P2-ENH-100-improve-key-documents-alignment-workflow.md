@@ -11,7 +11,7 @@ Redesign the key documents alignment feature (FEAT-075) to be more practical and
 
 ## Context
 
-Audit of `/ll:align_issues` revealed the current implementation has issues:
+Audit of `/ll:align-issues` revealed the current implementation has issues:
 - **Not dogfooded**: little-loops itself doesn't use the `documents` config
 - **Subjective scoring**: 0-100% alignment scores are non-deterministic and hard to action
 - **High friction, low signal**: Batch analysis produces noise rather than useful guidance
@@ -20,16 +20,16 @@ Audit of `/ll:align_issues` revealed the current implementation has issues:
 ## Current Behavior
 
 1. Issues have no explicit link to relevant documentation
-2. `/ll:align_issues` reads all docs and all issues, produces subjective 0-100% scores
-3. No integration with `/ll:capture_issue` or `/ll:normalize_issues`
+2. `/ll:align-issues` reads all docs and all issues, produces subjective 0-100% scores
+3. No integration with `/ll:capture-issue` or `/ll:normalize-issues`
 4. Output is a score-based report without concrete next steps
 
 ## Expected Behavior
 
 1. Issues explicitly list related key documents in a "Related Key Documentation" section
-2. `/ll:capture_issue` suggests and links relevant docs at issue creation time
-3. `/ll:normalize_issues` adds missing doc references during normalization
-4. `/ll:align_issues` performs two concrete checks:
+2. `/ll:capture-issue` suggests and links relevant docs at issue creation time
+3. `/ll:normalize-issues` adds missing doc references during normalization
+4. `/ll:align-issues` performs two concrete checks:
    - **Doc Relevance Check**: Are the linked docs actually relevant to this issue?
    - **Alignment Check**: Does the issue align with linked docs? If not, what specific changes are recommended?
 
@@ -52,10 +52,10 @@ When no docs linked yet:
 ```markdown
 ## Related Key Documentation
 
-_No relevant documents identified. Run `/ll:normalize_issues` or `/ll:align_issues` to discover relevant docs._
+_No relevant documents identified. Run `/ll:normalize-issues` or `/ll:align-issues` to discover relevant docs._
 ```
 
-### 2. Update `/ll:capture_issue`
+### 2. Update `/ll:capture-issue`
 
 Add Phase 4b after issue creation (when `documents.enabled` is true):
 
@@ -65,7 +65,7 @@ Add Phase 4b after issue creation (when `documents.enabled` is true):
 4. Add top matches (max 3) to the "Related Key Documentation" section
 5. Note linked docs in output report
 
-### 3. Update `/ll:normalize_issues`
+### 3. Update `/ll:normalize-issues`
 
 Add Section 7b after internal reference updates (when `documents.enabled` is true):
 
@@ -75,7 +75,7 @@ Add Section 7b after internal reference updates (when `documents.enabled` is tru
 4. Add or update the section with matched documents
 5. Track in normalization report
 
-### 4. Rewrite `/ll:align_issues`
+### 4. Rewrite `/ll:align-issues`
 
 Replace scoring system with actionable checks:
 
@@ -138,16 +138,16 @@ Replace scoring system with actionable checks:
 ## Acceptance Criteria
 
 - [ ] Issue template includes "Related Key Documentation" section
-- [ ] `/ll:capture_issue` links relevant docs when `documents.enabled`
-- [ ] `/ll:normalize_issues` adds missing doc refs when `documents.enabled`
-- [ ] `/ll:align_issues` performs relevance check with recommendations
-- [ ] `/ll:align_issues` performs alignment check with specific recommendations (no scores)
-- [ ] `/ll:align_issues --fix` auto-fixes relevance issues
+- [ ] `/ll:capture-issue` links relevant docs when `documents.enabled`
+- [ ] `/ll:normalize-issues` adds missing doc refs when `documents.enabled`
+- [ ] `/ll:align-issues` performs relevance check with recommendations
+- [ ] `/ll:align-issues` performs alignment check with specific recommendations (no scores)
+- [ ] `/ll:align-issues --fix` auto-fixes relevance issues
 - [ ] Dogfood: Configure `documents` in little-loops' own ll-config.json
 
 ## Dependencies
 
-- FEAT-075 (completed) - Provides `documents` config schema and initial `/ll:align_issues`
+- FEAT-075 (completed) - Provides `documents` config schema and initial `/ll:align-issues`
 
 ## Related
 

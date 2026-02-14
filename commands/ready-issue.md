@@ -319,7 +319,7 @@ Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't 
 
 ## NEXT_STEPS
 - [Recommended actions if not ready]
-- [Or "Proceed to implementation with: `/ll:manage_issue [issue_type] [action] [ISSUE_ID]`" if ready/corrected]
+- [Or "Proceed to implementation with: `/ll:manage-issue [issue_type] [action] [ISSUE_ID]`" if ready/corrected]
 - [Or "Reopen completed issue [ISSUE_ID] as regression" if REGRESSION_LIKELY]
 ```
 
@@ -342,26 +342,26 @@ $ARGUMENTS
 
 ```bash
 # Validate specific issue (standard validation)
-/ll:ready_issue BUG-042
+/ll:ready-issue BUG-042
 
 # Validate with deep research (comprehensive verification)
-/ll:ready_issue BUG-042 --deep
+/ll:ready-issue BUG-042 --deep
 
 # Validate highest priority issue
-/ll:ready_issue
+/ll:ready-issue
 
 # Deep validation on highest priority
-/ll:ready_issue --deep
+/ll:ready-issue --deep
 
 # After validation, implement
-/ll:manage_issue bug fix BUG-042
+/ll:manage-issue bug fix BUG-042
 ```
 
 ---
 
 ## Integration
 
-This command is typically run before `/ll:manage_issue` to ensure:
+This command is typically run before `/ll:manage-issue` to ensure:
 1. Issue is accurate and up-to-date
 2. Implementation can proceed smoothly
 3. No surprises during development

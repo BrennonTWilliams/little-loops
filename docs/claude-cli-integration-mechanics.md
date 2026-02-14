@@ -13,7 +13,7 @@ This report documents how the little-loops plugin integrates with the Claude Cod
 **Confirmed correct** - The pattern `claude --dangerously-skip-permissions -p "..."` is the authoritative API:
 
 ```bash
-claude --dangerously-skip-permissions -p "/ll:manage_issue bug fix"
+claude --dangerously-skip-permissions -p "/ll:manage-issue bug fix"
 ```
 
 **Source**: `scripts/little_loops/subprocess_utils.py:82`
@@ -238,7 +238,7 @@ User/Automation → claude CLI → Slash Command → Claude Execution → Output
 ## Completed Work - [x] Phase N: Name
 ## Current State - Working on, Last action, Next action
 ## Key File References - Plan, Modified files, Tests
-## Resume Command - /ll:manage_issue [type] [action] [ISSUE-ID] --resume
+## Resume Command - /ll:manage-issue [type] [action] [ISSUE-ID] --resume
 ## Critical Context - Decisions, Gotchas, Patterns
 ```
 

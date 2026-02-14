@@ -10,7 +10,7 @@ focus_area: large-files
 
 ## Summary
 
-Architectural issue found by `/ll:audit_architecture`. The issue_history.py module is a god module containing 3,824 lines with 61 classes and functions, handling multiple distinct responsibilities.
+Architectural issue found by `/ll:audit-architecture`. The issue_history.py module is a god module containing 3,824 lines with 61 classes and functions, handling multiple distinct responsibilities.
 
 ## Location
 

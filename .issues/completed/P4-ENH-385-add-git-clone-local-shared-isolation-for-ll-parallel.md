@@ -144,7 +144,7 @@ Add the feature behind a flag with the intent to promote to default if proven:
 `enhancement`, `parallel`, `captured`
 
 ## Session Log
-- `/ll:capture_issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/759a3aed-4ce6-4acc-9a79-4e853bd4512b.jsonl`
+- `/ll:capture-issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/759a3aed-4ce6-4acc-9a79-4e853bd4512b.jsonl`
 
 ---
 

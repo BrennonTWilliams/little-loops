@@ -120,8 +120,8 @@ Group findings by confidence level:
 
 ## Recommended Actions
 
-1. Run `/ll:check_code` after removals
-2. Run `/ll:run_tests all` to verify no regressions
+1. Run `/ll:check-code` after removals
+2. Run `/ll:run-tests all` to verify no regressions
 3. Consider deprecation warnings before removing public APIs
 ```
 
@@ -170,7 +170,7 @@ confidence: [high|medium]
 
 ## Summary
 
-Dead code cleanup task identified by `/ll:find_dead_code`.
+Dead code cleanup task identified by `/ll:find-dead-code`.
 
 ## Location
 
@@ -191,8 +191,8 @@ Remove the identified dead code items.
 ## Verification
 
 After removal:
-1. Run `/ll:check_code all`
-2. Run `/ll:run_tests`
+1. Run `/ll:check-code all`
+2. Run `/ll:run-tests`
 
 ## Impact
 
@@ -278,12 +278,12 @@ After user approval:
 
 ```bash
 # Find all dead code
-/ll:find_dead_code
+/ll:find-dead-code
 
 # After review, remove high-confidence items
 # Then run verification:
-/ll:check_code all
-/ll:run_tests all
+/ll:check-code all
+/ll:run-tests all
 ```
 
 ---
@@ -299,6 +299,6 @@ After finding dead code:
 6. Use `/ll:commit` to save changes
 
 Works well with:
-- `/ll:scan_codebase` - May find overlapping issues
-- `/ll:check_code` - Verify code quality after removals
-- `/ll:run_tests` - Ensure no regressions
+- `/ll:scan-codebase` - May find overlapping issues
+- `/ll:check-code` - Verify code quality after removals
+- `/ll:run-tests` - Ensure no regressions

@@ -94,10 +94,10 @@ Template should:
 
 ### Dependent Files (Callers/Importers)
 - All commands that reference `templates/issue-sections.json`:
-  - `/ll:capture_issue` - Reads template for issue creation
-  - `/ll:refine_issue` - Reads template for gap analysis
-  - `/ll:ready_issue` - Reads template for validation
-  - `/ll:scan_codebase` - Reads template for issue creation
+  - `/ll:capture-issue` - Reads template for issue creation
+  - `/ll:refine-issue` - Reads template for gap analysis
+  - `/ll:ready-issue` - Reads template for validation
+  - `/ll:scan-codebase` - Reads template for issue creation
 - Python parsers:
   - `scripts/little_loops/issue_parser.py` - Already handles arbitrary sections (no changes needed)
 
@@ -132,7 +132,7 @@ Template should:
 
 **Target metrics** (to measure after deployment):
 - Existing issues continue to validate without changes
-- `/ll:ready_issue` CORRECTIONS_MADE decreases by >20%
+- `/ll:ready-issue` CORRECTIONS_MADE decreases by >20%
 - Implementation Steps present in >60% of new issues
 - No regressions in issue parsing or validation
 
@@ -145,7 +145,7 @@ Template should:
 - Comprehensive documentation
 
 **Out of scope**:
-- Forced migration of existing issues (optional via /ll:refine_issue)
+- Forced migration of existing issues (optional via /ll:refine-issue)
 - Changes to Python issue parser (already handles arbitrary sections)
 - Removal of deprecated sections (Phase 4, deferred)
 - Changes to issue file naming conventions

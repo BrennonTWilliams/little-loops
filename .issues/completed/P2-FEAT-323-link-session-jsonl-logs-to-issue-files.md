@@ -7,7 +7,7 @@ discovered_by: capture_issue
 
 ## Summary
 
-Add session log linking to issue files so that each issue tracks which Claude Code JSONL session files were involved in its lifecycle. When an issue is completed via `/ll:manage_issue`, the issue file is updated with a link to the implementation session's JSONL file(s) in `~/.claude/projects/`. When other commands (`/ll:capture_issue`, `/ll:scan_codebase`, `/ll:refine_issue`, etc.) create or update an issue, they append a session log entry with the command name and timestamp.
+Add session log linking to issue files so that each issue tracks which Claude Code JSONL session files were involved in its lifecycle. When an issue is completed via `/ll:manage-issue`, the issue file is updated with a link to the implementation session's JSONL file(s) in `~/.claude/projects/`. When other commands (`/ll:capture-issue`, `/ll:scan-codebase`, `/ll:refine-issue`, etc.) create or update an issue, they append a session log entry with the command name and timestamp.
 
 ## Current Behavior
 
@@ -19,9 +19,9 @@ Issue files contain a `## Session Log` section that accumulates entries linking 
 
 ```markdown
 ## Session Log
-- `/ll:capture_issue` - 2026-02-10T14:32:00 - `~/.claude/projects/.../abc123.jsonl`
-- `/ll:refine_issue` - 2026-02-10T15:00:00 - `~/.claude/projects/.../def456.jsonl`
-- `/ll:manage_issue` - 2026-02-10T16:45:00 - `~/.claude/projects/.../ghi789.jsonl`
+- `/ll:capture-issue` - 2026-02-10T14:32:00 - `~/.claude/projects/.../abc123.jsonl`
+- `/ll:refine-issue` - 2026-02-10T15:00:00 - `~/.claude/projects/.../def456.jsonl`
+- `/ll:manage-issue` - 2026-02-10T16:45:00 - `~/.claude/projects/.../ghi789.jsonl`
 ```
 
 ## Motivation
@@ -30,15 +30,15 @@ Session logs contain rich implementation context — decisions made, alternative
 
 ## Use Case
 
-A developer completes an issue and later wants to understand why a particular implementation approach was chosen. They open the issue file, find the session log link for the `/ll:manage_issue` run, and use `ll-messages` to review the conversation that led to the implementation decisions.
+A developer completes an issue and later wants to understand why a particular implementation approach was chosen. They open the issue file, find the session log link for the `/ll:manage-issue` run, and use `ll-messages` to review the conversation that led to the implementation decisions.
 
 ## Acceptance Criteria
 
 - [ ] A utility function resolves the current session's JSONL file path from within a running Claude Code session
-- [ ] `/ll:manage_issue` appends a session log entry on issue completion
-- [ ] `/ll:capture_issue` appends a session log entry when creating or updating issues
-- [ ] `/ll:scan_codebase` appends a session log entry when creating issues
-- [ ] `/ll:refine_issue` appends a session log entry when updating issues
+- [ ] `/ll:manage-issue` appends a session log entry on issue completion
+- [ ] `/ll:capture-issue` appends a session log entry when creating or updating issues
+- [ ] `/ll:scan-codebase` appends a session log entry when creating issues
+- [ ] `/ll:refine-issue` appends a session log entry when updating issues
 - [ ] Session log entries include command name, ISO timestamp, and absolute JSONL path
 - [ ] `## Session Log` section is added to `issue-sections.json` as a common section
 - [ ] Existing `ll-messages` code is reused for JSONL path discovery

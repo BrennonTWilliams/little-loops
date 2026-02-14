@@ -1,6 +1,6 @@
-"""Tests for /ll:create_loop skill artifacts.
+"""Tests for /ll:create-loop skill artifacts.
 
-Since /ll:create_loop is a prompt-based skill (markdown instructions for Claude),
+Since /ll:create-loop is a prompt-based skill (markdown instructions for Claude),
 we cannot directly unit test the interactive wizard flow. Instead, we test:
 
 1. Template YAML definitions compile to valid FSMs
@@ -76,7 +76,7 @@ class TestTemplateDefinitions:
             "paradigm": "goal",
             "name": "tests-until-passing",
             "goal": "All tests pass",
-            "tools": ["pytest", "/ll:manage_issue bug fix"],
+            "tools": ["pytest", "/ll:manage-issue bug fix"],
             "max_iterations": 20,
         }
         fsm = compile_paradigm(spec)
@@ -91,8 +91,8 @@ class TestTemplateDefinitions:
             "paradigm": "invariants",
             "name": "full-quality-gate",
             "constraints": [
-                {"name": "tests", "check": "pytest", "fix": "/ll:manage_issue bug fix"},
-                {"name": "types", "check": "mypy src/", "fix": "/ll:manage_issue bug fix"},
+                {"name": "tests", "check": "pytest", "fix": "/ll:manage-issue bug fix"},
+                {"name": "types", "check": "mypy src/", "fix": "/ll:manage-issue bug fix"},
                 {"name": "lint", "check": "ruff check src/", "fix": "ruff check --fix src/"},
             ],
             "maintain": False,
@@ -122,7 +122,7 @@ class TestGoalParadigmGeneration:
             "paradigm": "goal",
             "name": "fix-types-and-lint",
             "goal": "Type and lint checks pass",
-            "tools": ["mypy src/ && ruff check src/", "/ll:check_code fix"],
+            "tools": ["mypy src/ && ruff check src/", "/ll:check-code fix"],
             "max_iterations": 10,
         }
         fsm = compile_paradigm(spec)
@@ -205,13 +205,13 @@ class TestGoalParadigmGeneration:
             "paradigm": "goal",
             "name": "single-tool",
             "goal": "Clean",
-            "tools": ["/ll:check_code fix"],
+            "tools": ["/ll:check-code fix"],
         }
         fsm = compile_paradigm(spec)
         errors = validate_fsm(fsm)
         assert not any(e.severity == ValidationSeverity.ERROR for e in errors)
-        assert fsm.states["evaluate"].action == "/ll:check_code fix"
-        assert fsm.states["fix"].action == "/ll:check_code fix"
+        assert fsm.states["evaluate"].action == "/ll:check-code fix"
+        assert fsm.states["fix"].action == "/ll:check-code fix"
 
 
 # =============================================================================
@@ -231,8 +231,8 @@ class TestInvariantsParadigmGeneration:
             "paradigm": "invariants",
             "name": "code-quality-guardian",
             "constraints": [
-                {"name": "tests-pass", "check": "pytest", "fix": "/ll:manage_issue bug fix"},
-                {"name": "types-valid", "check": "mypy src/", "fix": "/ll:manage_issue bug fix"},
+                {"name": "tests-pass", "check": "pytest", "fix": "/ll:manage-issue bug fix"},
+                {"name": "types-valid", "check": "mypy src/", "fix": "/ll:manage-issue bug fix"},
                 {"name": "lint-clean", "check": "ruff check src/", "fix": "ruff check --fix src/"},
             ],
             "maintain": False,
@@ -382,7 +382,7 @@ class TestConvergenceParadigmGeneration:
             "name": "eliminate-lint-errors",
             "check": "ruff check src/ 2>&1 | grep -c 'error' || echo 0",
             "toward": 0,
-            "using": "/ll:check_code fix",
+            "using": "/ll:check-code fix",
             "tolerance": 0,
             "max_iterations": 50,
         }
@@ -422,7 +422,7 @@ class TestConvergenceParadigmGeneration:
             "name": "improve-coverage",
             "check": "pytest --cov=src --cov-report=term | grep TOTAL | awk '{print $4}'",
             "toward": 80,
-            "using": "/ll:manage_issue feature implement",
+            "using": "/ll:manage-issue feature implement",
             "tolerance": 1,
             "max_iterations": 20,
         }
@@ -492,7 +492,7 @@ class TestImperativeParadigmGeneration:
         spec = {
             "paradigm": "imperative",
             "name": "fix-test-check",
-            "steps": ["/ll:check_code fix", "pytest", "mypy src/"],
+            "steps": ["/ll:check-code fix", "pytest", "mypy src/"],
             "until": {"check": "mypy src/ && ruff check src/ && pytest"},
             "max_iterations": 50,
             "backoff": 2,

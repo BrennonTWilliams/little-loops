@@ -210,7 +210,7 @@ focus_area: [large-files|integration|patterns|organization]
 
 ## Summary
 
-Architectural issue found by `/ll:audit_architecture`.
+Architectural issue found by `/ll:audit-architecture`.
 
 ## Location
 
@@ -399,13 +399,13 @@ $ARGUMENTS
 
 ```bash
 # Full architecture audit
-/ll:audit_architecture
+/ll:audit-architecture
 
 # Focus on large files
-/ll:audit_architecture large-files
+/ll:audit-architecture large-files
 
 # Analyze patterns
-/ll:audit_architecture patterns
+/ll:audit-architecture patterns
 ```
 
 ---
@@ -419,7 +419,7 @@ After auditing:
 4. Use findings to guide new development
 
 Works well with:
-- `/ll:scan_codebase` - May find related code issues
-- `/ll:find_dead_code` - Remove dead code before refactoring
-- `/ll:check_code` - Verify code quality after architectural changes
-- `/ll:manage_issue` - Process created architectural issues
+- `/ll:scan-codebase` - May find related code issues
+- `/ll:find-dead-code` - Remove dead code before refactoring
+- `/ll:check-code` - Verify code quality after architectural changes
+- `/ll:manage-issue` - Process created architectural issues

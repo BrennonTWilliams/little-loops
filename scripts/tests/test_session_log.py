@@ -64,12 +64,12 @@ class TestAppendSessionLogEntry:
         issue.write_text("# Issue\n\nContent here.\n\n---\n\n## Status\n\n**Open**\n")
 
         jsonl = tmp_path / "session.jsonl"
-        result = append_session_log_entry(issue, "/ll:manage_issue", session_jsonl=jsonl)
+        result = append_session_log_entry(issue, "/ll:manage-issue", session_jsonl=jsonl)
 
         assert result is True
         content = issue.read_text()
         assert "## Session Log" in content
-        assert "/ll:manage_issue" in content
+        assert "/ll:manage-issue" in content
         assert str(jsonl) in content
         # Session Log should be before Status
         assert content.index("## Session Log") < content.index("## Status")
@@ -78,25 +78,25 @@ class TestAppendSessionLogEntry:
         issue = tmp_path / "issue.md"
         issue.write_text(
             "# Issue\n\n## Session Log\n"
-            "- `/ll:capture_issue` - 2026-01-01T00:00:00 - `/old.jsonl`\n\n"
+            "- `/ll:capture-issue` - 2026-01-01T00:00:00 - `/old.jsonl`\n\n"
             "---\n\n## Status\n\n**Open**\n"
         )
 
         jsonl = tmp_path / "new.jsonl"
-        result = append_session_log_entry(issue, "/ll:format_issue", session_jsonl=jsonl)
+        result = append_session_log_entry(issue, "/ll:format-issue", session_jsonl=jsonl)
 
         assert result is True
         content = issue.read_text()
         assert content.count("## Session Log") == 1
-        assert "/ll:capture_issue" in content
-        assert "/ll:format_issue" in content
+        assert "/ll:capture-issue" in content
+        assert "/ll:format-issue" in content
 
     def test_appends_at_end_when_no_status_footer(self, tmp_path: Path) -> None:
         issue = tmp_path / "issue.md"
         issue.write_text("# Issue\n\nContent here.\n")
 
         jsonl = tmp_path / "session.jsonl"
-        result = append_session_log_entry(issue, "/ll:scan_codebase", session_jsonl=jsonl)
+        result = append_session_log_entry(issue, "/ll:scan-codebase", session_jsonl=jsonl)
 
         assert result is True
         content = issue.read_text()
@@ -108,13 +108,13 @@ class TestAppendSessionLogEntry:
         issue.write_text("# Issue\n\n---\n\n## Status\n\n**Open**\n")
 
         jsonl = tmp_path / "s.jsonl"
-        append_session_log_entry(issue, "/ll:capture_issue", session_jsonl=jsonl)
-        append_session_log_entry(issue, "/ll:format_issue", session_jsonl=jsonl)
+        append_session_log_entry(issue, "/ll:capture-issue", session_jsonl=jsonl)
+        append_session_log_entry(issue, "/ll:format-issue", session_jsonl=jsonl)
 
         content = issue.read_text()
         assert content.count("## Session Log") == 1
-        assert "/ll:capture_issue" in content
-        assert "/ll:format_issue" in content
+        assert "/ll:capture-issue" in content
+        assert "/ll:format-issue" in content
 
     def test_entry_format(self, tmp_path: Path) -> None:
         issue = tmp_path / "issue.md"

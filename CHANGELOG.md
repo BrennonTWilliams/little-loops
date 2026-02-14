@@ -98,7 +98,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Plugin config audit issues** - Add plugin config audit issues and update ENH-371 with once field (130dd65)
 - **Cross-issue dependency mappings** - Add cross-issue dependency mappings and ENH-396 issue (c14cbc4)
 - **`ll-next-id` command** - Consolidate issue ID assignment with new CLI command (cc50082)
-- **Sprint review skill** - Add `/ll:review_sprint` skill for AI-guided sprint health checks (c4b6b11)
+- **Sprint review skill** - Add `/ll:review-sprint` skill for AI-guided sprint health checks (c4b6b11)
 - **Sprint edit subcommand** - Add `ll-sprint edit` subcommand for sprint modifications (6c195f2)
 - **Sprint-scoped dependency analysis** - Add `--sprint` flag to `ll-deps` for sprint-scoped analysis (dee0890)
 
@@ -261,13 +261,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **GitHub Issues sync** - Bidirectional sync with GitHub Issues including `ll-sync` CLI tool, `--dry-run` support, and `--labels` filtering (FEAT-222, FEAT-226)
-- **Release management** - `/ll:manage_release` command for git tags, changelogs, GitHub releases, and version bumping (FEAT-268)
-- **Product analysis** - `/ll:product-analyzer` skill and `/ll:scan_product` command for product-focused codebase analysis (FEAT-022)
+- **Release management** - `/ll:manage-release` command for git tags, changelogs, GitHub releases, and version bumping (FEAT-268)
+- **Product analysis** - `/ll:product-analyzer` skill and `/ll:scan-product` command for product-focused codebase analysis (FEAT-022)
 - **Issue dependency mapping** - Automated cross-issue dependency discovery with semantic conflict analysis (FEAT-261)
-- **Loop automation** - `/ll:create_loop` and `/ll:loop-suggester` skills for FSM loop configuration; ship 5 built-in loops (FEAT-219, FEAT-270)
-- **Tradeoff review** - `/ll:tradeoff_review_issues` skill for issue utility vs complexity evaluation (FEAT-257)
-- **Issue refinement** - `/ll:refine_issue` skill with content-quality analysis for interactive issue clarification (FEAT-225)
-- **Open PR command** - `/ll:open_pr` command and skill for pull request creation (FEAT-228)
+- **Loop automation** - `/ll:create-loop` and `/ll:loop-suggester` skills for FSM loop configuration; ship 5 built-in loops (FEAT-219, FEAT-270)
+- **Tradeoff review** - `/ll:tradeoff-review-issues` skill for issue utility vs complexity evaluation (FEAT-257)
+- **Issue refinement** - `/ll:refine-issue` skill with content-quality analysis for interactive issue clarification (FEAT-225)
+- **Open PR command** - `/ll:open-pr` command and skill for pull request creation (FEAT-228)
 - **GitHub sync in init wizard** - Add sync setup to `/ll:init` and `/ll:configure` (ENH-227)
 - **Sprint management** - `ll-sprint` CLI tool with YAML sprint definitions and quiet mode
 - **Workflow analysis** - `/ll:analyze-workflows` and `/ll:workflow-automation-proposer` skills
@@ -333,22 +333,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **20 slash commands** for development workflows:
   - `/ll:init` - Project initialization with auto-detection for 7 project types
   - `/ll:help` - Command reference and usage guide
-  - `/ll:toggle_autoprompt` - Toggle automatic prompt optimization
-  - `/ll:check_code` - Code quality checks (lint, format, types)
-  - `/ll:run_tests` - Test execution with scope filtering
-  - `/ll:find_dead_code` - Unused code detection
-  - `/ll:manage_issue` - Full issue lifecycle management
-  - `/ll:ready_issue` - Issue validation with auto-correction
-  - `/ll:prioritize_issues` - Priority assignment (P0-P5)
-  - `/ll:verify_issues` - Issue verification against codebase
-  - `/ll:normalize_issues` - Fix invalid issue filenames
-  - `/ll:scan_codebase` - Issue discovery
-  - `/ll:audit_docs` - Documentation auditing
-  - `/ll:audit_architecture` - Architecture analysis
-  - `/ll:audit_claude_config` - Comprehensive config audit
-  - `/ll:describe_pr` - PR description generation
+  - `/ll:toggle-autoprompt` - Toggle automatic prompt optimization
+  - `/ll:check-code` - Code quality checks (lint, format, types)
+  - `/ll:run-tests` - Test execution with scope filtering
+  - `/ll:find-dead-code` - Unused code detection
+  - `/ll:manage-issue` - Full issue lifecycle management
+  - `/ll:ready-issue` - Issue validation with auto-correction
+  - `/ll:prioritize-issues` - Priority assignment (P0-P5)
+  - `/ll:verify-issues` - Issue verification against codebase
+  - `/ll:normalize-issues` - Fix invalid issue filenames
+  - `/ll:scan-codebase` - Issue discovery
+  - `/ll:audit-docs` - Documentation auditing
+  - `/ll:audit-architecture` - Architecture analysis
+  - `/ll:audit-claude-config` - Comprehensive config audit
+  - `/ll:describe-pr` - PR description generation
   - `/ll:commit` - Git commit creation with approval
-  - `/ll:iterate_plan` - Plan iteration and updates
+  - `/ll:iterate-plan` - Plan iteration and updates
   - `/ll:handoff` - Generate continuation prompt for session handoff
   - `/ll:resume` - Resume from previous session's continuation prompt
 

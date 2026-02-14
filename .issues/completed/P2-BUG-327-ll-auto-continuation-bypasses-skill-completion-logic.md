@@ -7,11 +7,11 @@ discovered_by: capture_issue
 
 ## Summary
 
-When `ll-auto` detects a `CONTEXT_HANDOFF` signal during `/ll:manage_issue`, it spawns a continuation session by passing raw context via `claude -p '...'` instead of invoking `/ll:resume` or `/ll:manage_issue --resume`. This means the continuation session runs without the manage_issue skill's lifecycle context, so the file-move-to-completed step never executes even when implementation succeeds.
+When `ll-auto` detects a `CONTEXT_HANDOFF` signal during `/ll:manage-issue`, it spawns a continuation session by passing raw context via `claude -p '...'` instead of invoking `/ll:resume` or `/ll:manage-issue --resume`. This means the continuation session runs without the manage_issue skill's lifecycle context, so the file-move-to-completed step never executes even when implementation succeeds.
 
 ## Current Behavior
 
-1. `ll-auto` runs `claude -p '/ll:manage_issue bug fix BUG-XXX'`
+1. `ll-auto` runs `claude -p '/ll:manage-issue bug fix BUG-XXX'`
 2. Session hits context limit, emits `CONTEXT_HANDOFF` with continuation prompt
 3. `ll-auto` detects handoff, reads continuation prompt content
 4. Spawns new session: `claude -p '<raw continuation prompt>'` — no skill invocation
@@ -21,7 +21,7 @@ When `ll-auto` detects a `CONTEXT_HANDOFF` signal during `/ll:manage_issue`, it 
 ## Expected Behavior
 
 Continuation sessions should invoke the manage_issue skill so its completion logic (moving issue file, updating status) runs after successful implementation. Either:
-- Use `/ll:manage_issue bug fix BUG-XXX --resume`
+- Use `/ll:manage-issue bug fix BUG-XXX --resume`
 - Or use `/ll:resume` which reads `.claude/ll-continue-prompt.md`
 
 ## Steps to Reproduce
@@ -39,7 +39,7 @@ Implementation succeeds in the continuation session but all bookkeeping is skipp
 
 - **File**: `scripts/little_loops/issue_manager.py`
 - **Anchor**: `run_with_continuation()` function, continuation command construction after `detect_context_handoff()`
-- **Cause**: The continuation command is built as raw prompt content (`current_command = prompt_content.replace(...)`) instead of re-invoking `/ll:manage_issue ... --resume`
+- **Cause**: The continuation command is built as raw prompt content (`current_command = prompt_content.replace(...)`) instead of re-invoking `/ll:manage-issue ... --resume`
 
 ## Proposed Solution
 
@@ -50,7 +50,7 @@ Modify `ll-auto`'s handoff handling to invoke the skill in the continuation sess
 current_command = prompt_content.replace('"', '\\"')
 
 # Wrap continuation in skill invocation that preserves lifecycle:
-current_command = f"/ll:manage_issue {type_name} {action} {issue_id} --resume"
+current_command = f"/ll:manage-issue {type_name} {action} {issue_id} --resume"
 ```
 
 This ensures the manage_issue skill loads, reads the continuation prompt from `.claude/ll-continue-prompt.md`, and runs its full lifecycle including completion.
@@ -80,7 +80,7 @@ Note: `run_with_continuation` may need additional parameters (issue type, action
 ## Implementation Steps
 
 1. Locate handoff detection and continuation command construction in `issue_manager.py`
-2. Change continuation command to use `/ll:manage_issue ... --resume` instead of raw prompt
+2. Change continuation command to use `/ll:manage-issue ... --resume` instead of raw prompt
 3. Verify `/ll:resume` or `--resume` flag properly reads `.claude/ll-continue-prompt.md`
 4. Add test covering continuation command format
 
@@ -93,7 +93,7 @@ Note: `run_with_continuation` may need additional parameters (issue type, action
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize_issues` to discover and link relevant docs._
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
 ## Labels
 

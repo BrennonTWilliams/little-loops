@@ -10,7 +10,7 @@ doc_file: README.md
 
 ## Summary
 
-Documentation issue found by `/ll:audit_docs`. The directory tree listings in README.md, CONTRIBUTING.md, and docs/ARCHITECTURE.md are missing recently added Python modules, the `hooks/scripts/lib/` directory, and the `loops/` directory.
+Documentation issue found by `/ll:audit-docs`. The directory tree listings in README.md, CONTRIBUTING.md, and docs/ARCHITECTURE.md are missing recently added Python modules, the `hooks/scripts/lib/` directory, and the `loops/` directory.
 
 ## Location
 
