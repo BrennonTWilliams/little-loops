@@ -218,6 +218,7 @@ class IssuePriorityQueue:
         skip_ids: set[str] | None = None,
         only_ids: set[str] | None = None,
         category: str | None = None,
+        type_prefixes: set[str] | None = None,
     ) -> list[IssueInfo]:
         """Scan issue directories and return sorted issues.
 
@@ -229,6 +230,7 @@ class IssuePriorityQueue:
             skip_ids: Issue IDs to skip
             only_ids: If provided, only include these issue IDs
             category: Optional category filter (e.g., "bugs")
+            type_prefixes: If provided, only include issues with these type prefixes
 
         Returns:
             List of IssueInfo sorted by priority then alphabetically
@@ -237,7 +239,13 @@ class IssuePriorityQueue:
         priority_filter = priority_filter or IssuePriorityQueue.DEFAULT_PRIORITIES
 
         # Use the existing find_issues function from issue_parser
-        all_issues = find_issues(config, category=category, skip_ids=skip_ids, only_ids=only_ids)
+        all_issues = find_issues(
+            config,
+            category=category,
+            skip_ids=skip_ids,
+            only_ids=only_ids,
+            type_prefixes=type_prefixes,
+        )
 
         # Apply priority filter
         filtered = [i for i in all_issues if i.priority in priority_filter]

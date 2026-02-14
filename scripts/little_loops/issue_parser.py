@@ -471,6 +471,7 @@ def find_issues(
     category: str | None = None,
     skip_ids: set[str] | None = None,
     only_ids: set[str] | None = None,
+    type_prefixes: set[str] | None = None,
 ) -> list[IssueInfo]:
     """Find all issues matching criteria.
 
@@ -479,6 +480,8 @@ def find_issues(
         category: Optional category to filter (e.g., "bugs")
         skip_ids: Issue IDs to skip
         only_ids: If provided, only include these issue IDs
+        type_prefixes: If provided, only include issues whose ID starts with
+            one of these prefixes (e.g., {"BUG", "ENH"})
 
     Returns:
         List of IssueInfo sorted by priority
@@ -514,6 +517,11 @@ def find_issues(
             # Apply only filter (if specified)
             if only_ids is not None and info.issue_id not in only_ids:
                 continue
+            # Apply type filter (if specified)
+            if type_prefixes is not None:
+                prefix = info.issue_id.split("-", 1)[0]
+                if prefix not in type_prefixes:
+                    continue
             issues.append(info)
 
     # Sort by priority (lower int = higher priority)
@@ -526,6 +534,7 @@ def find_highest_priority_issue(
     category: str | None = None,
     skip_ids: set[str] | None = None,
     only_ids: set[str] | None = None,
+    type_prefixes: set[str] | None = None,
 ) -> IssueInfo | None:
     """Find the highest priority issue.
 
@@ -534,9 +543,10 @@ def find_highest_priority_issue(
         category: Optional category to filter
         skip_ids: Issue IDs to skip
         only_ids: If provided, only include these issue IDs
+        type_prefixes: If provided, only include issues with these type prefixes
 
     Returns:
         Highest priority IssueInfo or None if no issues found
     """
-    issues = find_issues(config, category, skip_ids, only_ids)
+    issues = find_issues(config, category, skip_ids, only_ids, type_prefixes)
     return issues[0] if issues else None

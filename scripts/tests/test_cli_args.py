@@ -10,6 +10,7 @@ import argparse
 from pathlib import Path
 
 from little_loops.cli_args import (
+    VALID_ISSUE_TYPES,
     add_common_auto_args,
     add_common_parallel_args,
     add_config_arg,
@@ -18,7 +19,9 @@ from little_loops.cli_args import (
     add_resume_arg,
     add_skip_arg,
     add_timeout_arg,
+    add_type_arg,
     parse_issue_ids,
+    parse_issue_types,
 )
 
 
@@ -54,6 +57,84 @@ class TestParseIssueIds:
         """
         result = parse_issue_ids("")
         assert result == {""}
+
+
+class TestParseIssueTypes:
+    """Tests for parse_issue_types() function."""
+
+    def test_none_returns_none(self) -> None:
+        """None input returns None."""
+        result = parse_issue_types(None)
+        assert result is None
+
+    def test_single_type(self) -> None:
+        """Single type is uppercased."""
+        result = parse_issue_types("bug")
+        assert result == {"BUG"}
+
+    def test_multiple_types(self) -> None:
+        """Multiple comma-separated types are uppercased and split."""
+        result = parse_issue_types("BUG,enh")
+        assert result == {"BUG", "ENH"}
+
+    def test_all_types(self) -> None:
+        """All valid types are accepted."""
+        result = parse_issue_types("BUG,FEAT,ENH")
+        assert result == {"BUG", "FEAT", "ENH"}
+
+    def test_whitespace_handling(self) -> None:
+        """Whitespace around types is stripped."""
+        result = parse_issue_types(" BUG , ENH ")
+        assert result == {"BUG", "ENH"}
+
+    def test_invalid_type_exits(self) -> None:
+        """Invalid type causes SystemExit with code 2."""
+        import pytest
+
+        with pytest.raises(SystemExit) as exc_info:
+            parse_issue_types("INVALID")
+        assert exc_info.value.code == 2
+
+    def test_mixed_valid_invalid_exits(self) -> None:
+        """Mix of valid and invalid types causes SystemExit."""
+        import pytest
+
+        with pytest.raises(SystemExit) as exc_info:
+            parse_issue_types("BUG,INVALID")
+        assert exc_info.value.code == 2
+
+
+class TestValidIssueTypes:
+    """Tests for VALID_ISSUE_TYPES constant."""
+
+    def test_contains_expected_types(self) -> None:
+        """Contains BUG, FEAT, and ENH."""
+        assert VALID_ISSUE_TYPES == {"BUG", "FEAT", "ENH"}
+
+
+class TestAddTypeArg:
+    """Tests for add_type_arg() function."""
+
+    def test_adds_type_argument(self) -> None:
+        """Adds --type argument that accepts string."""
+        parser = argparse.ArgumentParser()
+        add_type_arg(parser)
+        args = parser.parse_args(["--type", "BUG"])
+        assert args.type == "BUG"
+
+    def test_default_is_none(self) -> None:
+        """Default value is None."""
+        parser = argparse.ArgumentParser()
+        add_type_arg(parser)
+        args = parser.parse_args([])
+        assert args.type is None
+
+    def test_accepts_multiple_types(self) -> None:
+        """Accepts comma-separated types as raw string."""
+        parser = argparse.ArgumentParser()
+        add_type_arg(parser)
+        args = parser.parse_args(["--type", "BUG,ENH"])
+        assert args.type == "BUG,ENH"
 
 
 class TestAddDryRunArg:
@@ -196,7 +277,7 @@ class TestAddCommonAutoArgs:
     """Tests for add_common_auto_args() function."""
 
     def test_adds_all_expected_arguments(self) -> None:
-        """Adds resume, dry-run, max-issues, only, skip, config."""
+        """Adds resume, dry-run, max-issues, only, skip, type, config."""
         parser = argparse.ArgumentParser()
         add_common_auto_args(parser)
         args = parser.parse_args(
@@ -209,6 +290,8 @@ class TestAddCommonAutoArgs:
                 "BUG-001",
                 "--skip",
                 "BUG-002",
+                "--type",
+                "BUG",
                 "--config",
                 "/path",
             ]
@@ -218,6 +301,7 @@ class TestAddCommonAutoArgs:
         assert args.max_issues == 5
         assert args.only == "BUG-001"
         assert args.skip == "BUG-002"
+        assert args.type == "BUG"
         assert args.config is not None
 
 
@@ -225,7 +309,7 @@ class TestAddCommonParallelArgs:
     """Tests for add_common_parallel_args() function."""
 
     def test_adds_all_expected_arguments(self) -> None:
-        """Adds dry-run, resume, max-workers, timeout, quiet, only, skip, config."""
+        """Adds dry-run, resume, max-workers, timeout, quiet, only, skip, type, config."""
         parser = argparse.ArgumentParser()
         add_common_parallel_args(parser)
         args = parser.parse_args(
@@ -241,6 +325,8 @@ class TestAddCommonParallelArgs:
                 "BUG-001",
                 "--skip",
                 "BUG-002",
+                "--type",
+                "ENH",
                 "--config",
                 "/path",
             ]
@@ -252,4 +338,5 @@ class TestAddCommonParallelArgs:
         assert args.quiet is True
         assert args.only == "BUG-001"
         assert args.skip == "BUG-002"
+        assert args.type == "ENH"
         assert args.config is not None

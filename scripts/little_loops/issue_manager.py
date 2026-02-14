@@ -600,34 +600,23 @@ def process_issue_inplace(
                 # Check issue file content for implementation markers
                 if check_content_markers(info.path):
                     logger.info(
-                        "Implementation markers found in issue file - "
-                        "completing lifecycle..."
+                        "Implementation markers found in issue file - completing lifecycle..."
                     )
                     verified = complete_issue_lifecycle(info, config, logger)
                     if verified:
-                        logger.success(
-                            f"Content marker completion succeeded for {info.issue_id}"
-                        )
+                        logger.success(f"Content marker completion succeeded for {info.issue_id}")
                     else:
-                        logger.warning(
-                            f"Content marker completion failed for {info.issue_id}"
-                        )
+                        logger.warning(f"Content marker completion failed for {info.issue_id}")
                 else:
                     # CRITICAL: Verify actual implementation work was done
                     work_done = verify_work_was_done(logger)
                     if work_done:
-                        logger.info(
-                            "Evidence of code changes found - completing lifecycle..."
-                        )
+                        logger.info("Evidence of code changes found - completing lifecycle...")
                         verified = complete_issue_lifecycle(info, config, logger)
                         if verified:
-                            logger.success(
-                                f"Fallback completion succeeded for {info.issue_id}"
-                            )
+                            logger.success(f"Fallback completion succeeded for {info.issue_id}")
                         else:
-                            logger.warning(
-                                f"Fallback completion failed for {info.issue_id}"
-                            )
+                            logger.warning(f"Fallback completion failed for {info.issue_id}")
                     else:
                         # NO work was done - do NOT mark as completed
                         logger.error(
@@ -680,6 +669,7 @@ class AutoManager:
         category: str | None = None,
         only_ids: set[str] | None = None,
         skip_ids: set[str] | None = None,
+        type_prefixes: set[str] | None = None,
         verbose: bool = True,
     ) -> None:
         """Initialize the auto manager.
@@ -692,6 +682,7 @@ class AutoManager:
             category: Optional category to filter (e.g., "bugs")
             only_ids: If provided, only process these issue IDs
             skip_ids: Issue IDs to skip (in addition to attempted issues)
+            type_prefixes: If provided, only process issues with these type prefixes
             verbose: Whether to output progress messages
         """
         self.config = config
@@ -701,12 +692,14 @@ class AutoManager:
         self.category = category
         self.only_ids = only_ids
         self.skip_ids = skip_ids or set()
+        self.type_prefixes = type_prefixes
 
         self.logger = Logger(verbose=verbose)
         self.state_manager = StateManager(config.get_state_file(), self.logger)
         self.parser = IssueParser(config)
 
         # Build dependency graph for dependency-aware sequencing (ENH-016)
+        # Note: don't filter by type here — we need all issues for dependency resolution
         all_issues = find_issues(self.config, self.category)
         all_known_ids: set[str] | None = None
         try:
@@ -754,11 +747,13 @@ class AutoManager:
         # Get issues that are ready (blockers satisfied)
         ready_issues = self.dep_graph.get_ready_issues(completed)
 
-        # Filter by skip_ids, only_ids
+        # Filter by skip_ids, only_ids, type_prefixes
         candidates = [
             i
             for i in ready_issues
-            if i.issue_id not in skip_ids and (self.only_ids is None or i.issue_id in self.only_ids)
+            if i.issue_id not in skip_ids
+            and (self.only_ids is None or i.issue_id in self.only_ids)
+            and (self.type_prefixes is None or i.issue_id.split("-", 1)[0] in self.type_prefixes)
         ]
 
         if candidates:
@@ -769,6 +764,8 @@ class AutoManager:
         remaining = all_in_graph - completed - skip_ids
         if self.only_ids is not None:
             remaining = remaining & self.only_ids
+        if self.type_prefixes is not None:
+            remaining = {r for r in remaining if r.split("-", 1)[0] in self.type_prefixes}
 
         if remaining:
             self._log_blocked_issues(remaining, completed)

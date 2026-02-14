@@ -107,7 +107,7 @@ When running batch processing, users frequently want to target a specific issue 
 
 ## Blocked By
 
-- ENH-352: batch git log calls in files_modified_since_commit (shared issue_discovery.py)
+- ~~ENH-352: batch git log calls in files_modified_since_commit (shared issue_discovery.py)~~ (completed)
 - ~~BUG-403: dependency graph renders empty nodes without edges~~ (completed)
 
 ## Related Key Documentation
@@ -130,13 +130,33 @@ When running batch processing, users frequently want to target a specific issue 
 
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-14 | Priority: P3
+
+## Resolution
+
+- **Action**: improve
+- **Result**: COMPLETED
+- **Date**: 2026-02-14
+
+### Changes Made
+- `scripts/little_loops/cli_args.py`: Added `VALID_ISSUE_TYPES`, `add_type_arg()`, `parse_issue_types()`, updated `add_common_auto_args()` and `add_common_parallel_args()` bundles
+- `scripts/little_loops/issue_parser.py`: Added `type_prefixes` parameter to `find_issues()` and `find_highest_priority_issue()`
+- `scripts/little_loops/cli/auto.py`: Parse and pass `--type` flag to `AutoManager`
+- `scripts/little_loops/issue_manager.py`: Added `type_prefixes` to `AutoManager.__init__()` and `_get_next_issue()` filtering
+- `scripts/little_loops/cli/parallel.py`: Parse and pass `--type` flag through parallel pipeline
+- `scripts/little_loops/parallel/types.py`: Added `type_prefixes` to `ParallelConfig`
+- `scripts/little_loops/config.py`: Added `type_prefixes` to `create_parallel_config()`
+- `scripts/little_loops/parallel/orchestrator.py`: Pass `type_prefixes` to `scan_issues()`
+- `scripts/little_loops/parallel/priority_queue.py`: Pass `type_prefixes` to `find_issues()`
+- `scripts/little_loops/cli/sprint.py`: Added `--type` to `create` and `run` subcommands
+- `scripts/tests/test_cli_args.py`: Added tests for `parse_issue_types()`, `add_type_arg()`, `VALID_ISSUE_TYPES`, updated bundle tests
+- `scripts/tests/test_priority_queue.py`: Updated mock assertion for new `type_prefixes` parameter
 
 ## Verification Notes
 
-- **Verified**: 2026-02-13
+- **Verified**: 2026-02-14
 - **Verdict**: CORRECTED
 - `cli_args.py` exists with `add_common_auto_args()` (line 171) and `add_common_parallel_args()` (line 185) — confirmed
 - No `--type` flag or `add_type_arg()` function exists — enhancement still needed
-- **Blocker cleared**: BUG-403 (dependency graph renders empty nodes) is completed — marked as satisfied in Blocked By
-- Remaining blocker: ENH-352 (batch git log calls) still open
+- All referenced files exist: `cli_args.py`, `cli/auto.py`, `cli/parallel.py`, `cli/sprint.py`, `issue_discovery.py`, `test_cli_args.py`, `test_cli.py`
+- **All blockers cleared**: ENH-352 and BUG-403 both completed

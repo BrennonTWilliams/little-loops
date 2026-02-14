@@ -13,7 +13,9 @@ from little_loops.cli_args import (
     add_resume_arg,
     add_skip_arg,
     add_timeout_arg,
+    add_type_arg,
     parse_issue_ids,
+    parse_issue_types,
 )
 from little_loops.config import BRConfig
 from little_loops.logger import Logger
@@ -40,6 +42,8 @@ Examples:
   %(prog)s --stream-output    # Stream Claude CLI output in real-time
   %(prog)s --only BUG-001,BUG-002  # Process only specific issues
   %(prog)s --skip BUG-003     # Skip specific issues
+  %(prog)s --type BUG          # Process only bugs
+  %(prog)s --type BUG,ENH      # Process bugs and enhancements
 """,
     )
 
@@ -113,6 +117,7 @@ Examples:
     add_quiet_arg(parser)
     add_only_arg(parser)
     add_skip_arg(parser)
+    add_type_arg(parser)
 
     # Add max-issues and config individually (different help text needed)
     add_max_issues_arg(parser)
@@ -148,6 +153,7 @@ Examples:
     # Parse issue ID filters
     only_ids = parse_issue_ids(args.only)
     skip_ids = parse_issue_ids(args.skip)
+    type_prefixes = parse_issue_types(args.type)
 
     # Create parallel config with CLI overrides
     parallel_config = config.create_parallel_config(
@@ -160,6 +166,7 @@ Examples:
         show_model=args.show_model if args.show_model else None,
         only_ids=only_ids,
         skip_ids=skip_ids,
+        type_prefixes=type_prefixes,
         merge_pending=args.merge_pending,
         clean_start=args.clean_start,
         ignore_pending=args.ignore_pending,

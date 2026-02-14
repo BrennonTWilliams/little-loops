@@ -18,7 +18,9 @@ from little_loops.cli_args import (
     add_skip_analysis_arg,
     add_skip_arg,
     add_timeout_arg,
+    add_type_arg,
     parse_issue_ids,
+    parse_issue_types,
 )
 from little_loops.config import BRConfig
 from little_loops.dependency_graph import (
@@ -95,6 +97,7 @@ Examples:
             "Comma-separated list of issue IDs to exclude from sprint (e.g., BUG-003,FEAT-004)"
         ),
     )
+    add_type_arg(create_parser)
 
     # run subcommand
     run_parser = subparsers.add_parser("run", help="Execute a sprint")
@@ -112,6 +115,7 @@ Examples:
         ),
     )
     add_skip_analysis_arg(run_parser)
+    add_type_arg(run_parser)
 
     # list subcommand
     list_parser = subparsers.add_parser("list", help="List all sprints")
@@ -199,6 +203,15 @@ def _cmd_sprint_create(args: argparse.Namespace, manager: SprintManager) -> int:
                 f"Skipping {skipped} issue(s): "
                 f"{', '.join(sorted(skip_ids & set(issues) | skip_ids))}"
             )
+
+    # Apply type filter if provided
+    type_prefixes = parse_issue_types(getattr(args, "type", None))
+    if type_prefixes:
+        original_count = len(issues)
+        issues = [i for i in issues if i.split("-", 1)[0] in type_prefixes]
+        filtered = original_count - len(issues)
+        if filtered > 0:
+            logger.info(f"Filtered {filtered} issue(s) by type: {', '.join(sorted(type_prefixes))}")
 
     # Validate issues exist
     valid = manager.validate_issues(issues)
@@ -891,6 +904,15 @@ def _cmd_sprint_run(
         if skipped > 0:
             logger.info(f"Skipping {skipped} issue(s): {', '.join(sorted(skip_ids))}")
 
+    # Apply type filter if provided
+    type_prefixes = parse_issue_types(getattr(args, "type", None))
+    if type_prefixes:
+        original_count = len(issues_to_process)
+        issues_to_process = [i for i in issues_to_process if i.split("-", 1)[0] in type_prefixes]
+        filtered = original_count - len(issues_to_process)
+        if filtered > 0:
+            logger.info(f"Filtered {filtered} issue(s) by type: {', '.join(sorted(type_prefixes))}")
+
     # Validate issues exist
     valid = manager.validate_issues(issues_to_process)
     invalid = set(issues_to_process) - set(valid.keys())
@@ -1096,9 +1118,7 @@ def _cmd_sprint_run(
 
                 # Sequential retry for failed issues (ENH-308)
                 if actually_failed:
-                    logger.info(
-                        f"Retrying {len(actually_failed)} failed issue(s) sequentially..."
-                    )
+                    logger.info(f"Retrying {len(actually_failed)} failed issue(s) sequentially...")
                     from little_loops.issue_manager import process_issue_inplace
 
                     retried_ok = 0
@@ -1126,9 +1146,7 @@ def _cmd_sprint_run(
                         )
 
                 # Check whether failures remain after retry (ENH-308)
-                remaining_failures = {
-                    iid for iid in actually_failed if iid in state.failed_issues
-                }
+                remaining_failures = {iid for iid in actually_failed if iid in state.failed_issues}
                 if result == 0 or not remaining_failures:
                     logger.success(
                         f"Wave {wave_num}/{total_waves} completed: {', '.join(wave_ids)}"

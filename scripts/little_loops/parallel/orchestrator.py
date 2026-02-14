@@ -697,6 +697,7 @@ class ParallelOrchestrator:
             priority_filter=list(self.parallel_config.priority_filter),
             skip_ids=skip_ids,
             only_ids=self.parallel_config.only_ids,
+            type_prefixes=self.parallel_config.type_prefixes,
         )
 
         # Apply max issues limit

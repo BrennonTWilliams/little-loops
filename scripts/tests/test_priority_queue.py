@@ -660,7 +660,7 @@ class TestIssuePriorityQueueScanIssues:
             result = IssuePriorityQueue.scan_issues(mock_config)
 
             mock_find.assert_called_once_with(
-                mock_config, category=None, skip_ids=set(), only_ids=None
+                mock_config, category=None, skip_ids=set(), only_ids=None, type_prefixes=None
             )
             assert len(result) == 2
 

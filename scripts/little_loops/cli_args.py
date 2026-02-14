@@ -168,10 +168,57 @@ def parse_issue_ids(value: str | None) -> set[str] | None:
     return {i.strip().upper() for i in value.split(",")}
 
 
+VALID_ISSUE_TYPES = {"BUG", "FEAT", "ENH"}
+
+
+def add_type_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --type argument for filtering issues by type prefix."""
+    parser.add_argument(
+        "--type",
+        type=str,
+        default=None,
+        help="Comma-separated issue types to process (e.g., BUG, FEAT, ENH)",
+    )
+
+
+def parse_issue_types(value: str | None) -> set[str] | None:
+    """Parse comma-separated issue types into a validated set.
+
+    Args:
+        value: Comma-separated string like "BUG,ENH" or None
+
+    Returns:
+        Set of uppercase type prefixes, or None if value is None
+
+    Raises:
+        SystemExit: If invalid issue types are provided (via argparse error)
+
+    Example:
+        >>> parse_issue_types("bug,enh")
+        {'BUG', 'ENH'}
+        >>> parse_issue_types(None)
+        None
+    """
+    if value is None:
+        return None
+    types = {t.strip().upper() for t in value.split(",")}
+    invalid = types - VALID_ISSUE_TYPES
+    if invalid:
+        import sys
+
+        print(
+            f"error: invalid issue type(s): {', '.join(sorted(invalid))}. "
+            f"Valid types: {', '.join(sorted(VALID_ISSUE_TYPES))}",
+            file=sys.stderr,
+        )
+        sys.exit(2)
+    return types
+
+
 def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     """Add arguments common to ll-auto command.
 
-    Adds: --resume, --dry-run, --max-issues, --quiet, --only, --skip, --config
+    Adds: --resume, --dry-run, --max-issues, --quiet, --only, --skip, --type, --config
     """
     add_resume_arg(parser)
     add_dry_run_arg(parser)
@@ -179,13 +226,14 @@ def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     add_quiet_arg(parser)
     add_only_arg(parser)
     add_skip_arg(parser)
+    add_type_arg(parser)
     add_config_arg(parser)
 
 
 def add_common_parallel_args(parser: argparse.ArgumentParser) -> None:
     """Add arguments common to parallel execution tools.
 
-    Adds: --dry-run, --resume, --max-workers, --timeout, --quiet, --only, --skip, --config
+    Adds: --dry-run, --resume, --max-workers, --timeout, --quiet, --only, --skip, --type, --config
     """
     add_dry_run_arg(parser)
     add_resume_arg(parser)
@@ -194,6 +242,7 @@ def add_common_parallel_args(parser: argparse.ArgumentParser) -> None:
     add_quiet_arg(parser)
     add_only_arg(parser)
     add_skip_arg(parser)
+    add_type_arg(parser)
     add_config_arg(parser)
 
 
@@ -203,12 +252,15 @@ __all__ = [
     "add_config_arg",
     "add_only_arg",
     "add_skip_arg",
+    "add_type_arg",
     "add_max_workers_arg",
     "add_timeout_arg",
     "add_quiet_arg",
     "add_skip_analysis_arg",
     "add_max_issues_arg",
     "parse_issue_ids",
+    "parse_issue_types",
+    "VALID_ISSUE_TYPES",
     "add_common_auto_args",
     "add_common_parallel_args",
 ]
