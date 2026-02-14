@@ -14,7 +14,7 @@ arguments:
     description: Specific issue ID (e.g., BUG-004). If empty, finds highest priority.
     required: false
   - name: flags
-    description: "Optional flags: --plan-only (stop after planning), --resume (continue from checkpoint), --gates (enable phase gates for manual verification)"
+    description: "Optional flags: --plan-only (stop after planning), --resume (continue from checkpoint), --gates (enable phase gates for manual verification), --dry-run (alias for --plan-only), --quick (skip deep research and confidence check)"
     required: false
 ---
 
@@ -89,7 +89,7 @@ fi
 
 Before creating an implementation plan, spawn parallel sub-agents to gather comprehensive context about the issue.
 
-**Skip this phase if**: Action is `verify` (verification doesn't need deep research)
+**Skip this phase if**: Action is `verify` (verification doesn't need deep research), or `--quick` flag is set (proceed directly to planning with issue file context only)
 
 ### Research Tasks
 
@@ -108,7 +108,7 @@ See [templates.md](templates.md) for detailed agent prompts and research finding
 
 After reading the issue and completing research, create a comprehensive plan.
 
-**If `--plan-only` flag is set**: Stop after writing the plan (do not implement).
+**If `--plan-only` or `--dry-run` flag is set**: Stop after writing the plan (do not implement).
 
 ### Recommended: Pre-Implementation Confidence Check
 
@@ -122,7 +122,7 @@ Use Skill tool with:
 
 - **Score >=70**: Proceed to plan creation
 - **Score <70**: Review the gaps identified and consider addressing them before planning
-- **Skip if**: Action is `verify`, or time constraints require proceeding immediately
+- **Skip if**: Action is `verify`, `--quick` flag is set, or time constraints require proceeding immediately
 
 ### No Open Questions Rule
 
@@ -371,8 +371,10 @@ $ARGUMENTS
 
 - **flags** (optional): Modify command behavior
   - `--plan-only` - Stop after creating the implementation plan
+  - `--dry-run` - Alias for `--plan-only`
   - `--resume` - Resume from existing plan checkpoint
   - `--gates` - Enable phase gates for manual verification between phases
+  - `--quick` - Skip deep research (Phase 1.5) and confidence check for faster planning
 
 ---
 
@@ -387,6 +389,12 @@ $ARGUMENTS
 
 # Create plan only, don't implement
 /ll:manage-issue feature implement FEAT-042 --plan-only
+
+# Dry run (alias for --plan-only)
+/ll:manage-issue enhancement improve ENH-100 --dry-run
+
+# Quick mode: skip deep research for faster planning
+/ll:manage-issue bug fix BUG-050 --quick
 
 # Resume interrupted work from checkpoint
 /ll:manage-issue bug fix BUG-123 --resume

@@ -1,6 +1,6 @@
 ---
 description: Analyze codebase architecture for patterns, organization, and improvements
-argument-hint: "[focus-area]"
+argument-hint: "[focus-area] [flags]"
 allowed-tools:
   - Read
   - Glob
@@ -8,9 +8,13 @@ allowed-tools:
   - Write
   - Edit
   - Bash(ruff:*, wc:*, git:*)
+  - Task
 arguments:
   - name: focus
     description: Focus area (large-files|integration|patterns|organization|all)
+    required: false
+  - name: flags
+    description: "Optional flags: --deep (spawn sub-agents for thorough analysis)"
     required: false
 ---
 
@@ -34,6 +38,18 @@ This command uses project configuration from `.claude/ll-config.json`:
 
 ## Process
 
+### 0. Parse Flags
+
+```bash
+FLAGS="${flags:-}"
+DEEP_MODE=false
+
+if [[ "$FLAGS" == *"--deep"* ]]; then DEEP_MODE=true; fi
+```
+
+**Flag behavior**:
+- `--deep`: Spawn parallel sub-agents (codebase-analyzer, codebase-pattern-finder) for each focus area instead of direct sequential analysis. Produces more thorough findings at the cost of longer execution time. When `--deep` is set, use the Task tool to launch analysis agents in parallel for each applicable focus area.
+
 ### 1. Gather Metrics
 
 ```bash
@@ -49,25 +65,31 @@ tree {{config.project.src_dir}} -d -L 3
 
 ### 2. Analyze by Focus Area
 
+**If `--deep` flag is set**: For each focus area, spawn a Task sub-agent (subagent_type `codebase-analyzer`) with a targeted analysis prompt. Launch applicable agents in parallel for faster results. Collect findings from all agents before generating the report.
+
 #### Large Files
 - Find files over 500 lines
 - Identify multiple responsibilities
 - Suggest split points
+- **If `--deep`**: Analyze internal complexity (cyclomatic complexity, class count, function count per file)
 
 #### Integration Points
 - Map module dependencies
 - Identify coupling patterns
 - Find integration seams
+- **If `--deep`**: Build full import graph, detect transitive dependencies, measure coupling metrics
 
 #### Patterns
 - Detect design patterns in use
 - Identify anti-patterns
 - Suggest pattern improvements
+- **If `--deep`**: Compare pattern implementations against best practices, find inconsistent pattern usage across modules
 
 #### Organization
 - Assess module structure
 - Check naming conventions
 - Review package organization
+- **If `--deep`**: Analyze file placement against common Python project layouts, check for misplaced utilities
 
 ### 3. Output Report
 
@@ -393,6 +415,9 @@ $ARGUMENTS
   - `organization` - Assess structure
   - `all` - Complete audit
 
+- **flags** (optional): Modify audit behavior
+  - `--deep` - Spawn sub-agents for thorough analysis with complexity metrics and cross-module checks
+
 ---
 
 ## Examples
@@ -406,6 +431,12 @@ $ARGUMENTS
 
 # Analyze patterns
 /ll:audit-architecture patterns
+
+# Deep audit with sub-agent analysis
+/ll:audit-architecture --deep
+
+# Deep audit focused on integration points
+/ll:audit-architecture integration --deep
 ```
 
 ---

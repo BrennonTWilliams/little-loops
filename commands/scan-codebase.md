@@ -1,9 +1,14 @@
 ---
 description: Scan codebase to identify bugs, enhancements, and features, then create issue files
+argument-hint: "[flags]"
 allowed-tools:
   - Bash(git:*, gh:*)
   - Task
   - TodoWrite
+arguments:
+  - name: flags
+    description: "Optional flags: --quick (faster single-agent scan), --deep (thorough analysis with extra verification), --focus [area] (narrow scope, e.g. security, performance, error-handling)"
+    required: false
 ---
 
 # Scan Codebase
@@ -38,6 +43,28 @@ Use TodoWrite to create:
 
 Update todos as each phase completes to give the user visibility into progress.
 
+### 0.5. Parse Flags
+
+```bash
+FLAGS="${flags:-}"
+QUICK_MODE=false
+DEEP_MODE=false
+FOCUS_AREA=""
+
+if [[ "$FLAGS" == *"--quick"* ]]; then QUICK_MODE=true; fi
+if [[ "$FLAGS" == *"--deep"* ]]; then DEEP_MODE=true; fi
+
+# Extract --focus value (e.g., "--focus security" → "security")
+if [[ "$FLAGS" =~ --focus[[:space:]]+([a-zA-Z_-]+) ]]; then
+    FOCUS_AREA="${BASH_REMATCH[1]}"
+fi
+```
+
+**Flag behavior**:
+- `--quick`: Spawn a single combined scan agent instead of 3 parallel agents. Skip cross-referencing (Step 3.4). Faster but less thorough.
+- `--deep`: Add extra verification passes in agent prompts. Include code complexity analysis. More thorough but slower.
+- `--focus [area]`: Narrow all agent prompts to a specific concern area (e.g., `security`, `performance`, `error-handling`, `testing`). Only report findings related to that area.
+
 ### 1. Gather Metadata
 
 Collect git and repository information for traceability and GitHub permalinks:
@@ -63,11 +90,15 @@ Store these values for use in issue files:
 - `REPO_NAME`: Repository name
 - `PERMALINKS_AVAILABLE`: true if on main/master or commit is pushed
 
-### 2. Spawn Parallel Scan Agents
+### 2. Spawn Scan Agents
 
-Launch 3 sub-agents in parallel to scan different categories concurrently:
+**If `--quick` flag is set**: Spawn a single combined agent that scans for bugs, enhancements, and features in one pass. Skip the parallel approach below.
 
-**IMPORTANT**: Spawn all 3 agents in a SINGLE message with multiple Task tool calls.
+**Default / `--deep`**: Launch 3 sub-agents in parallel to scan different categories concurrently.
+
+**If `--focus [area]` is set**: Add the following instruction to ALL agent prompts: "Focus exclusively on [area]-related findings. Only report issues directly related to [area]. Skip unrelated findings."
+
+**IMPORTANT**: When not using `--quick`, spawn all 3 agents in a SINGLE message with multiple Task tool calls.
 
 #### Agent 1: Bug Scanner
 ```
@@ -99,6 +130,11 @@ IMPORTANT: Before reporting each finding, VERIFY:
 - Line numbers are accurate (check the actual file)
 - Code snippets match current code
 Only report VERIFIED issues with accurate references.
+
+**If --deep**: Additionally analyze:
+- Code complexity metrics (cyclomatic complexity, nesting depth)
+- Cross-reference with git blame for recently introduced bugs
+- Check if similar bugs exist in related modules
 ```
 
 #### Agent 2: Enhancement Scanner
@@ -132,6 +168,11 @@ IMPORTANT: Before reporting each finding, VERIFY:
 - Line numbers are accurate (check the actual file)
 - Any referenced functions/classes exist
 Only report VERIFIED findings with accurate references.
+
+**If --deep**: Additionally analyze:
+- Quantify performance impact with benchmarks where possible
+- Check for similar patterns across the codebase that could benefit from the same enhancement
+- Assess test coverage gaps with specific missing test cases
 ```
 
 #### Agent 3: Feature Scanner
@@ -162,6 +203,11 @@ IMPORTANT: Before reporting each finding, VERIFY:
 - Any TODOs or comments you reference are still present
 - Line numbers are accurate
 Only report VERIFIED findings.
+
+**If --deep**: Additionally:
+- Search for related TODO chains across files
+- Analyze incomplete implementations by checking for stub functions or placeholder code
+- Cross-reference with existing feature requests in .issues/features/
 ```
 
 ### 3. Synthesize Findings
@@ -177,11 +223,12 @@ After ALL sub-agents complete:
    - P3: Low-priority bugs, nice-to-have enhancements
    - P4: Minor improvements, code cleanup
    - P5: Future considerations, low-priority features
-4. **Assign globally unique sequential numbers**:
+4. **Skip cross-referencing if `--quick`**: When `--quick` is set, skip step 5 (cross-reference for dependencies) to save time.
+5. **Assign globally unique sequential numbers**:
    - Run `ll-next-id` to get the next available issue number
    - Use that value for the first new issue, increment for subsequent issues
    - Example: If `ll-next-id` prints `011`, assign 011, 012, 013, etc.
-5. **Cross-reference for dependencies**: After assigning IDs to new findings:
+6. **Cross-reference for dependencies** (skip if `--quick`): After assigning IDs to new findings:
    - For each new finding, extract the file path(s) from its Location section
    - Compare against file paths in ALL existing active issues (read their Location sections)
    - If a new finding references files also referenced by an existing issue:
@@ -320,11 +367,34 @@ To find the current session JSONL: look in `~/.claude/projects/` for the directo
 
 ---
 
+## Arguments
+
+$ARGUMENTS
+
+- **flags** (optional): Modify scan behavior
+  - `--quick` - Single-agent scan, skip cross-referencing. Faster but less thorough
+  - `--deep` - Extra verification passes, complexity analysis, cross-module checks
+  - `--focus [area]` - Narrow scope to a specific concern (e.g., `security`, `performance`, `error-handling`, `testing`)
+
+---
+
 ## Examples
 
 ```bash
-# Scan codebase for issues
+# Scan codebase for issues (default: 3 parallel agents)
 /ll:scan-codebase
+
+# Quick scan for fast results
+/ll:scan-codebase --quick
+
+# Deep scan with extra analysis
+/ll:scan-codebase --deep
+
+# Focus on security-related issues only
+/ll:scan-codebase --focus security
+
+# Deep scan focused on performance
+/ll:scan-codebase --deep --focus performance
 
 # Review created issues
 ls {{config.issues.base_dir}}/*/

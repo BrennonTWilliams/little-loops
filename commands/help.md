@@ -24,17 +24,19 @@ ISSUE DISCOVERY
     Capture issues from conversation or natural language description
     Input: optional - analyzes conversation if omitted
 
-/ll:scan-codebase
+/ll:scan-codebase [flags]
     Scan codebase to identify bugs, enhancements, and features
+    Flags: --quick, --deep, --focus [area]
 
 /ll:scan-product
     Scan codebase for product-focused issues based on goals document
     Requires: product.enabled in ll-config.json
     Skills: product-analyzer
 
-/ll:audit-architecture [focus]
+/ll:audit-architecture [focus] [flags]
     Analyze codebase architecture for patterns and improvements
     Focus: large-files, integration, patterns, organization, all
+    Flags: --deep
 
     Skills: issue-workflow, issue-size-review, map-dependencies
     CLI: ll-deps
@@ -80,10 +82,11 @@ PLANNING & IMPLEMENTATION
 /ll:review-sprint [sprint_name]
     AI-guided sprint health check and optimization
 
-/ll:manage-issue <type> <action> [issue_id]
+/ll:manage-issue <type> <action> [issue_id] [flags]
     Autonomously manage issues - plan, implement, verify, complete
     Types: bug, feature, enhancement
     Actions: fix, implement, improve, verify
+    Flags: --plan-only, --dry-run, --resume, --gates, --quick
 
 /ll:iterate-plan [plan_path]
     Iterate on existing implementation plans with updates
@@ -181,7 +184,21 @@ SESSION & CONFIG
     Settings: enabled, mode, confirm, status
 
 ================================================================================
-Usage: /ll:<command> [arguments]
+Usage: /ll:<command> [arguments] [flags]
+
+FLAG CONVENTIONS
+----------------
+Flags are optional modifiers passed after arguments. Common flags:
+
+  --quick       Reduce analysis depth for faster results
+  --deep        Increase thoroughness, accept longer execution
+  --focus X     Narrow scope to area X (e.g., security, performance)
+  --dry-run     Show what would happen without making changes
+  --auto        Non-interactive mode (no prompts)
+  --verbose     Include detailed output
+  --all         Process all items instead of single item
+
+Not all commands support all flags. Check each command's documentation.
 
 Configuration: .claude/ll-config.json
 Documentation: https://github.com/BrennonTWilliams/little-loops

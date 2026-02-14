@@ -36,6 +36,26 @@ Commands should document supported flags in their help text. Flags are optional 
 - `commands/audit-architecture.md` — Add flag parsing and conditional behavior
 - `commands/help.md` — Document the flag convention
 
+## Proposed Solution
+
+Use `manage-issue`'s existing flag pattern (`--plan-only`, `--resume`, `--gates`) as the reference implementation. Define a standard flag convention in markdown-based commands/skills:
+
+1. Flags are parsed from the user's text input (e.g., `/ll:scan-codebase --deep --focus security`)
+2. Each command documents supported flags in its frontmatter `description` field
+3. Flag parsing uses simple string matching in the command's process section
+4. A shared convention section in `help.md` documents all standard flags
+
+### Standard Flags
+| Flag | Behavior |
+|------|----------|
+| `--quick` | Reduce analysis depth for faster results |
+| `--deep` | Increase thoroughness, accept longer execution |
+| `--focus [area]` | Narrow scope to specific area |
+| `--dry-run` | Show what would happen without making changes |
+
+### Rollout Strategy
+Incremental: update `scan-codebase`, `manage-issue`, and `audit-architecture` first, then document convention for other command authors.
+
 ## Motivation
 
 This enhancement would:
@@ -68,7 +88,7 @@ This enhancement would:
 - N/A - commands are user-invoked
 
 ### Similar Patterns
-- `commands/manage-issue.md` already supports `--plan-only`, `--resume`, `--gates` flags
+- `skills/manage-issue/SKILL.md` already supports `--plan-only`, `--resume`, `--gates` flags
 
 ### Tests
 - N/A — command markdown files are not Python-testable; verified via manual invocation
@@ -95,7 +115,19 @@ This enhancement would:
 
 ## Status
 
-**Open** | Created: 2026-02-08 | Priority: P4
+**Completed** | Created: 2026-02-08 | Completed: 2026-02-14 | Priority: P4
+
+## Resolution
+
+- **Resolved by**: `/ll:manage-issue enhancement improve ENH-276`
+- **Date**: 2026-02-14
+- **Changes**:
+  - Added `--quick`, `--deep`, `--focus [area]` flags to `commands/scan-codebase.md`
+  - Added `--dry-run` (alias for --plan-only) and `--quick` flags to `skills/manage-issue/SKILL.md`
+  - Added `--deep` flag to `commands/audit-architecture.md`
+  - Added Flag Conventions section to `commands/help.md`
+  - Added Flag Conventions table to `docs/COMMANDS.md`
+  - Added flag convention guidelines to `CONTRIBUTING.md` (Adding Commands section)
 
 ## Verification Notes
 

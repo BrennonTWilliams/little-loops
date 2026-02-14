@@ -2,6 +2,24 @@
 
 Complete reference for all `/ll:` commands. Run `/ll:help` in Claude Code for an interactive version.
 
+## Flag Conventions
+
+Commands and skills support optional `--flag` modifiers passed after arguments. These are standard flags used across the project:
+
+| Flag | Behavior | Used by |
+|------|----------|---------|
+| `--quick` | Reduce analysis depth for faster results | `scan-codebase`, `manage-issue`, `capture-issue` |
+| `--deep` | Increase thoroughness, accept longer execution | `scan-codebase`, `audit-architecture`, `handoff`, `ready-issue` |
+| `--focus [area]` | Narrow scope to a specific area | `scan-codebase` |
+| `--dry-run` | Show what would happen without making changes | `manage-issue`, `align-issues`, `refine-issue`, `format-issue`, `manage-release` |
+| `--auto` | Non-interactive mode (no prompts) | `refine-issue`, `prioritize-issues`, `format-issue`, `confidence-check` |
+| `--verbose` | Include detailed output | `align-issues` |
+| `--all` | Process all items instead of a single item | `align-issues`, `format-issue`, `confidence-check` |
+
+Not all commands support all flags. See individual command documentation for supported flags.
+
+---
+
 ## Setup & Configuration
 
 ### `/ll:init`
@@ -70,6 +88,8 @@ Format issue files to align with template v2.0 structure through section renamin
 ### `/ll:scan-codebase`
 Scan codebase to identify bugs, enhancements, and features (technical analysis).
 
+**Flags:** `--quick` (single-agent scan), `--deep` (extra verification), `--focus [area]` (narrow scope)
+
 ### `/ll:scan-product`
 Scan codebase for product-focused issues based on goals document (requires `product.enabled: true`).
 
@@ -112,6 +132,8 @@ Autonomously manage issues - plan, implement, verify, complete.
 - `type`: `bug`, `feature`, `enhancement`
 - `action`: `fix`, `implement`, `improve`, `verify`
 - `issue_id` (optional)
+
+**Flags:** `--plan-only`, `--dry-run` (alias for --plan-only), `--resume`, `--gates`, `--quick` (skip deep research)
 
 ### `/ll:iterate-plan`
 Iterate on existing implementation plans with updates.
@@ -169,6 +191,8 @@ AI-guided sprint health check that analyzes a sprint's current state and suggest
 Analyze codebase architecture for patterns and improvements.
 
 **Focus:** `large-files`, `integration`, `patterns`, `organization`, `all`
+
+**Flags:** `--deep` (spawn sub-agents for thorough analysis)
 
 ### `/ll:audit-docs`
 Audit documentation for accuracy and completeness. Auto-fixable findings (wrong counts, outdated paths, broken links) can be fixed directly during the audit.

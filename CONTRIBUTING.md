@@ -349,16 +349,48 @@ Commands are defined as Markdown files in `commands/`:
 ```markdown
 ---
 description: "Brief description for /ll:help"
+argument-hint: "[arg_name] [flags]"
 arguments:
   - name: "arg_name"
     description: "Argument description"
     required: true
+  - name: flags
+    description: "Optional flags: --quick (faster), --deep (thorough)"
+    required: false
 ---
 
 # Command Title
 
 [Command implementation instructions]
 ```
+
+### Flag Conventions
+
+When adding flag support to commands or skills, follow these conventions:
+
+1. **Declare flags** in the YAML frontmatter `arguments` array as a `flags` entry
+2. **Parse flags** using bash substring matching:
+   ```bash
+   FLAGS="${flags:-}"
+   QUICK_MODE=false
+   if [[ "$FLAGS" == *"--quick"* ]]; then QUICK_MODE=true; fi
+   ```
+3. **Document flags** in the Arguments section with descriptions
+4. **Show flag usage** in the Examples section
+
+**Standard flags** — reuse these names when the behavior matches:
+
+| Flag | When to use |
+|------|-------------|
+| `--quick` | Reduce analysis depth for faster results |
+| `--deep` | Increase thoroughness, spawn sub-agents |
+| `--focus [area]` | Narrow scope to a specific concern area |
+| `--dry-run` | Preview changes without applying them |
+| `--auto` | Non-interactive mode, no user prompts |
+| `--verbose` | Include detailed output |
+| `--all` | Process all items instead of a single item |
+
+Only add flags that meaningfully change command behavior. Flags are optional — commands must work unchanged without them.
 
 ## Adding Agents
 
