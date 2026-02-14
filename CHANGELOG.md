@@ -13,6 +13,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.12.2] - 2026-02-13
+
+### Other
+
+- chore: standardize remaining underscore command/skill refs to hyphens (c74c178)
+
+[1.12.2]: https://github.com/BrennonTWilliams/little-loops/compare/v1.12.1...v1.12.2
+
 ## [1.12.1] - 2026-02-13
 
 ### Fixed
