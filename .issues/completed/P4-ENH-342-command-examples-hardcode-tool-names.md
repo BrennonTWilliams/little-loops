@@ -83,7 +83,7 @@ _None — ENH-341 (hardcoded paths) is now completed._
 
 ## Blocks
 
-- BUG-359: sprints default_mode violates schema (shared ll-config.json)
+- ~~BUG-359: sprints default_mode violates schema (shared ll-config.json)~~ (completed)
 
 ## Labels
 
@@ -93,7 +93,7 @@ _None — ENH-341 (hardcoded paths) is now completed._
 
 ## Status
 
-**Open** | Created: 2026-02-11 | Priority: P4
+**Completed** | Created: 2026-02-11 | Resolved: 2026-02-14 | Priority: P4
 
 ---
 
@@ -107,3 +107,15 @@ _None — ENH-341 (hardcoded paths) is now completed._
 - `loop-suggester.md` hardcodes tool names at line 60 (confirmed)
 - `check-code.md` already uses `{{config.project.*}}` refs — pattern exists to follow
 - **ENH-341 blocker resolved**: ENH-341 (hardcoded paths) is now completed — this issue is unblocked
+
+---
+
+## Resolution
+
+- **Resolved**: 2026-02-14
+- **Action**: improve
+- **Changes**:
+  - `skills/create-loop/SKILL.md` (line 218): Replaced `mypy src/` with `{{config.project.type_cmd}} {{config.project.src_dir}}`
+  - `commands/iterate-plan.md` (lines 125-127): Replaced `pytest tests/`, `ruff check .`, `mypy src/` with `{{config.project.test_cmd}}`, `{{config.project.lint_cmd}}`, `{{config.project.type_cmd}}` config references
+  - `commands/loop-suggester.md` (line 60): Added config reference note to common checks list while preserving concrete examples for pattern detection context
+- **Verification**: All tests pass (2834), types clean, lint clean (pre-existing unrelated error only)

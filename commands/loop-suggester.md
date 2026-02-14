@@ -57,7 +57,7 @@ Apply these detection rules:
 Look for sequences where:
 - Same check tool appears before AND after Edit/Write
 - Pattern: `Bash(check) → Edit → Bash(check)`
-- Common checks: `pytest`, `mypy`, `ruff`, `eslint`, `tsc`
+- Common checks: tools configured via `{{config.project.*}}` (e.g., `pytest`, `mypy`, `ruff`, `eslint`, `tsc`)
 
 **Confidence boost**: +0.2 if pattern appears in 5+ messages
 

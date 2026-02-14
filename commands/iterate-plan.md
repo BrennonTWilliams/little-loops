@@ -122,9 +122,9 @@ Modify the plan file with:
 #### Success Criteria
 
 **Automated Verification** (commands that can be run):
-- [ ] `pytest tests/` passes
-- [ ] `ruff check .` passes
-- [ ] `mypy src/` passes
+- [ ] `{{config.project.test_cmd}}` passes
+- [ ] `{{config.project.lint_cmd}} {{config.project.src_dir}}` passes
+- [ ] `{{config.project.type_cmd}} {{config.project.src_dir}}` passes
 
 **Manual Verification** (requires human judgment):
 - [ ] Feature behaves correctly when tested via CLI

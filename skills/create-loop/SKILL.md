@@ -215,7 +215,7 @@ If confirmed:
    ## Test Iteration: my-loop
 
    State: check
-   Action: mypy src/
+   Action: {{config.project.type_cmd}} {{config.project.src_dir}}
 
    Exit code: 1
    Output:
