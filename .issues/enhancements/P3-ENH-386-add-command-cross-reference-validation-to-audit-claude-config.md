@@ -35,7 +35,7 @@ This fits naturally into the existing Wave 2 consistency checks alongside agent/
 ## Integration Map
 
 ### Files to Modify
-- `commands/audit_claude_config.md` — add cross-reference validation step to skill auditing
+- `skills/audit-claude-config/SKILL.md` — add cross-reference validation step to skill auditing
 
 ### Dependent Files (Callers/Importers)
 - N/A — this is a command prompt, not code
@@ -91,7 +91,7 @@ This fits naturally into the existing Wave 2 consistency checks alongside agent/
 
 ## Blocked By
 
-- BUG-403: dependency graph renders empty nodes without edges (shared ARCHITECTURE.md)
+_None — BUG-403 (dependency graph renders empty nodes) is now completed._
 
 ## Blocks
 
@@ -99,6 +99,15 @@ _None — ENH-388 closed (won't-fix)._
 
 ## Session Log
 - `/ll:capture-issue` - 2026-02-12T00:00:00Z - `~/.claude/projects/<project>/c0d92ce3-b9a6-4888-8b14-5f5d2b2b2715.jsonl`
+
+## Verification Notes
+
+- **Verified**: 2026-02-13
+- **Verdict**: NEEDS_UPDATE (corrected)
+- **File path fixed**: `commands/audit_claude_config.md` → `skills/audit-claude-config/SKILL.md` (this is a skill, not a command)
+- **Blocker cleared**: BUG-403 completed — issue is now unblocked
+- `commands/help.md` exists — valid validation data source
+- No cross-reference validation of command names exists in audit-claude-config skill — enhancement still needed
 
 ---
 

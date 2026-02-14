@@ -109,11 +109,10 @@ The chosen glyph must render correctly in common terminal emulators (iTerm2, Ter
 
 - **Verified**: 2026-02-13
 - **Verdict**: NEEDS_UPDATE
-- **All line numbers stale** (off by ~16 lines due to code growth since discovery):
-  - Display string: line 297 (not 290)
-  - Comments in sprint.py: lines 292, 325, 759-760 (not 285, 389, 743)
-  - Test assertions in test_cli.py: lines 1082, 1100, 1135 (not 1066, 1084, 1119)
-- Content and behavior descriptions remain accurate — only line numbers drifted
+- **Glyph claim inaccurate**: No `⚠` warning glyph found near "file contention" text. Actual format at line 290: `f"Wave {logical_num} ({group_count} issues, serialized — file contention):"` — no warning triangle glyph is used
+- **Test assertions not found**: No "File contention" string assertions found in test_cli.py (previously claimed at lines 1066, 1084, 1119)
+- **Other references found**: "file contention" appears at sprint.py lines 290, 374, 940
+- Core relabeling request ("contention" → "overlap") remains valid, but the issue description of current behavior needs correction
 
 ---
 

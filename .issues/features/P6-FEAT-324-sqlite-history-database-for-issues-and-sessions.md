@@ -118,7 +118,7 @@ Storage location: `.ll/history.db` at project root (gitignored). This keeps it p
 ## Blocked By
 
 - ~~FEAT-323: Link session JSONL logs to issue files~~ (completed 2026-02-10 — dependency satisfied)
-- BUG-403: dependency graph renders empty nodes without edges (shared ARCHITECTURE.md)
+- ~~BUG-403: dependency graph renders empty nodes without edges~~ (completed — dependency satisfied)
 
 ## Related Key Documentation
 

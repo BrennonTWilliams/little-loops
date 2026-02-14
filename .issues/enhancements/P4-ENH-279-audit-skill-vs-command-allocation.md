@@ -108,7 +108,7 @@ This enhancement would:
 
 ## Blocked By
 
-- ENH-368: plugin-config-auditor missing hook event and handler types (shared docs/ARCHITECTURE.md)
+_None — ENH-368 (plugin-config-auditor missing hook event and handler types) is now completed._
 
 ## Blocks
 
@@ -130,10 +130,10 @@ _None — ENH-366 closed (won't-fix)._
 
 - **Verified**: 2026-02-13
 - **Verdict**: NEEDS_UPDATE
-- **Skills count significantly changed**: Now **16 skills** exist (was 6 at time of writing, 8 at last review). Current skills: `analyze-history`, `audit-claude-config`, `audit-docs`, `capture-issue`, `confidence-check`, `configure`, `create-loop`, `format-issue`, `init`, `issue-size-review`, `issue-workflow`, `loop-suggester`, `manage-issue`, `map-dependencies`, `product-analyzer`, `workflow-automation-proposer`
+- **Skills count confirmed at 16**: `analyze-history`, `audit-claude-config`, `audit-docs`, `capture-issue`, `confidence-check`, `configure`, `create-loop`, `format-issue`, `init`, `issue-size-review`, `issue-workflow`, `loop-suggester`, `manage-issue`, `map-dependencies`, `product-analyzer`, `workflow-automation-proposer`
 - Assessment table needs complete rework to evaluate all 16 skills against the proactive-discovery criterion
 - The original 4 migration candidates still exist in `skills/` — none have been migrated
-- **BUG-364 blocker resolved**: marketplace version mismatch fixed, should be removed from Blocked By
+- **Blocker cleared**: ENH-368 completed — issue is now unblocked
 
 ---
 

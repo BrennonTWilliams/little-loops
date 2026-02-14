@@ -228,7 +228,7 @@ This enhancement would:
 - `scripts/little_loops/issue_history.py` - Split into package
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli.py` - imports from `issue_history`
+- `scripts/little_loops/cli/history.py` - imports from `issue_history`
 - `scripts/tests/test_issue_history_advanced_analytics.py` - imports from `issue_history`
 
 ### Similar Patterns
@@ -276,8 +276,10 @@ _None_
 
 ## Verification Notes
 
-- **Verified**: 2026-02-10
-- **Verdict**: VALID
+- **Verified**: 2026-02-13
+- **Verdict**: NEEDS_UPDATE
 - issue_history.py is exactly 3,824 lines (matches reported size)
 - issue_history/ package does not exist yet — refactoring not started
-- All 61 classes/functions remain in single file
+- All 61 classes/functions remain in single file (25 classes + 36 functions)
+- test_issue_history_advanced_analytics.py is 2,601 lines (matches)
+- **Stale reference fixed**: `cli.py` importer reference updated to `cli/history.py` (cli.py was split into cli/ package)

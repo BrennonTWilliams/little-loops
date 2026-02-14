@@ -171,7 +171,7 @@ The telemetry module generalizes this pattern across all CLI tools.
 - `scripts/little_loops/issue_manager.py` — Emit events from ll-auto processing phases
 - `scripts/little_loops/parallel/orchestrator.py` — Emit events from ll-parallel orchestration
 - `scripts/little_loops/parallel/worker_pool.py` — Emit events from worker results
-- `scripts/little_loops/sprint.py` — Emit events from ll-sprint wave execution
+- `scripts/little_loops/cli/sprint.py` — Emit events from ll-sprint wave execution
 - `scripts/little_loops/fsm/executor.py` — Bridge ll-loop events to unified telemetry
 - `hooks/scripts/context-monitor.sh` — Emit context_snapshot events (or call Python helper)
 - `scripts/setup.cfg` or `pyproject.toml` — Add `ll-telemetry` console_scripts entry point
@@ -276,6 +276,16 @@ The telemetry module generalizes this pattern across all CLI tools.
 ## Session Log
 
 - `/ll:capture-issue` - 2026-02-13T20:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0592a7db-5806-42c2-ab13-a65ef3818ff6.jsonl`
+
+## Verification Notes
+
+- **Verified**: 2026-02-13
+- **Verdict**: VALID
+- No `telemetry.py` or `cli/telemetry.py` exists — feature is new work
+- `fsm/persistence.py` `append_event()` confirmed at line 168 — existing pattern to follow
+- ll-loop event emission to `.events.jsonl` confirmed
+- No `telemetry` section in config-schema.json
+- **Integration map reference fixed**: `scripts/little_loops/sprint.py` → `scripts/little_loops/cli/sprint.py`
 
 ---
 
