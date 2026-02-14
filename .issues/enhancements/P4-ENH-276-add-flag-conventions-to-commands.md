@@ -32,7 +32,7 @@ Commands should document supported flags in their help text. Flags are optional 
 ## Files to Modify
 
 - `commands/scan-codebase.md` — Add flag parsing and conditional behavior
-- `commands/manage-issue.md` — Add flag parsing and conditional behavior
+- `skills/manage-issue/SKILL.md` — Add flag parsing and conditional behavior (manage-issue is a skill, not a command)
 - `commands/audit-architecture.md` — Add flag parsing and conditional behavior
 - `commands/help.md` — Document the flag convention
 
@@ -52,7 +52,7 @@ This enhancement would:
 
 1. Document the flag convention (syntax, supported flags, parsing approach)
 2. Add `--quick`/`--deep`/`--focus` flag parsing to `scan-codebase.md`
-3. Add `--dry-run`/`--quick` flag parsing to `manage-issue.md`
+3. Add `--dry-run`/`--quick` flag parsing to `skills/manage-issue/SKILL.md`
 4. Add `--focus`/`--deep` flag parsing to `audit-architecture.md`
 5. Update `help.md` to document the flag convention
 
@@ -60,7 +60,7 @@ This enhancement would:
 
 ### Files to Modify
 - `commands/scan-codebase.md` - Add flag parsing
-- `commands/manage-issue.md` - Add flag parsing
+- `skills/manage-issue/SKILL.md` - Add flag parsing (manage-issue is a skill, not a command)
 - `commands/audit-architecture.md` - Add flag parsing
 - `commands/help.md` - Document convention
 
@@ -99,10 +99,11 @@ This enhancement would:
 
 ## Verification Notes
 
-- **Verified**: 2026-02-10
-- **Verdict**: VALID (after update)
-- Updated Current Behavior: `manage-issue` already supports `--plan-only`, `--resume`, `--gates` flags
-- Issue scope refined to standardizing the flag convention across other commands and documenting it in help
+- **Verified**: 2026-02-13
+- **Verdict**: CORRECTED
+- **File path fixed**: `commands/manage-issue.md` corrected to `skills/manage-issue/SKILL.md` (manage-issue is a skill, not a command) in Files to Modify, Implementation Steps, and Integration Map
+- `manage-issue` already supports `--plan-only`, `--resume`, `--gates` flags (confirmed at skills/manage-issue/SKILL.md)
+- Issue scope refined to standardizing the flag convention across other commands/skills and documenting it in help
 
 ---
 

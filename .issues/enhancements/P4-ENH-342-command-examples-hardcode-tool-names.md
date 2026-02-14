@@ -15,9 +15,9 @@ Identified during a config consistency audit. Lower priority since these are ill
 
 ## Affected Files
 
-- `commands/create-loop.md` (lines ~81-88, 122, 149, 172-180): template examples hardcode `pytest`, `ruff`, `mypy`
-- `commands/iterate-plan.md` (lines ~119-120): examples hardcode `pytest tests/` and `ruff check .`
-- `commands/loop-suggester.md` (line ~55): lists hardcoded tools
+- `skills/create-loop/SKILL.md` (line ~217): template example hardcodes `mypy` (create-loop is a skill, not a command)
+- `commands/iterate-plan.md` (lines ~125-127): examples hardcode `pytest tests/`, `ruff check .`, `mypy src/`
+- `commands/loop-suggester.md` (line ~60): lists hardcoded tools
 
 ## Current Behavior
 
@@ -44,14 +44,14 @@ Either use `{{config.project.test_cmd}}` etc. in templates, or add a note like "
 
 ## Implementation Steps
 
-1. Update `create-loop.md` examples to reference configured tool names
-2. Update `iterate-plan.md` examples similarly
-3. Update `loop-suggester.md` examples similarly
+1. Update `skills/create-loop/SKILL.md` examples to reference configured tool names
+2. Update `commands/iterate-plan.md` examples similarly
+3. Update `commands/loop-suggester.md` examples similarly
 
 ## Integration Map
 
 ### Files to Modify
-- `commands/create-loop.md` - Update tool name examples
+- `skills/create-loop/SKILL.md` - Update tool name examples (create-loop is a skill, not a command)
 - `commands/iterate-plan.md` - Update tool name examples
 - `commands/loop-suggester.md` - Update tool name examples
 
@@ -100,9 +100,10 @@ _None — ENH-341 (hardcoded paths) is now completed._
 ## Verification Notes
 
 - **Verified**: 2026-02-13
-- **Verdict**: VALID
-- `create-loop.md` hardcodes `pytest`, `ruff`, `mypy` in template examples (confirmed)
-- `iterate-plan.md` hardcodes `pytest tests/` and `ruff check .` at lines 125-126 (confirmed)
+- **Verdict**: CORRECTED
+- **File path fixed**: `commands/create-loop.md` corrected to `skills/create-loop/SKILL.md` (create-loop is a skill, not a command)
+- **Line numbers corrected**: create-loop SKILL.md has 1 hardcoded ref (`mypy` at line 217), not at lines 81-88, 122, 149, 172-180 as originally claimed
+- `iterate-plan.md` hardcodes `pytest tests/`, `ruff check .`, `mypy src/` at lines 125-127 (confirmed)
 - `loop-suggester.md` hardcodes tool names at line 60 (confirmed)
 - `check-code.md` already uses `{{config.project.*}}` refs — pattern exists to follow
 - **ENH-341 blocker resolved**: ENH-341 (hardcoded paths) is now completed — this issue is unblocked

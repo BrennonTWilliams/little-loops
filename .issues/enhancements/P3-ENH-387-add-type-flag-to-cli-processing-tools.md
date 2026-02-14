@@ -108,7 +108,7 @@ When running batch processing, users frequently want to target a specific issue 
 ## Blocked By
 
 - ENH-352: batch git log calls in files_modified_since_commit (shared issue_discovery.py)
-- BUG-403: dependency graph renders empty nodes without edges (shared sprint.py)
+- ~~BUG-403: dependency graph renders empty nodes without edges~~ (completed)
 
 ## Related Key Documentation
 
@@ -131,3 +131,12 @@ When running batch processing, users frequently want to target a specific issue 
 ## Status
 
 **Open** | Created: 2026-02-12 | Priority: P3
+
+## Verification Notes
+
+- **Verified**: 2026-02-13
+- **Verdict**: CORRECTED
+- `cli_args.py` exists with `add_common_auto_args()` (line 171) and `add_common_parallel_args()` (line 185) — confirmed
+- No `--type` flag or `add_type_arg()` function exists — enhancement still needed
+- **Blocker cleared**: BUG-403 (dependency graph renders empty nodes) is completed — marked as satisfied in Blocked By
+- Remaining blocker: ENH-352 (batch git log calls) still open
