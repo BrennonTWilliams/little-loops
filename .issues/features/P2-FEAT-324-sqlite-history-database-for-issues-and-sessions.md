@@ -18,7 +18,7 @@ Completed issues are stored as markdown files in `.issues/completed/`. Historica
 A `.ll/history.db` SQLite database stores:
 - **issues** table: completed issue metadata (ID, type, priority, title, description, resolution, dates)
 - **sessions** table: linked JSONL paths, command used, timestamps, duration (from FEAT-323)
-- **session_summaries** table: extracted/summarized content from JSONL files
+- ~~**session_summaries** table~~: Deferred — tool usage and operational data per session is better served by FEAT-417 (Hybrid Telemetry), which captures fine-grained events queryable by issue_id. Avoids duplicating data between two stores.
 
 The database is queried by:
 - `/ll:capture_issue` for duplicate/regression detection against historical issues
@@ -43,6 +43,7 @@ A developer runs `/ll:capture_issue "API response caching is slow"`. The capture
 - [ ] A backfill command or migration ingests existing completed issues
 - [ ] `.ll/` directory is gitignored (local to each developer)
 - [ ] DB schema is versioned for future migrations
+- [ ] ~~session_summaries table~~ — Deferred to FEAT-417 (telemetry events queryable by issue_id)
 
 ## API/Interface
 
@@ -109,6 +110,10 @@ Storage location: `.ll/history.db` at project root (gitignored). This keeps it p
 - **Effort**: Large - New module, schema design, multiple integration points
 - **Risk**: Medium - New persistent state to manage; schema migrations needed over time
 - **Breaking Change**: No
+
+## Related Issues
+
+- **FEAT-417** (Hybrid Telemetry) — Complementary. FEAT-417 captures operational event data (timings, tool usage, context consumption) in a JSONL stream. This issue captures domain data (issue metadata, resolutions) in SQLite. They share `.ll/` directory and `issue_id` as correlation key. The `session_summaries` table originally planned here is deferred in favor of querying FEAT-417's telemetry events by issue_id, avoiding data duplication.
 
 ## Blocked By
 
@@ -203,3 +208,13 @@ Update first - High value but scope too broad. Split into Phase 1 (core issue me
 
 ### Recommendation
 Update first - High value feature but scope is too broad and underspecified (session_summaries table, migration strategy unclear). Consistent recommendation across three reviews: split into phases and clarify scope before implementation.
+
+---
+
+## Scope Refinement (2026-02-13)
+
+**Addressing tradeoff review feedback** (3 reviews recommending scope narrowing):
+
+1. **`session_summaries` table**: Deferred. Operational data (tool usage, durations per phase) is now handled by FEAT-417 (Hybrid Telemetry). FEAT-324 scope is narrowed to `issues` + `sessions` tables only.
+2. **Migration strategy**: Use SQLite's `user_version` pragma for schema versioning. On first access, create tables if absent. On schema changes, check `user_version` and apply migrations sequentially. No external migration framework needed.
+3. **Phased implementation**: Phase 1 = `issues` table + FTS5 duplicate detection + backfill. Phase 2 = `sessions` table + `analyze-history` integration. This aligns with the consistent recommendation to split.
