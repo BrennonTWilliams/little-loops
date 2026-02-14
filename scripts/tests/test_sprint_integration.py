@@ -858,6 +858,137 @@ issues:
         assert "BUG-002" in state_data["failed_issues"]
 
 
+    def test_sprint_sequential_retry_after_parallel_failure(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Test failed issues are retried sequentially and recovered (ENH-308)."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_error_recovery_project(tmp_path)
+
+        retry_calls: list[str] = []
+
+        class MockQueue:
+            @property
+            def completed_ids(self) -> list[str]:
+                return ["BUG-001"]
+
+            @property
+            def failed_ids(self) -> list[str]:
+                return ["BUG-002", "BUG-003"]
+
+        class MockOrchestrator:
+            execution_duration = 3.0
+
+            def __init__(self, parallel_config: Any, br_config: Any, path: Any, **kwargs: Any):
+                self.queue = MockQueue()
+
+            def run(self) -> int:
+                return 1  # Some failures
+
+        def mock_process_inplace(info: Any, **kwargs: Any) -> Any:
+            retry_calls.append(info.issue_id)
+            from little_loops.issue_manager import IssueProcessingResult
+
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
+
+        monkeypatch.setattr("little_loops.cli.sprint.ParallelOrchestrator", MockOrchestrator)
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            mock_process_inplace,
+        )
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="recovery-test",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=3,
+            quiet=False,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        # All retries succeeded, so wave should not be counted as failed
+        assert result == 0
+
+        # Both failed issues should have been retried
+        assert "BUG-002" in retry_calls
+        assert "BUG-003" in retry_calls
+        # BUG-001 (completed) should NOT be retried
+        assert "BUG-001" not in retry_calls
+
+        # State file is cleaned up on full success, so verify via absence
+        # (state cleanup = no failures remaining = retries worked)
+        state_file = tmp_path / ".sprint-state.json"
+        assert not state_file.exists(), "State file should be cleaned up on full success"
+
+    def test_sprint_sequential_retry_still_fails(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Test retry that also fails keeps issue in failed_issues (ENH-308)."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_error_recovery_project(tmp_path)
+
+        class MockQueue:
+            @property
+            def completed_ids(self) -> list[str]:
+                return ["BUG-001"]
+
+            @property
+            def failed_ids(self) -> list[str]:
+                return ["BUG-002", "BUG-003"]
+
+        class MockOrchestrator:
+            execution_duration = 3.0
+
+            def __init__(self, parallel_config: Any, br_config: Any, path: Any, **kwargs: Any):
+                self.queue = MockQueue()
+
+            def run(self) -> int:
+                return 1
+
+        def mock_process_inplace(info: Any, **kwargs: Any) -> Any:
+            from little_loops.issue_manager import IssueProcessingResult
+
+            # BUG-002 retry succeeds, BUG-003 retry also fails
+            success = info.issue_id == "BUG-002"
+            return IssueProcessingResult(success=success, duration=1.0, issue_id=info.issue_id)
+
+        monkeypatch.setattr("little_loops.cli.sprint.ParallelOrchestrator", MockOrchestrator)
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            mock_process_inplace,
+        )
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="recovery-test",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=3,
+            quiet=False,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        # BUG-003 still failed, so wave counts as failed
+        assert result == 1
+
+        state_data = json.loads((tmp_path / ".sprint-state.json").read_text())
+        # BUG-002 recovered — should NOT be in failed_issues
+        assert "BUG-002" not in state_data["failed_issues"]
+        # BUG-003 still failed — should remain in failed_issues
+        assert "BUG-003" in state_data["failed_issues"]
+
+
 class TestDependencyHandling:
     """Integration tests for dependency handling in sprint execution."""
 

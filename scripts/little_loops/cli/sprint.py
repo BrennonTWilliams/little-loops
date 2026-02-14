@@ -1094,7 +1094,42 @@ def _cmd_sprint_run(
                     # else: issue was neither completed nor failed (interrupted/stranded)
                     # — leave untracked so it can be retried on resume
 
-                if result == 0:
+                # Sequential retry for failed issues (ENH-308)
+                if actually_failed:
+                    logger.info(
+                        f"Retrying {len(actually_failed)} failed issue(s) sequentially..."
+                    )
+                    from little_loops.issue_manager import process_issue_inplace
+
+                    retried_ok = 0
+                    for issue in wave:
+                        if issue.issue_id not in actually_failed:
+                            continue
+                        logger.info(f"  Retrying {issue.issue_id} in-place...")
+                        retry_result = process_issue_inplace(
+                            info=issue,
+                            config=config,
+                            logger=logger,
+                            dry_run=args.dry_run,
+                        )
+                        total_duration += retry_result.duration
+                        if retry_result.success:
+                            retried_ok += 1
+                            state.failed_issues.pop(issue.issue_id, None)
+                            state.timing[issue.issue_id] = {"total": retry_result.duration}
+                            logger.success(f"  Retry succeeded: {issue.issue_id}")
+                        else:
+                            logger.warning(f"  Retry failed: {issue.issue_id}")
+                    if retried_ok > 0:
+                        logger.info(
+                            f"Sequential retry recovered {retried_ok}/{len(actually_failed)} issue(s)"
+                        )
+
+                # Check whether failures remain after retry (ENH-308)
+                remaining_failures = {
+                    iid for iid in actually_failed if iid in state.failed_issues
+                }
+                if result == 0 or not remaining_failures:
                     logger.success(
                         f"Wave {wave_num}/{total_waves} completed: {', '.join(wave_ids)}"
                     )

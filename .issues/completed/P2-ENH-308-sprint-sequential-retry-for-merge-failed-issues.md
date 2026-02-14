@@ -122,7 +122,16 @@ _None — ENH-344 (cli.py split into package) is now completed._
 
 ## Status
 
-**Open** | Created: 2026-02-09 | Priority: P2
+**Completed** | Created: 2026-02-09 | Completed: 2026-02-13 | Priority: P2
+
+## Resolution
+
+- Added sequential retry logic after multi-issue parallel waves in `_cmd_sprint_run()` at `cli/sprint.py:1097-1126`
+- Failed issues from `orchestrator.queue.failed_ids` are retried via `process_issue_inplace()` one at a time
+- Successful retries remove issues from `state.failed_issues` and update timing
+- Wave is not counted as failed if all retries succeed (lines 1128-1138)
+- Added 2 integration tests: successful retry recovery and partial retry failure
+- All 2736 existing tests continue to pass
 
 ## Verification Notes
 
