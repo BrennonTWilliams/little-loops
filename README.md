@@ -304,6 +304,15 @@ ll-deps analyze --graph          # Include ASCII dependency graph
 ll-deps validate                 # Validate existing dependency references
 ```
 
+### ll-next-id
+
+Print the next available issue number:
+
+```bash
+ll-next-id                       # Print next issue number (e.g., 042)
+ll-next-id --config /path        # Use specific project root
+```
+
 ### ll-verify-docs / ll-check-links
 
 Documentation verification utilities:

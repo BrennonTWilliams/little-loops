@@ -112,5 +112,6 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-sync` - Sync local issues with GitHub Issues
 - `ll-verify-docs` - Verify documented counts match actual file counts
 - `ll-check-links` - Check markdown documentation for broken links
+- `ll-next-id` - Print next globally unique issue number
 
 Install: `pip install -e "./scripts[dev]"`

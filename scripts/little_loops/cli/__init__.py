@@ -10,6 +10,7 @@ Provides command-line interfaces for automated issue management:
 - ll-history: Completed issue statistics and analysis
 - ll-verify-docs: Documentation count verification
 - ll-check-links: Markdown link checking
+- ll-next-id: Print next globally unique issue number
 """
 
 from little_loops.cli.auto import main_auto
