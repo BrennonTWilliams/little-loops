@@ -18,9 +18,7 @@ Architectural issue found by `/ll:audit-architecture`. The issue_history.py modu
 - **Lines**: 1-3824 (entire file)
 - **Module**: `little_loops.issue_history`
 
-## Finding
-
-### Current State
+## Current Behavior
 
 issue_history.py contains 61 classes and functions with multiple responsibilities:
 
@@ -48,6 +46,10 @@ issue_history.py contains 61 classes and functions with multiple responsibilitie
 - format_analysis_text, format_analysis_json, format_analysis_markdown, format_analysis_yaml
 
 This violates the Single Responsibility Principle and makes the module extremely difficult to maintain.
+
+## Expected Behavior
+
+`issue_history.py` should be split into an `issue_history/` package with focused modules (models, parsing, analysis, formatting), each with a single responsibility. The public API should remain unchanged via `__init__.py` re-exports.
 
 ### Impact
 
@@ -229,13 +231,21 @@ This enhancement would:
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/history.py` - imports from `issue_history`
+- `scripts/tests/test_cli.py` - imports from `issue_history` (multiple test methods)
 - `scripts/tests/test_issue_history_advanced_analytics.py` - imports from `issue_history`
+- `scripts/tests/test_issue_history_analysis.py` - imports from `issue_history`
+- `scripts/tests/test_issue_history_parsing.py` - imports from `issue_history`
+- `scripts/tests/test_issue_history_summary.py` - imports from `issue_history`
 
 ### Similar Patterns
 - ENH-344 (cli.py split) follows the same god-module-to-package pattern
 
 ### Tests
 - `scripts/tests/test_issue_history_advanced_analytics.py` — update imports to resolve against new package structure
+- `scripts/tests/test_issue_history_analysis.py` — update imports
+- `scripts/tests/test_issue_history_parsing.py` — update imports
+- `scripts/tests/test_issue_history_summary.py` — update imports
+- `scripts/tests/test_cli.py` — update imports (multiple test methods reference `issue_history`)
 
 ### Documentation
 - `docs/API.md` - update module references
@@ -268,18 +278,41 @@ _None_
 
 ---
 
+## Resolution
+
+- **Action**: Refactored issue_history.py god module into issue_history/ package
+- **Completed**: 2026-02-13
+
+### Changes Made
+
+1. Created `scripts/little_loops/issue_history/` package with 5 files:
+   - `models.py` (729 lines) - 26 dataclasses
+   - `parsing.py` (379 lines) - 11 parsing/scanning functions
+   - `analysis.py` (1698 lines) - 18 analysis functions + 4 module constants
+   - `formatting.py` (1020 lines) - 6 formatting functions
+   - `__init__.py` (175 lines) - public API re-exports preserving backward compatibility
+2. Deleted original `scripts/little_loops/issue_history.py` (3,824 lines)
+3. No changes needed to dependent modules — all imports via `__init__.py` re-exports
+
+### Verification
+
+- 310 tests passed (0 failures)
+- Linting: All checks passed
+- Type checking: No issues found in 5 source files
+
 ## Status
 
-**Open** | Created: 2026-02-10 | Priority: P2
+**Completed** | Created: 2026-02-10 | Completed: 2026-02-13 | Priority: P2
 
 ---
 
 ## Verification Notes
 
 - **Verified**: 2026-02-13
-- **Verdict**: NEEDS_UPDATE
+- **Verdict**: CORRECTED (ready-issue)
 - issue_history.py is exactly 3,824 lines (matches reported size)
 - issue_history/ package does not exist yet — refactoring not started
 - All 61 classes/functions remain in single file (25 classes + 36 functions)
 - test_issue_history_advanced_analytics.py is 2,601 lines (matches)
 - **Stale reference fixed**: `cli.py` importer reference updated to `cli/history.py` (cli.py was split into cli/ package)
+- **ready-issue corrections (2026-02-13)**: Added missing `Current Behavior` and `Expected Behavior` sections; expanded Integration Map with 4 additional dependent test files (test_cli.py, test_issue_history_analysis.py, test_issue_history_parsing.py, test_issue_history_summary.py)
