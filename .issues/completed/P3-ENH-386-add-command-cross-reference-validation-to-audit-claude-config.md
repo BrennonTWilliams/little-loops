@@ -111,6 +111,17 @@ _None — ENH-388 closed (won't-fix)._
 
 ---
 
+## Resolution
+
+- **Date**: 2026-02-14
+- **Action**: improve
+- **Changes**:
+  - `agents/consistency-checker.md`: Added Skills → Commands cross-reference validation (internal references, cross-reference matrix, validation process, output format, summary table)
+  - `skills/audit-claude-config/SKILL.md`: Wave 1 Task 2 collects /ll:X references from skill files; Phase 2 compiles them; Wave 2 check #9 validates Skills → Commands
+- **Verification**: All tests pass (2746), lint clean, type checks clean
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-14 | Priority: P3

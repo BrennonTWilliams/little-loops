@@ -206,6 +206,7 @@ Return structured findings with:
 - Quality scores per component type
 - List of all subagent_type references for Wave 2
 - List of all prompt file references for Wave 2
+- List of all /ll:X command references found in skill files for Wave 2
 ```
 
 #### Task 3: Config Files Auditor
@@ -252,7 +253,8 @@ After all Wave 1 agents complete:
    - All subagent_type values found in commands
    - All prompt file paths found in hooks
    - All @import references found in CLAUDE.md
-   - All command references (/ll:X) found
+   - All command references (/ll:X) found in CLAUDE.md
+   - All command references (/ll:X) found in skill files
    - All MCP tool/server references found
    - All file paths mentioned in configs
 3. **Calculate preliminary scores**:
@@ -305,6 +307,7 @@ Check:
 6. **Rules → Paths**: Glob patterns in `paths` fields are syntactically valid
 7. **Rules → Symlinks**: All symlinks in rules directories resolve to existing targets
 8. **Auto Memory → Size**: MEMORY.md ≤ 200 lines (only first 200 loaded at startup)
+9. **Skills → Commands**: /ll:X references in skill files have matching commands/X.md or are valid skill names (skills/X/SKILL.md exists)
 
 Return:
 - Reference validation table with status for each
@@ -312,6 +315,7 @@ Return:
 - List of broken references (WARNING)
 - Rules validation results (frontmatter, paths, symlinks)
 - Auto memory size warnings
+- Skills → Commands validation results
 - Internal consistency score
 ```
 

@@ -40,6 +40,7 @@ You are a specialist at validating cross-component consistency in Claude Code pl
    - Hooks → Prompt files (prompt paths exist)
    - Config → Schema (ll-config.json complies with config-schema.json)
    - CLAUDE.md → @imports (referenced files exist)
+   - Skills → Commands (/ll:X references in skill content resolve to valid commands)
 
 2. **Validate External References**
    - CLAUDE.md → MCP tools (referenced tools exist in .mcp.json)
@@ -64,6 +65,7 @@ You are a specialist at validating cross-component consistency in Claude Code pl
 | hooks/hooks.json | hooks/prompts/*.md | "prompt": "path" → file exists |
 | .claude/ll-config.json | config-schema.json | Values match schema types |
 | CLAUDE.md | commands/*.md | /ll:X mentioned → commands/X.md exists |
+| skills/*/SKILL.md | commands/*.md | /ll:X referenced → commands/X.md or skills/X/ exists |
 | CLAUDE.md | .mcp.json | MCP tool X mentioned → server provides it |
 | hooks/hooks.json | scripts | "command": ["bash", "X"] → X is executable |
 | .claude/rules/*.md | YAML frontmatter | Frontmatter parses, `paths` is valid array |
@@ -81,6 +83,7 @@ From Wave 1 findings or by scanning:
 - Extract all @import references from CLAUDE.md files
 - Extract all MCP tool mentions from CLAUDE.md files
 - Extract all file paths mentioned in instructions
+- Extract all /ll:X command references from skill file content (below frontmatter)
 - Extract all rules files with frontmatter from `.claude/rules/` and `~/.claude/rules/`
 - Extract all `paths` patterns from rules files
 - Extract all symlinks in rules directories
@@ -130,6 +133,12 @@ Structure your consistency check like this:
 | CLAUDE.md Location | Command Referenced | Command File | Status |
 |--------------------|-------------------|--------------|--------|
 | .claude/CLAUDE.md:15 | /ll:help | commands/help.md | OK |
+| ... | ... | ... | ... |
+
+#### Skills → Commands
+| Skill File | Command Referenced | Command File | Status |
+|------------|-------------------|--------------|--------|
+| issue-workflow/SKILL.md | /ll:scan-codebase | commands/scan-codebase.md | OK |
 | ... | ... | ... | ... |
 
 #### CLAUDE.md → MCP Tools
@@ -204,6 +213,7 @@ Structure your consistency check like this:
 | Hooks → Prompts | X | Y | Z |
 | CLAUDE.md → Commands | X | Y | Z |
 | CLAUDE.md → MCP | X | Y | Z |
+| Skills → Commands | X | Y | Z |
 | Config → Schema | X | Y | Z |
 | Rules → Frontmatter | X | Y | Z |
 | Rules → Symlinks | X | Y | Z |
