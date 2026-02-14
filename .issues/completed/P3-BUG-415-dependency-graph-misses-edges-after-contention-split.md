@@ -130,11 +130,28 @@ _None_
 
 `bug`, `cli`, `sprint`, `captured`
 
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/cli/sprint.py`: Replaced positional root detection (`waves[:1]`) with structural detection using `dep_graph.blocked_by`, and removed isolated-node fallback that printed bare IDs without edges
+- `scripts/tests/test_cli.py`: Added test for dependency graph rendering after contention wave splitting
+
+### Verification Results
+- Tests: PASS (2734 passed)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS
+
 ## Session Log
 - `/ll:capture_issue` - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fff26efc-756f-45c9-b95d-159619b176d9.jsonl`
+- `/ll:manage_issue` - 2026-02-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b270f60-8f2c-476b-9a02-8a8bbc3c6ef2.jsonl`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-13 | Priority: P3
+**Completed** | Created: 2026-02-13 | Completed: 2026-02-13 | Priority: P3

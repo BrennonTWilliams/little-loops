@@ -409,22 +409,18 @@ def _render_dependency_graph(
                     chains.append(f"  {issue_id} \u2500\u2500\u2192 {build_chain(other)}")
             return result
 
-    # Find root issues (no blockers in this graph)
-    roots: list[str] = []
-    for wave in waves[:1]:  # First wave has roots
-        for issue in wave:
-            roots.append(issue.issue_id)
+    # Find root issues structurally (not blocked by anything in this graph)
+    roots = [
+        iid
+        for iid in sorted(all_ids)
+        if not (dep_graph.blocked_by.get(iid, set()) & all_ids)
+    ]
 
     for root in roots:
         if root not in visited:
             chain = build_chain(root)
-            if chain:
-                chains.insert(0, f"  {chain}")
-
-    # Handle any isolated issues not in chains
-    all_ids = {issue.issue_id for wave in waves for issue in wave}
-    for issue_id in sorted(all_ids - visited):
-        chains.append(f"  {issue_id}")
+            if chain and "──→" in chain:
+                chains.append(f"  {chain}")
 
     lines.extend(chains)
     lines.append("")

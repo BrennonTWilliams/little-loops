@@ -1037,6 +1037,32 @@ class TestSprintShowDependencyVisualization:
         output = _render_dependency_graph(waves, graph)
         assert output == ""
 
+    def test_render_dependency_graph_after_contention_split(self) -> None:
+        """Dependency edges render correctly when waves are split by contention."""
+        from little_loops.cli import _render_dependency_graph
+        from little_loops.dependency_graph import DependencyGraph
+
+        # Simulate the scenario from BUG-415:
+        # ENH-377 blocks ENH-371, but contention splits wave 0 into sub-waves
+        issue_370 = self._make_issue("ENH-370", priority="P1", title="No deps")
+        issue_377 = self._make_issue("ENH-377", priority="P1", title="Blocker")
+        issue_378 = self._make_issue("ENH-378", priority="P1", title="No deps 2")
+        issue_371 = self._make_issue(
+            "ENH-371", priority="P1", title="Blocked", blocked_by=["ENH-377"]
+        )
+
+        graph = DependencyGraph.from_issues([issue_370, issue_377, issue_378, issue_371])
+        # Simulate post-contention waves: wave 0 split into 3 sub-waves + dep wave
+        waves = [[issue_370], [issue_377], [issue_378], [issue_371]]
+
+        output = _render_dependency_graph(waves, graph)
+
+        assert "DEPENDENCY GRAPH" in output
+        assert "ENH-377 ──→ ENH-371" in output
+        # Issues without edges should NOT appear
+        assert "ENH-370" not in output
+        assert "ENH-378" not in output
+
     def test_render_execution_plan_title_truncation(self) -> None:
         """Long titles are truncated."""
         from little_loops.cli import _render_execution_plan
