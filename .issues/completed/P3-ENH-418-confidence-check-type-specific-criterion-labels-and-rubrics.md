@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-02-13
 discovered_by: capture_issue
+confidence_score: 95
 ---
 
 # ENH-418: Confidence check type-specific criterion labels and rubrics
@@ -98,9 +99,31 @@ Update `skills/confidence-check/SKILL.md` in three places:
 
 ## Session Log
 - `/ll:capture_issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cbd4788d-c02e-4e79-954d-c4280452b2f2.jsonl`
+- `/ll:manage_issue` - 2026-02-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3175cea9-640a-4fd6-b826-2217f1832ff7.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `skills/confidence-check/SKILL.md`: Updated Criterion 3 header from fixed "Root Cause Identified" to type-conditional "Problem Understanding" with BUG/FEAT/ENH-specific labels
+- `skills/confidence-check/SKILL.md`: Added type-specific "What to check" descriptions for each issue type
+- `skills/confidence-check/SKILL.md`: Replaced single scoring rubric with three type-specific rubric tables (BUG/FEAT/ENH)
+- `skills/confidence-check/SKILL.md`: Updated output format template to use `[Type-specific Criterion 3 label]` placeholder
+- `skills/confidence-check/SKILL.md`: Updated frontmatter description to reflect type-specific criterion
+
+### Verification Results
+- Tests: N/A (markdown-only change)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-13 | Priority: P3
+**Completed** | Created: 2026-02-13 | Completed: 2026-02-13 | Priority: P3

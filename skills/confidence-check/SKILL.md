@@ -1,6 +1,6 @@
 ---
 description: |
-  Pre-implementation confidence check that validates readiness before coding begins. Evaluates 5 criteria: no duplicate implementations, architecture compliance, root cause identified, issue well-specified, and dependencies satisfied. Produces a score (0-100) with go/no-go recommendation.
+  Pre-implementation confidence check that validates readiness before coding begins. Evaluates 5 criteria: no duplicate implementations, architecture compliance, problem understanding (type-specific), issue well-specified, and dependencies satisfied. Produces a score (0-100) with go/no-go recommendation.
 
   Supports --all (batch all active issues) and --auto (non-interactive) flags. Persists confidence_score to issue frontmatter after evaluation.
 
@@ -178,9 +178,17 @@ Evaluate each criterion and assign a score (0-20 points each):
 | Partially matches, some concerns about fit | 10 |
 | Contradicts established patterns or creates parallel pathways | 0 |
 
-#### Criterion 3: Root Cause Identified (0-20 points)
+#### Criterion 3: Problem Understanding (0-20 points)
 
-**What to check**: Whether the actual problem is understood (not just symptoms).
+Use the type-specific label for this criterion:
+- **BUG**: "Root cause identified"
+- **FEAT**: "Requirements clarity"
+- **ENH**: "Rationale well-understood"
+
+**What to check** (type-specific):
+- **BUG**: Whether the actual root cause is understood (not just symptoms)
+- **FEAT**: Whether requirements are specific and testable (not just "add X")
+- **ENH**: Whether current behavior issues and the rationale for change are clearly explained
 
 **Detection method**:
 1. For **bugs**: Check issue has a "Problem Analysis" or "Root Cause" section with specific file:line references
@@ -188,13 +196,31 @@ Evaluate each criterion and assign a score (0-20 points each):
 3. For **enhancements**: Check issue explains what's wrong with current behavior and what specifically should change
 4. Verify claims in the issue against actual code (do referenced files/functions exist? do they behave as described?)
 
-**Scoring**:
+**Scoring** (use the table matching the issue type):
+
+**BUG**:
 | Finding | Score |
 |---------|-------|
 | Root cause clearly identified with code references that check out | 20 |
 | Root cause described but code references not fully verified | 15 |
 | Symptoms described but root cause is inferred/assumed | 10 |
 | Only symptoms described, no analysis of underlying cause | 0 |
+
+**FEAT**:
+| Finding | Score |
+|---------|-------|
+| Concrete requirements with scenarios and testable acceptance criteria | 20 |
+| Requirements present but some vague or missing edge cases | 15 |
+| High-level requirements, significant details need inference | 10 |
+| Vague "add X" with no specifics about behavior or scenarios | 0 |
+
+**ENH**:
+| Finding | Score |
+|---------|-------|
+| Current behavior issues explained with specific changes and rationale | 20 |
+| Rationale present but some changes underspecified | 15 |
+| General dissatisfaction described, specific changes partially clear | 10 |
+| Only symptoms noted, no analysis of what should change or why | 0 |
 
 #### Criterion 4: Issue Well-Specified (0-20 points)
 
@@ -301,7 +327,7 @@ CONFIDENCE CHECK: [ISSUE-ID]
 |---------------------------|-------|----------------------------|
 | No duplicate implementations | XX/20 | [Brief finding]           |
 | Architecture compliance     | XX/20 | [Brief finding]           |
-| Root cause identified       | XX/20 | [Brief finding]           |
+| [Type-specific Criterion 3 label] | XX/20 | [Brief finding]           |
 | Issue well-specified        | XX/20 | [Brief finding]           |
 | Dependencies satisfied      | XX/20 | [Brief finding]           |
 
