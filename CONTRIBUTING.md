@@ -132,10 +132,17 @@ little-loops/
 │   └── workflow-analysis.yaml
 ├── skills/               # 15 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
+│   ├── audit-claude-config/          # Audit plugin configuration
+│   ├── audit-docs/                   # Audit documentation accuracy
+│   ├── capture-issue/                # Capture issues from conversation
 │   ├── confidence-check/             # Pre-implementation confidence check
+│   ├── configure/                    # Configure ll-config.json
+│   ├── create-loop/                  # Create FSM loop configurations
+│   ├── format-issue/                 # Format issues to template v2.0
+│   ├── init/                         # Initialize project configuration
 │   ├── issue-size-review/            # Evaluate issue complexity
 │   ├── issue-workflow/               # Issue lifecycle quick reference
-│   ├── loop-suggester/               # Suggest FSM loops from message history
+│   ├── manage-issue/                 # Manage issue lifecycle
 │   ├── map-dependencies/             # Discover and map issue dependencies
 │   ├── product-analyzer/             # Analyze codebase against product goals
 │   └── workflow-automation-proposer/ # Propose automations from patterns

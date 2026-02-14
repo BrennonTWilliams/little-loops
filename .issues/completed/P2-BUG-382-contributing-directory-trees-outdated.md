@@ -15,7 +15,8 @@ CONTRIBUTING.md project structure tree has three outdated sections: skills direc
 ## Location
 
 - **File**: `CONTRIBUTING.md`
-- **Line(s)**: 124-150
+- **Line(s)**: 133-141
+- **Anchor**: Project Structure > skills/ tree listing
 - **Section**: "Project Structure"
 
 ## Current Behavior
@@ -45,11 +46,9 @@ Missing from tree:
 
 ## Steps to Reproduce
 
-1. Open `CONTRIBUTING.md` and navigate to the "Project Structure" section (lines 124-150)
-2. Compare the skills/ tree listing with actual `skills/` directory contents
-3. Compare the loops/ tree listing with actual `loops/*.yaml` files
-4. Compare the docs/ tree listing with actual `docs/` directory contents
-5. Observe: multiple entries are missing from all three sections
+1. Open `CONTRIBUTING.md` and navigate to the "Project Structure" section (lines 133-141)
+2. Compare the skills/ tree listing with actual `skills/` directory contents (`ls skills/`)
+3. Observe: tree shows 8 directories but there are actually 15; `loop-suggester/` is listed but doesn't exist as a directory
 
 ## Actual Behavior
 
@@ -70,9 +69,10 @@ Edit `CONTRIBUTING.md` Project Structure section:
 
 ## Impact
 
-- **Severity**: Medium (misleads contributors about project structure)
-- **Effort**: Small
-- **Risk**: Low
+- **Priority**: P2 - Misleads contributors about project structure; 7 of 15 skill directories invisible
+- **Effort**: Small - Single file edit to update the tree listing
+- **Risk**: Low - Documentation-only change with no code impact
+- **Breaking Change**: No
 
 ## Labels
 
@@ -127,3 +127,22 @@ Skills directory tree outdated again after 7 new skills were added since the ori
 
 - Update skills directory tree to list all 15 skill directories
 - Remove `loop-suggester/` from the tree (no skill directory exists)
+
+---
+
+## Resolution (Reopened Fix)
+
+- **Action**: fix
+- **Completed**: 2026-02-14
+- **Status**: Completed
+
+### Changes Made
+- `CONTRIBUTING.md`: Updated skills tree to list all 15 skill directories (added audit-claude-config/, audit-docs/, capture-issue/, configure/, create-loop/, format-issue/, init/, manage-issue/)
+- `CONTRIBUTING.md`: Removed loop-suggester/ from tree (exists as command, not skill directory)
+
+### Verification Results
+- Tests: PASS (2834 passed)
+- Lint: PASS (pre-existing unrelated warning)
+- Types: SKIP
+- Run: SKIP
+- Integration: PASS
