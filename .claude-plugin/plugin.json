@@ -1,6 +1,6 @@
 {
   "name": "ll",
-  "version": "1.12.0",
+  "version": "1.12.1",
   "description": "Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing",
   "author": {
     "name": "little-loops",
