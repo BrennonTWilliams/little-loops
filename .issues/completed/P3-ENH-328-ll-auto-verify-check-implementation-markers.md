@@ -69,7 +69,7 @@ if not moved_to_completed:
 
 ## Blocked By
 
-- ENH-308: sprint sequential retry for merge-failed issues (shared cli.py)
+- ~~ENH-308: sprint sequential retry for merge-failed issues (shared cli.py)~~ — Completed
 
 ## Integration Map
 
@@ -103,7 +103,17 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-02-11 | Priority: P3
+**Completed** | Created: 2026-02-11 | Priority: P3
+
+## Resolution
+
+**Completed**: 2026-02-14
+
+Added `check_content_markers()` function to `scripts/little_loops/issue_manager.py` that checks issue file content for implementation markers (`## Resolution`, `Status: Implemented`, `Status: Completed`, `**Completed**:`). Integrated as an additional fallback signal in the verify phase between plan detection and git evidence checking. When markers are found, triggers `complete_issue_lifecycle()` directly. When not found, falls through to existing git evidence check.
+
+**Changes:**
+- `scripts/little_loops/issue_manager.py`: Added `check_content_markers()` function and integrated into verify phase fallback chain at line 600
+- `scripts/tests/test_issue_manager.py`: Added `TestCheckContentMarkers` class (6 unit tests) and 2 integration tests in `TestFallbackVerification`, updated 2 existing tests to mock new function
 
 ---
 

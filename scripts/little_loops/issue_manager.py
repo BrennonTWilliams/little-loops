@@ -232,6 +232,32 @@ def detect_plan_creation(output: str, issue_id: str) -> Path | None:
     return latest_plan
 
 
+def check_content_markers(issue_path: Path) -> bool:
+    """Check if issue file content contains implementation markers.
+
+    Looks for indicators that an implementation was completed, such as
+    Resolution sections or status markers added by manage-issue.
+
+    Args:
+        issue_path: Path to the issue file
+
+    Returns:
+        True if implementation markers found
+    """
+    try:
+        content = issue_path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        return False
+
+    markers = [
+        "## Resolution",
+        "Status: Implemented",
+        "Status: Completed",
+        "**Completed**:",
+    ]
+    return any(marker in content for marker in markers)
+
+
 @dataclass
 class IssueProcessingResult:
     """Result of processing a single issue in-place."""
@@ -571,26 +597,49 @@ def process_issue_inplace(
                     "checking for evidence of work..."
                 )
 
-                # CRITICAL: Verify actual implementation work was done
-                work_done = verify_work_was_done(logger)
-                if work_done:
-                    logger.info("Evidence of code changes found - completing lifecycle...")
+                # Check issue file content for implementation markers
+                if check_content_markers(info.path):
+                    logger.info(
+                        "Implementation markers found in issue file - "
+                        "completing lifecycle..."
+                    )
                     verified = complete_issue_lifecycle(info, config, logger)
                     if verified:
-                        logger.success(f"Fallback completion succeeded for {info.issue_id}")
+                        logger.success(
+                            f"Content marker completion succeeded for {info.issue_id}"
+                        )
                     else:
-                        logger.warning(f"Fallback completion failed for {info.issue_id}")
+                        logger.warning(
+                            f"Content marker completion failed for {info.issue_id}"
+                        )
                 else:
-                    # NO work was done - do NOT mark as completed
-                    logger.error(
-                        f"REFUSING to mark {info.issue_id} as completed: "
-                        "no code changes detected despite returncode 0"
-                    )
-                    logger.error(
-                        "This likely indicates the command was not executed properly. "
-                        "Check command invocation and Claude CLI output."
-                    )
-                    verified = False
+                    # CRITICAL: Verify actual implementation work was done
+                    work_done = verify_work_was_done(logger)
+                    if work_done:
+                        logger.info(
+                            "Evidence of code changes found - completing lifecycle..."
+                        )
+                        verified = complete_issue_lifecycle(info, config, logger)
+                        if verified:
+                            logger.success(
+                                f"Fallback completion succeeded for {info.issue_id}"
+                            )
+                        else:
+                            logger.warning(
+                                f"Fallback completion failed for {info.issue_id}"
+                            )
+                    else:
+                        # NO work was done - do NOT mark as completed
+                        logger.error(
+                            f"REFUSING to mark {info.issue_id} as completed: "
+                            "no code changes detected despite returncode 0"
+                        )
+                        logger.error(
+                            "This likely indicates the command was not executed "
+                            "properly. Check command invocation and Claude CLI "
+                            "output."
+                        )
+                        verified = False
         else:
             logger.info("Would verify issue moved to completed")
             verified = True  # In dry run, assume success

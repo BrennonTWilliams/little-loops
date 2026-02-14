@@ -1514,15 +1514,20 @@ class TestFallbackVerification:
                         "little_loops.issue_manager.detect_plan_creation", return_value=None
                     ):
                         with patch(
-                            "little_loops.issue_manager.verify_work_was_done", return_value=True
+                            "little_loops.issue_manager.check_content_markers",
+                            return_value=False,
                         ):
                             with patch(
-                                "little_loops.issue_manager.complete_issue_lifecycle",
+                                "little_loops.issue_manager.verify_work_was_done",
                                 return_value=True,
                             ):
-                                result = process_issue_inplace(
-                                    sample_issue, mock_config, mock_logger
-                                )
+                                with patch(
+                                    "little_loops.issue_manager.complete_issue_lifecycle",
+                                    return_value=True,
+                                ):
+                                    result = process_issue_inplace(
+                                        sample_issue, mock_config, mock_logger
+                                    )
 
         assert result.success
 
@@ -1552,12 +1557,153 @@ class TestFallbackVerification:
                         "little_loops.issue_manager.detect_plan_creation", return_value=None
                     ):
                         with patch(
-                            "little_loops.issue_manager.verify_work_was_done", return_value=False
+                            "little_loops.issue_manager.check_content_markers",
+                            return_value=False,
                         ):
-                            result = process_issue_inplace(sample_issue, mock_config, mock_logger)
+                            with patch(
+                                "little_loops.issue_manager.verify_work_was_done",
+                                return_value=False,
+                            ):
+                                result = process_issue_inplace(
+                                    sample_issue, mock_config, mock_logger
+                                )
 
         assert not result.success
         mock_logger.error.assert_called()
+
+    def test_fallback_completion_via_content_markers(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """Test that content markers trigger fallback completion (ENH-328)."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+
+        ready_result = MagicMock()
+        ready_result.returncode = 0
+        ready_result.stdout = f"## VERDICT\nREADY\n\n## VALIDATED_FILE\n{sample_issue.path}"
+
+        impl_result = MagicMock()
+        impl_result.returncode = 0
+        impl_result.stdout = "Implementation successful"
+        impl_result.stderr = ""
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=ready_result):
+            with patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ):
+                with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
+                    with patch(
+                        "little_loops.issue_manager.detect_plan_creation", return_value=None
+                    ):
+                        with patch(
+                            "little_loops.issue_manager.check_content_markers",
+                            return_value=True,
+                        ):
+                            with patch(
+                                "little_loops.issue_manager.complete_issue_lifecycle",
+                                return_value=True,
+                            ) as mock_complete:
+                                result = process_issue_inplace(
+                                    sample_issue, mock_config, mock_logger
+                                )
+
+        assert result.success
+        mock_complete.assert_called_once()
+
+    def test_content_markers_skips_git_evidence_check(
+        self, mock_config: BRConfig, sample_issue: IssueInfo
+    ) -> None:
+        """Test that content markers skip the git evidence check (ENH-328)."""
+        from little_loops.issue_manager import process_issue_inplace
+
+        mock_logger = MagicMock()
+
+        ready_result = MagicMock()
+        ready_result.returncode = 0
+        ready_result.stdout = f"## VERDICT\nREADY\n\n## VALIDATED_FILE\n{sample_issue.path}"
+
+        impl_result = MagicMock()
+        impl_result.returncode = 0
+        impl_result.stdout = "Implementation successful"
+        impl_result.stderr = ""
+
+        with patch("little_loops.issue_manager.run_claude_command", return_value=ready_result):
+            with patch(
+                "little_loops.issue_manager.run_with_continuation", return_value=impl_result
+            ):
+                with patch("little_loops.issue_manager.verify_issue_completed", return_value=False):
+                    with patch(
+                        "little_loops.issue_manager.detect_plan_creation", return_value=None
+                    ):
+                        with patch(
+                            "little_loops.issue_manager.check_content_markers",
+                            return_value=True,
+                        ):
+                            with patch(
+                                "little_loops.issue_manager.verify_work_was_done"
+                            ) as mock_work:
+                                with patch(
+                                    "little_loops.issue_manager.complete_issue_lifecycle",
+                                    return_value=True,
+                                ):
+                                    process_issue_inplace(
+                                        sample_issue, mock_config, mock_logger
+                                    )
+
+        # verify_work_was_done should NOT be called when content markers found
+        mock_work.assert_not_called()
+
+
+class TestCheckContentMarkers:
+    """Tests for check_content_markers() (ENH-328)."""
+
+    def test_resolution_section_detected(self, tmp_path: Path) -> None:
+        """Returns True when issue file contains ## Resolution section."""
+        from little_loops.issue_manager import check_content_markers
+
+        issue_file = tmp_path / "P1-BUG-001-test.md"
+        issue_file.write_text("# BUG-001: Test\n\n## Summary\nTest\n\n## Resolution\nFixed.")
+        assert check_content_markers(issue_file) is True
+
+    def test_status_implemented_detected(self, tmp_path: Path) -> None:
+        """Returns True when issue file contains Status: Implemented."""
+        from little_loops.issue_manager import check_content_markers
+
+        issue_file = tmp_path / "P1-BUG-001-test.md"
+        issue_file.write_text("# BUG-001: Test\n\nStatus: Implemented\n")
+        assert check_content_markers(issue_file) is True
+
+    def test_status_completed_detected(self, tmp_path: Path) -> None:
+        """Returns True when issue file contains Status: Completed."""
+        from little_loops.issue_manager import check_content_markers
+
+        issue_file = tmp_path / "P1-BUG-001-test.md"
+        issue_file.write_text("# BUG-001: Test\n\nStatus: Completed\n")
+        assert check_content_markers(issue_file) is True
+
+    def test_completed_date_marker_detected(self, tmp_path: Path) -> None:
+        """Returns True when issue file contains **Completed**: date marker."""
+        from little_loops.issue_manager import check_content_markers
+
+        issue_file = tmp_path / "P1-BUG-001-test.md"
+        issue_file.write_text("# BUG-001: Test\n\n**Completed**: 2026-02-14\n")
+        assert check_content_markers(issue_file) is True
+
+    def test_no_markers_returns_false(self, tmp_path: Path) -> None:
+        """Returns False when issue file has no implementation markers."""
+        from little_loops.issue_manager import check_content_markers
+
+        issue_file = tmp_path / "P1-BUG-001-test.md"
+        issue_file.write_text("# BUG-001: Test\n\n## Summary\nTest issue")
+        assert check_content_markers(issue_file) is False
+
+    def test_missing_file_returns_false(self, tmp_path: Path) -> None:
+        """Returns False when issue file does not exist."""
+        from little_loops.issue_manager import check_content_markers
+
+        issue_file = tmp_path / "nonexistent.md"
+        assert check_content_markers(issue_file) is False
 
 
 class TestAutoManagerRun:
