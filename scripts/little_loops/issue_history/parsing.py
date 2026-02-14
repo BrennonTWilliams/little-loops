@@ -13,6 +13,7 @@ from pathlib import Path
 
 from little_loops.frontmatter import parse_frontmatter
 from little_loops.issue_history.models import CompletedIssue
+from little_loops.text_utils import extract_file_paths
 
 
 def parse_completed_issue(file_path: Path) -> CompletedIssue:
@@ -262,30 +263,16 @@ def _extract_subsystem(content: str) -> str | None:
 def _extract_paths_from_issue(content: str) -> list[str]:
     """Extract all file paths from issue content.
 
+    Delegates to :func:`~little_loops.text_utils.extract_file_paths`
+    and returns results as a sorted list for backward compatibility.
+
     Args:
         content: Issue file content
 
     Returns:
-        List of file paths found in content
+        Sorted list of file paths found in content
     """
-    patterns = [
-        r"\*\*File\*\*:\s*`?([^`\n:]+)`?",  # **File**: path/to/file.py
-        r"`([a-zA-Z_][\w/.-]+\.[a-z]{2,4})`",  # `path/to/file.py`
-        r"(?:^|\s)([a-zA-Z_][\w/.-]+\.[a-z]{2,4})(?::\d+)?(?:\s|$|:|\))",  # path.py:123
-    ]
-
-    paths: set[str] = set()
-    for pattern in patterns:
-        for match in re.finditer(pattern, content, re.MULTILINE):
-            path = match.group(1).strip()
-            # Must look like a file path
-            if "/" in path or path.endswith((".py", ".md", ".js", ".ts", ".json", ".yaml", ".yml")):
-                # Normalize: remove line numbers (path.py:123 -> path.py)
-                if ":" in path and path.split(":")[-1].isdigit():
-                    path = ":".join(path.split(":")[:-1])
-                paths.add(path)
-
-    return sorted(paths)
+    return sorted(extract_file_paths(content))
 
 
 def _find_test_file(source_path: str) -> str | None:

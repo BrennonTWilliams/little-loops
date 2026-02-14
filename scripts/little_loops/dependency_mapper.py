@@ -17,47 +17,14 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from little_loops.dependency_graph import DependencyGraph
+from little_loops.text_utils import extract_file_paths
 
 if TYPE_CHECKING:
     from little_loops.issue_parser import IssueInfo
 
 logger = logging.getLogger(__name__)
 
-# File path patterns for extraction from issue content
-_BACKTICK_PATH = re.compile(r"`([^`\s]+\.[a-z]{2,4})`")
-_BOLD_FILE_PATH = re.compile(r"\*\*File\*\*:\s*`?([^`\n]+\.[a-z]{2,4})`?")
-_STANDALONE_PATH = re.compile(r"(?:^|\s)([a-zA-Z_][\w/.-]*\.[a-z]{2,4})(?:\s|$|:|\))", re.MULTILINE)
 _CODE_FENCE = re.compile(r"```[\s\S]*?```", re.MULTILINE)
-
-# File extensions that indicate real source file paths
-_SOURCE_EXTENSIONS = frozenset(
-    {
-        ".py",
-        ".ts",
-        ".js",
-        ".tsx",
-        ".jsx",
-        ".md",
-        ".json",
-        ".yaml",
-        ".yml",
-        ".toml",
-        ".cfg",
-        ".ini",
-        ".html",
-        ".css",
-        ".scss",
-        ".sh",
-        ".bash",
-        ".sql",
-        ".go",
-        ".rs",
-        ".java",
-        ".kt",
-        ".rb",
-        ".php",
-    }
-)
 
 # Semantic target extraction patterns
 _PASCAL_CASE = re.compile(r"\b([A-Z][a-z]+(?:[A-Z][a-z]+)+)\b")
@@ -218,39 +185,6 @@ class DependencyReport:
     issue_count: int = 0
     existing_dep_count: int = 0
 
-
-def extract_file_paths(content: str) -> set[str]:
-    """Extract file paths from issue content.
-
-    Searches for file paths in:
-    - Backtick-quoted paths: `path/to/file.py`
-    - Location section bold paths: **File**: `path/to/file.py`
-    - Standalone paths with recognized extensions
-
-    Code fence blocks are stripped before extraction to avoid
-    matching paths inside example code.
-
-    Args:
-        content: Issue file content
-
-    Returns:
-        Set of file paths found in the content
-    """
-    if not content:
-        return set()
-
-    # Strip code fences to avoid matching example paths
-    stripped = _CODE_FENCE.sub("", content)
-
-    paths: set[str] = set()
-    for pattern in (_BOLD_FILE_PATH, _BACKTICK_PATH, _STANDALONE_PATH):
-        for match in pattern.finditer(stripped):
-            path = match.group(1).strip()
-            # Only include paths with directory separators or recognized extensions
-            ext = Path(path).suffix.lower()
-            if ext in _SOURCE_EXTENSIONS and ("/" in path or ext):
-                paths.add(path)
-    return paths
 
 
 def _extract_semantic_targets(content: str) -> set[str]:

@@ -15,7 +15,6 @@ from little_loops.issue_discovery import (
     RegressionEvidence,
     _calculate_word_overlap,
     _extract_completion_date,
-    _extract_file_paths,
     _extract_files_changed,
     _extract_fix_commit,
     _extract_line_numbers,
@@ -249,18 +248,6 @@ class TestTextHelpers:
         """Test word overlap with empty sets."""
         assert _calculate_word_overlap(set(), {"word"}) == 0.0
         assert _calculate_word_overlap({"word"}, set()) == 0.0
-
-    def test_extract_file_paths(self) -> None:
-        """Test file path extraction from text."""
-        text = """
-        The bug is in `src/module.py` at line 42.
-        **File**: `path/to/file.js`
-        Also check src/utils.py for related code.
-        """
-        paths = _extract_file_paths(text)
-        assert "src/module.py" in paths
-        assert "path/to/file.js" in paths
-        assert "src/utils.py" in paths
 
     def test_extract_line_numbers(self) -> None:
         """Test line number extraction from text."""

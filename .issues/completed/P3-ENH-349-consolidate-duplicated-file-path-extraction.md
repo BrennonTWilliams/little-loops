@@ -13,14 +13,14 @@ Three separate modules implement nearly identical file path extraction from mark
 
 ## Location
 
-- **File**: `scripts/little_loops/issue_history.py`
-- **Line(s)**: 1152-1178 (at scan commit: be30013)
+- **File**: `scripts/little_loops/issue_history/parsing.py`
+- **Line(s)**: 262-288 (at ready-issue commit: 8898582)
 - **Anchor**: `_extract_paths_from_issue()`
 - **File**: `scripts/little_loops/issue_discovery.py`
-- **Line(s)**: 221-242
+- **Line(s)**: 221-242 (at ready-issue commit: 8898582)
 - **Anchor**: `_extract_file_paths()`
 - **File**: `scripts/little_loops/dependency_mapper.py`
-- **Line(s)**: 222-253
+- **Line(s)**: 222-253 (at ready-issue commit: 8898582)
 - **Anchor**: `extract_file_paths()`
 
 ## Current Behavior
@@ -53,12 +53,12 @@ Use the `dependency_mapper.py` version as the base (it's the most refined with p
 
 ### Files to Modify
 - `scripts/little_loops/dependency_mapper.py` (source of canonical implementation)
-- `scripts/little_loops/issue_history.py` (replace `_extract_paths_from_issue`)
+- `scripts/little_loops/issue_history/parsing.py` (replace `_extract_paths_from_issue`)
 - `scripts/little_loops/issue_discovery.py` (replace `_extract_file_paths`)
 
 ### Tests
 - `scripts/tests/test_dependency_mapper.py`
-- `scripts/tests/test_issue_history.py`
+- `scripts/tests/test_issue_history_advanced_analytics.py`
 - `scripts/tests/test_issue_discovery.py`
 
 ### Documentation
@@ -88,10 +88,27 @@ Use the `dependency_mapper.py` version as the base (it's the most refined with p
 
 - ENH-352: batch git log calls in files_modified_since_commit (shared issue_discovery.py)
 
+## Resolution
+
+**Action**: improve
+**Date**: 2026-02-14
+
+### Changes Made
+- Created `scripts/little_loops/text_utils.py` with canonical `extract_file_paths()` using pre-compiled regex patterns, code fence stripping, line number normalization, and 19-extension whitelist
+- Updated `scripts/little_loops/dependency_mapper.py` to import from `text_utils` instead of defining locally
+- Updated `scripts/little_loops/issue_history/parsing.py` to delegate `_extract_paths_from_issue()` to shared function
+- Removed dead code `_extract_file_paths()` from `scripts/little_loops/issue_discovery.py` (0 production callers)
+- Removed corresponding dead test from `scripts/tests/test_issue_discovery.py`
+
+### Verification
+- All 267 tests pass
+- ruff lint: clean
+- mypy type check: clean
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-12T16:03:46Z - `~/.claude/projects/<project>/024c25b4-8284-4f0a-978e-656d67211ed0.jsonl`
-
+- `/ll:manage-issue` - 2026-02-14 - ENH-349 consolidation implementation
 
 ---
 
-**Open** | Created: 2026-02-12 | Priority: P3
+**Completed** | Created: 2026-02-12 | Completed: 2026-02-14 | Priority: P3

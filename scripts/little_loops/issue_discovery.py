@@ -218,29 +218,6 @@ def _calculate_word_overlap(words1: set[str], words2: set[str]) -> float:
     return len(intersection) / len(union)
 
 
-def _extract_file_paths(text: str) -> set[str]:
-    """Extract file paths from text.
-
-    Args:
-        text: Input text
-
-    Returns:
-        Set of file paths found in text
-    """
-    # Match common file path patterns
-    patterns = [
-        r"`([^`]+\.[a-z]{2,4})`",  # `path/to/file.py`
-        r"\*\*File\*\*:\s*`?([^`\n]+)`?",  # **File**: path/to/file.py
-        r"(?:^|\s)([a-zA-Z_][\w/.-]*\.[a-z]{2,4})(?:\s|$|:|\))",  # standalone paths
-    ]
-    paths: set[str] = set()
-    for pattern in patterns:
-        for match in re.finditer(pattern, text, re.MULTILINE):
-            path = match.group(1).strip()
-            if "/" in path or path.endswith((".py", ".md", ".js", ".ts", ".json")):
-                paths.add(path)
-    return paths
-
 
 def _extract_line_numbers(text: str) -> set[int]:
     """Extract line numbers from text.
