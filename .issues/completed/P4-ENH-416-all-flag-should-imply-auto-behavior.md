@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-02-13
 discovered_by: capture_issue
+confidence_score: 97
 ---
 
 # ENH-416: --all flag should implicitly enable --auto behavior
@@ -141,9 +142,28 @@ Also update documentation/usage sections that mention `--all` requiring `--auto`
 
 ## Session Log
 - `/ll:capture_issue` - 2026-02-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/029370ae-e505-4752-bc55-4fd2b8896741.jsonl`
+- `/ll:manage_issue` - 2026-02-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/caefd7bf-6a76-4821-9e00-efef2915b5c2.jsonl`
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-13
+- **Status**: Completed
+
+### Changes Made
+- `skills/confidence-check/SKILL.md`: Replaced `--all requires --auto` error block with `--all implies --auto` auto-enable; updated docs and examples
+- `skills/format-issue/SKILL.md`: Replaced `--all requires --auto` error block with `--all implies --auto` auto-enable; updated usage hint in `--all` + issue ID validation
+
+### Verification Results
+- Tests: PASS (2734 passed)
+- Lint: PASS
+- Types: PASS
+- Integration: PASS
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-13 | Priority: P4
+**Completed** | Created: 2026-02-13 | Completed: 2026-02-13 | Priority: P4

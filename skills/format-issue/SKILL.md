@@ -63,15 +63,13 @@ if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
 # Validate: --all requires issue_id to be omitted
 if [[ "$ALL_MODE" == true ]] && [[ -n "$ISSUE_ID" ]]; then
     echo "Error: --all flag requires issue_id to be omitted"
-    echo "Usage: /ll:format_issue --all --auto"
+    echo "Usage: /ll:format_issue --all"
     exit 1
 fi
 
-# Validate: --all requires --auto (or --dangerously-skip-permissions)
-if [[ "$ALL_MODE" == true ]] && [[ "$AUTO_MODE" == false ]]; then
-    echo "Error: --all flag requires --auto mode for non-interactive batch processing"
-    echo "Usage: /ll:format_issue --all --auto"
-    exit 1
+# --all implies --auto (batch processing is inherently non-interactive)
+if [[ "$ALL_MODE" == true ]]; then
+    AUTO_MODE=true
 fi
 ```
 

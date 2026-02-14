@@ -56,15 +56,13 @@ done
 # Validate: --all cannot be combined with a specific issue ID
 if [[ "$ALL_MODE" == true ]] && [[ -n "$ISSUE_ID" ]]; then
     echo "Error: --all flag cannot be combined with a specific issue ID"
-    echo "Usage: /ll:confidence-check --all --auto"
+    echo "Usage: /ll:confidence-check --all"
     exit 1
 fi
 
-# Validate: --all requires --auto
-if [[ "$ALL_MODE" == true ]] && [[ "$AUTO_MODE" == false ]]; then
-    echo "Error: --all flag requires --auto mode for non-interactive batch processing"
-    echo "Usage: /ll:confidence-check --all --auto"
-    exit 1
+# --all implies --auto (batch processing is inherently non-interactive)
+if [[ "$ALL_MODE" == true ]]; then
+    AUTO_MODE=true
 fi
 ```
 
@@ -75,7 +73,7 @@ fi
 
 - **flags** (optional): Command behavior flags
   - `--auto` — Non-interactive mode (skip user prompts, use defaults)
-  - `--all` — Evaluate all active issues (bugs/, features/, enhancements/), skip completed/. Requires `--auto`.
+  - `--all` — Evaluate all active issues (bugs/, features/, enhancements/), skip completed/. Implies `--auto`.
 
 ## Issue Discovery
 
@@ -406,9 +404,9 @@ This skill is referenced in `/ll:manage_issue` Phase 2 as a recommended pre-plan
 # Single issue, non-interactive
 /ll:confidence-check ENH-277 --auto
 
-# All active issues, non-interactive (batch mode)
-/ll:confidence-check --all --auto
-
-# Error: --all requires --auto
+# All active issues (--auto is implied)
 /ll:confidence-check --all
+
+# All active issues, explicit --auto (also works)
+/ll:confidence-check --all --auto
 ```
