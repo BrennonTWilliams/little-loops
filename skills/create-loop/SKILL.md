@@ -1,5 +1,6 @@
 ---
 description: Create a new FSM loop configuration interactively. Guides users through paradigm selection, parameter gathering, YAML generation, and validation.
+disable-model-invocation: true
 allowed-tools:
   - Bash(mkdir:*, test:*, ll-loop:*)
 ---

@@ -105,7 +105,128 @@ Look for:
 
 ### Step 5: Generate Paradigm YAML
 
-For each detected pattern, generate the appropriate paradigm configuration. See the full skill documentation at `skills/loop-suggester/SKILL.md` for detailed YAML templates for each paradigm type (goal, invariants, convergence, imperative).
+For each detected pattern, generate the appropriate paradigm configuration using the templates below.
+
+#### Goal Paradigm (Check-Fix Cycle)
+
+Use when a single condition must be satisfied through iterative check-fix rounds.
+
+```yaml
+name: "{name}"
+paradigm: goal
+description: "{description}"
+
+goal:
+  check_cmd: "{command that returns exit 0 on success, non-zero on failure}"
+  fix_prompt: |
+    The check command failed with the above output.
+    Analyze the errors and fix them.
+  max_iterations: 10
+
+options:
+  stop_on_first_error: false
+  working_dir: "."
+```
+
+**Detected from**: `Bash(check) → Edit → Bash(check)` sequences where the same check tool appears before and after edits.
+
+#### Invariants Paradigm (Multi-Constraint)
+
+Use when multiple independent constraints must all pass simultaneously.
+
+```yaml
+name: "{name}"
+paradigm: invariants
+description: "{description}"
+
+invariants:
+  checks:
+    - name: "{check_1_name}"
+      cmd: "{command_1}"
+    - name: "{check_2_name}"
+      cmd: "{command_2}"
+    - name: "{check_3_name}"
+      cmd: "{command_3}"
+  fix_prompt: |
+    One or more invariant checks failed. Review each failure above
+    and fix the underlying issues without breaking passing checks.
+  max_iterations: 15
+
+options:
+  stop_on_first_error: false
+  working_dir: "."
+```
+
+**Detected from**: Multiple different check tools running in succession within the same session, with consistent ordering across sessions.
+
+#### Convergence Paradigm (Metric Tracking)
+
+Use when a numeric metric must reach a target value through iterative improvement.
+
+```yaml
+name: "{name}"
+paradigm: convergence
+description: "{description}"
+
+convergence:
+  metric_cmd: "{command that outputs a numeric value}"
+  metric_pattern: "([0-9]+\\.?[0-9]*)"
+  direction: "{higher_is_better|lower_is_better}"
+  target: {target_value}
+  threshold: {acceptable_delta}
+  improve_prompt: |
+    The current metric value is {current}. The target is {target}.
+    Analyze the codebase and make changes to move the metric
+    toward the target.
+  max_iterations: 20
+
+options:
+  working_dir: "."
+```
+
+**Detected from**: Repeated numeric output comparisons with changes in between.
+
+#### Imperative Paradigm (Step Sequence)
+
+Use when a fixed sequence of steps must execute in order, optionally repeating.
+
+```yaml
+name: "{name}"
+paradigm: imperative
+description: "{description}"
+
+imperative:
+  steps:
+    - name: "{step_1_name}"
+      prompt: |
+        {instruction for step 1}
+    - name: "{step_2_name}"
+      prompt: |
+        {instruction for step 2}
+    - name: "{step_3_name}"
+      prompt: |
+        {instruction for step 3}
+  verify_cmd: "{optional final verification command}"
+  max_iterations: 5
+
+options:
+  working_dir: "."
+```
+
+**Detected from**: Consistent ordered steps without branching.
+
+#### Pattern-to-Paradigm Mapping
+
+| Signal | Paradigm | Why |
+|--------|----------|-----|
+| Single pass/fail check repeated | **goal** | One exit condition, simple cycle |
+| Multiple independent checks must all pass | **invariants** | Fixing one check may break another |
+| Numeric output being optimized | **convergence** | Needs target tracking and direction |
+| Ordered steps, no branching | **imperative** | Sequence matters, not conditions |
+| Single check + metric output | **goal** (not convergence) | If pass/fail is sufficient, prefer simpler paradigm |
+| Two checks, one depends on other | **goal** with combined check | Avoid invariants if checks aren't independent |
+
+**General rule**: prefer simpler paradigms. `goal` > `invariants` > `convergence` > `imperative` when multiple fit.
 
 ### Step 6: Calculate Confidence Score
 
@@ -196,6 +317,5 @@ Use `/ll:create-loop` when you know what loop you want. Use `/ll:loop-suggester`
 
 ## See Also
 
-- Full skill documentation: `skills/loop-suggester/SKILL.md`
 - Create loops interactively: `/ll:create-loop`
 - Workflow analysis: `/ll:analyze-workflows`

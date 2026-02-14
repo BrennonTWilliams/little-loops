@@ -3,6 +3,7 @@ description: |
   Quick reference for the little-loops issue management workflow. Use this skill when users ask about issue lifecycle, workflow steps, command order, or how to manage issues effectively.
 
   Trigger keywords: "issue workflow", "how do I manage issues", "issue lifecycle", "what commands for issues", "issue management steps"
+disable-model-invocation: true
 model: haiku
 ---
 

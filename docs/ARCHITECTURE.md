@@ -104,22 +104,48 @@ little-loops/
 │   ├── quality-gate.yaml
 │   ├── sprint-execution.yaml
 │   └── workflow-analysis.yaml
-├── skills/                  # 8 skill definitions
-│   ├── analyze-history/
+├── skills/                  # 15 skill definitions (4 proactive, 11 user-invoked)
+│   ├── analyze-history/     # User-invoked (disable-model-invocation: true)
 │   │   └── SKILL.md
-│   ├── confidence-check/
+│   ├── audit-claude-config/ # User-invoked
+│   │   ├── SKILL.md
+│   │   └── report-template.md
+│   ├── audit-docs/          # User-invoked
+│   │   ├── SKILL.md
+│   │   └── templates.md
+│   ├── capture-issue/       # Proactive
+│   │   ├── SKILL.md
+│   │   └── templates.md
+│   ├── confidence-check/    # Proactive
 │   │   └── SKILL.md
-│   ├── issue-size-review/
+│   ├── configure/           # User-invoked
+│   │   ├── SKILL.md
+│   │   ├── areas.md
+│   │   └── show-output.md
+│   ├── create-loop/         # User-invoked
+│   │   ├── SKILL.md
+│   │   ├── paradigms.md
+│   │   ├── reference.md
+│   │   └── templates.md
+│   ├── format-issue/        # User-invoked
+│   │   ├── SKILL.md
+│   │   └── templates.md
+│   ├── init/                # User-invoked
+│   │   ├── SKILL.md
+│   │   ├── interactive.md
+│   │   └── presets.md
+│   ├── issue-size-review/   # Proactive
 │   │   └── SKILL.md
-│   ├── issue-workflow/
+│   ├── issue-workflow/      # User-invoked
 │   │   └── SKILL.md
-│   ├── loop-suggester/
+│   ├── manage-issue/        # User-invoked
+│   │   ├── SKILL.md
+│   │   └── templates.md
+│   ├── map-dependencies/    # Proactive
 │   │   └── SKILL.md
-│   ├── map-dependencies/
+│   ├── product-analyzer/    # User-invoked
 │   │   └── SKILL.md
-│   ├── product-analyzer/
-│   │   └── SKILL.md
-│   └── workflow-automation-proposer/
+│   └── workflow-automation-proposer/  # User-invoked
 │       └── SKILL.md
 ├── templates/               # Project type configs
 │   ├── python-generic.json

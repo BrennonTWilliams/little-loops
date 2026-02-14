@@ -26,7 +26,7 @@ We have 16 skills, each consuming character budget in the system prompt and sign
 | `init` | No — User-invoked setup action | Candidate for command |
 | `issue-size-review` | Yes — Could be proactive during sprint planning | Keep as skill |
 | `issue-workflow` | No — Reference doc, user asks for it | Candidate for command |
-| `loop-suggester` | No — User asks for automation suggestions | Candidate for command |
+| `loop-suggester` | No — User asks for automation suggestions | Candidate for command (NOTE: already exists as `commands/loop-suggester.md` — skill directory may be redundant) |
 | `manage-issue` | No — User-invoked issue management | Candidate for command |
 | `map-dependencies` | Yes — Could be proactive during sprint planning | Keep as skill |
 | `product-analyzer` | No — Requires explicit user intent | Candidate for command |
@@ -47,14 +47,6 @@ Evaluate each skill and migrate candidates from `skills/` to `commands/` where a
 - Remove the skill directory
 - Update plugin.json if needed
 
-## Files to Modify
-
-- `skills/workflow-automation-proposer/SKILL.md` — Potential move to `commands/`
-- `skills/product-analyzer/SKILL.md` — Potential move to `commands/`
-- `skills/analyze-history/SKILL.md` — Potential move to `commands/`
-- `skills/issue-workflow/SKILL.md` — Potential move to `commands/`
-- System prompt descriptions and plugin.json as needed
-
 ## Motivation
 
 This enhancement would:
@@ -64,7 +56,7 @@ This enhancement would:
 
 ## Scope Boundaries
 
-- **In scope**: Evaluating 4 candidate skills for migration to commands, migrating confirmed candidates
+- **In scope**: Evaluating all 12 candidate skills for migration to commands, migrating confirmed candidates
 - **Out of scope**: Changing skill/command functionality, redesigning the skill system
 
 ## Implementation Steps
@@ -78,10 +70,18 @@ This enhancement would:
 ## Integration Map
 
 ### Files to Modify
-- `skills/workflow-automation-proposer/SKILL.md` - Potential migration to `commands/`
-- `skills/product-analyzer/SKILL.md` - Potential migration to `commands/`
 - `skills/analyze-history/SKILL.md` - Potential migration to `commands/`
+- `skills/audit-claude-config/SKILL.md` - Potential migration to `commands/`
+- `skills/audit-docs/SKILL.md` - Potential migration to `commands/`
+- `skills/configure/SKILL.md` - Potential migration to `commands/`
+- `skills/create-loop/SKILL.md` - Potential migration to `commands/`
+- `skills/format-issue/SKILL.md` - Potential migration to `commands/`
+- `skills/init/SKILL.md` - Potential migration to `commands/`
 - `skills/issue-workflow/SKILL.md` - Potential migration to `commands/`
+- `skills/loop-suggester/SKILL.md` - Already has `commands/loop-suggester.md`; remove skill directory
+- `skills/manage-issue/SKILL.md` - Potential migration to `commands/`
+- `skills/product-analyzer/SKILL.md` - Potential migration to `commands/`
+- `skills/workflow-automation-proposer/SKILL.md` - Potential migration to `commands/`
 
 ### Dependent Files (Callers/Importers)
 - `.claude-plugin/plugin.json` - skill registrations
@@ -122,7 +122,7 @@ _None — ENH-366 closed (won't-fix)._
 
 ## Status
 
-**Open** | Created: 2026-02-08 | Priority: P4
+**Completed** | Created: 2026-02-08 | Completed: 2026-02-14 | Priority: P4
 
 ---
 
@@ -174,3 +174,52 @@ Update first - The "proactive discovery" criterion needs validation with evidenc
 
 ### Recommendation
 Update first - Assessment is stale (6 skills now 8, two new skills need evaluation). Lacks empirical evidence. Consistent recommendation across two reviews to validate assumptions with usage data first.
+
+---
+
+## Resolution
+
+- **Action**: improve
+- **Completed**: 2026-02-14
+- **Status**: Completed
+
+### Approach Change
+
+The original issue proposed migrating 12 skills to commands. Research revealed this was the wrong approach:
+
+1. **Claude Code merged skills and commands** — per `docs/claude-code/skills.md`: "Custom slash commands have been merged into skills." Both create the same `/name` invocation.
+2. **ENH-400 already migrated 8 oversized commands INTO skills** for subdirectory support. Moving them back would lose that benefit.
+3. **`disable-model-invocation: true`** is the correct mechanism to prevent proactive invocation without moving files.
+
+### Changes Made
+
+**Added `disable-model-invocation: true` to 11 user-invoked skills:**
+- `skills/analyze-history/SKILL.md`
+- `skills/audit-claude-config/SKILL.md`
+- `skills/audit-docs/SKILL.md`
+- `skills/configure/SKILL.md`
+- `skills/create-loop/SKILL.md`
+- `skills/format-issue/SKILL.md`
+- `skills/init/SKILL.md`
+- `skills/issue-workflow/SKILL.md`
+- `skills/manage-issue/SKILL.md`
+- `skills/product-analyzer/SKILL.md`
+- `skills/workflow-automation-proposer/SKILL.md`
+
+**Kept 4 proactive skills unchanged (no `disable-model-invocation`):**
+- `capture-issue` — proactive when bugs are discovered
+- `confidence-check` — proactive before implementation
+- `issue-size-review` — proactive during sprint planning
+- `map-dependencies` — proactive during sprint planning
+
+**Removed duplicate `loop-suggester` skill:**
+- Inlined YAML templates from `skills/loop-suggester/SKILL.md` into `commands/loop-suggester.md`
+- Deleted `skills/loop-suggester/` directory
+
+**Updated documentation:**
+- `docs/ARCHITECTURE.md` — Updated skills tree from stale "8 skill definitions" to accurate "15 skill definitions (4 proactive, 11 user-invoked)"
+
+### Verification Results
+- Tests: PASS (2834 passed)
+- Lint: PASS (1 pre-existing error unrelated to changes)
+- Types: PASS

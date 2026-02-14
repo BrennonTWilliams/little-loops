@@ -1,5 +1,6 @@
 ---
 description: Audit documentation for accuracy and completeness
+disable-model-invocation: true
 argument-hint: "[scope]"
 allowed-tools:
   - Read
