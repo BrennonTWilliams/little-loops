@@ -186,14 +186,21 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 
 | Skill | Capability Group | Description |
 |-------|-----------------|-------------|
+| `capture-issue` | Issue Discovery | Capture issues from conversation or description |
 | `issue-workflow` | Issue Discovery / Refinement | Quick reference for issue management workflow |
 | `issue-size-review` | Issue Discovery / Refinement | Evaluate issue size/complexity and propose decomposition |
+| `format-issue` | Issue Refinement | Format issue files to align with template v2.0 structure |
 | `map-dependencies` | Issue Discovery / Refinement | Analyze cross-issue dependencies based on file overlap |
 | `product-analyzer` | Scanning & Analysis | Analyze codebase against product goals for feature gaps |
-| `workflow-automation-proposer` | Automation & Loops | Synthesize workflow patterns into automation proposals |
-| `analyze-history` | Meta-Analysis | Analyze issue history for project health, trends, and progress |
 | `confidence-check` | Planning & Implementation | Pre-implementation confidence check for readiness validation |
-| `loop-suggester` | Automation & Loops | Suggest FSM loops from user message history |
+| `manage-issue` | Planning & Implementation | Autonomously manage issues — plan, implement, verify, and complete |
+| `audit-docs` | Code Quality | Audit documentation for accuracy and completeness |
+| `create-loop` | Automation & Loops | Create new FSM loop configuration interactively |
+| `workflow-automation-proposer` | Automation & Loops | Synthesize workflow patterns into automation proposals |
+| `audit-claude-config` | Meta-Analysis | Comprehensive audit of Claude Code plugin configuration |
+| `analyze-history` | Meta-Analysis | Analyze issue history for project health, trends, and progress |
+| `init` | Session & Config | Initialize little-loops configuration for a project |
+| `configure` | Session & Config | Interactively configure specific areas in ll-config.json |
 
 ## CLI Tools
 
