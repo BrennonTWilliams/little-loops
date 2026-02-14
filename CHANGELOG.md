@@ -13,6 +13,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.12.1] - 2026-02-13
+
+### Fixed
+
+- fix(commands): standardize all command/skill names to hyphens (28ff0f5)
+
+### Other
+
+- chore(issues): verify 19 open issues and fix stale references (22186c1)
+- chore(issues): deprioritize FEAT-324 to P6 and FEAT-417 to P7 (30fae5a)
+- close(issues): won't-fix 5 low-value enhancements after architecture review (d5b5a04)
+
+[1.12.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.12.0...v1.12.1
+
 ## [1.12.0] - 2026-02-13
 
 ### Added
