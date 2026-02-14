@@ -410,11 +410,7 @@ def _render_dependency_graph(
             return result
 
     # Find root issues structurally (not blocked by anything in this graph)
-    roots = [
-        iid
-        for iid in sorted(all_ids)
-        if not (dep_graph.blocked_by.get(iid, set()) & all_ids)
-    ]
+    roots = [iid for iid in sorted(all_ids) if not (dep_graph.blocked_by.get(iid, set()) & all_ids)]
 
     for root in roots:
         if root not in visited:
