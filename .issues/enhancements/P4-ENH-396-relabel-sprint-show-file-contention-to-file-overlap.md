@@ -1,6 +1,6 @@
 ---
 discovered_date: 2026-02-12
-discovered_by: capture_issue
+discovered_by: capture-issue
 ---
 
 # ENH-396: Relabel sprint show "File contention" to "File overlap" with new glyph

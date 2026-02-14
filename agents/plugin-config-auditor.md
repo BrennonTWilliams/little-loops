@@ -135,7 +135,7 @@ Structure your audit like this:
 
 | File | Frontmatter | Args | Examples | Process | Issues |
 |------|-------------|------|----------|---------|--------|
-| audit_claude_config.md | OK | OK | OK | OK | 0 |
+| audit-claude-config.md | OK | OK | OK | OK | 0 |
 | ... | ... | ... | ... | ... | ... |
 
 #### Command Issues

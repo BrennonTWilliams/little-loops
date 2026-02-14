@@ -28,9 +28,9 @@ from little_loops.fsm.validation import ValidationSeverity
 
 
 class TestTemplateDefinitions:
-    """Tests that template definitions from create_loop.md are valid.
+    """Tests that template definitions from create-loop/SKILL.md are valid.
 
-    These templates are defined in commands/create_loop.md lines 72-141.
+    These templates are defined in skills/create-loop/SKILL.md lines 72-141.
     """
 
     def test_python_quality_template(self) -> None:
@@ -113,7 +113,7 @@ class TestTemplateDefinitions:
 class TestGoalParadigmGeneration:
     """Tests for goal paradigm YAML generation patterns.
 
-    Based on examples from commands/create_loop.md lines 378-408.
+    Based on examples from skills/create-loop/SKILL.md lines 378-408.
     """
 
     def test_basic_goal_yaml(self) -> None:
@@ -222,7 +222,7 @@ class TestGoalParadigmGeneration:
 class TestInvariantsParadigmGeneration:
     """Tests for invariants paradigm YAML generation patterns.
 
-    Based on examples from commands/create_loop.md lines 477-518.
+    Based on examples from skills/create-loop/SKILL.md lines 477-518.
     """
 
     def test_basic_invariants_yaml(self) -> None:
@@ -372,7 +372,7 @@ class TestInvariantsParadigmGeneration:
 class TestConvergenceParadigmGeneration:
     """Tests for convergence paradigm YAML generation patterns.
 
-    Based on examples from commands/create_loop.md lines 574-598.
+    Based on examples from skills/create-loop/SKILL.md lines 574-598.
     """
 
     def test_basic_convergence_yaml(self) -> None:
@@ -484,7 +484,7 @@ class TestConvergenceParadigmGeneration:
 class TestImperativeParadigmGeneration:
     """Tests for imperative paradigm YAML generation patterns.
 
-    Based on examples from commands/create_loop.md lines 662-696.
+    Based on examples from skills/create-loop/SKILL.md lines 662-696.
     """
 
     def test_basic_imperative_yaml(self) -> None:
@@ -797,7 +797,7 @@ class TestLoopFileCreation:
         loop_file = loops_dir / "existing-loop.yaml"
         loop_file.write_text("name: existing-loop")
 
-        # Simulate the check from create_loop.md Step 5
+        # Simulate the check from create-loop/SKILL.md Step 5
         exists = loop_file.exists()
         assert exists is True
 

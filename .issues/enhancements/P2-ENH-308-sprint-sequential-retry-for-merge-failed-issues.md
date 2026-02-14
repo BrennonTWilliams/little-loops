@@ -1,6 +1,6 @@
 ---
 discovered_date: 2026-02-09
-discovered_by: capture_issue
+discovered_by: capture-issue
 ---
 
 # ENH-308: Add immediate sequential retry for merge-failed issues in sprint
@@ -126,7 +126,7 @@ _None — ENH-344 (cli.py split into package) is now completed._
 
 ## Verification Notes
 
-- **Verified**: 2026-02-13 (ready_issue)
+- **Verified**: 2026-02-13 (ready-issue)
 - **Verdict**: CORRECTED
 - **File references updated**: All `cli.py` references corrected to `scripts/little_loops/cli/sprint.py`:
   - `_cmd_sprint_run()` at `cli/sprint.py:863`

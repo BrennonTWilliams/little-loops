@@ -1,6 +1,6 @@
 # Format Issue Templates
 
-This file contains the template v2.0 section definitions, alignment mappings, and output format templates for the format_issue skill.
+This file contains the template v2.0 section definitions, alignment mappings, and output format templates for the format-issue skill.
 
 ## Template v2.0 Section Alignment
 

@@ -1,5 +1,5 @@
 ---
-discovered_by: scan_product
+discovered_by: scan-product
 goal_alignment: null
 persona_impact: null
 business_value: null

@@ -44,7 +44,7 @@ from little_loops.subprocess_utils import (
 def _compute_relative_path(abs_path: Path, base_dir: Path | None = None) -> str:
     """Compute relative path from base directory for command input.
 
-    Used for fallback retry when ready_issue resolves to wrong file -
+    Used for fallback retry when ready-issue resolves to wrong file -
     allows retrying with explicit file path instead of ambiguous ID.
 
     Args:
@@ -52,7 +52,7 @@ def _compute_relative_path(abs_path: Path, base_dir: Path | None = None) -> str:
         base_dir: Base directory (defaults to cwd)
 
     Returns:
-        Relative path string suitable for ready_issue command
+        Relative path string suitable for ready-issue command
     """
     base = base_dir or Path.cwd()
     try:
@@ -202,10 +202,10 @@ def run_with_continuation(
 
 
 def detect_plan_creation(output: str, issue_id: str) -> Path | None:
-    """Detect if manage_issue created a plan file awaiting approval.
+    """Detect if manage-issue created a plan file awaiting approval.
 
     Checks for plan file creation in thoughts/shared/plans/ matching the issue ID.
-    This happens when manage_issue creates a plan but waits for user approval.
+    This happens when manage-issue creates a plan but waits for user approval.
 
     Args:
         output: Command stdout (unused, for future pattern matching)
@@ -273,12 +273,12 @@ def process_issue_inplace(
 
     issue_timing: dict[str, float] = {}
 
-    # Track whether we used fallback path resolution for ready_issue.
+    # Track whether we used fallback path resolution for ready-issue.
     validated_via_fallback = False
 
     # Phase 1: Ready/verify the issue
     logger.info(f"Phase 1: Verifying issue {info.issue_id}...")
-    with timed_phase(logger, "Phase 1 (ready_issue)") as phase1_timing:
+    with timed_phase(logger, "Phase 1 (ready-issue)") as phase1_timing:
         if not dry_run:
             result = run_claude_command(
                 f"/ll:ready-issue {info.issue_id}",
@@ -288,13 +288,13 @@ def process_issue_inplace(
                 idle_timeout=config.automation.idle_timeout_seconds,
             )
             if result.returncode != 0:
-                logger.warning("ready_issue command failed to execute, continuing anyway...")
+                logger.warning("ready-issue command failed to execute, continuing anyway...")
             else:
                 # Parse the verdict from the output
                 parsed = parse_ready_issue_output(result.stdout)
-                logger.info(f"ready_issue verdict: {parsed['verdict']}")
+                logger.info(f"ready-issue verdict: {parsed['verdict']}")
 
-                # Validate that ready_issue analyzed the expected file
+                # Validate that ready-issue analyzed the expected file
                 validated_path = parsed.get("validated_file_path")
                 if validated_path:
                     # Normalize paths for comparison (resolve to absolute)
@@ -308,7 +308,7 @@ def process_issue_inplace(
                         new_file_exists = validated_resolved.exists()
 
                         if new_file_exists and not old_file_exists:
-                            # ready_issue renamed the file - update tracking
+                            # ready-issue renamed the file - update tracking
                             logger.info(
                                 f"Issue file renamed: '{info.path.name}' -> "
                                 f"'{validated_resolved.name}'"
@@ -317,11 +317,11 @@ def process_issue_inplace(
                         else:
                             # Genuine mismatch - attempt fallback with explicit path
                             logger.warning(
-                                f"Path mismatch: ready_issue validated "
+                                f"Path mismatch: ready-issue validated "
                                 f"'{validated_path}' but expected '{info.path}'"
                             )
                             logger.info(
-                                "Attempting fallback: retrying ready_issue "
+                                "Attempting fallback: retrying ready-issue "
                                 "with explicit file path..."
                             )
 
@@ -338,7 +338,7 @@ def process_issue_inplace(
                             )
 
                             if retry_result.returncode != 0:
-                                logger.error(f"Fallback ready_issue failed for {info.issue_id}")
+                                logger.error(f"Fallback ready-issue failed for {info.issue_id}")
                                 return IssueProcessingResult(
                                     success=False,
                                     duration=time.time() - issue_start_time,
@@ -408,7 +408,7 @@ def process_issue_inplace(
                     if not close_validated_path:
                         logger.warning(
                             f"Skipping close for {info.issue_id}: "
-                            "ready_issue did not return validated file path"
+                            "ready-issue did not return validated file path"
                         )
                         return IssueProcessingResult(
                             success=False,
@@ -469,7 +469,7 @@ def process_issue_inplace(
     logger.info(f"Phase 2: Implementing {info.issue_id}...")
     with timed_phase(logger, "Phase 2 (implement)") as phase2_timing:
         if not dry_run:
-            # Build manage_issue command
+            # Build manage-issue command
             type_name = info.issue_type.rstrip("s")  # bugs -> bug
 
             # Use relative path if fallback was used, otherwise use issue_id

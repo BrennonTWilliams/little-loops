@@ -1,6 +1,6 @@
 # Manage Issue Templates
 
-This file contains reference templates used by the manage_issue skill. These templates are loaded on demand when needed during issue management.
+This file contains reference templates used by the manage-issue skill. These templates are loaded on demand when needed during issue management.
 
 ---
 

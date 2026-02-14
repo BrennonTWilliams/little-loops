@@ -26,7 +26,7 @@ class TestCompletedIssue:
             issue_type="BUG",
             priority="P1",
             issue_id="BUG-001",
-            discovered_by="scan_codebase",
+            discovered_by="scan-codebase",
             completed_date=date(2026, 1, 15),
         )
         result = issue.to_dict()
@@ -35,7 +35,7 @@ class TestCompletedIssue:
         assert result["issue_type"] == "BUG"
         assert result["priority"] == "P1"
         assert result["issue_id"] == "BUG-001"
-        assert result["discovered_by"] == "scan_codebase"
+        assert result["discovered_by"] == "scan-codebase"
         assert result["completed_date"] == "2026-01-15"
 
     def test_to_dict_none_values(self) -> None:
@@ -140,14 +140,14 @@ class TestCalculateSummary:
         """Test discovery source counting."""
         issues = [
             CompletedIssue(Path("a.md"), "BUG", "P1", "BUG-1", discovered_by="manual"),
-            CompletedIssue(Path("b.md"), "BUG", "P1", "BUG-2", discovered_by="scan_codebase"),
+            CompletedIssue(Path("b.md"), "BUG", "P1", "BUG-2", discovered_by="scan-codebase"),
             CompletedIssue(Path("c.md"), "BUG", "P1", "BUG-3"),  # None -> "unknown"
         ]
 
         summary = calculate_summary(issues)
 
         assert "manual" in summary.discovery_counts
-        assert "scan_codebase" in summary.discovery_counts
+        assert "scan-codebase" in summary.discovery_counts
         assert "unknown" in summary.discovery_counts
 
     def test_date_range(self) -> None:

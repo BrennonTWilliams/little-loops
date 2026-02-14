@@ -201,13 +201,13 @@
         },
         "ready_command": {
           "type": "string",
-          "description": "Template for ready_issue command (supports {{issue_id}})",
-          "default": "ready_issue {{issue_id}}"
+          "description": "Template for ready-issue command (supports {{issue_id}})",
+          "default": "ready-issue {{issue_id}}"
         },
         "manage_command": {
           "type": "string",
-          "description": "Template for manage_issue command (supports {{issue_type}}, {{action}}, {{issue_id}})",
-          "default": "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+          "description": "Template for manage-issue command (supports {{issue_type}}, {{action}}, {{issue_id}})",
+          "default": "manage-issue {{issue_type}} {{action}} {{issue_id}}"
         },
         "worktree_copy_files": {
           "type": "array",

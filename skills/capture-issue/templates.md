@@ -134,7 +134,7 @@ The assembled file follows this structure:
 cat > "{{config.issues.base_dir}}/[category]/[filename]" << 'EOF'
 ---
 discovered_date: [YYYY-MM-DD]
-discovered_by: capture_issue
+discovered_by: capture-issue
 ---
 
 # [TYPE]-[NNN]: [Title]

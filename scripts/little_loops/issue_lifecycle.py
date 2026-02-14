@@ -161,7 +161,7 @@ def _build_closure_resolution(
 - **Status**: {close_status}
 - **Closed**: {datetime.now().strftime("%Y-%m-%d")}
 - **Reason**: {close_reason}
-- **Closure**: Automated (ready_issue validation)
+- **Closure**: Automated (ready-issue validation)
 {fix_commit_line}
 ### Closure Notes
 Issue was automatically closed during validation.
@@ -511,7 +511,7 @@ def close_issue(
 ) -> bool:
     """Close an issue by moving it to completed with closure status.
 
-    Used when ready_issue determines an issue should not be implemented
+    Used when ready-issue determines an issue should not be implemented
     (e.g., already fixed, invalid, duplicate).
 
     Args:

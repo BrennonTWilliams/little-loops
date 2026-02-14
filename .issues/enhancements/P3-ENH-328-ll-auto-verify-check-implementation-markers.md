@@ -1,6 +1,6 @@
 ---
 discovered_date: 2026-02-11
-discovered_by: capture_issue
+discovered_by: capture-issue
 ---
 
 # ENH-328: ll-auto verify phase should check implementation markers

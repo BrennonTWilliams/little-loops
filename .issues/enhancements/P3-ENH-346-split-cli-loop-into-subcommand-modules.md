@@ -2,7 +2,7 @@
 discovered_commit: be30013
 discovered_branch: main
 discovered_date: 2026-02-12
-discovered_by: audit_architecture
+discovered_by: audit-architecture
 focus_area: large-files
 ---
 

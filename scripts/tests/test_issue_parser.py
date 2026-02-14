@@ -165,9 +165,9 @@ class TestIssueInfo:
             priority="P0",
             issue_id="BUG-001",
             title="Test",
-            discovered_by="scan_codebase",
+            discovered_by="scan-codebase",
         )
-        assert info.discovered_by == "scan_codebase"
+        assert info.discovered_by == "scan-codebase"
 
     def test_discovered_by_in_to_dict(self) -> None:
         """Test discovered_by appears in to_dict."""
@@ -177,10 +177,10 @@ class TestIssueInfo:
             priority="P0",
             issue_id="BUG-001",
             title="Test",
-            discovered_by="audit_architecture",
+            discovered_by="audit-architecture",
         )
         data = info.to_dict()
-        assert data["discovered_by"] == "audit_architecture"
+        assert data["discovered_by"] == "audit-architecture"
 
     def test_discovered_by_from_dict(self) -> None:
         """Test discovered_by is restored from dict."""
@@ -190,10 +190,10 @@ class TestIssueInfo:
             "priority": "P1",
             "issue_id": "BUG-200",
             "title": "Test Issue",
-            "discovered_by": "scan_codebase",
+            "discovered_by": "scan-codebase",
         }
         info = IssueInfo.from_dict(data)
-        assert info.discovered_by == "scan_codebase"
+        assert info.discovered_by == "scan-codebase"
 
     def test_discovered_by_from_dict_missing(self) -> None:
         """Test from_dict defaults to None for missing discovered_by."""
@@ -267,7 +267,7 @@ class TestIssueInfo:
             "priority": "P1",
             "issue_id": "BUG-200",
             "title": "Test Issue",
-            "discovered_by": "scan_product",
+            "discovered_by": "scan-product",
             "product_impact": {
                 "goal_alignment": "performance",
                 "persona_impact": "admin",
@@ -515,7 +515,7 @@ class TestIssueParser:
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
 
-        assert info.discovered_by == "scan_codebase"
+        assert info.discovered_by == "scan-codebase"
 
     def test_parse_no_frontmatter(
         self,
@@ -578,7 +578,7 @@ class TestIssueParser:
         parser = IssueParser(config)
         info = parser.parse_file(issue_file)
 
-        assert info.discovered_by == "audit_architecture"
+        assert info.discovered_by == "audit-architecture"
 
     def test_parse_product_impact_from_frontmatter(
         self,

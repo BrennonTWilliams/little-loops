@@ -139,7 +139,7 @@ For each issue file found, extract:
 - **ID**: From filename (e.g., BUG-001, FEAT-042)
 - **Title**: From first `# ` heading in file content
 - **Summary**: First paragraph from the `## Summary` section (if exists)
-- **File Paths**: Backtick-enclosed file paths found in issue content (e.g., from `## Integration Map` or `### Files to Modify` sections). Extract the top-level directory from each path (e.g., `commands/create_sprint.md` → `commands/`).
+- **File Paths**: Backtick-enclosed file paths found in issue content (e.g., from `## Integration Map` or `### Files to Modify` sections). Extract the top-level directory from each path (e.g., `commands/create-sprint.md` → `commands/`).
 - **Goal Alignment**: From frontmatter `goal_alignment` field (if exists)
 - **Blocked By**: From `## Blocked By` section (if exists)
 

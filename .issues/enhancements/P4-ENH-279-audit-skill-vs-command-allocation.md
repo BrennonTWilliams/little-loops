@@ -1,6 +1,6 @@
 ---
 discovered_date: 2026-02-08
-discovered_by: manual_review
+discovered_by: manual-review
 ---
 
 # ENH-279: Audit skill vs command allocation

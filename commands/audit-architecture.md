@@ -202,7 +202,7 @@ Before creating issues, search for existing issues:
 discovered_commit: [GIT_HASH]
 discovered_branch: [BRANCH_NAME]
 discovered_date: [ISO_TIMESTAMP]
-discovered_by: audit_architecture
+discovered_by: audit-architecture
 focus_area: [large-files|integration|patterns|organization]
 ---
 
@@ -287,7 +287,7 @@ If a completed architectural issue matches a new finding:
    ## Reopened
 
    - **Date**: [TODAY]
-   - **By**: audit_architecture
+   - **By**: audit-architecture
    - **Reason**: Architectural issue recurred
 
    ### New Findings

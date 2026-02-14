@@ -1827,7 +1827,7 @@ The command uses `AskUserQuestion` with various patterns:
 
 ### Implementation Notes
 
-- Command is implemented in `commands/create_loop.md`
+- Command is implemented in `commands/create-loop.md`
 - Uses Claude's natural language understanding to map user intent to paradigm
 - Validates generated YAML before saving
 - Offers to run `ll-loop validate <name>` after creation

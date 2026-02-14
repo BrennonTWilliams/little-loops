@@ -281,8 +281,8 @@ class ParallelAutomationConfig:
     p0_sequential: bool = True
     max_merge_retries: int = 2
     command_prefix: str = "/ll:"
-    ready_command: str = "ready_issue {{issue_id}}"
-    manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+    ready_command: str = "ready-issue {{issue_id}}"
+    manage_command: str = "manage-issue {{issue_type}} {{action}} {{issue_id}}"
     worktree_copy_files: list[str] = field(default_factory=lambda: [".claude/settings.local.json", ".env"])
     require_code_changes: bool = True
 ```
@@ -2056,8 +2056,8 @@ class ParallelConfig:
     stream_subprocess_output: bool = False
     show_model: bool = False
     command_prefix: str = "/ll:"
-    ready_command: str = "ready_issue {{issue_id}}"
-    manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+    ready_command: str = "ready-issue {{issue_id}}"
+    manage_command: str = "manage-issue {{issue_type}} {{action}} {{issue_id}}"
     only_ids: set[str] | None = None
     skip_ids: set[str] | None = None
     require_code_changes: bool = True
@@ -2072,7 +2072,7 @@ class ParallelConfig:
 def get_ready_command(self, issue_id: str) -> str
 ```
 
-Build the ready_issue command string.
+Build the ready-issue command string.
 
 **Parameters:**
 - `issue_id` - Issue identifier
@@ -2085,7 +2085,7 @@ Build the ready_issue command string.
 def get_manage_command(self, issue_type: str, action: str, issue_id: str) -> str
 ```
 
-Build the manage_issue command string.
+Build the manage-issue command string.
 
 **Parameters:**
 - `issue_type` - Type of issue (bug, feature, enhancement)

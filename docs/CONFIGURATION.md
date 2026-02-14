@@ -56,8 +56,8 @@ For interactive editing, use `/ll:configure`.
     "max_merge_retries": 2,
     "stream_subprocess_output": false,
     "command_prefix": "/ll:",
-    "ready_command": "ready_issue {{issue_id}}",
-    "manage_command": "manage_issue {{issue_type}} {{action}} {{issue_id}}",
+    "ready_command": "ready-issue {{issue_id}}",
+    "manage_command": "manage-issue {{issue_type}} {{action}} {{issue_id}}",
     "worktree_copy_files": [".env"]
   },
 
@@ -200,8 +200,8 @@ Parallel automation settings with git worktree isolation (ll-parallel):
 | `max_merge_retries` | `2` | Rebase attempts before failing |
 | `stream_subprocess_output` | `false` | Stream Claude CLI output |
 | `command_prefix` | `/ll:` | Prefix for slash commands |
-| `ready_command` | `ready_issue {{issue_id}}` | Ready command template |
-| `manage_command` | `manage_issue {{issue_type}} {{action}} {{issue_id}}` | Manage command template |
+| `ready_command` | `ready-issue {{issue_id}}` | Ready command template |
+| `manage_command` | `manage-issue {{issue_type}} {{action}} {{issue_id}}` | Manage command template |
 | `worktree_copy_files` | `[".env"]` | Files to copy to worktrees (.claude/ is always copied automatically) |
 
 ### `product`
@@ -337,9 +337,9 @@ Override priority:
 
 ### Example Override
 
-To add project-specific verification to `manage_issue`:
+To add project-specific verification to `manage-issue`:
 
 ```bash
-# .claude/commands/ll/manage_issue.md
+# .claude/commands/ll/manage-issue.md
 # Copy from plugin and modify as needed
 ```

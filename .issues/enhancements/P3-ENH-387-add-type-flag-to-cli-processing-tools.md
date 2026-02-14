@@ -1,6 +1,6 @@
 ---
 discovered_date: 2026-02-12
-discovered_by: capture_issue
+discovered_by: capture-issue
 ---
 
 # ENH-387: Add --type flag to ll-parallel, ll-sprint, and ll-auto

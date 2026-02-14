@@ -1,6 +1,6 @@
 ---
 discovered_date: 2026-02-12T00:00:00Z
-discovered_by: audit_claude_config
+discovered_by: audit-claude-config
 ---
 
 # ENH-357: Update CLAUDE.md last-updated date and add new skills count
@@ -67,7 +67,7 @@ _None — ENH-388 closed (won't-fix)._
 
 ## Audit Update (2026-02-12)
 
-**By**: audit_docs
+**By**: audit-docs
 
 The skills count discrepancy extends beyond CLAUDE.md:
 - **README.md**: Claims "7 skills", table lists 7 (missing `loop-suggester`) — tracked in BUG-381

@@ -20,7 +20,7 @@ SECTION_PATTERN = re.compile(
 TABLE_ROW_PATTERN = re.compile(r"\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(.+?)\s*\|")
 STATUS_PATTERN = re.compile(r"^- (\w+): (\w+)", re.MULTILINE)
 
-# Valid verdicts for ready_issue
+# Valid verdicts for ready-issue
 VALID_VERDICTS = ("READY", "CORRECTED", "NOT_READY", "NEEDS_REVIEW", "CLOSE")
 
 
@@ -194,16 +194,16 @@ def parse_status_lines(section_content: str) -> dict[str, str]:
 
 
 def parse_ready_issue_output(output: str) -> dict[str, Any]:
-    """Extract verdict and concerns from ready_issue output.
+    """Extract verdict and concerns from ready-issue output.
 
-    The ready_issue command outputs structured sections with a VERDICT
+    The ready-issue command outputs structured sections with a VERDICT
     section containing READY, CORRECTED, NOT_READY, NEEDS_REVIEW, or CLOSE.
 
     Supports both old format (VERDICT: READY) and new standardized format
     (## VERDICT\\nREADY) for backwards compatibility.
 
     Args:
-        output: The stdout from the ready_issue command
+        output: The stdout from the ready-issue command
 
     Returns:
         dict with keys:
@@ -387,13 +387,13 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
 
 
 def parse_manage_issue_output(output: str) -> dict[str, Any]:
-    """Extract structured data from manage_issue output.
+    """Extract structured data from manage-issue output.
 
-    The manage_issue command outputs structured sections with metadata,
+    The manage-issue command outputs structured sections with metadata,
     files changed, commits, verification results, and final status.
 
     Args:
-        output: The stdout from the manage_issue command
+        output: The stdout from the manage-issue command
 
     Returns:
         dict with keys:

@@ -1,5 +1,5 @@
 ---
-discovered_by: audit_architecture
+discovered_by: audit-architecture
 ---
 
 # BUG-001: Test Issue

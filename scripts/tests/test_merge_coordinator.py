@@ -72,8 +72,8 @@ def default_config() -> ParallelConfig:
         max_merge_retries=2,
         stream_subprocess_output=False,
         command_prefix="/ll:",
-        ready_command="ready_issue {{issue_id}}",
-        manage_command="manage_issue {{issue_type}} {{action}} {{issue_id}}",
+        ready_command="ready-issue {{issue_id}}",
+        manage_command="manage-issue {{issue_type}} {{action}} {{issue_id}}",
     )
 
 

@@ -1,29 +1,29 @@
 ---
 discovered_date: 2026-02-12
-discovered_by: capture_issue
+discovered_by: capture-issue
 ---
 
-# ENH-386: Add command cross-reference validation to audit_claude_config
+# ENH-386: Add command cross-reference validation to audit-claude-config
 
 ## Summary
 
-Add a cross-reference validation check to `audit_claude_config` that verifies commands listed in skill files match the commands defined in `help.md`. This prevents skill documentation from drifting out of sync when commands are added, renamed, or removed.
+Add a cross-reference validation check to `audit-claude-config` that verifies commands listed in skill files match the commands defined in `help.md`. This prevents skill documentation from drifting out of sync when commands are added, renamed, or removed.
 
 ## Current Behavior
 
-`audit_claude_config` audits skills for description quality, trigger keywords, and frontmatter completeness, but does not verify that commands referenced within skill content actually exist in the project's command reference (`commands/help.md`).
+`audit-claude-config` audits skills for description quality, trigger keywords, and frontmatter completeness, but does not verify that commands referenced within skill content actually exist in the project's command reference (`commands/help.md`).
 
 ## Expected Behavior
 
-During skill auditing (Wave 1) or cross-component consistency checks (Wave 2), `audit_claude_config` should extract command references from skill files (e.g., `/ll:scan-codebase`, `/ll:manage-issue`) and verify each one exists in `commands/help.md`. Unrecognized commands should be flagged as warnings.
+During skill auditing (Wave 1) or cross-component consistency checks (Wave 2), `audit-claude-config` should extract command references from skill files (e.g., `/ll:scan-codebase`, `/ll:manage-issue`) and verify each one exists in `commands/help.md`. Unrecognized commands should be flagged as warnings.
 
 ## Motivation
 
-The `issue-workflow` skill recently drifted significantly out of sync — referencing outdated flags and missing 11+ commands. A cross-reference check would have caught this drift during routine `audit_claude_config` runs. BUG-358 (skill references nonexistent command) is another instance of the same class of problem.
+The `issue-workflow` skill recently drifted significantly out of sync — referencing outdated flags and missing 11+ commands. A cross-reference check would have caught this drift during routine `audit-claude-config` runs. BUG-358 (skill references nonexistent command) is another instance of the same class of problem.
 
 ## Proposed Solution
 
-Add a new validation step to the skill auditing phase in `audit_claude_config`:
+Add a new validation step to the skill auditing phase in `audit-claude-config`:
 
 1. Parse `commands/help.md` to build a set of valid command names
 2. For each skill file, extract `/ll:*` references from the content body (below frontmatter)
@@ -41,13 +41,13 @@ This fits naturally into the existing Wave 2 consistency checks alongside agent/
 - N/A — this is a command prompt, not code
 
 ### Similar Patterns
-- Existing Wave 2 cross-checks in `audit_claude_config` (agent tool validation, MCP reference checks)
+- Existing Wave 2 cross-checks in `audit-claude-config` (agent tool validation, MCP reference checks)
 
 ### Tests
 - N/A — skill prompt changes; validation is performed by the audit skill itself
 
 ### Documentation
-- `commands/help.md` — update `audit_claude_config` description if scope text changes
+- `commands/help.md` — update `audit-claude-config` description if scope text changes
 - `docs/ARCHITECTURE.md` — note new validation in audit pipeline if documented there
 
 ### Configuration
@@ -75,7 +75,7 @@ This fits naturally into the existing Wave 2 consistency checks alongside agent/
 
 ## Success Metrics
 
-- `audit_claude_config` catches stale command references in skills (like the issue-workflow drift)
+- `audit-claude-config` catches stale command references in skills (like the issue-workflow drift)
 - Zero false positives on current skill files after the update we just made
 
 ## Related Key Documentation
@@ -104,7 +104,7 @@ _None — ENH-388 closed (won't-fix)._
 
 - **Verified**: 2026-02-13
 - **Verdict**: NEEDS_UPDATE (corrected)
-- **File path fixed**: `commands/audit_claude_config.md` → `skills/audit-claude-config/SKILL.md` (this is a skill, not a command)
+- **File path fixed**: `commands/audit-claude-config.md` → `skills/audit-claude-config/SKILL.md` (this is a skill, not a command)
 - **Blocker cleared**: BUG-403 completed — issue is now unblocked
 - `commands/help.md` exists — valid validation data source
 - No cross-reference validation of command names exists in audit-claude-config skill — enhancement still needed

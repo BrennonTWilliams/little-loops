@@ -652,7 +652,7 @@ For comprehensive documentation, see [Session Handoff Guide](SESSION_HANDOFF.md)
    print(c.project.test_cmd)  # Should show your config value
    ```
 
-### ready_issue always returns NOT_READY
+### ready-issue always returns NOT_READY
 
 **Symptom**: All issues fail validation
 
@@ -667,7 +667,7 @@ For comprehensive documentation, see [Session Handoff Guide](SESSION_HANDOFF.md)
    claude -p "/ll:ready-issue BUG-001"
    ```
 
-### manage_issue completes but no changes
+### manage-issue completes but no changes
 
 **Symptom**: Issue marked complete but code unchanged
 

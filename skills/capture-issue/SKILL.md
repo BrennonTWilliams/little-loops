@@ -232,7 +232,7 @@ ELSE:
 2. Look up `creation_variants.[TEMPLATE_STYLE]` to determine which sections to include
 3. For each section name in `include_common`, use `common_sections.[name].creation_template` as placeholder content
 4. If `include_type_sections` is true, also include sections from `type_sections.[TYPE]` that have a `creation_template`
-5. Always include YAML frontmatter with `discovered_date` and `discovered_by: capture_issue`
+5. Always include YAML frontmatter with `discovered_date` and `discovered_by: capture-issue`
 
 **New sections in v2.0** (auto-included based on template variant):
 - **Motivation**: Why this matters (replaces Current Pain Point for ENH)
@@ -281,7 +281,7 @@ cat >> "[path-to-existing-issue]" << 'EOF'
 ## Additional Context
 
 - **Date**: [YYYY-MM-DD]
-- **Source**: capture_issue
+- **Source**: capture-issue
 
 [New context/findings from the description or conversation]
 
@@ -313,7 +313,7 @@ cat >> "{{config.issues.base_dir}}/[category]/[filename]" << 'EOF'
 ## Reopened
 
 - **Date**: [YYYY-MM-DD]
-- **By**: capture_issue
+- **By**: capture-issue
 - **Reason**: Issue recurred or was not fully resolved
 
 ### New Findings

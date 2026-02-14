@@ -148,8 +148,8 @@ class WorkerStage(Enum):
 
     Stages progress in order:
     - SETUP: Creating git worktree and copying .claude/ directory
-    - VALIDATING: Running ready_issue command
-    - IMPLEMENTING: Running manage_issue command
+    - VALIDATING: Running ready-issue command
+    - IMPLEMENTING: Running manage-issue command
     - VERIFYING: Checking work was done and updating branch base
     - MERGING: Awaiting merge coordination
     - COMPLETED: Successfully finished
@@ -298,8 +298,8 @@ class ParallelConfig:
         stream_subprocess_output: Whether to stream subprocess output
         show_model: Make API call to verify and display model on worktree setup
         command_prefix: Prefix for slash commands (default: "/ll:")
-        ready_command: Template for ready_issue command
-        manage_command: Template for manage_issue command
+        ready_command: Template for ready-issue command
+        manage_command: Template for manage-issue command
         only_ids: If provided, only process these issue IDs
         skip_ids: Issue IDs to skip (in addition to completed/failed)
         merge_pending: Attempt to merge pending worktrees from previous runs
@@ -342,7 +342,7 @@ class ParallelConfig:
     serialize_overlapping: bool = True  # If True, defer overlapping issues; if False, just warn
 
     def get_ready_command(self, issue_id: str) -> str:
-        """Build the ready_issue command string.
+        """Build the ready-issue command string.
 
         Args:
             issue_id: Issue identifier
@@ -354,7 +354,7 @@ class ParallelConfig:
         return f"{self.command_prefix}{cmd}"
 
     def get_manage_command(self, issue_type: str, action: str, issue_id: str) -> str:
-        """Build the manage_issue command string.
+        """Build the manage-issue command string.
 
         Args:
             issue_type: Type of issue (bug, feature, enhancement)

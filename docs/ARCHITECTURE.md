@@ -67,10 +67,10 @@ little-loops/
 ├── commands/                # 35 slash command templates
 │   ├── init.md
 │   ├── help.md
-│   ├── check_code.md
-│   ├── run_tests.md
-│   ├── manage_issue.md
-│   ├── normalize_issues.md
+│   ├── check-code.md
+│   ├── run-tests.md
+│   ├── manage-issue.md
+│   ├── normalize-issues.md
 │   └── ...
 ├── agents/                  # 8 specialized agents
 │   ├── codebase-analyzer.md
@@ -328,15 +328,15 @@ sequenceDiagram
     par Worker 1
         Pool->>W1: Process BUG-001
         W1->>Git: Create worktree + branch
-        W1->>W1: Run ready_issue
-        W1->>W1: Run manage_issue
+        W1->>W1: Run ready-issue
+        W1->>W1: Run manage-issue
         W1->>Git: Commit in worktree
         W1-->>Pool: WorkerResult
     and Worker 2
         Pool->>W2: Process BUG-002
         W2->>Git: Create worktree + branch
-        W2->>W2: Run ready_issue
-        W2->>W2: Run manage_issue
+        W2->>W2: Run ready-issue
+        W2->>W2: Run manage-issue
         W2->>Git: Commit in worktree
         W2-->>Pool: WorkerResult
     end
@@ -824,8 +824,8 @@ flowchart TB
     end
 
     subgraph Processing["Processing"]
-        VALIDATE["Validate (ready_issue)"]
-        IMPLEMENT["Implement (manage_issue)"]
+        VALIDATE["Validate (ready-issue)"]
+        IMPLEMENT["Implement (manage-issue)"]
         VERIFY["Verify (tests pass)"]
     end
 

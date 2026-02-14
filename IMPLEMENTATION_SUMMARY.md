@@ -82,16 +82,16 @@ Successfully implemented the issue template optimization plan, reducing sections
 
 ### 3. Commands Updated
 
-**`commands/capture_issue.md`**:
+**`commands/capture-issue.md`**:
 - Added note about v2.0 template (line 345)
 - Listed new sections and their purposes
 
-**`commands/format_issue.md`**:
+**`commands/format-issue.md`**:
 - Updated examples to use v2.0 sections (lines 159-213)
 - Added note about deprecated sections (line 52-66)
 - Included BUG, FEAT, and ENH example additions
 
-**`commands/ready_issue.md`**:
+**`commands/ready-issue.md`**:
 - Added backward compatibility note (line 120-125)
 - Referenced v2.0 template with deprecation handling
 
@@ -208,9 +208,9 @@ Successfully implemented the issue template optimization plan, reducing sections
 - ✅ `templates/issue-sections.json` - Core template definition
 
 ### Supporting Changes
-- ✅ `commands/capture_issue.md` - Issue creation
-- ✅ `commands/format_issue.md` - Issue refinement
-- ✅ `commands/ready_issue.md` - Issue validation
+- ✅ `commands/capture-issue.md` - Issue creation
+- ✅ `commands/format-issue.md` - Issue refinement
+- ✅ `commands/ready-issue.md` - Issue validation
 
 ### Documentation
 - ✅ `docs/ISSUE_TEMPLATE.md` - New comprehensive guide

@@ -162,7 +162,7 @@ Created issues follow the standard format with audit metadata:
 discovered_commit: [GIT_HASH]
 discovered_branch: [BRANCH_NAME]
 discovered_date: [ISO_TIMESTAMP]
-discovered_by: find_dead_code
+discovered_by: find-dead-code
 confidence: [high|medium]
 ---
 

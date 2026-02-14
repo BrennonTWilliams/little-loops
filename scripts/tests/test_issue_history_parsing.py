@@ -20,7 +20,7 @@ class TestParseCompletedIssue:
         issue_file = tmp_path / "P1-BUG-042-test-issue.md"
         issue_file.write_text(
             """---
-discovered_by: scan_codebase
+discovered_by: scan-codebase
 ---
 
 # BUG-042: Test Issue
@@ -36,7 +36,7 @@ discovered_by: scan_codebase
         assert issue.issue_type == "BUG"
         assert issue.priority == "P1"
         assert issue.issue_id == "BUG-042"
-        assert issue.discovered_by == "scan_codebase"
+        assert issue.discovered_by == "scan-codebase"
         assert issue.completed_date == date(2026, 1, 15)
 
     def test_parse_without_frontmatter(self, tmp_path: Path) -> None:

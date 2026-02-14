@@ -95,16 +95,16 @@ Quick reference for managing issues with the little-loops plugin.
 /ll:open-pr                    # Open pull request
 ```
 
-## manage_issue Reference
+## manage-issue Reference
 
 | Parameter | Values |
 |-----------|--------|
 | Types | `bug`, `feature`, `enhancement` |
 | Actions | `fix`, `implement`, `improve`, `verify` |
 
-## ready_issue Sub-Skills
+## ready-issue Sub-Skills
 
-`ready_issue` runs these validation skills automatically:
+`ready-issue` runs these validation skills automatically:
 
 | Skill | Purpose |
 |-------|---------|
@@ -160,7 +160,7 @@ Install: `pip install -e "./scripts[dev]"`
 
 ## Quick Tips
 
-- Run refinement commands (`normalize`, `prioritize`, `align`, `format`, `refine`, `verify`) before `ready_issue`
+- Run refinement commands (`normalize`, `prioritize`, `align`, `format`, `refine`, `verify`) before `ready-issue`
 - Always run `/ll:ready-issue` before `/ll:manage-issue`
 - Use `/ll:create-sprint` to group related issues for focused execution
 - Use `/ll:tradeoff-review-issues` to prune low-value issues before sprints

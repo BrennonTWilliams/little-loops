@@ -1,6 +1,6 @@
 ---
 discovered_commit: abc123
-discovered_by: scan_codebase
+discovered_by: scan-codebase
 ---
 
 # BUG-002: Test Issue without Product Impact

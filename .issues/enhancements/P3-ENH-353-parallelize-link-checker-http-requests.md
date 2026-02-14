@@ -2,7 +2,7 @@
 discovered_commit: be30013d0e2446b479c121af1d58a2309b3cfeb5
 discovered_branch: main
 discovered_date: 2026-02-12T16:03:46Z
-discovered_by: scan_codebase
+discovered_by: scan-codebase
 ---
 
 # ENH-353: Parallelize link checker HTTP requests
@@ -33,7 +33,7 @@ Use `concurrent.futures.ThreadPoolExecutor(max_workers=10)` to check URLs in par
 
 This enhancement would:
 - Significantly reduce wall-clock time for documentation audits with many external links
-- Business value: Faster feedback loops during `ll-check-links` and `audit_docs` workflows
+- Business value: Faster feedback loops during `ll-check-links` and `audit-docs` workflows
 - Technical debt: None introduced — uses stdlib `concurrent.futures` with no new dependencies
 
 ## Implementation Steps

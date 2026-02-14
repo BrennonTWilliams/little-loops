@@ -15,7 +15,7 @@ from little_loops.issue_parser import IssueInfo
 
 
 class TestPathRenameHandling:
-    """Tests for handling issue file renames during ready_issue."""
+    """Tests for handling issue file renames during ready-issue."""
 
     @pytest.fixture
     def mock_config(self, temp_project_dir: Path) -> BRConfig:
@@ -47,13 +47,13 @@ class TestPathRenameHandling:
         self, temp_project_dir: Path, mock_config: BRConfig, mock_issue_info: IssueInfo
     ) -> None:
         """Test that legitimate file renames update tracking instead of failing."""
-        # Setup: Create the new file path (simulating ready_issue renaming)
+        # Setup: Create the new file path (simulating ready-issue renaming)
         new_path = mock_issue_info.path.parent / "P3-ENH-341-refactor-metrics-module.md"
         new_path.write_text("# ENH-341: Refactor Metrics Module\n")
         # Remove the old file to simulate a rename
         mock_issue_info.path.unlink()
 
-        # Mock the ready_issue output
+        # Mock the ready-issue output
         mock_output = f"""
 ## VERDICT
 CORRECTED
@@ -106,7 +106,7 @@ CORRECTED
         self, temp_project_dir: Path, mock_config: BRConfig, mock_issue_info: IssueInfo
     ) -> None:
         """Test that genuine path mismatches fail when both files exist."""
-        # Setup: Create a different file that ready_issue claims to validate
+        # Setup: Create a different file that ready-issue claims to validate
         different_path = mock_issue_info.path.parent / "P3-ENH-999-different-issue.md"
         different_path.write_text("# ENH-999: Different Issue\n")
 
@@ -248,7 +248,7 @@ class TestPathMismatchFallback:
         correct_file = issues_dir / "P1-ENH-341-correct-issue.md"
         correct_file.write_text("# ENH-341: Correct Issue\n")
 
-        # Create a wrong file (what ready_issue mistakenly finds)
+        # Create a wrong file (what ready-issue mistakenly finds)
         wrong_file = issues_dir / "P1-ENH-001-wrong-issue.md"
         wrong_file.write_text("# ENH-001: Wrong Issue\n")
 
@@ -309,7 +309,7 @@ READY
         assert validated_resolved != expected_file.resolve()
 
     def test_path_detection_in_ready_issue_command(self) -> None:
-        """Test that ready_issue bash can distinguish paths from IDs.
+        """Test that ready-issue bash can distinguish paths from IDs.
 
         This is a unit test for the bash logic - verifying the patterns
         that distinguish file paths from issue IDs.
@@ -339,10 +339,10 @@ READY
             assert not is_path, f"'{issue_id}' should be detected as ID"
 
     def test_manage_issue_uses_path_after_fallback(self, temp_project_dir: Path) -> None:
-        """Test that manage_issue uses relative path after fallback, not stale issue_id.
+        """Test that manage-issue uses relative path after fallback, not stale issue_id.
 
-        This tests the BUG-010 fix: when ready_issue fallback succeeds with an explicit
-        path, the subsequent manage_issue command should use that path instead of the
+        This tests the BUG-010 fix: when ready-issue fallback succeeds with an explicit
+        path, the subsequent manage-issue command should use that path instead of the
         original abstract issue_id which may not match the target repo's naming.
         """
         from unittest.mock import MagicMock
@@ -360,7 +360,7 @@ READY
         actual_file = issues_dir / "P1-DOC-001-fix-layer-count.md"
         actual_file.write_text("# DOC-001: Fix Layer Count\n\n## Summary\nTest issue\n")
 
-        # Create a different file that initial ready_issue might match
+        # Create a different file that initial ready-issue might match
         wrong_file = issues_dir / "P3-BUG-001-old-issue.md"
         wrong_file.write_text("# BUG-001: Old Issue\n")
 
@@ -376,7 +376,7 @@ READY
         # Expected relative path for the fallback
         expected_relative_path = _compute_relative_path(actual_file, temp_project_dir)
 
-        # Mock ready_issue outputs
+        # Mock ready-issue outputs
         first_output = f"""
 ## VERDICT
 READY
@@ -439,24 +439,24 @@ READY
         # Verify the sequence of calls
         assert len(call_history) >= 3, f"Expected at least 3 calls, got {len(call_history)}"
 
-        # First call: ready_issue with abstract ID
+        # First call: ready-issue with abstract ID
         assert call_history[0][0] == "run_claude_command"
         assert "/ll:ready-issue BUG-1" in call_history[0][1]
 
-        # Second call: ready_issue fallback with explicit path
+        # Second call: ready-issue fallback with explicit path
         assert call_history[1][0] == "run_claude_command"
         assert expected_relative_path in call_history[1][1]
 
-        # Third call: manage_issue should use the path, NOT the stale BUG-1
+        # Third call: manage-issue should use the path, NOT the stale BUG-1
         assert call_history[2][0] == "run_with_continuation"
         manage_cmd = call_history[2][1]
         assert "manage-issue" in manage_cmd
         # The key assertion: must use path, not stale ID
         assert expected_relative_path in manage_cmd, (
-            f"Expected manage_issue to use '{expected_relative_path}', got: {manage_cmd}"
+            f"Expected manage-issue to use '{expected_relative_path}', got: {manage_cmd}"
         )
         assert "BUG-1" not in manage_cmd, (
-            f"manage_issue should NOT use stale ID 'BUG-1', got: {manage_cmd}"
+            f"manage-issue should NOT use stale ID 'BUG-1', got: {manage_cmd}"
         )
 
 
@@ -973,7 +973,7 @@ class TestRunWithContinuation:
 
 
 class TestReadyIssueErrorHandling:
-    """Tests for error handling during ready_issue phase (ENH-207)."""
+    """Tests for error handling during ready-issue phase (ENH-207)."""
 
     @pytest.fixture
     def mock_config(self, temp_project_dir: Path) -> BRConfig:
@@ -1007,12 +1007,12 @@ class TestReadyIssueErrorHandling:
     def test_ready_issue_failure_continues_anyway(
         self, mock_config: BRConfig, sample_issue: IssueInfo
     ) -> None:
-        """Test that ready_issue failure is logged but processing continues."""
+        """Test that ready-issue failure is logged but processing continues."""
         from little_loops.issue_manager import process_issue_inplace
 
         mock_logger = MagicMock()
 
-        # ready_issue fails but doesn't crash
+        # ready-issue fails but doesn't crash
         mock_result = MagicMock()
         mock_result.returncode = 1  # Non-zero return code
         mock_result.stdout = ""
@@ -1033,12 +1033,12 @@ class TestReadyIssueErrorHandling:
     def test_fallback_ready_issue_failure_returns_error(
         self, mock_config: BRConfig, sample_issue: IssueInfo
     ) -> None:
-        """Test that fallback ready_issue failure returns error result."""
+        """Test that fallback ready-issue failure returns error result."""
         from little_loops.issue_manager import process_issue_inplace
 
         mock_logger = MagicMock()
 
-        # First ready_issue returns wrong path (mismatch)
+        # First ready-issue returns wrong path (mismatch)
         first_output = """
 ## VERDICT
 READY
@@ -1050,7 +1050,7 @@ READY
         first_result.returncode = 0
         first_result.stdout = first_output
 
-        # Fallback ready_issue fails
+        # Fallback ready-issue fails
         fallback_result = MagicMock()
         fallback_result.returncode = 1
         fallback_result.stdout = ""
@@ -1135,7 +1135,7 @@ class TestCorrectionsAndConcerns:
     def test_corrections_are_logged_and_stored(
         self, mock_config: BRConfig, sample_issue: IssueInfo
     ) -> None:
-        """Test that corrections from ready_issue are logged and stored."""
+        """Test that corrections from ready-issue are logged and stored."""
         from little_loops.issue_manager import process_issue_inplace
 
         mock_logger = MagicMock()
@@ -1169,7 +1169,7 @@ true
         assert result.corrections == ["Fixed title", "Added description"]
 
     def test_concerns_are_logged(self, mock_config: BRConfig, sample_issue: IssueInfo) -> None:
-        """Test that concerns from ready_issue are logged as warnings."""
+        """Test that concerns from ready-issue are logged as warnings."""
         from little_loops.issue_manager import process_issue_inplace
 
         mock_logger = MagicMock()
@@ -1203,7 +1203,7 @@ READY
 
 
 class TestCloseVerdictHandling:
-    """Tests for CLOSE verdict handling in ready_issue phase (ENH-207)."""
+    """Tests for CLOSE verdict handling in ready-issue phase (ENH-207)."""
 
     @pytest.fixture
     def mock_config(self, temp_project_dir: Path) -> BRConfig:
@@ -1414,7 +1414,7 @@ class TestFailureClassification:
 
         mock_logger = MagicMock()
 
-        # ready_issue succeeds
+        # ready-issue succeeds
         ready_output = f"## VERDICT\nREADY\n\n## VALIDATED_FILE\n{sample_issue.path}"
         ready_result = MagicMock()
         ready_result.returncode = 0
@@ -1495,7 +1495,7 @@ class TestFallbackVerification:
 
         mock_logger = MagicMock()
 
-        # ready_issue and implement succeed
+        # ready-issue and implement succeed
         ready_result = MagicMock()
         ready_result.returncode = 0
         ready_result.stdout = f"## VERDICT\nREADY\n\n## VALIDATED_FILE\n{sample_issue.path}"

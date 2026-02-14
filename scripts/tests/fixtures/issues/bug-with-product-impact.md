@@ -2,7 +2,7 @@
 discovered_commit: abc123
 discovered_branch: main
 discovered_date: 2026-02-01
-discovered_by: scan_product
+discovered_by: scan-product
 goal_alignment: automation
 persona_impact: developer
 business_value: high

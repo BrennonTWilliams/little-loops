@@ -231,14 +231,14 @@ class TestRunClaudeCommand:
             with patch("selectors.DefaultSelector") as mock_selector:
                 _patch_selector_cm(mock_selector)
                 mock_selector.return_value.get_map.return_value = {}
-                run_claude_command("/ll:test_command")
+                run_claude_command("/ll:test-command")
 
         assert len(captured_args) == 1
         assert captured_args[0] == [
             "claude",
             "--dangerously-skip-permissions",
             "-p",
-            "/ll:test_command",
+            "/ll:test-command",
         ]
 
     def test_sets_maintain_project_working_dir_env(self) -> None:

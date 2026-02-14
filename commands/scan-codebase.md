@@ -186,7 +186,7 @@ After ALL sub-agents complete:
    - Compare against file paths in ALL existing active issues (read their Location sections)
    - If a new finding references files also referenced by an existing issue:
      - If existing issue is higher priority or more foundational: add existing issue to the new issue's `## Blocked By` section
-     - Add a comment: `<!-- Suggested by scan_codebase: file overlap with [file.py] -->`
+     - Add a comment: `<!-- Suggested by scan-codebase: file overlap with [file.py] -->`
    - This is a suggestion only — users can review and remove suggestions during the confirmation step (Step 4.5)
 
 ### 4. Create Issue Files
@@ -206,7 +206,7 @@ The assembled file follows this structure:
 discovered_commit: [COMMIT_HASH]
 discovered_branch: [BRANCH_NAME]
 discovered_date: [SCAN_DATE]
-discovered_by: scan_codebase
+discovered_by: scan-codebase
 ---
 
 # [PREFIX]-[NUMBER]: [Title]

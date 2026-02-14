@@ -210,8 +210,8 @@ class ParallelAutomationConfig:
     p0_sequential: bool = True
     max_merge_retries: int = 2
     command_prefix: str = "/ll:"
-    ready_command: str = "ready_issue {{issue_id}}"
-    manage_command: str = "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+    ready_command: str = "ready-issue {{issue_id}}"
+    manage_command: str = "manage-issue {{issue_type}} {{action}} {{issue_id}}"
     worktree_copy_files: list[str] = field(
         default_factory=lambda: [".claude/settings.local.json", ".env"]
     )
@@ -237,9 +237,9 @@ class ParallelAutomationConfig:
             p0_sequential=data.get("p0_sequential", True),
             max_merge_retries=data.get("max_merge_retries", 2),
             command_prefix=data.get("command_prefix", "/ll:"),
-            ready_command=data.get("ready_command", "ready_issue {{issue_id}}"),
+            ready_command=data.get("ready_command", "ready-issue {{issue_id}}"),
             manage_command=data.get(
-                "manage_command", "manage_issue {{issue_type}} {{action}} {{issue_id}}"
+                "manage_command", "manage-issue {{issue_type}} {{action}} {{issue_id}}"
             ),
             worktree_copy_files=data.get(
                 "worktree_copy_files", [".claude/settings.local.json", ".env"]

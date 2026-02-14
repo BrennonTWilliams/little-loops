@@ -262,7 +262,7 @@ class WorkerPool:
             # Update stage for progress tracking (ENH-262)
             self.set_worker_stage(issue.issue_id, WorkerStage.VALIDATING)
 
-            # Step 2: Run ready_issue validation
+            # Step 2: Run ready-issue validation
             ready_cmd = self.parallel_config.get_ready_command(issue.issue_id)
             ready_result = self._run_claude_command(
                 ready_cmd,
@@ -292,12 +292,12 @@ class WorkerPool:
                     branch_name=branch_name,
                     worktree_path=worktree_path,
                     duration=time.time() - start_time,
-                    error=f"ready_issue failed: {ready_result.stderr}",
+                    error=f"ready-issue failed: {ready_result.stderr}",
                     stdout=ready_result.stdout,
                     stderr=ready_result.stderr,
                 )
 
-            # Step 3: Parse ready_issue output and check verdict
+            # Step 3: Parse ready-issue output and check verdict
             ready_parsed = parse_ready_issue_output(ready_result.stdout)
 
             # Handle CLOSE verdict - issue should not be implemented
@@ -326,7 +326,7 @@ class WorkerPool:
                     concern_msg = (
                         f"Could not parse verdict. Output: {raw_out}..."
                         if raw_out
-                        else "No output from ready_issue"
+                        else "No output from ready-issue"
                     )
                 else:
                     concern_msg = "Issue not ready"
@@ -336,7 +336,7 @@ class WorkerPool:
                     branch_name=branch_name,
                     worktree_path=worktree_path,
                     duration=time.time() - start_time,
-                    error=f"ready_issue verdict: {ready_parsed['verdict']} - {concern_msg}",
+                    error=f"ready-issue verdict: {ready_parsed['verdict']} - {concern_msg}",
                     stdout=ready_result.stdout,
                     stderr=ready_result.stderr,
                 )
@@ -351,7 +351,7 @@ class WorkerPool:
             # Step 4: Get action from BRConfig
             action = self.br_config.get_category_action(issue.issue_type)
 
-            # Step 5: Run manage_issue implementation (with continuation support)
+            # Step 5: Run manage-issue implementation (with continuation support)
             manage_cmd = self.parallel_config.get_manage_command(
                 issue.issue_type, action, issue.issue_id
             )
@@ -409,7 +409,7 @@ class WorkerPool:
                     changed_files=changed_files,
                     leaked_files=leaked_files,
                     duration=time.time() - start_time,
-                    error=f"manage_issue failed: {manage_result.stderr}",
+                    error=f"manage-issue failed: {manage_result.stderr}",
                     stdout=manage_result.stdout,
                     stderr=manage_result.stderr,
                 )

@@ -2,7 +2,7 @@
 discovered_commit: be30013d0e2446b479c121af1d58a2309b3cfeb5
 discovered_branch: main
 discovered_date: 2026-02-12T16:03:46Z
-discovered_by: scan_codebase
+discovered_by: scan-codebase
 ---
 
 # ENH-349: Consolidate duplicated file path extraction into shared utility

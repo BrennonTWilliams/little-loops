@@ -69,7 +69,7 @@ fi
 - **issue_id** (optional): Issue ID to evaluate (e.g., `ENH-277`, `BUG-042`)
   - If provided, evaluates that specific issue
   - If omitted with `--all`, processes all active issues
-  - If omitted without `--all`, expects to be invoked within a manage_issue context
+  - If omitted without `--all`, expects to be invoked within a manage-issue context
 
 - **flags** (optional): Command behavior flags
   - `--auto` — Non-interactive mode (skip user prompts, use defaults)
@@ -96,7 +96,7 @@ if [ -z "$FILE" ]; then
 fi
 ```
 
-If no `ISSUE_ID` and not `--all`: expect to be invoked within a manage_issue context where research findings are already available.
+If no `ISSUE_ID` and not `--all`: expect to be invoked within a manage-issue context where research findings are already available.
 
 ### Batch Mode (--all)
 
@@ -126,12 +126,12 @@ When in batch mode, iterate through `ISSUE_FILES` and run the full workflow (Pha
 
 ### Phase 1: Gather Context
 
-If invoked standalone (not within manage_issue):
+If invoked standalone (not within manage-issue):
 1. Read the issue file
 2. Use Glob/Grep to find related files mentioned in the issue
 3. Check for existing implementations
 
-If invoked within manage_issue: use the research findings already gathered in Phase 1.5.
+If invoked within manage-issue: use the research findings already gathered in Phase 1.5.
 
 ### Phase 2: Five-Point Assessment
 
@@ -279,7 +279,7 @@ Example — if frontmatter is:
 ```yaml
 ---
 discovered_date: 2026-02-13
-discovered_by: capture_issue
+discovered_by: capture-issue
 ---
 ```
 
@@ -287,7 +287,7 @@ Update to:
 ```yaml
 ---
 discovered_date: 2026-02-13
-discovered_by: capture_issue
+discovered_by: capture-issue
 confidence_score: 85
 ---
 ```
@@ -377,11 +377,11 @@ CONFIDENCE CHECK BATCH REPORT: --all mode
 
 ## Integration with /ll:manage-issue
 
-This skill is referenced in `/ll:manage-issue` Phase 2 as a recommended pre-planning step. When invoked within manage_issue:
+This skill is referenced in `/ll:manage-issue` Phase 2 as a recommended pre-planning step. When invoked within manage-issue:
 
 - Uses research findings from Phase 1.5 (no redundant searching)
 - Score >=70: proceed to plan creation
-- Score <70: stop and report gaps (manage_issue marks as INCOMPLETE)
+- Score <70: stop and report gaps (manage-issue marks as INCOMPLETE)
 - Non-blocking by default — can be skipped if user prefers
 
 ## Examples

@@ -1,6 +1,6 @@
 ---
 discovered_date: 2026-02-08
-discovered_by: manual_review
+discovered_by: manual-review
 ---
 
 # ENH-276: Add flag conventions to commands
@@ -31,44 +31,44 @@ Commands should document supported flags in their help text. Flags are optional 
 
 ## Files to Modify
 
-- `commands/scan_codebase.md` — Add flag parsing and conditional behavior
-- `commands/manage_issue.md` — Add flag parsing and conditional behavior
-- `commands/audit_architecture.md` — Add flag parsing and conditional behavior
+- `commands/scan-codebase.md` — Add flag parsing and conditional behavior
+- `commands/manage-issue.md` — Add flag parsing and conditional behavior
+- `commands/audit-architecture.md` — Add flag parsing and conditional behavior
 - `commands/help.md` — Document the flag convention
 
 ## Motivation
 
 This enhancement would:
 - Improve user control: users can adjust command behavior without needing separate command variants
-- Standardize existing patterns: `manage_issue` already supports flags but the convention isn't documented
+- Standardize existing patterns: `manage-issue` already supports flags but the convention isn't documented
 - Reduce command proliferation: flags allow one command to serve multiple use cases
 
 ## Scope Boundaries
 
-- **In scope**: Defining flag conventions, adding flag support to scan_codebase, manage_issue, audit_architecture
+- **In scope**: Defining flag conventions, adding flag support to scan-codebase, manage-issue, audit-architecture
 - **Out of scope**: Adding flags to all commands at once, creating a generic flag parsing library
 
 ## Implementation Steps
 
 1. Document the flag convention (syntax, supported flags, parsing approach)
-2. Add `--quick`/`--deep`/`--focus` flag parsing to `scan_codebase.md`
-3. Add `--dry-run`/`--quick` flag parsing to `manage_issue.md`
-4. Add `--focus`/`--deep` flag parsing to `audit_architecture.md`
+2. Add `--quick`/`--deep`/`--focus` flag parsing to `scan-codebase.md`
+3. Add `--dry-run`/`--quick` flag parsing to `manage-issue.md`
+4. Add `--focus`/`--deep` flag parsing to `audit-architecture.md`
 5. Update `help.md` to document the flag convention
 
 ## Integration Map
 
 ### Files to Modify
-- `commands/scan_codebase.md` - Add flag parsing
-- `commands/manage_issue.md` - Add flag parsing
-- `commands/audit_architecture.md` - Add flag parsing
+- `commands/scan-codebase.md` - Add flag parsing
+- `commands/manage-issue.md` - Add flag parsing
+- `commands/audit-architecture.md` - Add flag parsing
 - `commands/help.md` - Document convention
 
 ### Dependent Files (Callers/Importers)
 - N/A - commands are user-invoked
 
 ### Similar Patterns
-- `commands/manage_issue.md` already supports `--plan-only`, `--resume`, `--gates` flags
+- `commands/manage-issue.md` already supports `--plan-only`, `--resume`, `--gates` flags
 
 ### Tests
 - N/A — command markdown files are not Python-testable; verified via manual invocation
@@ -101,7 +101,7 @@ This enhancement would:
 
 - **Verified**: 2026-02-10
 - **Verdict**: VALID (after update)
-- Updated Current Behavior: `manage_issue` already supports `--plan-only`, `--resume`, `--gates` flags
+- Updated Current Behavior: `manage-issue` already supports `--plan-only`, `--resume`, `--gates` flags
 - Issue scope refined to standardizing the flag convention across other commands and documenting it in help
 
 ---
@@ -124,7 +124,7 @@ Update first - Needs scope clarification before implementation:
 1. Which commands/flags should be implemented first as proof-of-concept?
 2. What's the rollout strategy (all at once vs incremental)?
 3. Are all 4 flags needed for all commands?
-4. Use `manage_issue`'s existing flags as reference implementation to document and standardize
+4. Use `manage-issue`'s existing flags as reference implementation to document and standardize
 
 ---
 

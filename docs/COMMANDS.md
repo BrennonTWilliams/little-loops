@@ -286,39 +286,39 @@ Analyze user message history to suggest FSM loop configurations automatically.
 | `init` | Initialize project configuration |
 | `help` | Show command help |
 | `configure` | Interactive configuration editor |
-| `toggle_autoprompt` | Toggle automatic prompt optimization |
-| `check_code` | Run lint, format, type checks |
-| `run_tests` | Execute test suites |
-| `find_dead_code` | Identify unused code |
-| `capture_issue` | Capture issues from conversation or description |
-| `format_issue` | Format issue files (interactive or --auto mode) |
-| `scan_codebase` | Find issues in code (technical analysis) |
-| `scan_product` | Find issues in code (product-focused analysis) |
-| `prioritize_issues` | Assign P0-P5 priorities |
-| `ready_issue` | Validate and fix issue files |
-| `verify_issues` | Check issues against code |
-| `align_issues` | Validate issues against key documents |
-| `normalize_issues` | Fix issue filenames lacking valid IDs |
-| `sync_issues` | Sync local issues with GitHub Issues |
-| `manage_issue` | Full issue lifecycle management |
-| `iterate_plan` | Update implementation plans |
-| `refine_issue` | Refine issues with codebase-driven research |
-| `tradeoff_review_issues` | Evaluate issues for utility vs complexity |
-| `audit_architecture` | Analyze code structure |
-| `audit_docs` | Check documentation accuracy |
-| `audit_claude_config` | Comprehensive config audit |
+| `toggle-autoprompt` | Toggle automatic prompt optimization |
+| `check-code` | Run lint, format, type checks |
+| `run-tests` | Execute test suites |
+| `find-dead-code` | Identify unused code |
+| `capture-issue` | Capture issues from conversation or description |
+| `format-issue` | Format issue files (interactive or --auto mode) |
+| `scan-codebase` | Find issues in code (technical analysis) |
+| `scan-product` | Find issues in code (product-focused analysis) |
+| `prioritize-issues` | Assign P0-P5 priorities |
+| `ready-issue` | Validate and fix issue files |
+| `verify-issues` | Check issues against code |
+| `align-issues` | Validate issues against key documents |
+| `normalize-issues` | Fix issue filenames lacking valid IDs |
+| `sync-issues` | Sync local issues with GitHub Issues |
+| `manage-issue` | Full issue lifecycle management |
+| `iterate-plan` | Update implementation plans |
+| `refine-issue` | Refine issues with codebase-driven research |
+| `tradeoff-review-issues` | Evaluate issues for utility vs complexity |
+| `audit-architecture` | Analyze code structure |
+| `audit-docs` | Check documentation accuracy |
+| `audit-claude-config` | Comprehensive config audit |
 | `analyze-workflows` | Analyze user message patterns for automation |
 | `commit` | Create git commits |
-| `describe_pr` | Generate PR descriptions |
-| `open_pr` | Open a pull request for current branch |
-| `cleanup_worktrees` | Clean up stale worktrees and branches |
-| `manage_release` | Manage releases, tags, and changelogs |
+| `describe-pr` | Generate PR descriptions |
+| `open-pr` | Open a pull request for current branch |
+| `cleanup-worktrees` | Clean up stale worktrees and branches |
+| `manage-release` | Manage releases, tags, and changelogs |
 | `handoff` | Generate session handoff prompt |
 | `resume` | Resume from continuation prompt |
-| `create_loop` | Interactive FSM loop creation |
+| `create-loop` | Interactive FSM loop creation |
 | `loop-suggester` | Suggest loops from message history |
-| `create_sprint` | Create sprint with curated issue list |
-| `review_sprint` | Review sprint health and suggest improvements |
+| `create-sprint` | Create sprint with curated issue list |
+| `review-sprint` | Review sprint health and suggest improvements |
 
 ---
 

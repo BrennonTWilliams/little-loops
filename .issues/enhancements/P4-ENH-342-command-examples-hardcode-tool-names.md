@@ -1,6 +1,6 @@
 ---
 discovered_date: 2026-02-11
-discovered_by: capture_issue
+discovered_by: capture-issue
 ---
 
 # ENH-342: Command examples hardcode tool names instead of config values
@@ -15,8 +15,8 @@ Identified during a config consistency audit. Lower priority since these are ill
 
 ## Affected Files
 
-- `commands/create_loop.md` (lines ~81-88, 122, 149, 172-180): template examples hardcode `pytest`, `ruff`, `mypy`
-- `commands/iterate_plan.md` (lines ~119-120): examples hardcode `pytest tests/` and `ruff check .`
+- `commands/create-loop.md` (lines ~81-88, 122, 149, 172-180): template examples hardcode `pytest`, `ruff`, `mypy`
+- `commands/iterate-plan.md` (lines ~119-120): examples hardcode `pytest tests/` and `ruff check .`
 - `commands/loop-suggester.md` (line ~55): lists hardcoded tools
 
 ## Current Behavior
@@ -44,22 +44,22 @@ Either use `{{config.project.test_cmd}}` etc. in templates, or add a note like "
 
 ## Implementation Steps
 
-1. Update `create_loop.md` examples to reference configured tool names
-2. Update `iterate_plan.md` examples similarly
+1. Update `create-loop.md` examples to reference configured tool names
+2. Update `iterate-plan.md` examples similarly
 3. Update `loop-suggester.md` examples similarly
 
 ## Integration Map
 
 ### Files to Modify
-- `commands/create_loop.md` - Update tool name examples
-- `commands/iterate_plan.md` - Update tool name examples
+- `commands/create-loop.md` - Update tool name examples
+- `commands/iterate-plan.md` - Update tool name examples
 - `commands/loop-suggester.md` - Update tool name examples
 
 ### Dependent Files (Callers/Importers)
 - N/A
 
 ### Similar Patterns
-- `commands/check_code.md` already uses `{{config.project.*}}` references
+- `commands/check-code.md` already uses `{{config.project.*}}` references
 
 ### Tests
 - N/A — command markdown template changes are not Python-testable; verified by reviewing rendered command output
@@ -101,8 +101,8 @@ _None — ENH-341 (hardcoded paths) is now completed._
 
 - **Verified**: 2026-02-13
 - **Verdict**: VALID
-- `create_loop.md` hardcodes `pytest`, `ruff`, `mypy` in template examples (confirmed)
-- `iterate_plan.md` hardcodes `pytest tests/` and `ruff check .` at lines 125-126 (confirmed)
+- `create-loop.md` hardcodes `pytest`, `ruff`, `mypy` in template examples (confirmed)
+- `iterate-plan.md` hardcodes `pytest tests/` and `ruff check .` at lines 125-126 (confirmed)
 - `loop-suggester.md` hardcodes tool names at line 60 (confirmed)
-- `check_code.md` already uses `{{config.project.*}}` refs — pattern exists to follow
+- `check-code.md` already uses `{{config.project.*}}` refs — pattern exists to follow
 - **ENH-341 blocker resolved**: ENH-341 (hardcoded paths) is now completed — this issue is unblocked

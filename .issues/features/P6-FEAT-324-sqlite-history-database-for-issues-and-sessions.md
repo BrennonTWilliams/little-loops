@@ -1,6 +1,6 @@
 ---
 discovered_date: 2026-02-10
-discovered_by: capture_issue
+discovered_by: capture-issue
 ---
 
 # FEAT-324: SQLite History Database for Completed Issues and Sessions
@@ -63,8 +63,8 @@ class HistoryDB:
 Use Python's built-in `sqlite3` module (no new dependencies). Create a `history_db.py` module in `scripts/little_loops/` with:
 
 1. Schema creation/migration on first access
-2. Ingestion functions called by `manage_issue` on completion
-3. Query functions called by `capture_issue` and `analyze-history`
+2. Ingestion functions called by `manage-issue` on completion
+3. Query functions called by `capture-issue` and `analyze-history`
 4. A backfill function to populate from existing `.issues/completed/` files
 5. Word-based similarity search using SQLite FTS5 for efficient text matching
 
@@ -73,8 +73,8 @@ Storage location: `.ll/history.db` at project root (gitignored). This keeps it p
 ## Integration Map
 
 ### Files to Modify
-- `skills/manage_issue.md` - Ingest completed issue into DB
-- `skills/capture_issue.md` - Query DB for historical duplicate detection
+- `skills/manage-issue.md` - Ingest completed issue into DB
+- `skills/capture-issue.md` - Query DB for historical duplicate detection
 - `skills/analyze-history.md` - Query DB for metrics
 - `.gitignore` - Add `.ll/` directory
 
@@ -98,8 +98,8 @@ Storage location: `.ll/history.db` at project root (gitignored). This keeps it p
 1. Design and implement SQLite schema with versioning
 2. Create `history_db.py` module with core CRUD operations
 3. Add FTS5-based similarity search for duplicate detection
-4. Integrate ingestion into `manage_issue` completion flow
-5. Integrate historical query into `capture_issue` duplicate detection
+4. Integrate ingestion into `manage-issue` completion flow
+5. Integrate historical query into `capture-issue` duplicate detection
 6. Update `analyze-history` to query DB
 7. Create backfill command for existing completed issues
 8. Add `.ll/` to `.gitignore`

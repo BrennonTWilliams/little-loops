@@ -69,8 +69,8 @@ def default_parallel_config(temp_repo_with_config: Path) -> ParallelConfig:
         max_merge_retries=2,
         stream_subprocess_output=False,
         command_prefix="/ll:",
-        ready_command="ready_issue {{issue_id}}",
-        manage_command="manage_issue {{issue_type}} {{action}} {{issue_id}}",
+        ready_command="ready-issue {{issue_id}}",
+        manage_command="manage-issue {{issue_type}} {{action}} {{issue_id}}",
     )
 
 
@@ -1427,18 +1427,18 @@ class TestWorkerPoolProcessIssue:
         mock_issue: MagicMock,
         temp_repo_with_config: Path,
     ) -> None:
-        """_process_issue() returns failure when ready_issue fails."""
+        """_process_issue() returns failure when ready-issue fails."""
         with patch.object(worker_pool, "_setup_worktree"):
             with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
                 with patch.object(worker_pool, "_run_claude_command") as mock_run:
                     mock_run.return_value = subprocess.CompletedProcess(
-                        [], 1, "", "ready_issue failed"
+                        [], 1, "", "ready-issue failed"
                     )
 
                     result = worker_pool._process_issue(mock_issue)
 
         assert result.success is False
-        assert "ready_issue failed" in (result.error or "")
+        assert "ready-issue failed" in (result.error or "")
 
     def test_process_issue_returns_close_verdict(
         self,

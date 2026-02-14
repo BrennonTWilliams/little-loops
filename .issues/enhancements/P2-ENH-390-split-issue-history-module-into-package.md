@@ -2,7 +2,7 @@
 discovered_commit: 51dcccd702a7f8947c624a914f353b8ec65cf55f
 discovered_branch: main
 discovered_date: 2026-02-10
-discovered_by: audit_architecture
+discovered_by: audit-architecture
 focus_area: large-files
 ---
 

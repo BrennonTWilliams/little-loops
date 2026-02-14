@@ -51,7 +51,7 @@ class TestRunClaudeCommand:
                 from little_loops.issue_manager import run_claude_command
 
                 result = run_claude_command(
-                    "/ll:test_command",
+                    "/ll:test-command",
                     mock_logger,
                     timeout=60,
                     stream_output=False,

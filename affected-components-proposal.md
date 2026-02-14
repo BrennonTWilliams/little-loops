@@ -243,9 +243,9 @@ def get_user_profile(user_id: int) -> UserProfile:
 3. Update creation variants to include in "full" template
 
 ### Phase 2: Update Commands
-1. **capture_issue.md** - Add Affected Components to creation flow
-2. **format_issue.md** - Add interactive questions for identifying affected files
-3. **scan_codebase.md** - Auto-populate Affected Components using grep/analysis
+1. **capture-issue.md** - Add Affected Components to creation flow
+2. **format-issue.md** - Add interactive questions for identifying affected files
+3. **scan-codebase.md** - Auto-populate Affected Components using grep/analysis
 
 ### Phase 3: Add Tooling Support
 1. Create helper function to find callers: `grep -r "function_name" .`

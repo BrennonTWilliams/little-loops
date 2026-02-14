@@ -486,7 +486,7 @@ ISSUE REFINED: [ISSUE-ID]
 
 ### Key Differences from Related Commands
 
-| Aspect | format_issue | refine_issue | ready_issue |
+| Aspect | format-issue | refine-issue | ready-issue |
 |--------|-------------|-------------|-------------|
 | **Purpose** | Template alignment | Codebase research & enrichment | Validation & gatekeeping |
 | **Gap type** | Structural (missing sections) | Knowledge (missing implementation context) | Accuracy (claims vs reality) |

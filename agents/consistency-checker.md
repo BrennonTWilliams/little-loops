@@ -116,8 +116,8 @@ Structure your consistency check like this:
 #### Commands → Agents
 | Command | subagent_type | Agent File | Status |
 |---------|---------------|------------|--------|
-| scan_codebase.md | codebase-analyzer | agents/codebase-analyzer.md | OK |
-| manage_issue.md | codebase-locator | agents/codebase-locator.md | OK |
+| scan-codebase.md | codebase-analyzer | agents/codebase-analyzer.md | OK |
+| manage-issue.md | codebase-locator | agents/codebase-locator.md | OK |
 | ... | ... | ... | ... |
 
 #### Hooks → Prompts

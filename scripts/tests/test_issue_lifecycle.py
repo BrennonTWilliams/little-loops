@@ -115,7 +115,7 @@ class TestBuildClosureResolution:
         assert "## Resolution" in result
         assert "**Status**: Closed - Already Fixed" in result
         assert "**Reason**: already_fixed" in result
-        assert "**Closure**: Automated (ready_issue validation)" in result
+        assert "**Closure**: Automated (ready-issue validation)" in result
         assert "### Closure Notes" in result
 
     def test_contains_date(self) -> None:

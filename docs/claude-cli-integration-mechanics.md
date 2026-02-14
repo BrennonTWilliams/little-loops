@@ -66,7 +66,7 @@ arguments:
 The codebase implements several strategies for handling multi-turn interactions:
 
 #### A. Phase Gates (Manual Checkpoints)
-**Source**: `commands/manage_issue.md:381-415`
+**Source**: `commands/manage-issue.md:381-415`
 
 - Enable with `--gates` flag
 - After each phase completes, execution pauses
@@ -75,7 +75,7 @@ The codebase implements several strategies for handling multi-turn interactions:
 - Designed for supervised automation
 
 #### B. Resume Capability
-**Source**: `commands/manage_issue.md:296-316`
+**Source**: `commands/manage-issue.md:296-316`
 
 - `--resume` flag locates existing plan from previous session
 - Scans for `[x]` checkmarks in success criteria
@@ -253,7 +253,7 @@ User/Automation → claude CLI → Slash Command → Claude Execution → Output
 | `scripts/little_loops/parallel/output_parsing.py` | Structured output extraction |
 | `scripts/little_loops/state.py` | State persistence layer |
 | `scripts/little_loops/issue_manager.py` | Sequential issue processing |
-| `commands/manage_issue.md` | Full issue lifecycle with phases |
+| `commands/manage-issue.md` | Full issue lifecycle with phases |
 | `commands/handoff.md` | Session handoff generation |
 | `commands/resume.md` | Session continuation |
 | `hooks/hooks.json` | Lifecycle event handlers |

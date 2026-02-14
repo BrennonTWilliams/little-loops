@@ -1,6 +1,6 @@
 # Audit Docs Templates
 
-This file contains templates and format specifications for the audit_docs skill.
+This file contains templates and format specifications for the audit-docs skill.
 
 ## Issue File Template
 
@@ -9,7 +9,7 @@ This file contains templates and format specifications for the audit_docs skill.
 discovered_commit: [GIT_HASH]
 discovered_branch: [BRANCH_NAME]
 discovered_date: [ISO_TIMESTAMP]
-discovered_by: audit_docs
+discovered_by: audit-docs
 doc_file: [path/to/doc.md]
 ---
 
@@ -125,7 +125,7 @@ When reopening a completed issue, append this section:
 ## Reopened
 
 - **Date**: [TODAY]
-- **By**: audit_docs
+- **By**: audit-docs
 - **Reason**: Documentation issue recurred
 
 ### New Findings

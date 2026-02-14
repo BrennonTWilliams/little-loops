@@ -72,8 +72,8 @@ def sample_config_with_enh() -> dict[str, Any]:
             "max_merge_retries": 2,
             "stream_output": False,
             "command_prefix": "/ll:",
-            "ready_command": "ready_issue {{issue_id}}",
-            "manage_command": "manage_issue {{issue_type}} {{action}} {{issue_id}}",
+            "ready_command": "ready-issue {{issue_id}}",
+            "manage_command": "manage-issue {{issue_type}} {{action}} {{issue_id}}",
         },
     }
 
@@ -433,7 +433,7 @@ class TestReopenIssue:
             completed_path,
             reopen_reason="Problem recurred",
             new_context="The utils.py file has grown again.",
-            source_command="audit_architecture",
+            source_command="audit-architecture",
             logger=logger,
         )
 
@@ -454,7 +454,7 @@ class TestReopenIssue:
             completed_path,
             reopen_reason="Regression detected",
             new_context="New findings here.",
-            source_command="audit_docs",
+            source_command="audit-docs",
             logger=logger,
         )
 
@@ -500,7 +500,7 @@ class TestUpdateExistingIssue:
             issue_path,
             update_section_name="Architecture Audit Results",
             update_content="Found additional context about this issue.",
-            source_command="audit_architecture",
+            source_command="audit-architecture",
             logger=logger,
         )
 
@@ -963,7 +963,7 @@ Test issue for regression reopening.
             completed_path,
             reopen_reason="Bug reappeared after refactoring",
             new_context="Error occurs again in production.",
-            source_command="verify_issues",
+            source_command="verify-issues",
             logger=logger,
             classification=MatchClassification.REGRESSION,
             regression_evidence=evidence,
@@ -1004,7 +1004,7 @@ Test issue for invalid fix reopening.
             completed_path,
             reopen_reason="Original fix never worked",
             new_context="Bug was never actually fixed.",
-            source_command="ready_issue",
+            source_command="ready-issue",
             logger=logger,
             classification=MatchClassification.INVALID_FIX,
             regression_evidence=evidence,

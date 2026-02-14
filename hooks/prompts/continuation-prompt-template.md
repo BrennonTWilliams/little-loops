@@ -55,7 +55,7 @@ Or continue manually from the plan.
 
 This template is automatically populated by Claude when:
 1. **PreCompact hook** triggers (context approaching limits)
-2. **Proactive handoff** during manage_issue (agent detects low context)
+2. **Proactive handoff** during manage-issue (agent detects low context)
 
 The filled template is written to: `.claude/ll-continue-prompt.md`
 

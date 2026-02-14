@@ -217,7 +217,7 @@ For each finding, create an issue file with product-specific frontmatter:
 discovered_commit: [COMMIT_HASH]
 discovered_branch: [BRANCH_NAME]
 discovered_date: [SCAN_DATE]
-discovered_by: scan_product
+discovered_by: scan-product
 goal_alignment: [priority-id]
 persona_impact: [persona-id]
 business_value: [high|medium|low]
