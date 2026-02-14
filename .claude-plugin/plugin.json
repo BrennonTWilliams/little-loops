@@ -17,5 +17,15 @@
     "code-quality"
   ],
   "commands": ["./commands"],
-  "skills": ["./skills"]
+  "skills": ["./skills"],
+  "agents": [
+    "./agents/codebase-analyzer.md",
+    "./agents/codebase-locator.md",
+    "./agents/codebase-pattern-finder.md",
+    "./agents/consistency-checker.md",
+    "./agents/plugin-config-auditor.md",
+    "./agents/prompt-optimizer.md",
+    "./agents/web-search-researcher.md",
+    "./agents/workflow-pattern-analyzer.md"
+  ]
 }

@@ -47,6 +47,18 @@ This enhancement would:
 - Business value: Contributors and tooling can inspect `plugin.json` to discover all plugin components without guessing about auto-discovery conventions
 - Technical debt: Eliminates inconsistency where `commands` and `skills` are declared but `agents` and `hooks` rely on implicit auto-discovery
 
+## Proposed Solution
+
+Add explicit `agents` and `hooks` declarations to `.claude-plugin/plugin.json` (Option 1 from Expected Behavior). This makes the manifest a single source of truth without changing runtime behavior, since all components are at default locations and currently auto-discovered.
+
+**Note**: This depends on the Claude Code plugin.json schema supporting `agents` and `hooks` keys — verify before implementing.
+
+## Scope Boundaries
+
+- **In scope**: Adding `agents` and `hooks` declarations to `plugin.json`
+- **Out of scope**: Changing auto-discovery behavior, modifying agent/hook file locations, or restructuring the plugin directory layout
+- **Out of scope**: Removing existing `commands`/`skills` declarations (Option 2 from Expected Behavior is not pursued)
+
 ## Implementation Steps
 
 1. **Add agents declaration**: Add `"agents": ["./agents"]` to `.claude-plugin/plugin.json`
@@ -84,6 +96,7 @@ _None — ENH-366 closed (won't-fix, duplicate of this issue)._
 
 ## Session Log
 - `/ll:format-issue --all --auto` - 2026-02-13
+- `/ll:manage-issue enhancement improve ENH-374` - 2026-02-14
 
 ## Verification Notes
 
@@ -95,6 +108,15 @@ _None — ENH-366 closed (won't-fix, duplicate of this issue)._
 
 ---
 
+## Resolution
+
+- **Resolved**: 2026-02-14
+- **Action**: Added explicit `agents` declaration to `.claude-plugin/plugin.json` with all 8 agent file paths
+- **Partial scope**: Only `agents` was added. `hooks` was intentionally excluded — Claude Code v2.1+ auto-discovers `hooks/hooks.json` and adding it explicitly causes duplicate file errors. This is the correct approach per the plugin schema.
+- **Files changed**: `.claude-plugin/plugin.json`
+- **Tests**: 2834 passed, 4 skipped
+- **Plan**: `thoughts/shared/plans/2026-02-14-ENH-374-management.md`
+
 ## Status
 
-**Open** | Created: 2026-02-12 | Priority: P4
+**Completed** | Created: 2026-02-12 | Resolved: 2026-02-14 | Priority: P4
