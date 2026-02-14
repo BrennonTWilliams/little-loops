@@ -54,6 +54,27 @@ from little_loops.issue_history.parsing import (
 )
 
 
+def _load_issue_contents(issues: list[CompletedIssue]) -> dict[Path, str]:
+    """Pre-load issue file contents for pipeline efficiency.
+
+    Reads each issue file once and returns a mapping from path to content.
+    Skips unreadable files silently (matching individual function behavior).
+
+    Args:
+        issues: List of completed issues to load
+
+    Returns:
+        Mapping of issue path to file content
+    """
+    contents: dict[Path, str] = {}
+    for issue in issues:
+        try:
+            contents[issue.path] = issue.path.read_text(encoding="utf-8")
+        except Exception:
+            pass
+    return contents
+
+
 def calculate_summary(issues: list[CompletedIssue]) -> HistorySummary:
     """Calculate summary statistics from issues.
 
@@ -245,12 +266,14 @@ def _calculate_trend(values: list[float]) -> str:
 def _analyze_subsystems(
     issues: list[CompletedIssue],
     recent_days: int = 30,
+    contents: dict[Path, str] | None = None,
 ) -> list[SubsystemHealth]:
     """Analyze health by subsystem/directory.
 
     Args:
         issues: List of completed issues
         recent_days: Days to consider "recent"
+        contents: Pre-loaded issue file contents (path -> content)
 
     Returns:
         List of SubsystemHealth sorted by total issues descending
@@ -259,10 +282,13 @@ def _analyze_subsystems(
     cutoff = date.today() - timedelta(days=recent_days)
 
     for issue in issues:
-        try:
-            content = issue.path.read_text(encoding="utf-8")
-        except Exception:
-            continue
+        if contents is not None and issue.path in contents:
+            content = contents[issue.path]
+        else:
+            try:
+                content = issue.path.read_text(encoding="utf-8")
+            except Exception:
+                continue
 
         subsystem = _extract_subsystem(content)
         if not subsystem:
@@ -292,11 +318,15 @@ def _analyze_subsystems(
     return result[:10]  # Top 10
 
 
-def analyze_hotspots(issues: list[CompletedIssue]) -> HotspotAnalysis:
+def analyze_hotspots(
+    issues: list[CompletedIssue],
+    contents: dict[Path, str] | None = None,
+) -> HotspotAnalysis:
     """Identify files and directories that appear repeatedly in issues.
 
     Args:
         issues: List of completed issues
+        contents: Pre-loaded issue file contents (path -> content)
 
     Returns:
         HotspotAnalysis with file and directory hotspots
@@ -305,10 +335,13 @@ def analyze_hotspots(issues: list[CompletedIssue]) -> HotspotAnalysis:
     dir_data: dict[str, dict[str, Any]] = {}  # dir -> {count, ids, types}
 
     for issue in issues:
-        try:
-            content = issue.path.read_text(encoding="utf-8")
-        except Exception:
-            continue
+        if contents is not None and issue.path in contents:
+            content = contents[issue.path]
+        else:
+            try:
+                content = issue.path.read_text(encoding="utf-8")
+            except Exception:
+                continue
 
         paths = _extract_paths_from_issue(content)
 
@@ -403,7 +436,10 @@ def analyze_hotspots(issues: list[CompletedIssue]) -> HotspotAnalysis:
     )
 
 
-def analyze_coupling(issues: list[CompletedIssue]) -> CouplingAnalysis:
+def analyze_coupling(
+    issues: list[CompletedIssue],
+    contents: dict[Path, str] | None = None,
+) -> CouplingAnalysis:
     """Identify files that frequently change together across issues.
 
     Uses Jaccard similarity to calculate coupling strength between file pairs.
@@ -411,6 +447,7 @@ def analyze_coupling(issues: list[CompletedIssue]) -> CouplingAnalysis:
 
     Args:
         issues: List of completed issues
+        contents: Pre-loaded issue file contents (path -> content)
 
     Returns:
         CouplingAnalysis with coupled pairs, clusters, and hotspots
@@ -419,10 +456,13 @@ def analyze_coupling(issues: list[CompletedIssue]) -> CouplingAnalysis:
     file_to_issues: dict[str, set[str]] = {}
 
     for issue in issues:
-        try:
-            content = issue.path.read_text(encoding="utf-8")
-        except Exception:
-            continue
+        if contents is not None and issue.path in contents:
+            content = contents[issue.path]
+        else:
+            try:
+                content = issue.path.read_text(encoding="utf-8")
+            except Exception:
+                continue
 
         paths = _extract_paths_from_issue(content)
         for path in paths:
@@ -531,6 +571,7 @@ def _build_coupling_clusters(pairs: list[CouplingPair]) -> list[list[str]]:
 
 def analyze_regression_clustering(
     issues: list[CompletedIssue],
+    contents: dict[Path, str] | None = None,
 ) -> RegressionAnalysis:
     """Detect files where bug fixes frequently lead to new bugs.
 
@@ -540,6 +581,7 @@ def analyze_regression_clustering(
 
     Args:
         issues: List of completed issues
+        contents: Pre-loaded issue file contents (path -> content)
 
     Returns:
         RegressionAnalysis with clusters of related regressions
@@ -554,12 +596,17 @@ def analyze_regression_clustering(
     # Extract file paths for each bug
     bug_files: dict[str, set[str]] = {}  # issue_id -> set of files
     for bug in bugs:
-        try:
-            content = bug.path.read_text(encoding="utf-8")
+        if contents is not None and bug.path in contents:
+            content = contents[bug.path]
             paths = _extract_paths_from_issue(content)
             bug_files[bug.issue_id] = set(paths)
-        except Exception:
-            bug_files[bug.issue_id] = set()
+        else:
+            try:
+                content = bug.path.read_text(encoding="utf-8")
+                paths = _extract_paths_from_issue(content)
+                bug_files[bug.issue_id] = set(paths)
+            except Exception:
+                bug_files[bug.issue_id] = set()
 
     # Find regression pairs (temporal proximity + file overlap)
     regression_pairs: list[tuple[CompletedIssue, CompletedIssue, set[str]]] = []
@@ -748,11 +795,15 @@ def analyze_test_gaps(
     )
 
 
-def analyze_rejection_rates(issues: list[CompletedIssue]) -> RejectionAnalysis:
+def analyze_rejection_rates(
+    issues: list[CompletedIssue],
+    contents: dict[Path, str] | None = None,
+) -> RejectionAnalysis:
     """Analyze rejection and invalid closure patterns.
 
     Args:
         issues: List of completed issues
+        contents: Pre-loaded issue file contents (path -> content)
 
     Returns:
         RejectionAnalysis with overall and grouped metrics
@@ -767,10 +818,13 @@ def analyze_rejection_rates(issues: list[CompletedIssue]) -> RejectionAnalysis:
     reason_counts: dict[str, int] = {}
 
     for issue in issues:
-        try:
-            content = issue.path.read_text(encoding="utf-8")
-        except Exception:
-            continue
+        if contents is not None and issue.path in contents:
+            content = contents[issue.path]
+        else:
+            try:
+                content = issue.path.read_text(encoding="utf-8")
+            except Exception:
+                continue
 
         category = _parse_resolution_action(content)
         overall.total_closed += 1
@@ -921,11 +975,15 @@ _CONCERN_PATTERNS: dict[str, str] = {
 }
 
 
-def detect_manual_patterns(issues: list[CompletedIssue]) -> ManualPatternAnalysis:
+def detect_manual_patterns(
+    issues: list[CompletedIssue],
+    contents: dict[Path, str] | None = None,
+) -> ManualPatternAnalysis:
     """Detect recurring manual activities that could be automated.
 
     Args:
         issues: List of completed issues
+        contents: Pre-loaded issue file contents (path -> content)
 
     Returns:
         ManualPatternAnalysis with detected patterns
@@ -946,10 +1004,13 @@ def detect_manual_patterns(issues: list[CompletedIssue]) -> ManualPatternAnalysi
 
     # Scan issue content for patterns
     for issue in issues:
-        try:
-            content = issue.path.read_text(encoding="utf-8")
-        except Exception:
-            continue
+        if contents is not None and issue.path in contents:
+            content = contents[issue.path]
+        else:
+            try:
+                content = issue.path.read_text(encoding="utf-8")
+            except Exception:
+                continue
 
         for pattern_type, config in _MANUAL_PATTERNS.items():
             for pattern in config["patterns"]:
@@ -1002,6 +1063,7 @@ def detect_manual_patterns(issues: list[CompletedIssue]) -> ManualPatternAnalysi
 def detect_cross_cutting_smells(
     issues: list[CompletedIssue],
     hotspots: HotspotAnalysis,
+    contents: dict[Path, str] | None = None,
 ) -> CrossCuttingAnalysis:
     """Detect cross-cutting concerns scattered across the codebase.
 
@@ -1012,6 +1074,7 @@ def detect_cross_cutting_smells(
     Args:
         issues: List of completed issues
         hotspots: Hotspot analysis results (provides directory reference)
+        contents: Pre-loaded issue file contents (path -> content)
 
     Returns:
         CrossCuttingAnalysis with detected smells
@@ -1034,11 +1097,14 @@ def detect_cross_cutting_smells(
 
     # Analyze each issue
     for issue in issues:
-        try:
-            content = issue.path.read_text(encoding="utf-8")
-            content_lower = content.lower()
-        except Exception:
-            continue
+        if contents is not None and issue.path in contents:
+            content = contents[issue.path]
+        else:
+            try:
+                content = issue.path.read_text(encoding="utf-8")
+            except Exception:
+                continue
+        content_lower = content.lower()
 
         # Extract paths from this issue
         paths = _extract_paths_from_issue(content)
@@ -1249,7 +1315,10 @@ def detect_config_gaps(
     )
 
 
-def analyze_agent_effectiveness(issues: list[CompletedIssue]) -> AgentEffectivenessAnalysis:
+def analyze_agent_effectiveness(
+    issues: list[CompletedIssue],
+    contents: dict[Path, str] | None = None,
+) -> AgentEffectivenessAnalysis:
     """Analyze agent effectiveness across issue types.
 
     Groups issues by processing agent and issue type, calculating
@@ -1257,6 +1326,7 @@ def analyze_agent_effectiveness(issues: list[CompletedIssue]) -> AgentEffectiven
 
     Args:
         issues: List of completed issues
+        contents: Pre-loaded issue file contents (path -> content)
 
     Returns:
         AgentEffectivenessAnalysis with outcomes and recommendations
@@ -1268,10 +1338,13 @@ def analyze_agent_effectiveness(issues: list[CompletedIssue]) -> AgentEffectiven
     outcomes_map: dict[tuple[str, str], AgentOutcome] = {}
 
     for issue in issues:
-        try:
-            content = issue.path.read_text(encoding="utf-8")
-        except Exception:
-            continue
+        if contents is not None and issue.path in contents:
+            content = contents[issue.path]
+        else:
+            try:
+                content = issue.path.read_text(encoding="utf-8")
+            except Exception:
+                continue
 
         # Detect agent (discovered_by may contain source info in some cases)
         agent = _detect_processing_agent(content, issue.discovered_by)
@@ -1339,6 +1412,7 @@ def analyze_agent_effectiveness(issues: list[CompletedIssue]) -> AgentEffectiven
 def analyze_complexity_proxy(
     issues: list[CompletedIssue],
     hotspots: HotspotAnalysis,
+    contents: dict[Path, str] | None = None,
 ) -> ComplexityProxyAnalysis:
     """Use issue duration as proxy for code complexity.
 
@@ -1348,6 +1422,7 @@ def analyze_complexity_proxy(
     Args:
         issues: List of completed issues with dates
         hotspots: Pre-computed hotspot analysis for path information
+        contents: Pre-loaded issue file contents (path -> content)
 
     Returns:
         ComplexityProxyAnalysis with duration-based complexity metrics
@@ -1379,13 +1454,16 @@ def analyze_complexity_proxy(
     issue_to_files: dict[str, list[str]] = {}
     for issue in issues:
         if issue.issue_id in issue_durations:
-            try:
-                content = issue.path.read_text(encoding="utf-8")
-                paths = _extract_paths_from_issue(content)
-                if paths:
-                    issue_to_files[issue.issue_id] = paths
-            except Exception:
-                continue
+            if contents is not None and issue.path in contents:
+                content = contents[issue.path]
+            else:
+                try:
+                    content = issue.path.read_text(encoding="utf-8")
+                except Exception:
+                    continue
+            paths = _extract_paths_from_issue(content)
+            if paths:
+                issue_to_files[issue.issue_id] = paths
 
     # Aggregate durations by file
     file_durations: dict[str, list[tuple[str, float]]] = {}  # path -> [(issue_id, days), ...]
@@ -1567,6 +1645,9 @@ def calculate_analysis(
     """
     today = date.today()
 
+    # Pre-load issue file contents once for all analysis functions
+    issue_contents = _load_issue_contents(completed_issues)
+
     # Get base summary
     summary = calculate_summary(completed_issues)
 
@@ -1594,37 +1675,47 @@ def calculate_analysis(
         bug_ratio_trend = "stable"
 
     # Subsystem health
-    subsystem_health = _analyze_subsystems(completed_issues)
+    subsystem_health = _analyze_subsystems(completed_issues, contents=issue_contents)
 
     # Hotspot analysis
-    hotspot_analysis = analyze_hotspots(completed_issues)
+    hotspot_analysis = analyze_hotspots(completed_issues, contents=issue_contents)
 
     # Coupling analysis
-    coupling_analysis = analyze_coupling(completed_issues)
+    coupling_analysis = analyze_coupling(completed_issues, contents=issue_contents)
 
     # Regression clustering analysis
-    regression_analysis = analyze_regression_clustering(completed_issues)
+    regression_analysis = analyze_regression_clustering(
+        completed_issues, contents=issue_contents
+    )
 
     # Test gap analysis
     test_gap_analysis = analyze_test_gaps(completed_issues, hotspot_analysis)
 
     # Rejection rate analysis
-    rejection_analysis = analyze_rejection_rates(completed_issues)
+    rejection_analysis = analyze_rejection_rates(completed_issues, contents=issue_contents)
 
     # Manual pattern analysis
-    manual_pattern_analysis = detect_manual_patterns(completed_issues)
+    manual_pattern_analysis = detect_manual_patterns(
+        completed_issues, contents=issue_contents
+    )
 
     # Agent effectiveness analysis
-    agent_effectiveness_analysis = analyze_agent_effectiveness(completed_issues)
+    agent_effectiveness_analysis = analyze_agent_effectiveness(
+        completed_issues, contents=issue_contents
+    )
 
     # Complexity proxy analysis
-    complexity_proxy_analysis = analyze_complexity_proxy(completed_issues, hotspot_analysis)
+    complexity_proxy_analysis = analyze_complexity_proxy(
+        completed_issues, hotspot_analysis, contents=issue_contents
+    )
 
     # Configuration gaps analysis (depends on manual_pattern_analysis)
     config_gaps_analysis = detect_config_gaps(manual_pattern_analysis, project_root)
 
     # Cross-cutting concern analysis (depends on hotspot_analysis)
-    cross_cutting_analysis = detect_cross_cutting_smells(completed_issues, hotspot_analysis)
+    cross_cutting_analysis = detect_cross_cutting_smells(
+        completed_issues, hotspot_analysis, contents=issue_contents
+    )
 
     # Technical debt metrics
     debt_metrics = _calculate_debt_metrics(completed_issues, active_issues)
