@@ -6,6 +6,7 @@ real-time output streaming, timeout handling, and context handoff detection.
 
 from __future__ import annotations
 
+import logging
 import os
 import re
 import selectors
@@ -13,6 +14,8 @@ import subprocess
 import time
 from collections.abc import Callable
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 # Callback type: (line: str, is_stderr: bool) -> None
 OutputCallback = Callable[[str, bool], None]
@@ -120,12 +123,24 @@ def run_claude_command(
                 now = time.time()
                 if timeout and (now - start_time) > timeout:
                     process.kill()
-                    process.wait()  # reap child to prevent zombie
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        logger.warning(
+                            "Process %s did not terminate within 10s after kill",
+                            process.pid,
+                        )
                     raise subprocess.TimeoutExpired(cmd_args, timeout)
 
                 if idle_timeout and (now - last_output_time) > idle_timeout:
                     process.kill()
-                    process.wait()  # reap child to prevent zombie
+                    try:
+                        process.wait(timeout=10)
+                    except subprocess.TimeoutExpired:
+                        logger.warning(
+                            "Process %s did not terminate within 10s after kill",
+                            process.pid,
+                        )
                     raise subprocess.TimeoutExpired(cmd_args, idle_timeout, output="idle_timeout")
 
                 ready = sel.select(timeout=1.0)
@@ -147,7 +162,21 @@ def run_claude_command(
                     if stream_callback:
                         stream_callback(line, is_stderr)
 
-            process.wait()
+            try:
+                process.wait(timeout=30)
+            except subprocess.TimeoutExpired:
+                logger.warning(
+                    "Process %s did not exit within 30s after streams closed, killing",
+                    process.pid,
+                )
+                process.kill()
+                try:
+                    process.wait(timeout=10)
+                except subprocess.TimeoutExpired:
+                    logger.warning(
+                        "Process %s did not terminate within 10s after kill",
+                        process.pid,
+                    )
         finally:
             if on_process_end:
                 on_process_end(process)

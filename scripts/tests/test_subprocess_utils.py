@@ -622,7 +622,7 @@ class TestRunClaudeCommandTimeout:
                         run_claude_command("test", timeout=1)
 
         mock_process.kill.assert_called_once()
-        mock_process.wait.assert_called_once()  # reap zombie after kill
+        mock_process.wait.assert_called_once_with(timeout=10)
 
     def test_timeout_zero_means_no_timeout(self) -> None:
         """timeout=0 allows indefinite running (no timeout check)."""
@@ -1049,3 +1049,171 @@ class TestRunClaudeCommandIdleTimeout:
 
         # on_process_end should still be called via finally block
         assert len(end_callback_calls) == 1
+
+
+# =============================================================================
+# TestRunClaudeCommandWaitTimeout
+# =============================================================================
+
+
+class TestRunClaudeCommandWaitTimeout:
+    """Tests for timeout on process.wait() calls (BUG-420)."""
+
+    def test_wait_has_timeout_after_kill_on_timeout(self) -> None:
+        """process.wait(timeout=10) called after kill on total timeout."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = None
+        mock_process.wait.return_value = None
+        mock_process.kill = Mock()
+        mock_process.pid = 12345
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                selector_instance = mock_selector.return_value
+                selector_instance.get_map.return_value = {"stdout": True}
+                selector_instance.select.return_value = []
+                selector_instance.register = Mock()
+                selector_instance.unregister = Mock()
+
+                start_time = time.time()
+                time_values = [start_time, start_time + 2.0]
+                time_index = [0]
+
+                def mock_time() -> float:
+                    result = time_values[min(time_index[0], len(time_values) - 1)]
+                    time_index[0] += 1
+                    return result
+
+                with patch("time.time", side_effect=mock_time):
+                    with pytest.raises(subprocess.TimeoutExpired):
+                        run_claude_command("test", timeout=1)
+
+        mock_process.kill.assert_called_once()
+        mock_process.wait.assert_called_once_with(timeout=10)
+
+    def test_wait_has_timeout_after_kill_on_idle_timeout(self) -> None:
+        """process.wait(timeout=10) called after kill on idle timeout."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = None
+        mock_process.wait.return_value = None
+        mock_process.kill = Mock()
+        mock_process.pid = 12345
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                selector_instance = mock_selector.return_value
+                selector_instance.get_map.return_value = {"stdout": True}
+                selector_instance.select.return_value = []
+                selector_instance.register = Mock()
+                selector_instance.unregister = Mock()
+
+                start_time = 1000.0
+                time_values = [start_time, start_time, start_time + 0.5, start_time + 11.0]
+                time_index = [0]
+
+                def mock_time() -> float:
+                    result = time_values[min(time_index[0], len(time_values) - 1)]
+                    time_index[0] += 1
+                    return result
+
+                with patch("time.time", side_effect=mock_time):
+                    with pytest.raises(subprocess.TimeoutExpired):
+                        run_claude_command("test", timeout=3600, idle_timeout=10)
+
+        mock_process.kill.assert_called_once()
+        mock_process.wait.assert_called_once_with(timeout=10)
+
+    def test_wait_has_timeout_on_normal_completion(self) -> None:
+        """process.wait(timeout=30) called on normal exit."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = 0
+        mock_process.wait.return_value = None
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+
+                run_claude_command("test")
+
+        mock_process.wait.assert_called_once_with(timeout=30)
+
+    def test_logs_warning_when_wait_times_out_after_kill(self) -> None:
+        """Warning logged when process doesn't terminate after kill."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = None
+        mock_process.kill = Mock()
+        mock_process.pid = 99999
+        mock_process.wait.side_effect = subprocess.TimeoutExpired("cmd", 10)
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                selector_instance = mock_selector.return_value
+                selector_instance.get_map.return_value = {"stdout": True}
+                selector_instance.select.return_value = []
+                selector_instance.register = Mock()
+                selector_instance.unregister = Mock()
+
+                start_time = time.time()
+                time_values = [start_time, start_time + 2.0]
+                time_index = [0]
+
+                def mock_time() -> float:
+                    result = time_values[min(time_index[0], len(time_values) - 1)]
+                    time_index[0] += 1
+                    return result
+
+                with patch("time.time", side_effect=mock_time):
+                    with patch(
+                        "little_loops.subprocess_utils.logger"
+                    ) as mock_logger:
+                        with pytest.raises(subprocess.TimeoutExpired):
+                            run_claude_command("test", timeout=1)
+
+                        mock_logger.warning.assert_called_once_with(
+                            "Process %s did not terminate within 10s after kill",
+                            99999,
+                        )
+
+    def test_kills_process_when_normal_wait_times_out(self) -> None:
+        """Process killed and waited again when normal wait(timeout=30) expires."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = None
+        mock_process.pid = 55555
+        # First wait(timeout=30) times out, second wait(timeout=10) succeeds
+        mock_process.wait.side_effect = [
+            subprocess.TimeoutExpired("cmd", 30),
+            None,
+        ]
+        mock_process.kill = Mock()
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+
+                with patch("little_loops.subprocess_utils.logger") as mock_logger:
+                    run_claude_command("test")
+
+                    mock_logger.warning.assert_called_once_with(
+                        "Process %s did not exit within 30s after streams closed, killing",
+                        55555,
+                    )
+
+        mock_process.kill.assert_called_once()
+        assert mock_process.wait.call_count == 2
+        mock_process.wait.assert_any_call(timeout=30)
+        mock_process.wait.assert_any_call(timeout=10)

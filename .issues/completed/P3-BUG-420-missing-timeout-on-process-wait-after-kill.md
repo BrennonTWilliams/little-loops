@@ -111,9 +111,24 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `subprocess`, `reliability`
 
+## Resolution
+
+**Status**: Fixed
+**Date**: 2026-02-14
+
+### Changes Made
+- `scripts/little_loops/subprocess_utils.py`: Added `timeout=10` to `process.wait()` after `process.kill()` (2 call sites), added `timeout=30` to `process.wait()` on normal completion, added logging for cases where wait times out
+- `scripts/tests/test_subprocess_utils.py`: Added 5 new tests covering wait timeout behavior, updated existing assertion to verify timeout parameter
+
+### Verification
+- All 49 subprocess_utils tests pass
+- All 164 related tests (subprocess_mocks, issue_manager, worker_pool) pass
+- Lint: clean
+- Type check: clean
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-15T02:29:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3135ba2c-6ec1-44c9-ae59-0d6a65c71853.jsonl`
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P3
+**Closed** | Created: 2026-02-15 | Resolved: 2026-02-14 | Priority: P3
