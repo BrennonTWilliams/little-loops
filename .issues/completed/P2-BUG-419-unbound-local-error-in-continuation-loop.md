@@ -14,11 +14,13 @@ The `_run_with_continuation()` method references `result` after a while loop, bu
 ## Location
 
 - **File**: `scripts/little_loops/parallel/worker_pool.py`
-- **Line(s)**: 712-757 (at scan commit: 71616c7)
+- **Line(s)**: 685-757 (at scan commit: 71616c7, updated: 685-757)
 - **Anchor**: `in method _run_with_continuation()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/71616c711e2fe9f5f1ececcf1c64552bca9d82ec/scripts/little_loops/parallel/worker_pool.py#L712-L757)
 - **Code**:
 ```python
+continuation_count = 0
+
 while continuation_count <= max_continuations:
     result = self._run_claude_command(
         current_command,
@@ -29,7 +31,7 @@ while continuation_count <= max_continuations:
     break
 
 return subprocess.CompletedProcess(
-    args=result.args,  # result may be undefined
+    args=result.args,  # result may be undefined if max_continuations < 0
     returncode=result.returncode,
     stdout="\n---CONTINUATION---\n".join(all_stdout),
     stderr="\n---CONTINUATION---\n".join(all_stderr),
@@ -114,9 +116,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `subprocess`, `parallel`
 
+## Resolution
+
+- **Status**: Fixed
+- **Date**: 2026-02-14
+- **Fix**: Initialized `result` with a default `subprocess.CompletedProcess(args=[], returncode=1, stdout="", stderr="")` before the while loop in both `run_with_continuation()` (issue_manager.py) and `_run_with_continuation()` (worker_pool.py).
+- **Files changed**:
+  - `scripts/little_loops/issue_manager.py` — Added default `result` initialization
+  - `scripts/little_loops/parallel/worker_pool.py` — Added default `result` initialization
+  - `scripts/tests/test_issue_manager.py` — Added test for `max_continuations=-1` edge case
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-15T02:29:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3135ba2c-6ec1-44c9-ae59-0d6a65c71853.jsonl`
+- `/ll:manage-issue bug fix BUG-419` - 2026-02-14
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P2
+**Closed** | Created: 2026-02-15 | Resolved: 2026-02-14 | Priority: P2

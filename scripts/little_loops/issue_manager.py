@@ -154,6 +154,9 @@ def run_with_continuation(
     all_stderr: list[str] = []
     current_command = initial_command
     continuation_count = 0
+    result: subprocess.CompletedProcess[str] = subprocess.CompletedProcess(
+        args=[], returncode=1, stdout="", stderr=""
+    )
 
     while continuation_count <= max_continuations:
         result = run_claude_command(
