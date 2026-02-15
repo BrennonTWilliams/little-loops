@@ -12,6 +12,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.14.1] - 2026-02-15
+
+### Fixed
+
+- **worktree_copy_files directory crash** - Skip directory entries in worktree file copying to prevent IsADirectoryError (BUG-438)
+- **Hardcoded main branch references** - Auto-detect base branch in ll-sprint/ll-parallel instead of hardcoding "main"; update test assertions accordingly (BUG-439)
+
+### Other
+
+- docs(readme): add missing CLI subcommands for ll-loop and ll-history (4e81bf8)
+
+[1.14.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.14.0...v1.14.1
+
 ## [1.14.0] - 2026-02-15
 
 ### Added
