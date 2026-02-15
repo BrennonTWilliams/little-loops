@@ -11,7 +11,7 @@ import subprocess
 import threading
 import time
 from pathlib import Path
-from queue import Queue
+from queue import Empty, Queue
 from typing import TYPE_CHECKING
 
 from little_loops.parallel.git_lock import GitLock
@@ -677,7 +677,7 @@ class MergeCoordinator:
                 # Wait for next merge request with timeout
                 try:
                     request = self._queue.get(timeout=1.0)
-                except Exception:
+                except Empty:
                     continue
 
                 # Process the merge

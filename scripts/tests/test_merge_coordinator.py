@@ -6,6 +6,7 @@ import subprocess
 import tempfile
 from collections.abc import Generator
 from pathlib import Path
+from queue import Empty
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -2332,3 +2333,62 @@ class TestCleanupWorktreeFallback:
         coordinator._cleanup_worktree(
             temp_git_repo / ".worktrees" / "nonexistent", "parallel/ghost"
         )
+
+
+class TestMergeLoopExceptionHandling:
+    """Tests for _merge_loop queue exception handling (BUG-424)."""
+
+    def test_merge_loop_handles_queue_empty(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """_merge_loop should continue on queue.Empty (timeout with no items)."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        # Mock queue.get to raise Empty once, then set shutdown event
+        call_count = 0
+
+        def side_effect(timeout: float = 0) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise Empty()
+            # Signal shutdown on second call
+            coordinator._shutdown_event.set()
+            raise Empty()
+
+        with patch.object(coordinator._queue, "get", side_effect=side_effect):
+            coordinator._merge_loop()
+
+        # Loop ran at least twice (continued after first Empty)
+        assert call_count >= 2
+
+    def test_merge_loop_propagates_non_empty_to_outer_handler(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Non-Empty exceptions from queue.get should reach outer handler and be logged."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        call_count = 0
+
+        def side_effect(timeout: float = 0) -> None:
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                raise TypeError("unexpected queue error")
+            # Shutdown after the first error is handled
+            coordinator._shutdown_event.set()
+            raise Empty()
+
+        with patch.object(coordinator._queue, "get", side_effect=side_effect):
+            coordinator._merge_loop()
+
+        # The outer handler should have logged the TypeError
+        mock_logger.error.assert_called_once()
+        logged_msg = mock_logger.error.call_args[0][0]
+        assert "unexpected queue error" in logged_msg

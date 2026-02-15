@@ -103,9 +103,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `error-handling`, `parallel`
 
+## Resolution
+
+- **Fixed in**: `scripts/little_loops/parallel/merge_coordinator.py`
+- **Changes**:
+  - Added `Empty` to import from `queue` module (line 14)
+  - Narrowed `except Exception` to `except Empty` in `_merge_loop()` (line 680)
+- **Tests added**: `TestMergeLoopExceptionHandling` in `scripts/tests/test_merge_coordinator.py`
+  - `test_merge_loop_handles_queue_empty` — verifies loop continues on `queue.Empty`
+  - `test_merge_loop_propagates_non_empty_to_outer_handler` — verifies unexpected exceptions reach outer handler and are logged
+- **Verification**: All 83 tests pass, lint clean, mypy clean
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-15T02:29:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3135ba2c-6ec1-44c9-ae59-0d6a65c71853.jsonl`
+- `/ll:manage-issue bug fix BUG-424` - 2026-02-14
 
----
+## Status
 
-**Open** | Created: 2026-02-15 | Priority: P4
+**Resolved** | Created: 2026-02-15 | Resolved: 2026-02-14 | Priority: P4
