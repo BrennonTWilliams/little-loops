@@ -70,13 +70,15 @@ Theoretical race window between lock release and function return; `FileNotFoundE
 - `scripts/little_loops/fsm/concurrency.py`
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/fsm/engine.py` — uses LockManager
+- `scripts/little_loops/cli/loop/run.py` — imports LockManager
+- `scripts/little_loops/fsm/__init__.py` — re-exports LockManager
 
 ### Similar Patterns
-- N/A
+- `find_conflict()` line 157: bare `lock_file.unlink()` for stale lock cleanup
+- `list_locks()` line 192: bare `lock_file.unlink()` for stale lock cleanup
 
 ### Tests
-- `scripts/tests/test_concurrency.py` — if exists, add race condition test
+- `scripts/tests/test_concurrency.py` — add race condition test
 
 ### Documentation
 - N/A
@@ -87,7 +89,8 @@ Theoretical race window between lock release and function return; `FileNotFoundE
 ## Implementation Steps
 
 1. Replace `if exists(): unlink()` with `unlink(missing_ok=True)` in `release()`
-2. Add concurrency tests
+2. Add `missing_ok=True` to bare `unlink()` calls in `find_conflict()` and `list_locks()`
+3. Add concurrency tests
 
 ## Impact
 
@@ -107,6 +110,16 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-15T02:29:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3135ba2c-6ec1-44c9-ae59-0d6a65c71853.jsonl`
 
+## Resolution
+
+- **Status**: Fixed
+- **Date**: 2026-02-14
+- **Changes**:
+  - `scripts/little_loops/fsm/concurrency.py`: Added `missing_ok=True` to all three `unlink()` calls in `release()` (line 131), `find_conflict()` (line 156), and `list_locks()` (line 191)
+  - `release()`: Replaced TOCTOU check-then-delete pattern (`if exists(): unlink()`) with atomic `unlink(missing_ok=True)`
+  - `scripts/tests/test_concurrency.py`: Added `TestLockManagerRaceConditions` class with 3 tests covering file-already-deleted scenarios for `release()`, `find_conflict()`, and `list_locks()`
+- **Verification**: All 27 tests pass, ruff lint clean, mypy clean
+
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P4
+**Closed** | Created: 2026-02-15 | Resolved: 2026-02-14 | Priority: P4

@@ -209,6 +209,84 @@ class TestLockManager:
         assert not lock_file.exists()
 
 
+class TestLockManagerRaceConditions:
+    """Tests for race condition fixes (BUG-423)."""
+
+    @pytest.fixture
+    def tmp_loops(self, tmp_path: Path) -> Path:
+        """Create temporary loops directory."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        return loops_dir
+
+    @pytest.fixture
+    def manager(self, tmp_loops: Path) -> LockManager:
+        """Create LockManager with temp directory."""
+        return LockManager(tmp_loops)
+
+    def test_release_after_file_already_deleted(
+        self, manager: LockManager, tmp_loops: Path
+    ) -> None:
+        """release() doesn't raise when lock file already deleted (BUG-423)."""
+        manager.acquire("test", ["src/"])
+        lock_file = tmp_loops / ".running" / "test.lock"
+        assert lock_file.exists()
+
+        # Simulate another process deleting the lock file
+        lock_file.unlink()
+
+        # release() should not raise FileNotFoundError
+        manager.release("test")
+
+    def test_find_conflict_stale_lock_already_deleted(
+        self, manager: LockManager, tmp_loops: Path
+    ) -> None:
+        """find_conflict() handles stale lock deleted by another process (BUG-423)."""
+        running_dir = tmp_loops / ".running"
+        running_dir.mkdir()
+        lock_file = running_dir / "stale.lock"
+        lock_file.write_text(
+            json.dumps(
+                {
+                    "loop_name": "stale",
+                    "scope": ["src/"],
+                    "pid": 99999999,
+                    "started_at": "2024-01-01T00:00:00Z",
+                }
+            )
+        )
+
+        # Delete the file before find_conflict processes it
+        lock_file.unlink()
+
+        # Should not raise, should return None
+        assert manager.find_conflict(["src/"]) is None
+
+    def test_list_locks_stale_lock_already_deleted(
+        self, manager: LockManager, tmp_loops: Path
+    ) -> None:
+        """list_locks() handles stale lock deleted by another process (BUG-423)."""
+        running_dir = tmp_loops / ".running"
+        running_dir.mkdir()
+        lock_file = running_dir / "stale.lock"
+        lock_file.write_text(
+            json.dumps(
+                {
+                    "loop_name": "stale",
+                    "scope": ["src/"],
+                    "pid": 99999999,
+                    "started_at": "2024-01-01T00:00:00Z",
+                }
+            )
+        )
+
+        # Delete the file before list_locks processes it
+        lock_file.unlink()
+
+        # Should not raise, should return empty list
+        assert manager.list_locks() == []
+
+
 class TestLockManagerWait:
     """Tests for wait_for_scope functionality."""
 

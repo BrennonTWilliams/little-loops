@@ -128,8 +128,7 @@ class LockManager:
             loop_name: Name of the loop to release lock for
         """
         lock_file = self.running_dir / f"{loop_name}.lock"
-        if lock_file.exists():
-            lock_file.unlink()
+        lock_file.unlink(missing_ok=True)
 
     def find_conflict(self, scope: list[str]) -> ScopeLock | None:
         """Find any running loop with overlapping scope.
@@ -154,7 +153,7 @@ class LockManager:
                 # Check if process is still alive
                 if not self._process_alive(lock.pid):
                     # Stale lock, remove it
-                    lock_file.unlink()
+                    lock_file.unlink(missing_ok=True)
                     continue
 
                 # Check for overlap
@@ -189,7 +188,7 @@ class LockManager:
                     locks.append(lock)
                 else:
                     # Stale lock, remove it
-                    lock_file.unlink()
+                    lock_file.unlink(missing_ok=True)
             except (json.JSONDecodeError, KeyError, FileNotFoundError):
                 continue
 
