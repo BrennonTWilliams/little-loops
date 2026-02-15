@@ -66,8 +66,7 @@ def fix_dependencies(issues_dir: Path, dry_run: bool = False) -> list[str]:
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/dependency_mapper.py` — add fix functions
-- `scripts/little_loops/cli/deps.py` — add `fix` subcommand
+- `scripts/little_loops/dependency_mapper.py` — add fix functions and `fix` subcommand (CLI lives in `main()` here, not in cli/)
 
 ### Dependent Files (Callers/Importers)
 - N/A
@@ -107,9 +106,26 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `feature`, `dependencies`, `cli`
 
+## Resolution
+
+**Status**: Implemented
+**Date**: 2026-02-14
+
+### Changes Made
+- Added `_remove_from_section()` helper to remove entries from markdown sections
+- Added `FixResult` dataclass for fix operation results
+- Added `fix_dependencies()` function that auto-repairs broken refs, stale completed refs, and missing backlinks
+- Added `fix` subcommand to `ll-deps` CLI with `--dry-run` and `--sprint` options
+- Added 16 tests covering `_remove_from_section`, `fix_dependencies`, and CLI `fix` subcommand
+
+### Files Modified
+- `scripts/little_loops/dependency_mapper.py` — new functions and CLI subcommand
+- `scripts/tests/test_dependency_mapper.py` — new test classes
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-15T02:29:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3135ba2c-6ec1-44c9-ae59-0d6a65c71853.jsonl`
+- `/ll:manage-issue feature implement FEAT-432` - 2026-02-14
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P3
+**Completed** | Created: 2026-02-15 | Resolved: 2026-02-14 | Priority: P3

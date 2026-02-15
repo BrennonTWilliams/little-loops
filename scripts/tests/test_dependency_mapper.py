@@ -11,11 +11,13 @@ from little_loops.dependency_mapper import (
     DependencyReport,
     ParallelSafePair,
     ValidationResult,
+    _remove_from_section,
     analyze_dependencies,
     apply_proposals,
     compute_conflict_score,
     extract_file_paths,
     find_file_overlaps,
+    fix_dependencies,
     format_report,
     format_text_graph,
     gather_all_issue_ids,
@@ -1083,3 +1085,310 @@ class TestMainCLI:
         captured = capsys.readouterr()  # type: ignore[union-attr]
         # All three issues should be analyzed (report header shows count)
         assert "Issues analyzed**: 3" in captured.out
+
+
+# =============================================================================
+# _remove_from_section tests
+# =============================================================================
+
+
+class TestRemoveFromSection:
+    """Tests for removing entries from markdown sections."""
+
+    def test_remove_entry_from_section_with_multiple(self, tmp_path: Path) -> None:
+        """Remove one entry from a section with multiple items."""
+        f = tmp_path / "issue.md"
+        f.write_text(
+            "# FEAT-001\n\n## Blocked By\n\n- FEAT-002\n- FEAT-003\n\n## Labels\n\n`feature`\n"
+        )
+        changed = _remove_from_section(f, "Blocked By", "FEAT-002")
+        assert changed is True
+        content = f.read_text()
+        assert "FEAT-002" not in content
+        assert "- FEAT-003" in content
+        assert "## Blocked By" in content
+
+    def test_remove_last_entry_removes_section(self, tmp_path: Path) -> None:
+        """Remove the only entry — section header should also be removed."""
+        f = tmp_path / "issue.md"
+        f.write_text("# FEAT-001\n\n## Blocked By\n\n- FEAT-002\n\n## Labels\n\n`feature`\n")
+        changed = _remove_from_section(f, "Blocked By", "FEAT-002")
+        assert changed is True
+        content = f.read_text()
+        assert "## Blocked By" not in content
+        assert "## Labels" in content
+
+    def test_noop_when_not_present(self, tmp_path: Path) -> None:
+        """No-op when the entry is not in the section."""
+        f = tmp_path / "issue.md"
+        original = "# FEAT-001\n\n## Blocked By\n\n- FEAT-002\n\n## Labels\n\n`feature`\n"
+        f.write_text(original)
+        changed = _remove_from_section(f, "Blocked By", "FEAT-999")
+        assert changed is False
+        assert f.read_text() == original
+
+    def test_noop_when_section_missing(self, tmp_path: Path) -> None:
+        """No-op when the section doesn't exist."""
+        f = tmp_path / "issue.md"
+        original = "# FEAT-001\n\n## Labels\n\n`feature`\n"
+        f.write_text(original)
+        changed = _remove_from_section(f, "Blocked By", "FEAT-002")
+        assert changed is False
+        assert f.read_text() == original
+
+    def test_remove_from_section_at_end_of_file(self, tmp_path: Path) -> None:
+        """Remove entry from section at end of file (no next section)."""
+        f = tmp_path / "issue.md"
+        f.write_text("# FEAT-001\n\n## Blocked By\n\n- FEAT-002\n- FEAT-003\n")
+        changed = _remove_from_section(f, "Blocked By", "FEAT-003")
+        assert changed is True
+        content = f.read_text()
+        assert "FEAT-003" not in content
+        assert "- FEAT-002" in content
+
+    def test_remove_last_entry_at_end_of_file(self, tmp_path: Path) -> None:
+        """Remove the only entry in a section at end of file."""
+        f = tmp_path / "issue.md"
+        f.write_text("# FEAT-001\n\n## Blocked By\n\n- FEAT-002\n")
+        changed = _remove_from_section(f, "Blocked By", "FEAT-002")
+        assert changed is True
+        content = f.read_text()
+        assert "## Blocked By" not in content
+
+
+# =============================================================================
+# fix_dependencies tests
+# =============================================================================
+
+
+class TestFixDependencies:
+    """Tests for auto-fixing dependency validation issues."""
+
+    def test_fixes_broken_refs(self, tmp_path: Path) -> None:
+        """Broken refs are removed from Blocked By."""
+        issue_file = tmp_path / "P1-FEAT-001-test.md"
+        issue_file.write_text(
+            "# FEAT-001: Test\n\n## Blocked By\n\n- BUG-999\n\n## Labels\n\n`feature`\n"
+        )
+        issues = [
+            IssueInfo(
+                path=issue_file,
+                issue_type="features",
+                priority="P1",
+                issue_id="FEAT-001",
+                title="Test",
+                blocked_by=["BUG-999"],
+                blocks=[],
+            )
+        ]
+        result = fix_dependencies(issues)
+        assert len(result.changes) == 1
+        assert "Removed broken ref BUG-999 from FEAT-001" in result.changes[0]
+        assert str(issue_file) in result.modified_files
+        assert "BUG-999" not in issue_file.read_text()
+
+    def test_fixes_stale_completed_refs(self, tmp_path: Path) -> None:
+        """Stale completed refs are removed from Blocked By."""
+        issue_file = tmp_path / "P1-FEAT-002-test.md"
+        issue_file.write_text(
+            "# FEAT-002: Test\n\n## Blocked By\n\n- FEAT-001\n\n## Labels\n\n`feature`\n"
+        )
+        issues = [
+            IssueInfo(
+                path=issue_file,
+                issue_type="features",
+                priority="P1",
+                issue_id="FEAT-002",
+                title="Test",
+                blocked_by=["FEAT-001"],
+                blocks=[],
+            )
+        ]
+        result = fix_dependencies(issues, completed_ids={"FEAT-001"})
+        assert len(result.changes) == 1
+        assert "stale ref FEAT-001 (completed)" in result.changes[0]
+        assert "FEAT-001" not in issue_file.read_text()
+
+    def test_adds_missing_backlinks(self, tmp_path: Path) -> None:
+        """Missing backlinks are added to Blocks section."""
+        blocker_file = tmp_path / "P1-FEAT-001-blocker.md"
+        blocker_file.write_text(
+            "# FEAT-001: Blocker\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n"
+        )
+        blocked_file = tmp_path / "P2-FEAT-002-blocked.md"
+        blocked_file.write_text(
+            "# FEAT-002: Blocked\n\n## Blocked By\n\n- FEAT-001\n\n## Labels\n\n`feature`\n"
+        )
+        issues = [
+            IssueInfo(
+                path=blocker_file,
+                issue_type="features",
+                priority="P1",
+                issue_id="FEAT-001",
+                title="Blocker",
+                blocked_by=[],
+                blocks=[],  # Missing backlink!
+            ),
+            IssueInfo(
+                path=blocked_file,
+                issue_type="features",
+                priority="P2",
+                issue_id="FEAT-002",
+                title="Blocked",
+                blocked_by=["FEAT-001"],
+                blocks=[],
+            ),
+        ]
+        result = fix_dependencies(issues)
+        assert len(result.changes) == 1
+        assert "Added backlink: FEAT-002 to FEAT-001" in result.changes[0]
+        blocker_content = blocker_file.read_text()
+        assert "## Blocks" in blocker_content
+        assert "- FEAT-002" in blocker_content
+
+    def test_dry_run_no_file_changes(self, tmp_path: Path) -> None:
+        """Dry run reports changes but doesn't modify files."""
+        issue_file = tmp_path / "P1-FEAT-001-test.md"
+        original = "# FEAT-001: Test\n\n## Blocked By\n\n- BUG-999\n\n## Labels\n\n`feature`\n"
+        issue_file.write_text(original)
+        issues = [
+            IssueInfo(
+                path=issue_file,
+                issue_type="features",
+                priority="P1",
+                issue_id="FEAT-001",
+                title="Test",
+                blocked_by=["BUG-999"],
+                blocks=[],
+            )
+        ]
+        result = fix_dependencies(issues, dry_run=True)
+        assert len(result.changes) == 1
+        assert len(result.modified_files) == 0
+        assert issue_file.read_text() == original
+
+    def test_skips_cycles(self) -> None:
+        """Cycles are counted but not fixed."""
+        issues = [
+            make_issue("FEAT-001", blocked_by=["FEAT-002"]),
+            make_issue("FEAT-002", blocked_by=["FEAT-001"]),
+        ]
+        result = fix_dependencies(issues)
+        assert result.skipped_cycles > 0
+        # Cycles should not produce changes (only missing backlinks may)
+        cycle_changes = [c for c in result.changes if "cycle" in c.lower()]
+        assert len(cycle_changes) == 0
+
+    def test_no_issues_no_changes(self) -> None:
+        """No validation issues means no changes."""
+        issues = [
+            make_issue("FEAT-001", blocks=["FEAT-002"]),
+            make_issue("FEAT-002", blocked_by=["FEAT-001"]),
+        ]
+        result = fix_dependencies(issues)
+        assert len(result.changes) == 0
+        assert len(result.modified_files) == 0
+
+    def test_empty_issues(self) -> None:
+        """Empty issues list returns empty result."""
+        result = fix_dependencies([])
+        assert len(result.changes) == 0
+        assert result.skipped_cycles == 0
+
+
+# =============================================================================
+# CLI fix subcommand tests
+# =============================================================================
+
+
+class TestMainCLIFix:
+    """Tests for the ll-deps fix CLI subcommand."""
+
+    def _setup_fix_project(self, tmp_path: Path) -> Path:
+        """Set up a test project with issues that have fixable problems."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        features_dir = issues_dir / "features"
+        features_dir.mkdir()
+        (issues_dir / "bugs").mkdir()
+        (issues_dir / "enhancements").mkdir()
+        (issues_dir / "completed").mkdir()
+
+        # FEAT-001: blocker (missing backlink to FEAT-002)
+        (features_dir / "P1-FEAT-001-blocker.md").write_text(
+            "# FEAT-001: Blocker\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n"
+        )
+        # FEAT-002: blocked by FEAT-001 (valid) and BUG-999 (broken)
+        (features_dir / "P2-FEAT-002-blocked.md").write_text(
+            "# FEAT-002: Blocked\n\n"
+            "## Summary\n\nTest.\n\n"
+            "## Blocked By\n\n- FEAT-001\n- BUG-999\n\n"
+            "## Labels\n\n`feature`\n"
+        )
+
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+
+        return issues_dir
+
+    def test_fix_with_issues(self, tmp_path: Path, capsys: object) -> None:
+        """Test fix subcommand applies fixes."""
+        issues_dir = self._setup_fix_project(tmp_path)
+
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "fix"]):
+            result = main()
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        assert "fix(es) applied" in captured.out
+
+        # Verify BUG-999 was removed
+        feat002 = (issues_dir / "features" / "P2-FEAT-002-blocked.md").read_text()
+        assert "BUG-999" not in feat002
+
+        # Verify backlink was added
+        feat001 = (issues_dir / "features" / "P1-FEAT-001-blocker.md").read_text()
+        assert "## Blocks" in feat001
+        assert "- FEAT-002" in feat001
+
+    def test_fix_dry_run(self, tmp_path: Path, capsys: object) -> None:
+        """Test fix --dry-run previews without modifying files."""
+        issues_dir = self._setup_fix_project(tmp_path)
+
+        # Save original contents
+        feat001_orig = (issues_dir / "features" / "P1-FEAT-001-blocker.md").read_text()
+        feat002_orig = (issues_dir / "features" / "P2-FEAT-002-blocked.md").read_text()
+
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "fix", "--dry-run"]):
+            result = main()
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        assert "[DRY RUN]" in captured.out
+
+        # Files should be unchanged
+        assert (issues_dir / "features" / "P1-FEAT-001-blocker.md").read_text() == feat001_orig
+        assert (issues_dir / "features" / "P2-FEAT-002-blocked.md").read_text() == feat002_orig
+
+    def test_fix_no_issues(self, tmp_path: Path, capsys: object) -> None:
+        """Test fix with nothing to fix."""
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        features_dir = issues_dir / "features"
+        features_dir.mkdir()
+        (issues_dir / "bugs").mkdir()
+        (issues_dir / "enhancements").mkdir()
+        (issues_dir / "completed").mkdir()
+
+        (features_dir / "P1-FEAT-001-ok.md").write_text(
+            "# FEAT-001: OK\n\n## Summary\n\nTest.\n\n## Labels\n\n`feature`\n"
+        )
+
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        (claude_dir / "ll-config.json").write_text('{"issues": {"base_dir": ".issues"}}')
+
+        with patch.object(sys, "argv", ["ll-deps", "-d", str(issues_dir), "fix"]):
+            result = main()
+        assert result == 0
+        captured = capsys.readouterr()  # type: ignore[union-attr]
+        assert "No fixable issues found" in captured.out

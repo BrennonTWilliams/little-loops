@@ -841,6 +841,150 @@ def _add_to_section(file_path: Path, section_name: str, issue_id: str) -> None:
     file_path.write_text(content, encoding="utf-8")
 
 
+def _remove_from_section(file_path: Path, section_name: str, issue_id: str) -> bool:
+    """Remove an issue ID from a markdown section in a file.
+
+    If the section becomes empty after removal, the entire section is removed.
+
+    Args:
+        file_path: Path to the issue file
+        section_name: Section name (e.g., "Blocked By" or "Blocks")
+        issue_id: Issue ID to remove (e.g., "FEAT-001")
+
+    Returns:
+        True if a change was made, False if the ID was not found.
+    """
+    content = file_path.read_text(encoding="utf-8")
+
+    section_pattern = rf"^##\s+{re.escape(section_name)}\s*$"
+    section_match = re.search(section_pattern, content, re.MULTILINE | re.IGNORECASE)
+
+    if not section_match:
+        return False
+
+    start = section_match.end()
+    next_section = re.search(r"^##\s+", content[start:], re.MULTILINE)
+    if next_section:
+        section_end = start + next_section.start()
+    else:
+        section_end = len(content)
+
+    section_content = content[start:section_end]
+
+    # Find the line containing this issue ID
+    line_pattern = rf"^[-*]\s+\*{{0,2}}{re.escape(issue_id)}\b[^\n]*\n?"
+    line_match = re.search(line_pattern, section_content, re.MULTILINE)
+    if not line_match:
+        return False
+
+    # Remove the line
+    new_section_content = (
+        section_content[: line_match.start()] + section_content[line_match.end() :]
+    )
+
+    # Check if the section is now empty (no list items remaining)
+    remaining_items = re.search(r"^[-*]\s+", new_section_content, re.MULTILINE)
+    if not remaining_items:
+        # Remove entire section (header + content)
+        # Include leading newline if present
+        remove_start = section_match.start()
+        if remove_start > 0 and content[remove_start - 1] == "\n":
+            remove_start -= 1
+        content = content[:remove_start] + content[section_end:]
+    else:
+        content = content[:start] + new_section_content + content[section_end:]
+
+    file_path.write_text(content, encoding="utf-8")
+    return True
+
+
+@dataclass
+class FixResult:
+    """Result of auto-fixing dependency validation issues.
+
+    Attributes:
+        changes: Human-readable descriptions of each fix applied
+        modified_files: Set of file paths that were modified
+        skipped_cycles: Number of cycles skipped (out of scope for auto-fix)
+    """
+
+    changes: list[str] = field(default_factory=list)
+    modified_files: set[str] = field(default_factory=set)
+    skipped_cycles: int = 0
+
+
+def fix_dependencies(
+    issues: list[IssueInfo],
+    completed_ids: set[str] | None = None,
+    all_known_ids: set[str] | None = None,
+    dry_run: bool = False,
+) -> FixResult:
+    """Auto-repair broken dependency references.
+
+    Fixes three types of validation issues:
+    - Broken refs: removes references to non-existent issues from Blocked By
+    - Stale completed refs: removes references to completed issues from Blocked By
+    - Missing backlinks: adds missing Blocks entries for bidirectional consistency
+
+    Cycles are explicitly out of scope and are skipped with a count.
+
+    Args:
+        issues: List of parsed issue objects
+        completed_ids: Set of completed issue IDs
+        all_known_ids: Set of all issue IDs that exist on disk
+        dry_run: If True, report what would change without modifying files
+
+    Returns:
+        FixResult with changes made and files modified
+    """
+    validation = validate_dependencies(issues, completed_ids, all_known_ids)
+    result = FixResult()
+
+    if not validation.has_issues:
+        return result
+
+    # Build issue path map
+    issue_path_map: dict[str, Path] = {issue.issue_id: issue.path for issue in issues}
+
+    # Fix broken refs: remove from Blocked By
+    for issue_id, ref_id in validation.broken_refs:
+        path = issue_path_map.get(issue_id)
+        if not path or not path.exists():
+            continue
+        desc = f"Removed broken ref {ref_id} from {issue_id}"
+        result.changes.append(desc)
+        if not dry_run:
+            if _remove_from_section(path, "Blocked By", ref_id):
+                result.modified_files.add(str(path))
+
+    # Fix stale completed refs: remove from Blocked By
+    for issue_id, ref_id in validation.stale_completed_refs:
+        path = issue_path_map.get(issue_id)
+        if not path or not path.exists():
+            continue
+        desc = f"Removed stale ref {ref_id} (completed) from {issue_id}"
+        result.changes.append(desc)
+        if not dry_run:
+            if _remove_from_section(path, "Blocked By", ref_id):
+                result.modified_files.add(str(path))
+
+    # Fix missing backlinks: add to Blocks
+    for issue_id, ref_id in validation.missing_backlinks:
+        target_path = issue_path_map.get(ref_id)
+        if not target_path or not target_path.exists():
+            continue
+        desc = f"Added backlink: {issue_id} to {ref_id}'s Blocks section"
+        result.changes.append(desc)
+        if not dry_run:
+            _add_to_section(target_path, "Blocks", issue_id)
+            result.modified_files.add(str(target_path))
+
+    # Report skipped cycles
+    result.skipped_cycles = len(validation.cycles)
+
+    return result
+
+
 def gather_all_issue_ids(issues_dir: Path) -> set[str]:
     """Scan all issue directories for issue IDs (lightweight, filename-only).
 
@@ -934,6 +1078,8 @@ Examples:
   %(prog)s analyze --sprint my-sprint # Analyze only issues in a sprint
   %(prog)s validate                   # Validation only (broken refs, cycles)
   %(prog)s validate --sprint my-sprint # Validate only sprint issue deps
+  %(prog)s fix                        # Auto-fix broken refs, stale refs, backlinks
+  %(prog)s fix --dry-run              # Preview fixes without modifying files
 """,
     )
 
@@ -982,6 +1128,24 @@ Examples:
         type=str,
         default=None,
         help="Restrict validation to issues in the named sprint",
+    )
+
+    # fix subcommand
+    fix_parser = subparsers.add_parser(
+        "fix",
+        help="Auto-fix broken refs, stale refs, and missing backlinks",
+    )
+    fix_parser.add_argument(
+        "--dry-run",
+        "-n",
+        action="store_true",
+        help="Show what would be fixed without making changes",
+    )
+    fix_parser.add_argument(
+        "--sprint",
+        type=str,
+        default=None,
+        help="Restrict fixes to issues in the named sprint",
     )
 
     args = parser.parse_args()
@@ -1123,6 +1287,35 @@ Examples:
             lines.append("")
 
         print("\n".join(lines))
+        return 0
+
+    if args.command == "fix":
+        fix_result = fix_dependencies(issues, completed_ids, all_known_ids, dry_run=args.dry_run)
+
+        if not fix_result.changes:
+            print("No fixable issues found.")
+            if fix_result.skipped_cycles:
+                print(f"({fix_result.skipped_cycles} cycle(s) detected — resolve manually)")
+            return 0
+
+        prefix = "[DRY RUN] " if args.dry_run else ""
+        print(f"# {prefix}Dependency Fix Report")
+        print()
+        for change in fix_result.changes:
+            print(f"  {prefix}{change}")
+        print()
+        print(f"{prefix}{len(fix_result.changes)} fix(es) applied.")
+
+        if fix_result.modified_files:
+            print()
+            print("Modified files:")
+            for fpath in sorted(fix_result.modified_files):
+                print(f"  {fpath}")
+
+        if fix_result.skipped_cycles:
+            print()
+            print(f"({fix_result.skipped_cycles} cycle(s) detected — resolve manually)")
+
         return 0
 
     return 1
