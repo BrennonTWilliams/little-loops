@@ -100,3 +100,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 **Open** | Created: 2026-02-15 | Priority: P3
+
+## Architectural Audit Note
+
+**Reviewed**: 2026-02-14 by architectural audit
+
+**Scope expanded**: FEAT-434 (standalone overlap detection for all active issues) was closed as redundant with this issue. Consider adding an `--all` flag to `ll-sprint analyze` (or placing the command in `ll-deps analyze --overlaps`) so users can run conflict detection against all active issues, not just those in a named sprint. This avoids two commands doing the same analysis with different scopes.

@@ -107,4 +107,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P4
+**Open (Deferred)** | Created: 2026-02-15 | Priority: P5
+
+## Architectural Audit Note
+
+**Reviewed**: 2026-02-14 by architectural audit
+
+**Recommendation**: Defer until `ll-sync` is heavily used in team settings. Conflict resolution is a real concern for bidirectional sync, but building it now is premature — the sync feature itself needs adoption before investing in conflict tooling. Priority bumped from P4 to P5. Revisit when users actually report sync conflicts.

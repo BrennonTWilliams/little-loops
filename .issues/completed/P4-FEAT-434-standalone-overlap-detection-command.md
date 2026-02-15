@@ -99,4 +99,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P4
+**Closed (Redundant)** | Created: 2026-02-15 | Closed: 2026-02-14 | Priority: P4
+
+## Closure Note
+
+**Closed by**: Architectural audit (2026-02-14)
+**Reason**: Redundant with FEAT-433 (Sprint conflict analysis CLI). Both use the same infrastructure (`extract_file_hints()`, `refine_waves_for_contention()`). The "all active issues" scope from this issue has been absorbed into FEAT-433 as a recommended `--all` flag, avoiding CLI surface bloat from two commands doing the same analysis.

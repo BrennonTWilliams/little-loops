@@ -93,4 +93,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P3
+**Closed (Won't Do)** | Created: 2026-02-15 | Closed: 2026-02-14 | Priority: P3
+
+## Closure Note
+
+**Closed by**: Architectural audit (2026-02-14)
+**Reason**: Premature optimization. Sprint waves rarely exceed 5-8 issues (N^2 on 8 = 28 comparisons, negligible). The actual bottleneck is LLM API calls (minutes per issue), not file I/O (milliseconds). Adding `ThreadPoolExecutor` for a few file reads introduces concurrency complexity for no user-visible benefit. Revisit only if sprints with 50+ issues become common and this is measurably slow.

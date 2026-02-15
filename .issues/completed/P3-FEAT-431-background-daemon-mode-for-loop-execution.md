@@ -109,4 +109,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P3
+**Closed (Won't Do)** | Created: 2026-02-15 | Closed: 2026-02-14 | Priority: P3
+
+## Closure Note
+
+**Closed by**: Architectural audit (2026-02-14)
+**Reason**: Reinvents solved problems at high maintenance cost. `os.fork()` is Unix-only (no Windows support). Process management (PID files, signal handling, zombie cleanup, log rotation) is a deep maintenance rabbit hole. Existing tools (`nohup`, `tmux`, `screen`, `systemd`, `launchd`) handle this better. Recommend removing or deprecating the `--background` flag and documenting the `nohup ll-loop run <loop> &` workaround in help text.

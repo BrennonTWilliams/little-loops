@@ -110,4 +110,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P4
+**Closed (Duplicate)** | Created: 2026-02-15 | Closed: 2026-02-14 | Priority: P4
+
+## Closure Note
+
+**Closed by**: Architectural audit (2026-02-14)
+**Reason**: Duplicate of completed BUG-239 (returncode-or-zero-masks-none). The scanner re-discovered the same unfixed code pattern. BUG-239 has been reopened since the fix was never applied.
