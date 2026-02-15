@@ -244,6 +244,15 @@ FSM-based automation loop execution (create loops with `/ll:create-loop`):
 ll-loop run <loop-name>          # Execute a loop by name
 ll-loop list                     # List all available loops
 ll-loop stop <loop-name>         # Stop a running loop
+ll-loop status <loop-name>       # Show loop status
+ll-loop resume <loop-name>       # Resume an interrupted loop
+ll-loop compile <loop-name>      # Compile paradigm to FSM
+ll-loop validate <loop-name>     # Validate loop definition
+ll-loop history <loop-name>      # Show loop execution history
+ll-loop test <loop-name>         # Run a single test iteration
+ll-loop simulate <loop-name>     # Trace execution interactively
+ll-loop install <loop-name>      # Copy built-in loop to .loops/
+ll-loop show <loop-name>         # Show loop details and structure
 ```
 
 Run `ll-loop --help` for all options. See [FSM Loop Guide](docs/generalized-fsm-loop.md) for loop authoring.
@@ -295,6 +304,7 @@ View completed issue statistics:
 ```bash
 ll-history summary               # Display issue statistics
 ll-history summary --json        # Output as JSON
+ll-history analyze               # Full analysis with trends and debt metrics
 ```
 
 ### ll-workflows
