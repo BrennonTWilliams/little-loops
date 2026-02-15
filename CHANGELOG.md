@@ -9,9 +9,47 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Planned
 
-- Test coverage for core modules
 - Windows compatibility testing
 - Performance benchmarks for large repositories
+
+## [1.13.0] - 2026-02-14
+
+### Added
+
+- **ll-auto content marker checking** - Verify phase fallback chain now checks implementation markers in issue file content (ENH-328)
+- **Sprint sequential retry** - Merge-failed issues are retried sequentially after parallel waves complete (feat, 6c27480)
+
+### Fixed
+
+- fix(code-quality): resolve lint error and reformat 10 files (d50cb78)
+- fix(docs): update CONTRIBUTING.md skills tree to list all 15 directories (21254eb)
+- fix(docs): update README Skills table to list all 15 skills (872ebad)
+- fix(docs): correct command and skill counts, reopen regressed doc issues (88025ba)
+
+### Changed
+
+- **Skill invocation allocation** - Audit and optimize skill invocation allocation across commands (ENH-279)
+- **Test coverage improvements** - Add 59 tests across 6 modules, improving coverage from 86% to 89% (ENH-410)
+- **Batched git log calls** - Batch git log calls in issue discovery for reduced subprocess overhead (ENH-352)
+- enh(docs): update CLAUDE.md date and add skills count (eb95e2a)
+- enh(sprint): relabel "file contention" to "file overlap" in sprint show output (8df1e2e)
+- enh(plugin): add explicit agents declaration to plugin.json (0cf3e99)
+- enh(commands): replace hardcoded tool names with config references (7a59449)
+- enh(commands): add flag conventions to commands and skills (1267f27)
+- enh(cli): add --type flag to ll-auto, ll-parallel, and ll-sprint (e53a574)
+- enh(audit-claude-config): add Skills to Commands cross-reference validation (e480671)
+- perf(link-checker): parallelize HTTP URL checking with ThreadPoolExecutor (e3d62c7)
+- perf(issue-discovery): batch git log calls into single subprocess (01c60d4)
+- perf(issue-history): cache issue file contents across analysis pipeline (60dfdce)
+- refactor(text-utils): consolidate duplicated file path extraction into shared module (69175d2)
+- refactor(cli-loop): split monolithic loop.py into focused subcommand package (8898582)
+- refactor(issue-history): split god module into focused package (b51acb9)
+
+### Other
+
+- chore(issues): verify and correct stale file references in ENH-387, ENH-276, ENH-342 (cbd655b)
+
+[1.13.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.12.2...v1.13.0
 
 ## [1.12.2] - 2026-02-13
 
