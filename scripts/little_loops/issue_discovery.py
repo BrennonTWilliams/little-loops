@@ -218,7 +218,6 @@ def _calculate_word_overlap(words1: set[str], words2: set[str]) -> float:
     return len(intersection) / len(union)
 
 
-
 def _extract_line_numbers(text: str) -> set[int]:
     """Extract line numbers from text.
 

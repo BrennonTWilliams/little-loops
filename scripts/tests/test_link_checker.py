@@ -322,9 +322,7 @@ class TestCheckMarkdownLinks:
 
     def test_check_concurrent_mixed_results(self, tmp_path: Path) -> None:
         """Concurrent checking handles mixed valid/broken results."""
-        (tmp_path / "test.md").write_text(
-            "[Good](https://good.com)\n[Bad](https://bad.com)\n"
-        )
+        (tmp_path / "test.md").write_text("[Good](https://good.com)\n[Bad](https://bad.com)\n")
 
         def mock_check_url(url: str, timeout: int = 10) -> tuple[bool, str | None]:
             if "good" in url:

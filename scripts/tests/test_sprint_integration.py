@@ -857,7 +857,6 @@ issues:
         assert "BUG-002" in state_data["completed_issues"]
         assert "BUG-002" in state_data["failed_issues"]
 
-
     def test_sprint_sequential_retry_after_parallel_failure(
         self, tmp_path: Path, monkeypatch: Any
     ) -> None:
@@ -926,9 +925,7 @@ issues:
         state_file = tmp_path / ".sprint-state.json"
         assert not state_file.exists(), "State file should be cleaned up on full success"
 
-    def test_sprint_sequential_retry_still_fails(
-        self, tmp_path: Path, monkeypatch: Any
-    ) -> None:
+    def test_sprint_sequential_retry_still_fails(self, tmp_path: Path, monkeypatch: Any) -> None:
         """Test retry that also fails keeps issue in failed_issues (ENH-308)."""
         import argparse
 

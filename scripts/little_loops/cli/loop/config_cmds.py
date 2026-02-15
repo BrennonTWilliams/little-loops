@@ -36,9 +36,7 @@ def cmd_compile(
         return 1
 
     output_path = (
-        Path(args.output)
-        if args.output
-        else Path(str(input_path).replace(".yaml", ".fsm.yaml"))
+        Path(args.output) if args.output else Path(str(input_path).replace(".yaml", ".fsm.yaml"))
     )
 
     # Convert FSMLoop to dict for YAML output

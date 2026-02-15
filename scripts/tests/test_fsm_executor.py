@@ -2130,7 +2130,7 @@ class TestRoutingEdgeCases:
         assert result.terminated_by == "error"
 
 
-class TestMaintainMode:
+class TestMaintainModeExecutor:
     """Tests for maintain mode in executor."""
 
     def test_maintain_mode_restarts_on_null_transition(self) -> None:

@@ -1647,9 +1647,7 @@ class TestFallbackVerification:
                                     "little_loops.issue_manager.complete_issue_lifecycle",
                                     return_value=True,
                                 ):
-                                    process_issue_inplace(
-                                        sample_issue, mock_config, mock_logger
-                                    )
+                                    process_issue_inplace(sample_issue, mock_config, mock_logger)
 
         # verify_work_was_done should NOT be called when content markers found
         mock_work.assert_not_called()

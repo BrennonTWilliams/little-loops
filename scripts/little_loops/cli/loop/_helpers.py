@@ -132,9 +132,7 @@ def print_execution_plan(fsm: FSMLoop) -> None:
         print(f"Timeout: {fsm.timeout}s")
 
 
-def run_foreground(
-    executor: Any, fsm: FSMLoop, args: argparse.Namespace
-) -> int:
+def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int:
     """Run loop with progress display.
 
     Returns:
@@ -201,8 +199,7 @@ def run_foreground(
             seconds = duration_sec % 60
             duration_str = f"{minutes}m {seconds:.0f}s"
         print(
-            f"Loop completed: {result.final_state} "
-            f"({result.iterations} iterations, {duration_str})"
+            f"Loop completed: {result.final_state} ({result.iterations} iterations, {duration_str})"
         )
 
     return 0 if result.terminated_by == "terminal" else 1

@@ -186,7 +186,6 @@ class DependencyReport:
     existing_dep_count: int = 0
 
 
-
 def _extract_semantic_targets(content: str) -> set[str]:
     """Extract component and function references from issue content.
 

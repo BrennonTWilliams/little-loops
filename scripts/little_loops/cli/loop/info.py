@@ -126,9 +126,7 @@ def cmd_show(
         initial_marker = " [INITIAL]" if name == fsm.initial else ""
         print(f"  [{name}]{initial_marker}{terminal_marker}")
         if state.action:
-            action_display = (
-                state.action[:70] + "..." if len(state.action) > 70 else state.action
-            )
+            action_display = state.action[:70] + "..." if len(state.action) > 70 else state.action
             print(f"    action: {action_display}")
         if state.action_type:
             print(f"    type: {state.action_type}")

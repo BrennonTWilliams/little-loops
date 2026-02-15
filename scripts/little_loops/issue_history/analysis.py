@@ -1684,9 +1684,7 @@ def calculate_analysis(
     coupling_analysis = analyze_coupling(completed_issues, contents=issue_contents)
 
     # Regression clustering analysis
-    regression_analysis = analyze_regression_clustering(
-        completed_issues, contents=issue_contents
-    )
+    regression_analysis = analyze_regression_clustering(completed_issues, contents=issue_contents)
 
     # Test gap analysis
     test_gap_analysis = analyze_test_gaps(completed_issues, hotspot_analysis)
@@ -1695,9 +1693,7 @@ def calculate_analysis(
     rejection_analysis = analyze_rejection_rates(completed_issues, contents=issue_contents)
 
     # Manual pattern analysis
-    manual_pattern_analysis = detect_manual_patterns(
-        completed_issues, contents=issue_contents
-    )
+    manual_pattern_analysis = detect_manual_patterns(completed_issues, contents=issue_contents)
 
     # Agent effectiveness analysis
     agent_effectiveness_analysis = analyze_agent_effectiveness(
