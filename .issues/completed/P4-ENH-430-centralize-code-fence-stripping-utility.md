@@ -92,4 +92,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P4
+**Closed (Won't Do)** | Created: 2026-02-15 | Closed: 2026-02-14 | Priority: P4
+
+## Closure Note
+
+**Closed by**: Architectural tech-debt audit (2026-02-14)
+**Reason**: The two implementations are intentionally different — `issue_parser.py` preserves line counts (required for accurate section parsing), while `text_utils.py` does bulk removal. They serve distinct use cases and are correctly placed in their respective modules. Moving code between files for co-location adds churn without functional benefit. The "risk of using the wrong one" is theoretical — each caller already uses the correct variant.

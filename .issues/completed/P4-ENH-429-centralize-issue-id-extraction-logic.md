@@ -91,4 +91,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P4
+**Closed (Won't Do)** | Created: 2026-02-15 | Closed: 2026-02-14 | Priority: P4
+
+## Closure Note
+
+**Closed by**: Architectural tech-debt audit (2026-02-14)
+**Reason**: Premature abstraction — violates project's own code style guideline ("three similar lines of code is better than a premature abstraction"). Verified all 4 call sites use functionally identical one-liner regex patterns that have not drifted. Centralizing adds cross-module coupling (new import in 4 files) without solving a real problem. If the ID format changes in the future, a simple find-and-replace across 4 identical patterns is trivial.

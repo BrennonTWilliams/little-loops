@@ -61,7 +61,8 @@ Theoretical race window between lock release and function return; `FileNotFoundE
 ## Proposed Solution
 
 1. Use `unlink(missing_ok=True)` in `release()` to avoid race on deletion
-2. Consider keeping the file descriptor open for the duration of the lock (store in instance dict)
+
+> **Scope note (2026-02-14)**: The "keep fd open" redesign (storing file handles in instance dict) is out of scope — it adds significant complexity for a theoretical race that is already mitigated by `find_conflict()`. The `missing_ok=True` fix alone addresses the concrete `FileNotFoundError` risk.
 
 ## Integration Map
 
@@ -86,8 +87,7 @@ Theoretical race window between lock release and function return; `FileNotFoundE
 ## Implementation Steps
 
 1. Replace `if exists(): unlink()` with `unlink(missing_ok=True)` in `release()`
-2. Evaluate whether to keep file handle open during lock hold
-3. Add concurrency tests
+2. Add concurrency tests
 
 ## Impact
 

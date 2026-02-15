@@ -135,7 +135,7 @@ Storage location: `.ll/history.db` at project root (gitignored). This keeps it p
 
 ## Status
 
-**Open** | Created: 2026-02-10 | Priority: P2
+**Closed (Won't Do)** | Created: 2026-02-10 | Closed: 2026-02-14 | Priority: P6
 
 ---
 
@@ -218,3 +218,10 @@ Update first - High value feature but scope is too broad and underspecified (ses
 1. **`session_summaries` table**: Deferred. Operational data (tool usage, durations per phase) is now handled by FEAT-417 (Hybrid Telemetry). FEAT-324 scope is narrowed to `issues` + `sessions` tables only.
 2. **Migration strategy**: Use SQLite's `user_version` pragma for schema versioning. On first access, create tables if absent. On schema changes, check `user_version` and apply migrations sequentially. No external migration framework needed.
 3. **Phased implementation**: Phase 1 = `issues` table + FTS5 duplicate detection + backfill. Phase 2 = `sessions` table + `analyze-history` integration. This aligns with the consistent recommendation to split.
+
+---
+
+## Closure Note
+
+**Closed by**: Architectural tech-debt audit (2026-02-14)
+**Reason**: No performance problem exists at current scale — scanning ~397 completed markdown files takes <100ms. Introducing persistent state (SQLite DB with schema versioning, migrations, corruption handling) is a significant architectural shift for marginal gain. Three consecutive tradeoff reviews flagged scope as "too broad." The FTS5 duplicate detection use case is compelling in theory but unvalidated — file scanning works fine at this scale. Adds maintenance overhead (schema migrations, DB corruption recovery) that outweighs benefit. Revisit only if file scanning becomes measurably slow (thousands of completed issues) or if semantic duplicate detection is explicitly requested.

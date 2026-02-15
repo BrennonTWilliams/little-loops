@@ -107,10 +107,19 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open (Deferred)** | Created: 2026-02-15 | Priority: P5
+**Closed (Won't Do)** | Created: 2026-02-15 | Closed: 2026-02-14 | Priority: P5
 
 ## Architectural Audit Note
 
 **Reviewed**: 2026-02-14 by architectural audit
 
 **Recommendation**: Defer until `ll-sync` is heavily used in team settings. Conflict resolution is a real concern for bidirectional sync, but building it now is premature — the sync feature itself needs adoption before investing in conflict tooling. Priority bumped from P4 to P5. Revisit when users actually report sync conflicts.
+
+---
+
+**Closed (Won't Do)** | Created: 2026-02-15 | Closed: 2026-02-14 | Priority: P5
+
+## Closure Note
+
+**Closed by**: Architectural tech-debt audit (2026-02-14)
+**Reason**: Premature and wrong abstraction. Bidirectional sync conflict resolution is a genuinely hard problem (git itself doesn't auto-resolve content conflicts). Building `--prefer-local`/`--prefer-github` for markdown issue files is reinventing a poor merge tool. If sync conflicts become a real problem, the right answer is establishing a single source of truth (local-first or GitHub-first), not building conflict resolution tooling. ll-sync has no demonstrated team adoption requiring this.

@@ -291,7 +291,7 @@ The telemetry module generalizes this pattern across all CLI tools.
 
 ## Status
 
-**Open (Shelved)** | Created: 2026-02-13 | Priority: P7
+**Closed (Won't Do)** | Created: 2026-02-13 | Closed: 2026-02-14 | Priority: P7
 
 ## Architectural Audit Note
 
@@ -304,3 +304,10 @@ The telemetry module generalizes this pattern across all CLI tools.
 4. **Maintenance burden**: Instrumenting every CLI tool with `emit()` calls creates coupling between all tools and the telemetry module; every future CLI change needs matching telemetry updates
 
 If observability is needed, start with simple structured logging to stderr rather than a full telemetry system. FEAT-434 (standalone overlap detection) was closed as redundant with FEAT-433, and FEAT-435 (metrics export) partially overlaps this issue's export scope.
+
+---
+
+## Closure Note
+
+**Closed by**: Architectural tech-debt audit (2026-02-14)
+**Reason**: Over-engineered for current scale. This is a CLI dev tool, not a production service — Jaeger/Grafana Tempo/OTel integration is enterprise observability tooling for a tool that processes a handful of issues per session. Touches all 4 CLI tools across 3 implementation phases, creating permanent coupling where every future CLI change requires matching telemetry updates. `ll-history` already provides the velocity metrics and trend analysis this claims to unlock. FEAT-435 (metrics CSV export, also closed) partially overlapped this issue's export scope. If structured observability is needed in the future, start with simple structured logging to stderr — not a full telemetry system.

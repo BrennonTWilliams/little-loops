@@ -22,6 +22,8 @@ The `validate_dependencies()` function detects broken references, stale complete
 - Update stale references (remove refs to completed issues)
 - Add missing backlinks (if A blocks B, ensure B lists A in Blocked By)
 
+> **Scope note (2026-02-14)**: Cycle auto-fix is explicitly out of scope — there is no single "correct" fix for dependency cycles, and heuristic choices could make the graph worse. Cycles should be reported by `ll-deps analyze` and resolved manually. This command handles the ~70% of validation issues (broken refs, stale refs, missing backlinks) that have unambiguous fixes.
+
 ## Motivation
 
 Dependency graphs degrade over time as issues are completed, deleted, or renamed. Manual cleanup is tedious and error-prone. Auto-fix keeps the graph healthy with zero effort, improving sprint planning accuracy.

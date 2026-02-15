@@ -97,4 +97,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P4
+**Closed (Won't Do)** | Created: 2026-02-15 | Closed: 2026-02-14 | Priority: P4
+
+## Closure Note
+
+**Closed by**: Architectural tech-debt audit (2026-02-14)
+**Reason**: `ll-history` already supports `--format json` and `--format yaml` output. The only delta is CSV formatting (~30 lines of code), which has no demonstrated user need. This is a feature looking for a user. If CSV is requested in the future, it's a trivial patch — not worth tracking as an issue. Partially overlaps with FEAT-417 (telemetry export), which was also shelved.
