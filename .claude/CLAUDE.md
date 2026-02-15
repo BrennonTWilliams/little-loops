@@ -44,18 +44,18 @@ thoughts/       # Plans and research documents
 docs/           # Architecture, API, troubleshooting
 ```
 
-## Commands
+## Commands & Skills
 
-Run `/ll:help` for full list. Key commands by capability:
+Run `/ll:help` for full list. Both commands (`commands/*.md`) and skills (`skills/*/SKILL.md`) are invoked via `/ll:<name>`. Skills are marked with ^.
 
-- **Issue Discovery**: `capture-issue`, `scan-codebase`, `scan-product`, `audit-architecture`
-- **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`
-- **Planning & Implementation**: `create-sprint`, `review-sprint`, `manage-issue`, `iterate-plan`
-- **Code Quality**: `check-code`, `run-tests`, `audit-docs`, `find-dead-code`
+- **Issue Discovery**: `capture-issue`^, `scan-codebase`, `scan-product`, `audit-architecture`
+- **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`^, `refine-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`
+- **Planning & Implementation**: `create-sprint`, `review-sprint`, `manage-issue`^, `iterate-plan`
+- **Code Quality**: `check-code`, `run-tests`, `audit-docs`^, `find-dead-code`
 - **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
-- **Automation & Loops**: `create-loop`, `loop-suggester`
-- **Meta-Analysis**: `audit-claude-config`, `analyze-workflows`
-- **Session & Config**: `init`, `configure`, `help`, `handoff`, `resume`, `toggle-autoprompt`
+- **Automation & Loops**: `create-loop`^, `loop-suggester`
+- **Meta-Analysis**: `audit-claude-config`^, `analyze-workflows`
+- **Session & Config**: `init`^, `configure`^, `help`, `handoff`, `resume`, `toggle-autoprompt`
 
 ## Development
 
