@@ -847,6 +847,54 @@ class TestWorkerPoolWorktreeManagement:
         assert "worker-bug-002" in cleaned_names
         assert "other-dir" not in cleaned_names
 
+    def test_setup_worktree_skips_directory_entries(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+        mock_logger: MagicMock,
+    ) -> None:
+        """_setup_worktree() skips directory entries in worktree_copy_files (BUG-438)."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker-bug-438"
+        branch_name = "parallel/bug-438"
+
+        # Create a directory entry in the repo (simulating node_modules)
+        dir_entry = temp_repo_with_config / "node_modules"
+        dir_entry.mkdir()
+        (dir_entry / "package.json").write_text("{}")
+
+        # Create a file entry that should still be copied
+        file_entry = temp_repo_with_config / ".env"
+        file_entry.write_text("SECRET=value")
+
+        # Configure worktree_copy_files with both a directory and a file
+        worker_pool.parallel_config.worktree_copy_files = ["node_modules", ".env"]
+
+        copied_files: list[tuple[Path, Path]] = []
+
+        def mock_copy2(src: Path, dest: Path) -> None:
+            copied_files.append((Path(src), Path(dest)))
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            with patch("subprocess.run") as mock_subprocess:
+                mock_subprocess.return_value = subprocess.CompletedProcess([], 0, "", "")
+                with patch("shutil.copy2", side_effect=mock_copy2):
+                    with patch("shutil.copytree"):
+                        worker_pool._setup_worktree(worktree_path, branch_name)
+
+        # Directory should be skipped, file should be copied
+        copied_names = [src.name for src, _ in copied_files]
+        assert "node_modules" not in copied_names
+        assert ".env" in copied_names
+
+        # Warning should be logged for directory entry
+        warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+        assert any("node_modules" in w and "directory" in w.lower() for w in warning_calls)
+
 
 class TestActiveWorktreeProtection:
     """Tests for BUG-142: Prevent cleanup of worktrees in active use."""

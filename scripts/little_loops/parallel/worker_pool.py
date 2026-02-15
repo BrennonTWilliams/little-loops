@@ -531,6 +531,12 @@ class WorkerPool:
                 continue  # Already copied with full .claude/ directory above
             src = self.repo_path / file_path
             if src.exists():
+                if src.is_dir():
+                    self.logger.warning(
+                        f"Skipping '{file_path}' in worktree_copy_files: "
+                        "is a directory (use symlinks or copytree for directories)"
+                    )
+                    continue
                 dest = worktree_path / file_path
                 dest.parent.mkdir(parents=True, exist_ok=True)
                 shutil.copy2(src, dest)
