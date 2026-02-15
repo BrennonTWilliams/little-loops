@@ -49,7 +49,7 @@ def cmd_analyze(args: Namespace) -> int:
     return 1 if conflicts else 0
 ```
 
-Reuse `refine_waves_for_contention()` and `extract_file_hints()` from `dependency_graph.py`.
+Reuse `refine_waves_for_contention()` from `dependency_graph.py` and `extract_file_hints()` from `parallel/file_hints.py`.
 
 ## Integration Map
 
@@ -99,7 +99,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P3
+## Resolution
+
+**Resolved**: 2026-02-14
+
+### Changes
+- Added `analyze` subcommand to `ll-sprint` CLI (`scripts/little_loops/cli/sprint.py`)
+- `ll-sprint analyze <name>` performs conflict detection using existing `refine_waves_for_contention()` and `extract_file_hints()` infrastructure
+- Reports: issue pairs with overlapping files, recommended serialization order, parallel-safe groups
+- Supports `--format json` for programmatic/CI use
+- Exit code 0 if no conflicts, 1 if conflicts found
+- 5 tests added to `scripts/tests/test_sprint.py`
+
+## Status
+
+**Resolved** | Created: 2026-02-15 | Resolved: 2026-02-14 | Priority: P3
 
 ## Architectural Audit Note
 

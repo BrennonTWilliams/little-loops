@@ -1310,3 +1310,185 @@ class TestSprintEdit:
         assert "FEAT-010" not in sprint.issues
         assert "BUG-999" not in sprint.issues
         assert "BUG-001" in sprint.issues
+
+
+class TestSprintAnalyze:
+    """Tests for _cmd_sprint_analyze (FEAT-433)."""
+
+    @staticmethod
+    def _setup_analyze_project(
+        tmp_path: Path,
+        overlapping: bool = True,
+    ) -> tuple[Path, Any, Any]:
+        """Set up a test project for analyze tests.
+
+        Args:
+            tmp_path: Pytest temporary directory
+            overlapping: If True, issues reference the same file (conflict).
+                         If False, issues reference different files (no conflict).
+        """
+        from little_loops.config import BRConfig
+        from little_loops.sprint import SprintManager
+
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        for category in ["bugs", "features", "enhancements", "completed"]:
+            (issues_dir / category).mkdir()
+
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_file = config_dir / "ll-config.json"
+        config_data = {
+            "project": {
+                "name": "test-project",
+                "src_dir": "src/",
+                "test_cmd": "pytest",
+                "lint_cmd": "ruff check",
+            },
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                    "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
+                    "enhancements": {
+                        "prefix": "ENH",
+                        "dir": "enhancements",
+                        "action": "improve",
+                    },
+                },
+                "completed_dir": "completed",
+            },
+        }
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        if overlapping:
+            # Two issues that reference the same file → conflict
+            (issues_dir / "bugs" / "P1-BUG-001-fix-parser.md").write_text(
+                "# BUG-001: Fix parser bug\n\n"
+                "## Summary\nFix bug in `scripts/parser.py` module.\n\n"
+                "## Blocked By\n\nNone\n\n"
+                "## Blocks\n\nNone\n"
+            )
+            (issues_dir / "features" / "P2-FEAT-010-add-parser-validation.md").write_text(
+                "# FEAT-010: Add parser validation\n\n"
+                "## Summary\nAdd validation to `scripts/parser.py` module.\n\n"
+                "## Blocked By\n\nNone\n\n"
+                "## Blocks\n\nNone\n"
+            )
+        else:
+            # Two issues that reference different files → no conflict
+            (issues_dir / "bugs" / "P1-BUG-001-fix-parser.md").write_text(
+                "# BUG-001: Fix parser bug\n\n"
+                "## Summary\nFix bug in `scripts/parser.py` module.\n\n"
+                "## Blocked By\n\nNone\n\n"
+                "## Blocks\n\nNone\n"
+            )
+            (issues_dir / "features" / "P2-FEAT-010-add-formatter.md").write_text(
+                "# FEAT-010: Add formatter\n\n"
+                "## Summary\nAdd formatting in `scripts/formatter.py` module.\n\n"
+                "## Blocked By\n\nNone\n\n"
+                "## Blocks\n\nNone\n"
+            )
+
+        sprints_dir = tmp_path / "sprints"
+        sprints_dir.mkdir()
+        sprint_file = sprints_dir / "test-sprint.yaml"
+        sprint_file.write_text("name: test-sprint\nissues:\n  - BUG-001\n  - FEAT-010\n")
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=sprints_dir, config=config)
+        return sprints_dir, config, manager
+
+    def test_analyze_with_conflicts(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
+        """Analyze detects file conflicts and returns exit code 1."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        _, _, manager = self._setup_analyze_project(tmp_path, overlapping=True)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(sprint="test-sprint", format="text", config=None)
+        result = cli._cmd_sprint_analyze(args, manager)
+        assert result == 1
+
+        captured = capsys.readouterr()
+        assert "CONFLICT ANALYSIS" in captured.out
+        assert "Conflicts found: 1 pair(s)" in captured.out
+        assert "BUG-001" in captured.out
+        assert "FEAT-010" in captured.out
+        assert "scripts/parser.py" in captured.out
+
+    def test_analyze_no_conflicts(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
+        """Analyze with no conflicts returns exit code 0."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        _, _, manager = self._setup_analyze_project(tmp_path, overlapping=False)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(sprint="test-sprint", format="text", config=None)
+        result = cli._cmd_sprint_analyze(args, manager)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        assert "CONFLICT ANALYSIS" in captured.out
+        assert "No file conflicts detected" in captured.out
+
+    def test_analyze_sprint_not_found(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """Returns error for nonexistent sprint."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        _, _, manager = self._setup_analyze_project(tmp_path)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(sprint="nonexistent", format="text", config=None)
+        result = cli._cmd_sprint_analyze(args, manager)
+        assert result == 1
+
+    def test_analyze_json_format(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
+        """JSON format outputs valid structured data."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        _, _, manager = self._setup_analyze_project(tmp_path, overlapping=True)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(sprint="test-sprint", format="json", config=None)
+        result = cli._cmd_sprint_analyze(args, manager)
+        assert result == 1
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["sprint"] == "test-sprint"
+        assert data["issue_count"] == 2
+        assert data["has_conflicts"] is True
+        assert len(data["conflicts"]) == 1
+        assert data["conflicts"][0]["issue_a"] == "BUG-001"
+        assert data["conflicts"][0]["issue_b"] == "FEAT-010"
+        assert "scripts/parser.py" in data["conflicts"][0]["overlapping_files"]
+        assert isinstance(data["waves"], list)
+        assert isinstance(data["parallel_safe_groups"], list)
+
+    def test_analyze_json_no_conflicts(self, tmp_path: Path, monkeypatch: Any, capsys: Any) -> None:
+        """JSON format with no conflicts."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        _, _, manager = self._setup_analyze_project(tmp_path, overlapping=False)
+        monkeypatch.chdir(tmp_path)
+
+        args = argparse.Namespace(sprint="test-sprint", format="json", config=None)
+        result = cli._cmd_sprint_analyze(args, manager)
+        assert result == 0
+
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["has_conflicts"] is False
+        assert len(data["conflicts"]) == 0
