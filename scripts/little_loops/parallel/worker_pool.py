@@ -775,7 +775,7 @@ class WorkerPool:
             List of changed file paths relative to repo root
         """
         result = subprocess.run(
-            ["git", "diff", "--name-only", "main", "HEAD"],
+            ["git", "diff", "--name-only", self.parallel_config.base_branch, "HEAD"],
             cwd=worktree_path,
             capture_output=True,
             text=True,
@@ -801,9 +801,10 @@ class WorkerPool:
         Returns:
             Tuple of (success, error_message)
         """
-        # Fetch latest main from origin
+        # Fetch latest base branch from origin
+        base = self.parallel_config.base_branch
         fetch_result = subprocess.run(
-            ["git", "fetch", "origin", "main"],
+            ["git", "fetch", "origin", base],
             cwd=worktree_path,
             capture_output=True,
             text=True,
@@ -811,11 +812,11 @@ class WorkerPool:
         )
 
         if fetch_result.returncode != 0:
-            return False, f"Failed to fetch origin/main: {fetch_result.stderr}"
+            return False, f"Failed to fetch origin/{base}: {fetch_result.stderr}"
 
-        # Rebase current branch onto origin/main
+        # Rebase current branch onto origin base branch
         rebase_result = subprocess.run(
-            ["git", "rebase", "origin/main"],
+            ["git", "rebase", f"origin/{base}"],
             cwd=worktree_path,
             capture_output=True,
             text=True,
@@ -830,9 +831,9 @@ class WorkerPool:
                 capture_output=True,
                 timeout=10,
             )
-            return False, f"Failed to rebase onto origin/main: {rebase_result.stderr}"
+            return False, f"Failed to rebase onto origin/{base}: {rebase_result.stderr}"
 
-        self.logger.info(f"[{issue_id}] Rebased branch onto origin/main")
+        self.logger.info(f"[{issue_id}] Rebased branch onto origin/{base}")
         return True, ""
 
     def _verify_work_was_done(

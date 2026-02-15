@@ -838,6 +838,7 @@ class TestParallelConfig:
         assert result["worktree_base"] == "/path/to/trees"
         assert set(result["only_ids"]) == {"A", "B"}
         assert set(result["skip_ids"]) == {"C"}
+        assert result["base_branch"] == "main"
 
     def test_to_dict_paths_to_strings(self) -> None:
         """to_dict converts Path objects to strings."""
@@ -889,6 +890,7 @@ class TestParallelConfig:
             "timeout_per_issue": 3600,
             "only_ids": ["A", "B"],
             "skip_ids": ["C"],
+            "base_branch": "develop",
         }
 
         config = ParallelConfig.from_dict(data)
@@ -903,6 +905,7 @@ class TestParallelConfig:
         assert config.max_issues == 20
         assert config.dry_run is True
         assert config.timeout_per_issue == 3600
+        assert config.base_branch == "develop"
         assert config.only_ids == {"A", "B"}
         assert config.skip_ids == {"C"}
 
@@ -956,6 +959,7 @@ class TestParallelConfig:
         assert config.max_merge_retries == 2
         assert config.priority_filter == ["P0", "P1", "P2", "P3", "P4", "P5"]
         assert config.command_prefix == "/ll:"
+        assert config.base_branch == "main"
 
     def test_roundtrip_serialization(self) -> None:
         """Roundtrip through to_dict/from_dict preserves all fields."""
@@ -982,6 +986,7 @@ class TestParallelConfig:
             merge_pending=True,
             clean_start=True,
             ignore_pending=True,
+            base_branch="develop",
         )
 
         restored = ParallelConfig.from_dict(original.to_dict())
@@ -1008,3 +1013,4 @@ class TestParallelConfig:
         assert restored.merge_pending == original.merge_pending
         assert restored.clean_start == original.clean_start
         assert restored.ignore_pending == original.ignore_pending
+        assert restored.base_branch == original.base_branch

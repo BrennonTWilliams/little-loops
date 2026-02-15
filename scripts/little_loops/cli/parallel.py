@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
 from pathlib import Path
 
 from little_loops.cli_args import (
@@ -155,6 +156,15 @@ Examples:
     skip_ids = parse_issue_ids(args.skip)
     type_prefixes = parse_issue_types(args.type)
 
+    # Detect current branch for rebase/merge operations (BUG-439)
+    _branch_result = subprocess.run(
+        ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+        capture_output=True,
+        text=True,
+        cwd=project_root,
+    )
+    _base_branch = _branch_result.stdout.strip() if _branch_result.returncode == 0 else "main"
+
     # Create parallel config with CLI overrides
     parallel_config = config.create_parallel_config(
         max_workers=args.workers,
@@ -172,6 +182,7 @@ Examples:
         ignore_pending=args.ignore_pending,
         overlap_detection=args.overlap_detection,
         serialize_overlapping=not args.warn_only,
+        base_branch=_base_branch,
     )
 
     # Delete state file if not resuming

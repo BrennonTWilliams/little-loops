@@ -738,9 +738,10 @@ class MergeCoordinator:
         had_local_changes = self._stash_local_changes()
 
         try:
-            # Ensure we're on main branch in the main repo
+            # Ensure we're on base branch in the main repo
+            base = self.config.base_branch
             checkout_result = self._git_lock.run(
-                ["checkout", "main"],
+                ["checkout", base],
                 cwd=self.repo_path,
                 timeout=30,
             )
@@ -757,7 +758,7 @@ class MergeCoordinator:
                     if self._check_and_recover_index():
                         # Retry checkout
                         checkout_result = self._git_lock.run(
-                            ["checkout", "main"],
+                            ["checkout", base],
                             cwd=self.repo_path,
                             timeout=30,
                         )
@@ -765,19 +766,24 @@ class MergeCoordinator:
                             self.logger.info("Recovered from index error, checkout succeeded")
                         else:
                             raise RuntimeError(
-                                f"Failed to checkout main after recovery: {checkout_result.stderr}"
+                                f"Failed to checkout {base} after recovery: "
+                                f"{checkout_result.stderr}"
                             )
                     else:
-                        raise RuntimeError(f"Failed to checkout main: {checkout_result.stderr}")
+                        raise RuntimeError(
+                            f"Failed to checkout {base}: {checkout_result.stderr}"
+                        )
                 else:
-                    raise RuntimeError(f"Failed to checkout main: {checkout_result.stderr}")
+                    raise RuntimeError(
+                        f"Failed to checkout {base}: {checkout_result.stderr}"
+                    )
 
             # Track if merge strategy was used during pull (for conflict handling)
             used_merge_strategy = False
 
             # Pull latest changes
             pull_result = self._git_lock.run(
-                ["pull", "--rebase", "origin", "main"],
+                ["pull", "--rebase", "origin", base],
                 cwd=self.repo_path,
                 timeout=60,
             )
@@ -801,7 +807,7 @@ class MergeCoordinator:
 
                         # Attempt merge strategy pull
                         merge_pull_result = self._git_lock.run(
-                            ["pull", "--no-rebase", "origin", "main"],
+                            ["pull", "--no-rebase", "origin", base],
                             cwd=self.repo_path,
                             timeout=60,
                         )
@@ -977,18 +983,19 @@ class MergeCoordinator:
                 if stash_result.returncode != 0:
                     self.logger.warning(f"Failed to stash worktree changes: {stash_result.stderr}")
 
-            # Fetch latest main before rebase (BUG-180)
-            # Use origin/main if fetch succeeds, fall back to main if no remote
+            # Fetch latest base branch before rebase (BUG-180)
+            # Use origin/base if fetch succeeds, fall back to base if no remote
+            base = self.config.base_branch
             fetch_result = subprocess.run(
-                ["git", "fetch", "origin", "main"],
+                ["git", "fetch", "origin", base],
                 cwd=result.worktree_path,
                 capture_output=True,
                 text=True,
                 timeout=60,
             )
-            rebase_target = "origin/main" if fetch_result.returncode == 0 else "main"
+            rebase_target = f"origin/{base}" if fetch_result.returncode == 0 else base
 
-            # Rebase the branch onto latest main (BUG-180)
+            # Rebase the branch onto latest base branch (BUG-180)
             rebase_result = subprocess.run(
                 ["git", "rebase", rebase_target],
                 cwd=result.worktree_path,

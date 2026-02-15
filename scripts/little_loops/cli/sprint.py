@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import signal
+import subprocess
 import sys
 from pathlib import Path
 from types import FrameType
@@ -1252,12 +1253,19 @@ def _cmd_sprint_run(
             else:
                 # Multi-issue — use ParallelOrchestrator with worktrees
                 only_ids = set(wave_ids)
+                # Detect current branch for rebase/merge operations (BUG-439)
+                _br = subprocess.run(
+                    ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+                    capture_output=True, text=True, cwd=Path.cwd(),
+                )
+                _base_branch = _br.stdout.strip() if _br.returncode == 0 else "main"
                 parallel_config = config.create_parallel_config(
                     max_workers=min(max_workers, len(wave)),
                     only_ids=only_ids,
                     dry_run=args.dry_run,
                     overlap_detection=True,
                     serialize_overlapping=True,
+                    base_branch=_base_branch,
                 )
 
                 orchestrator = ParallelOrchestrator(

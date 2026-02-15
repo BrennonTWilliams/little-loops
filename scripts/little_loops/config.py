@@ -549,6 +549,7 @@ class BRConfig:
         ignore_pending: bool = False,
         overlap_detection: bool = False,
         serialize_overlapping: bool = True,
+        base_branch: str = "main",
     ) -> ParallelConfig:
         """Create a ParallelConfig from BRConfig settings with optional overrides.
 
@@ -600,6 +601,7 @@ class BRConfig:
             ignore_pending=ignore_pending,
             overlap_detection=overlap_detection,
             serialize_overlapping=serialize_overlapping,
+            base_branch=base_branch,
         )
 
     @property

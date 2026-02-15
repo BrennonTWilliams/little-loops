@@ -286,7 +286,7 @@ class ParallelOrchestrator:
 
             # Check commits ahead of main
             result = self._git_lock.run(
-                ["rev-list", "--count", f"main..{branch_name}"],
+                ["rev-list", "--count", f"{self.parallel_config.base_branch}..{branch_name}"],
                 cwd=self.repo_path,
                 timeout=10,
             )
