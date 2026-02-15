@@ -12,6 +12,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.14.0] - 2026-02-15
+
+### Added
+
+- **Sprint conflict analysis CLI** - `ll-sprint analyze` command for detecting conflicts between sprint issues (FEAT-433)
+- **Dependency auto-repair** - `ll-deps fix` command to auto-repair broken dependency references (FEAT-432)
+- **Metrics export** - Export historical metrics from `ll-history` (FEAT-435)
+- **Git sync conflict resolution** - Commands for resolving sync conflicts with GitHub (FEAT-436)
+- **Standalone overlap detection** - Pre-flight overlap detection command for sprint planning (FEAT-434)
+
+### Fixed
+
+- **Bare exception in merge loop** - Narrow bare exception to `queue.Empty` in merge coordinator (BUG-424)
+- **Lock file race condition** - Replace TOCTOU race with `missing_ok=True` in LockManager (BUG-423)
+- **Subprocess timeouts** - Add `timeout=30` to all `subprocess.run` calls in issue lifecycle (BUG-422)
+- **File deletion race** - Replace TOCTOU file deletion race with `missing_ok=True` (BUG-421)
+- **Process.wait() timeout** - Add timeout to `process.wait()` calls to prevent indefinite blocking (BUG-420)
+- **UnboundLocalError** - Initialize result before loop to prevent `UnboundLocalError` in `_run_with_continuation()` (BUG-419)
+- **Return code masking** - Fix `process.returncode` None being masked as success (BUG-425)
+
+### Changed
+
+- **Issue ID extraction** - Centralize issue ID extraction logic into shared utility (ENH-429)
+- **Code fence stripping** - Centralize code fence stripping utility (ENH-430)
+- **Wave refinement performance** - Fix O(N²) wave refinement with synchronous file reads (ENH-427)
+- **Test coverage** - Add missing test coverage for core modules (ENH-426)
+- **README template coverage** - Update template list to reflect all 9 project-type templates (ENH-437)
+
+### Other
+
+- docs(readme): add missing CLI subcommands for ll-sprint and ll-deps (c3b96f8)
+- docs(issues): tech-debt audit — close 6 issues, narrow 2 (21828a1)
+- docs(issues): architectural audit — close 6 issues, annotate 3 (b2d756c)
+- docs(issues): add 18 issues from codebase scan (e09d628)
+- docs(CLAUDE.md): distinguish skills from commands in capability list (71616c7)
+- style(tests): auto-format test files with ruff (90b70c6)
+
+[1.14.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.13.0...v1.14.0
+
 ## [1.13.0] - 2026-02-14
 
 ### Added
