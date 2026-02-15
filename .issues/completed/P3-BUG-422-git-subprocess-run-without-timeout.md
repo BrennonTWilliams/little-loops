@@ -14,7 +14,7 @@ Several `subprocess.run()` calls for git operations in `issue_lifecycle.py` lack
 ## Location
 
 - **File**: `scripts/little_loops/issue_lifecycle.py`
-- **Line(s)**: 269-274, 311-315 (at scan commit: 71616c7)
+- **Line(s)**: 269-274, 310-314 (at scan commit: 71616c7)
 - **Anchor**: `in functions _cleanup_stale_source() and _move_issue_to_completed()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/71616c711e2fe9f5f1ececcf1c64552bca9d82ec/scripts/little_loops/issue_lifecycle.py#L269-L315)
 - **Code**:
@@ -117,4 +117,26 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P3
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-14
+- **Status**: Completed
+
+### Summary
+Added `timeout=30` to all 6 `subprocess.run()` calls in `issue_lifecycle.py` with graceful `subprocess.TimeoutExpired` handling at each call site. Follows the same timeout pattern already established in `parallel/git_lock.py` and `parallel/merge_coordinator.py`.
+
+### Files Changed
+  - `scripts/little_loops/issue_lifecycle.py`
+
+### Verification Results
+- 66/66 tests passed
+- Lint: all checks passed
+- Type check: no issues found
+
+### Commits
+- See git log for details
+
+---
+
+**Completed** | Created: 2026-02-15 | Completed: 2026-02-14 | Priority: P3

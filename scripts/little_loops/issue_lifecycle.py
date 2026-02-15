@@ -249,11 +249,15 @@ def _is_git_tracked(file_path: Path) -> bool:
     Returns:
         True if file is tracked by git, False otherwise
     """
-    result = subprocess.run(
-        ["git", "ls-files", str(file_path)],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", str(file_path)],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        return False
     return bool(result.stdout.strip())
 
 
@@ -266,12 +270,16 @@ def _cleanup_stale_source(original_path: Path, issue_id: str, logger: Logger) ->
         logger: Logger for output
     """
     original_path.unlink()
-    subprocess.run(["git", "add", "-A"], capture_output=True, text=True)
-    subprocess.run(
-        ["git", "commit", "-m", f"cleanup: remove stale {issue_id} from bugs/"],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        subprocess.run(["git", "add", "-A"], capture_output=True, text=True, timeout=30)
+        subprocess.run(
+            ["git", "commit", "-m", f"cleanup: remove stale {issue_id} from bugs/"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning(f"Git command timed out during cleanup of {issue_id}")
 
 
 def _move_issue_to_completed(
@@ -307,11 +315,18 @@ def _move_issue_to_completed(
 
     if source_tracked:
         # Source is tracked, use git mv for history preservation
-        result = subprocess.run(
-            ["git", "mv", str(original_path), str(completed_path)],
-            capture_output=True,
-            text=True,
-        )
+        try:
+            result = subprocess.run(
+                ["git", "mv", str(original_path), str(completed_path)],
+                capture_output=True,
+                text=True,
+                timeout=30,
+            )
+        except subprocess.TimeoutExpired:
+            logger.warning("git mv timed out, falling back to manual copy")
+            completed_path.write_text(content)
+            original_path.unlink(missing_ok=True)
+            return True
 
         if result.returncode != 0:
             # git mv failed, fall back to manual copy + delete
@@ -349,21 +364,30 @@ def _commit_issue_completion(
         True if commit succeeded or nothing to commit
     """
     # Stage all changes
-    stage_result = subprocess.run(
-        ["git", "add", "-A"],
-        capture_output=True,
-        text=True,
-    )
-    if stage_result.returncode != 0:
-        logger.warning(f"git add failed: {stage_result.stderr}")
+    try:
+        stage_result = subprocess.run(
+            ["git", "add", "-A"],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+        if stage_result.returncode != 0:
+            logger.warning(f"git add failed: {stage_result.stderr}")
+    except subprocess.TimeoutExpired:
+        logger.warning("git add timed out")
 
     # Create commit
     commit_msg = f"{commit_prefix}({info.issue_type}): {commit_body}"
-    commit_result = subprocess.run(
-        ["git", "commit", "-m", commit_msg],
-        capture_output=True,
-        text=True,
-    )
+    try:
+        commit_result = subprocess.run(
+            ["git", "commit", "-m", commit_msg],
+            capture_output=True,
+            text=True,
+            timeout=30,
+        )
+    except subprocess.TimeoutExpired:
+        logger.warning("git commit timed out")
+        return True
 
     if commit_result.returncode != 0:
         if "nothing to commit" in commit_result.stdout.lower():
