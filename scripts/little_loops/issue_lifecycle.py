@@ -299,8 +299,7 @@ def _move_issue_to_completed(
     if completed_path.exists():
         logger.info(f"Destination already exists: {completed_path.name}, updating content")
         completed_path.write_text(content)
-        if original_path.exists():
-            original_path.unlink()
+        original_path.unlink(missing_ok=True)
         return True
 
     # Check if source is under git version control before attempting git mv
@@ -318,8 +317,7 @@ def _move_issue_to_completed(
             # git mv failed, fall back to manual copy + delete
             logger.warning(f"git mv failed: {result.stderr}")
             completed_path.write_text(content)
-            if original_path.exists():
-                original_path.unlink()
+            original_path.unlink(missing_ok=True)
         else:
             logger.success(f"Used git mv to move {original_path.stem}")
             # Write updated content to the moved file
@@ -328,8 +326,7 @@ def _move_issue_to_completed(
         # Source is not tracked, use manual copy + delete directly
         logger.info(f"Source not tracked by git, using manual copy: {original_path.name}")
         completed_path.write_text(content)
-        if original_path.exists():
-            original_path.unlink()
+        original_path.unlink(missing_ok=True)
 
     return True
 

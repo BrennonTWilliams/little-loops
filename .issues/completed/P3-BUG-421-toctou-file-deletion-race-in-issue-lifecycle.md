@@ -114,4 +114,29 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ---
 
-**Open** | Created: 2026-02-15 | Priority: P3
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-02-14
+- **Status**: Completed
+
+### Changes Made
+- Replaced 3x `if path.exists(): path.unlink()` TOCTOU patterns with `path.unlink(missing_ok=True)` in `_move_issue_to_completed()`
+- Fixed same pattern in `parallel/orchestrator.py` `_complete_issue_lifecycle_if_needed()`
+- Added concurrent deletion test `test_source_deleted_by_concurrent_worker`
+
+### Files Changed
+  - `scripts/little_loops/issue_lifecycle.py`
+  - `scripts/little_loops/parallel/orchestrator.py`
+  - `scripts/tests/test_issue_lifecycle.py`
+
+### Verification Results
+- 66 tests passed
+- ruff check: All checks passed
+- mypy: No issues found
+
+---
+
+## Status
+
+**Completed** | Created: 2026-02-15 | Completed: 2026-02-14 | Priority: P3

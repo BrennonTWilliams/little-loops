@@ -1082,8 +1082,7 @@ class ParallelOrchestrator:
                 # Write content to destination (may overwrite existing)
                 completed_path.write_text(content)
                 # Remove source if it still exists
-                if original_path.exists():
-                    original_path.unlink()
+                original_path.unlink(missing_ok=True)
             else:
                 # git mv succeeded, write updated content
                 completed_path.write_text(content)

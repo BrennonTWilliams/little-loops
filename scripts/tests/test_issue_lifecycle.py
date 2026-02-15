@@ -434,6 +434,32 @@ class TestMoveIssueToCompleted:
         assert git_mv_attempted
         mock_logger.success.assert_called()
 
+    def test_source_deleted_by_concurrent_worker(
+        self, tmp_path: Path, mock_logger: MagicMock
+    ) -> None:
+        """Test no FileNotFoundError when source is deleted by another worker (BUG-421)."""
+        original = tmp_path / "bugs" / "issue.md"
+        completed = tmp_path / "completed" / "issue.md"
+        original.parent.mkdir(parents=True, exist_ok=True)
+        completed.parent.mkdir(parents=True, exist_ok=True)
+
+        # Both files exist - simulating parallel completion
+        original.write_text("Original content")
+        completed.write_text("Already completed by another worker")
+
+        new_content = "Updated content with resolution"
+
+        # Delete original before the function runs to simulate race condition
+        original.unlink()
+
+        # Should NOT raise FileNotFoundError thanks to missing_ok=True
+        result = _move_issue_to_completed(original, completed, new_content, mock_logger)
+
+        assert result is True
+        assert completed.exists()
+        assert completed.read_text() == new_content
+        assert not original.exists()
+
 
 class TestCommitIssueCompletion:
     """Tests for _commit_issue_completion function."""
