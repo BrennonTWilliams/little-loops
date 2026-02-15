@@ -685,9 +685,9 @@ class TestProcessMergeStashIntegration:
             capture_output=True,
         )
 
-        # Go back to main and create local change
+        # Go back to base branch and create local change
         subprocess.run(
-            ["git", "checkout", "main"],
+            ["git", "checkout", default_config.base_branch],
             cwd=temp_git_repo,
             capture_output=True,
         )

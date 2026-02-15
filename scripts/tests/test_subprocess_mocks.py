@@ -581,8 +581,10 @@ class TestMergeCoordinatorGitOperations:
             with patch("subprocess.run", side_effect=mock_run):
                 coordinator._process_merge(merge_request)
 
-            # Verify checkout main was called
-            checkout_cmds = [c for c in captured_commands if "checkout" in c and "main" in c]
+            # Verify checkout base branch was called
+            checkout_cmds = [
+                c for c in captured_commands if "checkout" in c and config.base_branch in c
+            ]
             assert len(checkout_cmds) >= 1
 
             # Verify merge command was called with branch name
@@ -634,8 +636,8 @@ class TestMergeCoordinatorGitOperations:
                             cmd, 0, stdout="M src/test.py\n", stderr=""
                         )
 
-                # Checkout main: success
-                if cmd[:3] == ["git", "checkout", "main"]:
+                # Checkout base branch: success
+                if cmd[:3] == ["git", "checkout", config.base_branch]:
                     return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
                 # Pull --rebase: fails with local changes error
