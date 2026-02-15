@@ -971,9 +971,7 @@ class TestRunWithContinuation:
         assert commands_received[0] == "/ll:manage-issue bug fix BUG-327"
         assert commands_received[1] == "/ll:manage-issue bug fix BUG-327 --resume"
 
-    def test_returns_default_result_when_loop_never_executes(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_returns_default_result_when_loop_never_executes(self, temp_project_dir: Path) -> None:
         """Test that negative max_continuations returns default result (BUG-419)."""
         from little_loops.issue_manager import run_with_continuation
 

@@ -1175,9 +1175,7 @@ class TestRunClaudeCommandWaitTimeout:
                     return result
 
                 with patch("time.time", side_effect=mock_time):
-                    with patch(
-                        "little_loops.subprocess_utils.logger"
-                    ) as mock_logger:
+                    with patch("little_loops.subprocess_utils.logger") as mock_logger:
                         with pytest.raises(subprocess.TimeoutExpired):
                             run_claude_command("test", timeout=1)
 
