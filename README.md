@@ -256,6 +256,10 @@ Sprint-based issue processing:
 ll-sprint create sprint-1 --issues BUG-001,FEAT-010
 ll-sprint run sprint-1           # Execute a sprint
 ll-sprint list                   # List all sprints
+ll-sprint show sprint-1          # Show sprint details
+ll-sprint edit sprint-1 --add BUG-045  # Edit sprint issue list
+ll-sprint delete sprint-1        # Delete a sprint
+ll-sprint analyze sprint-1       # Analyze for file conflicts
 ```
 
 Run `ll-sprint --help` for all options.
@@ -309,6 +313,7 @@ Cross-issue dependency discovery and validation:
 ll-deps analyze                  # Full analysis with markdown output
 ll-deps analyze --graph          # Include ASCII dependency graph
 ll-deps validate                 # Validate existing dependency references
+ll-deps fix                      # Auto-fix broken refs, stale refs, backlinks
 ```
 
 ### ll-next-id
