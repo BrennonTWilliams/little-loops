@@ -212,7 +212,7 @@ def _render_2d_diagram(
         else:
             x += box_width[sname]
 
-    # Place off-path states below, aligned to the column of their first neighbor
+    # Place off-path states below, centered under their first neighbor
     for s in off_path:
         # Find a neighbor on the main path
         neighbor = None
@@ -224,12 +224,18 @@ def _render_2d_diagram(
                 neighbor = dst
                 break
         if neighbor:
-            col_start[s] = col_start[neighbor]
+            nc = col_center[neighbor]
+            col_start[s] = max(2, nc - box_width[s] // 2)
         else:
             col_start[s] = 2
         col_center[s] = col_start[s] + box_width[s] // 2
 
     total_width = x + 4  # some right margin
+    # Ensure off-path boxes fit within total_width
+    for s in off_path:
+        right_edge = col_start[s] + box_width[s] + 4
+        if right_edge > total_width:
+            total_width = right_edge
 
     # --- Build main flow rows (3 rows: top border, name, bottom border) ---
     row_top = [" "] * total_width
@@ -295,14 +301,194 @@ def _render_2d_diagram(
                     self_row[pos + j] = ch
         lines.append("".join(self_row).rstrip())
 
-    # --- Branch and back-edge routing below the main flow ---
+    # --- 2D routing for non-main-path edges below the main flow ---
     non_self_branches = [(s, d, lbl) for s, d, lbl in branches if s != d]
     non_self_back = [(s, d, lbl) for s, d, lbl in back_edges if s != d]
     all_extra = non_self_branches + non_self_back
 
+    if not all_extra:
+        return "\n".join(lines)
+
+    off_path_set = set(off_path)
+    main_path_set = set(main_path)
+
+    # Categorize: main-to-main edges vs edges involving off-path states
+    main_extra: list[tuple[str, str, str]] = []
+    off_state_edges: dict[str, list[tuple[str, str, str]]] = {s: [] for s in off_path}
+
     for src, dst, label in all_extra:
-        # Use text annotation: src ──(label)──▶ dst
-        lines.append(f"       {src} \u2500\u2500({label})\u2500\u2500\u25b6 {dst}")
+        if src in off_path_set:
+            off_state_edges[src].append((src, dst, label))
+        elif dst in off_path_set:
+            off_state_edges[dst].append((src, dst, label))
+        else:
+            main_extra.append((src, dst, label))
+
+    # --- Main-to-main edges: U-route below ---
+    for src, dst, label in main_extra:
+        src_col = col_center.get(src, 0)
+        dst_col = col_center.get(dst, 0)
+        left = min(src_col, dst_col)
+        right = max(src_col, dst_col)
+
+        # Connector row: \u25b2 at destination, \u2502 at source
+        row = [" "] * total_width
+        if 0 <= dst_col < total_width:
+            row[dst_col] = "\u25b2"  # \u25b2
+        if 0 <= src_col < total_width:
+            row[src_col] = "\u2502"  # \u2502
+        lines.append("".join(row).rstrip())
+
+        # Horizontal route: \u2514\u2500\u2500\u2500label\u2500\u2500\u2500\u2518
+        row = [" "] * total_width
+        if left < total_width:
+            row[left] = "\u2514"  # \u2514
+        if right < total_width:
+            row[right] = "\u2518"  # \u2518
+        for j in range(left + 1, right):
+            if j < total_width:
+                row[j] = "\u2500"  # \u2500
+        # Center the label on the horizontal segment
+        label_padded = f" {label} "
+        lstart = (left + right) // 2 - len(label_padded) // 2
+        for j, ch in enumerate(label_padded):
+            pos = lstart + j
+            if left < pos < right and 0 <= pos < total_width:
+                row[pos] = ch
+        lines.append("".join(row).rstrip())
+
+    # --- Off-path states: render as boxes with vertical connectors ---
+    for off_s in off_path:
+        state_edges = off_state_edges.get(off_s, [])
+        if not state_edges:
+            continue
+
+        # Find anchor state on main path
+        anchor = None
+        for src, dst, _ in state_edges:
+            other = dst if src == off_s else src
+            if other in main_path_set:
+                anchor = other
+                break
+        if not anchor:
+            anchor = main_path[0]
+
+        # Classify edges relative to anchor
+        down_labels: list[str] = []  # anchor \u2192 off_s
+        up_labels: list[str] = []  # off_s \u2192 anchor
+        outgoing: list[tuple[str, str, str]] = []  # edges to/from non-anchor states
+
+        for src, dst, label in state_edges:
+            if src == anchor and dst == off_s:
+                down_labels.append(label)
+            elif src == off_s and dst == anchor:
+                up_labels.append(label)
+            else:
+                outgoing.append((src, dst, label))
+
+        anchor_cc = col_center[anchor]
+        off_cs = col_start[off_s]
+        off_w = box_width[off_s]
+
+        has_down = bool(down_labels)
+        has_up = bool(up_labels)
+
+        if has_down and has_up:
+            down_col = anchor_cc - 1
+            up_col = anchor_cc + 1
+        elif has_down:
+            down_col = anchor_cc
+            up_col = -1
+        elif has_up:
+            down_col = -1
+            up_col = anchor_cc
+        else:
+            down_col = -1
+            up_col = -1
+
+        # Vertical connector rows
+        if has_down or has_up:
+            # Row 1: vertical drops / rise arrow
+            row = [" "] * total_width
+            if has_down and 0 <= down_col < total_width:
+                row[down_col] = "\u2502"  # \u2502
+            if has_up and 0 <= up_col < total_width:
+                row[up_col] = "\u25b2"  # \u25b2
+            lines.append("".join(row).rstrip())
+
+            # Row 2: labels alongside vertical lines
+            row = [" "] * total_width
+            if has_down and 0 <= down_col < total_width:
+                row[down_col] = "\u2502"  # \u2502
+                dlabel = down_labels[0]
+                dstart = down_col - len(dlabel) - 1
+                for j, ch in enumerate(dlabel):
+                    if 0 <= dstart + j < total_width:
+                        row[dstart + j] = ch
+            if has_up and 0 <= up_col < total_width:
+                row[up_col] = "\u2502"  # \u2502
+                ulabel = up_labels[0]
+                ustart = up_col + 2
+                for j, ch in enumerate(ulabel):
+                    if 0 <= ustart + j < total_width:
+                        row[ustart + j] = ch
+            lines.append("".join(row).rstrip())
+
+            # Row 3: arrow tips
+            row = [" "] * total_width
+            if has_down and 0 <= down_col < total_width:
+                row[down_col] = "\u25bc"  # \u25bc
+            if has_up and 0 <= up_col < total_width:
+                row[up_col] = "\u2502"  # \u2502
+            lines.append("".join(row).rstrip())
+
+        # Render off-path state box
+        bx = off_cs
+        bw = off_w
+        box_top_r = [" "] * total_width
+        box_mid_r = [" "] * total_width
+        box_bot_r = [" "] * total_width
+
+        if bx + bw <= total_width:
+            box_top_r[bx] = "\u250c"
+            for j in range(1, bw - 1):
+                box_top_r[bx + j] = "\u2500"
+            box_top_r[bx + bw - 1] = "\u2510"
+
+            box_mid_r[bx] = "\u2502"
+            box_mid_r[bx + bw - 1] = "\u2502"
+            for j, ch in enumerate(off_s):
+                box_mid_r[bx + 2 + j] = ch
+
+            box_bot_r[bx] = "\u2514"
+            for j in range(1, bw - 1):
+                box_bot_r[bx + j] = "\u2500"
+            box_bot_r[bx + bw - 1] = "\u2518"
+
+        # Draw outgoing edges from off-path box on its middle row
+        for src, dst, label in outgoing:
+            if src == off_s:
+                start_col = bx + bw
+                target_col = col_center.get(dst, start_col + len(label) + 4)
+                edge_text = "\u2500" + label + "\u2500\u2500\u25b6"
+                available = target_col - start_col
+                if available > len(edge_text):
+                    left_dashes = available - len(edge_text)
+                    for j in range(left_dashes):
+                        if start_col + j < total_width:
+                            box_mid_r[start_col + j] = "\u2500"
+                    for j, ch in enumerate(edge_text):
+                        pos = start_col + left_dashes + j
+                        if pos < total_width:
+                            box_mid_r[pos] = ch
+                else:
+                    for j, ch in enumerate(edge_text):
+                        if start_col + j < total_width:
+                            box_mid_r[start_col + j] = ch
+
+        lines.append("".join(box_top_r).rstrip())
+        lines.append("".join(box_mid_r).rstrip())
+        lines.append("".join(box_bot_r).rstrip())
 
     return "\n".join(lines)
 

@@ -634,7 +634,7 @@ class TestRenderFsmDiagram:
         assert "next" in result
 
     def test_branching_fsm_shows_branches_section(self) -> None:
-        """Failure branch not on main path appears visually."""
+        """Failure branch not on main path appears visually as 2D box."""
         fsm = self._make_fsm(
             initial="test",
             states={
@@ -650,10 +650,14 @@ class TestRenderFsmDiagram:
         assert "success" in result
         # Branch edges shown
         assert "fail" in result
-        assert "\u25b6" in result  # arrow head
+        assert "\u25b6" in result  # arrow head ▶
+        # Off-path state rendered as box (not just text)
+        lines = result.split("\n")
+        fix_box_lines = [l for l in lines if "fix" in l and "\u2502" in l]
+        assert fix_box_lines, "fix should be rendered inside a box with │ borders"
 
     def test_cyclic_fsm_shows_back_edges_section(self) -> None:
-        """Back-edge (retry loop) appears visually in the diagram."""
+        """Back-edge (retry loop) rendered with 2D vertical connectors."""
         fsm = self._make_fsm(
             initial="evaluate",
             states={
@@ -667,6 +671,10 @@ class TestRenderFsmDiagram:
         assert "evaluate" in result
         assert "fix" in result
         assert "fail" in result
+        # Vertical connectors present for routed edges
+        assert "\u2502" in result  # │ vertical connector
+        # Off-path box rendered with box-drawing chars
+        assert "\u25b2" in result or "\u25bc" in result  # ▲ or ▼ arrow
 
     def test_self_loop_annotated(self) -> None:
         """Self-loop transition is annotated with loop indicator."""
