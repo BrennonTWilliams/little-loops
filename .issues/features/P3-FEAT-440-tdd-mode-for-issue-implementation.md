@@ -1,6 +1,7 @@
 ---
 discovered_date: "2026-02-18"
 discovered_by: capture-issue
+confidence_score: 92
 ---
 
 # FEAT-440: TDD Mode for Issue Implementation
@@ -53,11 +54,13 @@ A developer configures `"tdd_mode": true` in their `ll-config.json`. When `ll-pa
 - [ ] Standard verification (Phase 4) still runs as a final check
 - [ ] `ll-auto`, `ll-parallel`, and `ll-sprint` all respect the toggle (they invoke `manage-issue` which reads config)
 - [ ] When disabled, behavior is identical to current flow (no regression)
-- [ ] Design decision resolved: either conditional logic in `manage-issue` or a separate TDD skill
+- [x] Design decision resolved: conditional logic in `manage-issue` (Approach A), `tdd_mode` under `commands` config section
 
 ## API/Interface
 
 ### Config Schema Addition
+
+`tdd_mode` is added to the existing `commands` section alongside `pre_implement` and `post_implement`:
 
 ```json
 {
@@ -67,63 +70,39 @@ A developer configures `"tdd_mode": true` in their `ll-config.json`. When `ll-pa
 }
 ```
 
-Or as a new top-level workflow section:
-
-```json
-{
-  "workflow": {
-    "tdd_mode": false
-  }
-}
-```
-
-### Skill Interface (if separate skill approach)
-
-```
-/ll:manage-issue-tdd [type] [action] [issue-id] [flags]
-```
-
-Or the existing `manage-issue` conditionally switches behavior based on config.
-
 ## Proposed Solution
 
-Two approaches to evaluate:
+**Decision**: Conditional logic in `manage-issue` (Approach A).
 
-### Approach A: Conditional Logic in manage-issue
+When `commands.tdd_mode` is `true`, Phase 3 splits into two sub-phases within the existing skill:
 
-Add TDD-aware phase logic to the existing `manage-issue` skill. When `tdd_mode` is enabled in config, Phase 3 splits into Phase 3a (Write Tests) and Phase 3b (Implement). The plan template gains a "Test Plan" section that specifies which tests to write first.
+- **Phase 3a: Write Tests (Red)** — Write tests derived from the plan's success criteria. Run the test command and assert failure against the current codebase before any implementation code is written.
+- **Phase 3b: Implement (Green)** — Write implementation code until the Phase 3a tests pass. Standard implementation guidelines apply.
 
-- **Pros**: Single skill to maintain, leverages all existing infrastructure (flags, gates, resume, handoff)
-- **Cons**: Adds complexity to an already large skill
+All existing flags (`--resume`, `--gates`, `--quick`, `--plan-only`, context handoff) apply to both sub-phases without modification. The plan template gains a "Test Plan" subsection specifying which tests to write in Phase 3a.
 
-### Approach B: Separate TDD Skill
-
-Create a `manage-issue-tdd` skill that implements the TDD flow. The CLI tools (`ll-auto`, `ll-parallel`, `ll-sprint`) check the config toggle and invoke the appropriate skill via `manage_command` config.
-
-- **Pros**: Clean separation, TDD skill can evolve independently
-- **Cons**: Code duplication across skills, two skills to maintain in sync
-
-**Recommendation**: Evaluate both approaches during implementation planning. Approach A is likely simpler if the phase insertion is clean; Approach B is better if TDD requires fundamentally different plan templates and verification logic.
+The CLI tools (`ll-auto`, `ll-parallel`, `ll-sprint`) require no changes — they invoke `manage-issue` which reads `commands.tdd_mode` from config directly.
 
 ## Integration Map
 
 ### Files to Modify
-- `skills/manage-issue/SKILL.md` - Add TDD phase logic or branch to TDD skill
-- `skills/manage-issue/templates.md` - Add TDD plan template with test plan section
-- `scripts/little_loops/config.py` - Add `tdd_mode` to `CommandsConfig` or new `WorkflowConfig`
-- `config-schema.json` - Add `tdd_mode` property to schema
+- `skills/manage-issue/SKILL.md` - Add Phase 3a/3b conditional logic under `commands.tdd_mode`
+- `skills/manage-issue/templates.md` - Add "Test Plan" subsection to the plan template
+- `scripts/little_loops/config.py` - Add `tdd_mode: bool = False` to `CommandsConfig`
+- `config-schema.json` - Add `tdd_mode` boolean property to `commands` schema section
 
-### Dependent Files (Callers/Importers)
-- `scripts/little_loops/subprocess_utils.py` - Constructs Claude CLI commands (may need to pass different skill)
-- `scripts/little_loops/cli.py` - CLI entry points for `ll-auto`, `ll-parallel`, `ll-sprint`
+### Dependent Files (No Changes Required)
+- `scripts/little_loops/subprocess_utils.py` - No changes; CLI tools invoke `manage-issue` unchanged
+- `scripts/little_loops/cli/auto.py` - No changes
+- `scripts/little_loops/cli/parallel.py` - No changes
+- `scripts/little_loops/cli/sprint.py` - No changes
 
 ### Similar Patterns
 - `--gates` flag in `manage-issue` - conditional phase behavior based on config/flags
 - `commands.pre_implement` / `commands.post_implement` - existing hook points around implementation
 
 ### Tests
-- `scripts/tests/test_config.py` - Add tests for new config field parsing
-- New test for TDD phase ordering if Approach B (new skill file)
+- `scripts/tests/test_config.py` - Add tests for `tdd_mode` field parsing and default value
 
 ### Documentation
 - `README.md` - Document `tdd_mode` config option
@@ -135,18 +114,17 @@ Create a `manage-issue-tdd` skill that implements the TDD flow. The CLI tools (`
 
 ## Implementation Steps
 
-1. Add `tdd_mode` field to config dataclass and schema
-2. Design and implement TDD phase logic (Approach A or B)
-3. Create TDD-specific plan template with test plan section
-4. Add Red/Green verification steps to the TDD phases
-5. Ensure CLI tools (`ll-auto`, `ll-parallel`, `ll-sprint`) respect the toggle
-6. Add tests for config parsing and phase ordering
-7. Update documentation
+1. Add `tdd_mode: bool = False` to `CommandsConfig` in `config.py` and `config-schema.json`
+2. Add Phase 3a (Write Tests / Red) and Phase 3b (Implement / Green) conditional blocks to `skills/manage-issue/SKILL.md`, gated on `{{config.commands.tdd_mode}}`
+3. Add "Test Plan" subsection to the plan template in `skills/manage-issue/templates.md`
+4. Add Red-phase verification step: run `{{config.project.test_cmd}}` after writing tests and assert non-zero exit before proceeding to Phase 3b
+5. Add tests for `tdd_mode` config field parsing to `scripts/tests/test_config.py`
+6. Update `README.md` and `docs/API.md` to document the new config option
 
 ## Impact
 
 - **Priority**: P3 - Valuable workflow improvement but not blocking any current work
-- **Effort**: Medium - Requires modifying core skill logic and config schema, plus design decision on approach
+- **Effort**: Medium - Requires modifying core skill logic and config schema
 - **Risk**: Low - Feature toggle defaults to off, no change to existing behavior when disabled
 - **Breaking Change**: No
 
