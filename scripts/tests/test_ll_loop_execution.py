@@ -560,6 +560,93 @@ states:
             # Logo should not be displayed in quiet mode
             assert "little loops" not in captured.out
 
+    def test_per_iteration_progress_shows_state_and_elapsed(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Each iteration prints iteration number, state name, and elapsed time."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-progress
+initial: check
+max_iterations: 3
+states:
+  check:
+    action: "echo test"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-progress.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo test"],
+                returncode=0,
+                stdout="test",
+                stderr="",
+            )
+            with patch.object(sys, "argv", ["ll-loop", "run", "test-progress"]):
+                from little_loops.cli import main_loop
+
+                result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Per-iteration line must contain iteration number, state name, and elapsed time in (Xs) format
+        assert "[1/3] check" in captured.out
+        assert "(0s)" in captured.out
+
+    def test_per_iteration_progress_suppressed_by_quiet(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--quiet suppresses per-iteration progress lines."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-quiet-iter
+initial: check
+max_iterations: 3
+states:
+  check:
+    action: "echo test"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: check
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-quiet-iter.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["bash", "-c", "echo test"],
+                returncode=0,
+                stdout="test",
+                stderr="",
+            )
+            with patch.object(sys, "argv", ["ll-loop", "run", "test-quiet-iter", "--quiet"]):
+                from little_loops.cli import main_loop
+
+                result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # No per-iteration lines in quiet mode
+        assert "[1/" not in captured.out
+
     def test_background_flag_shows_warning(
         self,
         tmp_path: Path,

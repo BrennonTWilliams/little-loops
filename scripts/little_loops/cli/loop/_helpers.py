@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -145,6 +146,7 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
         print()
 
     current_iteration = [0]  # Use list to allow mutation in closure
+    loop_start_time = time.monotonic()
 
     def display_progress(event: dict) -> None:
         """Display progress for events."""
@@ -153,12 +155,17 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
         if event_type == "state_enter":
             current_iteration[0] = event.get("iteration", 0)
             state = event.get("state", "")
-            print(f"[{current_iteration[0]}/{fsm.max_iterations}] {state}", end="")
+            elapsed_int = int(time.monotonic() - loop_start_time)
+            if elapsed_int < 60:
+                elapsed_str = f"{elapsed_int}s"
+            else:
+                elapsed_str = f"{elapsed_int // 60}m {elapsed_int % 60}s"
+            print(f"[{current_iteration[0]}/{fsm.max_iterations}] {state} ({elapsed_str})", end="", flush=True)
 
         elif event_type == "action_start":
             action = event.get("action", "")
             action_display = action[:60] + "..." if len(action) > 60 else action
-            print(f" -> {action_display}")
+            print(f" -> {action_display}", flush=True)
 
         elif event_type == "evaluate":
             verdict = event.get("verdict", "")
@@ -168,24 +175,17 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             else:
                 symbol = "\u2717"  # x mark
             if confidence is not None:
-                print(f"       {symbol} {verdict} (confidence: {confidence:.2f})")
+                print(f"       {symbol} {verdict} (confidence: {confidence:.2f})", flush=True)
             else:
-                print(f"       {symbol} {verdict}")
+                print(f"       {symbol} {verdict}", flush=True)
 
         elif event_type == "route":
             to_state = event.get("to", "")
-            print(f"       -> {to_state}")
+            print(f"       -> {to_state}", flush=True)
 
-    # Create wrapper to combine persistence callback with progress display
-    original_handle = executor._handle_event
-
-    def combined_handler(event: dict) -> None:
-        original_handle(event)
-        if not quiet:
-            display_progress(event)
-
-    # Use object.__setattr__ to bypass method assignment check
-    object.__setattr__(executor, "_handle_event", combined_handler)
+    # Wire progress display via the proper observer slot on PersistentExecutor
+    if not quiet:
+        executor._on_event = display_progress
 
     result = executor.run()
 

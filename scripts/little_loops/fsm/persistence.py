@@ -22,7 +22,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from little_loops.fsm.executor import ExecutionResult, FSMExecutor
+from little_loops.fsm.executor import EventCallback, ExecutionResult, FSMExecutor
 from little_loops.fsm.schema import FSMLoop
 
 RUNNING_DIR = ".running"
@@ -250,6 +250,7 @@ class PersistentExecutor:
         )
         self._last_result: dict[str, Any] | None = None
         self._continuation_prompt: str | None = None
+        self._on_event: EventCallback | None = None
 
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the executor.
@@ -285,6 +286,10 @@ class PersistentExecutor:
         # Track handoff events for continuation prompt
         if event_type == "handoff_detected":
             self._continuation_prompt = event.get("continuation")
+
+        # Delegate to secondary observer (e.g. progress display)
+        if self._on_event is not None:
+            self._on_event(event)
 
     def _save_state(self) -> None:
         """Save current executor state to file."""
