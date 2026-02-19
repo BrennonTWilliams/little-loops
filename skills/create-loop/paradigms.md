@@ -165,8 +165,6 @@ evaluator:                 # Optional - omit for exit_code default
   pattern: "<pattern>"     # For output_contains only
   operator: "<eq|lt|gt>"   # For output_numeric only
   target: <number>         # For output_numeric only
-# Include action_type only if not using default heuristic:
-action_type: "prompt|slash_command|shell"  # Optional - defaults to heuristic (/ = slash_command)
 ```
 
 **Example for "Type errors + Lint errors":**
@@ -263,8 +261,6 @@ constraints:
       pattern: "<pattern>"   # For output_contains only
       operator: "<eq|lt|gt>" # For output_numeric only
       target: <number>       # For output_numeric only
-    # Include action_type only if not using default heuristic:
-    action_type: "prompt|slash_command|shell"  # Optional per-constraint
   - name: "<constraint-2-name>"
     check: "<check-command>"
     fix: "<fix-command>"
@@ -354,8 +350,6 @@ check: "<metric-command>"
 toward: <target-value>
 using: "<fix-action>"
 tolerance: 0
-# Include action_type only if not using default heuristic:
-action_type: "prompt|slash_command|shell"  # Optional - for the using: action
 max_iterations: 50
 ```
 
@@ -448,8 +442,6 @@ until:
     pattern: "<pattern>"     # For output_contains only
     operator: "<eq|lt|gt>"   # For output_numeric only
     target: <number>         # For output_numeric only
-  # Include action_type only if not using default heuristic:
-  action_type: "prompt|slash_command|shell"  # Optional for the until: check
 max_iterations: 50  # Default if omitted
 backoff: 2
 ```
