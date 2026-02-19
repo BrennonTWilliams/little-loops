@@ -1256,7 +1256,9 @@ def _cmd_sprint_run(
                 # Detect current branch for rebase/merge operations (BUG-439)
                 _br = subprocess.run(
                     ["git", "rev-parse", "--abbrev-ref", "HEAD"],
-                    capture_output=True, text=True, cwd=Path.cwd(),
+                    capture_output=True,
+                    text=True,
+                    cwd=Path.cwd(),
                 )
                 _base_branch = _br.stdout.strip() if _br.returncode == 0 else "main"
                 parallel_config = config.create_parallel_config(

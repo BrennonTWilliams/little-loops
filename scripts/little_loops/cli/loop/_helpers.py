@@ -160,7 +160,11 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
                 elapsed_str = f"{elapsed_int}s"
             else:
                 elapsed_str = f"{elapsed_int // 60}m {elapsed_int % 60}s"
-            print(f"[{current_iteration[0]}/{fsm.max_iterations}] {state} ({elapsed_str})", end="", flush=True)
+            print(
+                f"[{current_iteration[0]}/{fsm.max_iterations}] {state} ({elapsed_str})",
+                end="",
+                flush=True,
+            )
 
         elif event_type == "action_start":
             action = event.get("action", "")

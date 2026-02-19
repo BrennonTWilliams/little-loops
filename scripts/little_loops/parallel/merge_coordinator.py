@@ -770,13 +770,9 @@ class MergeCoordinator:
                                 f"{checkout_result.stderr}"
                             )
                     else:
-                        raise RuntimeError(
-                            f"Failed to checkout {base}: {checkout_result.stderr}"
-                        )
+                        raise RuntimeError(f"Failed to checkout {base}: {checkout_result.stderr}")
                 else:
-                    raise RuntimeError(
-                        f"Failed to checkout {base}: {checkout_result.stderr}"
-                    )
+                    raise RuntimeError(f"Failed to checkout {base}: {checkout_result.stderr}")
 
             # Track if merge strategy was used during pull (for conflict handling)
             used_merge_strategy = False
