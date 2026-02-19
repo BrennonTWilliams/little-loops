@@ -9,6 +9,7 @@ from unittest.mock import patch
 
 import pytest
 
+from little_loops.cli.loop.info import _render_fsm_diagram
 from little_loops.fsm.schema import (
     EvaluateConfig,
     FSMLoop,
@@ -577,3 +578,152 @@ class TestProgressDisplay:
         max_iter = 50
         progress = f"[{current}/{max_iter}]"
         assert progress == "[5/50]"
+
+
+class TestRenderFsmDiagram:
+    """Tests for _render_fsm_diagram() output."""
+
+    def _make_fsm(
+        self,
+        name: str = "test",
+        initial: str = "start",
+        states: dict[str, StateConfig] | None = None,
+    ) -> FSMLoop:
+        return FSMLoop(name=name, initial=initial, states=states or {}, max_iterations=50)
+
+    def test_single_terminal_state(self) -> None:
+        """Single terminal state renders just the state box."""
+        fsm = self._make_fsm(
+            initial="done",
+            states={"done": StateConfig(terminal=True)},
+        )
+        result = _render_fsm_diagram(fsm)
+        assert "[done]" in result
+        # No branches or back-edges for a lone terminal state
+        assert "Branches" not in result
+        assert "Back-edges" not in result
+
+    def test_linear_flow_shows_labels(self) -> None:
+        """Linear A→B→C shows transition labels in main flow line."""
+        fsm = self._make_fsm(
+            initial="a",
+            states={
+                "a": StateConfig(action="step a", on_success="b"),
+                "b": StateConfig(action="step b", on_success="c"),
+                "c": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        # All three states appear on the main flow line
+        assert "[a]" in result
+        assert "[b]" in result
+        assert "[c]" in result
+        # Transition labels are shown
+        assert "(success)" in result
+        # No branches or back-edges in a pure linear chain
+        assert "Branches" not in result
+        assert "Back-edges" not in result
+
+    def test_next_transition_label(self) -> None:
+        """Unconditional next transition shows 'next' label."""
+        fsm = self._make_fsm(
+            initial="a",
+            states={
+                "a": StateConfig(action="echo", next="b"),
+                "b": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        assert "(next)" in result
+
+    def test_branching_fsm_shows_branches_section(self) -> None:
+        """Failure branch not on main path appears in Branches section."""
+        fsm = self._make_fsm(
+            initial="test",
+            states={
+                "test": StateConfig(action="pytest", on_success="done", on_failure="fix"),
+                "fix": StateConfig(action="fix.sh", on_success="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        # Main flow: test ──(success)──▶ done
+        assert "[test]" in result
+        assert "[done]" in result
+        assert "(success)" in result
+        # Branches section for fail edge
+        assert "Branches:" in result
+        assert "[fix]" in result
+        assert "(fail)" in result
+
+    def test_cyclic_fsm_shows_back_edges_section(self) -> None:
+        """Back-edge (retry loop) appears in Back-edges section."""
+        fsm = self._make_fsm(
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(action="check", on_success="done", on_failure="fix"),
+                "fix": StateConfig(action="fix.sh", on_success="evaluate"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        # fix → evaluate is a back-edge (evaluate is the start node)
+        assert "Back-edges" in result
+        assert "↺" in result
+
+    def test_self_loop_annotated(self) -> None:
+        """Self-loop transition is annotated as self-loop."""
+        fsm = self._make_fsm(
+            initial="monitor",
+            states={
+                "monitor": StateConfig(
+                    action="check",
+                    on_success="done",
+                    on_failure="monitor",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        assert "Back-edges" in result
+        assert "self-loop" in result
+
+    def test_route_table_branches(self) -> None:
+        """Route table verdicts appear in branches for non-main-flow targets."""
+        fsm = self._make_fsm(
+            initial="route_state",
+            states={
+                "route_state": StateConfig(
+                    action="analyze",
+                    route=RouteConfig(
+                        routes={"pass": "done", "fail": "retry", "skip": "done"},
+                        default=None,
+                    ),
+                ),
+                "done": StateConfig(terminal=True),
+                "retry": StateConfig(action="retry", on_success="done"),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        # pass is the first route entry → main flow
+        assert "[route_state]" in result
+        assert "[done]" in result
+        # retry and skip are branches
+        assert "Branches:" in result
+
+    def test_main_flow_order(self) -> None:
+        """Main flow states appear in left-to-right order."""
+        fsm = self._make_fsm(
+            initial="first",
+            states={
+                "first": StateConfig(action="a", on_success="second"),
+                "second": StateConfig(action="b", on_success="third"),
+                "third": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        first_line = result.split("\n")[0]
+        pos_first = first_line.index("[first]")
+        pos_second = first_line.index("[second]")
+        pos_third = first_line.index("[third]")
+        assert pos_first < pos_second < pos_third
