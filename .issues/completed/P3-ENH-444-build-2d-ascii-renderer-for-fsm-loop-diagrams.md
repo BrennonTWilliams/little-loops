@@ -158,11 +158,37 @@ The 2D renderer changes the output format in three ways that break existing asse
 
 `enhancement`, `cli`, `ll-loop`, `captured`
 
+## Resolution
+
+**Implemented** on 2026-02-19.
+
+### Changes Made
+
+1. **`scripts/little_loops/cli/loop/info.py`** — Replaced flat 1D text assembly in `_render_fsm_diagram()` with a 2D Unicode box renderer:
+   - Main-path states rendered as `┌─┐│ │└─┘` boxes connected by labeled arrows (`───label──▶`)
+   - Branch and back-edge routing shown as text annotations below the boxes
+   - Self-loops indicated with `↺` marker
+   - Fixed edge deduplication bug: `main_consumed` set tracks specific edge indices instead of `(src,dst)` pairs
+
+2. **`scripts/tests/test_ll_loop_display.py`** — Updated all 8 tests in `TestRenderFsmDiagram`:
+   - Replaced `[state]` assertions with bare state names (box format)
+   - Replaced `(label)` assertions with bare label strings
+   - Removed `"Branches:"` and `"Back-edges"` section header assertions
+   - Updated `test_main_flow_order` to use line index 1 (name row)
+
+### Verification
+
+- 2880 tests passed (full suite)
+- `ruff check` — clean
+- `mypy` — clean
+- Visual verification: `ll-loop show quality-gate` renders correctly
+
 ## Session Log
 - `/ll:capture-issue` - 2026-02-19T16:24:00-05:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ea41bd4b-d59d-4dff-8f30-922bc06bbf66.jsonl`
+- `/ll:manage-issue` - 2026-02-19 - Implementation and completion
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-19 | Priority: P3
+**Completed** | Created: 2026-02-19 | Resolved: 2026-02-19 | Priority: P3

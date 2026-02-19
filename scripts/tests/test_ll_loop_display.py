@@ -598,13 +598,11 @@ class TestRenderFsmDiagram:
             states={"done": StateConfig(terminal=True)},
         )
         result = _render_fsm_diagram(fsm)
-        assert "[done]" in result
-        # No branches or back-edges for a lone terminal state
-        assert "Branches" not in result
-        assert "Back-edges" not in result
+        assert "done" in result
+        assert "\u250c" in result  # box top-left corner
 
     def test_linear_flow_shows_labels(self) -> None:
-        """Linear A→B→C shows transition labels in main flow line."""
+        """Linear A->B->C shows transition labels in main flow line."""
         fsm = self._make_fsm(
             initial="a",
             states={
@@ -614,15 +612,14 @@ class TestRenderFsmDiagram:
             },
         )
         result = _render_fsm_diagram(fsm)
-        # All three states appear on the main flow line
-        assert "[a]" in result
-        assert "[b]" in result
-        assert "[c]" in result
+        # All three states appear in boxes
+        assert "a" in result
+        assert "b" in result
+        assert "c" in result
         # Transition labels are shown
-        assert "(success)" in result
-        # No branches or back-edges in a pure linear chain
-        assert "Branches" not in result
-        assert "Back-edges" not in result
+        assert "success" in result
+        # Box-drawing characters present
+        assert "\u250c" in result
 
     def test_next_transition_label(self) -> None:
         """Unconditional next transition shows 'next' label."""
@@ -634,10 +631,10 @@ class TestRenderFsmDiagram:
             },
         )
         result = _render_fsm_diagram(fsm)
-        assert "(next)" in result
+        assert "next" in result
 
     def test_branching_fsm_shows_branches_section(self) -> None:
-        """Failure branch not on main path appears in Branches section."""
+        """Failure branch not on main path appears visually."""
         fsm = self._make_fsm(
             initial="test",
             states={
@@ -647,17 +644,16 @@ class TestRenderFsmDiagram:
             },
         )
         result = _render_fsm_diagram(fsm)
-        # Main flow: test ──(success)──▶ done
-        assert "[test]" in result
-        assert "[done]" in result
-        assert "(success)" in result
-        # Branches section for fail edge
-        assert "Branches:" in result
-        assert "[fix]" in result
-        assert "(fail)" in result
+        # Main flow states in boxes
+        assert "test" in result
+        assert "done" in result
+        assert "success" in result
+        # Branch edges shown
+        assert "fail" in result
+        assert "\u25b6" in result  # arrow head
 
     def test_cyclic_fsm_shows_back_edges_section(self) -> None:
-        """Back-edge (retry loop) appears in Back-edges section."""
+        """Back-edge (retry loop) appears visually in the diagram."""
         fsm = self._make_fsm(
             initial="evaluate",
             states={
@@ -667,12 +663,13 @@ class TestRenderFsmDiagram:
             },
         )
         result = _render_fsm_diagram(fsm)
-        # fix → evaluate is a back-edge (evaluate is the start node)
-        assert "Back-edges" in result
-        assert "↺" in result
+        # fix -> evaluate back-edge: both states and label appear
+        assert "evaluate" in result
+        assert "fix" in result
+        assert "fail" in result
 
     def test_self_loop_annotated(self) -> None:
-        """Self-loop transition is annotated as self-loop."""
+        """Self-loop transition is annotated with loop indicator."""
         fsm = self._make_fsm(
             initial="monitor",
             states={
@@ -685,11 +682,10 @@ class TestRenderFsmDiagram:
             },
         )
         result = _render_fsm_diagram(fsm)
-        assert "Back-edges" in result
-        assert "self-loop" in result
+        assert "\u21ba" in result  # ↺ self-loop indicator
 
     def test_route_table_branches(self) -> None:
-        """Route table verdicts appear in branches for non-main-flow targets."""
+        """Route table verdicts appear for non-main-flow targets."""
         fsm = self._make_fsm(
             initial="route_state",
             states={
@@ -705,11 +701,13 @@ class TestRenderFsmDiagram:
             },
         )
         result = _render_fsm_diagram(fsm)
-        # pass is the first route entry → main flow
-        assert "[route_state]" in result
-        assert "[done]" in result
-        # retry and skip are branches
-        assert "Branches:" in result
+        # Main path states in boxes
+        assert "route_state" in result
+        assert "done" in result
+        # Route labels appear
+        assert "pass" in result
+        assert "fail" in result
+        assert "skip" in result
 
     def test_main_flow_order(self) -> None:
         """Main flow states appear in left-to-right order."""
@@ -722,8 +720,9 @@ class TestRenderFsmDiagram:
             },
         )
         result = _render_fsm_diagram(fsm)
-        first_line = result.split("\n")[0]
-        pos_first = first_line.index("[first]")
-        pos_second = first_line.index("[second]")
-        pos_third = first_line.index("[third]")
+        # Name row is index 1 (index 0 is top border)
+        name_line = result.split("\n")[1]
+        pos_first = name_line.index("first")
+        pos_second = name_line.index("second")
+        pos_third = name_line.index("third")
         assert pos_first < pos_second < pos_third
