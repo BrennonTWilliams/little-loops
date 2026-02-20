@@ -12,6 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.15.0] - 2026-02-19
+
+### Changed
+
+- **2D ASCII renderer for FSM loop diagrams** - Replaced flat 1D text diagram with a 2D Unicode box renderer; main-path states rendered as boxes connected by labeled arrows, with self-loops indicated by ↺ marker (ENH-444)
+- **FSM graph diagram in `ll-loop show`** - Implemented `_render_fsm_diagram()` with BFS-based edge classification rendering main flow, branches, and back-edges sections with labeled edges (ENH-443)
+- **Per-iteration progress display in `ll-loop run`** - Fixed event callback wiring in `run_foreground`; added `[iter X] state: name (Xs)` format respecting `--quiet` flag (ENH-442)
+
+### Other
+
+- docs: fix ll-loop compile argument name in README (18b2af8)
+- docs: remove unsupported action_type from paradigm templates (1f10d4e)
+- style: fix lint and format issues in loop display code (ff1f49f)
+- style: apply ruff formatting to 3 files (df48bb2)
+
+[1.15.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.14.1...v1.15.0
+
 ## [1.14.1] - 2026-02-15
 
 ### Fixed
