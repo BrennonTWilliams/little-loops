@@ -653,7 +653,7 @@ class TestRenderFsmDiagram:
         assert "\u25b6" in result  # arrow head ▶
         # Off-path state rendered as box (not just text)
         lines = result.split("\n")
-        fix_box_lines = [l for l in lines if "fix" in l and "\u2502" in l]
+        fix_box_lines = [line for line in lines if "fix" in line and "\u2502" in line]
         assert fix_box_lines, "fix should be rendered inside a box with │ borders"
 
     def test_cyclic_fsm_shows_back_edges_section(self) -> None:

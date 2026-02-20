@@ -164,7 +164,12 @@ def _render_fsm_diagram(fsm: FSMLoop) -> str:
             branches.append((src, dst, label))
 
     return _render_2d_diagram(
-        main_path, edges, main_edge_set, branches, back_edges, bfs_order,
+        main_path,
+        edges,
+        main_edge_set,
+        branches,
+        back_edges,
+        bfs_order,
     )
 
 
