@@ -246,7 +246,7 @@ ll-loop list                     # List all available loops
 ll-loop stop <loop-name>         # Stop a running loop
 ll-loop status <loop-name>       # Show loop status
 ll-loop resume <loop-name>       # Resume an interrupted loop
-ll-loop compile <loop-name>      # Compile paradigm to FSM
+ll-loop compile <paradigm.yaml>  # Compile paradigm YAML to FSM
 ll-loop validate <loop-name>     # Validate loop definition
 ll-loop history <loop-name>      # Show loop execution history
 ll-loop test <loop-name>         # Run a single test iteration
