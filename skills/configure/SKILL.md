@@ -8,7 +8,7 @@ allowed-tools:
   - Bash(mkdir:*)
 arguments:
   - name: area
-    description: "project|issues|parallel|automation|documents|continuation|context|prompt|scan|sync (optional - prompts if omitted)"
+    description: "project|issues|commands|parallel|automation|documents|continuation|context|prompt|scan|sync (optional - prompts if omitted)"
     required: false
   - name: flags
     description: Optional flags (--list, --show, --reset)
@@ -54,6 +54,7 @@ Map argument names to config sections:
 | `continuation` | `continuation` | Session handoff: auto-detect, includes, expiry |
 | `context` | `context_monitor` | Context monitoring: threshold, limits |
 | `prompt` | `prompt_optimization` | Prompt optimization: mode, confirm, bypass |
+| `commands` | `commands` | Command hooks, confidence gate |
 | `scan` | `scan` | Focus dirs, exclude patterns |
 | `sync` | `sync` | GitHub Issues sync: enabled, label mapping, priorities |
 
@@ -74,6 +75,7 @@ Configuration Areas
   issues        [CONFIGURED]  Base dir, categories, templates, capture style
   parallel      [DEFAULT]     ll-parallel: workers, timeouts, worktree files
   automation    [DEFAULT]     ll-auto: workers, timeouts, streaming
+  commands      [DEFAULT]     Command hooks, confidence gate
   documents     [CONFIGURED]  Key document categories for issue alignment
   continuation  [DEFAULT]     Session handoff: auto-detect, includes, expiry
   context       [CONFIGURED]  Context monitoring: threshold, limits
@@ -148,7 +150,7 @@ questions:
       - label: "scan"
         description: "Focus dirs, exclude patterns"
       - label: "More areas..."
-        description: "Show parallel, automation, documents, continuation, context, prompt"
+        description: "Show commands, parallel, automation, documents, continuation, context, prompt"
 ```
 
 If "More areas..." selected:
@@ -159,14 +161,14 @@ questions:
     header: "Area"
     multiSelect: false
     options:
+      - label: "commands"
+        description: "Command hooks, confidence gate"
       - label: "parallel"
         description: "ll-parallel: workers, timeouts, worktree files"
       - label: "automation"
         description: "ll-auto: workers, timeouts, streaming"
-      - label: "documents"
-        description: "Key document categories for issue alignment"
       - label: "More areas..."
-        description: "Show sync, continuation, context, prompt"
+        description: "Show documents, sync, continuation, context, prompt"
 ```
 
 If "More areas..." selected again:
@@ -177,10 +179,24 @@ questions:
     header: "Area"
     multiSelect: false
     options:
+      - label: "documents"
+        description: "Key document categories for issue alignment"
       - label: "sync"
         description: "GitHub Issues sync: enabled, label mapping, priorities"
       - label: "continuation"
         description: "Session handoff: auto-detect, includes, expiry"
+      - label: "More areas..."
+        description: "Show context, prompt"
+```
+
+If "More areas..." selected again:
+
+```yaml
+questions:
+  - question: "Which area do you want to configure?"
+    header: "Area"
+    multiSelect: false
+    options:
       - label: "context"
         description: "Context monitoring: threshold, limits"
       - label: "prompt"
@@ -242,6 +258,7 @@ $ARGUMENTS
 - **area** (optional): Configuration area to modify
   - `project` - Test, lint, format, type-check, build commands
   - `issues` - Base dir, categories, templates, capture style
+  - `commands` - Command hooks, confidence gate
   - `parallel` - ll-parallel: workers, timeouts, worktree files
   - `automation` - ll-auto: workers, timeouts, streaming
   - `documents` - Key document categories for issue alignment

@@ -64,7 +64,11 @@ For interactive editing, use `/ll:configure`.
   "commands": {
     "pre_implement": null,
     "post_implement": null,
-    "custom_verification": []
+    "custom_verification": [],
+    "confidence_gate": {
+      "enabled": false,
+      "threshold": 85
+    }
   },
 
   "scan": {
@@ -216,6 +220,20 @@ Product analysis configuration for `/ll:scan-product`:
 | `analyze_business_value` | `true` | Include business value scoring in issues |
 
 To enable product scanning, set `product.enabled: true` and create a goals file with your product vision, personas, and strategic priorities.
+
+### `commands`
+
+Command customization for `/ll:manage-issue`:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `pre_implement` | `null` | Command to run before implementation |
+| `post_implement` | `null` | Command to run after implementation |
+| `custom_verification` | `[]` | Additional verification commands |
+| `confidence_gate.enabled` | `false` | Enable confidence score gate before implementation |
+| `confidence_gate.threshold` | `85` | Minimum confidence score (1-100) required to proceed |
+
+When `confidence_gate.enabled` is `true`, `manage-issue` checks the issue's `confidence_score` frontmatter before Phase 3 (Implementation). If the score is below `threshold`, implementation halts. Use `--force-implement` to bypass.
 
 ### `scan`
 

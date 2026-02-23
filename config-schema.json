@@ -237,6 +237,25 @@
           "description": "Additional verification commands",
           "items": {"type": "string"},
           "default": []
+        },
+        "confidence_gate": {
+          "type": "object",
+          "description": "Confidence score gate for manage-issue implementation phase",
+          "properties": {
+            "enabled": {
+              "type": "boolean",
+              "description": "Enable confidence score gate before implementation",
+              "default": false
+            },
+            "threshold": {
+              "type": "integer",
+              "description": "Minimum confidence score (0-100) required to proceed with implementation",
+              "default": 85,
+              "minimum": 1,
+              "maximum": 100
+            }
+          },
+          "additionalProperties": false
         }
       },
       "additionalProperties": false

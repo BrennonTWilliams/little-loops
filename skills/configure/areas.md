@@ -305,6 +305,60 @@ questions:
 
 ---
 
+## Area: commands
+
+### Current Values
+
+```
+Current Commands Configuration
+-------------------------------
+  pre_implement:    {{config.commands.pre_implement}}
+  post_implement:   {{config.commands.post_implement}}
+  confidence_gate:
+    enabled:        {{config.commands.confidence_gate.enabled}}
+    threshold:      {{config.commands.confidence_gate.threshold}}
+```
+
+### Round 1 (3 questions)
+
+```yaml
+questions:
+  - header: "Pre-implement"
+    question: "Run a command before implementation starts?"
+    options:
+      - label: "{{current pre_implement}} (keep)"
+        description: "Keep current setting"
+      - label: "none"
+        description: "No pre-implement command (default)"
+    multiSelect: false
+
+  - header: "Gate"
+    question: "Enable confidence score gate for manage-issue?"
+    options:
+      - label: "{{current confidence_gate.enabled}} (keep)"
+        description: "Keep current setting"
+      - label: "true"
+        description: "Yes, block implementation below threshold"
+      - label: "false"
+        description: "No, advisory only (default)"
+    multiSelect: false
+
+  - header: "Threshold"
+    question: "Minimum confidence score to proceed with implementation?"
+    options:
+      - label: "{{current confidence_gate.threshold}} (keep)"
+        description: "Keep current setting"
+      - label: "70"
+        description: "70 (permissive)"
+      - label: "85"
+        description: "85 (default)"
+      - label: "95"
+        description: "95 (strict)"
+    multiSelect: false
+```
+
+---
+
 ## Area: documents
 
 ### Current Values

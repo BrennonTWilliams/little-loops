@@ -13,6 +13,7 @@ from little_loops.config import (
     BRConfig,
     CategoryConfig,
     CommandsConfig,
+    ConfidenceGateConfig,
     GitHubSyncConfig,
     IssuesConfig,
     ParallelAutomationConfig,
@@ -208,6 +209,25 @@ class TestParallelAutomationConfig:
         assert config.command_prefix == "/ll:"
 
 
+class TestConfidenceGateConfig:
+    """Tests for ConfidenceGateConfig dataclass."""
+
+    def test_from_dict_with_all_fields(self) -> None:
+        """Test creating ConfidenceGateConfig with all fields."""
+        data = {"enabled": True, "threshold": 70}
+        config = ConfidenceGateConfig.from_dict(data)
+
+        assert config.enabled is True
+        assert config.threshold == 70
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating ConfidenceGateConfig with default values."""
+        config = ConfidenceGateConfig.from_dict({})
+
+        assert config.enabled is False
+        assert config.threshold == 85
+
+
 class TestCommandsConfig:
     """Tests for CommandsConfig dataclass."""
 
@@ -217,12 +237,15 @@ class TestCommandsConfig:
             "pre_implement": "npm run lint",
             "post_implement": "npm run build",
             "custom_verification": ["npm test", "npm run e2e"],
+            "confidence_gate": {"enabled": True, "threshold": 90},
         }
         config = CommandsConfig.from_dict(data)
 
         assert config.pre_implement == "npm run lint"
         assert config.post_implement == "npm run build"
         assert config.custom_verification == ["npm test", "npm run e2e"]
+        assert config.confidence_gate.enabled is True
+        assert config.confidence_gate.threshold == 90
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating CommandsConfig with default values."""
@@ -231,6 +254,8 @@ class TestCommandsConfig:
         assert config.pre_implement is None
         assert config.post_implement is None
         assert config.custom_verification == []
+        assert config.confidence_gate.enabled is False
+        assert config.confidence_gate.threshold == 85
 
 
 class TestScanConfig:

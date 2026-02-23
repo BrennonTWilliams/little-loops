@@ -27,6 +27,7 @@ __all__ = [
     "SprintsConfig",
     "LoopsConfig",
     "GitHubSyncConfig",
+    "ConfidenceGateConfig",
     "SyncConfig",
     "REQUIRED_CATEGORIES",
     "DEFAULT_CATEGORIES",
@@ -249,12 +250,29 @@ class ParallelAutomationConfig:
 
 
 @dataclass
+class ConfidenceGateConfig:
+    """Confidence score gate configuration for manage-issue."""
+
+    enabled: bool = False
+    threshold: int = 85
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ConfidenceGateConfig:
+        """Create ConfidenceGateConfig from dictionary."""
+        return cls(
+            enabled=data.get("enabled", False),
+            threshold=data.get("threshold", 85),
+        )
+
+
+@dataclass
 class CommandsConfig:
     """Command customization configuration."""
 
     pre_implement: str | None = None
     post_implement: str | None = None
     custom_verification: list[str] = field(default_factory=list)
+    confidence_gate: ConfidenceGateConfig = field(default_factory=ConfidenceGateConfig)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CommandsConfig:
@@ -263,6 +281,7 @@ class CommandsConfig:
             pre_implement=data.get("pre_implement"),
             post_implement=data.get("post_implement"),
             custom_verification=data.get("custom_verification", []),
+            confidence_gate=ConfidenceGateConfig.from_dict(data.get("confidence_gate", {})),
         )
 
 
@@ -664,6 +683,10 @@ class BRConfig:
                 "pre_implement": self._commands.pre_implement,
                 "post_implement": self._commands.post_implement,
                 "custom_verification": self._commands.custom_verification,
+                "confidence_gate": {
+                    "enabled": self._commands.confidence_gate.enabled,
+                    "threshold": self._commands.confidence_gate.threshold,
+                },
             },
             "scan": {
                 "focus_dirs": self._scan.focus_dirs,

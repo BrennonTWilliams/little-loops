@@ -50,6 +50,22 @@ The `--force-implement` override ensures the gate is never a hard blocker — it
 
 A team sets `confidence_gate.enabled: true` and `threshold: 85` in their shared `ll-config.json`. When `ll-parallel` processes a batch of issues, any issue with `confidence_score: 72` is automatically blocked before implementation begins. The session reports the gate failure. The user runs `/ll:confidence-check` on that issue, the issue is refined, the score rises to 88, and the next run proceeds.
 
+## Scope Boundaries
+
+**In scope:**
+- Gate logic lives entirely in `skills/manage-issue/SKILL.md` Phase 2→3 transition
+- New `commands.confidence_gate` config block (`enabled`, `threshold`)
+- `--force-implement` flag on `manage-issue` to bypass the gate
+- Wizard and configure UI for the gate setting
+- `config-schema.json` validation and `test_config.py` coverage
+
+**Out of scope:**
+- Automatically invoking `/ll:confidence-check` when the gate blocks (gate halts; user runs check manually)
+- Gating any other skill besides `manage-issue` (ready-issue, ll-auto, etc. are unaffected directly)
+- Making the gate mandatory/unconfigurable — defaults to disabled, always bypassable with `--force-implement`
+- Changing `ll-auto`, `ll-parallel`, or `ll-sprint` logic (they delegate to manage-issue and inherit the gate)
+- Storing gate decisions or overrides persistently to the issue file
+
 ## Acceptance Criteria
 
 - [ ] New `commands.confidence_gate` config block with `enabled: bool` (default `false`) and `threshold: int` (default `85`)
@@ -171,6 +187,21 @@ Options:
 ## Session Log
 - `/ll:capture-issue` - 2026-02-22T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88e50ae7-8f86-442f-bc39-9214f39f18c1.jsonl`
 
+## Resolution
+
+**Status**: Completed
+**Date**: 2026-02-22
+**Action**: improve
+
+### Changes Made
+- Added `ConfidenceGateConfig` dataclass to `scripts/little_loops/config.py`
+- Added `confidence_gate` schema to `config-schema.json`
+- Added Phase 2.5 gate check and `--force-implement` flag to `skills/manage-issue/SKILL.md`
+- Added `TestConfidenceGateConfig` and updated `TestCommandsConfig` in `scripts/tests/test_config.py`
+- Added "Confidence gate" option to init wizard Round 3 and threshold question in Round 5
+- Added `commands` area to configure skill (SKILL.md area mapping + areas.md config flow)
+- Updated `docs/API.md` and `docs/CONFIGURATION.md` with confidence gate documentation
+
 ---
 
-**Open** | Created: 2026-02-22 | Priority: P3
+**Completed** | Created: 2026-02-22 | Resolved: 2026-02-22 | Priority: P3

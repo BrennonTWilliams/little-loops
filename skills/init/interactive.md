@@ -140,6 +140,8 @@ questions:
         description: "Auto-handoff reminders at 80% context usage (works in all modes)"
       - label: "GitHub sync"
         description: "Sync issues with GitHub Issues via /ll:sync-issues"
+      - label: "Confidence gate"
+        description: "Block manage-issue implementation when confidence score is below threshold"
     multiSelect: true
 ```
 
@@ -292,6 +294,7 @@ Build this round dynamically based on previous responses. **Skip entirely if no 
 2. **worktree_files** - If user selected "Parallel processing" in Round 3
 3. **threshold** - If user selected "Context monitoring" in Round 3
 4. **sync_settings** - If user selected "GitHub sync" in Round 3
+5. **confidence_gate** - If user selected "Confidence gate" in Round 3
 
 If all conditions are false, skip this round entirely and proceed directly to Round 6 (Document Tracking).
 
@@ -352,6 +355,18 @@ questions:
       - label: "Yes"
         description: "Also close completed issues on GitHub"
     multiSelect: false
+
+  # ONLY include if user selected "Confidence gate" in Round 3:
+  - header: "Gate Threshold"
+    question: "What confidence score threshold should gate implementation?"
+    options:
+      - label: "85 (Recommended)"
+        description: "Enforces solid readiness before implementation"
+      - label: "70"
+        description: "Allows most issues through"
+      - label: "95"
+        description: "Strict; only near-perfect issues proceed"
+    multiSelect: false
 ```
 
 **Configuration from Round 5 responses:**
@@ -371,6 +386,11 @@ If GitHub sync is enabled:
 { "sync": { "enabled": true, "github": { "priority_labels": true, "sync_completed": false } } }
 ```
 
+If confidence gate is enabled:
+```json
+{ "commands": { "confidence_gate": { "enabled": true, "threshold": 85 } } }
+```
+
 **Notes:**
 - Only include `auto_handoff_threshold` if user selected a non-default value (not 80%)
 - Only include non-default values. If user selects exactly `[".env"]` (the default), the `worktree_copy_files` key can be omitted
@@ -378,6 +398,8 @@ If GitHub sync is enabled:
 - Only include `sync.github.priority_labels` if user selected "No" (true is the default)
 - Only include `sync.github.sync_completed` if user selected "Yes" (false is the default)
 - If both sync sub-settings are defaults, the `sync.github` object can be omitted (just include `sync.enabled: true`)
+- Only include `commands.confidence_gate.threshold` if user selected a non-default value (not 85)
+- If user selected 85 (the default threshold), just include `commands.confidence_gate.enabled: true`
 
 **MANDATORY NEXT STEP - DO NOT SKIP:**
 After completing Round 5 (or if Round 5 was skipped because no conditions matched), you MUST immediately proceed to **Round 6 (Document Tracking)** below. Round 6 is NOT optional. Do NOT display the summary yet. Do NOT say "All rounds complete." Continue reading and execute Round 6.
@@ -623,9 +645,9 @@ questions:
 |-------|-------|-----------|------------|
 | 1 | Core Settings | name, src_dir, test_cmd, lint_cmd | Always |
 | 2 | Additional Config | format_cmd, issues, scan_dirs, excludes | Always |
-| 3 | Features | features (multi-select: parallel, context_monitor, sync) | Always |
+| 3 | Features | features (multi-select: parallel, context_monitor, sync, confidence_gate) | Always |
 | **4** | **Product Analysis** | **product (opt-in for product-focused analysis)** | **Always** |
-| 5 | Advanced (dynamic) | issues_path?, worktree_files?, threshold? | Conditional |
+| 5 | Advanced (dynamic) | issues_path?, worktree_files?, threshold?, confidence_gate? | Conditional |
 | **6** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
 | 6.5 | Extended Config Gate | configure_extended? | Always |
 | 7 | Project Advanced (optional) | test_dir, build_cmd | If Gate=Configure |

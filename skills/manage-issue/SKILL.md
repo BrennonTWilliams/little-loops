@@ -15,7 +15,7 @@ arguments:
     description: Specific issue ID (e.g., BUG-004). If empty, finds highest priority.
     required: false
   - name: flags
-    description: "Optional flags: --plan-only (stop after planning), --resume (continue from checkpoint), --gates (enable phase gates for manual verification), --dry-run (alias for --plan-only), --quick (skip deep research and confidence check)"
+    description: "Optional flags: --plan-only (stop after planning), --resume (continue from checkpoint), --gates (enable phase gates for manual verification), --dry-run (alias for --plan-only), --quick (skip deep research and confidence check), --force-implement (bypass confidence gate)"
     required: false
 ---
 
@@ -148,6 +148,42 @@ If questions arise that cannot be resolved, mark the issue as `NOT_READY` rather
 ### Enhanced Plan Template
 
 See [templates.md](templates.md) for the full Enhanced Plan Template structure.
+
+---
+
+## Phase 2.5: Confidence Gate Check
+
+**Skip this phase if**: Action is `verify` or `plan`, `--quick` flag is set, or `config.commands.confidence_gate.enabled` is `false` (default).
+
+When `config.commands.confidence_gate.enabled` is `true`, check the issue's `confidence_score` frontmatter before proceeding to implementation:
+
+```
+READ confidence_score from issue YAML frontmatter
+
+IF confidence_score is absent:
+  IF --force-implement flag is set:
+    WARN: "⚠ Confidence gate: no confidence_score found. Proceeding due to --force-implement."
+    PROCEED to Phase 3
+  ELSE:
+    HALT with message:
+    "✗ Confidence gate: no confidence_score on file.
+     Run /ll:confidence-check [ID] to evaluate readiness, or use --force-implement to bypass."
+    STOP (do not proceed to Phase 3)
+
+ELSE IF confidence_score < config.commands.confidence_gate.threshold:
+  IF --force-implement flag is set:
+    WARN: "⚠ Confidence gate: score [SCORE]/100 is below threshold [THRESHOLD]. Proceeding due to --force-implement."
+    PROCEED to Phase 3
+  ELSE:
+    HALT with message:
+    "✗ Confidence gate: score [SCORE]/100 is below threshold [THRESHOLD].
+     Run /ll:confidence-check [ID] to evaluate readiness, or use --force-implement to override."
+    STOP (do not proceed to Phase 3)
+
+ELSE:
+  LOG: "✓ Confidence gate: score [SCORE]/100 meets threshold [THRESHOLD]."
+  PROCEED to Phase 3
+```
 
 ---
 
@@ -376,6 +412,7 @@ $ARGUMENTS
   - `--resume` - Resume from existing plan checkpoint
   - `--gates` - Enable phase gates for manual verification between phases
   - `--quick` - Skip deep research (Phase 1.5) and confidence check for faster planning
+  - `--force-implement` - Bypass confidence gate (when `commands.confidence_gate.enabled` is true)
 
 ---
 
@@ -405,4 +442,7 @@ $ARGUMENTS
 
 # Just verify an issue (no implementation)
 /ll:manage-issue bug verify BUG-123
+
+# Bypass confidence gate for a specific issue
+/ll:manage-issue enhancement improve ENH-100 --force-implement
 ```
