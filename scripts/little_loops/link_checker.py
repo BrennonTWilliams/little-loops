@@ -124,10 +124,16 @@ def is_internal_reference(url: str) -> bool:
     Returns:
         True if internal reference, False otherwise
     """
-    # Internal references start with # or ./ or ../ or just .md
-    return (
-        url.startswith("#") or url.startswith("./") or url.startswith("../") or url.endswith(".md")
-    )
+    # Internal references start with # or ./ or ../
+    if url.startswith("#") or url.startswith("./") or url.startswith("../"):
+        return True
+    # Ends with .md (plain file reference)
+    if url.endswith(".md"):
+        return True
+    # Relative markdown links with anchors (e.g. TROUBLESHOOTING.md#getting-help)
+    if ".md#" in url:
+        return True
+    return False
 
 
 def should_ignore_url(url: str, ignore_patterns: list[str]) -> bool:
@@ -234,6 +240,20 @@ def check_markdown_links(
 
                 # Check if internal reference
                 if is_internal_reference(url):
+                    result.internal_links += 1
+                    result.results.append(
+                        LinkResult(
+                            url=url,
+                            file=file_str,
+                            line=line_num,
+                            status="internal",
+                            link_text=link_text,
+                        )
+                    )
+                    continue
+
+                # Only check HTTP/HTTPS URLs; treat everything else as internal
+                if not url.startswith(("http://", "https://")):
                     result.internal_links += 1
                     result.results.append(
                         LinkResult(
