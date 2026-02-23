@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.16.0] - 2026-02-22
+
+### Added
+
+- **Confidence score blocking gate for manage-issue** - ConfidenceGateConfig with enabled/threshold settings, Phase 2.5 gate check, `--force-implement` flag, and configure skill integration (ENH-447)
+
+### Other
+
+- chore(issues): add ENH-446, ENH-447, ENH-448 to backlog (87c469f)
+
+[1.16.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.15.0...v1.16.0
+
 ## [1.15.0] - 2026-02-19
 
 ### Changed
