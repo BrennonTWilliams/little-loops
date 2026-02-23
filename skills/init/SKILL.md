@@ -9,7 +9,7 @@ allowed-tools:
   - Bash(mkdir:*)
 arguments:
   - name: flags
-    description: Optional flags (--interactive, --yes, --force)
+    description: Optional flags (--interactive, --yes, --force, --dry-run)
     required: false
 ---
 
@@ -25,6 +25,7 @@ $ARGUMENTS
   - `--interactive` - Full guided wizard mode with prompts for each option
   - `--yes` - Accept all defaults without confirmation
   - `--force` - Overwrite existing configuration file
+  - `--dry-run` - Preview generated configuration without writing files
 
 ## Process
 
@@ -35,11 +36,33 @@ FLAGS="${flags:-}"
 INTERACTIVE=false
 YES=false
 FORCE=false
+DRY_RUN=false
 
 if [[ "$FLAGS" == *"--interactive"* ]]; then INTERACTIVE=true; fi
 if [[ "$FLAGS" == *"--yes"* ]]; then YES=true; fi
 if [[ "$FLAGS" == *"--force"* ]]; then FORCE=true; fi
+if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
+
+# Validate: --interactive and --yes are mutually exclusive
+if [[ "$INTERACTIVE" == true ]] && [[ "$YES" == true ]]; then
+    echo "Error: Cannot combine --interactive and --yes"
+    echo "Usage: /ll:init [--interactive | --yes] [--force] [--dry-run]"
+    exit 1
+fi
 ```
+
+**Valid flag combinations:**
+
+| Combination | Behavior |
+|-------------|----------|
+| `--interactive` | Full guided wizard |
+| `--yes` | Accept all defaults, no confirmation |
+| `--force` | Overwrite existing config |
+| `--dry-run` | Preview config without writing files |
+| `--interactive --force` | Full wizard, allow overwriting existing config |
+| `--yes --force` | Accept defaults, overwrite existing config |
+| `--dry-run --force` | Preview what overwrite would produce |
+| `--interactive --yes` | **Error** — mutually exclusive |
 
 ### 2. Check Existing Configuration
 
@@ -171,18 +194,46 @@ Configuration Summary:
 
 ### 7. Confirm and Create
 
+If `--dry-run` flag IS set:
+- Skip confirmation (no files will be written)
+
 If `--interactive` flag IS set:
 - Skip confirmation and proceed immediately (user has already approved settings through the interactive workflow)
 
 If `--yes` flag IS set:
 - Skip confirmation and proceed
 
-Otherwise (neither `--interactive` nor `--yes`):
+Otherwise (neither `--interactive`, `--yes`, nor `--dry-run`):
 - Ask: "Create .claude/ll-config.json with these settings? (y/n)"
 - Wait for confirmation
 - If user declines, abort without changes
 
 ### 8. Write Configuration
+
+**If `--dry-run` is set**, output a preview instead of writing files:
+
+```
+=== DRY RUN: /ll:init ===
+
+--- Configuration Preview (.claude/ll-config.json) ---
+{
+  "$schema": "https://raw.githubusercontent.com/BrennonTWilliams/little-loops/main/config-schema.json",
+  "project": { ... },
+  "issues": { ... },
+  "scan": { ... }
+}
+
+--- Actions that would be taken ---
+  [write]  .claude/ll-config.json
+  [mkdir]  {{config.issues.base_dir}}/{bugs,features,enhancements,completed}
+  [update] .gitignore (add state file exclusions)
+
+=== END DRY RUN (no changes made) ===
+```
+
+Skip all Write, Edit, and Bash(mkdir) tool calls. Skip Steps 9 and 10 — the dry-run output above replaces them.
+
+**Otherwise**, proceed with normal file writes:
 
 1. Create `.claude/` directory if it doesn't exist:
    ```bash
@@ -288,6 +339,14 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 # Overwrite existing configuration
 /ll:init --force
 
+# Preview what init would generate without writing files
+/ll:init --dry-run
+
 # Combine flags
 /ll:init --yes --force
+/ll:init --interactive --force
+/ll:init --dry-run --force
+
+# Invalid: --interactive and --yes are mutually exclusive
+# /ll:init --interactive --yes  → Error
 ```

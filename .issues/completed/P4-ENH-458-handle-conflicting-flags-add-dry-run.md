@@ -3,7 +3,7 @@ type: ENH
 id: ENH-458
 title: Handle conflicting flags (--interactive --yes) and add --dry-run
 priority: P4
-status: open
+status: completed
 created: 2026-02-22
 ---
 
@@ -96,8 +96,20 @@ Conflicting flags silently produce undefined behavior, which is worse than an er
 - ENH-456
 - ENH-457
 
+## Resolution
+
+**Completed**: 2026-02-23
+
+### Changes Made
+- `skills/init/SKILL.md`: Added `--dry-run` flag parsing, `--interactive`/`--yes` conflict detection, dry-run preview output in Step 8, flag combinations table, and updated examples
+
+### Verification
+- All 2882 tests passed
+- Lint: All checks passed
+- Types: No issues found
+
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P4
+**Completed** | Created: 2026-02-22 | Resolved: 2026-02-23 | Priority: P4
