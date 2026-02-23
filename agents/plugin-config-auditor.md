@@ -56,12 +56,16 @@ You are a specialist at auditing Claude Code plugin component definitions. Your 
 
 4. **Audit Hook Configuration** (`hooks/hooks.json`)
    - Valid JSON syntax
-   - Recognized event types: SessionStart, UserPromptSubmit, PreToolUse, PermissionRequest, PostToolUse, PostToolUseFailure, Notification, SubagentStart, SubagentStop, Stop, TeammateIdle, TaskCompleted, PreCompact, SessionEnd
-   - Recognized handler types: `command`, `prompt`, `agent`
+   - Recognized event types (17 total):
+     - All handler types (command/prompt/agent): PreToolUse, PostToolUse, PostToolUseFailure, PermissionRequest, UserPromptSubmit, Stop, SubagentStop, TaskCompleted
+     - Command only: SessionStart, Notification, SubagentStart, TeammateIdle, PreCompact, SessionEnd, ConfigChange, WorktreeCreate, WorktreeRemove
+   - Per-event handler type restrictions: warn if `prompt` or `agent` handler is used on a command-only event
    - Common handler fields: `type` (required), `timeout`, `statusMessage`, `once`
    - Command hook fields: `command` (required), `async`
    - Prompt/agent hook fields: `prompt` (required), `model`
    - Timeout defaults by type: 600s for command, 30s for prompt, 60s for agent
+   - `once` field: only valid in skill-scoped hooks (skills/agents frontmatter), not in settings files
+   - `async` field: only valid for `command` type handlers; prompt/agent hooks cannot be async
    - Script/prompt file existence
    - No dangerous patterns (arbitrary code execution risks)
 
@@ -95,10 +99,13 @@ You are a specialist at auditing Claude Code plugin component definitions. Your 
 ### For Hooks Configuration
 
 - [ ] Valid JSON syntax
-- [ ] All event types are one of the 14 recognized types
+- [ ] All event types are one of the 17 recognized types
 - [ ] Handler type is `command`, `prompt`, or `agent`
+- [ ] `prompt`/`agent` handler types not used on command-only events (SessionStart, Notification, SubagentStart, TeammateIdle, PreCompact, SessionEnd, ConfigChange, WorktreeCreate, WorktreeRemove)
 - [ ] Required fields present per handler type (`command` for command hooks, `prompt` for prompt/agent hooks)
 - [ ] Timeouts are reasonable for handler type (defaults: 600s command, 30s prompt, 60s agent)
+- [ ] `async` field only present on `command` type handlers
+- [ ] `once` field only used in skill/agent frontmatter hooks, not settings file hooks
 - [ ] Optional fields are valid when present (`async`, `statusMessage`, `once`, `model`)
 - [ ] Referenced scripts/prompts exist
 - [ ] No shell injection vulnerabilities

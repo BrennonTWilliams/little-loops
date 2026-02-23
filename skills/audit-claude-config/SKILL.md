@@ -194,7 +194,7 @@ Audit all plugin component definitions:
 
 **Hooks** (hooks/hooks.json + hooks/prompts/*.md):
 - Valid JSON syntax
-- Recognized event types (14 official types)
+- Recognized event types (17 official types)
 - Handler types: command, prompt, agent
 - Timeout values (defaults: 600s command, 30s prompt, 60s agent)
 - Script/prompt file existence
