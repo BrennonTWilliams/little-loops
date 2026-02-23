@@ -49,7 +49,7 @@ You are tasked with performing a comprehensive audit of CLAUDE.md files and Clau
 ### Configuration Files
 - **Plugin Config**: `./.claude/ll-config.json` - Little-loops plugin config
 - **Config Schema**: `config-schema.json` - Configuration validation schema
-- **MCP Config**: `.mcp.json` or `~/.claude/.mcp.json` - MCP servers
+- **MCP Config**: `.mcp.json` (project), `~/.claude.json` mcpServers (user/local), `managed-mcp.json` (managed) - MCP servers across all scopes
 - **Output Styles**: `.claude/output-styles/` and `~/.claude/output-styles/` - Custom output style markdown files with YAML frontmatter
 - **LSP Servers**: `.lsp.json` (plugin root) - LSP server config; `lspServers` field in `.claude-plugin/plugin.json`
 - **Keybindings**: `~/.claude/keybindings.json` - Context-scoped key bindings
@@ -235,14 +235,17 @@ Locate and audit all configuration files:
 **Files to find and validate**:
 - .claude/ll-config.json (validate against config-schema.json)
 - config-schema.json (check for completeness)
-- .mcp.json or ~/.claude/.mcp.json
+- .mcp.json (project-scope MCP servers)
+- ~/.claude.json → mcpServers field (user-scope MCP servers)
+- ~/.claude.json → projects → <project-path> → mcpServers (local-scope MCP servers per project)
+- managed-mcp.json at managed settings directory (macOS: /Library/Application Support/ClaudeCode/managed-mcp.json, Linux: /etc/claude-code/managed-mcp.json)
 
 **Settings Hierarchy** (audit all scopes, highest precedence first):
 - Managed: /Library/Application Support/ClaudeCode/managed-settings.json (macOS) or /etc/claude-code/managed-settings.json (Linux)
 - User: ~/.claude/settings.json
 - Project: .claude/settings.json
 - Local: .claude/settings.local.json
-- Global prefs: ~/.claude.json (MCP configs, preferences — validate JSON syntax only)
+- Global prefs: ~/.claude.json (MCP configs at user/local scope — extract mcpServers and per-project mcpServers for MCP audit; preferences — validate JSON syntax only)
 
 For each settings file found:
 1. Check exists/not exists
@@ -330,11 +333,23 @@ For each config file (non-settings):
 4. Verify path references exist
 5. Check for reasonable values (timeouts, worker counts)
 
-For MCP config specifically:
-- Server commands exist and are executable
-- No duplicate server names
-- Environment variables properly referenced
-- Appropriate scope (global vs project)
+For MCP config across ALL scopes (project, user, local, managed):
+- Discover MCP servers at each scope:
+  - Project: .mcp.json at project root
+  - User: ~/.claude.json top-level mcpServers field
+  - Local: ~/.claude.json → projects → <project-path> → mcpServers (per-project local overrides)
+  - Managed: managed-mcp.json at system directory (macOS: /Library/Application Support/ClaudeCode/, Linux: /etc/claude-code/)
+- For each server, detect transport type from fields present:
+  - stdio transport (has `command` field): verify command exists and is executable; validate optional `args` (array), `env` (object), `cwd` (string)
+  - http/sse transport (has `url` field): verify url is well-formed (valid URL format); validate optional `headers` (object of string key-value pairs)
+  - Flag entries with neither `command` nor `url` as WARNING (unknown transport)
+- No duplicate server names within a single scope
+- ${VAR} and ${VAR:-default} environment variable expansion validation:
+  - Scan `command`, `args`, `env`, `url`, `headers` fields for ${...} patterns
+  - Valid syntax: ${VAR_NAME} or ${VAR_NAME:-default_value} (no nested expansions)
+  - INFO if referenced env var is not currently set (may be set at runtime)
+  - WARNING for malformed syntax (e.g., ${}, ${VAR:-}, unclosed ${, nested ${${...}})
+- Record per-scope server inventory for Wave 2: server name, scope, transport type
 
 **Output Styles** (.claude/output-styles/ and ~/.claude/output-styles/):
 - Check if directory exists; list all .md files found
@@ -371,7 +386,8 @@ Return:
 - JSON validation results
 - Schema compliance issues
 - Path reference validity
-- List of all server names for Wave 2
+- MCP server inventory per scope (server name, scope, transport type) for Wave 2
+- MCP env var expansion issues found for Wave 2
 - List of all referenced paths for Wave 2
 - Settings hierarchy inventory: which files exist at each scope (managed/user/project/local) for Wave 2
 - Per-scope settings key inventory: all keys found in each settings file for Wave 2
@@ -399,6 +415,8 @@ After all Wave 1 agents complete:
    - All command references (/ll:X) found in CLAUDE.md
    - All command references (/ll:X) found in skill files
    - All MCP tool/server references found
+   - MCP server inventory per scope (server name, scope, transport type)
+   - MCP approval settings: enableAllProjectMcpServers, enabledMcpjsonServers, disabledMcpjsonServers, allowedMcpServers, deniedMcpServers (from settings audit)
    - All file paths mentioned in configs
    - Settings hierarchy inventory (which files exist per scope, all keys per file)
    - Settings scope conflict data (same key at multiple scopes with different values)
@@ -497,24 +515,30 @@ References to validate:
 [INSERT COMPILED REFERENCE LISTS FROM WAVE 1]
 
 Check:
-1. **CLAUDE.md → MCP**: MCP tools mentioned exist in .mcp.json
-2. **CLAUDE.md → Commands**: /ll:X references have matching commands/X.md
-3. **Hooks → Scripts**: Bash scripts referenced are executable
-4. **Config → Paths**: File paths in config files exist in filesystem
-5. **Memory Hierarchy**: Check for conflicts between managed policy, user memory, and project memory
-6. **Rules Path Overlap**: Detect overlapping path patterns across rules files
-7. **Local vs Project**: Check for conflicts between CLAUDE.local.md and project CLAUDE.md
-8. **outputStyle → Output Style File**: If `outputStyle` is set in any settings scope, verify the referenced output style file exists in .claude/output-styles/ or ~/.claude/output-styles/ (use effective value considering scope precedence)
-9. **respectGitignore → .claudeignore**: If `respectGitignore` is false (or absent) but .claudeignore exists, warn about potential confusion; if `respectGitignore` is true but no .claudeignore or .gitignore exists, note that ignore file may be missing
-10. **Settings → Permission Overlap**: Detect permission rules at different scopes that may conflict (e.g., `allow` at user scope contradicted by `deny` at project scope for same pattern)
-11. **Settings → Managed-Only Keys**: Flag managed-only keys (`disableBypassPermissionsMode`, `allowManagedHooksOnly`, `allowManagedPermissionRulesOnly`, `allowedMcpServers`, `deniedMcpServers`, `strictKnownMarketplaces`, `forceLoginMethod`, `forceLoginOrgUUID`, `companyAnnouncements`) found in non-managed settings files — these are silently ignored at runtime
-12. **Settings → Deprecated Keys**: Flag `includeCoAuthoredBy` in any settings file with guidance to use `attribution` instead
+1. **CLAUDE.md → MCP**: MCP tools mentioned exist in any MCP scope (project, user, local, managed)
+2. **MCP Scope Conflicts**: Detect same server name defined at multiple scopes; report which scope takes precedence (managed > local > project > user)
+3. **MCP Approval → Servers**: Cross-reference enabledMcpjsonServers/disabledMcpjsonServers against actual server names in .mcp.json; flag references to non-existent servers as WARNING
+4. **MCP Managed Policy → Servers**: If allowedMcpServers/deniedMcpServers present in managed settings, cross-reference against all discovered server names across all scopes; flag servers blocked by managed deny that are configured in project/user scope as WARNING
+5. **CLAUDE.md → Commands**: /ll:X references have matching commands/X.md
+6. **Hooks → Scripts**: Bash scripts referenced are executable
+7. **Config → Paths**: File paths in config files exist in filesystem
+8. **Memory Hierarchy**: Check for conflicts between managed policy, user memory, and project memory
+9. **Rules Path Overlap**: Detect overlapping path patterns across rules files
+10. **Local vs Project**: Check for conflicts between CLAUDE.local.md and project CLAUDE.md
+11. **outputStyle → Output Style File**: If `outputStyle` is set in any settings scope, verify the referenced output style file exists in .claude/output-styles/ or ~/.claude/output-styles/ (use effective value considering scope precedence)
+12. **respectGitignore → .claudeignore**: If `respectGitignore` is false (or absent) but .claudeignore exists, warn about potential confusion; if `respectGitignore` is true but no .claudeignore or .gitignore exists, note that ignore file may be missing
+13. **Settings → Permission Overlap**: Detect permission rules at different scopes that may conflict (e.g., `allow` at user scope contradicted by `deny` at project scope for same pattern)
+14. **Settings → Managed-Only Keys**: Flag managed-only keys (`disableBypassPermissionsMode`, `allowManagedHooksOnly`, `allowManagedPermissionRulesOnly`, `allowedMcpServers`, `deniedMcpServers`, `strictKnownMarketplaces`, `forceLoginMethod`, `forceLoginOrgUUID`, `companyAnnouncements`) found in non-managed settings files — these are silently ignored at runtime
+15. **Settings → Deprecated Keys**: Flag `includeCoAuthoredBy` in any settings file with guidance to use `attribution` instead
 
 Return:
 - External reference validation table
 - Hierarchy conflicts detected with recommended resolution
 - Rules path overlap warnings
 - List of missing/broken external references
+- MCP scope conflict table (server name, scopes, precedence winner)
+- MCP approval cross-reference results (enabledMcpjsonServers/disabledMcpjsonServers vs actual servers)
+- MCP managed policy results (allowedMcpServers/deniedMcpServers vs configured servers)
 - outputStyle cross-reference result
 - respectGitignore alignment result
 - Settings permission overlap warnings
@@ -542,6 +566,7 @@ Synthesize all findings from Waves 1 and 2 into prioritized fix suggestions:
 - Invalid JSON in config files
 - Missing required config keys
 - Broken MCP server paths
+- MCP servers blocked by managed deny policy while configured in project/user scope
 
 **Warning (Should Fix)** - May cause issues:
 - Missing @import files
@@ -552,6 +577,9 @@ Synthesize all findings from Waves 1 and 2 into prioritized fix suggestions:
 - Invalid glob patterns in rules frontmatter
 - Overlapping path patterns in rules files
 - Suboptimal timeout values
+- MCP scope conflicts (same server name at multiple scopes)
+- MCP approval settings referencing non-existent servers
+- Malformed ${VAR} expansion syntax in MCP configs
 - Missing command examples
 - Incomplete agent descriptions
 

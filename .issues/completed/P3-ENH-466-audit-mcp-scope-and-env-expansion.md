@@ -83,11 +83,23 @@ Extend the Wave 1 MCP config auditor to discover configs across all scopes: user
 
 ## Blocked By
 
-- ENH-464
-- ENH-465
+- ~~ENH-464~~ (completed)
+- ~~ENH-465~~ (completed)
+
+---
+
+## Resolution
+
+**Implemented** on 2026-02-23.
+
+### Changes Made
+- `skills/audit-claude-config/SKILL.md`: Extended Wave 1 Task 3 to discover MCP configs across all 4 scopes (project, user, local, managed); added HTTP/SSE transport validation; added `${VAR}`/`${VAR:-default}` expansion syntax validation; extended Wave 2 External Consistency Checker with MCP scope conflict detection, approval settings cross-referencing, and managed policy checks; renumbered Wave 2 check list
+- `skills/audit-claude-config/report-template.md`: Added MCP Configuration (All Scopes) section with Server Inventory, Environment Variable Expansion, MCP Scope Conflicts, and MCP Approval Settings tables; updated health score note
+- `agents/plugin-config-auditor.md`: Extended agent mcpServers validation to cover stdio + http/sse transports and `${VAR}` expansion syntax
+- `agents/consistency-checker.md`: Added MCP multi-scope rows to Cross-Reference Matrix; extended Step 1 collection; added MCP Scope Conflicts, MCP Approval, and MCP Managed Policy output tables and summary rows
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P3
+**Resolved** | Created: 2026-02-22 | Resolved: 2026-02-23 | Priority: P3

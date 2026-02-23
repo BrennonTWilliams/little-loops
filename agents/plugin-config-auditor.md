@@ -45,7 +45,11 @@ You are a specialist at auditing Claude Code plugin component definitions. Your 
      - `background`: boolean if present
      - `isolation`: must be `worktree` or absent
      - `memory`: must be one of `user`, `project`, `local` if present; warn (INFO) if corresponding memory directory doesn't exist yet (`.claude/agent-memory/` for project, `.claude/agent-memory-local/` for local, `~/.claude/agent-memory/` for user)
-     - `mcpServers`: each entry must have a `command` field with valid structure
+     - `mcpServers`: validate per transport type:
+       - stdio (has `command` field): must have `command` (string); optional `args` (array), `env` (object), `cwd` (string)
+       - http/sse (has `url` field): must have `url` (valid URL format); optional `headers` (object of string key-value pairs)
+       - Flag entries with neither `command` nor `url` as WARNING (unknown transport)
+       - Validate `${VAR}` / `${VAR:-default}` expansion syntax in `command`, `args`, `env`, `url`, `headers` fields (WARNING if malformed)
      - `skills`: each entry should be a skill directory name (cross-referenced in Wave 2)
      - `permissionMode`: must be one of `default`, `acceptEdits`, `dontAsk`, `bypassPermissions`, `plan`
      - `maxTurns`: positive integer if present
@@ -97,7 +101,8 @@ You are a specialist at auditing Claude Code plugin component definitions. Your 
 - [ ] `background` is boolean if present (WARNING if non-boolean)
 - [ ] `isolation` is `worktree` or absent (WARNING if other value)
 - [ ] `memory` is one of `user`, `project`, `local` if present (WARNING if invalid value; INFO if memory directory doesn't exist yet)
-- [ ] `mcpServers` entries have `command` field (WARNING if malformed)
+- [ ] `mcpServers` entries validated per transport type: stdio has `command`, http/sse has `url` (WARNING if missing required fields or unknown transport)
+- [ ] `mcpServers` `${VAR}` / `${VAR:-default}` expansion syntax valid in all fields (WARNING if malformed)
 - [ ] `skills` entries are valid skill names (noted for Wave 2 cross-reference)
 - [ ] `permissionMode` is one of: `default`, `acceptEdits`, `dontAsk`, `bypassPermissions`, `plan` (WARNING if invalid)
 - [ ] `maxTurns` is a positive integer if present (WARNING if non-positive or non-integer)

@@ -69,7 +69,10 @@ You are a specialist at validating cross-component consistency in Claude Code pl
 | .claude/ll-config.json | config-schema.json | Values match schema types |
 | CLAUDE.md | commands/*.md | /ll:X mentioned → commands/X.md exists |
 | skills/*/SKILL.md | commands/*.md | /ll:X referenced → commands/X.md or skills/X/ exists |
-| CLAUDE.md | .mcp.json | MCP tool X mentioned → server provides it |
+| CLAUDE.md | MCP configs (all scopes) | MCP tool X mentioned → server exists in any scope (project, user, local, managed) |
+| MCP configs (multi-scope) | MCP configs | Same server name at multiple scopes → report precedence (managed > local > project > user) |
+| settings files | MCP configs (all scopes) | enabledMcpjsonServers/disabledMcpjsonServers → server names exist in .mcp.json |
+| managed-settings.json | MCP configs (all scopes) | allowedMcpServers/deniedMcpServers → cross-reference all scopes; flag managed deny overriding project/user config |
 | hooks/hooks.json | scripts | "command": ["bash", "X"] → X is executable |
 | .claude/rules/*.md | YAML frontmatter | Frontmatter parses, `paths` is valid array |
 | .claude/rules/ | symlink targets | Symlinks resolve to existing files |
@@ -98,6 +101,8 @@ From Wave 1 findings or by scanning:
 - Extract all prompt paths from hooks.json
 - Extract all @import references from CLAUDE.md files
 - Extract all MCP tool mentions from CLAUDE.md files
+- Extract MCP server inventory per scope (project, user, local, managed) from Wave 1
+- Extract MCP approval settings (enableAllProjectMcpServers, enabledMcpjsonServers, disabledMcpjsonServers, allowedMcpServers, deniedMcpServers) from settings audit
 - Extract all file paths mentioned in instructions
 - Extract all /ll:X command references from skill file content (below frontmatter)
 - Extract all rules files with frontmatter from `.claude/rules/` and `~/.claude/rules/`
@@ -246,9 +251,29 @@ Structure your consistency check like this:
 | ... | ... | ... | ... |
 
 #### Agents → mcpServers (frontmatter)
-| Agent File | Server Name | Has Command | Command Valid | Status |
-|------------|-------------|-------------|--------------|--------|
+| Agent File | Server Name | Has Command/URL | Transport Valid | Status |
+|------------|-------------|-----------------|----------------|--------|
 | agents/X.md | server-name | Yes/No | Yes/No | OK/WARNING |
+| ... | ... | ... | ... | ... |
+
+#### MCP Scope Conflicts
+| Server Name | Scope 1 | Scope 2 | Precedence Winner | Status |
+|-------------|---------|---------|-------------------|--------|
+| server-x | project (.mcp.json) | user (~/.claude.json) | project | INFO |
+| ... | ... | ... | ... | ... |
+
+#### MCP Approval → Servers
+| Setting | Value | Server Exists | Status |
+|---------|-------|---------------|--------|
+| enabledMcpjsonServers | ["server-x"] | Yes/No | OK/WARNING |
+| disabledMcpjsonServers | ["server-y"] | Yes/No | OK/WARNING |
+| ... | ... | ... | ... |
+
+#### MCP Managed Policy → Servers
+| Policy | Server | Also Configured In | Effective | Status |
+|--------|--------|--------------------|-----------|--------|
+| deniedMcpServers | server-x | project (.mcp.json) | Blocked by managed deny | WARNING |
+| allowedMcpServers | server-y | — | Allowed by policy | OK |
 | ... | ... | ... | ... | ... |
 
 #### Settings → Scope Conflicts
@@ -333,6 +358,9 @@ Structure your consistency check like this:
 | Agents → Skills | X | Y | Z |
 | Skills → Agents | X | Y | Z |
 | Agents → mcpServers | X | Y | Z |
+| MCP Scope Conflicts | X | Y | Z |
+| MCP Approval → Servers | X | Y | Z |
+| MCP Managed Policy | X | Y | Z |
 | Settings → Scope Conflicts | X | Y | Z |
 | Settings → Permission Overlaps | X | Y | Z |
 | Settings → Inline Hooks | X | Y | Z |

@@ -88,6 +88,32 @@ This file contains the format and structure for the final audit report generated
 |------|--------|-------|--------|--------|
 [Table rows]
 
+### MCP Configuration (All Scopes)
+
+#### MCP Server Inventory
+| Server Name | Scope | Transport | Command/URL | Env Vars | Status |
+|-------------|-------|-----------|-------------|----------|--------|
+[Table rows across all scopes: project (.mcp.json), user (~/.claude.json), local (~/.claude.json per-project), managed (managed-mcp.json)]
+
+#### Environment Variable Expansion
+| Server | Field | Expression | Env Var Set | Status |
+|--------|-------|------------|-------------|--------|
+[Table rows for ${VAR} references found, or "No environment variable expansions found"]
+
+#### MCP Scope Conflicts
+| Server Name | Scope 1 | Scope 2 | Precedence Winner | Status |
+|-------------|---------|---------|-------------------|--------|
+[Table rows, or "No scope conflicts detected"]
+
+#### MCP Approval Settings
+| Setting | Scope | Value | Servers Matched | Issues |
+|---------|-------|-------|-----------------|--------|
+| enableAllProjectMcpServers | [scope] | true/false | N/A | — |
+| enabledMcpjsonServers | [scope] | [list] | X of Y exist | OK/WARNING |
+| disabledMcpjsonServers | [scope] | [list] | X of Y exist | OK/WARNING |
+| allowedMcpServers | managed | [list] | X of Y configured | OK/WARNING |
+| deniedMcpServers | managed | [list] | X blocked | WARNING if blocking active servers |
+
 ### Settings Hierarchy
 
 #### Settings File Inventory
@@ -225,7 +251,7 @@ This file contains the format and structure for the final audit report generated
 | Rules files quality | X/10 | [Frontmatter, paths, symlinks] |
 | Plugin components | X/10 | [Brief note] |
 | Hooks config | X/10 | [Brief note] |
-| MCP config | X/10 | [Brief note] |
+| MCP config | X/10 | [Multi-scope discovery, env var expansion, transport validation, approval cross-reference] |
 | Settings hierarchy | X/10 | [Key validation, scope conflicts, deprecated/managed-only keys, permission rules] |
 | Cross-config consistency | X/10 | [Brief note] |
 | Extended config surfaces | X/10 | [Output styles, LSP, keybindings, .claudeignore, plugin settings] |
