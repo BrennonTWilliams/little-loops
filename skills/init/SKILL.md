@@ -78,7 +78,7 @@ Based on detected project type, use the presets from [presets.md](presets.md) to
 
 ### 5. Interactive Mode (if --interactive)
 
-If `--interactive` flag is set, follow the interactive wizard flow in [interactive.md](interactive.md) which guides the user through 7-12 rounds of configuration questions, with a progress indicator shown at each step.
+If `--interactive` flag is set, follow the interactive wizard flow in [interactive.md](interactive.md) which guides the user through 7-13 rounds of configuration questions, with a progress indicator shown at each step.
 
 ### 6. Display Summary
 
@@ -104,12 +104,15 @@ Configuration Summary:
 
   [ISSUES]
   issues.base_dir:    [base_dir]
+  issues.completed_dir: [completed_dir]          # Only show if non-default (not "completed")
 
   [SCAN]
   scan.focus_dirs:    [focus_dirs]
   scan.exclude_patterns: [exclude_patterns]
 
   [PARALLEL]                              # Only show if configured
+  parallel.max_workers: [workers]          # Only show if non-default (not 2)
+  parallel.timeout_per_issue: [seconds]    # Only show if non-default (not 3600)
   parallel.worktree_copy_files: [files]
 
   [CONTEXT MONITOR]                       # Only show if enabled
@@ -120,6 +123,10 @@ Configuration Summary:
   sync.enabled: true
   sync.github.priority_labels: [true/false]    # Only if non-default
   sync.github.sync_completed: [true/false]     # Only if non-default
+
+  [COMMANDS]                              # Only show if pre/post implement configured in Round 8
+  commands.pre_implement: [command]        # Only show if configured
+  commands.post_implement: [command]       # Only show if configured
 
   [SPRINTS]                               # Only show if "Sprint management" selected in Round 3b
   sprints.default_max_workers: [workers]  # Only if non-default (not 4)

@@ -3,7 +3,7 @@ type: ENH
 id: ENH-455
 title: Expand parallel, commands, and issues coverage in init wizard
 priority: P3
-status: open
+status: completed
 created: 2026-02-22
 ---
 
@@ -38,10 +38,6 @@ The most commonly-needed parallel settings (`max_workers`, `timeout_per_issue`) 
 
 ## Motivation
 
-Users who enable parallel processing frequently need to set `max_workers` based on their machine's CPU count and `timeout_per_issue` based on typical issue complexity. These are the two most likely parallel settings to need non-default values, yet init doesn't ask for them.
-
-## Motivation
-
 Users who enable parallel processing commonly need to set `max_workers` based on their machine's CPU count and `timeout_per_issue` based on typical issue complexity, but init silently applies defaults without surfacing these options. Similarly, `completed_dir` alongside `base_dir` is a natural pairing that users expect to configure together. The gap between what init configures and what users typically need forces manual `ll-config.json` editing as a first step after onboarding.
 
 ## Proposed Solution
@@ -49,7 +45,7 @@ Users who enable parallel processing commonly need to set `max_workers` based on
 For each section, add key questions when the feature is selected:
 
 1. **parallel** (when selected in Round 3): Add `max_workers` (2/3/4) and `timeout_per_issue` (1h/2h/4h) to Round 5
-2. **commands**: Add `pre_implement`/`post_implement` as an option in Round 7 (Project Advanced) since they're power-user settings
+2. **commands**: Add `pre_implement`/`post_implement` as an option in Round 8 (Project Advanced) since they're power-user settings
 3. **issues**: Add `completed_dir` question to Round 2 alongside `base_dir`
 
 Less critical fields (`p0_sequential`, `max_merge_retries`, `custom_verification`, `templates_dir`, `priorities`) can remain configure-only.
@@ -64,6 +60,9 @@ Less critical fields (`p0_sequential`, `max_merge_retries`, `custom_verification
 ### Files to Modify
 - `skills/init/interactive.md` — Round 2 (add completed_dir question); Round 5 (add max_workers and timeout_per_issue when parallel selected); Round 7 (add pre_implement/post_implement)
 - `config-schema.json` — reference for field defaults and valid values
+
+### Dependent Files (Callers/Importers)
+- `skills/init/SKILL.md` — references interactive.md and displays config summary
 
 ### Similar Patterns
 - Existing Round 3 → Round 5 pattern for worktree_copy_files question
@@ -81,7 +80,7 @@ Less critical fields (`p0_sequential`, `max_merge_retries`, `custom_verification
 
 1. Add `completed_dir` question to Round 2 of `interactive.md` alongside `base_dir`
 2. Add `max_workers` (2/3/4 option select) and `timeout_per_issue` (1h/2h/4h) to Round 5 when parallel is selected
-3. Add `pre_implement`/`post_implement` as an optional question pair in Round 7 (Project Advanced)
+3. Add `pre_implement`/`post_implement` as an optional question pair in Round 8 (Project Advanced)
 4. Verify Round 5 question count stays within 4-question limit (or applies overflow splitting from BUG-449 fix)
 5. Update SKILL.md config summary display to show newly configurable fields
 
@@ -102,12 +101,41 @@ Less critical fields (`p0_sequential`, `max_merge_retries`, `custom_verification
 
 ## Blocked By
 
-- BUG-449
-- ENH-451
-- ENH-452
+- ~~BUG-449~~ (completed)
+- ~~ENH-451~~ (completed)
+- ~~ENH-452~~ (completed)
+
+---
+
+## Resolution
+
+**Resolved**: 2026-02-23
+
+### Changes Made
+
+1. **`skills/init/interactive.md`**:
+   - Added `completed_dir` question to Round 5 (conditional on issues enabled in Round 2)
+   - Added `parallel_workers` (max_workers: 2/3/4) question to Round 5 (conditional on Parallel processing)
+   - Added `parallel_timeout` (timeout_per_issue: 1h/2h/4h) question to Round 5 (conditional on Parallel processing)
+   - Added `pre_implement`/`post_implement` hooks question to Round 8 (Project Advanced)
+   - Updated condition list from 8 to 11 entries
+   - Updated ACTIVE counting to reflect new conditions (parallel now adds 3 instead of 1)
+   - Extended overflow handling to support Round 5c for >8 active conditions
+   - Updated summary table at bottom of file
+   - Updated progress tracking comment for new max rounds (7-13)
+
+2. **`skills/init/SKILL.md`**:
+   - Added `issues.completed_dir` to config summary display (under ISSUES section)
+   - Added `parallel.max_workers` and `parallel.timeout_per_issue` to config summary display (under PARALLEL section)
+   - Added new COMMANDS section showing `pre_implement`/`post_implement` when configured
+   - Updated interactive round count from 7-12 to 7-13
+
+### Design Decision
+
+`completed_dir` was placed in Round 5 (as a conditional question when issues are enabled) instead of Round 2 as originally proposed, because Round 2 is at the 4-question AskUserQuestion limit. This follows the existing pattern used by `issues_path`.
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P3
+**Completed** | Created: 2026-02-22 | Resolved: 2026-02-23 | Priority: P3
