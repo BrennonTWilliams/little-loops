@@ -41,11 +41,25 @@ You are a specialist at auditing Claude Code plugin component definitions. Your 
    - allowed_tools appropriateness for stated purpose
    - Model selection justification (sonnet vs haiku)
    - Example quality and relevance
+   - Frontmatter field validation:
+     - `background`: boolean if present
+     - `isolation`: must be `worktree` or absent
+     - `memory`: must be one of `user`, `project`, `local` if present; warn (INFO) if corresponding memory directory doesn't exist yet (`.claude/agent-memory/` for project, `.claude/agent-memory-local/` for local, `~/.claude/agent-memory/` for user)
+     - `mcpServers`: each entry must have a `command` field with valid structure
+     - `skills`: each entry should be a skill directory name (cross-referenced in Wave 2)
+     - `permissionMode`: must be one of `default`, `acceptEdits`, `dontAsk`, `bypassPermissions`, `plan`
+     - `maxTurns`: positive integer if present
+     - `disallowedTools`: entries must not overlap with `tools` entries
 
 2. **Audit Skill Definitions** (`skills/*.md`)
    - Description with trigger keywords
    - Content structure and progressive disclosure
    - Actionable guidance quality
+   - Frontmatter field validation:
+     - `once`: boolean if present (run only once per session)
+     - `context`: must be `fork` or absent; if `fork`, should have a corresponding `agent` field (WARNING if `context: fork` without `agent`)
+     - `agent`: must be a valid agent name (cross-referenced in Wave 2); only meaningful with `context: fork`
+     - `hooks`: entries must follow hook validation rules — same event types (17 recognized), handler types (`command`/`prompt`/`agent`), and field requirements as hooks.json validation
 
 3. **Audit Command Definitions** (`commands/*.md`)
    - Frontmatter completeness (description, arguments)
@@ -80,6 +94,14 @@ You are a specialist at auditing Claude Code plugin component definitions. Your 
 - [ ] Model specified and appropriate (sonnet for analysis, haiku for simple tasks)
 - [ ] System prompt provides clear guidance
 - [ ] No contradictory instructions
+- [ ] `background` is boolean if present (WARNING if non-boolean)
+- [ ] `isolation` is `worktree` or absent (WARNING if other value)
+- [ ] `memory` is one of `user`, `project`, `local` if present (WARNING if invalid value; INFO if memory directory doesn't exist yet)
+- [ ] `mcpServers` entries have `command` field (WARNING if malformed)
+- [ ] `skills` entries are valid skill names (noted for Wave 2 cross-reference)
+- [ ] `permissionMode` is one of: `default`, `acceptEdits`, `dontAsk`, `bypassPermissions`, `plan` (WARNING if invalid)
+- [ ] `maxTurns` is a positive integer if present (WARNING if non-positive or non-integer)
+- [ ] `disallowedTools` entries don't overlap with `tools` entries (WARNING if overlap found)
 
 ### For Each Skill File
 
@@ -87,6 +109,11 @@ You are a specialist at auditing Claude Code plugin component definitions. Your 
 - [ ] Content is actionable and specific
 - [ ] Progressive disclosure (overview -> details)
 - [ ] No duplication with existing agent capabilities
+- [ ] `once` is boolean if present (WARNING if non-boolean)
+- [ ] `context` is `fork` or absent (WARNING if other value)
+- [ ] `context: fork` has a corresponding `agent` field (WARNING if missing; agent uses default if absent)
+- [ ] `agent` value is a valid agent name (noted for Wave 2 cross-reference)
+- [ ] `hooks` entries follow hook validation rules: valid event types, handler types, required fields per type
 
 ### For Each Command File
 
@@ -172,6 +199,9 @@ Structure your audit like this:
 - Commands reference agents: [list of subagent_type values found]
 - Hooks reference prompts: [list of prompt file paths]
 - CLAUDE.md references: [list of @import files]
+- Agent skills references: [list of skill names from agent `skills` fields]
+- Skill agent references: [list of agent names from skill `agent` fields]
+- Agent mcpServers: [list of mcpServer entries from agent frontmatter]
 ```
 
 ## Severity Levels

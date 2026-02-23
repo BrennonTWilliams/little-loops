@@ -41,6 +41,9 @@ You are a specialist at validating cross-component consistency in Claude Code pl
    - Config → Schema (ll-config.json complies with config-schema.json)
    - CLAUDE.md → @imports (referenced files exist)
    - Skills → Commands (/ll:X references in skill content resolve to valid commands)
+   - Agents → Skills (agent `skills` frontmatter field → skill directories exist)
+   - Skills → Agents (skill `agent` frontmatter field → agent files exist)
+   - Agents → mcpServers (agent `mcpServers` frontmatter entries have valid structure)
 
 2. **Validate External References**
    - CLAUDE.md → MCP tools (referenced tools exist in .mcp.json)
@@ -76,6 +79,9 @@ You are a specialist at validating cross-component consistency in Claude Code pl
 | .claude/settings.local.json | output-styles/ | `outputStyle` value → output style file exists in .claude/output-styles/ or ~/.claude/output-styles/ |
 | .claude-plugin/plugin.json | .lsp.json | `lspServers` field present → .lsp.json exists at plugin root (and vice versa) |
 | .claude/settings.local.json | .claudeignore | `respectGitignore` value aligned with .claudeignore existence |
+| agents/*.md | skills/*/ | `skills` frontmatter field → skill directory exists |
+| skills/*/SKILL.md | agents/*.md | `agent` frontmatter field → agent file exists |
+| agents/*.md | mcpServers structure | `mcpServers` entries have valid `command` field |
 
 ## Validation Process
 
@@ -96,6 +102,9 @@ From Wave 1 findings or by scanning:
 - Check `lspServers` field presence in `.claude-plugin/plugin.json` (if file exists)
 - Check existence of `.lsp.json` at plugin root
 - Check existence of `.claudeignore` at project root
+- Extract `skills` field values from agent frontmatter (`agents/*.md`)
+- Extract `agent` field values from skill frontmatter (`skills/*/SKILL.md`)
+- Extract `mcpServers` entries from agent frontmatter (`agents/*.md`)
 
 ### Step 2: Validate Each Reference
 For each reference found:
@@ -206,6 +215,24 @@ Structure your consistency check like this:
 |---------|-------|----------------------|-----------|--------|
 | respectGitignore | [value or not set] | Yes/No | OK/WARNING | [note] |
 
+#### Agents → Skills (frontmatter)
+| Agent File | Skill Referenced | Skill Directory | Status |
+|------------|-----------------|-----------------|--------|
+| agents/X.md | skill-name | skills/skill-name/ | OK/MISSING |
+| ... | ... | ... | ... |
+
+#### Skills → Agents (frontmatter)
+| Skill File | Agent Referenced | Agent File | Status |
+|------------|-----------------|------------|--------|
+| skills/X/SKILL.md | agent-name | agents/agent-name.md | OK/MISSING |
+| ... | ... | ... | ... |
+
+#### Agents → mcpServers (frontmatter)
+| Agent File | Server Name | Has Command | Command Valid | Status |
+|------------|-------------|-------------|--------------|--------|
+| agents/X.md | server-name | Yes/No | Yes/No | OK/WARNING |
+| ... | ... | ... | ... | ... |
+
 ### Conflicts Detected
 
 | Location 1 | Location 2 | Conflict | Severity |
@@ -245,6 +272,9 @@ Structure your consistency check like this:
 | Output Styles → Settings | X | Y | Z |
 | LSP → Plugin Config | X | Y | Z |
 | .claudeignore → respectGitignore | X | Y | Z |
+| Agents → Skills | X | Y | Z |
+| Skills → Agents | X | Y | Z |
+| Agents → mcpServers | X | Y | Z |
 | Conflicts | - | - | Z |
 | **Total** | X | Y | **Z** |
 

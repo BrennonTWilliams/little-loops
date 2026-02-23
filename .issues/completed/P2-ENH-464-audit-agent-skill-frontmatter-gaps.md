@@ -97,8 +97,21 @@ Extend the `plugin-config-auditor` agent prompt to validate the additional front
 
 - ENH-466
 
+## Resolution
+
+**Completed**: 2026-02-22
+
+### Changes Made
+- `agents/plugin-config-auditor.md` — Added 8 agent frontmatter field validation rules (background, isolation, memory, mcpServers, skills, permissionMode, maxTurns, disallowedTools) to Core Responsibilities and Audit Checklist; added 5 skill frontmatter field validation rules (once, context, agent, hooks) to Core Responsibilities and Audit Checklist; extended Discovered References section with 3 new Wave 2 handoff items
+- `agents/consistency-checker.md` — Added 3 new cross-reference checks to Cross-Reference Matrix (Agents → Skills, Skills → Agents, Agents → mcpServers); added collection steps to Step 1; added 3 output format table sections; added 3 summary rows; updated Core Responsibilities with new internal reference types
+
+### Out of Scope (deferred)
+- `!command` dynamic context injection syntax validation — not part of standard frontmatter field validation
+- `${CLAUDE_SESSION_ID}` substitution validation — not part of standard frontmatter field validation
+- Hook content validation within skill `hooks` fields — deferred per issue scope boundaries
+
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P2
+**Completed** | Created: 2026-02-22 | Completed: 2026-02-22 | Priority: P2
