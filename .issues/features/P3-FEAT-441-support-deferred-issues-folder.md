@@ -9,6 +9,14 @@ discovered_by: capture-issue
 
 Add a `.issues/deferred/` folder as a holding ground for issues that are intentionally set aside — not ready for active work but not closed. Deferred issues must not be counted in Open/Active Issues or Completed Issues by any CLI tool or skill that aggregates issue counts.
 
+## Current Behavior
+
+Issues can only exist in three active directories (`bugs/`, `features/`, `enhancements/`) or `completed/`. There is no intermediate state for issues that are intentionally set aside. Users who want to "park" an issue must either close it (falsely implying resolution) or leave it in the active backlog, where it pollutes sprint planning, prioritization runs, and issue counts.
+
+## Expected Behavior
+
+A `.issues/deferred/` directory serves as a holding ground for parked issues. All CLI tools, skills, and count-reporting commands treat `deferred/` as non-active (same pattern as `completed/`): skipped by `ll-auto`, `ll-sprint`, `ll-parallel`, and all issue enumeration. Users can move issues to deferred via `manage-issue defer [ID]` and restore them via `manage-issue undefer [ID]`.
+
 ## Motivation
 
 Currently, there is no way to "park" an issue without either closing it (implying it's resolved) or leaving it in an active folder (implying it's ready to work on). A deferred state lets users set aside low-priority, blocked, or uncertain issues without polluting the active backlog or losing the context they've captured.
@@ -16,6 +24,17 @@ Currently, there is no way to "park" an issue without either closing it (implyin
 ## Use Case
 
 A user discovers a potential improvement but cannot work on it until a dependency ships. They want to keep the issue for reference without it appearing in sprint planning, prioritization runs, or active issue counts. They run `/ll:manage-issue defer FEAT-441` and the issue moves to `.issues/deferred/` where it's ignored by `ll-auto`, `ll-sprint`, `ll-parallel`, and all count-reporting tools.
+
+## Acceptance Criteria
+
+- [ ] `.issues/deferred/` directory is created (with `.gitkeep`) as part of this feature
+- [ ] `ll-auto`, `ll-sprint`, `ll-parallel` skip issues in `deferred/` by default
+- [ ] All skill/command issue enumeration excludes `deferred/` (same pattern as `completed/`)
+- [ ] `manage-issue defer [ID]` moves an issue from its active directory to `deferred/`
+- [ ] `manage-issue undefer [ID]` moves an issue from `deferred/` back to its original category directory
+- [ ] `capture-issue` duplicate detection optionally surfaces deferred issues as candidates for un-deferral
+- [ ] `ll-history`, `ll-next-id`, and count-reporting tools exclude deferred from active counts
+- [ ] Documentation updated in `docs/ARCHITECTURE.md`, `CONTRIBUTING.md`, `README.md`
 
 ## Proposed Solution
 
@@ -78,9 +97,10 @@ A user discovers a potential improvement but cannot work on it until a dependenc
 
 ## Impact
 
-- **Scope**: Medium — touches multiple CLI tools and skills
-- **Risk**: Low — additive change; deferred folder is simply excluded like completed
-- **Value**: High — reduces backlog noise, supports intent-driven issue management
+- **Priority**: P3 — Reduces backlog noise; no blocking impact on current work
+- **Effort**: Medium — Touches multiple CLI tools, skills, and documentation
+- **Risk**: Low — Additive change; deferred folder is simply excluded like completed
+- **Breaking Change**: No
 
 ## Related Key Documentation
 
@@ -115,6 +135,7 @@ All other referenced files exist at their stated paths.
 ## Session Log
 - `/ll:capture-issue` - 2026-02-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28564d89-65ed-40b1-b496-7da3bcf0a373.jsonl`
 - `/ll:verify-issues` - 2026-02-22 - verification pass
+- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
 
 ---
 

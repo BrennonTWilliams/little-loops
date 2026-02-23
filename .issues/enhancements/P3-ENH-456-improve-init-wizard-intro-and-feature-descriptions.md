@@ -26,13 +26,84 @@ Round 3 feature descriptions reference internal tools without explanation:
 - **Current**: "Block manage-issue implementation when confidence score is below threshold"
 - **Better**: "Require a minimum readiness score before automated implementation proceeds"
 
-## Proposed Change
+## Current Behavior
+
+The wizard jumps directly into project name detection with no opening context. Round 3 feature descriptions use internal tool names without explanation:
+- "Configure ll-parallel for concurrent issue processing with git worktrees"
+- "Block manage-issue implementation when confidence score is below threshold"
+
+New users unfamiliar with little-loops cannot evaluate these options from the descriptions alone.
+
+## Expected Behavior
+
+A 1-2 sentence intro is displayed before Round 1 explaining what the wizard creates. Round 3 feature descriptions are self-explanatory: they explain what each feature does and what it requires, without assuming prior knowledge of CLI tool names.
+
+## Motivation
+
+The init wizard is the first interaction new users have with little-loops. Poor feature descriptions cause users to skip useful features (or blindly enable ones they don't need). A brief intro reduces the "what is this?" confusion that new users experience.
+
+## Proposed Solution
 
 1. Add a 1-2 sentence intro text output before Round 1
 2. Rewrite Round 3 feature descriptions to be self-explanatory without prior tool knowledge
 3. Consider adding a brief "What is this?" note for less obvious features like confidence gate
 
-## Files
+## Scope Boundaries
 
-- `skills/init/SKILL.md` (before Step 5 / Round 1)
-- `skills/init/interactive.md` (Round 3, lines ~128-148)
+- **In scope**: Adding intro text before Round 1; rewriting Round 3 feature option descriptions
+- **Out of scope**: Changes to wizard logic, question structure, or which features are offered; adding help links; modifying other rounds
+
+## Integration Map
+
+### Files to Modify
+- `skills/init/SKILL.md` — Add intro text output before Step 5 / Round 1
+- `skills/init/interactive.md` — Round 3 feature option descriptions (lines ~128-148)
+
+### Tests
+- N/A
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Implementation Steps
+
+1. Add a text output block before Round 1 in `SKILL.md`: "This wizard creates `.claude/ll-config.json` — the configuration file for little-loops' issue management, automation, and code quality tools."
+2. Rewrite each Round 3 feature description in `interactive.md` to be self-explanatory (e.g., "Process multiple issues in parallel using isolated git worktrees (requires ll-parallel CLI)")
+3. Add brief "What is this?" context for less obvious features (confidence gate)
+4. Review all rewritten descriptions for clarity with a "new user" perspective
+
+## Impact
+
+- **Priority**: P3 — Improves first-run experience; reduces feature selection errors during onboarding
+- **Effort**: Small — Text-only changes to two files
+- **Risk**: Low — Cosmetic change; no behavioral impact
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `init`, `interactive-wizard`, `ux`, `onboarding`
+
+## Session Log
+- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
+
+## Blocked By
+
+- BUG-449
+- ENH-451
+- ENH-452
+- ENH-454
+
+## Blocks
+
+- ENH-453
+- ENH-458
+- ENH-460
+
+---
+
+## Status
+
+**Open** | Created: 2026-02-22 | Priority: P3

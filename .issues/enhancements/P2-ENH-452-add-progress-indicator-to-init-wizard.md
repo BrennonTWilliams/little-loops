@@ -13,7 +13,19 @@ created: 2026-02-22
 
 The init interactive wizard has 6-10 rounds of AskUserQuestion calls. Users have no sense of progress — they don't know if they're near the beginning, middle, or end of the wizard.
 
-## Proposed Change
+## Current Behavior
+
+The init interactive wizard presents 6-10 rounds of AskUserQuestion calls with no indication of progress. Users cannot tell how many rounds remain or where they are in the wizard.
+
+## Expected Behavior
+
+Each round displays a progress indicator (e.g., "Step 3 of 7") so users know where they are in the wizard and approximately how many rounds remain. The total round count is calculated dynamically based on feature selections.
+
+## Motivation
+
+Without progress indication, users feel uncertain about how long the wizard will take. Progress indicators are a standard UX pattern that reduce anxiety during multi-step flows and give users context to decide whether to continue or exit.
+
+## Proposed Solution
 
 Add a progress indicator to each round. This could be:
 
@@ -23,15 +35,69 @@ Add a progress indicator to each round. This could be:
 
 Option 3 is the most flexible since the total round count is dynamic (6-10 depending on feature selections and the Extended Config Gate).
 
-## Implementation Notes
-
+**Round count notes:**
 - Rounds 1-4 and 6 are always shown (5 mandatory rounds)
-- Round 5 is conditional
+- Round 5 is conditional (if any features selected)
 - Round 6.5 is always shown (gate)
 - Rounds 7-9 are conditional on the gate
-- The total should be calculated after Round 3 (feature selections) and Round 6.5 (gate choice)
+- Total should be calculated after Round 3 (features) and Round 6.5 (gate)
 
-## Files
+## Scope Boundaries
 
-- `skills/init/interactive.md` (all rounds)
-- `skills/init/SKILL.md` (wizard flow description)
+- **In scope**: Adding step indicator text before or within each round's AskUserQuestion call; dynamically calculating total rounds after Round 3 and Round 6.5
+- **Out of scope**: Visual progress bars, persistent UI state, changes to wizard logic or round ordering
+
+## Integration Map
+
+### Files to Modify
+- `skills/init/interactive.md` — All rounds: add progress output before each AskUserQuestion call
+- `skills/init/SKILL.md` — Wizard flow description (if it documents round structure)
+
+### Similar Patterns
+- N/A — no existing progress indication in other wizard-style skills
+
+### Tests
+- N/A
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Implementation Steps
+
+1. Decide on progress indicator format: text output before round vs. prefix in question text
+2. Calculate total rounds: 5 mandatory + conditional Round 5 + Round 6.5 + conditional Rounds 7-9
+3. Add progress output at the start of each round in `interactive.md`
+4. Update total after Round 3 (features determine if Round 5 appears) and after Round 6.5 (gate determines if Rounds 7-9 appear)
+
+## Impact
+
+- **Priority**: P2 — Improves onboarding UX for all new users; reduces wizard abandonment
+- **Effort**: Small — Text additions to each round; no logic changes
+- **Risk**: Low — Cosmetic change only; no behavioral impact
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `init`, `interactive-wizard`, `ux`
+
+## Session Log
+- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
+
+## Blocked By
+
+- ENH-451
+
+## Blocks
+
+- ENH-454
+- ENH-455
+- ENH-456
+
+---
+
+## Status
+
+**Open** | Created: 2026-02-22 | Priority: P2
