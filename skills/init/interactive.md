@@ -10,9 +10,9 @@ Before starting the wizard, initialize these counters:
 
 ```
 STEP = 0      # Current round number (incremented before each round)
-TOTAL = 7     # Working total (mandatory rounds: 1, 2, 3a, 3b, 4, 6, 6.5)
+TOTAL = 7     # Working total (mandatory rounds: 1, 2, 3a, 3b, 4, 6, 7)
               # Updated after Round 3b (adds 1-2 for Rounds 5a/5b)
-              # Updated after Round 6.5 (adds 3 if "Configure" selected)
+              # Updated after Round 7 (adds 3 if "Configure" selected)
 ```
 
 Before each round's `AskUserQuestion` call, increment STEP and output:
@@ -607,9 +607,9 @@ If document tracking is enabled with defaults:
 
 If "Skip" selected or no documents found, omit the `documents` section entirely (disabled is the default).
 
-**After completing Round 6, proceed to Round 6.5 (Extended Config Gate).**
+**After completing Round 6, proceed to Round 7 (Extended Config Gate).**
 
-## Round 6.5: Extended Configuration Gate
+## Round 7: Extended Configuration Gate
 
 Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Extended Configuration
 
@@ -628,15 +628,15 @@ questions:
 ```
 
 If "Skip (Recommended)" is selected, proceed directly to the Display Summary step.
-If "Configure" is selected, continue to Rounds 7-9.
+If "Configure" is selected, continue to Rounds 8-10.
 
-**After Round 6.5 response, recalculate TOTAL:**
+**After Round 7 response, recalculate TOTAL:**
 
 ```
-if user selected "Configure": TOTAL += 3   # Rounds 7, 8, 9 will be shown
+if user selected "Configure": TOTAL += 3   # Rounds 8, 9, 10 will be shown
 ```
 
-## Round 7: Project Advanced (Optional)
+## Round 8: Project Advanced (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
@@ -686,7 +686,7 @@ questions:
 
 **Configuration:** Only include `test_dir`, `build_cmd`, `run_cmd` if non-default values selected.
 
-## Round 8: Continuation Behavior (Optional)
+## Round 9: Continuation Behavior (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
@@ -737,7 +737,7 @@ questions:
 - "48 hours" -> `prompt_expiry_hours: 48`
 - "No expiry" -> `prompt_expiry_hours: 168`
 
-## Round 9: Prompt Optimization (Optional)
+## Round 10: Prompt Optimization (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
@@ -781,7 +781,7 @@ questions:
 
 ## Interactive Mode Summary
 
-**Total interaction rounds: 7-11**
+**Total interaction rounds: 7-12**
 
 | Round | Group | Questions | Conditions |
 |-------|-------|-----------|------------|
@@ -793,10 +793,10 @@ questions:
 | 5a | Advanced (dynamic, first batch) | issues_path?, worktree_files?, threshold?, priority_labels? | Conditional (≥1 active) |
 | 5b | Advanced (dynamic, overflow) | sync_completed?, gate_threshold?, sprints_workers?, auto_timeout? | Conditional (>4 active total) |
 | **6** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
-| 6.5 | Extended Config Gate | configure_extended? | Always |
-| 7 | Project Advanced (optional) | test_dir, build_cmd | If Gate=Configure |
-| 8 | Continuation (optional) | auto_detect, include, expiry | If Gate=Configure |
-| 9 | Prompt Optimization (optional) | enabled, mode, confirm | If Gate=Configure |
+| 7 | Extended Config Gate | configure_extended? | Always |
+| 8 | Project Advanced (optional) | test_dir, build_cmd | If Gate=Configure |
+| 9 | Continuation (optional) | auto_detect, include, expiry | If Gate=Configure |
+| 10 | Prompt Optimization (optional) | enabled, mode, confirm | If Gate=Configure |
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next

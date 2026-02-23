@@ -3,8 +3,9 @@ type: ENH
 id: ENH-454
 title: Renumber init wizard rounds to eliminate Round 6.5
 priority: P3
-status: open
+status: completed
 created: 2026-02-22
+confidence_score: 95
 ---
 
 # Renumber init wizard rounds to eliminate Round 6.5
@@ -52,7 +53,7 @@ Update the summary table at the bottom of `interactive.md` accordingly.
 ## Integration Map
 
 ### Files to Modify
-- `skills/init/interactive.md` — All round headers (rename Round 6.5 → Round 7, shift Rounds 7-9 → 8-10); update summary table (lines ~640-662)
+- `skills/init/interactive.md` — All round headers (rename Round 6.5 → Round 7, shift Rounds 7-9 → 8-10); update summary table (lines ~782-799)
 
 ### Dependent Files (Callers/Importers)
 - `skills/init/SKILL.md` — Check for any hardcoded references to "Round 6.5" or old round numbers
@@ -99,6 +100,20 @@ Update the summary table at the bottom of `interactive.md` accordingly.
 
 ---
 
+## Resolution
+
+**Completed** | 2026-02-23
+
+Renumbered all init wizard rounds in `skills/init/interactive.md`:
+- Round 6.5 → Round 7 (Extended Configuration Gate)
+- Round 7 → Round 8 (Project Advanced)
+- Round 8 → Round 9 (Continuation Behavior)
+- Round 9 → Round 10 (Prompt Optimization)
+
+Updated all internal references: progress tracking comments, transition directives, TOTAL recalculation comments, and summary table. Also corrected summary table total from "7-11" to "7-12" (matching SKILL.md).
+
+No changes needed to `skills/init/SKILL.md` — already correct at "7-12 rounds".
+
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P3
+**Completed** | Created: 2026-02-22 | Resolved: 2026-02-23 | Priority: P3
