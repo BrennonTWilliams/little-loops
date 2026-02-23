@@ -88,6 +88,52 @@ This file contains the format and structure for the final audit report generated
 |------|--------|-------|--------|--------|
 [Table rows]
 
+### Output Styles
+
+| File | Exists | Frontmatter | name | description | keep-coding-instructions | Issues |
+|------|--------|-------------|------|-------------|--------------------------|--------|
+[Table rows for .claude/output-styles/*.md and ~/.claude/output-styles/*.md, or "No output style files found"]
+
+| Setting | Location | Value | Target File | Status |
+|---------|----------|-------|-------------|--------|
+| outputStyle | .claude/settings.local.json | [value or not set] | [resolved path or N/A] | OK/MISSING/NOT_SET |
+
+### LSP Servers
+
+| File | Exists | Valid JSON | Issues |
+|------|--------|------------|--------|
+| .lsp.json | Yes/No | Yes/No | N |
+
+| Server | command | transport | extensionToLanguage | timeout | Status |
+|--------|---------|-----------|---------------------|---------|--------|
+[Table rows, or "No .lsp.json found"]
+
+### Keybindings
+
+| File | Exists | Valid JSON | $schema | Bindings | Issues |
+|------|--------|------------|---------|----------|--------|
+| ~/.claude/keybindings.json | Yes/No | Yes/No | Yes/No | N | N |
+
+| Context | Bindings Count | Invalid Contexts |
+|---------|---------------|-----------------|
+[Table rows per context]
+
+### .claudeignore
+
+| File | Exists | Syntax Valid | Broad Patterns | Issues |
+|------|--------|-------------|----------------|--------|
+| .claudeignore | Yes/No | Yes/No | [list or none] | N |
+
+| Setting | Location | Value | .claudeignore Exists | Alignment |
+|---------|----------|-------|----------------------|-----------|
+| respectGitignore | .claude/settings.local.json | [value or not set] | Yes/No | OK/WARNING |
+
+### Plugin settings.json
+
+| File | Exists | Valid JSON | Recognized Keys | Unrecognized Keys | Issues |
+|------|--------|------------|-----------------|-------------------|--------|
+| settings.json | Yes/No | Yes/No | [list] | [list or none] | N |
+
 ## Wave 2: Cross-Component Consistency
 
 ### Reference Validation
@@ -133,6 +179,7 @@ This file contains the format and structure for the final audit report generated
 | Hooks config | X/10 | [Brief note] |
 | MCP config | X/10 | [Brief note] |
 | Cross-config consistency | X/10 | [Brief note] |
+| Extended config surfaces | X/10 | [Output styles, LSP, keybindings, .claudeignore, plugin settings] |
 | **Overall** | **X/10** | [Summary] |
 
 ## Next Steps
@@ -145,14 +192,15 @@ This file contains the format and structure for the final audit report generated
 
 ### Overall Health Score
 Calculate as weighted average:
-- Memory file structure: 20%
-- Content quality: 20%
-- Memory hierarchy coverage: 10%
-- Rules files quality: 10%
+- Memory file structure: 18%
+- Content quality: 18%
+- Memory hierarchy coverage: 9%
+- Rules files quality: 9%
 - Plugin components: 15%
 - Hooks config: 5%
 - MCP config: 5%
-- Cross-config consistency: 15%
+- Cross-config consistency: 14%
+- Extended config surfaces: 7% (output styles, LSP, keybindings, .claudeignore, plugin settings)
 
 ### Individual Category Scores
 Rate each category 1-10 based on:
@@ -177,6 +225,11 @@ Wave 1 Analysis Complete
 | Commands | X | Y | Z/10 |
 | Hooks | X | Y | Z/10 |
 | Config | X | Y | Z/10 |
+| Output Styles | X | Y | Z/10 |
+| LSP Servers | X | Y | Z/10 |
+| Keybindings | X | Y | Z/10 |
+| .claudeignore | X | Y | Z/10 |
+| Plugin settings | X | Y | Z/10 |
 
 Critical issues: N
 Warnings: N

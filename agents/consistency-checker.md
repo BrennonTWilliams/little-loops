@@ -73,6 +73,9 @@ You are a specialist at validating cross-component consistency in Claude Code pl
 | ~/.claude/rules/*.md | YAML frontmatter | Same as project rules |
 | MEMORY.md | line count | Warn if >200 lines (only first 200 loaded) |
 | rules files | path patterns | Detect overlapping glob patterns across rules |
+| .claude/settings.local.json | output-styles/ | `outputStyle` value → output style file exists in .claude/output-styles/ or ~/.claude/output-styles/ |
+| .claude-plugin/plugin.json | .lsp.json | `lspServers` field present → .lsp.json exists at plugin root (and vice versa) |
+| .claude/settings.local.json | .claudeignore | `respectGitignore` value aligned with .claudeignore existence |
 
 ## Validation Process
 
@@ -88,6 +91,11 @@ From Wave 1 findings or by scanning:
 - Extract all `paths` patterns from rules files
 - Extract all symlinks in rules directories
 - Check MEMORY.md line count in `~/.claude/projects/<project>/memory/`
+- Extract `outputStyle` value from `.claude/settings.local.json` (if present)
+- Extract `respectGitignore` value from `.claude/settings.local.json` (if present)
+- Check `lspServers` field presence in `.claude-plugin/plugin.json` (if file exists)
+- Check existence of `.lsp.json` at plugin root
+- Check existence of `.claudeignore` at project root
 
 ### Step 2: Validate Each Reference
 For each reference found:
@@ -183,6 +191,21 @@ Structure your consistency check like this:
 | rules/api.md | src/api/**/*.ts | rules/backend.md | src/**/*.ts | Subset overlap |
 | ... | ... | ... | ... | ... |
 
+#### Output Styles → Settings
+| Setting | Location | Value | Target File | Status |
+|---------|----------|-------|-------------|--------|
+| outputStyle | .claude/settings.local.json | [value or not set] | [resolved path or N/A] | OK/MISSING/NOT_SET |
+
+#### LSP → Plugin Config
+| Source | Field | .lsp.json Exists | Alignment | Status |
+|--------|-------|-----------------|-----------|--------|
+| .claude-plugin/plugin.json | lspServers | Yes/No | Consistent/Mismatch | OK/WARNING |
+
+#### .claudeignore → respectGitignore
+| Setting | Value | .claudeignore Exists | Alignment | Status |
+|---------|-------|----------------------|-----------|--------|
+| respectGitignore | [value or not set] | Yes/No | OK/WARNING | [note] |
+
 ### Conflicts Detected
 
 | Location 1 | Location 2 | Conflict | Severity |
@@ -219,6 +242,9 @@ Structure your consistency check like this:
 | Rules → Symlinks | X | Y | Z |
 | Auto Memory → Size | X | Y | Z |
 | Memory Hierarchy | X | Y | Z |
+| Output Styles → Settings | X | Y | Z |
+| LSP → Plugin Config | X | Y | Z |
+| .claudeignore → respectGitignore | X | Y | Z |
 | Conflicts | - | - | Z |
 | **Total** | X | Y | **Z** |
 

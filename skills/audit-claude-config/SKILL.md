@@ -9,7 +9,7 @@ allowed-tools:
   - Bash(git:*)
 arguments:
   - name: scope
-    description: Audit scope (all|managed|user|project|hooks|mcp|agents|commands|skills)
+    description: Audit scope (all|managed|user|project|hooks|mcp|agents|commands|skills|output-styles|lsp|keybindings|claudeignore|plugin-settings)
     required: false
   - name: flags
     description: "Optional flags: --non-interactive (no prompts), --fix (auto-apply safe fixes)"
@@ -41,10 +41,15 @@ You are tasked with performing a comprehensive audit of CLAUDE.md files and Clau
 
 ### Configuration Files
 - **Settings**: `~/.claude/settings.json` - Claude Code settings
-- **Local Settings**: `./.claude/settings.local.json` - Project overrides
+- **Local Settings**: `./.claude/settings.local.json` - Project overrides (includes `outputStyle` and `respectGitignore` keys)
 - **Plugin Config**: `./.claude/ll-config.json` - Little-loops plugin config
 - **Config Schema**: `config-schema.json` - Configuration validation schema
 - **MCP Config**: `.mcp.json` or `~/.claude/.mcp.json` - MCP servers
+- **Output Styles**: `.claude/output-styles/` and `~/.claude/output-styles/` - Custom output style markdown files with YAML frontmatter
+- **LSP Servers**: `.lsp.json` (plugin root) - LSP server config; `lspServers` field in `.claude-plugin/plugin.json`
+- **Keybindings**: `~/.claude/keybindings.json` - Context-scoped key bindings
+- **.claudeignore**: `.claudeignore` - Gitignore-syntax file controlling what Claude can see
+- **Plugin settings**: `settings.json` (plugin root) - Default agent settings
 
 ## Audit Scopes
 
@@ -57,6 +62,11 @@ You are tasked with performing a comprehensive audit of CLAUDE.md files and Clau
 - **agents**: Audit agent definitions only
 - **commands**: Audit command definitions only
 - **skills**: Audit skill definitions only
+- **output-styles**: Audit output style files and outputStyle setting cross-reference
+- **lsp**: Audit LSP server configuration (.lsp.json and lspServers in plugin.json)
+- **keybindings**: Audit keybindings file (~/.claude/keybindings.json)
+- **claudeignore**: Audit .claudeignore file and respectGitignore setting alignment
+- **plugin-settings**: Audit plugin root settings.json
 
 ## Flags
 
@@ -235,6 +245,36 @@ For MCP config specifically:
 - Environment variables properly referenced
 - Appropriate scope (global vs project)
 
+**Output Styles** (.claude/output-styles/ and ~/.claude/output-styles/):
+- Check if directory exists; list all .md files found
+- For each file, validate YAML frontmatter parses correctly
+- Verify `name` and `description` fields are present
+- Verify `keep-coding-instructions` field, if present, is boolean
+- Read `outputStyle` key from .claude/settings.local.json; record value for Wave 2 cross-reference
+
+**LSP Servers** (.lsp.json at plugin root and lspServers in .claude-plugin/plugin.json):
+- Check if .lsp.json exists; validate JSON syntax
+- For each server entry: verify `command` array elements exist as executables, `transport` field is valid ("stdio" or "tcp"), `extensionToLanguage` map is well-formed, timeout values are reasonable (>0)
+- Read `lspServers` field from .claude-plugin/plugin.json; record for Wave 2 cross-reference
+
+**Keybindings** (~/.claude/keybindings.json):
+- Check if file exists; validate JSON syntax
+- Verify `$schema` field is present
+- For each binding, verify `context` is one of the known valid contexts (16+ defined contexts such as: default, editor, terminal, sidebar, commandPalette, chatInput, chatHistory, fileTree, diffEditor, searchResults, notifications, statusBar, modalDialog, completionMenu, contextMenu, codeActions)
+- Verify `action` field is non-empty for each binding
+- Report count of bindings per context
+
+**.claudeignore** (.claudeignore at project root):
+- Check if file exists
+- Validate gitignore syntax (no unrecognized directives)
+- Flag overly broad patterns (bare `*` or `**` without path prefix)
+- Read `respectGitignore` key from .claude/settings.local.json; record for Wave 2 cross-reference
+
+**Plugin settings.json** (settings.json at plugin root):
+- Check if file exists; validate JSON syntax
+- Verify only supported keys are present (`agent` is the documented key)
+- Report any unrecognized top-level keys as warnings
+
 Return:
 - Config file inventory with status
 - JSON validation results
@@ -242,6 +282,11 @@ Return:
 - Path reference validity
 - List of all server names for Wave 2
 - List of all referenced paths for Wave 2
+- outputStyle setting value (from settings.local.json) for Wave 2
+- respectGitignore setting value (from settings.local.json) for Wave 2
+- lspServers field presence (from plugin.json) for Wave 2
+- Output style files found (paths) for Wave 2
+- .claudeignore existence status for Wave 2
 ```
 
 ### Phase 2: Collect Wave 1 Results
@@ -257,6 +302,9 @@ After all Wave 1 agents complete:
    - All command references (/ll:X) found in skill files
    - All MCP tool/server references found
    - All file paths mentioned in configs
+   - `outputStyle` setting value (from settings.local.json) and output style files found
+   - `respectGitignore` setting value (from settings.local.json) and .claudeignore existence
+   - `lspServers` field presence in plugin.json and .lsp.json existence
 3. **Calculate preliminary scores**:
    - CLAUDE.md health: X/10
    - Plugin components health: X/10
@@ -275,6 +323,11 @@ Wave 1 Analysis Complete
 | Commands | X | Y | Z/10 |
 | Hooks | X | Y | Z/10 |
 | Config | X | Y | Z/10 |
+| Output Styles | X | Y | Z/10 |
+| LSP Servers | X | Y | Z/10 |
+| Keybindings | X | Y | Z/10 |
+| .claudeignore | X | Y | Z/10 |
+| Plugin settings | X | Y | Z/10 |
 
 Critical issues: N
 Warnings: N
@@ -308,6 +361,7 @@ Check:
 7. **Rules → Symlinks**: All symlinks in rules directories resolve to existing targets
 8. **Auto Memory → Size**: MEMORY.md ≤ 200 lines (only first 200 loaded at startup)
 9. **Skills → Commands**: /ll:X references in skill files have matching commands/X.md or are valid skill names (skills/X/SKILL.md exists)
+10. **LSP → Config**: If `lspServers` field is present in plugin.json, verify .lsp.json exists at plugin root; if .lsp.json exists, verify `lspServers` is referenced in plugin.json
 
 Return:
 - Reference validation table with status for each
@@ -316,6 +370,7 @@ Return:
 - Rules validation results (frontmatter, paths, symlinks)
 - Auto memory size warnings
 - Skills → Commands validation results
+- LSP cross-reference results
 - Internal consistency score
 ```
 
@@ -337,12 +392,16 @@ Check:
 5. **Memory Hierarchy**: Check for conflicts between managed policy, user memory, and project memory
 6. **Rules Path Overlap**: Detect overlapping path patterns across rules files
 7. **Local vs Project**: Check for conflicts between CLAUDE.local.md and project CLAUDE.md
+8. **outputStyle → Output Style File**: If `outputStyle` is set in settings.local.json, verify the referenced output style file exists in .claude/output-styles/ or ~/.claude/output-styles/
+9. **respectGitignore → .claudeignore**: If `respectGitignore` is false (or absent) but .claudeignore exists, warn about potential confusion; if `respectGitignore` is true but no .claudeignore or .gitignore exists, note that ignore file may be missing
 
 Return:
 - External reference validation table
 - Hierarchy conflicts detected with recommended resolution
 - Rules path overlap warnings
 - List of missing/broken external references
+- outputStyle cross-reference result
+- respectGitignore alignment result
 - External consistency score
 ```
 
