@@ -83,7 +83,46 @@ questions:
     multiSelect: false
 ```
 
-Populate options based on detected project type - see [presets.md](presets.md) for options by language.
+Populate options based on detected project type. Use these alternatives by language:
+
+**Test commands:**
+- Python: pytest, pytest -v, python -m pytest
+- TypeScript: npm test, jest, vitest
+- Node.js: npm test, yarn test, jest
+- Go: go test ./..., go test -v ./...
+- Rust: cargo test, cargo test --verbose
+- Java (Maven): mvn test
+- Java (Gradle): gradle test, ./gradlew test
+- .NET: dotnet test
+
+**Lint commands:**
+- Python: ruff check ., flake8, pylint
+- TypeScript: npm run lint, eslint .
+- Node.js: npm run lint, eslint .
+- Go: golangci-lint run, go vet ./...
+- Rust: cargo clippy -- -D warnings, cargo check
+- Java (Maven): mvn checkstyle:check
+- Java (Gradle): ./gradlew checkstyleMain
+- .NET: dotnet format --verify-no-changes
+
+**Format commands:**
+- Python: ruff format ., black ., autopep8
+- TypeScript: npm run format, prettier --write .
+- Node.js: npm run format, prettier --write ., eslint --fix
+- Go: gofmt -w ., go fmt ./...
+- Rust: cargo fmt
+- Java: (none common)
+- .NET: dotnet format
+
+**Build/Run/Test dir options:**
+- Python: tests/, test/, Same as src | Skip, python -m build, make build | Skip, python app.py, python -m flask run
+- TypeScript: tests/, test/, \_\_tests\_\_/ | npm run build, yarn build, Skip | npm start, node server.js, Skip
+- Node.js: tests/, test/, \_\_tests\_\_/ | npm run build, yarn build, Skip | npm start, node server.js, Skip
+- Go: \*\_test.go files in same dir | go build, make build, Skip | go run ., go run cmd/main.go, Skip
+- Rust: tests/ | cargo build, cargo build --release, Skip | cargo run, Skip
+- Java (Maven): src/test/java/ | mvn package, Skip | mvn exec:java, Skip
+- Java (Gradle): src/test/java/ | gradle build, ./gradlew build, Skip | gradle run, Skip
+- .NET: tests/ | dotnet build, dotnet publish, Skip | dotnet run, Skip
 
 ## Round 2: Additional Configuration
 

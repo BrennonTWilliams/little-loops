@@ -132,8 +132,7 @@ little-loops/
 │   │   └── templates.md
 │   ├── init/                # User-invoked
 │   │   ├── SKILL.md
-│   │   ├── interactive.md
-│   │   └── presets.md
+│   │   └── interactive.md
 │   ├── issue-size-review/   # Proactive
 │   │   └── SKILL.md
 │   ├── issue-workflow/      # User-invoked

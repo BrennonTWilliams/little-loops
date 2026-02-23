@@ -110,6 +110,25 @@ Make `templates/*.json` the single source of truth:
 
 ---
 
+## Resolution
+
+**Resolved**: 2026-02-23
+
+### Changes Made
+1. **SKILL.md Step 3**: Replaced manual 7-row detection table with template-driven detection using `_meta.detect` patterns from `templates/*.json` files. Now supports 9 project types including TypeScript (distinct from Node.js) and Java split into Maven/Gradle.
+2. **SKILL.md Step 4**: Changed from referencing `presets.md` to reading the matched template JSON file directly, extracting `project`, `scan`, and `issues` sections.
+3. **SKILL.md Additional Resources**: Updated reference from `presets.md` to `templates/*.json`.
+4. **interactive.md**: Inlined the interactive mode alternative options (test/lint/format/build commands per language) directly into the file, with additions for TypeScript and Java Maven/Gradle variants.
+5. **presets.md**: Deleted — all data migrated to template files and interactive.md.
+6. **ARCHITECTURE.md**: Removed `presets.md` from directory tree listing.
+
+### Verification
+- All 2882 tests pass
+- Linting passes
+- No active files reference `presets.md`
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P3
+**Resolved** | Created: 2026-02-22 | Resolved: 2026-02-23 | Priority: P3

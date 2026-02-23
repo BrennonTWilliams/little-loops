@@ -56,17 +56,27 @@ Before proceeding, check if `.claude/ll-config.json` already exists:
 
 ### 3. Detect Project Type
 
-Examine the project root for indicator files:
+Read all project-type template JSON files from `templates/` (relative to the little-loops plugin directory), excluding `issue-sections.json` and `ll-goals-template.md`. For each template, check `_meta.detect` patterns against files in the project root:
 
-| File(s) Present | Project Type |
-|-----------------|--------------|
-| `pyproject.toml`, `setup.py`, or `requirements.txt` | Python |
-| `package.json` | Node.js |
-| `go.mod` | Go |
-| `Cargo.toml` | Rust |
-| `pom.xml` or `build.gradle` | Java |
-| `*.csproj` or `*.sln` | .NET |
-| None of the above | General |
+1. For each template file, read its `_meta.detect` array
+2. Check if ANY listed indicator file exists in the project root
+3. If `_meta.detect_exclude` is present, skip this template if any excluded file also exists
+4. If `_meta.detect` is empty (e.g., `generic.json`), this is the fallback template
+5. If multiple templates match, prefer the one without `priority: -1`
+
+**Template files** (9 project-type templates):
+
+| Template File | Detect Files | Notes |
+|---------------|-------------|-------|
+| `python-generic.json` | `pyproject.toml`, `setup.py`, `requirements.txt` | |
+| `typescript.json` | `tsconfig.json` | |
+| `javascript.json` | `package.json` | exclude: `tsconfig.json` |
+| `go.json` | `go.mod` | |
+| `rust.json` | `Cargo.toml` | |
+| `java-maven.json` | `pom.xml` | |
+| `java-gradle.json` | `build.gradle`, `build.gradle.kts` | |
+| `dotnet.json` | `*.csproj`, `*.sln`, `*.fsproj` | |
+| `generic.json` | _(none — fallback)_ | `priority: -1` |
 
 Also detect:
 - **Project name**: Use the directory name
@@ -74,7 +84,9 @@ Also detect:
 
 ### 4. Generate Configuration
 
-Based on detected project type, use the presets from [presets.md](presets.md) to generate the initial configuration.
+Read the matched template JSON file from Step 3. Extract the `project` and `scan` sections as the initial configuration presets. Also apply the `issues` section as the default issue tracking configuration.
+
+Strip the `_meta`, `$schema`, and `product` sections (product is configured separately in interactive mode).
 
 ### 5. Interactive Mode (if --interactive)
 
@@ -258,7 +270,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 
 ## Additional Resources
 
-- For project type configuration presets, see [presets.md](presets.md)
+- For project type configuration presets, see `templates/*.json` (relative to the little-loops plugin directory)
 - For interactive wizard question flows, see [interactive.md](interactive.md)
 
 ## Examples
