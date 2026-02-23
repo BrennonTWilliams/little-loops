@@ -121,6 +121,15 @@ Configuration Summary:
   sync.github.priority_labels: [true/false]    # Only if non-default
   sync.github.sync_completed: [true/false]     # Only if non-default
 
+  [SPRINTS]                               # Only show if "Sprint management" selected in Round 3b
+  sprints.default_max_workers: [workers]  # Only if non-default (not 4)
+
+  [LOOPS]                                 # Only show if "FSM loops" selected in Round 3b
+  loops.loops_dir: .loops                 # Always .loops (default)
+
+  [AUTOMATION]                            # Only show if "Sequential automation" selected in Round 3b
+  automation.timeout_seconds: [seconds]   # Only if non-default (not 3600)
+
   [PRODUCT]                               # Only show if enabled
   product.enabled: true
   product.goals_file: .claude/ll-goals.md
@@ -221,6 +230,12 @@ Next steps:
   4. Configure product goals: .claude/ll-goals.md      # Only show if product enabled
   5. Run parallel processing: ll-parallel      # Only show if parallel configured
   6. Sync with GitHub: /ll:sync-issues push   # Only show if sync enabled
+  7. Run sprint processing: ll-sprint run [sprint-file]   # Only show if sprint management selected
+  8. Run FSM loop: ll-loop run [loop-file]               # Only show if FSM loops selected
+  9. Run sequential automation: ll-auto                  # Only show if sequential automation selected
+
+Additional settings for sprints, loops, and automation can be customized via:
+  /ll:configure                                          # Only show if any automation feature selected
 
 Documentation: https://github.com/BrennonTWilliams/little-loops
 

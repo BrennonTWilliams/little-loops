@@ -3,8 +3,9 @@ type: ENH
 id: ENH-451
 title: Add sprints, loops, and automation sections to init interactive wizard
 priority: P2
-status: open
+status: completed
 created: 2026-02-22
+resolved: 2026-02-22
 ---
 
 # Add sprints, loops, and automation sections to init interactive wizard
@@ -87,8 +88,19 @@ Alternatively, mention these in the completion message as configurable via `/ll:
 
 `enhancement`, `init`, `interactive-wizard`, `sprints`, `loops`, `automation`
 
+## Resolution
+
+- Added **Round 3b: Automation Features Selection** to `skills/init/interactive.md` — a new always-run multi-select round with Sprint management, FSM loops, and Sequential automation (ll-auto) options
+- Extended Round 5 ordered conditions list from 6 to 8 entries: added `sprints_workers` (condition 7) and `auto_timeout` (condition 8)
+- Extended Round 5b to handle positions 5–8 (was 5–6), adding question templates for sprint default_max_workers and ll-auto timeout_seconds
+- Added configuration snippets and notes for sprints and automation in the Round 5 config section
+- Updated Interactive Mode Summary table to reflect Rounds 3a, 3b, and the extended 5b
+- Added `[SPRINTS]`, `[LOOPS]`, and `[AUTOMATION]` sections to the Display Summary in `skills/init/SKILL.md`
+- Added completion message next steps and `/ll:configure` mention for automation features
+
 ## Session Log
 - `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
+- `/ll:manage-issue enh implement ENH-451` - 2026-02-22
 
 ## Blocked By
 
