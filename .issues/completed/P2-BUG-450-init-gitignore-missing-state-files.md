@@ -117,6 +117,7 @@ Runtime state files are generated automatically and contain ephemeral data that 
 ## Session Log
 - `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
 - `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6952751c-b227-418e-a8d3-d419ea5b0bf6.jsonl`
+- `/ll:manage-issue bug fix BUG-450` - 2026-02-22 - resolved
 
 ## Blocks
 
@@ -125,6 +126,10 @@ Runtime state files are generated automatically and contain ephemeral data that 
 
 ---
 
+## Resolution
+
+Added `.claude/ll-context-state.json` and `.claude/ll-sync-state.json` to the gitignore block in `skills/init/SKILL.md` Step 9. All four state file defaults from `config-schema.json` are now covered.
+
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P2
+**Completed** | Created: 2026-02-22 | Resolved: 2026-02-22 | Priority: P2

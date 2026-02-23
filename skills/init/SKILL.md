@@ -193,6 +193,8 @@ Add little-loops state files to `.gitignore` to prevent committing runtime state
 # little-loops state files
 .auto-manage-state.json
 .parallel-manage-state.json
+.claude/ll-context-state.json
+.claude/ll-sync-state.json
 ```
 
 **Logic:**
