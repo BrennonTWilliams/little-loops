@@ -1,12 +1,12 @@
 ---
 description: |
-  Pre-implementation confidence check that validates readiness before coding begins. Evaluates 5 criteria: no duplicate implementations, architecture compliance, problem understanding (type-specific), issue well-specified, and dependencies satisfied. Produces a score (0-100) with go/no-go recommendation.
+  Pre-implementation confidence check that validates readiness and estimates outcome confidence before coding begins. Evaluates 5 readiness criteria (0-100) and 4 outcome confidence criteria (0-100), producing dual scores: a Readiness Score (go/no-go) and an Outcome Confidence Score (implementation risk).
 
-  Supports --all (batch all active issues) and --auto (non-interactive) flags. Persists confidence_score to issue frontmatter after evaluation.
+  Supports --all (batch all active issues) and --auto (non-interactive) flags. Persists confidence_score and outcome_confidence to issue frontmatter after evaluation.
 
-  Complementary to /ll:ready-issue (which validates the issue file) — this skill validates the implementation approach and codebase readiness.
+  Complementary to /ll:ready-issue (which validates the issue file) — this skill validates the implementation approach, codebase readiness, and predicted implementation risk.
 
-  Trigger keywords: "confidence check", "pre-implementation check", "ready to implement", "implementation readiness", "confidence score"
+  Trigger keywords: "confidence check", "pre-implementation check", "ready to implement", "implementation readiness", "confidence score", "outcome confidence"
 model: sonnet
 allowed-tools:
   - Read
@@ -18,7 +18,7 @@ allowed-tools:
 
 # Confidence Check Skill
 
-Pre-implementation assessment that validates readiness to begin coding. Uses research findings from Phase 1.5 (or standalone research) to evaluate whether the proposed approach is sound.
+Pre-implementation assessment that validates readiness to begin coding and estimates outcome confidence. Produces dual scores: a Readiness Score (are preconditions met?) and an Outcome Confidence Score (will implementation succeed cleanly?). Uses research findings from Phase 1.5 (or standalone research) to evaluate both dimensions.
 
 ## When to Activate
 
@@ -256,9 +256,85 @@ Use the type-specific label for this criterion:
 | Some dependencies unresolved, workarounds possible | 10 |
 | Critical dependencies unresolved, cannot proceed | 0 |
 
+### Phase 2b: Outcome Confidence Assessment
+
+After the five-point readiness assessment, evaluate outcome confidence — the probability that implementation will succeed without major problems. This is a separate dimension from readiness.
+
+Evaluate each criterion and assign a score (0-25 points each, max 100):
+
+#### Criterion A: Complexity (0-25 points)
+
+**What to check**: How many files and how deep are the changes required?
+
+**Detection method**:
+1. Count files listed in the issue's "Integration Map" or "Files to Modify" section
+2. Assess depth of changes: surface-level API changes vs. deep internal rewiring
+3. Check if changes span multiple subsystems (skills, scripts, config, docs)
+
+**Scoring**:
+| Finding | Score |
+|---------|-------|
+| 1-2 files, isolated change in one subsystem | 25 |
+| 3-5 files, changes in one or two subsystems | 18 |
+| 6-10 files, changes span multiple subsystems | 10 |
+| 11+ files or deep architectural changes | 0 |
+
+#### Criterion B: Test Coverage (0-25 points)
+
+**What to check**: Are the areas being modified covered by tests?
+
+**Detection method**:
+1. For each file in the Integration Map, check if a corresponding test file exists (use Glob for patterns like `tests/test_*.py`, `tests/*_test.py`)
+2. For skills/commands (markdown-only), check if integration tests or usage examples exist
+3. Note: Skills defined only in `.md` files have no direct unit tests — score based on whether the modified area has any automated validation
+
+**Scoring**:
+| Finding | Score |
+|---------|-------|
+| All modified modules have corresponding tests or validation | 25 |
+| Most modified modules are tested (>50%) | 18 |
+| Few modules tested, failures may go undetected | 10 |
+| No tests exist for modified areas | 0 |
+
+#### Criterion C: Ambiguity (0-25 points)
+
+**What to check**: Are there unresolved design decisions or open questions in the issue?
+
+**Detection method**:
+1. Search issue text for ambiguity indicators: "TBD", "TODO", "open question", "decide", "either...or", "Option A/B" without resolution
+2. Check if the "Proposed Solution" section presents alternatives without choosing one
+3. Check for phrases like "requires design", "suggested", "might include"
+
+**Scoring**:
+| Finding | Score |
+|---------|-------|
+| No ambiguity — solution is fully specified with single clear approach | 25 |
+| Minor open questions that can be resolved during implementation | 18 |
+| Several design decisions left open, will require judgment calls | 10 |
+| Fundamental approach unclear, multiple competing options unresolved | 0 |
+
+#### Criterion D: Change Surface (0-25 points)
+
+**What to check**: How many callers or dependents does the modified code have?
+
+**Detection method**:
+1. For each key file in the Integration Map, use Grep to count references/imports across the codebase
+2. Check the issue's "Dependent Files" section for caller count
+3. Higher caller count = more places that could break
+
+**Scoring**:
+| Finding | Score |
+|---------|-------|
+| 0-2 callers/dependents — isolated change | 25 |
+| 3-5 callers/dependents — manageable surface | 18 |
+| 6-10 callers/dependents — broad surface | 10 |
+| 11+ callers/dependents — very wide blast radius | 0 |
+
 ### Phase 3: Score and Recommend
 
-Sum all criterion scores (max 100):
+Sum all readiness criterion scores (max 100) and all outcome criterion scores (max 100).
+
+**Readiness Score** — determines go/no-go:
 
 | Total Score | Recommendation | Action |
 |-------------|---------------|--------|
@@ -267,12 +343,23 @@ Sum all criterion scores (max 100):
 | **50-69** | STOP — ADDRESS GAPS | List gaps that must be resolved before implementation |
 | **0-49** | STOP — NOT READY | Mark issue as NOT_READY with specific reasons |
 
+**Outcome Confidence** — estimates implementation risk:
+
+| Total Score | Label | Interpretation |
+|-------------|-------|----------------|
+| **80-100** | HIGH CONFIDENCE | Implementation likely to succeed cleanly |
+| **60-79** | MODERATE | Expect some iteration or surprises |
+| **40-59** | LOW | Expect significant iteration; plan extra time |
+| **0-39** | VERY LOW | High implementation risk; consider de-risking first |
+
+Combine both scores in the final output. The readiness score drives the go/no-go recommendation; the outcome confidence is informational context for planning.
+
 ### Phase 4: Update Frontmatter
 
-After scoring, update the issue file's YAML frontmatter with the confidence score.
+After scoring, update the issue file's YAML frontmatter with both scores.
 
 If the issue file has existing frontmatter (starts with `---`):
-- Add or update the `confidence_score` field within the frontmatter block
+- Add or update the `confidence_score` and `outcome_confidence` fields within the frontmatter block
 - Use the Edit tool to replace the frontmatter section
 
 Example — if frontmatter is:
@@ -289,15 +376,17 @@ Update to:
 discovered_date: 2026-02-13
 discovered_by: capture-issue
 confidence_score: 85
+outcome_confidence: 62
 ---
 ```
 
-If `confidence_score` already exists, replace its value with the new score.
+If `confidence_score` or `outcome_confidence` already exist, replace their values with the new scores.
 
 If the issue file has no frontmatter, add one:
 ```yaml
 ---
 confidence_score: 85
+outcome_confidence: 62
 ---
 ```
 
@@ -319,7 +408,7 @@ When `AUTO_MODE` is false (interactive, single issue):
 CONFIDENCE CHECK: [ISSUE-ID]
 ================================================================================
 
-## SCORES
+## READINESS SCORES
 
 | Criterion                  | Score | Details                    |
 |---------------------------|-------|----------------------------|
@@ -329,16 +418,32 @@ CONFIDENCE CHECK: [ISSUE-ID]
 | Issue well-specified        | XX/20 | [Brief finding]           |
 | Dependencies satisfied      | XX/20 | [Brief finding]           |
 
-**TOTAL: XX/100**
+## OUTCOME CONFIDENCE SCORES
 
-## RECOMMENDATION: [PROCEED | PROCEED WITH CAUTION | STOP — ADDRESS GAPS | STOP — NOT READY]
+| Criterion       | Score | Details                              |
+|-----------------|-------|--------------------------------------|
+| Complexity      | XX/25 | [Brief finding]                      |
+| Test coverage   | XX/25 | [Brief finding]                      |
+| Ambiguity       | XX/25 | [Brief finding]                      |
+| Change surface  | XX/25 | [Brief finding]                      |
+
+## SUMMARY
+
+READINESS SCORE:    XX/100 → [PROCEED | PROCEED WITH CAUTION | STOP — ADDRESS GAPS | STOP — NOT READY]
+OUTCOME CONFIDENCE: XX/100 → [HIGH CONFIDENCE | MODERATE | LOW | VERY LOW]
+
+## RECOMMENDATION: [readiness tier]
 
 ### Concerns (if any)
 - [Specific concern with reference]
 
-### Gaps to Address (if score < 70)
+### Gaps to Address (if readiness score < 70)
 - [Gap 1: what's missing and how to fix]
 - [Gap 2: what's missing and how to fix]
+
+### Outcome Risk Factors (if outcome confidence < 60)
+- [Risk 1: what may cause implementation difficulty]
+- [Risk 2: mitigation suggestion]
 
 ================================================================================
 ```
@@ -352,25 +457,31 @@ When processing all issues, output a summary table after all individual evaluati
 CONFIDENCE CHECK BATCH REPORT: --all mode
 ================================================================================
 
-## SUMMARY
+## READINESS SUMMARY
 - Issues evaluated: XX
 - PROCEED (90-100): X
 - PROCEED WITH CAUTION (70-89): X
 - STOP — ADDRESS GAPS (50-69): X
 - STOP — NOT READY (0-49): X
 
+## OUTCOME CONFIDENCE SUMMARY
+- HIGH CONFIDENCE (80-100): X
+- MODERATE (60-79): X
+- LOW (40-59): X
+- VERY LOW (0-39): X
+
 ## RESULTS
 
-| Issue ID | Title | Score | Recommendation | Key Concern |
-|----------|-------|-------|----------------|-------------|
-| BUG-001 | Fix login | 85/100 | PROCEED WITH CAUTION | Partial impl exists |
-| FEAT-042 | Add dark mode | 92/100 | PROCEED | — |
-| ENH-089 | Improve perf | 55/100 | STOP — ADDRESS GAPS | Vague requirements |
+| Issue ID | Title | Readiness | Outcome | Recommendation | Key Concern |
+|----------|-------|-----------|---------|----------------|-------------|
+| BUG-001 | Fix login | 85/100 | 72/100 | PROCEED WITH CAUTION | Partial impl exists |
+| FEAT-042 | Add dark mode | 92/100 | 90/100 | PROCEED | — |
+| ENH-089 | Improve perf | 55/100 | 35/100 | STOP — ADDRESS GAPS | Vague reqs, high risk |
 
 ## FRONTMATTER UPDATES
-- .issues/bugs/P2-BUG-001-fix-login.md — confidence_score: 85
-- .issues/features/P1-FEAT-042-add-dark-mode.md — confidence_score: 92
-- .issues/enhancements/P3-ENH-089-improve-perf.md — confidence_score: 55
+- .issues/bugs/P2-BUG-001-fix-login.md — confidence_score: 85, outcome_confidence: 72
+- .issues/features/P1-FEAT-042-add-dark-mode.md — confidence_score: 92, outcome_confidence: 90
+- .issues/enhancements/P3-ENH-089-improve-perf.md — confidence_score: 55, outcome_confidence: 35
 
 ================================================================================
 ```
@@ -380,20 +491,21 @@ CONFIDENCE CHECK BATCH REPORT: --all mode
 This skill is referenced in `/ll:manage-issue` Phase 2 as a recommended pre-planning step. When invoked within manage-issue:
 
 - Uses research findings from Phase 1.5 (no redundant searching)
-- Score >=70: proceed to plan creation
-- Score <70: stop and report gaps (manage-issue marks as INCOMPLETE)
+- Readiness score >=70: proceed to plan creation
+- Readiness score <70: stop and report gaps (manage-issue marks as INCOMPLETE)
 - Non-blocking by default — can be skipped if user prefers
+- The manage-issue Phase 2.5 confidence gate reads `confidence_score` (readiness) from frontmatter — the `outcome_confidence` field is informational and does not affect the gate
 
 ## Examples
 
 ### Single Issue
 
-| Scenario | Expected Outcome |
-|----------|-----------------|
-| Well-researched bug with clear root cause | 85-100: PROCEED |
-| Feature request with vague "improve X" | 40-60: STOP — needs clearer requirements |
-| Enhancement with existing partial implementation | 70-80: PROCEED WITH CAUTION — note existing code |
-| Issue blocked by unresolved dependency | 50-65: STOP — dependency must be resolved first |
+| Scenario | Readiness | Outcome | Interpretation |
+|----------|-----------|---------|----------------|
+| Well-specified bug, 1 file, tests exist | 90: PROCEED | 90: HIGH | Strong go signal |
+| Vague feature, 20 files, no tests | 45: STOP | 20: VERY LOW | Refine issue first |
+| Ready enhancement, 8 files, some ambiguity | 85: PROCEED WITH CAUTION | 50: LOW | Start, but expect iteration |
+| Blocked dependency, simple fix | 55: STOP | 80: HIGH | Unblock first, then easy win |
 
 ### Usage Patterns
 

@@ -68,12 +68,11 @@ Alternative: keep a single composite score, but change the rubric weights to inc
 - `skills/confidence-check/SKILL.md` — primary change: add outcome confidence phase and output format
 
 ### Dependent Files (Callers/Importers)
-- `skills/manage-issue/SKILL.md` — references confidence_score threshold (≥70 proceed); needs update if field names change
-- `commands/confidence-check.md` — check if separate command file exists and needs update
+- `skills/manage-issue/SKILL.md` — has configurable confidence gate (Phase 2.5, disabled by default) that reads `confidence_score` from frontmatter against `config.commands.confidence_gate.threshold` (default: 85); field rename would require update
 - Any issue files with `confidence_score` frontmatter — field rename would invalidate cached scores
 
 ### Similar Patterns
-- `skills/ready-issue/SKILL.md` — complementary skill; check for scoring patterns to reuse
+- `commands/ready-issue.md` — complementary command; check for scoring patterns to reuse
 
 ### Tests
 - No direct tests for skills; integration tested via usage
@@ -126,13 +125,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 _Verified: 2026-02-22_
 
-**Integration Map inaccuracies found:**
+**Integration Map inaccuracies found and corrected (ready-issue 2026-02-23):**
 
-1. **`skills/manage-issue/SKILL.md` threshold claim is wrong**: The issue states this file "references confidence_score threshold (≥70 proceed); needs update if field names change." In reality, `manage-issue` invokes `confidence-check` as **advisory/non-blocking** — there is no ≥70 gate. The skill description reads: "Consider running the `confidence-check` skill to validate implementation readiness. This is advisory (non-blocking)." No field rename would require updating manage-issue unless the advisory call itself is changed.
+1. **`skills/manage-issue/SKILL.md` threshold claim corrected**: Original claimed "≥70 proceed" — actual threshold is configurable via `config.commands.confidence_gate.threshold` (default: 85) and the gate is disabled by default (`confidence_gate.enabled: false`). Updated Integration Map to reflect accurate behavior.
 
-2. **Wrong path for ready-issue**: The Integration Map lists `skills/ready-issue/SKILL.md` as a "Similar Patterns" reference, but the actual file is `commands/ready-issue.md` (it is a command, not a skill with a `SKILL.md`).
+2. **Wrong path for ready-issue corrected**: Changed `skills/ready-issue/SKILL.md` → `commands/ready-issue.md` (it is a command, not a skill).
 
-3. **`commands/confidence-check.md` does not exist** (confirmed). The issue correctly frames this as "check if … exists" — no separate command file; the skill is invoked directly.
+3. **`commands/confidence-check.md` removed**: Confirmed non-existent; removed from Integration Map (skill is invoked directly, no separate command file).
 
 ## Session Log
 
@@ -146,6 +145,31 @@ _Verified: 2026-02-22_
 
 ---
 
+## Resolution
+
+**Completed**: 2026-02-23
+
+### Changes Made
+
+1. **Added Phase 2b: Outcome Confidence Assessment** to `skills/confidence-check/SKILL.md` with four criteria:
+   - Complexity (0-25): File count and change depth
+   - Test Coverage (0-25): Test existence for modified modules
+   - Ambiguity (0-25): Unresolved design decisions in the issue
+   - Change Surface (0-25): Caller/dependent count
+
+2. **Updated Phase 3** (Score and Recommend) to produce dual scores with separate recommendation tiers
+
+3. **Updated Phase 4** (Update Frontmatter) to write `outcome_confidence` alongside existing `confidence_score`
+
+4. **Updated Output Format** — single-issue and batch output now show both readiness and outcome confidence scores
+
+5. **Backward compatible**: Kept `confidence_score` field name (manage-issue gate unchanged), added `outcome_confidence` as new field
+
+### Approach Chosen
+Option B from the issue: dual-score approach with separate Readiness Score and Outcome Confidence Score.
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P3
+**Completed** | Created: 2026-02-22 | Resolved: 2026-02-23 | Priority: P3
