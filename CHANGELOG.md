@@ -12,6 +12,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.18.0] - 2026-02-23
+
+### Changed
+
+- **Audit settings hierarchy validation** - Full settings hierarchy validation in audit-claude-config (ENH-465)
+- **Confidence-check outcome scoring** - Add outcome confidence scoring dimension (ENH-446)
+- **Init auto-create issue directories** - Offer to create issue directories during initialization (ENH-453)
+- **Init wizard round renumbering** - Renumber wizard rounds to eliminate Round 6.5 (ENH-454)
+- **Init wizard expanded coverage** - Expand parallel, commands, and issues coverage in wizard (ENH-455)
+- **Init wizard intro and descriptions** - Add intro context and improve feature descriptions (ENH-456)
+- **Init templates as single source of truth** - Reconcile templates/*.json with presets.md (ENH-457)
+- **MCP audit across all scopes** - Extend MCP audit to all scopes with env var expansion validation (ENH-466)
+- **Init conflicting flags and dry-run** - Handle conflicting flags and add --dry-run (ENH-458)
+- **Init command validation** - Optional command validation during init (ENH-460)
+- **Command table completeness** - Add 7 missing skills to README and COMMANDS.md command tables (ENH-467)
+
+### Fixed
+
+- fix(loop): resolve mypy type error in FSM diagram renderer (bae6844)
+
+### Other
+
+- docs(audit): fix INDEX.md missing entry and track incomplete command tables (ab949ec)
+
+[1.18.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.17.0...v1.18.0
+
 ## [1.17.0] - 2026-02-22
 
 ### Added
