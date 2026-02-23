@@ -104,6 +104,19 @@ The init wizard is the first interaction new users have with little-loops. Poor 
 
 ---
 
+## Resolution
+
+**Resolved**: 2026-02-23
+**Action**: implement
+
+### Changes Made
+- Added wizard intro text ("Welcome to little-loops setup!") before Round 1 in `skills/init/interactive.md`
+- Rewrote all 4 Round 3a (Core Features) descriptions to be self-explanatory without prior tool knowledge
+- Rewrote all 3 Round 3b (Automation Features) descriptions to be self-explanatory without prior tool knowledge
+
+### Files Modified
+- `skills/init/interactive.md` — Added intro section, rewrote 7 feature descriptions
+
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P3
+**Completed** | Created: 2026-02-22 | Resolved: 2026-02-23 | Priority: P3

@@ -23,6 +23,13 @@ Before each round's `AskUserQuestion` call, increment STEP and output:
 
 Use `~[TOTAL]` (tilde prefix) for Rounds 1–4 to signal the total may grow as conditions are evaluated. Starting with Round 5, the total is known exactly.
 
+## Wizard Introduction
+
+Before starting Round 1, display the following introduction:
+
+> **Welcome to little-loops setup!**
+> This wizard creates `.claude/ll-config.json` — the configuration file that controls how little-loops manages your project's issues, code quality checks, and automation tools.
+
 ## Round 1: Core Project Settings
 
 Increment STEP to 1 and output: **Step 1 of ~7** — Core Settings
@@ -160,13 +167,13 @@ questions:
     question: "Which advanced features do you want to enable?"
     options:
       - label: "Parallel processing"
-        description: "Configure ll-parallel for concurrent issue processing with git worktrees"
+        description: "Process multiple issues in parallel using isolated git worktrees (requires ll-parallel CLI)"
       - label: "Context monitoring"
-        description: "Auto-handoff reminders at 80% context usage (works in all modes)"
+        description: "Get automatic reminders to save progress when a session is running low on context"
       - label: "GitHub sync"
-        description: "Sync issues with GitHub Issues via /ll:sync-issues"
+        description: "Keep local issue files and GitHub Issues in sync (two-way push/pull)"
       - label: "Confidence gate"
-        description: "Block manage-issue implementation when confidence score is below threshold"
+        description: "Require a minimum readiness score before automated implementation proceeds"
     multiSelect: true
 ```
 
@@ -184,11 +191,11 @@ questions:
     question: "Which automation tools do you want to configure settings for?"
     options:
       - label: "Sprint management"
-        description: "Customize ll-sprint settings for wave-based issue processing"
+        description: "Process groups of related issues in coordinated waves (requires ll-sprint CLI)"
       - label: "FSM loops"
-        description: "Customize ll-loop settings for finite state machine automation"
+        description: "Run repeatable multi-step workflows using state machine definitions (requires ll-loop CLI)"
       - label: "Sequential automation (ll-auto)"
-        description: "Customize ll-auto settings for sequential automated processing"
+        description: "Process issues one at a time in priority order (requires ll-auto CLI)"
     multiSelect: true
 ```
 
