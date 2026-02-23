@@ -122,9 +122,22 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `captured`, `skills`, `confidence-check`
 
+## Verification Notes
+
+_Verified: 2026-02-22_
+
+**Integration Map inaccuracies found:**
+
+1. **`skills/manage-issue/SKILL.md` threshold claim is wrong**: The issue states this file "references confidence_score threshold (≥70 proceed); needs update if field names change." In reality, `manage-issue` invokes `confidence-check` as **advisory/non-blocking** — there is no ≥70 gate. The skill description reads: "Consider running the `confidence-check` skill to validate implementation readiness. This is advisory (non-blocking)." No field rename would require updating manage-issue unless the advisory call itself is changed.
+
+2. **Wrong path for ready-issue**: The Integration Map lists `skills/ready-issue/SKILL.md` as a "Similar Patterns" reference, but the actual file is `commands/ready-issue.md` (it is a command, not a skill with a `SKILL.md`).
+
+3. **`commands/confidence-check.md` does not exist** (confirmed). The issue correctly frames this as "check if … exists" — no separate command file; the skill is invoked directly.
+
 ## Session Log
 
 - `/ll:capture-issue` - 2026-02-22T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e8b8c544-019d-49cd-b615-1784045c0885.jsonl`
+- `/ll:verify-issues` - 2026-02-22 - verification pass
 
 ---
 

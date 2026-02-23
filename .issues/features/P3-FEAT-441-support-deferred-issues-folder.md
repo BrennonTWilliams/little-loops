@@ -96,8 +96,25 @@ A user discovers a potential improvement but cannot work on it until a dependenc
 
 ---
 
+## Verification Notes
+
+_Verified: 2026-02-22_
+
+**Integration Map file paths corrected:**
+
+Three paths listed under "Files to Modify" do not exist at the stated locations:
+
+| Listed Path | Actual Path |
+|-------------|-------------|
+| `scripts/little_loops/cli.py` | `scripts/little_loops/cli/` (package directory — entry points are `cli/auto.py`, `cli/sprint.py`, `cli/parallel.py`, etc.) |
+| `scripts/little_loops/sprint_manager.py` | `scripts/little_loops/sprint.py` (core sprint logic) + `scripts/little_loops/cli/sprint.py` (CLI entry point) |
+| `scripts/little_loops/orchestrator.py` | `scripts/little_loops/parallel/orchestrator.py` |
+
+All other referenced files exist at their stated paths.
+
 ## Session Log
 - `/ll:capture-issue` - 2026-02-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/28564d89-65ed-40b1-b496-7da3bcf0a373.jsonl`
+- `/ll:verify-issues` - 2026-02-22 - verification pass
 
 ---
 
