@@ -3,7 +3,6 @@ description: |
   Analyze issue history to understand project health, trends, and progress. Use this skill when users ask about velocity, bug trends, technical debt, or want to know "are we making progress?"
 
   Trigger keywords: "analyze history", "issue history", "velocity report", "bug trends", "technical debt", "project health", "are we making progress", "issue trends", "history analysis", "how are we doing"
-disable-model-invocation: true
 model: haiku
 allowed-tools:
   - Bash(ll-history:*)

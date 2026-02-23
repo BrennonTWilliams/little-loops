@@ -1,6 +1,5 @@
 ---
 description: Comprehensive audit of Claude Code plugin configuration with parallel sub-agents
-disable-model-invocation: true
 argument-hint: "[scope]"
 allowed-tools:
   - Read

@@ -1,6 +1,5 @@
 ---
 description: Autonomously manage issues - plan, implement, verify, and complete
-disable-model-invocation: true
 argument-hint: "[type] [action] [issue-id]"
 allowed-tools:
   - Bash(git:*)

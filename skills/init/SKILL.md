@@ -1,6 +1,5 @@
 ---
 description: Initialize little-loops configuration for a project
-disable-model-invocation: true
 argument-hint: "[flags]"
 allowed-tools:
   - Read
