@@ -318,6 +318,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 | `format-issue` | Format issue files (interactive or --auto mode) |
 | `scan-codebase` | Find issues in code (technical analysis) |
 | `scan-product` | Find issues in code (product-focused analysis) |
+| `product-analyzer` | Analyze codebase against product goals for feature gaps |
 | `prioritize-issues` | Assign P0-P5 priorities |
 | `ready-issue` | Validate and fix issue files |
 | `verify-issues` | Check issues against code |
@@ -326,12 +327,17 @@ Analyze user message history to suggest FSM loop configurations automatically.
 | `sync-issues` | Sync local issues with GitHub Issues |
 | `manage-issue` | Full issue lifecycle management |
 | `iterate-plan` | Update implementation plans |
+| `confidence-check` | Pre-implementation confidence check for readiness |
 | `refine-issue` | Refine issues with codebase-driven research |
 | `tradeoff-review-issues` | Evaluate issues for utility vs complexity |
+| `issue-workflow` | Quick reference for issue management workflow |
+| `issue-size-review` | Evaluate issue size/complexity and propose decomposition |
+| `map-dependencies` | Analyze cross-issue dependencies based on file overlap |
 | `audit-architecture` | Analyze code structure |
 | `audit-docs` | Check documentation accuracy |
 | `audit-claude-config` | Comprehensive config audit |
 | `analyze-workflows` | Analyze user message patterns for automation |
+| `analyze-history` | Analyze issue history for project health and trends |
 | `commit` | Create git commits |
 | `describe-pr` | Generate PR descriptions |
 | `open-pr` | Open a pull request for current branch |
@@ -341,6 +347,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 | `resume` | Resume from continuation prompt |
 | `create-loop` | Interactive FSM loop creation |
 | `loop-suggester` | Suggest loops from message history |
+| `workflow-automation-proposer` | Synthesize workflow patterns into automation proposals |
 | `create-sprint` | Create sprint with curated issue list |
 | `review-sprint` | Review sprint health and suggest improvements |
 

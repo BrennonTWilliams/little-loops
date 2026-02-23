@@ -99,6 +99,7 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 | `/ll:scan-codebase` | Find new issues (technical) |
 | `/ll:scan-product` | Find new issues (product-focused) |
 | `/ll:audit-architecture [focus]` | Analyze architecture for patterns and improvements |
+| `/ll:product-analyzer` | Analyze codebase against product goals for feature gaps |
 
 ### Issue Refinement
 
@@ -112,6 +113,9 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 | `/ll:verify-issues` | Verify issues against codebase |
 | `/ll:tradeoff-review-issues` | Evaluate issues for utility vs complexity |
 | `/ll:ready-issue [id]` | Validate issue for implementation |
+| `/ll:issue-workflow` | Quick reference for issue management workflow |
+| `/ll:issue-size-review` | Evaluate issue size/complexity and propose decomposition |
+| `/ll:map-dependencies` | Analyze cross-issue dependencies based on file overlap |
 
 ### Planning & Implementation
 
@@ -121,6 +125,7 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 | `/ll:review-sprint [name]` | Review sprint health and suggest improvements |
 | `/ll:manage-issue <type> <action> [id]` | Full issue lifecycle (plan, implement, verify, complete) |
 | `/ll:iterate-plan [path]` | Update existing implementation plans |
+| `/ll:confidence-check [id]` | Pre-implementation confidence check for readiness |
 
 ### Code Quality
 
@@ -148,6 +153,7 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 |---------|-------------|
 | `/ll:create-loop` | Interactive FSM loop creation |
 | `/ll:loop-suggester [file]` | Suggest FSM loops from message history |
+| `/ll:workflow-automation-proposer` | Synthesize workflow patterns into automation proposals |
 
 ### Meta-Analysis
 
@@ -155,6 +161,7 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 |---------|-------------|
 | `/ll:audit-claude-config [scope]` | Audit Claude Code plugin configuration |
 | `/ll:analyze-workflows [file]` | Analyze user message patterns for automation |
+| `/ll:analyze-history` | Analyze issue history for project health and trends |
 
 ### Session & Config
 
