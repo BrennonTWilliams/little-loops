@@ -3,7 +3,7 @@ type: BUG
 id: BUG-449
 title: Init wizard Round 5 can exceed AskUserQuestion 4-question limit
 priority: P1
-status: open
+status: resolved
 created: 2026-02-22
 ---
 
@@ -51,7 +51,7 @@ Add logic to `interactive.md` Round 5 to split questions into batches of 4 when 
 
 - **File**: `skills/init/interactive.md`
 - **Lines**: ~287-401
-- **Anchor**: `Round 5 — Advanced Settings`
+- **Anchor**: `Round 5: Advanced Settings (Dynamic)`
 
 ## Motivation
 
@@ -108,6 +108,37 @@ When users enable all optional features during init, the wizard silently fails o
 
 ---
 
+## Resolution
+
+**Status**: Resolved
+**Resolved**: 2026-02-22
+**PR/Commit**: fix(init): split Round 5 into 5a/5b to respect AskUserQuestion 4-question limit
+
+### Changes Made
+
+- `skills/init/interactive.md`: Refactored Round 5 into Round 5a (first ≤4 active questions) and Round 5b (overflow batch, only presented when active count > 4). Updated the conditions list from 5 entries to 6 (expanding "sync_settings" into separate `priority_labels` and `sync_completed` entries). Updated the Interactive Mode Summary table to show 5a and 5b as distinct rows.
+
+### Verification
+
+- File reads correctly with the new split structure
+- All 6 questions are preserved and assigned to the correct sub-round
+- Round 5b is clearly gated on active count > 4, so behavior is unchanged when ≤4 conditions are active
+
+## Session Log
+- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
+- `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6952751c-b227-418e-a8d3-d419ea5b0bf6.jsonl`
+- `/ll:manage-issue bug fix BUG-449` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+
+## Blocks
+
+- ENH-451
+- ENH-454
+- ENH-455
+- ENH-456
+- ENH-457
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P1
+**Resolved** | Created: 2026-02-22 | Priority: P1

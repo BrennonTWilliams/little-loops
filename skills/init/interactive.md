@@ -288,15 +288,24 @@ Add to configuration:
 
 Build this round dynamically based on previous responses. **Skip entirely if no follow-up questions are needed.**
 
-**Include questions based on these conditions:**
+**Include questions based on these conditions (ordered list of 6):**
 
 1. **issues_path** - If user selected "Yes, custom directory" in Round 2
 2. **worktree_files** - If user selected "Parallel processing" in Round 3
 3. **threshold** - If user selected "Context monitoring" in Round 3
-4. **sync_settings** - If user selected "GitHub sync" in Round 3
-5. **confidence_gate** - If user selected "Confidence gate" in Round 3
+4. **priority_labels** - If user selected "GitHub sync" in Round 3
+5. **sync_completed** - If user selected "GitHub sync" in Round 3
+6. **gate_threshold** - If user selected "Confidence gate" in Round 3
 
 If all conditions are false, skip this round entirely and proceed directly to Round 6 (Document Tracking).
+
+**Overflow handling**: Before presenting, count the number of active conditions. `AskUserQuestion` supports a maximum of 4 questions per call. If the active count exceeds 4, split into two sub-rounds using separate `AskUserQuestion` calls:
+- **Round 5a** — first 4 active questions (always presented when any condition is true)
+- **Round 5b** — remaining active questions, positions 5–6 in the ordered list above (only presented when active count > 4)
+
+### Round 5a: Advanced Settings (first batch)
+
+Use a SINGLE AskUserQuestion call with up to 4 questions (the first 4 active conditions):
 
 ```yaml
 questions:
@@ -345,7 +354,14 @@ questions:
       - label: "No"
         description: "Don't add priority labels to GitHub Issues"
     multiSelect: false
+```
 
+### Round 5b: Advanced Settings (overflow batch)
+
+**Only present this call when the total active condition count exceeds 4.** Collect the remaining active questions (positions 5 and 6 in the ordered list):
+
+```yaml
+questions:
   # ONLY include if user selected "GitHub sync" in Round 3:
   - header: "Sync Completed"
     question: "Sync completed issues to GitHub (close them)?"
@@ -647,7 +663,8 @@ questions:
 | 2 | Additional Config | format_cmd, issues, scan_dirs, excludes | Always |
 | 3 | Features | features (multi-select: parallel, context_monitor, sync, confidence_gate) | Always |
 | **4** | **Product Analysis** | **product (opt-in for product-focused analysis)** | **Always** |
-| 5 | Advanced (dynamic) | issues_path?, worktree_files?, threshold?, confidence_gate? | Conditional |
+| 5a | Advanced (dynamic, first batch) | issues_path?, worktree_files?, threshold?, priority_labels? | Conditional (≥1 active) |
+| 5b | Advanced (dynamic, overflow) | sync_completed?, gate_threshold? | Conditional (>4 active total) |
 | **6** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
 | 6.5 | Extended Config Gate | configure_extended? | Always |
 | 7 | Project Advanced (optional) | test_dir, build_cmd | If Gate=Configure |
