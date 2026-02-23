@@ -12,6 +12,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.17.0] - 2026-02-22
+
+### Added
+
+- **Init wizard: sprints, loops, and automation** - Add sprints, loops, and automation sections to interactive wizard (ENH-451)
+- **Init wizard progress indicator** - Add progress indicator to interactive wizard rounds (ENH-452)
+
+### Fixed
+
+- fix(agents): update plugin-config-auditor to recognize all 17 hook event types (30fc2bc)
+- fix(init): add missing state files to .gitignore step (40faae4)
+- fix(init): split Round 5 into 5a/5b to respect AskUserQuestion 4-question limit (b44d28e)
+- fix(skills): remove disable-model-invocation from all skills (d70e63f)
+- fix(ci): resolve documentation link check failures (618cc6e)
+
+### Changed
+
+- **Audit frontmatter validation** - Add agent and skill frontmatter field validation to audit (ENH-464)
+- **Audit config surfaces** - Add 5 missing config surfaces to audit-claude-config (ENH-462)
+
+### Other
+
+- deps(issues): map cross-issue dependencies for 22 active issues (2834d71)
+- issues: add 13 issues from /ll:init interactive mode audit (82ead60)
+- ci: remove documentation link check workflow (c778a02)
+
+[1.17.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.16.0...v1.17.0
+
 ## [1.16.0] - 2026-02-22
 
 ### Added
