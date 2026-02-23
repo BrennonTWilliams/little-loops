@@ -134,7 +134,7 @@ def _render_fsm_diagram(fsm: FSMLoop) -> str:
             break
         nxt: str = st.on_success or st.next or ""
         if not nxt and st.route:
-            nxt = next(iter(st.route.routes.values()), None) or st.route.default or ""
+            nxt = next(iter(st.route.routes.values()), "") or st.route.default or ""
         if nxt:
             main_edge_set.add((current, nxt))
             current = nxt
