@@ -4,7 +4,28 @@ If `--interactive` flag is set, you MUST use the `AskUserQuestion` tool to gathe
 
 **IMPORTANT**: Group related questions together using AskUserQuestion's multi-question capability (up to 4 questions per call) to reduce interaction rounds.
 
+## Progress Tracking Setup
+
+Before starting the wizard, initialize these counters:
+
+```
+STEP = 0      # Current round number (incremented before each round)
+TOTAL = 7     # Working total (mandatory rounds: 1, 2, 3a, 3b, 4, 6, 6.5)
+              # Updated after Round 3b (adds 1-2 for Rounds 5a/5b)
+              # Updated after Round 6.5 (adds 3 if "Configure" selected)
+```
+
+Before each round's `AskUserQuestion` call, increment STEP and output:
+
+```
+**Step [STEP] of [TOTAL]** — [Round Name]
+```
+
+Use `~[TOTAL]` (tilde prefix) for Rounds 1–4 to signal the total may grow as conditions are evaluated. Starting with Round 5, the total is known exactly.
+
 ## Round 1: Core Project Settings
+
+Increment STEP to 1 and output: **Step 1 of ~7** — Core Settings
 
 Use a SINGLE AskUserQuestion call with 4 questions:
 
@@ -58,6 +79,8 @@ questions:
 Populate options based on detected project type - see [presets.md](presets.md) for options by language.
 
 ## Round 2: Additional Configuration
+
+Increment STEP to 2 and output: **Step 2 of ~7** — Additional Configuration
 
 **First, detect existing issues directory:**
 ```bash
@@ -127,6 +150,8 @@ questions:
 
 ## Round 3a: Core Features Selection
 
+Increment STEP to 3 and output: **Step 3 of ~7** — Core Features
+
 Use a SINGLE AskUserQuestion call with the features multi-select:
 
 ```yaml
@@ -149,6 +174,8 @@ This round always runs and determines which follow-up questions are needed in Ro
 
 ## Round 3b: Automation Features Selection
 
+Increment STEP to 4 and output: **Step 4 of ~7** — Automation Features
+
 Use a SINGLE AskUserQuestion call with the automation features multi-select:
 
 ```yaml
@@ -167,7 +194,26 @@ questions:
 
 This round always runs. If any automation feature is selected, additional questions appear in Round 5.
 
+**After Round 3b responses, recalculate TOTAL:**
+
+```
+Count active conditions for Round 5:
+  ACTIVE = 0
+  if Round 2 → "Yes, custom directory":  ACTIVE += 1
+  if Round 3a → "Parallel processing":   ACTIVE += 1
+  if Round 3a → "Context monitoring":    ACTIVE += 1
+  if Round 3a → "GitHub sync":           ACTIVE += 2  # priority_labels + sync_completed questions
+  if Round 3a → "Confidence gate":       ACTIVE += 1
+  if Round 3b → "Sprint management":     ACTIVE += 1
+  if Round 3b → "Sequential automation": ACTIVE += 1
+
+  if ACTIVE >= 1: TOTAL += 1   # Round 5a will be shown
+  if ACTIVE > 4:  TOTAL += 1   # Round 5b will be shown
+```
+
 ## Round 4: Product Analysis
+
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Product Analysis
 
 Use a SINGLE AskUserQuestion call:
 
@@ -307,6 +353,9 @@ Add to configuration:
 ## Round 5: Advanced Settings (Dynamic)
 
 Build this round dynamically based on previous responses. **Skip entirely if no follow-up questions are needed.**
+
+If Round 5a is presented, increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Advanced Settings
+If Round 5b is presented, increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Advanced Settings (continued)
 
 **Include questions based on these conditions (ordered list of 8):**
 
@@ -487,6 +536,8 @@ After completing Round 5 (or if Round 5 was skipped because no conditions matche
 
 **CRITICAL**: You MUST execute this round. This is Round 6 of the wizard. The wizard is NOT complete until you have asked the user about document tracking. If you skipped here without asking the Document Tracking question, GO BACK and ask it now.
 
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Document Tracking
+
 **First, scan for markdown documents:**
 ```bash
 # Find markdown files that might be key documents
@@ -560,6 +611,8 @@ If "Skip" selected or no documents found, omit the `documents` section entirely 
 
 ## Round 6.5: Extended Configuration Gate
 
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Extended Configuration
+
 Use a SINGLE AskUserQuestion call:
 
 ```yaml
@@ -577,9 +630,17 @@ questions:
 If "Skip (Recommended)" is selected, proceed directly to the Display Summary step.
 If "Configure" is selected, continue to Rounds 7-9.
 
+**After Round 6.5 response, recalculate TOTAL:**
+
+```
+if user selected "Configure": TOTAL += 3   # Rounds 7, 8, 9 will be shown
+```
+
 ## Round 7: Project Advanced (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
+
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Project Advanced
 
 Use a SINGLE AskUserQuestion call with 3 questions:
 
@@ -629,6 +690,8 @@ questions:
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
 
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Continuation Behavior
+
 Use a SINGLE AskUserQuestion call with 3 questions:
 
 ```yaml
@@ -677,6 +740,8 @@ questions:
 ## Round 9: Prompt Optimization (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
+
+Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Prompt Optimization
 
 Use a SINGLE AskUserQuestion call with 3 questions:
 

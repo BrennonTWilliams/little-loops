@@ -3,7 +3,7 @@ type: ENH
 id: ENH-452
 title: Add progress indicator to init wizard rounds
 priority: P2
-status: open
+status: completed
 created: 2026-02-22
 ---
 
@@ -83,8 +83,20 @@ Option 3 is the most flexible since the total round count is dynamic (6-10 depen
 
 `enhancement`, `init`, `interactive-wizard`, `ux`
 
+## Resolution
+
+Implemented Option 3 (text output before each round) with dynamic total calculation:
+
+- Added **Progress Tracking Setup** section to `interactive.md` initializing `STEP=0`, `TOTAL=7`
+- Added `**Step [N] of [TOTAL]**` output instruction before every AskUserQuestion call (Rounds 1–9)
+- Rounds 1–4 show `~7` (tilde prefix) until conditions are evaluated; Round 5+ shows exact total
+- TOTAL recalculated after Round 3b (adds 1-2 for conditional Rounds 5a/5b based on active condition count)
+- TOTAL recalculated after Round 6.5 (adds 3 if "Configure" selected for Rounds 7-9)
+- Updated SKILL.md round count from "6-10" to "7-12"
+
 ## Session Log
 - `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
+- `/ll:manage-issue` - 2026-02-22 - implemented
 
 ## Blocked By
 
@@ -100,4 +112,4 @@ Option 3 is the most flexible since the total round count is dynamic (6-10 depen
 
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P2
+**Completed** | Created: 2026-02-22 | Resolved: 2026-02-22 | Priority: P2

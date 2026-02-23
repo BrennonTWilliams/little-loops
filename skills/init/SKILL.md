@@ -78,7 +78,7 @@ Based on detected project type, use the presets from [presets.md](presets.md) to
 
 ### 5. Interactive Mode (if --interactive)
 
-If `--interactive` flag is set, follow the interactive wizard flow in [interactive.md](interactive.md) which guides the user through 6-10 rounds of configuration questions.
+If `--interactive` flag is set, follow the interactive wizard flow in [interactive.md](interactive.md) which guides the user through 7-12 rounds of configuration questions, with a progress indicator shown at each step.
 
 ### 6. Display Summary
 
