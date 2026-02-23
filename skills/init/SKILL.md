@@ -189,6 +189,11 @@ Otherwise (neither `--interactive` nor `--yes`):
    - Omit `continuation` section if all values match schema defaults
    - Omit `prompt_optimization` section if all values match schema defaults
 
+4. Create issue tracking directories:
+   ```bash
+   mkdir -p {{config.issues.base_dir}}/{bugs,features,enhancements,completed}
+   ```
+
 ### 9. Update .gitignore
 
 Add little-loops state files to `.gitignore` to prevent committing runtime state:
@@ -221,18 +226,18 @@ INITIALIZATION COMPLETE
 
 Created: .claude/ll-config.json
 Created: .claude/ll-goals.md (product goals template)  # Only show if product enabled
+Created: {{config.issues.base_dir}}/{bugs,features,enhancements,completed}
 Updated: .gitignore (added state file exclusions)
 
 Next steps:
   1. Review and customize: .claude/ll-config.json
   2. Try a command: /ll:check-code
-  3. Set up issue tracking: mkdir -p {{config.issues.base_dir}}/{bugs,features,enhancements}
-  4. Configure product goals: .claude/ll-goals.md      # Only show if product enabled
-  5. Run parallel processing: ll-parallel      # Only show if parallel configured
-  6. Sync with GitHub: /ll:sync-issues push   # Only show if sync enabled
-  7. Run sprint processing: ll-sprint run [sprint-file]   # Only show if sprint management selected
-  8. Run FSM loop: ll-loop run [loop-file]               # Only show if FSM loops selected
-  9. Run sequential automation: ll-auto                  # Only show if sequential automation selected
+  3. Configure product goals: .claude/ll-goals.md      # Only show if product enabled
+  4. Run parallel processing: ll-parallel      # Only show if parallel configured
+  5. Sync with GitHub: /ll:sync-issues push   # Only show if sync enabled
+  6. Run sprint processing: ll-sprint run [sprint-file]   # Only show if sprint management selected
+  7. Run FSM loop: ll-loop run [loop-file]               # Only show if FSM loops selected
+  8. Run sequential automation: ll-auto                  # Only show if sequential automation selected
 
 Additional settings for sprints, loops, and automation can be customized via:
   /ll:configure                                          # Only show if any automation feature selected

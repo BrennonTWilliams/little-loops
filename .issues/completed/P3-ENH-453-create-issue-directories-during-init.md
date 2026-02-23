@@ -3,8 +3,9 @@ type: ENH
 id: ENH-453
 title: Offer to create issue directories during init instead of as next step
 priority: P3
-status: open
+status: completed
 created: 2026-02-22
+confidence_score: 90
 ---
 
 # Offer to create issue directories during init instead of as next step
@@ -43,7 +44,7 @@ Use the configured `issues.base_dir` and `issues.categories` values. Update the 
 ## Integration Map
 
 ### Files to Modify
-- `skills/init/SKILL.md` — Step 8 (lines ~158-182): add directory creation after writing ll-config.json; Step 10 (lines ~207-227): update completion message
+- `skills/init/SKILL.md` — Step 8 (lines ~166-191): add directory creation after writing ll-config.json; Step 10 (lines ~215-243): update completion message
 
 ### Similar Patterns
 - N/A
@@ -92,6 +93,16 @@ Use the configured `issues.base_dir` and `issues.categories` values. Update the 
 
 ---
 
+## Resolution
+
+- **Date**: 2026-02-23
+- **Action**: Enhanced init skill Step 8 to automatically create issue directories
+- **Changes**:
+  - Added `mkdir -p {{config.issues.base_dir}}/{bugs,features,enhancements,completed}` as sub-step 4 in Step 8
+  - Added "Created:" line for issue directories in Step 10 completion message
+  - Removed manual `mkdir` instruction from "Next steps" list
+  - Renumbered remaining next steps
+
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P3
+**Completed** | Created: 2026-02-22 | Resolved: 2026-02-23 | Priority: P3
