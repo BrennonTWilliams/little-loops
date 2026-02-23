@@ -3,7 +3,7 @@ type: ENH
 id: ENH-460
 title: Optional command validation during init (check if tools exist in PATH)
 priority: P4
-status: open
+status: completed
 created: 2026-02-22
 ---
 
@@ -90,8 +90,21 @@ This should be:
 - ENH-456
 - ENH-457
 
+## Resolution
+
+- **Status**: Completed
+- **Date**: 2026-02-23
+- **Action**: enhance(init)
+- **Changes**:
+  - Added Step 7.5 "Command Availability Check" to `skills/init/SKILL.md`
+  - Added `Bash(which:*)` to allowed-tools in skill frontmatter
+  - Non-blocking `which` check for test_cmd, lint_cmd, type_cmd, format_cmd base commands
+  - Deduplicates base commands before checking
+  - Skipped when `--yes` or `--dry-run` flags are set
+  - Warning includes mapped skill name (e.g., `/ll:run-tests` for test_cmd)
+
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P4
+**Completed** | Created: 2026-02-22 | Resolved: 2026-02-23 | Priority: P4

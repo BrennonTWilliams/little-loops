@@ -7,6 +7,7 @@ allowed-tools:
   - Write
   - Edit
   - Bash(mkdir:*)
+  - Bash(which:*)
 arguments:
   - name: flags
     description: Optional flags (--interactive, --yes, --force, --dry-run)
@@ -207,6 +208,39 @@ Otherwise (neither `--interactive`, `--yes`, nor `--dry-run`):
 - Ask: "Create .claude/ll-config.json with these settings? (y/n)"
 - Wait for confirmation
 - If user declines, abort without changes
+
+### 7.5. Command Availability Check
+
+**Skip this step if** `--yes` or `--dry-run` is set.
+
+After the user confirms, check whether the configured tool commands are available in PATH. This is a **non-blocking** check — display warnings but always proceed to Step 8.
+
+1. Collect configured command values: `test_cmd`, `lint_cmd`, `type_cmd`, `format_cmd`
+2. For each non-null command, extract the **base command** (first word). For example:
+   - `ruff check .` → `ruff`
+   - `python -m pytest` → `python`
+   - `go test ./...` → `go`
+3. **Deduplicate** base commands (e.g., if `ruff` is used for both lint and format, check it only once)
+4. For each unique base command, run via Bash:
+   ```bash
+   which <base_command> 2>/dev/null
+   ```
+5. For any command **not found**, display a warning:
+   ```
+   Warning: '<base_command>' not found in PATH — install it before running /ll:check-code
+   ```
+
+   Use this mapping for the warning message:
+   | Source field | Suggested skill |
+   |-------------|----------------|
+   | `test_cmd` | `/ll:run-tests` |
+   | `lint_cmd` | `/ll:check-code` |
+   | `type_cmd` | `/ll:check-code` |
+   | `format_cmd` | `/ll:check-code` |
+
+   If a base command is shared across multiple fields, mention the first matching skill only.
+
+6. **Always proceed** to Step 8 regardless of results.
 
 ### 8. Write Configuration
 
