@@ -1,6 +1,7 @@
 ---
 discovered_date: 2026-02-22
 discovered_by: conversation-analysis
+confidence_score: 95
 ---
 
 # ENH-465: Audit settings files across all scopes (user, managed, project)
@@ -103,8 +104,17 @@ Extend the Wave 1 config files auditor to discover and validate all settings fil
 
 - ENH-466
 
+## Resolution
+
+**Implemented** on 2026-02-23.
+
+### Changes Made
+- **`skills/audit-claude-config/SKILL.md`**: Extended Wave 1 Task 3 with full settings hierarchy (managed, user, project, local, global prefs); added comprehensive settings key validation rules for 40+ recognized keys; added permission rule syntax validation; added deprecated key detection (`includeCoAuthoredBy`); added managed-only key detection in non-managed files; added `settings` audit scope; updated Wave 1 summary and Phase 2 reference compilation; updated Wave 2 internal checker with scope conflict detection, inline hooks validation, plansDirectory/enabledPlugins cross-references; updated Wave 2 external checker with permission overlap detection, managed-only key misplacement warnings, deprecated key warnings.
+- **`skills/audit-claude-config/report-template.md`**: Added Settings Hierarchy section with 6 sub-tables (file inventory, key validation, permission rules, scope conflicts, deprecated keys, managed-only keys); added Settings Scope Conflicts and Permission Overlaps tables in Wave 2; added Settings hierarchy health score category (8%); rebalanced health score weights; updated Wave 1 summary format.
+- **`agents/consistency-checker.md`**: Added 7 settings-specific cross-reference checks to matrix; added settings data extraction to Step 1; added 4 settings conflict detection rules to Step 3; added 8 new output tables (scope conflicts, permission overlaps, inline hooks, plansDirectory, enabledPlugins, managed-only keys, deprecated keys); added 7 new check types to Wave 2 summary table.
+
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P2
+**Completed** | Created: 2026-02-22 | Completed: 2026-02-23 | Priority: P2

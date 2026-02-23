@@ -82,6 +82,13 @@ You are a specialist at validating cross-component consistency in Claude Code pl
 | agents/*.md | skills/*/ | `skills` frontmatter field → skill directory exists |
 | skills/*/SKILL.md | agents/*.md | `agent` frontmatter field → agent file exists |
 | agents/*.md | mcpServers structure | `mcpServers` entries have valid `command` field |
+| settings files (all scopes) | settings files | Same key at multiple scopes → detect conflicts, report effective value |
+| settings files | hooks.json rules | Inline `hooks` in settings → validate with same rules as hooks.json |
+| settings files | filesystem | `plansDirectory` value → path exists or will be created |
+| settings files | plugins | `enabledPlugins` values → installed plugin directories exist |
+| settings files (non-managed) | managed-only keys | Managed-only keys in wrong scope → silently ignored at runtime |
+| settings files | deprecated keys | `includeCoAuthoredBy` → deprecated, use `attribution` |
+| settings files (all scopes) | permission rules | Permission rule syntax valid; cross-scope rule overlap detection |
 
 ## Validation Process
 
@@ -105,6 +112,13 @@ From Wave 1 findings or by scanning:
 - Extract `skills` field values from agent frontmatter (`agents/*.md`)
 - Extract `agent` field values from skill frontmatter (`skills/*/SKILL.md`)
 - Extract `mcpServers` entries from agent frontmatter (`agents/*.md`)
+- Extract all keys from each settings file scope (managed, user, project, local)
+- Extract inline `hooks` definitions from settings files (if present)
+- Extract `plansDirectory` value from settings files (if present, from any scope)
+- Extract `enabledPlugins` values from settings files (if present, from any scope)
+- Extract all permission rules (`permissions.allow`, `permissions.deny`, `permissions.ask`) from all settings scopes
+- Identify managed-only keys appearing in non-managed settings files
+- Identify deprecated keys (`includeCoAuthoredBy`) in any settings file
 
 ### Step 2: Validate Each Reference
 For each reference found:
@@ -123,6 +137,10 @@ Compare configurations across files:
 5. Multiple commands using same agent differently
 6. Hooks with conflicting behaviors
 7. Config values contradicting CLAUDE.md instructions
+8. Settings scope conflicts: same key at multiple scopes with different values (precedence: managed > local > project > user)
+9. Settings permission rule overlaps: allow at one scope contradicted by deny at another for same/overlapping pattern
+10. Settings managed-only keys in non-managed files (silently ignored at runtime)
+11. Settings deprecated keys still present (e.g., `includeCoAuthoredBy`)
 
 ## Output Format
 
@@ -233,6 +251,46 @@ Structure your consistency check like this:
 | agents/X.md | server-name | Yes/No | Yes/No | OK/WARNING |
 | ... | ... | ... | ... | ... |
 
+#### Settings → Scope Conflicts
+| Key | Higher Scope | Higher Value | Lower Scope | Lower Value | Effective | Status |
+|-----|-------------|-------------|-------------|-------------|-----------|--------|
+| permissions.defaultMode | project | acceptEdits | user | default | acceptEdits (project wins) | INFO |
+| ... | ... | ... | ... | ... | ... | ... |
+
+#### Settings → Permission Overlaps
+| Pattern | Allow Scope | Deny Scope | Effective | Severity |
+|---------|-------------|------------|-----------|----------|
+| Bash(git *) | user (allow) | project (deny) | denied (project wins) | WARNING |
+| ... | ... | ... | ... | ... |
+
+#### Settings → Inline Hooks
+| Scope | Event | Handler Type | Valid | Issues | Status |
+|-------|-------|-------------|-------|--------|--------|
+| project | PreToolUse | command | Yes/No | [details] | OK/WARNING |
+| ... | ... | ... | ... | ... | ... |
+
+#### Settings → plansDirectory
+| Scope | Value | Path Exists | Status |
+|-------|-------|-------------|--------|
+| [scope] | [path] | Yes/No | OK/WARNING |
+
+#### Settings → enabledPlugins
+| Scope | Plugin | Directory Exists | Status |
+|-------|--------|-----------------|--------|
+| [scope] | [name] | Yes/No | OK/MISSING |
+
+#### Settings → Managed-Only Keys in Non-Managed Files
+| Key | Found In | Expected Scope | Status |
+|-----|----------|---------------|--------|
+| disableBypassPermissionsMode | .claude/settings.json | managed-settings.json only | WARNING |
+| ... | ... | ... | ... |
+
+#### Settings → Deprecated Keys
+| Key | Found In | Replacement | Status |
+|-----|----------|-------------|--------|
+| includeCoAuthoredBy | ~/.claude/settings.json | Use `attribution` instead | WARNING |
+| ... | ... | ... | ... |
+
 ### Conflicts Detected
 
 | Location 1 | Location 2 | Conflict | Severity |
@@ -275,6 +333,13 @@ Structure your consistency check like this:
 | Agents → Skills | X | Y | Z |
 | Skills → Agents | X | Y | Z |
 | Agents → mcpServers | X | Y | Z |
+| Settings → Scope Conflicts | X | Y | Z |
+| Settings → Permission Overlaps | X | Y | Z |
+| Settings → Inline Hooks | X | Y | Z |
+| Settings → plansDirectory | X | Y | Z |
+| Settings → enabledPlugins | X | Y | Z |
+| Settings → Managed-Only Keys | X | Y | Z |
+| Settings → Deprecated Keys | X | Y | Z |
 | Conflicts | - | - | Z |
 | **Total** | X | Y | **Z** |
 

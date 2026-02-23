@@ -9,7 +9,7 @@ allowed-tools:
   - Bash(git:*)
 arguments:
   - name: scope
-    description: Audit scope (all|managed|user|project|hooks|mcp|agents|commands|skills|output-styles|lsp|keybindings|claudeignore|plugin-settings)
+    description: Audit scope (all|managed|user|project|hooks|mcp|agents|commands|skills|output-styles|lsp|keybindings|claudeignore|plugin-settings|settings)
     required: false
   - name: flags
     description: "Optional flags: --non-interactive (no prompts), --fix (auto-apply safe fixes)"
@@ -39,9 +39,14 @@ You are tasked with performing a comprehensive audit of CLAUDE.md files and Clau
 - **Commands**: `commands/*.md` - Slash command definitions
 - **Hooks**: `hooks/hooks.json` + `hooks/prompts/*.md` - Lifecycle hooks
 
+### Settings Files (Hierarchy Order - highest precedence first)
+1. **Managed settings**: `/Library/Application Support/ClaudeCode/managed-settings.json` (macOS) or `/etc/claude-code/managed-settings.json` (Linux)
+2. **User settings**: `~/.claude/settings.json` - Personal settings across all projects
+3. **Project settings**: `.claude/settings.json` - Team-shared project settings (committed to git)
+4. **Local settings**: `.claude/settings.local.json` - Personal project overrides (gitignored)
+5. **Global preferences**: `~/.claude.json` - Preferences, OAuth, user/local MCP configs
+
 ### Configuration Files
-- **Settings**: `~/.claude/settings.json` - Claude Code settings
-- **Local Settings**: `./.claude/settings.local.json` - Project overrides (includes `outputStyle` and `respectGitignore` keys)
 - **Plugin Config**: `./.claude/ll-config.json` - Little-loops plugin config
 - **Config Schema**: `config-schema.json` - Configuration validation schema
 - **MCP Config**: `.mcp.json` or `~/.claude/.mcp.json` - MCP servers
@@ -67,6 +72,7 @@ You are tasked with performing a comprehensive audit of CLAUDE.md files and Clau
 - **keybindings**: Audit keybindings file (~/.claude/keybindings.json)
 - **claudeignore**: Audit .claudeignore file and respectGitignore setting alignment
 - **plugin-settings**: Audit plugin root settings.json
+- **settings**: Audit all settings files across scopes (managed, user, project, local) with key validation and conflict detection
 
 ## Flags
 
@@ -228,11 +234,96 @@ Locate and audit all configuration files:
 
 **Files to find and validate**:
 - .claude/ll-config.json (validate against config-schema.json)
-- .claude/settings.local.json
-- .mcp.json or ~/.claude/.mcp.json
 - config-schema.json (check for completeness)
+- .mcp.json or ~/.claude/.mcp.json
 
-For each config file:
+**Settings Hierarchy** (audit all scopes, highest precedence first):
+- Managed: /Library/Application Support/ClaudeCode/managed-settings.json (macOS) or /etc/claude-code/managed-settings.json (Linux)
+- User: ~/.claude/settings.json
+- Project: .claude/settings.json
+- Local: .claude/settings.local.json
+- Global prefs: ~/.claude.json (MCP configs, preferences — validate JSON syntax only)
+
+For each settings file found:
+1. Check exists/not exists
+2. Validate JSON syntax
+3. Validate known top-level keys against the recognized key list (see below)
+4. Flag unknown top-level keys as WARNING
+5. Flag deprecated keys with replacement guidance
+6. Flag managed-only keys appearing in non-managed files as WARNING (silently ignored at runtime)
+
+**Recognized settings keys** (validate types when present):
+- `permissions.allow` — array of strings (permission rules)
+- `permissions.deny` — array of strings (permission rules)
+- `permissions.ask` — array of strings (permission rules)
+- `permissions.defaultMode` — must be one of: `default`, `acceptEdits`, `dontAsk`, `bypassPermissions`, `plan`
+- `permissions.additionalDirectories` — array of strings (paths)
+- `permissions.disableBypassPermissionsMode` — managed-only; value must be `"disable"`
+- `sandbox.enabled` — boolean
+- `sandbox.autoAllowBashIfSandboxed` — boolean
+- `sandbox.excludedCommands` — array of strings
+- `sandbox.allowUnsandboxedCommands` — boolean
+- `sandbox.network.allowUnixSockets` — array of strings (paths)
+- `sandbox.network.allowAllUnixSockets` — boolean
+- `sandbox.network.allowLocalBinding` — boolean
+- `sandbox.network.allowedDomains` — array of strings
+- `sandbox.network.httpProxyPort` — number
+- `sandbox.network.socksProxyPort` — number
+- `sandbox.enableWeakerNestedSandbox` — boolean
+- `env` — object (string keys → string values)
+- `attribution.commit` — string
+- `attribution.pr` — string
+- `hooks` — object (inline hook definitions; same validation rules as hooks.json)
+- `disableAllHooks` — boolean
+- `allowManagedHooksOnly` — managed-only; boolean
+- `allowManagedPermissionRulesOnly` — managed-only; boolean
+- `model` — string
+- `enableAllProjectMcpServers` — boolean
+- `enabledMcpjsonServers` — array of strings
+- `disabledMcpjsonServers` — array of strings
+- `allowedMcpServers` — managed-only; array of objects with `serverName`
+- `deniedMcpServers` — managed-only; array of objects with `serverName`
+- `strictKnownMarketplaces` — managed-only; array of objects
+- `plansDirectory` — string (path; record for Wave 2 path existence check)
+- `outputStyle` — string (record for Wave 2 cross-reference)
+- `respectGitignore` — boolean (record for Wave 2 cross-reference)
+- `statusLine` — object with `type` and `command` fields
+- `fileSuggestion` — object with `type` and `command` fields
+- `apiKeyHelper` — string (script path)
+- `otelHeadersHelper` — string (script path)
+- `awsAuthRefresh` — string
+- `awsCredentialExport` — string
+- `forceLoginMethod` — managed-only; must be `"claudeai"` or `"console"`
+- `forceLoginOrgUUID` — managed-only; string (UUID format)
+- `companyAnnouncements` — managed-only; array of strings
+- `alwaysThinkingEnabled` — boolean
+- `showTurnDuration` — boolean
+- `language` — string
+- `autoUpdatesChannel` — must be `"stable"` or `"latest"`
+- `cleanupPeriodDays` — number (≥0)
+- `spinnerVerbs` — object with `mode` (string) and `verbs` (array)
+- `spinnerTipsEnabled` — boolean
+- `terminalProgressBarEnabled` — boolean
+- `prefersReducedMotion` — boolean
+- `teammateMode` — must be `"auto"`, `"in-process"`, or `"tmux"`
+- `$schema` — string (informational, always valid)
+
+**Deprecated keys** (flag with WARNING and replacement guidance):
+- `includeCoAuthoredBy` — deprecated, use `attribution` instead
+
+**Managed-only keys** (flag WARNING if found in non-managed files — silently ignored at runtime):
+- `disableBypassPermissionsMode`, `allowManagedHooksOnly`, `allowManagedPermissionRulesOnly`
+- `allowedMcpServers`, `deniedMcpServers`, `strictKnownMarketplaces`
+- `forceLoginMethod`, `forceLoginOrgUUID`, `companyAnnouncements`
+
+**Permission rule syntax validation** (for `permissions.allow`, `permissions.deny`, `permissions.ask` arrays):
+- Each rule must match format: `ToolName` or `ToolName(specifier)`
+- Valid tool names include: `Bash`, `Read`, `Edit`, `Write`, `WebFetch`, `WebSearch`, `Task`, `mcp__*` (MCP tool pattern)
+- Specifier can contain `*` wildcards for glob matching
+- Flag rules with empty specifiers `Tool()` as WARNING
+- Flag rules with unrecognized tool names as WARNING
+
+For each config file (non-settings):
 1. Check exists/not exists
 2. Validate JSON syntax
 3. Check schema compliance (where applicable)
@@ -282,8 +373,15 @@ Return:
 - Path reference validity
 - List of all server names for Wave 2
 - List of all referenced paths for Wave 2
-- outputStyle setting value (from settings.local.json) for Wave 2
-- respectGitignore setting value (from settings.local.json) for Wave 2
+- Settings hierarchy inventory: which files exist at each scope (managed/user/project/local) for Wave 2
+- Per-scope settings key inventory: all keys found in each settings file for Wave 2
+- Settings key validation issues: unknown keys, type mismatches, deprecated keys, managed-only keys in wrong scope
+- Permission rules found (all scopes) with syntax validation results for Wave 2
+- Inline hooks definitions found in settings files (all scopes) for Wave 2
+- plansDirectory value (if set, from any scope) for Wave 2 path existence check
+- enabledPlugins values (if set, from any scope) for Wave 2 cross-reference
+- outputStyle setting value (effective, considering scope precedence) for Wave 2
+- respectGitignore setting value (effective, considering scope precedence) for Wave 2
 - lspServers field presence (from plugin.json) for Wave 2
 - Output style files found (paths) for Wave 2
 - .claudeignore existence status for Wave 2
@@ -302,8 +400,14 @@ After all Wave 1 agents complete:
    - All command references (/ll:X) found in skill files
    - All MCP tool/server references found
    - All file paths mentioned in configs
-   - `outputStyle` setting value (from settings.local.json) and output style files found
-   - `respectGitignore` setting value (from settings.local.json) and .claudeignore existence
+   - Settings hierarchy inventory (which files exist per scope, all keys per file)
+   - Settings scope conflict data (same key at multiple scopes with different values)
+   - Permission rules from all settings scopes (for syntax and overlap analysis)
+   - Inline hooks from settings files (for validation against hooks.json rules)
+   - `plansDirectory` value (from any scope) for path existence check
+   - `enabledPlugins` values (from any scope) for cross-reference
+   - `outputStyle` setting value (effective, considering scope precedence) and output style files found
+   - `respectGitignore` setting value (effective, considering scope precedence) and .claudeignore existence
    - `lspServers` field presence in plugin.json and .lsp.json existence
 3. **Calculate preliminary scores**:
    - CLAUDE.md health: X/10
@@ -323,6 +427,7 @@ Wave 1 Analysis Complete
 | Commands | X | Y | Z/10 |
 | Hooks | X | Y | Z/10 |
 | Config | X | Y | Z/10 |
+| Settings Hierarchy | X | Y | Z/10 |
 | Output Styles | X | Y | Z/10 |
 | LSP Servers | X | Y | Z/10 |
 | Keybindings | X | Y | Z/10 |
@@ -362,6 +467,10 @@ Check:
 8. **Auto Memory → Size**: MEMORY.md ≤ 200 lines (only first 200 loaded at startup)
 9. **Skills → Commands**: /ll:X references in skill files have matching commands/X.md or are valid skill names (skills/X/SKILL.md exists)
 10. **LSP → Config**: If `lspServers` field is present in plugin.json, verify .lsp.json exists at plugin root; if .lsp.json exists, verify `lspServers` is referenced in plugin.json
+11. **Settings → Scope Conflicts**: Detect same key set at multiple scopes with different values; report which scope wins per precedence (managed > local > project > user)
+12. **Settings → Inline Hooks**: If `hooks` key is present in any settings file, validate using same rules as hooks.json (event types, handler types, timeout defaults)
+13. **Settings → plansDirectory**: If `plansDirectory` is set in any scope, verify the path exists or note it will be created on first use
+14. **Settings → enabledPlugins**: If `enabledPlugins` is set, cross-reference against installed plugin directories
 
 Return:
 - Reference validation table with status for each
@@ -371,6 +480,9 @@ Return:
 - Auto memory size warnings
 - Skills → Commands validation results
 - LSP cross-reference results
+- Settings scope conflict table (key, scopes, values, effective value)
+- Settings inline hooks validation results
+- Settings path reference results (plansDirectory, enabledPlugins)
 - Internal consistency score
 ```
 
@@ -392,8 +504,11 @@ Check:
 5. **Memory Hierarchy**: Check for conflicts between managed policy, user memory, and project memory
 6. **Rules Path Overlap**: Detect overlapping path patterns across rules files
 7. **Local vs Project**: Check for conflicts between CLAUDE.local.md and project CLAUDE.md
-8. **outputStyle → Output Style File**: If `outputStyle` is set in settings.local.json, verify the referenced output style file exists in .claude/output-styles/ or ~/.claude/output-styles/
+8. **outputStyle → Output Style File**: If `outputStyle` is set in any settings scope, verify the referenced output style file exists in .claude/output-styles/ or ~/.claude/output-styles/ (use effective value considering scope precedence)
 9. **respectGitignore → .claudeignore**: If `respectGitignore` is false (or absent) but .claudeignore exists, warn about potential confusion; if `respectGitignore` is true but no .claudeignore or .gitignore exists, note that ignore file may be missing
+10. **Settings → Permission Overlap**: Detect permission rules at different scopes that may conflict (e.g., `allow` at user scope contradicted by `deny` at project scope for same pattern)
+11. **Settings → Managed-Only Keys**: Flag managed-only keys (`disableBypassPermissionsMode`, `allowManagedHooksOnly`, `allowManagedPermissionRulesOnly`, `allowedMcpServers`, `deniedMcpServers`, `strictKnownMarketplaces`, `forceLoginMethod`, `forceLoginOrgUUID`, `companyAnnouncements`) found in non-managed settings files — these are silently ignored at runtime
+12. **Settings → Deprecated Keys**: Flag `includeCoAuthoredBy` in any settings file with guidance to use `attribution` instead
 
 Return:
 - External reference validation table
@@ -402,6 +517,9 @@ Return:
 - List of missing/broken external references
 - outputStyle cross-reference result
 - respectGitignore alignment result
+- Settings permission overlap warnings
+- Settings managed-only key misplacement warnings
+- Settings deprecated key warnings
 - External consistency score
 ```
 

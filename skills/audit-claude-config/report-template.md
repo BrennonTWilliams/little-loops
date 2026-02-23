@@ -88,6 +88,42 @@ This file contains the format and structure for the final audit report generated
 |------|--------|-------|--------|--------|
 [Table rows]
 
+### Settings Hierarchy
+
+#### Settings File Inventory
+| Scope | File | Exists | Valid JSON | Keys Found | Issues |
+|-------|------|--------|------------|------------|--------|
+| Managed | /Library/Application Support/ClaudeCode/managed-settings.json (macOS) or /etc/claude-code/managed-settings.json (Linux) | Yes/No | Yes/No | [list] | N |
+| User | ~/.claude/settings.json | Yes/No | Yes/No | [list] | N |
+| Project | .claude/settings.json | Yes/No | Yes/No | [list] | N |
+| Local | .claude/settings.local.json | Yes/No | Yes/No | [list] | N |
+| Global | ~/.claude.json | Yes/No | Yes/No | N/A (syntax only) | N |
+
+#### Settings Key Validation
+| Key | Scope | Expected Type | Actual Type/Value | Status |
+|-----|-------|---------------|-------------------|--------|
+[Table rows for keys with validation issues: unknown keys, type mismatches, deprecated, managed-only in wrong scope]
+
+#### Permission Rules
+| Scope | Rule Type | Rule | Syntax Valid | Issues |
+|-------|-----------|------|-------------|--------|
+[Table rows for permission rules across all scopes, or "No permission rules defined"]
+
+#### Scope Conflicts
+| Key | Higher Scope | Higher Value | Lower Scope | Lower Value | Effective |
+|-----|-------------|-------------|-------------|-------------|-----------|
+[Table rows for same key at multiple scopes with different values, or "No scope conflicts detected"]
+
+#### Deprecated Keys
+| Key | Scope | Replacement | Status |
+|-----|-------|-------------|--------|
+[Table rows, or "No deprecated keys found"]
+
+#### Managed-Only Keys in Non-Managed Files
+| Key | Found In | Expected In | Status |
+|-----|----------|-------------|--------|
+[Table rows, or "No misplaced managed-only keys"]
+
 ### Output Styles
 
 | File | Exists | Frontmatter | name | description | keep-coding-instructions | Issues |
@@ -148,6 +184,18 @@ This file contains the format and structure for the final audit report generated
 |------------|------------|----------|------------|
 [Table rows or "None detected"]
 
+### Settings Scope Conflicts
+
+| Key | Scopes | Values | Effective Value | Severity |
+|-----|--------|--------|-----------------|----------|
+[Table rows or "No settings scope conflicts detected"]
+
+### Settings Permission Overlaps
+
+| Pattern | Allow Scope | Deny Scope | Effective | Severity |
+|---------|-------------|------------|-----------|----------|
+[Table rows or "No permission rule overlaps detected"]
+
 ### Missing References
 
 [List or "None"]
@@ -178,6 +226,7 @@ This file contains the format and structure for the final audit report generated
 | Plugin components | X/10 | [Brief note] |
 | Hooks config | X/10 | [Brief note] |
 | MCP config | X/10 | [Brief note] |
+| Settings hierarchy | X/10 | [Key validation, scope conflicts, deprecated/managed-only keys, permission rules] |
 | Cross-config consistency | X/10 | [Brief note] |
 | Extended config surfaces | X/10 | [Output styles, LSP, keybindings, .claudeignore, plugin settings] |
 | **Overall** | **X/10** | [Summary] |
@@ -192,14 +241,15 @@ This file contains the format and structure for the final audit report generated
 
 ### Overall Health Score
 Calculate as weighted average:
-- Memory file structure: 18%
-- Content quality: 18%
-- Memory hierarchy coverage: 9%
-- Rules files quality: 9%
-- Plugin components: 15%
+- Memory file structure: 16%
+- Content quality: 16%
+- Memory hierarchy coverage: 8%
+- Rules files quality: 8%
+- Plugin components: 14%
 - Hooks config: 5%
 - MCP config: 5%
-- Cross-config consistency: 14%
+- Settings hierarchy: 8% (key validation, scope conflicts, deprecated/managed-only keys, permission rules)
+- Cross-config consistency: 13%
 - Extended config surfaces: 7% (output styles, LSP, keybindings, .claudeignore, plugin settings)
 
 ### Individual Category Scores
@@ -225,6 +275,7 @@ Wave 1 Analysis Complete
 | Commands | X | Y | Z/10 |
 | Hooks | X | Y | Z/10 |
 | Config | X | Y | Z/10 |
+| Settings Hierarchy | X | Y | Z/10 |
 | Output Styles | X | Y | Z/10 |
 | LSP Servers | X | Y | Z/10 |
 | Keybindings | X | Y | Z/10 |
