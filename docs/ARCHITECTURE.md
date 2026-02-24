@@ -3,9 +3,9 @@
 little-loops is a Claude Code plugin providing development workflow automation with issue management, code quality commands, and parallel processing capabilities.
 
 > **Related Documentation:**
-> - [Command Reference](COMMANDS.md) - All slash commands with usage
-> - [API Reference](API.md) - Detailed class and method documentation
-> - [Troubleshooting](TROUBLESHOOTING.md) - Common issues and solutions
+> - [Command Reference](reference/COMMANDS.md) - All slash commands with usage
+> - [API Reference](reference/API.md) - Detailed class and method documentation
+> - [Troubleshooting](development/TROUBLESHOOTING.md) - Common issues and solutions
 > - [README](../README.md) - Installation and quick start
 
 ## System Components
@@ -762,7 +762,7 @@ The merge coordinator is a sophisticated git operations state machine that handl
 7. Circuit breaker (pauses after consecutive failures)
 8. Untracked file backup and retry
 
-**See [MERGE-COORDINATOR.md](MERGE-COORDINATOR.md) for comprehensive documentation.**
+**See [MERGE-COORDINATOR.md](development/MERGE-COORDINATOR.md) for comprehensive documentation.**
 
 ### Context Monitor and Session Continuation
 

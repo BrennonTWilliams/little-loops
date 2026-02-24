@@ -3,11 +3,11 @@
 Thank you for your interest in contributing to little-loops! This document provides guidelines and instructions for contributing.
 
 > **Related Documentation:**
-> - [Issue Template Guide](docs/ISSUE_TEMPLATE.md) - v2.0 issue template with examples and best practices
-> - [Testing Guide](docs/TESTING.md) - Comprehensive testing patterns and conventions
+> - [Issue Template Guide](docs/reference/ISSUE_TEMPLATE.md) - v2.0 issue template with examples and best practices
+> - [Testing Guide](docs/development/TESTING.md) - Comprehensive testing patterns and conventions
 > - [Architecture Overview](docs/ARCHITECTURE.md) - System design and component relationships
-> - [API Reference](docs/API.md) - Python module documentation
-> - [Troubleshooting](docs/TROUBLESHOOTING.md) - Common issues and solutions
+> - [API Reference](docs/reference/API.md) - Python module documentation
+> - [Troubleshooting](docs/development/TROUBLESHOOTING.md) - Common issues and solutions
 
 ## Development Setup
 
@@ -300,7 +300,7 @@ The issue template has been optimized for AI implementation with **19 sections**
 - Enhanced Motivation and Impact sections with justifications
 - New Root Cause (BUG), API/Interface (FEAT/ENH) sections
 
-**See**: [docs/ISSUE_TEMPLATE.md](docs/ISSUE_TEMPLATE.md) for complete guide with examples
+**See**: [docs/reference/ISSUE_TEMPLATE.md](docs/reference/ISSUE_TEMPLATE.md) for complete guide with examples
 
 ### Quick Start
 
@@ -454,8 +454,8 @@ Skills are user-invocable workflows that activate based on trigger keywords or e
 
 ## Questions?
 
-- Check [docs/TROUBLESHOOTING.md](docs/TROUBLESHOOTING.md) for common issues
-- Review [docs/API.md](docs/API.md) for Python module documentation
+- Check [docs/development/TROUBLESHOOTING.md](docs/development/TROUBLESHOOTING.md) for common issues
+- Review [docs/reference/API.md](docs/reference/API.md) for Python module documentation
 - Open an issue for bugs or feature requests
 - Check existing issues before creating new ones
 - Use discussions for questions and ideas

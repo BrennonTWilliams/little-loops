@@ -174,7 +174,7 @@ Commands are organized by workflow capability. Run `/ll:help` for the full refer
 | `/ll:resume [prompt_file]` | Resume from previous session's continuation prompt |
 | `/ll:toggle-autoprompt [setting]` | Toggle automatic prompt optimization |
 
-**Automatic context monitoring**: Enable `context_monitor.enabled` to get warnings when context fills up (~80%). The system will remind you to run `/ll:handoff` before context exhaustion. See [Session Handoff Guide](docs/SESSION_HANDOFF.md) for details.
+**Automatic context monitoring**: Enable `context_monitor.enabled` to get warnings when context fills up (~80%). The system will remind you to run `/ll:handoff` before context exhaustion. See [Session Handoff Guide](docs/guides/SESSION_HANDOFF.md) for details.
 
 ## Agents
 
@@ -356,7 +356,7 @@ ll-check-links docs/             # Check specific directory
 
 little-loops uses `.claude/ll-config.json` for project-specific settings. Run `/ll:init` to auto-detect your project type and generate a config, or `/ll:configure` for interactive editing. All settings have sensible defaults.
 
-For the full configuration reference — all sections, options, variable substitution, and command overrides — see [Configuration Reference](docs/CONFIGURATION.md).
+For the full configuration reference — all sections, options, variable substitution, and command overrides — see [Configuration Reference](docs/reference/CONFIGURATION.md).
 
 ## Project Examples
 
@@ -410,19 +410,19 @@ For the full configuration reference — all sections, options, variable substit
 | Issues not discovered | Check `issues.base_dir` config matches your `.issues/` path |
 | Resume not working | Delete state file (`.auto-manage-state.json` or `.parallel-manage-state.json`) |
 
-For detailed solutions, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
+For detailed solutions, see [Troubleshooting Guide](docs/development/TROUBLESHOOTING.md).
 
 ## Documentation
 
 - [**Documentation Index**](docs/INDEX.md) - Complete reference for all documentation
-- [Configuration Reference](docs/CONFIGURATION.md) - Full config options and examples
-- [Command Reference](docs/COMMANDS.md) - All slash commands with usage
-- [Loops Guide](docs/LOOPS_GUIDE.md) - Loop creation, paradigms, and practical examples
-- [Session Handoff Guide](docs/SESSION_HANDOFF.md) - Context management and session continuation
-- [Merge Coordinator Guide](docs/MERGE-COORDINATOR.md) - Sophisticated merge coordination for parallel processing
-- [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions
+- [Configuration Reference](docs/reference/CONFIGURATION.md) - Full config options and examples
+- [Command Reference](docs/reference/COMMANDS.md) - All slash commands with usage
+- [Loops Guide](docs/guides/LOOPS_GUIDE.md) - Loop creation, paradigms, and practical examples
+- [Session Handoff Guide](docs/guides/SESSION_HANDOFF.md) - Context management and session continuation
+- [Merge Coordinator Guide](docs/development/MERGE-COORDINATOR.md) - Sophisticated merge coordination for parallel processing
+- [Troubleshooting Guide](docs/development/TROUBLESHOOTING.md) - Common issues and solutions
 - [Architecture Overview](docs/ARCHITECTURE.md) - System design and diagrams
-- [API Reference](docs/API.md) - Python module documentation
+- [API Reference](docs/reference/API.md) - Python module documentation
 
 ## Development
 

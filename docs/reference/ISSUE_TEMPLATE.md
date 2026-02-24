@@ -870,4 +870,4 @@ A: Both! "Location" = where (file/line/code from scan). "Root Cause" = why (expl
 
 - [CONTRIBUTING.md](../CONTRIBUTING.md) - Issue creation workflow
 - [API.md](./API.md) - Python module reference for issue parsing
-- [ARCHITECTURE.md](./ARCHITECTURE.md) - System design and issue lifecycle
+- [ARCHITECTURE.md](../ARCHITECTURE.md) - System design and issue lifecycle

@@ -95,8 +95,8 @@ Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`
 
 - `CONTRIBUTING.md` - Development setup and guidelines
 - `docs/ARCHITECTURE.md` - System design
-- `docs/API.md` - Python module reference
-- `docs/TROUBLESHOOTING.md` - Common issues
+- `docs/reference/API.md` - Python module reference
+- `docs/development/TROUBLESHOOTING.md` - Common issues
 
 ## CLI Tools
 
