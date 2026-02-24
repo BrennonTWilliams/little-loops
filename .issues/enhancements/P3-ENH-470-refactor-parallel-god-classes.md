@@ -113,3 +113,21 @@ Extract cross-cutting concerns into focused helper modules:
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P3
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-24 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | HIGH |
+| Complexity added | MEDIUM |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Update first - Before implementation, this issue needs: (1) a full dependency audit to replace the "TBD" in Dependent Files, (2) a concrete method-level extraction plan specifying which methods move to which helper modules, (3) a thread-safety review checklist since concurrency code is sensitive to restructuring, and (4) an established pattern to follow (currently marked "N/A — novel extraction"). The HIGH effort with MEDIUM utility ratio does not justify implementation without this preparation.
