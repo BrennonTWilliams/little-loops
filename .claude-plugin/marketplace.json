@@ -1,6 +1,6 @@
 {
   "name": "little-loops",
-  "version": "1.19.0",
+  "version": "1.19.1",
   "description": "Development workflow toolkit for Claude Code",
   "owner": {
     "name": "BrennonTWilliams"
@@ -9,7 +9,7 @@
     {
       "name": "ll",
       "description": "Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing",
-      "version": "1.19.0",
+      "version": "1.19.1",
       "author": {
         "name": "BrennonTWilliams"
       },
