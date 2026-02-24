@@ -73,6 +73,12 @@ def _update_issue_frontmatter(content: str, updates: dict[str, Any]) -> str:
     return f"---\n{fm_text}\n---{content[fm_match.end():]}"
 ```
 
+## Implementation Steps
+
+1. Replace manual frontmatter parser in `_update_issue_frontmatter` with `yaml.safe_load`/`yaml.dump`
+2. Add round-trip test with URLs, quoted values, and boolean frontmatter
+3. Verify existing sync operations work correctly
+
 ## Integration Map
 
 ### Files to Modify
@@ -106,6 +112,7 @@ def _update_issue_frontmatter(content: str, updates: dict[str, Any]) -> str:
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-24 - auto-format batch
 
 ---
 

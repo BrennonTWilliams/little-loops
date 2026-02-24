@@ -35,6 +35,13 @@ Reduces maintenance surface and eliminates risk of the copies drifting out of sy
 - **In scope**: Deduplicating frontmatter parsing calls; no functional changes
 - **Out of scope**: Refactoring frontmatter.py itself, changing public APIs
 
+## Implementation Steps
+
+1. Add `_strip_frontmatter` helper to `sync.py` or reuse `parse_frontmatter` from `frontmatter.py`
+2. Deduplicate frontmatter skip blocks in `_parse_issue_title` and `_get_issue_body`
+3. Refactor `parse_completed_issue` in `parsing.py` to call `parse_frontmatter` once
+4. Verify existing tests pass unchanged
+
 ## Integration Map
 
 ### Files to Modify
@@ -69,6 +76,7 @@ Reduces maintenance surface and eliminates risk of the copies drifting out of sy
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-24 - auto-format batch
 
 ---
 

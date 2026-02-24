@@ -63,6 +63,12 @@ if gh_num is not None:
         logger.warning(f"Malformed github_issue value in {issue_path.name}: {gh_num!r}")
 ```
 
+## Implementation Steps
+
+1. Add try/except around `int(gh_num)` in `_get_local_github_numbers`
+2. Log warning for malformed values with file path
+3. Add test with malformed `github_issue` frontmatter value
+
 ## Integration Map
 
 ### Files to Modify
@@ -96,6 +102,7 @@ if gh_num is not None:
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-24 - auto-format batch
 
 ---
 

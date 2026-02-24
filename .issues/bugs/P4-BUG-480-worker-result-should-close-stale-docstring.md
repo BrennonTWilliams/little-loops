@@ -30,6 +30,18 @@ The docstring annotation reads "(not implemented)" but the close path for `ll-pa
 
 The docstring should accurately reflect that `should_close` IS implemented and describe its behavior.
 
+## Steps to Reproduce
+
+1. Read `WorkerResult` docstring at `types.py:68`
+2. Compare against implementation in `worker_pool.py:304-316` and `orchestrator.py:784-803`
+3. Observe docstring says "(not implemented)" but feature is fully implemented
+
+## Root Cause
+
+- **File**: `scripts/little_loops/parallel/types.py`
+- **Anchor**: `in class WorkerResult`
+- **Cause**: Docstring was not updated when the `should_close` feature was implemented in `worker_pool.py` and `orchestrator.py`
+
 ## Proposed Solution
 
 Update the docstring:
@@ -37,6 +49,11 @@ Update the docstring:
 ```python
 should_close: Whether the issue should be closed (e.g., already fixed, invalid)
 ```
+
+## Implementation Steps
+
+1. Update `should_close` docstring to remove "(not implemented)"
+2. Verify docstring accurately describes the implemented close behavior
 
 ## Integration Map
 
@@ -71,6 +88,7 @@ should_close: Whether the issue should be closed (e.g., already fixed, invalid)
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-24 - auto-format batch
 
 ---
 

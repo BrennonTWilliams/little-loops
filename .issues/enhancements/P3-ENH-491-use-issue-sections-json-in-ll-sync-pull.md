@@ -36,6 +36,11 @@ This output lacks the v2.0 section structure (Summary, Current Behavior, Expecte
 3. Map GitHub issue body content into the appropriate sections where possible (e.g., body text → Summary, labels → Labels section). Content that doesn't map cleanly goes into a catch-all section (e.g., "Additional Context" or "Summary").
 4. Default the creation variant to `"minimal"` for pulled issues (since GitHub bodies are unstructured), but make it configurable via `config.sync.github.pull_template` or similar.
 
+## Scope Boundaries
+
+- **In scope**: Refactoring `_create_local_issue()` to use `issue-sections.json`; adding template assembly utility; adding `pull_template` config option
+- **Out of scope**: Changing push behavior; modifying `issue-sections.json` structure; parsing GitHub body into individual sections (unstructured body goes into Summary)
+
 ## Integration Map
 
 | File | Role | Change Type |
@@ -78,6 +83,7 @@ This output lacks the v2.0 section structure (Summary, Current Behavior, Expecte
 
 ## Session Log
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/111eb543-d1ab-4bb9-b78b-61104209c4eb.jsonl`
+- `/ll:format-issue` - 2026-02-24 - auto-format batch
 
 ## Status
 

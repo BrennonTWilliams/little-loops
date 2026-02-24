@@ -33,6 +33,12 @@ After a match is found for a given file, the inner prefix loop breaks early. A s
 - **In scope**: Adding early break and optional regex pre-compilation
 - **Out of scope**: Changing the issue numbering scheme
 
+## Implementation Steps
+
+1. Add `break` after match in the inner prefix loop
+2. Pre-compile union regex with all configured prefixes
+3. Verify existing `test_issue_parser.py` tests pass
+
 ## Integration Map
 
 ### Files to Modify
@@ -67,6 +73,7 @@ After a match is found for a given file, the inner prefix loop breaks early. A s
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-24 - auto-format batch
 
 ---
 

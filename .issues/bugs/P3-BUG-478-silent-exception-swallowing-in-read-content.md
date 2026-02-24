@@ -53,6 +53,11 @@ def _read_content(self, issue_path: Path) -> str:
         return ""
 ```
 
+## Implementation Steps
+
+1. Add `logger.warning` call to `_read_content` except block with file path and exception
+2. Add test with unreadable file to verify warning is logged
+
 ## Integration Map
 
 ### Files to Modify
@@ -86,6 +91,7 @@ def _read_content(self, issue_path: Path) -> str:
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-24 - auto-format batch
 
 ---
 

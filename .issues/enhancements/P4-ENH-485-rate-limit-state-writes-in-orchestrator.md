@@ -43,6 +43,12 @@ Or alternatively, call `_save_state()` only when state actually changes (issue c
 - **In scope**: Adding rate-limiting to `_save_state` calls
 - **Out of scope**: Changing state persistence format, modifying main loop structure
 
+## Implementation Steps
+
+1. Add `_last_save_time` attribute to orchestrator
+2. Add time-based throttle (5s interval) to `_save_state()`
+3. Ensure state is still saved on shutdown and signal handling
+
 ## Integration Map
 
 ### Files to Modify
@@ -76,6 +82,7 @@ Or alternatively, call `_save_state()` only when state actually changes (issue c
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-24 - auto-format batch
 
 ---
 
