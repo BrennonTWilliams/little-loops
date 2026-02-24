@@ -45,7 +45,7 @@ Also consider adding `.claude/ll.local.md` to the `.gitignore` entries in Step 9
 ## Integration Map
 
 ### Files to Modify
-- `skills/init/SKILL.md` — Step 9 (lines ~184-203): add `.claude/ll.local.md` to gitignore block; Step 10 (lines ~207-227): add mention in completion message
+- `skills/init/SKILL.md` — Step 9 (lines ~301-322): add `.claude/ll.local.md` to gitignore block; Step 10 (lines ~324-352): add mention in completion message
 
 ### Similar Patterns
 - Same pattern as the existing gitignore additions in Step 9
@@ -86,10 +86,7 @@ Also consider adding `.claude/ll.local.md` to the `.gitignore` entries in Step 9
 ## Session Log
 - `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
-
-## Blocked By
-
-- ENH-453
+- `/ll:verify-issues` - 2026-02-24 - Updated Step 9/10 line references; removed satisfied blocker ENH-453 (completed)
 
 ---
 

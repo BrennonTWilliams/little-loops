@@ -14,12 +14,12 @@ Architectural issue found by `/ll:audit-architecture`. The `issue_discovery.py` 
 
 ## Current Behavior
 
-The module `scripts/little_loops/issue_discovery.py` (954 lines) contains 3 dataclasses and 19 functions covering distinct responsibilities:
+The module `scripts/little_loops/issue_discovery.py` (954 lines) contains 2 dataclasses, 1 Enum, and 19 functions covering distinct responsibilities:
 - **Search functions**: `search_issues_by_content`, `search_issues_by_file_path`, `_get_all_issue_files`
 - **Matching/scoring**: `_normalize_text`, `_extract_words`, `_calculate_word_overlap`, match scoring logic
 - **Completed issue extraction**: `_extract_fix_commit`, `_extract_files_changed`, `_extract_completion_date`
 - **Regression detection**: `RegressionEvidence`, finding classification
-- **Deduplication**: `FindingMatch`, `MatchClassification`, dedup logic
+- **Deduplication**: `FindingMatch` (dataclass), `MatchClassification` (Enum), dedup logic
 
 ## Expected Behavior
 
@@ -92,6 +92,7 @@ Split into focused modules within an `issue_discovery/` package:
 
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:verify-issues` - 2026-02-24 - Corrected "3 dataclasses" to "2 dataclasses + 1 Enum"
 
 ---
 
