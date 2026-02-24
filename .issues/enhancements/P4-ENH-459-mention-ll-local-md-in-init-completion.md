@@ -72,12 +72,20 @@ Also consider adding `.claude/ll.local.md` to the `.gitignore` entries in Step 9
 - **Risk**: Low — Additive changes only
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+| Document | Relevance |
+|----------|-----------|
+| `.claude/CLAUDE.md` | Documents `.claude/ll.local.md` override mechanism |
+| `README.md` | Documents local override file |
+
 ## Labels
 
 `enhancement`, `init`, `local-config`, `onboarding`
 
 ## Session Log
 - `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
+- `/ll:format-issue` - 2026-02-24 - auto-format batch
 
 ## Blocked By
 
