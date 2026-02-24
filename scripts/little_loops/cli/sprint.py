@@ -1239,7 +1239,6 @@ def _cmd_sprint_run(
                 else:
                     failed_waves += 1
                     completed.update(wave_ids)
-                    state.completed_issues.extend(wave_ids)
                     state.failed_issues[wave_ids[0]] = "Issue processing failed"
                     logger.warning(f"Wave {wave_num}/{total_waves} had failures")
                 _save_sprint_state(state, logger)
@@ -1289,7 +1288,6 @@ def _cmd_sprint_run(
                         }
                     elif issue_id in actually_failed:
                         completed.add(issue_id)
-                        state.completed_issues.append(issue_id)
                         state.failed_issues[issue_id] = "Issue failed during wave execution"
                     # else: issue was neither completed nor failed (interrupted/stranded)
                     # — leave untracked so it can be retried on resume
@@ -1314,6 +1312,7 @@ def _cmd_sprint_run(
                         if retry_result.success:
                             retried_ok += 1
                             state.failed_issues.pop(issue.issue_id, None)
+                            state.completed_issues.append(issue.issue_id)
                             state.timing[issue.issue_id] = {"total": retry_result.duration}
                             logger.success(f"  Retry succeeded: {issue.issue_id}")
                         else:

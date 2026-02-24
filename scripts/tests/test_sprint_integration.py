@@ -794,8 +794,8 @@ issues:
         assert "BUG-001" in state_data["completed_issues"]
         assert "BUG-003" in state_data["completed_issues"]
 
-        # Failed issue should be in both completed_issues (processed) and failed_issues
-        assert "BUG-002" in state_data["completed_issues"]
+        # Failed issue should NOT be in completed_issues (BUG-473 fix)
+        assert "BUG-002" not in state_data["completed_issues"]
         assert "BUG-002" in state_data["failed_issues"]
 
         # Only the actually-failed issue should be in failed_issues
@@ -852,9 +852,10 @@ issues:
         assert "BUG-003" not in state_data["completed_issues"]
         assert "BUG-003" not in state_data["failed_issues"]
 
-        # BUG-001 completed, BUG-002 failed — both tracked
+        # BUG-001 completed — should be tracked
         assert "BUG-001" in state_data["completed_issues"]
-        assert "BUG-002" in state_data["completed_issues"]
+        # BUG-002 failed — should NOT be in completed_issues (BUG-473 fix)
+        assert "BUG-002" not in state_data["completed_issues"]
         assert "BUG-002" in state_data["failed_issues"]
 
     def test_sprint_sequential_retry_after_parallel_failure(
@@ -1417,3 +1418,124 @@ issues:
 
         result = cli._cmd_sprint_run(args, manager, config)
         assert result == 1  # Sprint not found
+
+    def test_sprint_failed_wave_not_in_completed_allows_resume_retry(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Test that failed single-issue waves are retried on --resume (BUG-473).
+
+        When a single-issue wave fails, its ID must NOT be in completed_issues.
+        On --resume, the failed wave should be retried rather than skipped.
+        """
+        import argparse
+
+        from little_loops.cli import sprint as cli
+        from little_loops.sprint import SprintState
+
+        # Create project with 2 waves via dependency
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        for category in ["bugs", "completed"]:
+            (issues_dir / category).mkdir()
+
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_data = {
+            "project": {"name": "test"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                },
+                "completed_dir": "completed",
+            },
+        }
+        with open(config_dir / "ll-config.json", "w") as f:
+            json.dump(config_data, f)
+
+        # BUG-001: Wave 1 (will fail)
+        # BUG-002: Wave 2 (blocked by BUG-001)
+        (issues_dir / "bugs" / "P1-BUG-001-failing.md").write_text(
+            "# BUG-001: Failing\n\n## Summary\nThis will fail."
+        )
+        (issues_dir / "bugs" / "P1-BUG-002-dependent.md").write_text(
+            "# BUG-002: Dependent\n\n## Summary\nDepends on BUG-001.\n\n## Blocked By\n- BUG-001"
+        )
+
+        sprints_dir = tmp_path / ".sprints"
+        sprints_dir.mkdir()
+        (sprints_dir / "fail-resume.yaml").write_text(
+            """name: fail-resume
+issues:
+  - BUG-001
+  - BUG-002
+"""
+        )
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=sprints_dir, config=config)
+
+        # --- Run 1: BUG-001 fails ---
+        call_count: dict[str, int] = {"BUG-001": 0, "BUG-002": 0}
+
+        def mock_process_fail(info: Any, **kwargs: Any) -> Any:
+            call_count[info.issue_id] = call_count.get(info.issue_id, 0) + 1
+            from little_loops.issue_manager import IssueProcessingResult
+
+            return IssueProcessingResult(success=False, duration=1.0, issue_id=info.issue_id)
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            mock_process_fail,
+        )
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="fail-resume",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=1,
+            quiet=False,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 1  # Sprint had failures
+
+        # Verify state: BUG-001 should be in failed_issues but NOT completed_issues
+        state_data = json.loads((tmp_path / ".sprint-state.json").read_text())
+        assert "BUG-001" in state_data["failed_issues"]
+        assert "BUG-001" not in state_data["completed_issues"]
+
+        # --- Run 2: Resume — BUG-001 should be retried ---
+        call_count.clear()
+
+        def mock_process_success(info: Any, **kwargs: Any) -> Any:
+            call_count[info.issue_id] = call_count.get(info.issue_id, 0) + 1
+            from little_loops.issue_manager import IssueProcessingResult
+
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            mock_process_success,
+        )
+        cli._sprint_shutdown_requested = False
+
+        resume_args = argparse.Namespace(
+            sprint="fail-resume",
+            dry_run=False,
+            resume=True,
+            skip=None,
+            max_workers=1,
+            quiet=False,
+        )
+
+        result = cli._cmd_sprint_run(resume_args, manager, config)
+        assert result == 0  # All waves succeeded on retry
+
+        # BUG-001 must have been retried (not skipped)
+        assert call_count.get("BUG-001", 0) >= 1, "BUG-001 should be retried on resume"
+        # BUG-002 should also have been executed
+        assert call_count.get("BUG-002", 0) >= 1, "BUG-002 should be executed after BUG-001 succeeds"

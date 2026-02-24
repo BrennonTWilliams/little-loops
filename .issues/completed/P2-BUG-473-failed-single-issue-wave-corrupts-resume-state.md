@@ -3,6 +3,8 @@ discovered_commit: 95d4139206f3659159b727db57578ffb2930085b
 discovered_branch: main
 discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-473: Failed single-issue sprint wave corrupts resume state
@@ -30,6 +32,10 @@ else:
 ## Current Behavior
 
 When a single-issue wave fails (`issue_result.success` is `False`), the code adds the issue ID to `state.completed_issues` (line 1242) simultaneously with `state.failed_issues` (line 1243). The multi-issue parallel path (lines 1283-1295) has the **same bug** — lines 1290-1293 also add failed issues to `state.completed_issues`. Both paths prevent failed issues from being retried on `--resume`.
+
+## Actual Behavior
+
+The issue ID is added to both `state.completed_issues` (line 1242) and `state.failed_issues` (line 1243). On `--resume`, the resume logic at line 1161 builds `completed_set = set(state.completed_issues)` and skips any wave whose issues are a subset of `completed_set`, so the failed issue is silently skipped.
 
 ## Expected Behavior
 
@@ -99,13 +105,22 @@ else:
 
 `bug`, `sprint`, `resume`, `auto-generated`
 
+## Resolution
+
+- Removed `state.completed_issues.extend(wave_ids)` from single-issue failure branch (was line 1242)
+- Removed `state.completed_issues.append(issue_id)` from multi-issue failure branch (was line 1292)
+- Added `state.completed_issues.append(issue.issue_id)` to sequential retry success path so successfully retried issues are properly marked completed
+- Updated 2 existing tests that incorrectly asserted failed issues were in `completed_issues`
+- Added regression test `test_sprint_failed_wave_not_in_completed_allows_resume_retry`
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:verify-issues` - 2026-02-24 - Corrected: multi-issue path (lines 1290-1293) has same bug, not a correct reference pattern. Fix scope expanded to both code paths.
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:manage-issue` - 2026-02-24 - Fixed bug in both code paths, added regression test
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P2
+**Resolved** | Created: 2026-02-24 | Resolved: 2026-02-24 | Priority: P2
