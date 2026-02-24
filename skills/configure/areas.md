@@ -411,14 +411,15 @@ If "Add a category" selected, prompt for:
 ```
 Current Continuation Configuration
 ----------------------------------
-  auto_detect:      {{config.continuation.auto_detect_on_session_start}}
-  include_todos:    {{config.continuation.include_todos}}
-  include_git:      {{config.continuation.include_git_status}}
-  include_files:    {{config.continuation.include_recent_files}}
-  expiry_hours:     {{config.continuation.prompt_expiry_hours}}
+  auto_detect:         {{config.continuation.auto_detect_on_session_start}}
+  include_todos:       {{config.continuation.include_todos}}
+  include_git:         {{config.continuation.include_git_status}}
+  include_files:       {{config.continuation.include_recent_files}}
+  max_continuations:   {{config.continuation.max_continuations}}
+  expiry_hours:        {{config.continuation.prompt_expiry_hours}}
 ```
 
-### Round 1 (3 questions)
+### Round 1 (4 questions)
 
 ```yaml
 questions:
@@ -443,6 +444,19 @@ questions:
       - label: "Recent files"
         description: "Include recently modified files"
     multiSelect: true
+
+  - header: "Max retries"
+    question: "Maximum automatic session continuations for CLI tools?"
+    options:
+      - label: "{{current max_continuations}} (keep)"
+        description: "Keep current setting"
+      - label: "3"
+        description: "3 continuations (default)"
+      - label: "5"
+        description: "5 continuations"
+      - label: "10"
+        description: "10 continuations (maximum)"
+    multiSelect: false
 
   - header: "Expiry"
     question: "How long should continuation prompts remain valid?"

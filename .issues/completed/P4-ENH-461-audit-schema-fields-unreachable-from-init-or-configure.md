@@ -3,7 +3,7 @@ type: ENH
 id: ENH-461
 title: Audit config-schema.json for fields unreachable from init or configure
 priority: P4
-status: open
+status: completed
 created: 2026-02-22
 ---
 
@@ -96,9 +96,34 @@ For each field:
 
 ## Session Log
 - `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
+- `/ll:manage-issue` - 2026-02-24
 
 ---
 
+## Resolution
+
+**Completed** | 2026-02-24
+
+All 9 unreachable fields audited and categorized:
+
+### Exposed in `/ll:configure` (1 field)
+- **`continuation.max_continuations`** — Added to continuation area as 4th question in Round 1 with options for 3 (default), 5, and 10 continuations. Also added to Current Values display.
+
+### Documented as Manual Configuration (8 fields)
+- **`scan.custom_agents`** — Added to scan section table in CONFIGURATION.md; documented in new Manual Configuration section
+- **`context_monitor.estimate_weights.*`** (5 sub-fields) — Documented with full sub-field table in Manual Configuration section
+- **`context_monitor.post_compaction_percent`** — Documented in Manual Configuration section
+- **`product.analyze_user_impact`** / **`product.analyze_business_value`** — Documented in Manual Configuration section
+- **`product.goals_discovery.max_files`** / **`product.goals_discovery.required_files`** — Added to product section table; documented in Manual Configuration section
+- **`prompt_optimization.bypass_prefix`** — Documented in Manual Configuration section
+
+### Removed from schema (0 fields)
+All fields have active consumers — none removed.
+
+### Files Changed
+- `skills/configure/areas.md` — Added `max_continuations` to continuation area (Current Values + Round 1 question)
+- `docs/CONFIGURATION.md` — Added Manual Configuration section (8 fields); added `custom_agents` to scan table; added `goals_discovery.*` to product table
+
 ## Status
 
-**Open** | Created: 2026-02-22 | Priority: P4
+**Completed** | Created: 2026-02-22 | Resolved: 2026-02-24 | Priority: P4

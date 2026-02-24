@@ -218,6 +218,8 @@ Product analysis configuration for `/ll:scan-product`:
 | `goals_file` | `.claude/ll-goals.md` | Path to product goals/vision document |
 | `analyze_user_impact` | `true` | Include user impact assessment in issues |
 | `analyze_business_value` | `true` | Include business value scoring in issues |
+| `goals_discovery.max_files` | `5` | Maximum markdown files to analyze for goal discovery (1-20) |
+| `goals_discovery.required_files` | `["README.md"]` | Files that must exist for discovery (warning if missing) |
 
 To enable product scanning, set `product.enabled: true` and create a goals file with your product vision, personas, and strategic priorities.
 
@@ -243,6 +245,7 @@ Codebase scanning configuration:
 |-----|---------|-------------|
 | `focus_dirs` | `["src/", "tests/"]` | Directories to scan |
 | `exclude_patterns` | Standard patterns | Paths to exclude from scanning |
+| `custom_agents` | `[]` | Custom scanning agents to include |
 
 ### `prompt_optimization`
 
@@ -332,6 +335,99 @@ To enable document tracking, set `documents.enabled: true` and define categories
 ```
 
 Each category requires a `files` array of relative paths. The optional `description` field documents what the category covers.
+
+## Manual Configuration
+
+The following fields are defined in `config-schema.json` but are not exposed through `/ll:init` or `/ll:configure`. To set them, edit `.claude/ll-config.json` directly. All have sensible defaults and rarely need changing.
+
+### `scan.custom_agents`
+
+Custom scanning agent names to include during `/ll:scan-codebase`:
+
+```json
+{ "scan": { "custom_agents": ["my-security-scanner"] } }
+```
+
+Default: `[]` (empty — only built-in agents run).
+
+### `context_monitor.estimate_weights`
+
+Weight factors for the context monitoring token estimation heuristic. Adjust if the context monitor's estimates are consistently too high or too low:
+
+```json
+{
+  "context_monitor": {
+    "estimate_weights": {
+      "read_per_line": 10,
+      "tool_call_base": 100,
+      "bash_output_per_char": 0.3,
+      "per_turn_overhead": 800,
+      "system_prompt_baseline": 10000
+    }
+  }
+}
+```
+
+| Sub-field | Default | Description |
+|-----------|---------|-------------|
+| `read_per_line` | `10` | Estimated tokens per line read |
+| `tool_call_base` | `100` | Base tokens per tool call overhead |
+| `bash_output_per_char` | `0.3` | Estimated tokens per character of bash output |
+| `per_turn_overhead` | `800` | Tokens per turn for Claude output and user message |
+| `system_prompt_baseline` | `10000` | One-time token estimate for system prompt |
+
+### `context_monitor.post_compaction_percent`
+
+After context compaction, reset the token estimate to this percentage of `context_limit_estimate` as a safety margin:
+
+```json
+{ "context_monitor": { "post_compaction_percent": 30 } }
+```
+
+Default: `30` (range: 10-60).
+
+### `product.analyze_user_impact` / `product.analyze_business_value`
+
+Toggle sub-features of product analysis. Both default to `true` when `product.enabled` is `true`:
+
+```json
+{
+  "product": {
+    "analyze_user_impact": false,
+    "analyze_business_value": false
+  }
+}
+```
+
+### `product.goals_discovery`
+
+Fine-tune how product goal auto-discovery scans documentation:
+
+```json
+{
+  "product": {
+    "goals_discovery": {
+      "max_files": 10,
+      "required_files": ["README.md", "docs/VISION.md"]
+    }
+  }
+}
+```
+
+| Sub-field | Default | Description |
+|-----------|---------|-------------|
+| `max_files` | `5` | Maximum markdown files to analyze (1-20) |
+| `required_files` | `["README.md"]` | Files that must exist (warning if missing) |
+
+### `prompt_optimization.bypass_prefix`
+
+Character prefix that bypasses prompt optimization. Messages starting with this prefix are sent as-is:
+
+```json
+{ "prompt_optimization": { "bypass_prefix": "!" } }
+```
+
+Default: `*`.
 
 ## Variable Substitution
 
