@@ -187,6 +187,53 @@ Body paragraph.
         assert "# Title" in result
         assert "Body paragraph." in result
 
+    def test_update_preserves_url_value(self) -> None:
+        """URL values (containing colons) survive a round-trip without corruption."""
+        content = """---
+discovered_by: test
+github_url: https://github.com/owner/repo/issues/42
+---
+
+# Title
+"""
+        updates: dict[str, str | int] = {"last_synced": "2026-02-24T20:00:00+00:00"}
+        result = _update_issue_frontmatter(content, updates)
+
+        # URL must be preserved verbatim
+        assert "https://github.com/owner/repo/issues/42" in result
+        # A second round-trip must not corrupt the URL
+        result2 = _update_issue_frontmatter(result, {"github_issue": 42})
+        assert "https://github.com/owner/repo/issues/42" in result2
+
+    def test_update_preserves_integer_field(self) -> None:
+        """Integer fields round-trip correctly without becoming strings."""
+        content = """---
+github_issue: 7
+---
+
+# Title
+"""
+        updates: dict[str, str | int] = {"github_issue": 99}
+        result = _update_issue_frontmatter(content, updates)
+
+        assert "github_issue: 99" in result
+        # Confirm the old value is gone
+        assert result.count("github_issue") == 1
+
+    def test_update_quoted_value_with_colon(self) -> None:
+        """Values containing colons are preserved without stripping quotes."""
+        content = """---
+title: 'value: with colon'
+---
+
+# Title
+"""
+        updates: dict[str, str | int] = {"github_issue": 1}
+        result = _update_issue_frontmatter(content, updates)
+
+        # The colon-containing value must survive
+        assert "value: with colon" in result
+
 
 class TestTitleParsing:
     """Tests for title parsing."""

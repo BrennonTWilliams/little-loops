@@ -88,7 +88,7 @@ def _update_issue_frontmatter(content: str, updates: dict[str, Any]) -> str:
 - `scripts/little_loops/sync.py` — `_update_local_frontmatter` calls `_update_issue_frontmatter`
 
 ### Similar Patterns
-- `scripts/little_loops/frontmatter.py` — `parse_frontmatter` already uses proper parsing
+- `scripts/little_loops/frontmatter.py` — `parse_frontmatter` uses the same manual line-split approach (related candidate for yaml.safe_load refactor, tracked separately)
 
 ### Tests
 - `scripts/tests/test_sync.py` — add round-trip test with URLs and quoted values
@@ -113,9 +113,16 @@ def _update_issue_frontmatter(content: str, updates: dict[str, Any]) -> str:
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:manage-issue` - 2026-02-24 - fix implemented
 
 ---
 
+## Resolution
+
+**Fixed** | Completed: 2026-02-24
+
+Replaced the manual line-split parser in `_update_issue_frontmatter` (`sync.py:157-207`) with `yaml.safe_load` / `yaml.dump`. Added `import yaml` and rewrote the function body to ~10 lines. Added 3 new round-trip tests covering URL values, integer fields, and colon-containing quoted strings. All 51 tests pass.
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P2
+**Closed** | Created: 2026-02-24 | Priority: P2

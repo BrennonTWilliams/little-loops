@@ -13,6 +13,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+import yaml
+
 from little_loops.frontmatter import parse_frontmatter
 from little_loops.issue_parser import get_next_issue_number
 
@@ -166,45 +168,16 @@ def _update_issue_frontmatter(
     Returns:
         Updated content with modified frontmatter
     """
-    if not content.startswith("---"):
+    fm_match = re.match(r"^---\n(.*?)\n---", content, re.DOTALL)
+    if not fm_match:
         # No existing frontmatter, create it
-        frontmatter_lines = ["---"]
-        for key, value in updates.items():
-            frontmatter_lines.append(f"{key}: {value}")
-        frontmatter_lines.append("---")
-        frontmatter_lines.append("")
-        return "\n".join(frontmatter_lines) + content
+        fm_text = yaml.dump(dict(updates), default_flow_style=False, sort_keys=False).strip()
+        return f"---\n{fm_text}\n---\n{content}"
 
-    # Find closing ---
-    end_match = re.search(r"\n---\s*\n", content[3:])
-    if not end_match:
-        return content  # Malformed, return unchanged
-
-    frontmatter_text = content[4 : 3 + end_match.start()]
-    body = content[3 + end_match.end() :]
-
-    # Parse existing frontmatter preserving as strings
-    existing: dict[str, str] = {}
-    for line in frontmatter_text.split("\n"):
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" in line:
-            key, value = line.split(":", 1)
-            existing[key.strip()] = value.strip()
-
-    # Merge updates (convert int to str for consistency)
-    for key, value in updates.items():
-        existing[key] = str(value)
-
-    # Rebuild frontmatter
-    frontmatter_lines = ["---"]
-    for key, value in existing.items():
-        frontmatter_lines.append(f"{key}: {value}")
-    frontmatter_lines.append("---")
-    frontmatter_lines.append("")
-
-    return "\n".join(frontmatter_lines) + body
+    existing: dict[str, Any] = yaml.safe_load(fm_match.group(1)) or {}
+    existing.update(updates)
+    fm_text = yaml.dump(existing, default_flow_style=False, sort_keys=False).strip()
+    return f"---\n{fm_text}\n---{content[fm_match.end():]}"
 
 
 def _parse_issue_title(content: str) -> str:
