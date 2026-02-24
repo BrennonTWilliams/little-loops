@@ -303,7 +303,7 @@ ll-loop install <name>       # Copies to .loops/ for editing
 
 ## Further Reading
 
-- [FSM Loop System Design](generalized-fsm-loop.md) — Internal FSM architecture, schema, evaluators, variable interpolation, and compiler details
-- [Configuration Reference](CONFIGURATION.md) — The `loops` section covers loop-related config options
+- [FSM Loop System Design](../generalized-fsm-loop.md) — Internal FSM architecture, schema, evaluators, variable interpolation, and compiler details
+- [Configuration Reference](../CONFIGURATION.md) — The `loops` section covers loop-related config options
 - `/ll:create-loop` — Interactive loop creation wizard
 - `ll-loop --help` — Full CLI reference for all loop subcommands

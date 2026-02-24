@@ -37,7 +37,7 @@ P2-BUG-042-sprint-runner-ignores-failed-issues.md
 
 > **Common pitfall**: `completed/` is a sibling of `bugs/`, `features/`, and `enhancements/` — not nested inside them. A completed bug moves to `.issues/completed/`, not `.issues/bugs/completed/`.
 
-Issue files use YAML-style frontmatter for metadata, followed by Markdown sections. The v2.0 template (see [Issue Template Guide](ISSUE_TEMPLATE.md)) adds four high-value sections: Motivation, Integration Map, Implementation Steps, and Root Cause (BUG only).
+Issue files use YAML-style frontmatter for metadata, followed by Markdown sections. The v2.0 template (see [Issue Template Guide](../ISSUE_TEMPLATE.md)) adds four high-value sections: Motivation, Integration Map, Implementation Steps, and Root Cause (BUG only).
 
 **Code references always use anchors, not line numbers.** Write `in function _cmd_sprint_run()`, not `at line 1847`. Line numbers drift; function names don't.
 
@@ -445,9 +445,9 @@ When a fix regresses or an issue was closed prematurely:
 
 ## See Also
 
-- [Command Reference](COMMANDS.md) — complete flag documentation for every `/ll:` command
-- [Issue Template Guide](ISSUE_TEMPLATE.md) — v2.0 template sections, examples, and quality checklists
+- [Command Reference](../COMMANDS.md) — complete flag documentation for every `/ll:` command
+- [Issue Template Guide](../ISSUE_TEMPLATE.md) — v2.0 template sections, examples, and quality checklists
 - [Loops Guide](LOOPS_GUIDE.md) — automate multi-step issue workflows with FSM loops
-- [Session Handoff](SESSION_HANDOFF.md) — continue issue work across sessions
+- [Session Handoff](../SESSION_HANDOFF.md) — continue issue work across sessions
 - `/ll:issue-workflow` — quick reference card for the issue lifecycle
 - `/ll:help` — full list of available commands

@@ -17,8 +17,8 @@ Documentation for using little-loops in your projects.
 - [Command Reference](COMMANDS.md) - Complete reference for all slash commands with usage examples
 - [Troubleshooting](TROUBLESHOOTING.md) - Common issues, diagnostic commands, and solutions
 - [Session Handoff](SESSION_HANDOFF.md) - Context management and session continuation guide
-- [Issue Management Guide](ISSUE_MANAGEMENT_GUIDE.md) - End-to-end issue workflow: discovery, refinement, validation, and implementation
-- [Loops Guide](LOOPS_GUIDE.md) - Loop creation, paradigms, built-in loops, and walkthrough
+- [Issue Management Guide](guides/ISSUE_MANAGEMENT_GUIDE.md) - End-to-end issue workflow: discovery, refinement, validation, and implementation
+- [Loops Guide](guides/LOOPS_GUIDE.md) - Loop creation, paradigms, built-in loops, and walkthrough
 - [Issue Template Guide](ISSUE_TEMPLATE.md) - Issue file structure, sections, and template v2.0 reference
 
 ## Developer Documentation
