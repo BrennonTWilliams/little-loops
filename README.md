@@ -262,7 +262,7 @@ ll-loop install <loop-name>      # Copy built-in loop to .loops/
 ll-loop show <loop-name>         # Show loop details and structure
 ```
 
-Run `ll-loop --help` for all options. See [FSM Loop Guide](docs/generalized-fsm-loop.md) for loop authoring.
+Run `ll-loop --help` for all options. See [Loops Guide](docs/LOOPS_GUIDE.md) for loop authoring.
 
 ### ll-sprint
 
@@ -417,7 +417,7 @@ For detailed solutions, see [Troubleshooting Guide](docs/TROUBLESHOOTING.md).
 - [**Documentation Index**](docs/INDEX.md) - Complete reference for all documentation
 - [Configuration Reference](docs/CONFIGURATION.md) - Full config options and examples
 - [Command Reference](docs/COMMANDS.md) - All slash commands with usage
-- [FSM Loop Guide](docs/generalized-fsm-loop.md) - Automation loop system and authoring paradigms
+- [Loops Guide](docs/LOOPS_GUIDE.md) - Loop creation, paradigms, and practical examples
 - [Session Handoff Guide](docs/SESSION_HANDOFF.md) - Context management and session continuation
 - [Merge Coordinator Guide](docs/MERGE-COORDINATOR.md) - Sophisticated merge coordination for parallel processing
 - [Troubleshooting Guide](docs/TROUBLESHOOTING.md) - Common issues and solutions

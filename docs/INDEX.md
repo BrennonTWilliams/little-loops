@@ -17,6 +17,7 @@ Documentation for using little-loops in your projects.
 - [Command Reference](COMMANDS.md) - Complete reference for all slash commands with usage examples
 - [Troubleshooting](TROUBLESHOOTING.md) - Common issues, diagnostic commands, and solutions
 - [Session Handoff](SESSION_HANDOFF.md) - Context management and session continuation guide
+- [Loops Guide](LOOPS_GUIDE.md) - Loop creation, paradigms, built-in loops, and walkthrough
 - [Issue Template Guide](ISSUE_TEMPLATE.md) - Issue file structure, sections, and template v2.0 reference
 
 ## Developer Documentation
@@ -33,7 +34,7 @@ Documentation for contributing to and developing little-loops.
 
 Deep dives into specific systems and internals.
 
-- [FSM Loop Guide](generalized-fsm-loop.md) - Automation loop system and FSM paradigm for authoring loops
+- [FSM Loop System Design](generalized-fsm-loop.md) - Internal FSM architecture, schema, evaluators, and compiler details
 - [Merge Coordinator](MERGE-COORDINATOR.md) - Sophisticated merge coordination for parallel processing
 - [Claude CLI Integration](claude-cli-integration-mechanics.md) - Technical details on Claude CLI integration
 - [CLI Tools Audit](CLI-TOOLS-AUDIT.md) - Review and audit of CLI tools
