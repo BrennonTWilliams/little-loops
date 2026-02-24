@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.19.0] - 2026-02-24
+
+### Changed
+
+- **Add `__all__` to cli/loop/__init__.py** - Maintains consistency with other 5 package init files that already define `__all__` (ENH-472)
+- enhance(configure): audit and expose unreachable config-schema fields (896c4ea)
+
+### Other
+
+- docs(loops): add user-facing loops guide with paradigm examples (0d13f53)
+- chore(issues): add tradeoff review notes to FEAT-440 and ENH-470 (5066b9a)
+- chore(issues): verify 8 open issues against codebase (08239b5)
+- chore(issues): auto-format 6 issues to template v2.0 structure (1f41aef)
+
+[1.19.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.18.0...v1.19.0
+
 ## [1.18.0] - 2026-02-23
 
 ### Changed
