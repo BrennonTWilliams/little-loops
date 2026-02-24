@@ -29,7 +29,7 @@ else:
 
 ## Current Behavior
 
-When a single-issue wave fails (`issue_result.success` is `False`), the code adds the issue ID to `state.completed_issues` (line 1242) simultaneously with `state.failed_issues` (line 1243). The multi-issue parallel path (lines 1283-1295) explicitly avoids this by only appending to `state.completed_issues` when actually completed.
+When a single-issue wave fails (`issue_result.success` is `False`), the code adds the issue ID to `state.completed_issues` (line 1242) simultaneously with `state.failed_issues` (line 1243). The multi-issue parallel path (lines 1283-1295) has the **same bug** — lines 1290-1293 also add failed issues to `state.completed_issues`. Both paths prevent failed issues from being retried on `--resume`.
 
 ## Expected Behavior
 
@@ -64,13 +64,13 @@ else:
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/sprint.py` — remove `state.completed_issues.extend(wave_ids)` from single-issue failure branch
+- `scripts/little_loops/cli/sprint.py` — remove `state.completed_issues.extend(wave_ids)` from single-issue failure branch (line 1242) AND from multi-issue failure branch (line 1292)
 
 ### Dependent Files (Callers/Importers)
 - N/A — internal state management
 
 ### Similar Patterns
-- Multi-issue parallel path (lines 1283-1295) already handles this correctly
+- Multi-issue parallel path (lines 1290-1293) has the same bug — also adds failed issues to `state.completed_issues`
 
 ### Tests
 - `scripts/tests/` — add test for single-issue wave failure + resume behavior
@@ -84,8 +84,8 @@ else:
 ## Impact
 
 - **Priority**: P2 — Failed issues silently skipped on resume, data loss risk
-- **Effort**: Small — Single line removal
-- **Risk**: Low — Aligns single-issue path with existing multi-issue pattern
+- **Effort**: Small — Two line removals (one per code path)
+- **Risk**: Low — Both paths should only add to `completed_issues` on success
 - **Breaking Change**: No
 
 ## Labels
@@ -94,6 +94,7 @@ else:
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:verify-issues` - 2026-02-24 - Corrected: multi-issue path (lines 1290-1293) has same bug, not a correct reference pattern. Fix scope expanded to both code paths.
 
 ---
 
