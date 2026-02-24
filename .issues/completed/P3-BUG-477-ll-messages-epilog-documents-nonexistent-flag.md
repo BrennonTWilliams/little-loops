@@ -14,7 +14,7 @@ The `ll-messages` CLI help epilog at `messages.py:40` documents `--include-comma
 ## Location
 
 - **File**: `scripts/little_loops/cli/messages.py`
-- **Line(s)**: 40, 89-98 (at scan commit: 95d4139)
+- **Line(s)**: 41, 89-98 (at scan commit: 95d4139; line drift: was 40, now 41)
 - **Anchor**: `in epilog string` and `parser.add_argument("--skip-cli", ...)`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/95d4139206f3659159b727db57578ffb2930085b/scripts/little_loops/cli/messages.py#L40)
 - **Code**:
@@ -89,9 +89,16 @@ Update the epilog example to show `--skip-cli` instead of `--include-commands`:
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:manage-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl`
 
 ---
 
+## Resolution
+
+**Fixed** | Resolved: 2026-02-24
+
+Replaced `--include-commands` with `--skip-cli` in the epilog examples string at `scripts/little_loops/cli/messages.py:41`. The flag `--include-commands` was never defined in the parser; `--skip-cli` is the correct flag for controlling CLI command output. All 2888 tests pass.
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Priority: P3

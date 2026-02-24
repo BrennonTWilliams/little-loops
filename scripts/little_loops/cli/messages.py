@@ -38,7 +38,7 @@ Examples:
   %(prog)s -o output.jsonl              # Custom output path
   %(prog)s --stdout                     # Print to terminal
   %(prog)s --include-response-context   # Include response metadata
-  %(prog)s --include-commands           # Include CLI commands
+  %(prog)s --skip-cli                   # Exclude CLI commands from output
   %(prog)s --commands-only              # Extract only CLI commands
 """,
     )
