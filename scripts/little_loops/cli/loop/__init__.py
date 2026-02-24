@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+__all__ = ["main_loop"]
+
 
 def main_loop() -> int:
     """Entry point for ll-loop command.

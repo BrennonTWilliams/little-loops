@@ -86,11 +86,24 @@ Add `__all__` to `cli/loop/__init__.py` listing the public API:
 
 `enhancement`, `architecture`, `auto-generated`
 
+## Resolution
+
+**Fixed** — Added `__all__ = ["main_loop"]` to `scripts/little_loops/cli/loop/__init__.py`.
+
+### Changes Made
+- `scripts/little_loops/cli/loop/__init__.py` — Added `__all__` export list with `main_loop` (the only externally imported name)
+
+### Verification
+- 2882 tests pass (0 failures)
+- Lint: all checks passed
+- Type check: no issues found
+
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:manage-issue` - 2026-02-24 - implemented and verified
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P5
+**Completed** | Created: 2026-02-24 | Resolved: 2026-02-24 | Priority: P5
