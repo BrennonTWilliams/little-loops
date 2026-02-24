@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.19.1] - 2026-02-24
+
+### Fixed
+
+- fix(issues): correct BUG-473 to identify same bug in both sprint code paths (3fb733e)
+
+### Changed
+
+- refactor(issue_history): split analysis.py into focused sub-modules (7324591)
+
+### Other
+
+- docs: reorganize docs/ folder into semantic subdirectories (95d4139)
+- docs: move guide docs into docs/guides/ subfolder (be3855e)
+- docs: add Issue Management Guide end-to-end workflow tutorial (edcd83e)
+- chore(issues): add ENH-491 for using issue-sections.json in ll-sync pull (50b344c)
+- chore(issues): add 18 issues from codebase scan (7614085)
+- chore: remove completed ENH-448 issue, update logo asset, and refresh test sprint fixtures (036f834)
+- chore(issues): re-prioritize issues (dfb15d8)
+
+[1.19.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.19.0...v1.19.1
+
 ## [1.19.0] - 2026-02-24
 
 ### Changed
