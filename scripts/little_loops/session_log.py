@@ -64,10 +64,11 @@ def append_session_log_entry(
     content = issue_path.read_text()
 
     if "## Session Log" in content:
-        # Append entry after existing section header
+        # Append entry after existing section header (count=1 to only replace first occurrence)
         content = content.replace(
             "## Session Log\n",
             f"## Session Log\n{entry}\n",
+            1,
         )
     else:
         # Add new section before --- Status footer if present, else at end

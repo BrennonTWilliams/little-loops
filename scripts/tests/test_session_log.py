@@ -116,6 +116,21 @@ class TestAppendSessionLogEntry:
         assert "/ll:capture-issue" in content
         assert "/ll:format-issue" in content
 
+    def test_duplicate_session_log_headers_only_inserts_once(self, tmp_path: Path) -> None:
+        issue = tmp_path / "issue.md"
+        issue.write_text(
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:capture-issue` - 2026-01-01T00:00:00 - `/old.jsonl`\n\n"
+            "## Session Log\n"
+            "- `/ll:other` - 2026-01-02T00:00:00 - `/other.jsonl`\n"
+        )
+
+        jsonl = tmp_path / "new.jsonl"
+        append_session_log_entry(issue, "/ll:format-issue", session_jsonl=jsonl)
+
+        content = issue.read_text()
+        assert content.count("/ll:format-issue") == 1
+
     def test_entry_format(self, tmp_path: Path) -> None:
         issue = tmp_path / "issue.md"
         issue.write_text("# Issue\n")
