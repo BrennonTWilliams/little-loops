@@ -292,18 +292,169 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `sprint-execution` | imperative | Execute a sprint with resume support |
 | `workflow-analysis` | imperative | Extract and analyze workflow patterns |
 
+## Beyond the Basics
+
+The sections below cover features you'll encounter as you move past simple loops. For full technical details — schema definitions, compiler internals, and advanced examples — see the [FSM Loop System Design](../generalized-fsm-loop.md).
+
+### Evaluators
+
+Evaluators interpret action output and produce a **verdict** string used for routing. Every state gets a default evaluator based on its action type.
+
+| Evaluator | Verdicts | Default for | When to use |
+|-----------|----------|-------------|-------------|
+| `exit_code` | `success` / `failure` / `error` | shell commands | CLI tools that report pass/fail via exit code |
+| `output_numeric` | `success` / `failure` / `error` | — | Compare parsed numeric output to a target |
+| `output_json` | `success` / `failure` / `error` | — | Extract a JSON path value and compare |
+| `output_contains` | `success` / `failure` | — | Regex or substring match on stdout |
+| `convergence` | `target` / `progress` / `stall` | convergence paradigm | Track a metric toward a goal value |
+| `llm_structured` | `success` / `failure` / `blocked` / `partial` | slash commands | Natural-language judgment via LLM |
+
+Override the default by adding an `evaluate:` block to a state:
+
+```yaml
+evaluate:
+  type: output_contains
+  pattern: "All checks passed"
+```
+
+### Variable Interpolation
+
+Use `${namespace.path}` in action strings, evaluator configs, and routing targets. Variables are resolved at runtime.
+
+| Namespace | Description | Example |
+|-----------|-------------|---------|
+| `context` | User-defined variables from the `context:` block | `${context.src_dir}` |
+| `captured` | Values stored by `capture:` in earlier states | `${captured.lint.output}` |
+| `prev` | Previous state's result (output, exit_code) | `${prev.output}` |
+| `result` | Current evaluation result | `${result.verdict}` |
+| `state` | Current state metadata | `${state.name}`, `${state.iteration}` |
+| `loop` | Loop-level metadata | `${loop.name}`, `${loop.elapsed}` |
+| `env` | Environment variables | `${env.HOME}` |
+
+Escape literal `${` with `$${`.
+
+### Capture
+
+Store a state's action output for use in later states:
+
+```yaml
+states:
+  measure:
+    action: "ruff check src/ 2>&1 | grep -c 'error' || echo 0"
+    capture: lint_count
+    next: apply
+```
+
+The captured value is accessible as `${captured.lint_count.output}`, `${captured.lint_count.exit_code}`, and `${captured.lint_count.duration_ms}`.
+
+### Routing
+
+States use **shorthand** (`on_success`, `on_failure`) or a **route table** for verdict-to-state mapping:
+
+```yaml
+route:
+  success: done
+  failure: fix
+  _: retry        # default for unmatched verdicts
+  _error: error   # fallback for evaluation errors
+```
+
+Use `$current` as a target to retry the current state. Use `_` for a default route when no other verdict matches.
+
+### Action Types
+
+Each state's action is executed in one of three modes:
+
+| Type | Syntax hint | Behavior |
+|------|-------------|----------|
+| `shell` | No `/` prefix | Run as shell command, capture stdout/stderr/exit code |
+| `slash_command` | Starts with `/` | Execute a Claude Code slash command |
+| `prompt` | Natural language | Send text to Claude as a prompt |
+
+The engine auto-detects type: `/` prefix → `slash_command`, otherwise → `shell`. Set `action_type: prompt` explicitly for natural-language fix instructions.
+
+### Handoff Behavior
+
+When a loop detects that Claude's context window is approaching its limit, it triggers a **handoff**:
+
+| Mode | `on_handoff:` value | Behavior |
+|------|---------------------|----------|
+| Pause | `pause` (default) | Save state to disk, resume later with `ll-loop resume` |
+| Spawn | `spawn` | Save state and launch a fresh Claude session to continue |
+| Terminate | `terminate` | Stop the loop immediately (state is not saved) |
+
+### Scope-Based Concurrency
+
+The `scope:` field declares which paths a loop operates on. The engine uses file-based locking to prevent two loops from modifying the same files simultaneously.
+
+```yaml
+scope:
+  - "src/"
+  - "tests/"
+```
+
+If a conflicting loop is already running, `ll-loop run` will error. Use `--queue` to wait for the conflict to resolve instead.
+
+## CLI Quick Reference
+
+### Subcommands
+
+| Command | Description |
+|---------|-------------|
+| `ll-loop run <name>` | Run a loop (also: `ll-loop <name>`) |
+| `ll-loop validate <name>` | Check YAML for schema errors and unreachable states |
+| `ll-loop show <name>` | Display states, transitions, and ASCII diagram |
+| `ll-loop compile <file>` | Compile paradigm YAML to FSM YAML |
+| `ll-loop test <name>` | Run a single iteration to verify configuration |
+| `ll-loop simulate <name>` | Trace execution interactively without running actions |
+| `ll-loop list` | List available loops (`--running` for active only) |
+| `ll-loop status <name>` | Show current state and iteration count |
+| `ll-loop stop <name>` | Stop a running loop |
+| `ll-loop resume <name>` | Resume an interrupted loop from saved state |
+| `ll-loop history <name>` | Show execution history (`-n` for last N events) |
+| `ll-loop install <name>` | Copy a built-in loop to `.loops/` for customization |
+
+### Run Flags
+
+| Flag | Effect |
+|------|--------|
+| `--dry-run` | Show execution plan without running actions |
+| `--no-llm` | Disable LLM-based evaluation (use deterministic evaluators only) |
+| `--llm-model <model>` | Override the LLM model for evaluation |
+| `-n <N>` | Override `max_iterations` |
+| `--queue` | Wait for conflicting scoped loops instead of erroring |
+| `-q` / `--quiet` | Suppress progress output |
+
+### Simulate Scenarios
+
+The `simulate` command accepts `--scenario` to auto-select verdicts instead of prompting:
+
+| Scenario | Behavior |
+|----------|----------|
+| `all-pass` | Every evaluation returns success/target |
+| `all-fail` | Every evaluation returns failure/stall |
+| `first-fail` | First evaluation fails, rest succeed |
+| `alternating` | Alternates between success and failure |
+
 ## Tips
 
-- **Start with low `max_iterations`** while developing a loop (5-10). Increase once it works.
-- **Use `ll-loop test <name>`** for single-iteration verification — runs one cycle and stops.
-- **Use `ll-loop simulate <name>`** for interactive dry-run — traces execution without running actions.
-- **Set `on_handoff: spawn`** for long-running loops that might exhaust Claude's context window.
-- **Use `action_type: prompt`** when your fix action is a natural-language instruction rather than a CLI command.
-- **Use `backoff: <seconds>`** in imperative loops to add delay between iterations.
+- **Start with low `max_iterations`** (5-10) while developing a loop. Increase once the logic is proven.
+- **Use `backoff:`** to add delay between iterations — useful for rate-limited APIs or CI systems.
+- **State is persisted to disk** after every transition. If a loop is interrupted, `ll-loop resume` picks up where it left off.
+- **Convergence loops** use `direction:` to control whether the metric should go down (`minimize`, default) or up (`maximize`).
+
+## Troubleshooting
+
+| Problem | Cause | Fix |
+|---------|-------|-----|
+| Loop stuck in a cycle | Fix action isn't changing the result the evaluator sees | Check `ll-loop history` — if the same verdict repeats, adjust the fix action |
+| Scope conflict error | Another loop holds a lock on overlapping paths | Find it with `ll-loop list --running` and stop it, or use `--queue` to wait |
+| LLM evaluator errors | Missing API key or network issue | Set `ANTHROPIC_API_KEY`, or use `--no-llm` to fall back to deterministic evaluators |
+| "No state found" on resume | Loop already completed or was never started | Check `ll-loop status` — completed loops have no resumable state |
 
 ## Further Reading
 
 - [FSM Loop System Design](../generalized-fsm-loop.md) — Internal FSM architecture, schema, evaluators, variable interpolation, and compiler details
-- [Configuration Reference](../CONFIGURATION.md) — The `loops` section covers loop-related config options
+- [Configuration Reference](../reference/CONFIGURATION.md) — Project-wide settings (test commands, paths, etc.) used by loop actions
 - `/ll:create-loop` — Interactive loop creation wizard
 - `ll-loop --help` — Full CLI reference for all loop subcommands
