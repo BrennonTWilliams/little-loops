@@ -429,6 +429,26 @@ class TestGitHubSyncManager:
         assert "enhancement" in labels
         assert "p2" in labels
 
+    def test_get_local_github_numbers_skips_malformed(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Malformed github_issue values are skipped with a warning, not a crash."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+
+        bugs_dir = tmp_path / ".issues" / "bugs"
+        (bugs_dir / "P1-BUG-001-valid.md").write_text(
+            "---\ngithub_issue: 42\n---\n# BUG-001"
+        )
+        (bugs_dir / "P2-BUG-002-malformed.md").write_text(
+            "---\ngithub_issue: pending\n---\n# BUG-002"
+        )
+
+        numbers = manager._get_local_github_numbers()
+
+        assert numbers == {42}
+        mock_logger.warning.assert_called_once()
+        assert "P2-BUG-002-malformed.md" in mock_logger.warning.call_args[0][0]
+
     def test_push_checks_auth(self, mock_config: BRConfig, mock_logger: MagicMock) -> None:
         """Push returns error if gh is not authenticated."""
         manager = GitHubSyncManager(mock_config, mock_logger)

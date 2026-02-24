@@ -587,7 +587,12 @@ class GitHubSyncManager:
             frontmatter = parse_frontmatter(content, coerce_types=True)
             gh_num = frontmatter.get("github_issue")
             if gh_num is not None:
-                numbers.add(int(gh_num))
+                try:
+                    numbers.add(int(gh_num))
+                except (ValueError, TypeError):
+                    self.logger.warning(
+                        f"Malformed github_issue value in {issue_path.name}: {gh_num!r}"
+                    )
         return numbers
 
     def _determine_issue_type(self, labels: list[str]) -> str | None:

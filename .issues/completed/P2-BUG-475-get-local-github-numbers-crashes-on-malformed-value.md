@@ -14,7 +14,7 @@ discovered_by: scan-codebase
 ## Location
 
 - **File**: `scripts/little_loops/sync.py`
-- **Line(s)**: 609-617 (at scan commit: 95d4139)
+- **Line(s)**: 582-591 (at scan commit: 95d4139; currently line 590 in HEAD)
 - **Anchor**: `in method GitHubSyncManager._get_local_github_numbers`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/95d4139206f3659159b727db57578ffb2930085b/scripts/little_loops/sync.py#L609-L617)
 - **Code**:
@@ -27,7 +27,7 @@ def _get_local_github_numbers(self) -> set[int]:
         frontmatter = parse_frontmatter(content, coerce_types=True)
         gh_num = frontmatter.get("github_issue")
         if gh_num is not None:
-            numbers.add(int(gh_num))     # line 617 — no error handling
+            numbers.add(int(gh_num))     # line 590 — no error handling
     return numbers
 ```
 
@@ -49,7 +49,7 @@ Malformed `github_issue` values should be logged as warnings and skipped, not cr
 
 - **File**: `scripts/little_loops/sync.py`
 - **Anchor**: `in method _get_local_github_numbers`
-- **Cause**: Missing try/except around `int(gh_num)` conversion at line 617
+- **Cause**: Missing try/except around `int(gh_num)` conversion at line 590
 
 ## Proposed Solution
 
@@ -103,9 +103,25 @@ if gh_num is not None:
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:manage-issue` - 2026-02-24 - fixed and completed
 
 ---
 
+## Verification Notes
+
+- **Verified**: 2026-02-24 by `/ll:verify-issues`
+- **Verdict**: VALID — bug confirmed present in HEAD at `sync.py:590`
+- **Line drift**: Original scan referenced line 617 (commit `95d4139`); current HEAD has method at lines 582–591
+- **No fix applied**: No test for malformed `github_issue` exists in `test_sync.py`
+
+## Resolution
+
+- **Fixed**: 2026-02-24 by `/ll:manage-issue`
+- **Changes**:
+  - `scripts/little_loops/sync.py`: Wrapped `int(gh_num)` in `try/except (ValueError, TypeError)` with a `logger.warning` for malformed values
+  - `scripts/tests/test_sync.py`: Added `test_get_local_github_numbers_skips_malformed` verifying malformed values are skipped and a warning is logged
+- **All 52 tests pass**
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P2
+**Completed** | Created: 2026-02-24 | Priority: P2
