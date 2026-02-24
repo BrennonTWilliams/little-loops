@@ -69,13 +69,16 @@ Split `analysis.py` into sub-modules grouped by analysis domain within the `issu
 - `scripts/little_loops/issue_history/__init__.py` — update re-exports
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find references: `grep -r "from.*issue_history.*analysis import" scripts/`
+- `scripts/little_loops/issue_history/__init__.py` — sole direct importer of `analysis.py`; re-exports all public functions (lines 59-72). All external callers go through `__init__.py`.
 
 ### Similar Patterns
 - `cli/loop/` package — already uses sub-module pattern for CLI commands
 
 ### Tests
-- `scripts/tests/` — existing tests for analysis functions should pass unchanged after refactor
+- `scripts/tests/test_issue_history_analysis.py` — tests analysis functions (imports via `__init__.py`)
+- `scripts/tests/test_issue_history_advanced_analytics.py` — tests advanced analytics functions
+- `scripts/tests/test_issue_history_summary.py` — tests summary/period metrics functions
+- `scripts/tests/test_cli.py` — CLI integration tests that import from `issue_history` (lines 2395-2527)
 
 ### Documentation
 - N/A
@@ -94,11 +97,30 @@ Split `analysis.py` into sub-modules grouped by analysis domain within the `issu
 
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
+## Resolution
+
+**Action**: completed
+**Date**: 2026-02-24
+**Summary**: Split 1,785-line `analysis.py` into 6 focused sub-modules (`summary.py`, `hotspots.py`, `coupling.py`, `regressions.py`, `quality.py`, `debt.py`). Updated `analysis.py` as a thin facade containing only `_load_issue_contents` and `calculate_analysis`. Updated `__init__.py` to import from individual sub-modules. Public API unchanged. 300 tests pass, ruff and mypy clean.
+
+**Files Created**:
+- `scripts/little_loops/issue_history/summary.py`
+- `scripts/little_loops/issue_history/hotspots.py`
+- `scripts/little_loops/issue_history/coupling.py`
+- `scripts/little_loops/issue_history/regressions.py`
+- `scripts/little_loops/issue_history/quality.py`
+- `scripts/little_loops/issue_history/debt.py`
+
+**Files Modified**:
+- `scripts/little_loops/issue_history/analysis.py` (thin facade, ~180 lines)
+- `scripts/little_loops/issue_history/__init__.py` (imports from sub-modules)
+
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:manage-issue enhancement refactor ENH-468` - 2026-02-24 - implemented refactor
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P2
+**Completed** | Created: 2026-02-24 | Completed: 2026-02-24 | Priority: P2

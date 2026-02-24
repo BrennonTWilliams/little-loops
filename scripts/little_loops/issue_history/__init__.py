@@ -56,19 +56,12 @@ Public exports:
     format_analysis_yaml: Format analysis as YAML
 """
 
-from little_loops.issue_history.analysis import (
+from little_loops.issue_history.analysis import calculate_analysis
+from little_loops.issue_history.coupling import analyze_coupling
+from little_loops.issue_history.debt import (
     analyze_agent_effectiveness,
     analyze_complexity_proxy,
-    analyze_coupling,
-    analyze_hotspots,
-    analyze_regression_clustering,
-    analyze_rejection_rates,
-    analyze_test_gaps,
-    calculate_analysis,
-    calculate_summary,
-    detect_config_gaps,
     detect_cross_cutting_smells,
-    detect_manual_patterns,
 )
 from little_loops.issue_history.formatting import (
     format_analysis_json,
@@ -78,6 +71,7 @@ from little_loops.issue_history.formatting import (
     format_summary_json,
     format_summary_text,
 )
+from little_loops.issue_history.hotspots import analyze_hotspots
 from little_loops.issue_history.models import (
     AgentEffectivenessAnalysis,
     AgentOutcome,
@@ -114,6 +108,14 @@ from little_loops.issue_history.parsing import (
     scan_active_issues,
     scan_completed_issues,
 )
+from little_loops.issue_history.quality import (
+    analyze_rejection_rates,
+    analyze_test_gaps,
+    detect_config_gaps,
+    detect_manual_patterns,
+)
+from little_loops.issue_history.regressions import analyze_regression_clustering
+from little_loops.issue_history.summary import calculate_summary
 
 __all__ = [
     # Core dataclasses
