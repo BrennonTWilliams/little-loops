@@ -14,7 +14,7 @@ discovered_by: scan-codebase
 ## Location
 
 - **File**: `scripts/little_loops/issue_parser.py`
-- **Line(s)**: 334-338 (at scan commit: 95d4139)
+- **Line(s)**: 326-338 (method start), 335-338 (try/except block) — updated from 334-338 at scan commit 95d4139
 - **Anchor**: `in method IssueParser._read_content`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/95d4139206f3659159b727db57578ffb2930085b/scripts/little_loops/issue_parser.py#L334-L338)
 - **Code**:
@@ -55,8 +55,9 @@ def _read_content(self, issue_path: Path) -> str:
 
 ## Implementation Steps
 
-1. Add `logger.warning` call to `_read_content` except block with file path and exception
-2. Add test with unreadable file to verify warning is logged
+1. Add `import logging` and `logger = logging.getLogger(__name__)` to `issue_parser.py` (file currently has no logging setup)
+2. Add `logger.warning` call to `_read_content` except block with file path and exception
+3. Add test with unreadable file to verify warning is logged
 
 ## Integration Map
 
@@ -92,9 +93,20 @@ def _read_content(self, issue_path: Path) -> str:
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:manage-issue` - 2026-02-24 - Fixed: added `import logging`, `logger = logging.getLogger(__name__)`, and `logger.warning` call in `_read_content`; added test `test_read_content_unreadable_file_logs_warning`
 
 ---
 
+## Resolution
+
+**Fixed** | 2026-02-24
+
+- Added `import logging` to `scripts/little_loops/issue_parser.py`
+- Added `logger = logging.getLogger(__name__)` module-level logger
+- Updated `_read_content` to capture exception as `e` and call `logger.warning("Failed to read %s: %s", issue_path.name, e)`
+- Added `TestIssueParser.test_read_content_unreadable_file_logs_warning` in `scripts/tests/test_issue_parser.py`
+- All 67 `test_issue_parser.py` tests pass
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Resolved: 2026-02-24 | Priority: P3

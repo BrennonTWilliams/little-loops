@@ -5,6 +5,7 @@ Parses issue markdown files to extract metadata like priority, ID, type, and tit
 
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -15,6 +16,8 @@ from little_loops.frontmatter import parse_frontmatter
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
+
+logger = logging.getLogger(__name__)
 
 # Regex pattern for issue IDs in list items
 # Matches: "- FEAT-001", "- BUG-123", "* ENH-005", "- FEAT-001 (some note)"
@@ -334,7 +337,8 @@ class IssueParser:
         """
         try:
             return issue_path.read_text(encoding="utf-8")
-        except Exception:
+        except Exception as e:
+            logger.warning("Failed to read %s: %s", issue_path.name, e)
             return ""
 
     def _parse_title_from_content(self, content: str, issue_path: Path) -> str:

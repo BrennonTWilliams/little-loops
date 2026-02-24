@@ -648,6 +648,33 @@ class TestIssueParser:
         # When all fields are null, product_impact should be None
         assert info.product_impact is None
 
+    def test_read_content_unreadable_file_logs_warning(
+        self, temp_project_dir: Path, sample_config: dict[str, Any], caplog: Any
+    ) -> None:
+        """Test that _read_content logs a warning when a file cannot be read."""
+        import logging
+        import os
+
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True)
+        issue_file = bugs_dir / "P1-BUG-999-unreadable.md"
+        issue_file.write_text("# BUG-999: Unreadable\n")
+        os.chmod(issue_file, 0o000)
+
+        parser = IssueParser(config)
+        try:
+            with caplog.at_level(logging.WARNING, logger="little_loops.issue_parser"):
+                content = parser._read_content(issue_file)
+        finally:
+            os.chmod(issue_file, 0o644)
+
+        assert content == ""
+        assert any("P1-BUG-999-unreadable.md" in record.message for record in caplog.records)
+
 
 class TestGetNextIssueNumber:
     """Tests for get_next_issue_number function.
