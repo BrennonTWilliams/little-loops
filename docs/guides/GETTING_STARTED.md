@@ -117,7 +117,7 @@ For a trivial bug, skip this step and go straight to implementation. For anythin
 `/ll:manage-issue` handles the full implementation cycle: plan, implement, run tests, and move the issue to completed.
 
 ```bash
-/ll:manage-issue bug fix BUG-001
+/ll:manage-issue fix BUG-001
 #    → Plans → implements → runs tests → moves issue to .issues/completed/
 ```
 
@@ -180,7 +180,7 @@ Root cause is at line 1847 in sprint.py.
 
 ### Minimal vs. Full Template
 
-`/ll:capture-issue` creates a full template by default. For quick capture without filling in every section, use the issue file directly — run `/ll:format-issue` later to fill in missing sections when you're ready to implement.
+`/ll:capture-issue` creates a minimal template by default — Summary, Current Behavior, Expected Behavior, Impact, and Status. For quick capture without filling in every section, use the issue file directly — run `/ll:format-issue` later to fill in missing sections when you're ready to implement.
 
 ---
 

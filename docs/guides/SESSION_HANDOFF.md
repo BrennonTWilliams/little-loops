@@ -412,5 +412,5 @@ if detect_context_handoff(result.stdout):
 ## See Also
 
 - [ARCHITECTURE.md](../ARCHITECTURE.md#context-monitor-and-session-continuation) - Technical details
-- [commands/handoff.md](../commands/handoff.md) - Command reference
-- [commands/resume.md](../commands/resume.md) - Command reference
+- [commands/handoff.md](../../commands/handoff.md) - Command reference
+- [commands/resume.md](../../commands/resume.md) - Command reference

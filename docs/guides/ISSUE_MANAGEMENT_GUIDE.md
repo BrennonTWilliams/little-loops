@@ -37,7 +37,7 @@ P2-BUG-042-sprint-runner-ignores-failed-issues.md
 
 > **Common pitfall**: `completed/` is a sibling of `bugs/`, `features/`, and `enhancements/` — not nested inside them. A completed bug moves to `.issues/completed/`, not `.issues/bugs/completed/`.
 
-Issue files use YAML-style frontmatter for metadata, followed by Markdown sections. The v2.0 template (see [Issue Template Guide](../ISSUE_TEMPLATE.md)) adds four high-value sections: Motivation, Integration Map, Implementation Steps, and Root Cause (BUG only).
+Issue files use YAML-style frontmatter for metadata, followed by Markdown sections. The v2.0 template (see [Issue Template Guide](../reference/ISSUE_TEMPLATE.md)) adds four high-value sections: Motivation, Integration Map, Implementation Steps, and Root Cause (BUG only).
 
 **Code references always use anchors, not line numbers.** Write `in function _cmd_sprint_run()`, not `at line 1847`. Line numbers drift; function names don't.
 
@@ -369,7 +369,7 @@ Runs multiple issues in separate git worktrees simultaneously. Each worker gets 
 ```bash
 ll-sprint create sprint-name        ← create a sprint from issues
 ll-sprint run sprint-name           ← execute the sprint
-ll-sprint status sprint-name        ← check progress
+ll-sprint show sprint-name          ← inspect sprint details and wave structure
 ```
 
 A sprint is a curated list of issues grouped for a work session. Use `/ll:create-sprint` to interactively select and sequence issues, then `ll-sprint run` to execute them. Sprints support resume (pick up where you left off after an interruption) and wave-based execution (group independent issues for parallel processing).
@@ -445,10 +445,10 @@ When a fix regresses or an issue was closed prematurely:
 
 ## See Also
 
-- [Command Reference](../COMMANDS.md) — complete flag documentation for every `/ll:` command
-- [Issue Template Guide](../ISSUE_TEMPLATE.md) — v2.0 template sections, examples, and quality checklists
+- [Command Reference](../reference/COMMANDS.md) — complete flag documentation for every `/ll:` command
+- [Issue Template Guide](../reference/ISSUE_TEMPLATE.md) — v2.0 template sections, examples, and quality checklists
 - [Sprint Guide](SPRINT_GUIDE.md) — batch-process issues with dependency-aware waves, parallelism, and resume
 - [Loops Guide](LOOPS_GUIDE.md) — automate multi-step issue workflows with FSM loops
-- [Session Handoff](../SESSION_HANDOFF.md) — continue issue work across sessions
+- [Session Handoff](SESSION_HANDOFF.md) — continue issue work across sessions
 - `/ll:issue-workflow` — quick reference card for the issue lifecycle
 - `/ll:help` — full list of available commands
