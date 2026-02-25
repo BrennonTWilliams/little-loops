@@ -262,7 +262,7 @@ ll-loop install <loop-name>      # Copy built-in loop to .loops/
 ll-loop show <loop-name>         # Show loop details and structure
 ```
 
-Run `ll-loop --help` for all options. See [Loops Guide](docs/LOOPS_GUIDE.md) for loop authoring.
+Run `ll-loop --help` for all options. See [Loops Guide](docs/guides/LOOPS_GUIDE.md) for loop authoring.
 
 ### ll-sprint
 
