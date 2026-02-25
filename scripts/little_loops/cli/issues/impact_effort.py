@@ -118,12 +118,12 @@ def _render_grid(
 
     out.append(" " * 8 + top_border)
     for i, (tl_line, tr_line) in enumerate(zip(lines_tl, lines_tr, strict=True)):
-        impact_label = "High" if i == 0 else "    "
-        out.append(f"{impact_label} IMPACT {v} {tl_line} {v} {tr_line} {v}")
+        row_label = "High IMPACT " if i == 0 else " " * 12
+        out.append(f"{row_label}{v} {tl_line} {v} {tr_line} {v}")
     out.append(" " * 8 + mid_border)
     for i, (bl_line, br_line) in enumerate(zip(lines_bl, lines_br, strict=True)):
-        impact_label = "Low " if i == 0 else "    "
-        out.append(f"{impact_label}        {v} {bl_line} {v} {br_line} {v}")
+        row_label = "Low  IMPACT " if i == 0 else " " * 12
+        out.append(f"{row_label}{v} {bl_line} {v} {br_line} {v}")
     out.append(" " * 8 + bot_border)
 
     return "\n".join(out)
