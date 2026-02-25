@@ -77,10 +77,10 @@ if [[ "$ISSUE_ID" == *"/"* ]] || [[ "$ISSUE_ID" == *.md ]]; then
     fi
 fi
 
-# Search for issue file across active categories (not completed/)
+# Search for issue file across active categories (not completed/ or deferred/)
 if [ -z "$FILE" ]; then
     for dir in {{config.issues.base_dir}}/*/; do
-        if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ]; then
+        if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ] || [ "$(basename "$dir")" = "{{config.issues.deferred_dir}}" ]; then
             continue
         fi
         if [ -d "$dir" ]; then

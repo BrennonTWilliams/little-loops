@@ -30,6 +30,7 @@ For interactive editing, use `/ll:configure`.
       "enhancements": { "prefix": "ENH", "dir": "enhancements", "action": "improve" }
     },
     "completed_dir": "completed",
+    "deferred_dir": "deferred",
     "priorities": ["P0", "P1", "P2", "P3", "P4", "P5"],
     "templates_dir": null,
     "capture_template": "full",
@@ -157,6 +158,7 @@ Issue management settings:
 | `base_dir` | `.issues` | Base directory for issues |
 | `categories` | See above | Issue category definitions |
 | `completed_dir` | `completed` | Where completed issues go |
+| `deferred_dir` | `deferred` | Where deferred/parked issues go |
 | `priorities` | `[P0-P5]` | Valid priority prefixes |
 | `templates_dir` | `null` | Directory for issue templates |
 | `capture_template` | `"full"` | Default template style for captured issues (`"full"` or `"minimal"`) |

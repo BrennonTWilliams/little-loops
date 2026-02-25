@@ -661,3 +661,157 @@ Status: Completed via fallback lifecycle completion"""
     except Exception as e:
         logger.error(f"Failed to complete lifecycle for {info.issue_id}: {e}")
         return False
+
+
+# =============================================================================
+# Issue Deferral
+# =============================================================================
+
+
+def _build_deferred_section(reason: str) -> str:
+    """Build the ## Deferred section content."""
+    now = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return f"""
+
+## Deferred
+
+- **Date**: {now}
+- **Reason**: {reason}
+"""
+
+
+def _build_undeferred_section(reason: str) -> str:
+    """Build the ## Undeferred section content."""
+    now = datetime.now().strftime("%Y-%m-%dT%H:%M:%SZ")
+    return f"""
+
+## Undeferred
+
+- **Date**: {now}
+- **Reason**: {reason}
+"""
+
+
+def defer_issue(
+    info: IssueInfo,
+    config: BRConfig,
+    logger: Logger,
+    reason: str | None = None,
+) -> bool:
+    """Defer an issue by moving it from its active directory to deferred/.
+
+    Args:
+        info: Issue info
+        config: Project configuration
+        logger: Logger for output
+        reason: Reason for deferring
+
+    Returns:
+        True if successful, False otherwise
+    """
+    deferred_dir = config.get_deferred_dir()
+    deferred_dir.mkdir(parents=True, exist_ok=True)
+
+    original_path = info.path
+    deferred_path = deferred_dir / original_path.name
+
+    # Safety checks
+    if deferred_path.exists():
+        logger.info(f"{info.issue_id} already in deferred/")
+        return True
+
+    if not original_path.exists():
+        logger.info(f"{info.issue_id} source not found - nothing to defer")
+        return True
+
+    if not reason:
+        reason = "Intentionally set aside for later consideration"
+
+    logger.info(f"Deferring {info.issue_id}: {reason}")
+
+    try:
+        # Prepare content with deferred section
+        deferred_section = _build_deferred_section(reason)
+        content = original_path.read_text(encoding="utf-8") + deferred_section
+
+        # Move to deferred directory (reuse the same move helper)
+        _move_issue_to_completed(original_path, deferred_path, content, logger)
+
+        # Commit the deferral
+        commit_body = f"""{info.issue_id} - Deferred
+
+Reason: {reason}"""
+        _commit_issue_completion(info, "defer", commit_body, logger)
+
+        logger.success(f"Deferred {info.issue_id}")
+        return True
+
+    except Exception as e:
+        logger.error(f"Failed to defer {info.issue_id}: {e}")
+        return False
+
+
+def undefer_issue(
+    config: BRConfig,
+    deferred_issue_path: Path,
+    logger: Logger,
+    reason: str | None = None,
+) -> Path | None:
+    """Move an issue from deferred/ back to its original category directory.
+
+    Args:
+        config: Project configuration
+        deferred_issue_path: Path to issue in deferred/
+        logger: Logger for output
+        reason: Reason for undeferring
+
+    Returns:
+        New path to undeferred issue, or None if failed
+    """
+    from little_loops.issue_discovery.search import _get_category_from_issue_path
+
+    if not deferred_issue_path.exists():
+        logger.error(f"Deferred issue not found: {deferred_issue_path}")
+        return None
+
+    # Determine target category directory from filename
+    category = _get_category_from_issue_path(deferred_issue_path, config)
+    target_dir = config.get_issue_dir(category)
+    target_dir.mkdir(parents=True, exist_ok=True)
+
+    target_path = target_dir / deferred_issue_path.name
+
+    # Safety check - don't overwrite existing active issue
+    if target_path.exists():
+        logger.warning(f"Active issue already exists: {target_path}")
+        return None
+
+    if not reason:
+        reason = "Ready to resume active work"
+
+    logger.info(f"Undeferring {deferred_issue_path.name} -> {category}/")
+
+    try:
+        content = deferred_issue_path.read_text(encoding="utf-8")
+        content += _build_undeferred_section(reason)
+
+        # Try git mv first for history preservation
+        result = subprocess.run(
+            ["git", "mv", str(deferred_issue_path), str(target_path)],
+            capture_output=True,
+            text=True,
+        )
+
+        if result.returncode != 0:
+            logger.warning(f"git mv failed, using manual copy: {result.stderr}")
+            target_path.write_text(content, encoding="utf-8")
+            deferred_issue_path.unlink()
+        else:
+            target_path.write_text(content, encoding="utf-8")
+
+        logger.success(f"Undeferred: {target_path.name}")
+        return target_path
+
+    except Exception as e:
+        logger.error(f"Failed to undefer issue: {e}")
+        return None

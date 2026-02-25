@@ -36,6 +36,8 @@ Quick reference for managing issues with the little-loops plugin.
                 │         NOT_READY           │             │
                 │              │              ▼             │
                 │              └───────▶ completed/         │
+                │                                           │
+                │  DEFER ──────────────▶ deferred/          │
                 ▼                                           │
          ┌─────────────┐                                    │
          │  InProgress  │ /ll:manage-issue                  │

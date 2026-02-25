@@ -83,6 +83,7 @@ def sample_config() -> dict[str, Any]:
                 "features": {"prefix": "FEAT", "dir": "features", "action": "implement"},
             },
             "completed_dir": "completed",
+            "deferred_dir": "deferred",
             "priorities": ["P0", "P1", "P2", "P3"],
         },
         "automation": {
@@ -127,10 +128,12 @@ def issues_dir(temp_project_dir: Path) -> Path:
     bugs_dir = issues_base / "bugs"
     features_dir = issues_base / "features"
     completed_dir = issues_base / "completed"
+    deferred_dir = issues_base / "deferred"
 
     bugs_dir.mkdir(parents=True)
     features_dir.mkdir(parents=True)
     completed_dir.mkdir(parents=True)
+    deferred_dir.mkdir(parents=True)
 
     # Create sample bug issues
     (bugs_dir / "P0-BUG-001-critical-crash.md").write_text(

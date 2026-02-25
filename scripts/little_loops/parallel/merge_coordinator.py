@@ -173,15 +173,21 @@ class MergeCoordinator:
             file_path = line[3:].split(" -> ")[-1].strip()
             if file_path == state_file_str or file_path.endswith(state_file_name):
                 continue  # Skip state file - orchestrator manages it independently
-            # Skip files in completed directory - these are lifecycle-managed
+            # Skip files in completed/deferred directory - these are lifecycle-managed
             # Handle both .issues/completed/ (with dot) and issues/completed/ (without dot)
             if (
                 ".issues/completed/" in file_path
                 or file_path.startswith(".issues/completed/")
                 or "issues/completed/" in file_path
                 or file_path.startswith("issues/completed/")
+                or ".issues/deferred/" in file_path
+                or file_path.startswith(".issues/deferred/")
+                or "issues/deferred/" in file_path
+                or file_path.startswith("issues/deferred/")
             ):
-                self.logger.debug(f"Skipping completed directory file from stash: {file_path}")
+                self.logger.debug(
+                    f"Skipping completed/deferred directory file from stash: {file_path}"
+                )
                 continue
             # Skip Claude Code context state file - managed externally
             if file_path.endswith("ll-context-state.json"):
@@ -385,12 +391,16 @@ class MergeCoordinator:
 
         dest_path = parts[1].strip()
 
-        # Check if destination is in completed directory (with or without dot prefix)
+        # Check if destination is in completed or deferred directory (with or without dot prefix)
         return (
             ".issues/completed/" in dest_path
             or dest_path.startswith(".issues/completed/")
             or "issues/completed/" in dest_path
             or dest_path.startswith("issues/completed/")
+            or ".issues/deferred/" in dest_path
+            or dest_path.startswith(".issues/deferred/")
+            or "issues/deferred/" in dest_path
+            or dest_path.startswith("issues/deferred/")
         )
 
     def _commit_pending_lifecycle_moves(self) -> bool:

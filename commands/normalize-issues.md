@@ -110,7 +110,7 @@ done
 ```bash
 # Find all issue files
 for dir in {{config.issues.base_dir}}/*/; do
-    if [ -d "$dir" ] && [[ "$dir" != *"/completed/"* ]]; then
+    if [ -d "$dir" ] && [[ "$dir" != *"/completed/"* ]] && [[ "$dir" != *"/deferred/"* ]]; then
         echo "Checking $dir..."
         ls "$dir"*.md 2>/dev/null | while read file; do
             basename=$(basename "$file")
@@ -364,10 +364,11 @@ A filename **needs normalization** if:
 The `.issues/` directory must follow this structure:
 ```
 .issues/
-├── bugs/           # Active bugs ONLY (no completed/ sub-dir)
-├── features/       # Active features ONLY (no completed/ sub-dir)
-├── enhancements/   # Active enhancements ONLY (no completed/ sub-dir)
-└── completed/      # ALL completed issues (flat, no sub-folders)
+├── bugs/           # Active bugs ONLY (no completed/ or deferred/ sub-dir)
+├── features/       # Active features ONLY (no completed/ or deferred/ sub-dir)
+├── enhancements/   # Active enhancements ONLY (no completed/ or deferred/ sub-dir)
+├── completed/      # ALL completed issues (flat, no sub-folders)
+└── deferred/       # ALL deferred/parked issues (flat, no sub-folders)
 ```
 
 **Violations detected and auto-fixed:**

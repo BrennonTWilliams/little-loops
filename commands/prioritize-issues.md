@@ -44,7 +44,7 @@ if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
 # Find all issue files without priority prefix (exclude completed/)
 for dir in {{config.issues.base_dir}}/*/; do
     dirname=$(basename "$dir")
-    if [ -d "$dir" ] && [ "$dirname" != "completed" ]; then
+    if [ -d "$dir" ] && [ "$dirname" != "completed" ] && [ "$dirname" != "deferred" ]; then
         echo "Checking $dir..."
         ls "$dir"*.md 2>/dev/null | while read file; do
             basename=$(basename "$file")
@@ -74,7 +74,7 @@ d. Do NOT fall through to Step 2 after this. The re-prioritize path ends at Step
 
 ### 2-RE. Re-evaluate All Active Issues
 
-For each active issue file (in `bugs/`, `features/`, `enhancements/` — **not** `completed/`):
+For each active issue file (in `bugs/`, `features/`, `enhancements/` — **not** `completed/` or `deferred/`):
 
 1. **Read the file content** to understand:
    - Summary/description
@@ -217,4 +217,4 @@ git mv "{{config.issues.base_dir}}/[category]/[old-name].md" \
 - Always use `git mv` to rename files (preserves history)
 - Commit the renames: `git commit -m "chore(issues): prioritize issues"`
 - When all issues are already prioritized, the command offers to re-evaluate priorities
-- Exclude `completed/` directory from both prioritization and re-prioritization scans
+- Exclude `completed/` and `deferred/` directories from both prioritization and re-prioritization scans

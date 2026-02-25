@@ -101,6 +101,11 @@
           "description": "Directory for completed issues",
           "default": "completed"
         },
+        "deferred_dir": {
+          "type": "string",
+          "description": "Directory for deferred issues (parked, not active or completed)",
+          "default": "deferred"
+        },
         "priorities": {
           "type": "array",
           "description": "Valid priority prefixes in order",

@@ -43,10 +43,11 @@ This command uses project configuration from `.claude/ll-config.json`:
 
 ```
 {{config.issues.base_dir}}/
-├── bugs/           # Active bugs (NEVER create completed/ here)
-├── features/       # Active features (NEVER create completed/ here)
-├── enhancements/   # Active enhancements (NEVER create completed/ here)
-└── completed/      # ALL completed issues go here (sibling to categories)
+├── bugs/           # Active bugs (NEVER create completed/ or deferred/ here)
+├── features/       # Active features (NEVER create completed/ or deferred/ here)
+├── enhancements/   # Active enhancements (NEVER create completed/ or deferred/ here)
+├── completed/      # ALL completed issues go here (sibling to categories)
+└── deferred/       # ALL deferred/parked issues go here (sibling to categories)
 ```
 
 ---
@@ -400,6 +401,8 @@ $ARGUMENTS
   - Behaves identically to fix/implement actions across all issue types
   - `verify` - Verify issue status only
   - `plan` - Create plan only (equivalent to --plan-only flag)
+  - `defer` - Move issue to deferred/ (parked, not active or completed)
+  - `undefer` - Move issue from deferred/ back to its active category directory
 
 - **issue_id** (optional): Specific issue ID
   - If provided, work on that issue
@@ -435,6 +438,12 @@ $ARGUMENTS
 
 # Resume interrupted work from checkpoint
 /ll:manage-issue bug fix BUG-123 --resume
+
+# Defer an issue (park it for later)
+/ll:manage-issue feature defer FEAT-441
+
+# Undefer an issue (bring it back to active)
+/ll:manage-issue feature undefer FEAT-441
 
 # Enable phase gates for careful manual verification
 /ll:manage-issue feature implement FEAT-042 --gates

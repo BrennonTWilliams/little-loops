@@ -28,7 +28,7 @@ Scan all active issues:
    - `{{config.issues.base_dir}}/bugs/`
    - `{{config.issues.base_dir}}/features/`
    - `{{config.issues.base_dir}}/enhancements/`
-3. Exclude the `{{config.issues.completed_dir}}/` directory
+3. Exclude the `{{config.issues.completed_dir}}/` and `{{config.issues.deferred_dir}}/` directories
 4. Read each issue file to extract content
 5. Parse issue metadata from filename and content:
    - ID (e.g., `BUG-042`, `FEAT-257`)

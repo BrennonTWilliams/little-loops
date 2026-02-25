@@ -1003,9 +1003,12 @@ def gather_all_issue_ids(issues_dir: Path, config: "BRConfig | None" = None) -> 
         Set of all issue IDs found across all categories and completed.
     """
     if config is not None:
-        subdirs = config.issue_categories + [config.get_completed_dir().name]
+        subdirs = config.issue_categories + [
+            config.get_completed_dir().name,
+            config.get_deferred_dir().name,
+        ]
     else:
-        subdirs = ["bugs", "features", "enhancements", "completed"]
+        subdirs = ["bugs", "features", "enhancements", "completed", "deferred"]
 
     ids: set[str] = set()
     for subdir in subdirs:
@@ -1050,16 +1053,16 @@ def _load_issues(
         if info.path.exists():
             issue_contents[info.issue_id] = info.path.read_text(encoding="utf-8")
 
-    # Gather completed issue IDs
-    completed_dir = config.get_completed_dir()
-    completed_ids: set[str] = set()
-    if completed_dir.exists():
-        import re as _re
+    # Gather completed and deferred issue IDs
+    import re as _re
 
-        for f in completed_dir.glob("*.md"):
-            match = _re.search(r"(BUG|FEAT|ENH)-(\d+)", f.name)
-            if match:
-                completed_ids.add(f"{match.group(1)}-{match.group(2)}")
+    completed_ids: set[str] = set()
+    for non_active_dir in [config.get_completed_dir(), config.get_deferred_dir()]:
+        if non_active_dir.exists():
+            for f in non_active_dir.glob("*.md"):
+                match = _re.search(r"(BUG|FEAT|ENH)-(\d+)", f.name)
+                if match:
+                    completed_ids.add(f"{match.group(1)}-{match.group(2)}")
 
     return issues, issue_contents, completed_ids
 

@@ -119,6 +119,14 @@ def get_completed_dir(self) -> Path
 
 Get the path to the completed issues directory.
 
+##### get_deferred_dir
+
+```python
+def get_deferred_dir(self) -> Path
+```
+
+Get the path to the deferred issues directory.
+
 **Returns:** `Path` to completed directory
 
 ##### get_issue_prefix
@@ -237,6 +245,7 @@ class IssuesConfig:
     base_dir: str = ".issues"
     categories: dict[str, CategoryConfig]
     completed_dir: str = "completed"
+    deferred_dir: str = "deferred"
     priorities: list[str]  # ["P0", "P1", ...]
     templates_dir: str | None = None
 ```

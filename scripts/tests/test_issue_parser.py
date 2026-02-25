@@ -730,6 +730,25 @@ class TestGetNextIssueNumber:
         next_num = get_next_issue_number(config, "bugs")
         assert next_num == 11  # Max in completed is 10
 
+    def test_includes_deferred_issues(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test that deferred issues are considered for ID uniqueness."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        deferred_dir = temp_project_dir / ".issues" / "deferred"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        deferred_dir.mkdir(parents=True, exist_ok=True)
+
+        (bugs_dir / "P0-BUG-003-current.md").write_text("# BUG-003")
+        (deferred_dir / "P0-FEAT-020-parked.md").write_text("# FEAT-020")
+
+        next_num = get_next_issue_number(config, "bugs")
+        assert next_num == 21  # Max in deferred is 20
+
     def test_global_uniqueness_across_types(
         self, temp_project_dir: Path, sample_config: dict[str, Any]
     ) -> None:
@@ -885,6 +904,34 @@ class TestFindIssues:
         issue_ids = [i.issue_id for i in issues]
         assert "BUG-100" not in issue_ids
         assert "BUG-101" in issue_ids
+        assert len(issues) == 1
+
+    def test_find_issues_skips_duplicates_in_deferred(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test that issues already in deferred/ are skipped from active directories."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        config = BRConfig(temp_project_dir)
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        deferred_dir = temp_project_dir / ".issues" / "deferred"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        deferred_dir.mkdir(parents=True, exist_ok=True)
+
+        # Create an issue in bugs/ and same file in deferred/
+        duplicate_file = "P0-BUG-200-deferred-test.md"
+        (bugs_dir / duplicate_file).write_text("# BUG-200: Deferred Test\n\nContent.")
+        (deferred_dir / duplicate_file).write_text("# BUG-200: Deferred Test\n\nContent.")
+
+        # Create a non-duplicate issue
+        (bugs_dir / "P1-BUG-201-active.md").write_text("# BUG-201: Active\n\nContent.")
+
+        issues = find_issues(config, category="bugs")
+
+        issue_ids = [i.issue_id for i in issues]
+        assert "BUG-200" not in issue_ids
+        assert "BUG-201" in issue_ids
         assert len(issues) == 1
 
 

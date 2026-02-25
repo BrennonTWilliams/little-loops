@@ -58,8 +58,8 @@ def get_next_issue_number(config: BRConfig, category: str | None = None) -> int:
     # Get all known prefixes from configuration
     all_prefixes = [cat_config.prefix for cat_config in config.issues.categories.values()]
 
-    # Directories to scan: ALL category directories + completed
-    dirs_to_scan = [config.get_completed_dir()]
+    # Directories to scan: ALL category directories + completed + deferred
+    dirs_to_scan = [config.get_completed_dir(), config.get_deferred_dir()]
     for cat_name in config.issues.categories:
         dirs_to_scan.append(config.get_issue_dir(cat_name))
 
@@ -508,8 +508,9 @@ def find_issues(
     parser = IssueParser(config)
     issues: list[IssueInfo] = []
 
-    # Get completed directory for duplicate detection
+    # Get completed and deferred directories for duplicate detection
     completed_dir = config.get_completed_dir()
+    deferred_dir = config.get_deferred_dir()
 
     # Determine which categories to search
     if category:
@@ -523,9 +524,12 @@ def find_issues(
             continue
 
         for issue_file in issue_dir.glob("*.md"):
-            # Pre-flight check: skip if already exists in completed directory
+            # Pre-flight check: skip if already exists in completed or deferred directory
             completed_path = completed_dir / issue_file.name
             if completed_path.exists():
+                continue
+            deferred_path = deferred_dir / issue_file.name
+            if deferred_path.exists():
                 continue
 
             info = parser.parse_file(issue_file)

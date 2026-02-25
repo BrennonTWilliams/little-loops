@@ -41,6 +41,7 @@ flowchart TB
     subgraph "Issue Storage"
         ISSUES[.issues/<br/>bugs, features, enhancements]
         COMPLETED[.issues/completed/]
+        DEFERRED[.issues/deferred/]
     end
 
     CFG --> CMD
@@ -413,6 +414,7 @@ classDiagram
         +parallel: ParallelAutomationConfig
         +get_issue_dir(category) Path
         +get_completed_dir() Path
+        +get_deferred_dir() Path
         +create_parallel_config() ParallelConfig
         +to_dict() dict
     }
@@ -539,8 +541,11 @@ stateDiagram-v2
     NotReady --> Discovered: Fix issue file
     ShouldClose --> Completed: Move to completed/
     Failed --> Discovered: Create follow-up issue
+    Discovered --> Deferred: Defer issue
+    Deferred --> Discovered: Undefer issue
 
     Completed --> [*]: Move to .issues/completed/
+    Deferred --> [*]: Move to .issues/deferred/
 ```
 
 ---

@@ -23,6 +23,7 @@ Issue files live in `.issues/` and follow a strict naming convention:
   features/      ← active features
   enhancements/  ← active enhancements
   completed/     ← archived issues (sibling directory, not a subdirectory of bugs/)
+  deferred/      ← parked issues (not active, not completed)
 ```
 
 **Filename format**: `P[0-5]-[TYPE]-[NNN]-description-with-dashes.md`
@@ -35,7 +36,7 @@ P2-BUG-042-sprint-runner-ignores-failed-issues.md
 └────────── priority: P0 (critical) to P5 (low)
 ```
 
-> **Common pitfall**: `completed/` is a sibling of `bugs/`, `features/`, and `enhancements/` — not nested inside them. A completed bug moves to `.issues/completed/`, not `.issues/bugs/completed/`.
+> **Common pitfall**: `completed/` and `deferred/` are siblings of `bugs/`, `features/`, and `enhancements/` — not nested inside them. A completed bug moves to `.issues/completed/`, not `.issues/bugs/completed/`. Similarly, a deferred issue moves to `.issues/deferred/`.
 
 Issue files use YAML-style frontmatter for metadata, followed by Markdown sections. The v2.0 template (see [Issue Template Guide](../reference/ISSUE_TEMPLATE.md)) adds four high-value sections: Motivation, Integration Map, Implementation Steps, and Root Cause (BUG only).
 
@@ -79,7 +80,13 @@ Issues move through seven states:
   ┌───────────┐
   │ Completed │  ← moved to .issues/completed/, committed
   └───────────┘
+
+  ┌───────────┐
+  │ Deferred  │  ← moved to .issues/deferred/, parked for later
+  └───────────┘
 ```
+
+Issues can also be **deferred** (parked for later) using `/ll:manage-issue <type> defer <ID>` and later restored with `undefer`.
 
 Not every issue goes through every state. A trivial bug fix might go Discovered → Ready → Completed in one session. A large feature might stay in Validating for multiple refinement cycles.
 

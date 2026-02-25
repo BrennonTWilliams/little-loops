@@ -84,9 +84,9 @@ if [[ -z "$ISSUE_ID" ]]; then
     exit 1
 fi
 
-# Search for issue file across categories (not completed/)
+# Search for issue file across categories (not completed/ or deferred/)
 for dir in {{config.issues.base_dir}}/*/; do
-    if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ]; then
+    if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ] || [ "$(basename "$dir")" = "{{config.issues.deferred_dir}}" ]; then
         continue
     fi
     if [ -d "$dir" ]; then

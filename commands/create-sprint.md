@@ -326,7 +326,7 @@ Use AskUserQuestion to present selection options:
 If selecting from active issues:
 1. Use the Glob tool to find active issues:
    - Pattern: `{issues.base_dir}/**/*.md` (using the configured issues directory)
-   - Then filter results to exclude paths containing `/completed/`
+   - Then filter results to exclude paths containing `/completed/` or `/deferred/`
 2. Parse and group by category/priority
 3. Present organized list for selection
 

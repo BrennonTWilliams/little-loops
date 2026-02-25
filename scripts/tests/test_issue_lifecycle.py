@@ -33,6 +33,8 @@ from little_loops.issue_lifecycle import (
     close_issue,
     complete_issue_lifecycle,
     create_issue_from_failure,
+    defer_issue,
+    undefer_issue,
     verify_issue_completed,
 )
 from little_loops.issue_parser import IssueInfo
@@ -82,6 +84,7 @@ def sample_config(tmp_path: Path) -> BRConfig:
                 "enhancements": {"prefix": "ENH", "dir": "enhancements", "action": "improve"},
             },
             "completed_dir": "completed",
+            "deferred_dir": "deferred",
             "priorities": ["P0", "P1", "P2", "P3"],
         },
     }
@@ -96,6 +99,7 @@ def sample_config(tmp_path: Path) -> BRConfig:
     (issues_dir / "features").mkdir(parents=True, exist_ok=True)
     (issues_dir / "enhancements").mkdir(parents=True, exist_ok=True)
     (issues_dir / "completed").mkdir(parents=True, exist_ok=True)
+    (issues_dir / "deferred").mkdir(parents=True, exist_ok=True)
 
     return BRConfig(tmp_path)
 
@@ -1138,3 +1142,234 @@ class TestCompleteIssueLifecycle:
         completed = sample_config.get_completed_dir() / feature_path.name
         content = completed.read_text()
         assert "**Action**: implement" in content  # features category action
+
+
+# =============================================================================
+# Defer / Undefer Tests
+# =============================================================================
+
+
+class TestDeferIssue:
+    """Tests for defer_issue function."""
+
+    def test_defer_success(
+        self,
+        tmp_path: Path,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Test successful deferral with git operations."""
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if "mv" in cmd:
+                src, dst = Path(cmd[2]), Path(cmd[3])
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    src.rename(dst)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if "ls-files" in cmd:
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
+                )
+            if "commit" in cmd:
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout="[main abc123] commit", stderr=""
+                )
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = defer_issue(
+                sample_issue_info,
+                sample_config,
+                mock_logger,
+                reason="Waiting for dependency",
+            )
+
+        assert result is True
+        mock_logger.success.assert_called()
+        deferred = sample_config.get_deferred_dir() / sample_issue_info.path.name
+        assert deferred.exists()
+        content = deferred.read_text()
+        assert "## Deferred" in content
+        assert "Waiting for dependency" in content
+
+    def test_defer_already_deferred(
+        self,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Test deferring an already-deferred issue."""
+        deferred_dir = sample_config.get_deferred_dir()
+        deferred_path = deferred_dir / sample_issue_info.path.name
+        deferred_path.write_text("Already deferred content")
+
+        result = defer_issue(sample_issue_info, sample_config, mock_logger, reason="test")
+
+        assert result is True
+        mock_logger.info.assert_called()
+
+    def test_defer_source_missing(
+        self,
+        sample_config: BRConfig,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Test deferring when source file is missing."""
+        info = IssueInfo(
+            path=Path("/nonexistent/P1-BUG-999-missing.md"),
+            issue_type="bugs",
+            priority="P1",
+            issue_id="BUG-999",
+            title="Missing",
+        )
+
+        result = defer_issue(info, sample_config, mock_logger, reason="test")
+
+        assert result is True
+        mock_logger.info.assert_called()
+
+    def test_defer_default_reason(
+        self,
+        sample_config: BRConfig,
+        sample_issue_info: IssueInfo,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Test deferral uses default reason when none provided."""
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if "mv" in cmd:
+                src, dst = Path(cmd[2]), Path(cmd[3])
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    src.rename(dst)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            if "ls-files" in cmd:
+                return subprocess.CompletedProcess(
+                    cmd, 0, stdout=str(sample_issue_info.path), stderr=""
+                )
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = defer_issue(sample_issue_info, sample_config, mock_logger, reason=None)
+
+        assert result is True
+        deferred = sample_config.get_deferred_dir() / sample_issue_info.path.name
+        content = deferred.read_text()
+        assert "Intentionally set aside" in content
+
+
+class TestUndeferIssue:
+    """Tests for undefer_issue function."""
+
+    def test_undefer_success(
+        self,
+        sample_config: BRConfig,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Test successful undeferral back to active category."""
+        deferred_dir = sample_config.get_deferred_dir()
+        deferred_path = deferred_dir / "P1-BUG-001-test-bug.md"
+        deferred_path.write_text("# BUG-001: Test Bug\n\n## Summary\nTest.")
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if "mv" in cmd:
+                src, dst = Path(cmd[2]), Path(cmd[3])
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    src.rename(dst)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = undefer_issue(
+                sample_config, deferred_path, mock_logger, reason="Ready to work on"
+            )
+
+        assert result is not None
+        assert result.parent.name == "bugs"
+        content = result.read_text()
+        assert "## Undeferred" in content
+        assert "Ready to work on" in content
+        mock_logger.success.assert_called()
+
+    def test_undefer_feature_goes_to_features(
+        self,
+        sample_config: BRConfig,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Test undeferring a feature issue returns to features/ dir."""
+        deferred_dir = sample_config.get_deferred_dir()
+        deferred_path = deferred_dir / "P2-FEAT-042-cool-feature.md"
+        deferred_path.write_text("# FEAT-042: Cool Feature\n")
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if "mv" in cmd:
+                src, dst = Path(cmd[2]), Path(cmd[3])
+                if src.exists():
+                    dst.parent.mkdir(parents=True, exist_ok=True)
+                    src.rename(dst)
+                return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = undefer_issue(sample_config, deferred_path, mock_logger)
+
+        assert result is not None
+        assert result.parent.name == "features"
+
+    def test_undefer_source_missing(
+        self,
+        sample_config: BRConfig,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Test undeferring when deferred file doesn't exist."""
+        result = undefer_issue(
+            sample_config, Path("/nonexistent.md"), mock_logger, reason="test"
+        )
+        assert result is None
+        mock_logger.error.assert_called()
+
+    def test_undefer_target_exists(
+        self,
+        sample_config: BRConfig,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Test undeferring when active issue already exists."""
+        # Create both deferred and active versions
+        deferred_dir = sample_config.get_deferred_dir()
+        deferred_path = deferred_dir / "P1-BUG-001-test-bug.md"
+        deferred_path.write_text("# BUG-001: Deferred version")
+
+        bugs_dir = sample_config.get_issue_dir("bugs")
+        active_path = bugs_dir / "P1-BUG-001-test-bug.md"
+        active_path.write_text("# BUG-001: Active version")
+
+        result = undefer_issue(sample_config, deferred_path, mock_logger, reason="test")
+
+        assert result is None
+        mock_logger.warning.assert_called()
+
+    def test_undefer_git_mv_fallback(
+        self,
+        sample_config: BRConfig,
+        mock_logger: MagicMock,
+    ) -> None:
+        """Test undeferral falls back to manual copy when git mv fails."""
+        deferred_dir = sample_config.get_deferred_dir()
+        deferred_path = deferred_dir / "P1-BUG-001-test-bug.md"
+        deferred_path.write_text("# BUG-001: Test Bug")
+
+        def mock_run(cmd: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
+            if "mv" in cmd:
+                return subprocess.CompletedProcess(cmd, 1, stdout="", stderr="git mv failed")
+            return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+        with patch("subprocess.run", side_effect=mock_run):
+            result = undefer_issue(sample_config, deferred_path, mock_logger)
+
+        assert result is not None
+        assert result.exists()
+        assert not deferred_path.exists()
+        content = result.read_text()
+        assert "## Undeferred" in content

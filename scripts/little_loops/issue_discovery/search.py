@@ -34,15 +34,18 @@ if TYPE_CHECKING:
 def _get_all_issue_files(
     config: BRConfig,
     include_completed: bool = True,
+    include_deferred: bool = False,
 ) -> list[tuple[Path, bool]]:
     """Get all issue files with their completion status.
 
     Args:
         config: Project configuration
         include_completed: Whether to include completed issues
+        include_deferred: Whether to include deferred issues
 
     Returns:
-        List of (path, is_completed) tuples
+        List of (path, is_completed) tuples.
+        For deferred issues, is_completed is set to True (non-active).
     """
     files: list[tuple[Path, bool]] = []
 
@@ -58,6 +61,13 @@ def _get_all_issue_files(
         completed_dir = config.get_completed_dir()
         if completed_dir.exists():
             for f in completed_dir.glob("*.md"):
+                files.append((f, True))
+
+    # Deferred issues
+    if include_deferred:
+        deferred_dir = config.get_deferred_dir()
+        if deferred_dir.exists():
+            for f in deferred_dir.glob("*.md"):
                 files.append((f, True))
 
     return files

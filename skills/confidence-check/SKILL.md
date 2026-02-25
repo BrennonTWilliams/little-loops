@@ -73,7 +73,7 @@ fi
 
 - **flags** (optional): Command behavior flags
   - `--auto` — Non-interactive mode (skip user prompts, use defaults)
-  - `--all` — Evaluate all active issues (bugs/, features/, enhancements/), skip completed/. Implies `--auto`.
+  - `--all` — Evaluate all active issues (bugs/, features/, enhancements/), skip completed/ and deferred/. Implies `--auto`.
 
 ## Issue Discovery
 

@@ -99,6 +99,7 @@ class IssuesConfig:
     base_dir: str = ".issues"
     categories: dict[str, CategoryConfig] = field(default_factory=dict)
     completed_dir: str = "completed"
+    deferred_dir: str = "deferred"
     priorities: list[str] = field(default_factory=lambda: ["P0", "P1", "P2", "P3", "P4", "P5"])
     templates_dir: str | None = None
 
@@ -124,6 +125,7 @@ class IssuesConfig:
             base_dir=data.get("base_dir", ".issues"),
             categories=categories,
             completed_dir=data.get("completed_dir", "completed"),
+            deferred_dir=data.get("deferred_dir", "deferred"),
             priorities=data.get("priorities", ["P0", "P1", "P2", "P3", "P4", "P5"]),
             templates_dir=data.get("templates_dir"),
         )
@@ -504,6 +506,10 @@ class BRConfig:
         """Get the path to the completed issues directory."""
         return self.project_root / self._issues.base_dir / self._issues.completed_dir
 
+    def get_deferred_dir(self) -> Path:
+        """Get the path to the deferred issues directory."""
+        return self.project_root / self._issues.base_dir / self._issues.deferred_dir
+
     def get_issue_prefix(self, category: str) -> str:
         """Get the issue ID prefix for a category.
 
@@ -656,6 +662,7 @@ class BRConfig:
                     for k, v in self._issues.categories.items()
                 },
                 "completed_dir": self._issues.completed_dir,
+                "deferred_dir": self._issues.deferred_dir,
                 "priorities": self._issues.priorities,
                 "templates_dir": self._issues.templates_dir,
             },

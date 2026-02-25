@@ -28,8 +28,8 @@ This command uses project configuration from `.claude/ll-config.json`:
 ### 1. Find Issues to Verify
 
 ```bash
-# List all open issues (not in completed/)
-find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" | sort
+# List all open issues (not in completed/ or deferred/)
+find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" -not -path "*/deferred/*" | sort
 ```
 
 ### 2. For Each Issue

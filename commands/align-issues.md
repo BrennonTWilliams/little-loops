@@ -152,8 +152,8 @@ For each document file in the category:
 ### 4. Find Active Issues
 
 ```bash
-# List all open issues (not in completed/)
-find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" | sort
+# List all open issues (not in completed/ or deferred/)
+find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" -not -path "*/deferred/*" | sort
 ```
 
 ### 5. Analyze Each Issue

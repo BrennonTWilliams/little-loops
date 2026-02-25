@@ -259,7 +259,7 @@ After the user confirms, check whether the configured tool commands are availabl
 
 --- Actions that would be taken ---
   [write]  .claude/ll-config.json
-  [mkdir]  {{config.issues.base_dir}}/{bugs,features,enhancements,completed}
+  [mkdir]  {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
   [update] .gitignore (add state file exclusions)
 
 === END DRY RUN (no changes made) ===
@@ -295,7 +295,7 @@ Skip all Write, Edit, and Bash(mkdir) tool calls. Skip Steps 9 and 10 — the dr
 
 4. Create issue tracking directories:
    ```bash
-   mkdir -p {{config.issues.base_dir}}/{bugs,features,enhancements,completed}
+   mkdir -p {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
    ```
 
 ### 9. Update .gitignore
@@ -330,7 +330,7 @@ INITIALIZATION COMPLETE
 
 Created: .claude/ll-config.json
 Created: .claude/ll-goals.md (product goals template)  # Only show if product enabled
-Created: {{config.issues.base_dir}}/{bugs,features,enhancements,completed}
+Created: {{config.issues.base_dir}}/{bugs,features,enhancements,completed,deferred}
 Updated: .gitignore (added state file exclusions)
 
 Next steps:

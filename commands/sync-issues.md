@@ -168,7 +168,7 @@ Show sync status without making changes.
 
 1. **Count local issues**:
    ```bash
-   find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" | wc -l
+   find {{config.issues.base_dir}} -name "*.md" -not -path "*/completed/*" -not -path "*/deferred/*" | wc -l
    ```
 
 2. **Count synced issues** (have `github_issue` in frontmatter):

@@ -117,8 +117,17 @@ class TestIssuesConfig:
         assert "features" in config.categories
         assert "enhancements" in config.categories
         assert config.completed_dir == "done"
+        assert config.deferred_dir == "deferred"  # default when not specified
         assert config.priorities == ["P0", "P1"]
         assert config.templates_dir == "templates/"
+
+    def test_from_dict_with_deferred_dir(self) -> None:
+        """Test creating IssuesConfig with custom deferred_dir."""
+        data = {
+            "deferred_dir": "parked",
+        }
+        config = IssuesConfig.from_dict(data)
+        assert config.deferred_dir == "parked"
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating IssuesConfig with default values."""
@@ -130,6 +139,7 @@ class TestIssuesConfig:
         assert "features" in config.categories
         assert "enhancements" in config.categories
         assert config.completed_dir == "completed"
+        assert config.deferred_dir == "deferred"
         assert config.priorities == ["P0", "P1", "P2", "P3", "P4", "P5"]
         assert config.templates_dir is None
 
@@ -381,6 +391,16 @@ class TestBRConfig:
 
         completed = config.get_completed_dir()
         assert completed.resolve() == (temp_project_dir / ".issues" / "completed").resolve()
+
+    def test_get_deferred_dir(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
+        """Test get_deferred_dir returns correct path."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+
+        deferred = config.get_deferred_dir()
+        assert deferred.resolve() == (temp_project_dir / ".issues" / "deferred").resolve()
 
     def test_get_issue_prefix(self, temp_project_dir: Path, sample_config: dict[str, Any]) -> None:
         """Test get_issue_prefix returns correct prefix."""

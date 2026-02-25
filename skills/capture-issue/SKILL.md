@@ -142,12 +142,12 @@ For each issue to capture, search for existing duplicates:
 
 #### Search Active Issues
 
-Search in all active category directories (excluding completed):
+Search in all active category directories (excluding completed and deferred):
 
 ```bash
 # List all active issues for analysis
 for dir in {{config.issues.base_dir}}/*/; do
-    if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ]; then
+    if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ] || [ "$(basename "$dir")" = "{{config.issues.deferred_dir}}" ]; then
         continue
     fi
     if [ -d "$dir" ]; then
