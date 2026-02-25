@@ -1,41 +1,68 @@
-# Continue: ENH-447 — Confidence Score Blocking Gate for manage-issue
+# Session Continuation: Fix ll-issues impact-effort matrix rendering
 
-## Context
-Implementing ENH-447: Add `commands.confidence_gate` config block that enables `manage-issue` to halt before Phase 3 when an issue's `confidence_score` is below threshold.
+## Conversation Summary
 
-Issue file: `.issues/enhancements/P3-ENH-447-confidence-score-blocking-gate-for-manage-issue.md`
-Plan: `thoughts/shared/plans/2026-02-22-ENH-447-management.md`
+### Primary Intent
+Fix visual bugs in the `ll-issues impact-effort` ASCII matrix command — first a row label repetition bug, then a deeper grid misalignment issue.
 
-## Completed
+### What Happened
 
-1. **config.py** — Added `ConfidenceGateConfig` dataclass (`enabled: bool = False`, `threshold: int = 85`) before `CommandsConfig`. Wired into `CommandsConfig` with `confidence_gate` field, `from_dict`, and `to_dict`. Added to `__all__`.
+**Phase 1 — Row label repetition (BUG-508)**
+The plan to fix `ll-issues impact-effort` was already written coming into the session. The root cause: the format string always embedded the literal ` IMPACT ` text, so even when `impact_label` became `"    "` on non-first rows, "IMPACT" was still printed. Fixed by constructing the full 12-char row label as a single variable (`"High IMPACT "` / `"Low  IMPACT "` / `" " * 12`) rather than composing it inline in the f-string. 20/20 impact tests passed. Issue documented in `.issues/completed/P4-BUG-508-fix-impact-effort-row-label-repetition.md` and committed (`5c0cd76`).
 
-2. **config-schema.json** — Added `confidence_gate` object under `commands.properties` with `enabled` (boolean, default false), `threshold` (integer, default 85, min 1, max 100), `additionalProperties: false`.
+**Phase 2 — Grid alignment refactor**
+User ran the command and found it still visually broken — the borders were 4 characters to the left of the data rows. Root cause: borders used `" " * 8` indent, but the row label prefix is 12 chars wide, so the first `│` of a data row lands at column 12 while `┌` was at column 8. Additionally, the "← EFFORT →" and "Low/High" axis labels were using the old offset and an ad-hoc `axis_width + 8` centering formula that no longer worked.
 
-3. **manage-issue/SKILL.md** — Added Phase 2.5 confidence gate check between Phase 2 and Phase 3 with full pseudocode logic. Added `--force-implement` flag to frontmatter args description, flags documentation list, and examples section.
+Refactored the label/border section:
+- Introduced `label_width = 12` constant
+- Changed all border indents from `" " * 8` to `" " * label_width`
+- Replaced ad-hoc axis label math with `effort_label.center(grid_width)` (where `grid_width = len(top_border) = 47`) and `"Low".center(col_section) + " " + "High".center(col_section)` (where `col_section = _COL_WIDTH + 2 = 22`)
+- Verified tests (20/20) and live output, committed as `d7e8fdc`
 
-4. **test_config.py** — Added `TestConfidenceGateConfig` class with `test_from_dict_with_all_fields` and `test_from_dict_with_defaults`. Updated `TestCommandsConfig` tests to include `confidence_gate` in both all-fields and defaults tests. Added `ConfidenceGateConfig` to imports.
+### User Feedback
+- After phase 1 fix: "Output now is better but still visually broken" — prompted phase 2
 
-## Remaining Tasks
+### Errors and Resolutions
+| Error | How Fixed | User Feedback |
+|-------|-----------|---------------|
+| "IMPACT" repeated on every row of top half | Moved full label into single `row_label` variable | — |
+| Borders misaligned 4 chars left of data rows | Changed `" " * 8` → `" " * label_width` (12) for all borders | — |
+| Axis labels ("← EFFORT →", "Low/High") mispositioned | Recalculated using `grid_width` and `col_section` constants | — |
 
-5. **Init wizard** (`skills/init/interactive.md`):
-   - Add "Confidence gate" option to Round 3 features multi-select (line 132-143)
-   - Add conditional threshold question in Round 5 dynamic section (follow pattern of "Context monitoring" → threshold at line 324-334)
-   - Add config mapping note after Round 5 for confidence gate settings
+### Code Changes
+| File | Changes Made | Notes |
+|------|--------------|-------|
+| `scripts/little_loops/cli/issues/impact_effort.py:110–130` | Introduced `label_width`, `grid_width`, `col_section`; fixed all border indents and axis label positioning | Two commits: `5c0cd76`, `d7e8fdc` |
+| `.issues/completed/P4-BUG-508-fix-impact-effort-row-label-repetition.md` | New completed issue file documenting BUG-508 | Created in `5c0cd76` |
 
-6. **Configure skill** — Two files:
-   - `skills/configure/SKILL.md`: Add `| commands | commands | Command hooks, confidence gate |` to area mapping table (lines 47-58). Add `commands` to area selection AskUserQuestion menus (lines 138-188).
-   - `skills/configure/areas.md`: Add `## Area: commands` section at end. Follow `## Area: context` pattern (line 409). Show current values for `confidence_gate.enabled` and `confidence_gate.threshold`. Add AskUserQuestion with enable + threshold questions.
+## Resume Point
 
-7. **Documentation**:
-   - `docs/API.md` line 88: Update `CommandsConfig` row or add note about `confidence_gate` sub-config
-   - `docs/CONFIGURATION.md` lines 64-68: Update `commands` JSON example to include `"confidence_gate": {"enabled": false, "threshold": 85}`
+### What Was Being Worked On
+Both bugs in `ll-issues impact-effort` are fully fixed and committed. The session ended cleanly after committing the alignment refactor and invoking `/ll:handoff`.
 
-8. **Run verification**: `python -m pytest scripts/tests/`, `python -m mypy scripts/little_loops/`, `ruff check scripts/`, `ruff format scripts/`
+### Direct Quote
+> "Refactor to make the `ll-issues impact-effort` output clean, correct, and consistent"
 
-9. **Complete issue lifecycle**: Update issue frontmatter with resolution, move to `.issues/completed/`, commit all changes with conventional commit.
+### Next Step
+No outstanding work from this session. Possible follow-on:
+- Check if there are any other `ll-issues` sub-commands with similar layout issues
+- The untracked `thoughts/shared/plans/2026-02-25-ENH-471-management.md` and the modified `.issues/enhancements/P3-ENH-481-replace-hardcoded-category-lists-with-config.md` (frontmatter confidence scores added) remain unstaged — they are unrelated to this session
+- The previous continuation prompt referenced ENH-447 work (confidence gate) that may still need attention — see git log for context
 
-## Resume Command
-```
-/ll:manage-issue enhancement implement ENH-447 --resume
-```
+## Important Context
+
+### Decisions Made
+- **`label_width` as a named constant**: Makes the relationship between row labels and border indentation explicit; avoids magic numbers
+- **`grid_width = len(top_border)`**: Derives grid width from the actual border string rather than a formula, stays correct if `_COL_WIDTH` changes
+- **`col_section = _COL_WIDTH + 2`**: Each column's display width (content + one space each side) used for centering axis labels
+
+### Gotchas Discovered
+- The 8-space border indent was a pre-existing bug — the original code had "High" (4 chars) + " IMPACT " (8 chars) = 12 chars before `│`, so borders were always misaligned even before the repetition fix
+- Tests only check string presence ("IMPACT", "QUICK WINS", etc.), not exact layout — layout bugs go undetected by tests
+
+### User-Specified Constraints
+- Do not commit unrelated changes (ENH-481 frontmatter, thoughts plan file were left unstaged)
+
+### Patterns Being Followed
+- Conventional commits: `fix(scope): description` format
+- Issue files in `.issues/completed/` follow `P[0-5]-[TYPE]-[NNN]-description.md` with Resolution and Session Log sections
