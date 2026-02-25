@@ -10,17 +10,18 @@ focus_area: large-files
 
 ## Summary
 
-Architectural issue found by `/ll:audit-architecture`. The `cli/sprint.py` module is 1,372 lines with 18 top-level functions handling all sprint CLI subcommands in a single file.
+Architectural issue found by `/ll:audit-architecture`. The `cli/sprint.py` module is 1,371 lines with 18 top-level functions handling all sprint CLI subcommands in a single file.
 
 ## Current Behavior
 
-The module `scripts/little_loops/cli/sprint.py` (1,372 lines) contains 18 functions implementing all sprint CLI subcommands:
+The module `scripts/little_loops/cli/sprint.py` (1,371 lines) contains 18 functions implementing all sprint CLI subcommands:
 - `main_sprint` (entry point + argparse setup)
 - `_cmd_sprint_create`, `_cmd_sprint_show`, `_cmd_sprint_edit`
-- `_cmd_sprint_list`, `_cmd_sprint_delete`
-- `_cmd_sprint_run`, `_cmd_sprint_run_wave`
-- `_render_execution_plan`, `_render_dependency_graph`, `_render_health_summary`
-- Signal handling, helper utilities
+- `_cmd_sprint_list`, `_cmd_sprint_delete`, `_cmd_sprint_analyze`
+- `_cmd_sprint_run`
+- `_render_execution_plan`, `_render_dependency_graph`, `_render_health_summary`, `_render_dependency_analysis`
+- `_get_sprint_state_file`, `_load_sprint_state`, `_save_sprint_state`, `_cleanup_sprint_state`
+- `_build_issue_contents`, `_sprint_signal_handler`
 
 This mirrors the pattern used successfully in `cli/loop/` which splits its subcommands across `run.py`, `info.py`, `lifecycle.py`, `config_cmds.py`, and `testing.py`.
 
@@ -31,7 +32,7 @@ Sprint CLI subcommands are split into focused modules within a `cli/sprint/` pac
 ## Motivation
 
 This enhancement would:
-- Improve development velocity: navigating 1,372 lines to find a specific subcommand handler is slow
+- Improve development velocity: navigating 1,371 lines to find a specific subcommand handler is slow
 - Reduce merge conflicts: changes to one subcommand risk conflicts with unrelated subcommand work
 - Follow established patterns: `cli/loop/` already uses this package structure successfully
 
@@ -44,8 +45,9 @@ Follow the existing `cli/loop/` package pattern:
 3. Create `cli/sprint/create.py` — `_cmd_sprint_create`
 4. Create `cli/sprint/show.py` — `_cmd_sprint_show`, `_render_execution_plan`, `_render_dependency_graph`, `_render_health_summary`
 5. Create `cli/sprint/edit.py` — `_cmd_sprint_edit`
-6. Create `cli/sprint/run.py` — `_cmd_sprint_run`, `_cmd_sprint_run_wave`, signal handling
-7. Create `cli/sprint/manage.py` — `_cmd_sprint_list`, `_cmd_sprint_delete`
+6. Create `cli/sprint/run.py` — `_cmd_sprint_run`, signal handling (`_sprint_signal_handler`), state helpers (`_get_sprint_state_file`, `_load_sprint_state`, `_save_sprint_state`, `_cleanup_sprint_state`)
+7. Create `cli/sprint/manage.py` — `_cmd_sprint_list`, `_cmd_sprint_delete`, `_cmd_sprint_analyze`
+8. Create `cli/sprint/helpers.py` — `_build_issue_contents`, `_render_dependency_analysis`
 8. Update `cli/__init__.py` imports
 
 ## Scope Boundaries
@@ -85,7 +87,7 @@ Follow the existing `cli/loop/` package pattern:
 
 ## Impact
 
-- **Priority**: P3 — Moderate maintenance burden from 1,372-line single file
+- **Priority**: P3 — Moderate maintenance burden from 1,371-line single file
 - **Effort**: Medium — Follows established `cli/loop/` pattern
 - **Risk**: Low — Internal restructure, entry point unchanged
 - **Breaking Change**: No
@@ -96,6 +98,7 @@ Follow the existing `cli/loop/` package pattern:
 
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:verify-issues` - 2026-02-24 - Corrected line count (1,371); removed non-existent `_cmd_sprint_run_wave`; updated function list to match actual codebase
 
 ---
 

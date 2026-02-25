@@ -7,7 +7,7 @@ discovered_by: capture-issue
 
 ## Summary
 
-`ll-sync pull` currently uses a hardcoded inline template (`sync.py:637-694`) when creating local issue files from GitHub Issues. This bypasses the shared `templates/issue-sections.json` (v2.0) that all other issue-creation paths use, resulting in pulled issues that don't conform to the project's template structure.
+`ll-sync pull` currently uses a hardcoded inline template (`sync.py:615-670`) when creating local issue files from GitHub Issues. This bypasses the shared `templates/issue-sections.json` (v2.0) that all other issue-creation paths use, resulting in pulled issues that don't conform to the project's template structure.
 
 ## Current Behavior
 
@@ -45,7 +45,7 @@ This output lacks the v2.0 section structure (Summary, Current Behavior, Expecte
 
 | File | Role | Change Type |
 |------|------|-------------|
-| `scripts/little_loops/sync.py:637-694` | `_create_local_issue()` | Modify - replace hardcoded template with shared utility |
+| `scripts/little_loops/sync.py:615-670` | `_create_local_issue()` | Modify - replace hardcoded template with shared utility |
 | `templates/issue-sections.json` | Section definitions | Read-only reference |
 | `scripts/little_loops/issue_template.py` (new) | Template assembly utility | New module |
 | `.claude/ll-config.json` | Config | Add `sync.github.pull_template` option |
@@ -84,6 +84,7 @@ This output lacks the v2.0 section structure (Summary, Current Behavior, Expecte
 ## Session Log
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/111eb543-d1ab-4bb9-b78b-61104209c4eb.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:verify-issues` - 2026-02-24 - Updated `_create_local_issue` line reference from 637-694 to 615-670
 
 ## Status
 

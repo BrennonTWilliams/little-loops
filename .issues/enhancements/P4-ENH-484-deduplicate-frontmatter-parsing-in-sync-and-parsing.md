@@ -13,7 +13,7 @@ Frontmatter stripping/parsing logic is duplicated in multiple locations: `sync.p
 
 ## Current Behavior
 
-- `sync.py:221-225` and `sync.py:251-256` — identical 4-line frontmatter skip blocks in `_parse_issue_title` and `_get_issue_body`, duplicating logic already in `frontmatter.py:parse_frontmatter`
+- `sync.py:194-198` and `sync.py:224-228` — identical 4-line frontmatter skip blocks in `_parse_issue_title` and `_get_issue_body`, duplicating logic already in `frontmatter.py:parse_frontmatter`
 - `issue_history/parsing.py:74` and `parsing.py:230` — `_parse_discovered_by` and `_parse_discovered_date` each call `parse_frontmatter(content)` independently, resulting in double-parsing when both are called from `parse_completed_issue`
 
 ## Expected Behavior
@@ -77,6 +77,7 @@ Reduces maintenance surface and eliminates risk of the copies drifting out of sy
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:verify-issues` - 2026-02-24 - Updated sync.py line references: 221-225/251-256 → 194-198/224-228
 
 ---
 
