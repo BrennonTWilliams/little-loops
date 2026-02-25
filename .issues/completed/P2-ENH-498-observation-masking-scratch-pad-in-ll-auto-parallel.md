@@ -2,8 +2,8 @@
 discovered_date: 2026-02-24
 discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
-confidence_score: 100
-outcome_confidence: 78
+confidence_score: 96
+outcome_confidence: 68
 ---
 
 # ENH-498: Observation Masking / Scratch Pad Pattern in ll-auto and ll-parallel
@@ -52,7 +52,7 @@ Claude writes large tool outputs to scratch files directly, rather than letting 
    - For test/lint runs, pipe output to scratch: `Bash "python -m pytest ... > /tmp/ll-scratch/test-results.txt 2>&1; tail -20 /tmp/ll-scratch/test-results.txt"` (tail gives enough context to determine pass/fail without full output in context)
    - Reference scratch paths when reasoning; use `Read` on the scratch file only when specific content is needed later
 
-2. **Add `scratch_pad` to `config-schema.json`** — insert a new top-level object after the `"context_monitor"` block (which ends at line 442); include `"additionalProperties": false`:
+2. **Add `scratch_pad` to `config-schema.json`** — insert a new top-level object after the `"context_monitor"` block (which ends at line 447); include `"additionalProperties": false`:
    ```json
    "scratch_pad": {
      "type": "object",
@@ -78,7 +78,7 @@ Claude writes large tool outputs to scratch files directly, rather than letting 
 
 ### Files to Modify
 - `.claude/CLAUDE.md` — add `## Automation: Scratch Pad` behavioral instructions
-- `config-schema.json` — add `scratch_pad` config block after `context_monitor` (line 442)
+- `config-schema.json` — add `scratch_pad` config block after `context_monitor` (line 447)
 - `.claude/ll-config.json` — add `"scratch_pad": { "enabled": false }` default block
 - `hooks/scripts/session-cleanup.sh` — add scratch dir cleanup in `cleanup()` at lines 12–34
 
@@ -108,7 +108,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `hooks/scripts/session-cleanup.sh:12–14` — `cleanup()` function starts at line 12; `rm -f .claude/.ll-lock ...` is at line 14; add `rm -rf "/tmp/ll-scratch"` after line 14
 
 **Config schema insertion target:**
-- `config-schema.json:441` — insert `"scratch_pad"` block after the closing `}` of the `"context_monitor"` block (which ends at line 441 with `"additionalProperties": false`)
+- `config-schema.json:446` — insert `"scratch_pad"` block after the closing `}` of the `"context_monitor"` block (which ends at line 446 with `"additionalProperties": false`)
 
 ## Impact
 
@@ -129,15 +129,30 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ---
 
+## Resolution
+
+**Implemented** on 2026-02-25.
+
+### Changes Made
+- `.claude/CLAUDE.md` — Added `## Automation: Scratch Pad` section with behavioral instructions for redirecting large tool outputs to `/tmp/ll-scratch/` files
+- `config-schema.json` — Added `scratch_pad` config block with `enabled` (boolean, default false) and `threshold_lines` (integer, default 200) properties
+- `.claude/ll-config.json` — Added `"scratch_pad": { "enabled": false }` default entry
+- `hooks/scripts/session-cleanup.sh` — Added `rm -rf "/tmp/ll-scratch"` cleanup in `cleanup()` function
+
+### Verification
+- All 2954 tests pass
+- Type checking passes (87 source files)
+- No new lint issues introduced
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P2
+**Completed** | Created: 2026-02-24 | Completed: 2026-02-25 | Priority: P2
 
 ## Blocks
 
 - ENH-459
-
 - ENH-491
 - FEAT-440
-- FEAT-441
 - FEAT-503

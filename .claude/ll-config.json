@@ -18,6 +18,9 @@
   "context_monitor": {
     "enabled": true
   },
+  "scratch_pad": {
+    "enabled": false
+  },
   "documents": {
     "enabled": true,
     "categories": {

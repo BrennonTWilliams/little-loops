@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-02-14 -->
+<!-- Last updated: 2026-02-25 -->
 # little-loops (ll) - Claude Code Plugin
 
 Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing.
@@ -116,3 +116,12 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-issues` - Issue management and visualization (next-id, list, sequence, impact-effort)
 
 Install: `pip install -e "./scripts[dev]"`
+
+## Automation: Scratch Pad
+
+When running in automation contexts (ll-auto, ll-parallel, ll-sprint), use scratch pad files to keep large tool outputs out of conversation context:
+
+- **Before reading a file**, check its size: `wc -l <path>`. If > 200 lines, use `Bash "mkdir -p /tmp/ll-scratch && cat <path> > /tmp/ll-scratch/<descriptive-name>.txt && echo 'Saved N lines to /tmp/ll-scratch/<descriptive-name>.txt'"` instead of the Read tool.
+- **For test/lint runs**, pipe output to scratch and tail the summary: `Bash "python -m pytest ... > /tmp/ll-scratch/test-results.txt 2>&1; tail -20 /tmp/ll-scratch/test-results.txt"`.
+- **Reference scratch paths** when reasoning about file contents. Use `Read` on the scratch file only when you need specific content later.
+- Small outputs (< 200 lines) should still be inlined normally.

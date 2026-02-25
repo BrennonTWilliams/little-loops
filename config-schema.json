@@ -445,6 +445,25 @@
       },
       "additionalProperties": false
     },
+    "scratch_pad": {
+      "type": "object",
+      "description": "Observation masking via scratch pad files to reduce context bloat in automation sessions (disabled by default)",
+      "properties": {
+        "enabled": {
+          "type": "boolean",
+          "description": "Enable scratch pad instructions for automation sessions",
+          "default": false
+        },
+        "threshold_lines": {
+          "type": "integer",
+          "description": "Line count threshold above which tool outputs are redirected to scratch files",
+          "default": 200,
+          "minimum": 50,
+          "maximum": 1000
+        }
+      },
+      "additionalProperties": false
+    },
     "documents": {
       "type": "object",
       "description": "Key document tracking by category for issue alignment validation",

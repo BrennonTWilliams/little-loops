@@ -13,6 +13,9 @@ cleanup() {
     # Clean up lock and state files (relative to CWD which should be project root)
     rm -f .claude/.ll-lock .claude/ll-context-state.json 2>/dev/null || true
 
+    # Clean up scratch pad files
+    rm -rf "/tmp/ll-scratch" 2>/dev/null || true
+
     # Read worktree base from config, with fallback default
     CONFIG_FILE=".claude/ll-config.json"
     WORKTREE_BASE=".worktrees"
