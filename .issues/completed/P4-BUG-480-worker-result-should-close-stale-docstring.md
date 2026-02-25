@@ -3,6 +3,8 @@ discovered_commit: 95d4139206f3659159b727db57578ffb2930085b
 discovered_branch: main
 discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # BUG-480: `WorkerResult.should_close` docstring says "not implemented" but it is
@@ -86,12 +88,28 @@ should_close: Whether the issue should be closed (e.g., already fixed, invalid)
 
 `bug`, `documentation`, `parallel`, `auto-generated`
 
+## Resolution
+
+**Fixed** | Completed: 2026-02-24
+
+Updated `should_close` docstring in `scripts/little_loops/parallel/types.py:68` to remove the stale "(not implemented)" annotation. The field is fully implemented — it is set in `worker_pool.py`, checked in `orchestrator.py`, and triggers `close_issue()` from `issue_lifecycle.py`.
+
+Changed:
+```python
+# Before
+should_close: Whether the issue should be closed (not implemented)
+
+# After
+should_close: Whether the issue should be closed (e.g., already fixed, invalid)
+```
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:manage-issue` - 2026-02-24 - bug fix BUG-480 — fixed stale docstring
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P4
+**Closed** | Created: 2026-02-24 | Completed: 2026-02-24 | Priority: P4

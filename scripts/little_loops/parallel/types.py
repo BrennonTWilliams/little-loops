@@ -65,7 +65,7 @@ class WorkerResult:
         stderr: Captured standard error
         was_corrected: Whether the issue file was auto-corrected
         corrections: List of corrections made during validation (for pattern analysis)
-        should_close: Whether the issue should be closed (not implemented)
+        should_close: Whether the issue should be closed (e.g., already fixed, invalid)
         close_reason: Reason code for closure (e.g., "already_fixed")
         close_status: Status text for closure (e.g., "Closed - Already Fixed")
         interrupted: Whether the worker was interrupted during shutdown
