@@ -75,3 +75,7 @@ Secondary benefit: it provides the conceptual foundation for the context degrada
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P4
+
+## Blocked By
+
+- FEAT-441

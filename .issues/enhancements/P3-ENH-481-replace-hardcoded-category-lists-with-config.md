@@ -91,3 +91,12 @@ Projects that rename or add custom categories (e.g., "tasks") will have issues i
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P3
+
+## Blocks
+
+- ENH-486
+
+- ENH-506
+- FEAT-441
+- ENH-484
+- FEAT-503

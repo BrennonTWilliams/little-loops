@@ -78,3 +78,14 @@ Every line in `MEMORY.md` consumes context tokens in every conversation, whether
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P4
+
+## Blocks
+
+- ENH-502
+
+## Blocked By
+
+- ENH-491
+
+- FEAT-441
+- ENH-494

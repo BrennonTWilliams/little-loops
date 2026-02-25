@@ -86,3 +86,7 @@ CLI entry (`main`) moves to `scripts/little_loops/cli/deps.py` or remains as a t
 ## Status
 
 **Open** | Created: 2026-02-25 | Priority: P4
+
+## Blocked By
+
+- ENH-481

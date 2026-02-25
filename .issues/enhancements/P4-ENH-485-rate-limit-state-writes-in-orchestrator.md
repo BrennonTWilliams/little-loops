@@ -89,3 +89,7 @@ Or alternatively, call `_save_state()` only when state actually changes (issue c
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P4
+
+## Blocked By
+
+- FEAT-441

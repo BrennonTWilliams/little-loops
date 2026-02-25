@@ -80,3 +80,10 @@ After a match is found for a given file, the inner prefix loop breaks early. A s
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P4
+
+## Blocked By
+
+- ENH-481
+
+- FEAT-489
+- ENH-484

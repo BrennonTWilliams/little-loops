@@ -99,3 +99,9 @@ Key decisions to make:
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P4
+
+## Blocked By
+
+- ENH-491
+
+- FEAT-441

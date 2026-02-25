@@ -93,3 +93,15 @@ Also consider adding `.claude/ll.local.md` to the `.gitignore` entries in Step 9
 ## Status
 
 **Open** | Created: 2026-02-22 | Priority: P4
+
+## Blocked By
+
+- ENH-498
+
+- FEAT-440
+- FEAT-441
+- FEAT-503
+
+## Blocks
+
+- FEAT-488

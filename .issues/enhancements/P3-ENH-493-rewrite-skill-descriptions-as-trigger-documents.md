@@ -77,3 +77,9 @@ The description field is used by Claude Code to decide when to auto-activate a s
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P3
+
+## Blocks
+
+- ENH-494
+
+- ENH-502

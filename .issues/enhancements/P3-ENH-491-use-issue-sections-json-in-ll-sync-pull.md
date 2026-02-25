@@ -89,3 +89,18 @@ This output lacks the v2.0 section structure (Summary, Current Behavior, Expecte
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P3
+
+## Blocks
+
+- ENH-492
+
+- ENH-494
+
+- FEAT-441
+- ENH-502
+- ENH-496
+- ENH-484
+- FEAT-503
+## Blocked By
+
+- ENH-498

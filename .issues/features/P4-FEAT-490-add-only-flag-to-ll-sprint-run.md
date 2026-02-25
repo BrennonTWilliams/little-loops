@@ -86,3 +86,11 @@ Add `add_only_arg(run_parser)` to `cli/sprint.py` and wire `args.only` into the 
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P4
+
+## Blocked By
+
+- FEAT-441
+
+## Blocks
+
+- FEAT-488

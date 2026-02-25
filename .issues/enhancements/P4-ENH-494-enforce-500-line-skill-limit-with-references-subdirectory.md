@@ -83,3 +83,15 @@ Every line in a `SKILL.md` is loaded into the context window when that skill is 
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P4
+
+## Blocked By
+
+- ENH-493
+
+- ENH-491
+- FEAT-441
+## Blocks
+
+- ENH-502
+
+- ENH-496

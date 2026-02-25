@@ -142,3 +142,27 @@ All other referenced files exist at their stated paths.
 ## Status
 
 **Open** | Created: 2026-02-18 | Priority: P3
+
+## Blocks
+
+- ENH-485
+
+- ENH-497
+- ENH-504
+- FEAT-490
+- ENH-459
+- FEAT-440
+
+- ENH-494
+- FEAT-488
+- ENH-502
+- ENH-496
+- ENH-492
+- ENH-470
+## Blocked By
+
+- ENH-491
+
+- FEAT-503
+- ENH-481
+- ENH-498

@@ -94,3 +94,9 @@ A developer completes an issue locally and moves it to `.issues/completed/`. The
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P3
+
+## Blocks
+
+- ENH-484
+
+- ENH-486

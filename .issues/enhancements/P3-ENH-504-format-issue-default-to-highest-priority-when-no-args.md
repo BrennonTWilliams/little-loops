@@ -81,3 +81,7 @@ Currently, running `/ll:format-issue` without arguments has undefined or unprodu
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P3
+
+## Blocked By
+
+- FEAT-441

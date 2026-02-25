@@ -91,3 +91,12 @@ Secondary benefit: if we ever publish this plugin to a marketplace (as the sourc
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P5
+
+## Blocked By
+
+- ENH-494
+
+- ENH-493
+- ENH-491
+- ENH-496
+- FEAT-441

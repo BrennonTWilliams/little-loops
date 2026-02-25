@@ -133,3 +133,7 @@ Extract cross-cutting concerns into focused helper modules:
 
 ### Recommendation
 Update first - Before implementation, this issue needs: (1) a full dependency audit to replace the "TBD" in Dependent Files, (2) a concrete method-level extraction plan specifying which methods move to which helper modules, (3) a thread-safety review checklist since concurrency code is sensitive to restructuring, and (4) an established pattern to follow (currently marked "N/A — novel extraction"). The HIGH effort with MEDIUM utility ratio does not justify implementation without this preparation.
+
+## Blocked By
+
+- FEAT-441

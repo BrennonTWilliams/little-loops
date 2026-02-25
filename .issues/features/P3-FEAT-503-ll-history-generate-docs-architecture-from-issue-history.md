@@ -152,3 +152,17 @@ New module: `scripts/little_loops/issue_history/doc_synthesis.py`
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P3
+
+## Blocks
+
+- FEAT-441
+
+- ENH-459
+- ENH-484
+
+## Blocked By
+
+- ENH-481
+
+- ENH-498
+- ENH-491

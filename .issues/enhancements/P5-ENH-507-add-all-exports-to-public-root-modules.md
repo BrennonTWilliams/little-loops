@@ -104,3 +104,7 @@ __all__ = [
 ## Status
 
 **Open** | Created: 2026-02-25 | Priority: P5
+
+## Blocked By
+
+- FEAT-488
