@@ -37,6 +37,11 @@ Key decisions to make:
 - Whether all consumer skills need updating or if a thin loader shim (`load_sections(issue_type)`) can centralize the file-selection logic
 - Migration strategy for any projects that reference `issue-sections.json` by name in config
 
+## Scope Boundaries
+
+- **In scope**: Splitting `issue-sections.json` into per-type files; updating consumer skills to load by type via a loader shim; documenting the migration
+- **Out of scope**: Changing the content or structure of section definitions; adding new sections; modifying consumer skill logic beyond the file-selection step
+
 ## Implementation Steps
 
 1. Audit all consumers of `templates/issue-sections.json` (skills, commands, scripts) to understand the load interface
@@ -48,19 +53,37 @@ Key decisions to make:
 
 ## Integration Map
 
-- `templates/issue-sections.json` → split target
-- `skills/format-issue/SKILL.md` + `templates.md` → loads issue-sections.json
-- `skills/capture-issue/SKILL.md` + `templates.md` → loads issue-sections.json
-- `skills/manage-issue/SKILL.md` + `templates.md` → loads issue-sections.json
-- `commands/ready-issue.md` → loads issue-sections.json
-- `commands/scan-codebase.md` → may reference template structure
-- `docs/reference/ISSUE_TEMPLATE.md` → documents template structure
+### Files to Modify
+- `templates/issue-sections.json` — split into per-type files (or leave as compatibility shim)
+- `skills/format-issue/SKILL.md` + `templates.md` — update to load per-type file
+- `skills/capture-issue/SKILL.md` + `templates.md` — update to load per-type file
+- `skills/manage-issue/SKILL.md` + `templates.md` — update to load per-type file
+- `commands/ready-issue.md` — update to load per-type file
+- `commands/scan-codebase.md` — update if template structure is referenced
+
+### New Files
+- `templates/bug-sections.json` — common + BUG-specific sections
+- `templates/feat-sections.json` — common + FEAT-specific sections
+- `templates/enh-sections.json` — common + ENH-specific sections
+
+### Similar Patterns
+- N/A — novel restructure; establish new pattern
+
+### Tests
+- N/A — no Python code changes; validate by exercising each skill against each issue type
+
+### Documentation
+- `docs/reference/ISSUE_TEMPLATE.md` — update to describe per-type file structure
+
+### Configuration
+- N/A
 
 ## Impact
 
-- **Scope**: Templates + 4-5 skill/command files + docs
+- **Priority**: P4 — Architectural quality-of-life; not blocking
+- **Effort**: Medium — Audit + per-type file generation + update 4-5 skill files + docs
 - **Risk**: Low — purely structural refactor, no behavioral changes if loader shim is correct
-- **Benefit**: Easier template maintenance, smaller per-file diffs, clearer type-specific sections
+- **Breaking Change**: No
 
 ## Labels
 
@@ -69,9 +92,10 @@ Key decisions to make:
 ## Session Log
 
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/568ba5fc-d209-4c80-bff7-a8c1237be3b5.jsonl`
+- `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 
 ---
 
 ## Status
 
-`open`
+**Open** | Created: 2026-02-24 | Priority: P4
