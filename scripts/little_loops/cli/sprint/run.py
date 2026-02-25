@@ -140,7 +140,7 @@ def _cmd_sprint_run(
     from little_loops.dependency_mapper import gather_all_issue_ids
 
     issues_dir = config.project_root / config.issues.base_dir
-    all_known_ids = gather_all_issue_ids(issues_dir)
+    all_known_ids = gather_all_issue_ids(issues_dir, config=config)
 
     # Dependency analysis (ENH-301)
     if not getattr(args, "skip_analysis", False):

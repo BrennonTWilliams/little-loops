@@ -171,7 +171,7 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
 
     config = manager.config
     issues_dir = config.project_root / config.issues.base_dir if config else Path(".issues")
-    all_known_ids = gather_all_issue_ids(issues_dir)
+    all_known_ids = gather_all_issue_ids(issues_dir, config=config)
 
     if issue_infos:
         dep_graph = DependencyGraph.from_issues(issue_infos, all_known_ids=all_known_ids)

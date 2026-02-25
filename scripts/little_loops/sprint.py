@@ -304,6 +304,25 @@ class SprintManager:
         sprint_path.unlink()
         return True
 
+    def _find_issue_path(self, issue_id: str) -> Path | None:
+        """Find the filesystem path for an issue ID.
+
+        Searches all configured issue categories for a file matching the issue ID.
+
+        Args:
+            issue_id: Issue ID to locate (e.g. "BUG-001")
+
+        Returns:
+            Path to the issue file, or None if not found
+        """
+        if not self.config:
+            return None
+        for category in self.config.issue_categories:
+            issue_dir = self.config.get_issue_dir(category)
+            for path in issue_dir.glob(f"*-{issue_id}-*.md"):
+                return path
+        return None
+
     def validate_issues(self, issues: list[str]) -> dict[str, Path]:
         """Validate that issue IDs exist.
 
@@ -319,13 +338,9 @@ class SprintManager:
 
         valid = {}
         for issue_id in issues:
-            for category in ["bugs", "features", "enhancements"]:
-                issue_dir = self.config.get_issue_dir(category)
-                for path in issue_dir.glob(f"*-{issue_id}-*.md"):
-                    valid[issue_id] = path
-                    break
-                if issue_id in valid:
-                    break
+            path = self._find_issue_path(issue_id)
+            if path is not None:
+                valid[issue_id] = path
         return valid
 
     def load_issue_infos(self, issues: list[str]) -> list["IssueInfo"]:
@@ -345,16 +360,11 @@ class SprintManager:
         parser = IssueParser(self.config)
         result: list[IssueInfo] = []
         for issue_id in issues:
-            for category in ["bugs", "features", "enhancements"]:
-                issue_dir = self.config.get_issue_dir(category)
-                for path in issue_dir.glob(f"*-{issue_id}-*.md"):
-                    try:
-                        info = parser.parse_file(path)
-                        result.append(info)
-                        break
-                    except Exception as e:
-                        logger.warning("Failed to parse issue file %s: %s", path, e)
-                        continue
-                if any(i.issue_id == issue_id for i in result):
-                    break
+            path = self._find_issue_path(issue_id)
+            if path is not None:
+                try:
+                    info = parser.parse_file(path)
+                    result.append(info)
+                except Exception as e:
+                    logger.warning("Failed to parse issue file %s: %s", path, e)
         return result

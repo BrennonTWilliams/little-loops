@@ -540,6 +540,67 @@ class TestGatherAllIssueIds:
         ids = gather_all_issue_ids(tmp_path)
         assert ids == {"BUG-001"}
 
+    def test_custom_categories_via_config(self, tmp_path: Path) -> None:
+        """Config-provided custom categories are scanned; absent default dirs are not visited."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        issues_dir = tmp_path / ".issues"
+        # Use a custom "tasks" dir with a standard ENH prefix issue
+        (issues_dir / "tasks").mkdir(parents=True)
+        (issues_dir / "tasks" / "P3-ENH-042-my-task.md").write_text("# ENH-042")
+        (issues_dir / "archive").mkdir()
+        # Note: "bugs" directory intentionally absent – the config only lists "tasks"
+
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_data = {
+            "project": {"name": "test-project", "src_dir": "src/"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "tasks": {"prefix": "ENH", "dir": "tasks", "action": "implement"},
+                },
+                "completed_dir": "archive",
+            },
+        }
+        (config_dir / "ll-config.json").write_text(json.dumps(config_data))
+
+        config = BRConfig(tmp_path)
+        ids = gather_all_issue_ids(issues_dir, config=config)
+        assert ids == {"ENH-042"}
+
+    def test_config_includes_completed_dir(self, tmp_path: Path) -> None:
+        """Config-provided completed_dir name is used for the completed scan."""
+        import json
+
+        from little_loops.config import BRConfig
+
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "bugs").mkdir(parents=True)
+        (issues_dir / "bugs" / "P1-BUG-001-open.md").write_text("# BUG-001")
+        (issues_dir / "archive").mkdir()
+        (issues_dir / "archive" / "P1-BUG-002-done.md").write_text("# BUG-002")
+
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_data = {
+            "project": {"name": "test-project", "src_dir": "src/"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                },
+                "completed_dir": "archive",
+            },
+        }
+        (config_dir / "ll-config.json").write_text(json.dumps(config_data))
+
+        config = BRConfig(tmp_path)
+        ids = gather_all_issue_ids(issues_dir, config=config)
+        assert ids == {"BUG-001", "BUG-002"}
+
 
 # =============================================================================
 # analyze_dependencies tests

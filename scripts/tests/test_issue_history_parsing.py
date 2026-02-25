@@ -167,3 +167,33 @@ class TestScanActiveIssues:
         types = {r[1] for r in result}
         assert "BUG" in types
         assert "FEAT" in types
+
+    def test_scan_with_custom_category_dirs(self, tmp_path: Path) -> None:
+        """Custom category_dirs are respected; default categories are not scanned."""
+        issues_dir = tmp_path / ".issues"
+
+        # Standard category with an issue (should be skipped)
+        bugs_dir = issues_dir / "bugs"
+        bugs_dir.mkdir(parents=True)
+        (bugs_dir / "P1-BUG-001-skip.md").write_text("# Should not appear\n")
+
+        # Custom category with an issue (should be included)
+        tasks_dir = issues_dir / "tasks"
+        tasks_dir.mkdir(parents=True)
+        (tasks_dir / "P3-TASK-001-my-task.md").write_text("# My task\n")
+
+        result = scan_active_issues(issues_dir, category_dirs=["tasks"])
+        assert len(result) == 1
+        paths = [r[0] for r in result]
+        assert any("TASK-001" in p.name for p in paths)
+
+    def test_scan_default_categories_unchanged(self, tmp_path: Path) -> None:
+        """Omitting category_dirs falls back to the default three categories."""
+        issues_dir = tmp_path / ".issues"
+        for cat in ["bugs", "features", "enhancements"]:
+            d = issues_dir / cat
+            d.mkdir(parents=True)
+        (issues_dir / "bugs" / "P1-BUG-001-test.md").write_text("# BUG-001\n")
+
+        result = scan_active_issues(issues_dir)
+        assert len(result) == 1

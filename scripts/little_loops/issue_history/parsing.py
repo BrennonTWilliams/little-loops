@@ -322,18 +322,25 @@ def _find_test_file(source_path: str) -> str | None:
     return None
 
 
-def scan_active_issues(issues_dir: Path) -> list[tuple[Path, str, str, date | None]]:
+def scan_active_issues(
+    issues_dir: Path,
+    category_dirs: list[str] | None = None,
+) -> list[tuple[Path, str, str, date | None]]:
     """Scan active issue directories.
 
     Args:
         issues_dir: Path to .issues/ directory
+        category_dirs: List of category subdirectory names to scan.  When
+            omitted, defaults to ``["bugs", "features", "enhancements"]`` for
+            backward compatibility.  Pass ``config.issue_categories`` to
+            include custom project categories.
 
     Returns:
         List of (path, issue_type, priority, discovered_date) tuples
     """
     results: list[tuple[Path, str, str, date | None]] = []
 
-    for category_dir in ["bugs", "features", "enhancements"]:
+    for category_dir in category_dirs or ["bugs", "features", "enhancements"]:
         category_path = issues_dir / category_dir
         if not category_path.exists():
             continue

@@ -113,7 +113,7 @@ def _cmd_sprint_edit(args: argparse.Namespace, manager: SprintManager) -> int:
             _issues_dir = (
                 _config.project_root / _config.issues.base_dir if _config else Path(".issues")
             )
-            _all_known_ids = gather_all_issue_ids(_issues_dir)
+            _all_known_ids = gather_all_issue_ids(_issues_dir, config=_config)
             issue_contents = _build_issue_contents(issue_infos)
             dep_report = analyze_dependencies(
                 issue_infos, issue_contents, all_known_ids=_all_known_ids

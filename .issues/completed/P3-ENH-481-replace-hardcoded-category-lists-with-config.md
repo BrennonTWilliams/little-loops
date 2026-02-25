@@ -3,6 +3,8 @@ discovered_commit: 95d4139206f3659159b727db57578ffb2930085b
 discovered_branch: main
 discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
+confidence_score: 98
+outcome_confidence: 79
 ---
 
 # ENH-481: Replace hardcoded category lists with config throughout codebase
@@ -57,7 +59,11 @@ Projects that rename or add custom categories (e.g., "tasks") will have issues i
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/issue_history/analysis.py` — calls `scan_active_issues`
-- `scripts/little_loops/cli/sprint.py` — calls `validate_issues` and `load_issue_infos`
+- `scripts/little_loops/cli/sprint/run.py` — calls `validate_issues` and `load_issue_infos`
+- `scripts/little_loops/cli/sprint/manage.py` — calls `validate_issues` and `load_issue_infos`
+- `scripts/little_loops/cli/sprint/edit.py` — calls `validate_issues` and `load_issue_infos`
+- `scripts/little_loops/cli/sprint/show.py` — calls `validate_issues` and `load_issue_infos`
+- `scripts/little_loops/cli/sprint/create.py` — calls `validate_issues`
 
 ### Similar Patterns
 - `issue_parser.py` uses `config.issue_categories` correctly in some paths
@@ -83,14 +89,27 @@ Projects that rename or add custom categories (e.g., "tasks") will have issues i
 
 `enhancement`, `config`, `consistency`, `auto-generated`
 
+## Resolution
+
+**Resolved**: 2026-02-25
+
+All four hardcoded category list sites replaced with config-driven values:
+
+1. `sprint.py` — Added `_find_issue_path` helper using `self.config.issue_categories`; refactored `validate_issues` and `load_issue_infos` to use it.
+2. `issue_history/parsing.py` — Added `category_dirs: list[str] | None = None` parameter to `scan_active_issues`; falls back to default list when omitted.
+3. `dependency_mapper.py` — Added `config: BRConfig | None = None` parameter to `gather_all_issue_ids`; uses `config.issue_categories + completed_dir` when provided; updated all callers (`issue_manager.py`, `cli/sprint/run.py`, `show.py`, `manage.py`, `edit.py`) to pass config.
+
+Tests added for all three locations covering custom-category behavior. Full suite: 2911 passed, 0 failures.
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:manage-issue enhancement fix ENH-481` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Resolved: 2026-02-25 | Priority: P3
 
 ## Blocks
 

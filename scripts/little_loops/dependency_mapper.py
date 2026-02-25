@@ -20,6 +20,7 @@ from little_loops.dependency_graph import DependencyGraph
 from little_loops.text_utils import extract_file_paths
 
 if TYPE_CHECKING:
+    from little_loops.config import BRConfig
     from little_loops.issue_parser import IssueInfo
 
 logger = logging.getLogger(__name__)
@@ -985,20 +986,29 @@ def fix_dependencies(
     return result
 
 
-def gather_all_issue_ids(issues_dir: Path) -> set[str]:
+def gather_all_issue_ids(issues_dir: Path, config: "BRConfig | None" = None) -> set[str]:
     """Scan all issue directories for issue IDs (lightweight, filename-only).
 
-    Scans bugs/, features/, enhancements/, and completed/ subdirectories
-    for markdown files with issue ID patterns in their filenames.
+    Scans active-category and completed subdirectories for markdown files
+    with issue ID patterns in their filenames.
 
     Args:
         issues_dir: Path to the issues base directory (e.g., .issues)
+        config: Optional project config.  When supplied, active category names
+            and the completed-directory name are read from config so that
+            custom categories are included.  When omitted, falls back to
+            ``["bugs", "features", "enhancements", "completed"]``.
 
     Returns:
         Set of all issue IDs found across all categories and completed.
     """
+    if config is not None:
+        subdirs = config.issue_categories + [config.get_completed_dir().name]
+    else:
+        subdirs = ["bugs", "features", "enhancements", "completed"]
+
     ids: set[str] = set()
-    for subdir in ["bugs", "features", "enhancements", "completed"]:
+    for subdir in subdirs:
         d = issues_dir / subdir
         if not d.exists():
             continue
@@ -1194,7 +1204,13 @@ Examples:
 
     # Gather all issue IDs on disk to avoid false "nonexistent" warnings
     # when sprint-scoped analysis references issues outside the sprint
-    all_known_ids = gather_all_issue_ids(issues_dir)
+    try:
+        from little_loops.config import BRConfig as _BRConfig
+
+        _dm_config = _BRConfig(issues_dir.resolve().parent)
+    except Exception:
+        _dm_config = None
+    all_known_ids = gather_all_issue_ids(issues_dir, config=_dm_config)
 
     if args.command == "analyze":
         report = analyze_dependencies(issues, issue_contents, completed_ids, all_known_ids)

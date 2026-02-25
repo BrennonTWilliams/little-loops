@@ -333,6 +333,69 @@ class TestSprintManager:
         assert "Failed to parse issue file" in caplog.text
         assert "corrupted file" in caplog.text
 
+    def test_validate_issues_respects_custom_categories(self, tmp_path: Path) -> None:
+        """validate_issues finds issues in custom category directories."""
+        issues_dir = tmp_path / ".issues"
+        for category in ["bugs", "tasks", "completed"]:
+            (issues_dir / category).mkdir(parents=True)
+
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_data = {
+            "project": {"name": "test-project", "src_dir": "src/"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                    "tasks": {"prefix": "TASK", "dir": "tasks", "action": "implement"},
+                },
+                "completed_dir": "completed",
+            },
+        }
+        (config_dir / "ll-config.json").write_text(json.dumps(config_data))
+
+        # Issue in custom category "tasks"
+        (issues_dir / "tasks" / "P3-TASK-001-my-task.md").write_text("# TASK-001: My Task\n")
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=tmp_path, config=config)
+
+        valid = manager.validate_issues(["TASK-001"])
+        assert "TASK-001" in valid
+
+    def test_load_issue_infos_respects_custom_categories(self, tmp_path: Path) -> None:
+        """load_issue_infos finds and parses issues in custom category directories."""
+        issues_dir = tmp_path / ".issues"
+        for category in ["bugs", "tasks", "completed"]:
+            (issues_dir / category).mkdir(parents=True)
+
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_data = {
+            "project": {"name": "test-project", "src_dir": "src/"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                    "tasks": {"prefix": "TASK", "dir": "tasks", "action": "implement"},
+                },
+                "completed_dir": "completed",
+            },
+        }
+        (config_dir / "ll-config.json").write_text(json.dumps(config_data))
+
+        # Issue in custom category "tasks"
+        (issues_dir / "tasks" / "P3-TASK-001-my-task.md").write_text(
+            "# TASK-001: My Task\n\n## Summary\nA task to complete.\n"
+        )
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=tmp_path, config=config)
+
+        infos = manager.load_issue_infos(["TASK-001"])
+        assert len(infos) == 1
+        assert infos[0].issue_id == "TASK-001"
+
 
 class TestSprintYAMLFormat:
     """Tests for YAML file format."""

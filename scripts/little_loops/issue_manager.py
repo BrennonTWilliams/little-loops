@@ -709,7 +709,7 @@ class AutoManager:
             from little_loops.dependency_mapper import gather_all_issue_ids
 
             issues_dir = config.project_root / config.issues.base_dir
-            all_known_ids = gather_all_issue_ids(issues_dir)
+            all_known_ids = gather_all_issue_ids(issues_dir, config=config)
         except (AttributeError, TypeError):
             pass
         self.dep_graph = DependencyGraph.from_issues(all_issues, all_known_ids=all_known_ids)
