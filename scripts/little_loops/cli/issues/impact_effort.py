@@ -107,24 +107,31 @@ def _render_grid(
     mid_border = f"{ml}{bar}{mid}{bar}{mr}"
     bot_border = f"{bl}{bar}{bm}{bar}{br}"
 
+    label_width = 12  # len("High IMPACT ") == len("Low  IMPACT ") == len(" " * 12)
+    grid_width = len(top_border)  # 1 + (_COL_WIDTH+2) + 1 + (_COL_WIDTH+2) + 1 = 47
+    col_section = _COL_WIDTH + 2  # 22 — one column's width including surrounding spaces
+
     out: list[str] = []
 
-    # Axis labels
-    axis_width = _COL_WIDTH * 2 + 7  # total grid width
+    # Axis labels: "← EFFORT →" centered over grid; "Low"/"High" over each column
     effort_label = "\u2190 EFFORT \u2192"
-    out.append(effort_label.center(axis_width + 8))
-    low_high_label = "Low" + " " * (_COL_WIDTH * 2 + 1) + "High"
-    out.append(" " * 8 + low_high_label)
+    out.append(" " * label_width + effort_label.center(grid_width))
+    out.append(
+        " " * (label_width + 1)
+        + "Low".center(col_section)
+        + " "
+        + "High".center(col_section)
+    )
 
-    out.append(" " * 8 + top_border)
+    out.append(" " * label_width + top_border)
     for i, (tl_line, tr_line) in enumerate(zip(lines_tl, lines_tr, strict=True)):
-        row_label = "High IMPACT " if i == 0 else " " * 12
+        row_label = "High IMPACT " if i == 0 else " " * label_width
         out.append(f"{row_label}{v} {tl_line} {v} {tr_line} {v}")
-    out.append(" " * 8 + mid_border)
+    out.append(" " * label_width + mid_border)
     for i, (bl_line, br_line) in enumerate(zip(lines_bl, lines_br, strict=True)):
-        row_label = "Low  IMPACT " if i == 0 else " " * 12
+        row_label = "Low  IMPACT " if i == 0 else " " * label_width
         out.append(f"{row_label}{v} {bl_line} {v} {br_line} {v}")
-    out.append(" " * 8 + bot_border)
+    out.append(" " * label_width + bot_border)
 
     return "\n".join(out)
 
