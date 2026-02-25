@@ -12,6 +12,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.20.0] - 2026-02-24
+
+### Added
+
+- feat(loops): add tests-until-passing loop configuration (79e5251)
+
+### Fixed
+
+- **Failed Sprint Wave Resume** - Prevent failed issues from being skipped on resume in ll-sprint (BUG-473)
+- **YAML Frontmatter Corruption** - Fix frontmatter corruption on yaml.safe_load/dump round-trip (BUG-474)
+- **Malformed github_issue Crash** - Handle malformed github_issue values in sync module (BUG-475)
+- **Session Log Append** - Only replace first occurrence of section header in session_log (BUG-476)
+- **ll-messages CLI Flag** - Correct epilog flag from --include-commands to --skip-cli (BUG-477)
+- **IssueParser Silent Exception** - Log warning instead of swallowing exception on unreadable file (BUG-478)
+- **Stash Pop Verification** - Verify stash pop success before re-queueing in merge_coordinator (BUG-479)
+- **WorkerResult Docstring** - Remove stale "(not implemented)" from should_close docstring (BUG-480)
+
+### Changed
+
+- **Context Degradation Checkpoints** - Add checkpoints between issues in ll-auto to detect and respond to context degradation (ENH-499)
+- refactor(cli): split cli/sprint.py into cli/sprint/ package (63635c7)
+
+### Other
+
+- docs: fix broken link to Loops Guide in README (dcaf618)
+- docs: add getting started and sprint guides, reorganize structure (912f364)
+- docs(loops): expand LOOPS_GUIDE with advanced features, CLI reference, and troubleshooting (1cdf7a5)
+- chore: add management plans and session continuation prompt (ef7764f)
+- chore(quality): fix lint and formatting issues in scripts (a51d5cd)
+- chore(issues): verify and correct stale line numbers and function refs (e3615ac)
+- chore(issues): format all active issues to template v2.0 (0f9bed6)
+- chore(issues): verify issues and close ENH-482 as already resolved (c816422)
+
+[1.20.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.19.1...v1.20.0
+
 ## [1.19.1] - 2026-02-24
 
 ### Fixed
