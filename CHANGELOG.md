@@ -16,7 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- feat(loops): add tests-until-passing loop configuration (79e5251)
+- feat(loops): add `tests-until-passing` built-in loop — runs pytest and iterates fix/evaluate cycles until all tests pass (79e5251)
 
 ### Fixed
 
