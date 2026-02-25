@@ -2254,7 +2254,7 @@ class TestSprintSignalHandler:
     @classmethod
     def setup_class(cls) -> None:
         """Import once at class level to access signal handler."""
-        import little_loops.cli.sprint as cli_module
+        import little_loops.cli.sprint.run as cli_module
 
         cls.cli_module = cli_module
 

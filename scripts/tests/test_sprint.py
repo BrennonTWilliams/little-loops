@@ -526,15 +526,15 @@ class TestSprintSignalHandler:
         """First signal sets shutdown flag."""
         import signal
 
-        from little_loops.cli import sprint as cli
+        import little_loops.cli.sprint.run as sprint_run
 
         # Reset state
-        cli._sprint_shutdown_requested = False
+        sprint_run._sprint_shutdown_requested = False
 
         # Call handler (simulating SIGINT)
-        cli._sprint_signal_handler(signal.SIGINT, None)
+        sprint_run._sprint_signal_handler(signal.SIGINT, None)
 
-        assert cli._sprint_shutdown_requested is True
+        assert sprint_run._sprint_shutdown_requested is True
 
     def test_signal_handler_second_signal_exits(self) -> None:
         """Second signal raises SystemExit."""
@@ -542,14 +542,14 @@ class TestSprintSignalHandler:
 
         import pytest
 
-        from little_loops.cli import sprint as cli
+        import little_loops.cli.sprint.run as sprint_run
 
         # Set flag as if first signal received
-        cli._sprint_shutdown_requested = True
+        sprint_run._sprint_shutdown_requested = True
 
         # Second signal should exit
         with pytest.raises(SystemExit) as exc_info:
-            cli._sprint_signal_handler(signal.SIGINT, None)
+            sprint_run._sprint_signal_handler(signal.SIGINT, None)
 
         assert exc_info.value.code == 1
 
@@ -621,7 +621,7 @@ issues:
         """KeyboardInterrupt during wave processing returns exit code 130."""
         import argparse
 
-        from little_loops.cli import sprint as cli
+        import little_loops.cli.sprint.run as sprint_run
 
         sprints_dir, config, manager = self._setup_test_project(tmp_path)
 
@@ -647,17 +647,17 @@ issues:
         monkeypatch.chdir(tmp_path)
 
         # Reset shutdown flag
-        cli._sprint_shutdown_requested = False
+        sprint_run._sprint_shutdown_requested = False
 
         # Run and check exit code
-        result = cli._cmd_sprint_run(args, manager, config)
+        result = sprint_run._cmd_sprint_run(args, manager, config)
         assert result == 130
 
     def test_unexpected_exception_returns_1(self, tmp_path: Path, monkeypatch: Any) -> None:
         """Unexpected exception during wave processing returns exit code 1."""
         import argparse
 
-        from little_loops.cli import sprint as cli
+        import little_loops.cli.sprint.run as sprint_run
 
         sprints_dir, config, manager = self._setup_test_project(tmp_path)
 
@@ -683,17 +683,17 @@ issues:
         monkeypatch.chdir(tmp_path)
 
         # Reset shutdown flag
-        cli._sprint_shutdown_requested = False
+        sprint_run._sprint_shutdown_requested = False
 
         # Run and check exit code
-        result = cli._cmd_sprint_run(args, manager, config)
+        result = sprint_run._cmd_sprint_run(args, manager, config)
         assert result == 1
 
     def test_exception_saves_state(self, tmp_path: Path, monkeypatch: Any) -> None:
         """Exception during processing saves state before exit."""
         import argparse
 
-        from little_loops.cli import sprint as cli
+        import little_loops.cli.sprint.run as sprint_run
 
         sprints_dir, config, manager = self._setup_test_project(tmp_path)
 
@@ -719,10 +719,10 @@ issues:
         monkeypatch.chdir(tmp_path)
 
         # Reset shutdown flag
-        cli._sprint_shutdown_requested = False
+        sprint_run._sprint_shutdown_requested = False
 
         # Run the function
-        cli._cmd_sprint_run(args, manager, config)
+        sprint_run._cmd_sprint_run(args, manager, config)
 
         # Check that state file was created
         state_file = tmp_path / ".sprint-state.json"

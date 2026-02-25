@@ -313,7 +313,7 @@ issues:
                 return 0
 
         monkeypatch.setattr(
-            "little_loops.cli.sprint.ParallelOrchestrator",
+            "little_loops.cli.sprint.run.ParallelOrchestrator",
             MockOrchestrator,
         )
 
@@ -390,7 +390,7 @@ issues:
                 return 0
 
         monkeypatch.setattr(
-            "little_loops.cli.sprint.ParallelOrchestrator",
+            "little_loops.cli.sprint.run.ParallelOrchestrator",
             MockOrchestrator,
         )
 
@@ -455,7 +455,7 @@ issues:
                 return 0
 
         monkeypatch.setattr(
-            "little_loops.cli.sprint.ParallelOrchestrator",
+            "little_loops.cli.sprint.run.ParallelOrchestrator",
             MockOrchestrator,
         )
 
@@ -570,7 +570,7 @@ issues:
                 return 1  # Simulate failure
 
         monkeypatch.setattr(
-            "little_loops.cli.sprint.ParallelOrchestrator",
+            "little_loops.cli.sprint.run.ParallelOrchestrator",
             MockOrchestrator,
         )
 
@@ -772,7 +772,7 @@ issues:
             def run(self) -> int:
                 return 1  # Some failures
 
-        monkeypatch.setattr("little_loops.cli.sprint.ParallelOrchestrator", MockOrchestrator)
+        monkeypatch.setattr("little_loops.cli.sprint.run.ParallelOrchestrator", MockOrchestrator)
         monkeypatch.chdir(tmp_path)
         cli._sprint_shutdown_requested = False
 
@@ -831,7 +831,7 @@ issues:
             def run(self) -> int:
                 return 1
 
-        monkeypatch.setattr("little_loops.cli.sprint.ParallelOrchestrator", MockOrchestrator)
+        monkeypatch.setattr("little_loops.cli.sprint.run.ParallelOrchestrator", MockOrchestrator)
         monkeypatch.chdir(tmp_path)
         cli._sprint_shutdown_requested = False
 
@@ -894,7 +894,7 @@ issues:
 
             return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
 
-        monkeypatch.setattr("little_loops.cli.sprint.ParallelOrchestrator", MockOrchestrator)
+        monkeypatch.setattr("little_loops.cli.sprint.run.ParallelOrchestrator", MockOrchestrator)
         monkeypatch.setattr(
             "little_loops.issue_manager.process_issue_inplace",
             mock_process_inplace,
@@ -959,7 +959,7 @@ issues:
             success = info.issue_id == "BUG-002"
             return IssueProcessingResult(success=success, duration=1.0, issue_id=info.issue_id)
 
-        monkeypatch.setattr("little_loops.cli.sprint.ParallelOrchestrator", MockOrchestrator)
+        monkeypatch.setattr("little_loops.cli.sprint.run.ParallelOrchestrator", MockOrchestrator)
         monkeypatch.setattr(
             "little_loops.issue_manager.process_issue_inplace",
             mock_process_inplace,
@@ -1229,7 +1229,7 @@ issues:
                 return 0
 
         monkeypatch.setattr(
-            "little_loops.cli.sprint.ParallelOrchestrator",
+            "little_loops.cli.sprint.run.ParallelOrchestrator",
             MockOrchestrator,
         )
 
