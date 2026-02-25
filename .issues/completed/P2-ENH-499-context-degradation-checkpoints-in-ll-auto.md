@@ -2,6 +2,8 @@
 discovered_date: 2026-02-24
 discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
+confidence_score: 60
+outcome_confidence: 66
 ---
 
 # ENH-499: Context Degradation Checkpoints Between Issues in ll-auto
@@ -90,6 +92,21 @@ This is especially important for ll-sprint, which was designed to handle multipl
 
 ---
 
+## Resolution
+
+- **Status**: Closed - Won't Do
+- **Closed**: 2026-02-24
+- **Reason**: wont_do
+- **Closure**: Manual (confidence-check findings)
+
+### Closure Notes
+
+The issue's core premise is architecturally incorrect. ll-auto spawns a fresh `claude -p` subprocess per issue (`issue_manager.py:511-519`), so there is no shared conversation context between issues. The described "context poisoning between issues" cannot occur in the current architecture. Implementing inter-issue checkpoints would be a no-op — each issue already starts with a clean context.
+
+The intra-issue continuation case (context degradation across `--resume` continuation sessions within a single issue) is a distinct problem not addressed by this proposal.
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P2
+**Closed (Won't Do)** | Created: 2026-02-24 | Closed: 2026-02-24 | Priority: P2

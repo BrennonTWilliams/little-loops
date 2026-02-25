@@ -2,6 +2,8 @@
 discovered_date: 2026-02-24
 discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
+confidence_score: 90
+outcome_confidence: 64
 ---
 
 # ENH-498: Observation Masking / Scratch Pad Pattern in ll-auto and ll-parallel
