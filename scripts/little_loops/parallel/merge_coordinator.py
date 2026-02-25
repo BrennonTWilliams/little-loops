@@ -1003,12 +1003,20 @@ class MergeCoordinator:
             if rebase_result.returncode == 0:
                 # Rebase succeeded, restore stash if we made one, then retry merge
                 if worktree_has_changes:
-                    subprocess.run(
+                    pop_result = subprocess.run(
                         ["git", "stash", "pop"],
                         cwd=result.worktree_path,
                         capture_output=True,
+                        text=True,
                         timeout=30,
                     )
+                    if pop_result.returncode != 0:
+                        self.logger.error(
+                            f"Stash pop failed for {result.issue_id} after rebase: "
+                            f"{pop_result.stderr.strip()}"
+                        )
+                        self._handle_failure(request, "Stash pop conflict after rebase")
+                        return
                 self._queue.put(request)
             else:
                 # Rebase also failed - abort and restore stash

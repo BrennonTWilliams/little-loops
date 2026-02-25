@@ -1683,6 +1683,97 @@ class TestMergeStrategySkipsRebaseRetry:
         assert requeued[0] is request
         assert request.status == MergeStatus.RETRYING
 
+    def test_stash_pop_failure_after_rebase_marks_failed(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """Should mark merge as failed when stash pop fails after successful rebase.
+
+        If rebase succeeds but stash pop fails (e.g., conflicts with rebased content),
+        the request should be marked as failed rather than silently re-queued with
+        a dirty worktree.
+        """
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+
+        worktree_path = temp_git_repo / ".worktrees" / "test-stash-pop-fail"
+        worktree_path.mkdir(parents=True, exist_ok=True)
+
+        subprocess.run(
+            ["git", "worktree", "add", "-b", "parallel/test-stash-pop-fail", str(worktree_path)],
+            cwd=temp_git_repo,
+            capture_output=True,
+            check=True,
+        )
+
+        # Make a commit in the worktree so rebase has something to work with
+        test_file = worktree_path / "test.txt"
+        test_file.write_text("worktree content")
+        subprocess.run(["git", "add", "."], cwd=worktree_path, capture_output=True, check=True)
+        subprocess.run(
+            ["git", "commit", "-m", "worktree commit"],
+            cwd=worktree_path,
+            capture_output=True,
+            check=True,
+        )
+
+        worker_result = WorkerResult(
+            issue_id="TEST-479",
+            branch_name="parallel/test-stash-pop-fail",
+            worktree_path=worktree_path,
+            success=True,
+        )
+        request = MergeRequest(worker_result=worker_result)
+
+        # Track failure calls
+        failure_called: list[str] = []
+
+        def mock_handle_failure(req: MergeRequest, error: str) -> None:
+            failure_called.append(error)
+
+        coordinator._handle_failure = mock_handle_failure  # type: ignore[method-assign]
+
+        # Track re-queue calls (should NOT be called on stash pop failure)
+        requeued: list[MergeRequest] = []
+
+        def mock_put(req: MergeRequest) -> None:
+            requeued.append(req)
+
+        coordinator._queue.put = mock_put  # type: ignore[method-assign]
+
+        # Mock subprocess.run so that:
+        # - git status returns uncommitted changes (worktree_has_changes = True)
+        # - git fetch fails (falls back to local base)
+        # - git rebase succeeds
+        # - git stash pop fails
+        original_run = subprocess.run
+
+        def mock_subprocess_run(
+            cmd: list[str], **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            if cmd[:2] == ["git", "status"]:
+                return subprocess.CompletedProcess(cmd, returncode=0, stdout="M test.txt\n", stderr="")
+            if cmd[:3] == ["git", "stash", "push"]:
+                return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+            if cmd[:2] == ["git", "fetch"]:
+                return subprocess.CompletedProcess(cmd, returncode=1, stdout="", stderr="no remote")
+            if cmd[:2] == ["git", "rebase"]:
+                return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
+            if cmd[:3] == ["git", "stash", "pop"]:
+                return subprocess.CompletedProcess(
+                    cmd, returncode=1, stdout="", stderr="CONFLICT (content): Merge conflict in test.txt"
+                )
+            return original_run(cmd, **kwargs)
+
+        with patch("little_loops.parallel.merge_coordinator.subprocess.run", side_effect=mock_subprocess_run):
+            coordinator._handle_conflict(request, used_merge_strategy=False)
+
+        # Stash pop failed: should mark as failed, not re-queue
+        assert len(failure_called) == 1, "Should call _handle_failure once"
+        assert "stash pop" in failure_called[0].lower(), f"Expected stash pop error, got: {failure_called[0]}"
+        assert len(requeued) == 0, "Should NOT re-queue when stash pop fails"
+
 
 class TestThreadLifecycle:
     """Tests for thread lifecycle management."""
