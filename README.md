@@ -342,6 +342,19 @@ ll-next-id                       # Print next issue number (e.g., 042)
 ll-next-id --config /path        # Use specific project root
 ```
 
+### ll-issues
+
+Issue management and visualization utilities:
+
+```bash
+ll-issues next-id                             # Next available issue number (same as ll-next-id)
+ll-issues list                                # List all active issues
+ll-issues list --type FEAT --priority P2      # Filter by type and priority
+ll-issues sequence                            # Dependency-ordered implementation sequence
+ll-issues sequence --limit 5                  # Show top 5 issues to work on
+ll-issues impact-effort                       # ASCII impact vs effort matrix
+```
+
 ### ll-verify-docs / ll-check-links
 
 Documentation verification utilities:

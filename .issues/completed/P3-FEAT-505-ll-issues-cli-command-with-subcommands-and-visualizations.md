@@ -44,14 +44,14 @@ The visualization sub-commands directly support sprint planning and backlog groo
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues next-id` produces the same output as the current `ll-next-id` command
-- [ ] `ll-issues impact-effort` renders a 2D ASCII/rich grid of active issues grouped by priority and inferred effort
-- [ ] `ll-issues sequence` outputs a dependency-ordered list of active issues with brief rationale per entry
-- [ ] `ll-issues list [--type] [--priority]` filters and lists active issues, one per line (filename + title)
-- [ ] `ll-next-id` retains backward compatibility and continues to function as before
-- [ ] `ll-issues` entry point registered in `scripts/pyproject.toml`
-- [ ] All sub-commands support `--help` and `--config PATH`
-- [ ] At least one test per sub-command in `scripts/tests/test_issues_cli.py`
+- [x] `ll-issues next-id` produces the same output as the current `ll-next-id` command
+- [x] `ll-issues impact-effort` renders a 2D ASCII/rich grid of active issues grouped by priority and inferred effort
+- [x] `ll-issues sequence` outputs a dependency-ordered list of active issues with brief rationale per entry
+- [x] `ll-issues list [--type] [--priority]` filters and lists active issues, one per line (filename + title)
+- [x] `ll-next-id` retains backward compatibility and continues to function as before
+- [x] `ll-issues` entry point registered in `scripts/pyproject.toml`
+- [x] All sub-commands support `--help` and `--config PATH`
+- [x] At least one test per sub-command in `scripts/tests/test_issues_cli.py`
 
 ## Proposed Solution
 
@@ -137,7 +137,7 @@ Delegate to `get_next_issue_number(config)` at `issue_parser.py:42` — identica
 
 Use the existing dependency infrastructure:
 1. `find_issues(config)` at `issue_parser.py:473` → `list[IssueInfo]` (already sorted by priority)
-2. `DependencyGraph.from_issues(issues, completed_ids=set(), all_known_ids=set())` at `dependency_graph.py:51`
+2. `DependencyGraph.from_issues(issues, completed_ids=set(), all_known_ids=set())` at `dependency_graph.py:52`
 3. `graph.topological_sort()` at `dependency_graph.py:223` (Kahn's algorithm, priority-aware tie-breaking)
 4. Output one line per issue: `[P2, no blockers] ENH-498: observation masking`
 
@@ -204,7 +204,7 @@ All sub-commands accept `--config PATH` to specify project root (consistent with
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/issues/next_id.py` — imports `get_next_issue_number` from `issue_parser.py:42`
 - `scripts/little_loops/cli/issues/list_cmd.py` — imports `find_issues` from `issue_parser.py:473`
-- `scripts/little_loops/cli/issues/sequence.py` — imports `find_issues` from `issue_parser.py:473`, `DependencyGraph` from `dependency_graph.py:51`
+- `scripts/little_loops/cli/issues/sequence.py` — imports `find_issues` from `issue_parser.py:473`, `DependencyGraph` from `dependency_graph.py:52`
 - `scripts/little_loops/cli/issues/impact_effort.py` — imports `find_issues` from `issue_parser.py:473`
 
 ### Similar Patterns
@@ -243,9 +243,39 @@ All sub-commands accept `--config PATH` to specify project root (consistent with
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71365a34-a4b0-468f-af55-a3641738c45e.jsonl`
 - `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
 - `/ll:refine-issue` - 2026-02-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
+- `/ll:manage-issue` - 2026-02-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+
+---
+
+## Resolution
+
+**Completed**: 2026-02-25
+
+### Changes Made
+
+**New files**:
+- `scripts/little_loops/cli/issues/__init__.py` — `main_issues()` dispatcher with 4 sub-commands
+- `scripts/little_loops/cli/issues/next_id.py` — `cmd_next_id()` delegating to `get_next_issue_number()`
+- `scripts/little_loops/cli/issues/list_cmd.py` — `cmd_list()` with `--type`/`--priority` filters
+- `scripts/little_loops/cli/issues/sequence.py` — `cmd_sequence()` using `DependencyGraph.topological_sort()`
+- `scripts/little_loops/cli/issues/impact_effort.py` — `cmd_impact_effort()` with ASCII 2×2 grid renderer
+- `scripts/tests/test_issues_cli.py` — 15 unit tests (one class per sub-command)
+
+**Modified files**:
+- `scripts/little_loops/issue_parser.py` — added `effort: int | None` and `impact: int | None` to `IssueInfo`, updated `parse_file()`, `to_dict()`, `from_dict()`
+- `scripts/little_loops/cli/__init__.py` — exported `main_issues`
+- `scripts/pyproject.toml` — registered `ll-issues` entry point
+- `scripts/little_loops/cli/next_id.py` — added deprecation notice in epilog
+- `commands/help.md` — added `ll-issues` to CLI tool listing
+- `.claude/CLAUDE.md` — added `ll-issues` to CLI Tools section
+- `README.md` — documented `ll-issues` with usage examples
+
+### Test Results
+- 15 new tests all passing
+- Full suite: 2905 passed, 4 skipped, no regressions
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Completed: 2026-02-25 | Priority: P3

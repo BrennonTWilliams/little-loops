@@ -159,7 +159,7 @@ META-ANALYSIS
     Analyze user message patterns for automation opportunities
 
     Skills: analyze-history
-    CLI: ll-messages, ll-history, ll-workflows
+    CLI: ll-messages, ll-history, ll-workflows, ll-issues
 
 SESSION & CONFIG
 ----------------

@@ -113,5 +113,6 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-verify-docs` - Verify documented counts match actual file counts
 - `ll-check-links` - Check markdown documentation for broken links
 - `ll-next-id` - Print next globally unique issue number
+- `ll-issues` - Issue management and visualization (next-id, list, sequence, impact-effort)
 
 Install: `pip install -e "./scripts[dev]"`

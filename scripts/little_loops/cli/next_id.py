@@ -26,6 +26,10 @@ def main_next_id() -> int:
 Examples:
   %(prog)s                    # Print next issue number (e.g., 042)
   %(prog)s --config /path     # Use specific project root
+
+Note:
+  This command is available as 'll-issues next-id' in the unified ll-issues CLI.
+  Both forms remain functional.
 """,
     )
 

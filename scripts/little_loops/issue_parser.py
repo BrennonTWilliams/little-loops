@@ -137,6 +137,8 @@ class IssueInfo:
         blocks: List of issue IDs that this issue blocks
         discovered_by: Source command/workflow that created this issue
         product_impact: Product impact assessment (optional)
+        effort: Effort estimate (1=low, 2=medium, 3=high), inferred from priority if absent
+        impact: Impact estimate (1=low, 2=medium, 3=high), inferred from priority if absent
     """
 
     path: Path
@@ -148,6 +150,8 @@ class IssueInfo:
     blocks: list[str] = field(default_factory=list)
     discovered_by: str | None = None
     product_impact: ProductImpact | None = None
+    effort: int | None = None
+    impact: int | None = None
 
     @property
     def priority_int(self) -> int:
@@ -170,6 +174,8 @@ class IssueInfo:
             "blocks": self.blocks,
             "discovered_by": self.discovered_by,
             "product_impact": (self.product_impact.to_dict() if self.product_impact else None),
+            "effort": self.effort,
+            "impact": self.impact,
         }
 
     @classmethod
@@ -185,6 +191,8 @@ class IssueInfo:
             blocks=data.get("blocks", []),
             discovered_by=data.get("discovered_by"),
             product_impact=ProductImpact.from_dict(data.get("product_impact")),
+            effort=data.get("effort"),
+            impact=data.get("impact"),
         )
 
 
@@ -229,10 +237,14 @@ class IssueParser:
         # Read content once for all content-based parsing
         content = self._read_content(issue_path)
 
-        # Parse frontmatter for discovered_by and product impact
+        # Parse frontmatter for discovered_by, product impact, effort, and impact
         frontmatter = parse_frontmatter(content)
         discovered_by = frontmatter.get("discovered_by")
         product_impact = self._parse_product_impact(frontmatter)
+        effort_raw = frontmatter.get("effort")
+        impact_raw = frontmatter.get("impact")
+        effort = int(effort_raw) if effort_raw is not None and str(effort_raw).isdigit() else None
+        impact = int(impact_raw) if impact_raw is not None and str(impact_raw).isdigit() else None
 
         # Parse title and dependencies from file content
         title = self._parse_title_from_content(content, issue_path)
@@ -249,6 +261,8 @@ class IssueParser:
             blocks=blocks,
             discovered_by=discovered_by,
             product_impact=product_impact,
+            effort=effort,
+            impact=impact,
         )
 
     def _parse_priority(self, filename: str) -> str:

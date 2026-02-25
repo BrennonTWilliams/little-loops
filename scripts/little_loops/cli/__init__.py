@@ -11,11 +11,13 @@ Provides command-line interfaces for automated issue management:
 - ll-verify-docs: Documentation count verification
 - ll-check-links: Markdown link checking
 - ll-next-id: Print next globally unique issue number
+- ll-issues: Issue management and visualization utilities
 """
 
 from little_loops.cli.auto import main_auto
 from little_loops.cli.docs import main_check_links, main_verify_docs
 from little_loops.cli.history import main_history
+from little_loops.cli.issues import main_issues
 from little_loops.cli.loop import main_loop
 from little_loops.cli.messages import main_messages
 from little_loops.cli.next_id import main_next_id
@@ -32,6 +34,7 @@ __all__ = [
     "main_auto",
     "main_check_links",
     "main_history",
+    "main_issues",
     "main_loop",
     "main_messages",
     "main_next_id",
