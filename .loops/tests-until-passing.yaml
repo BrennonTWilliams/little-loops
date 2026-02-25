@@ -1,0 +1,16 @@
+paradigm: fsm
+name: "tests-until-passing"
+initial: evaluate
+states:
+  evaluate:
+    action: "python -m pytest scripts/tests/"
+    on_success: done
+    on_failure: fix
+    on_error: fix
+  fix:
+    action: "Run `python -m pytest scripts/tests/ --tb=short -q` and review the full failure output. Investigate the root cause by examining both the failing test files and implementation code. Fix the failures by correcting either the implementation or the tests as appropriate."
+    action_type: "prompt"
+    next: evaluate
+  done:
+    terminal: true
+max_iterations: 20
