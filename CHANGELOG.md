@@ -12,6 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.21.0] - 2026-02-25
+
+### Added
+
+- **ll-issues CLI Command** - New `ll-issues` command with sub-commands: `next-id`, `list`, `sequence` (dependency-aware topological sort), and `impact-effort` (ASCII 2×2 quadrant visualization) (FEAT-505)
+
+### Changed
+
+- **issue_discovery Module** - Split monolithic `issue_discovery.py` into domain-organized package by finding type (ENH-471)
+
+### Other
+
+- docs(guides): fix factual errors and broken links in user guides (d3d0409)
+- docs(readme): fix CLI tool count from 12 to 13 (a24f067)
+- docs(release): fix v1.20.0 changelog — tests-until-passing is a built-in loop, not a paradigm (b888598)
+- chore(issues): map cross-issue dependencies via ll-deps analyze (8c8004b)
+- chore(issues): verify issues and correct stale references (3d9ccce)
+
+[1.21.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.20.0...v1.21.0
+
 ## [1.20.0] - 2026-02-24
 
 ### Added
