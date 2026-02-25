@@ -108,6 +108,7 @@ Extract cross-cutting concerns into focused helper modules:
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
 - `/ll:verify-issues` - 2026-02-24 - Corrected merge_coordinator.py line count from 1,218 to 1,226
+- `/ll:audit-architecture` - 2026-02-25 - Additional large-file finding: `issue_history/formatting.py` (1,020 lines, 6 very large format functions) shares the same "large single-concern module" pattern. Contains `format_analysis_text` (~436 lines) and `format_analysis_markdown` (~480 lines) as massive monolithic formatters. Consider including this file in scope when planning the refactor, splitting by output format type (text, JSON, YAML, markdown) following the `issue_history/` sub-package pattern that already exists.
 
 ---
 

@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-24
 discovered_by: capture-issue
+confidence_score: 93
+outcome_confidence: 78
 ---
 
 # FEAT-505: ll-issues CLI Command with Sub-commands and Visualizations
@@ -53,71 +55,113 @@ The visualization sub-commands directly support sprint planning and backlog groo
 
 ## Proposed Solution
 
-### 1. Create `scripts/little_loops/cli/issues.py`
+### 1. Create `scripts/little_loops/cli/issues/` sub-package
 
-Top-level argparse with sub-parsers:
+Follow the `sprint/` and `loop/` sub-package pattern (`scripts/little_loops/cli/sprint/__init__.py`). Structure:
+
+```
+scripts/little_loops/cli/issues/
+  __init__.py       # main_issues() dispatcher with add_subparsers()
+  next_id.py        # cmd_next_id() — delegates to get_next_issue_number()
+  list_cmd.py       # cmd_list() — uses find_issues() with type_prefixes filter
+  sequence.py       # cmd_sequence() — uses DependencyGraph.topological_sort()
+  impact_effort.py  # cmd_impact_effort() — ASCII grid renderer
+```
+
+Top-level dispatcher in `__init__.py` (follows `history.py:9-140` pattern):
 
 ```python
-def main_issues():
-    parser = argparse.ArgumentParser(prog="ll-issues")
-    subs = parser.add_subparsers(dest="command", required=True)
+def main_issues() -> int:
+    parser = argparse.ArgumentParser(prog="ll-issues",
+        formatter_class=argparse.RawDescriptionHelpFormatter)
+    add_config_arg(parser)          # --config on parent (like ll-sync)
+    subs = parser.add_subparsers(dest="command", help="Available commands")
 
-    # next-id
     subs.add_parser("next-id", help="Print next globally unique issue number")
 
-    # impact-effort
     ie = subs.add_parser("impact-effort", help="Display impact vs effort matrix")
-    ie.add_argument("--format", choices=["ascii", "rich"], default="rich")
+    # no --format flag needed — output is always ASCII plain text
 
-    # sequence
     seq = subs.add_parser("sequence", help="Suggest implementation order")
     seq.add_argument("--limit", type=int, default=10)
 
-    # list
     ls = subs.add_parser("list", help="List active issues")
     ls.add_argument("--type", choices=["BUG", "FEAT", "ENH"])
     ls.add_argument("--priority", choices=["P0","P1","P2","P3","P4","P5"])
+
+    args = parser.parse_args()
+    if not args.command:
+        parser.print_help()
+        return 1
+
+    project_root = args.config or Path.cwd()
+    config = BRConfig(project_root)
+    if args.command == "next-id": return cmd_next_id(config)
+    if args.command == "impact-effort": return cmd_impact_effort(config, args)
+    if args.command == "sequence": return cmd_sequence(config, args)
+    if args.command == "list": return cmd_list(config, args)
+    return 1
 ```
 
-### 2. `next-id` sub-command
+### 2. `next-id` sub-command (`next_id.py`)
 
-Delegate to `get_next_issue_number()` — identical to current `ll-next-id` logic.
+Delegate to `get_next_issue_number(config)` at `issue_parser.py:42` — identical logic to `main_next_id()`.
 
-### 3. `impact-effort` sub-command
+### 3. `impact-effort` sub-command (`impact_effort.py`)
 
-- Read all active issue files and parse frontmatter fields: `priority`, `effort` (if present), `impact` (if present).
-- For issues missing explicit `effort`/`impact` fields, infer from priority (P0-P1 = high impact, P4-P5 = low effort).
-- Render a 2D ASCII or `rich` table grid with quadrant labels: Quick Wins / Major Projects / Fill-ins / Thankless Tasks.
+- Read active issues via `find_issues(config)` at `issue_parser.py:473`.
+- **effort/impact inference** (no `effort`/`impact` fields exist on `IssueInfo` today): infer defaults from `priority_int` — add optional `effort: int | None` and `impact: int | None` fields to `IssueInfo` at `issue_parser.py:127`, populated from frontmatter if present, otherwise inferred (P0-P1 → high impact/high effort, P2-P3 → medium, P4-P5 → low impact/low effort).
+- Update `IssueParser.parse_file()` at `issue_parser.py:212` to read `effort` and `impact` from `parse_frontmatter()` output.
+- Render a 2D ASCII grid (no Rich — codebase uses plain Python strings with unicode box-drawing chars following `sprint/_helpers.py:12`) with quadrant labels: Quick Wins / Major Projects / Fill-ins / Thankless Tasks.
+- **Grid layout spec** (decided 2026-02-25):
+  - 2×2 grid, X-axis = Effort (Low → High), Y-axis = Impact (High → Low top-to-bottom)
+  - Each quadrant is a fixed-width column (~34 chars). Use `─`, `│`, `┌`, `┐`, `└`, `┘`, `├`, `┤`, `┬`, `┴`, `┼` box-drawing chars.
+  - Quadrant header line: symbol + label (`★ QUICK WINS`, `▲ MAJOR PROJECTS`, `· FILL-INS`, `✗ THANKLESS TASKS`)
+  - Per-issue line: `ISSUEID  slug` — where `slug` is the filename description segment (everything after `[TYPE]-NNN-`) with hyphens replaced by spaces, truncated to 20 chars. Example: `ENH-498  obs masking scratch pa`
+  - Axis labels printed above (`← EFFORT →`) and to the left (`IMPACT`) with `High`/`Low` tick labels at grid corners.
+  - Example output structure:
+    ```
+                       ← EFFORT →
+                  Low            High
+             ┌──────────────────┬──────────────────┐
+        High │ ★ QUICK WINS     │ ▲ MAJOR PROJECTS │
+             │ ENH-498  obs mas │ FEAT-505 ll issu │
+    IMPACT   ├──────────────────┼──────────────────┤
+        Low  │ · FILL-INS       │ ✗ THANKLESS      │
+             │ BUG-503  minor f │ (none)           │
+             └──────────────────┴──────────────────┘
+    ```
+  - If a quadrant has more issues than fit in a reasonable height, append `  … +N more` on the last line.
 
-### 4. `sequence` sub-command
+### 4. `sequence` sub-command (`sequence.py`)
 
-- Load active issues with their `blockedBy` relationships (from `ll-deps` or inline frontmatter).
-- Apply topological sort respecting dependency order.
-- Break ties by priority (P0 first) then discovery date.
-- Output an ordered list with brief rationale (e.g., `[P2, no blockers] ENH-498: observation masking`).
+Use the existing dependency infrastructure:
+1. `find_issues(config)` at `issue_parser.py:473` → `list[IssueInfo]` (already sorted by priority)
+2. `DependencyGraph.from_issues(issues, completed_ids=set(), all_known_ids=set())` at `dependency_graph.py:51`
+3. `graph.topological_sort()` at `dependency_graph.py:223` (Kahn's algorithm, priority-aware tie-breaking)
+4. Output one line per issue: `[P2, no blockers] ENH-498: observation masking`
 
-### 5. `list` sub-command
+### 5. `list` sub-command (`list_cmd.py`)
 
-- Filtered listing of active issues across all categories.
-- Supports `--type` and `--priority` filters.
-- Output format: one line per issue (filename + title).
+Use `find_issues(config, type_prefixes=type_filter)` at `issue_parser.py:473` — the `type_prefixes` parameter directly supports `--type` filtering. Apply `--priority` filter post-scan on `info.priority`.
 
 ### 6. Entry point registration
 
-Add to `scripts/pyproject.toml`:
+Add to `scripts/pyproject.toml` (after existing entries at line 58):
 
 ```toml
-[project.scripts]
-ll-issues = "little_loops.cli.issues:main_issues"
+ll-issues = "little_loops.cli:main_issues"
 ```
 
-Keep `ll-next-id` pointing to its existing entry point until a deprecation notice is added and the sub-command is confirmed stable.
+Export `main_issues` in `scripts/little_loops/cli/__init__.py` (lines 16-46, same pattern as all other `main_*` exports).
+
+Keep `ll-next-id = "little_loops.cli:main_next_id"` pointing to its existing standalone entry point.
 
 ## API/Interface
 
 ```
 ll-issues next-id [--config PATH]
-ll-issues impact-effort [--format ascii|rich] [--config PATH]
+ll-issues impact-effort [--config PATH]
 ll-issues sequence [--limit N] [--config PATH]
 ll-issues list [--type BUG|FEAT|ENH] [--priority P0..P5] [--config PATH]
 ```
@@ -126,30 +170,63 @@ All sub-commands accept `--config PATH` to specify project root (consistent with
 
 ## Implementation Steps
 
-1. Create `scripts/little_loops/cli/issues.py` with sub-command dispatcher.
-2. Implement `cmd_next_id()` by delegating to existing `get_next_issue_number()`.
-3. Implement `cmd_list()` using `IssueParser` / directory scanning utilities.
-4. Implement `cmd_sequence()` with topological sort on blockedBy deps.
-5. Implement `cmd_impact_effort()` with ASCII grid renderer (rich optional).
-6. Register `ll-issues` entry point in `pyproject.toml`.
-7. Add deprecation notice to `ll-next-id --help` pointing to `ll-issues next-id`.
-8. Add tests for each sub-command in `scripts/tests/`.
-9. Update `commands/help.md` and `docs/` to document `ll-issues`.
+1. Add optional `effort: int | None` and `impact: int | None` fields to `IssueInfo` at `issue_parser.py:127`; update `IssueParser.parse_file()` at `issue_parser.py:212` to read them from `parse_frontmatter()` output.
+2. Create sub-package `scripts/little_loops/cli/issues/` with `__init__.py` dispatcher (follows `sprint/__init__.py:46` pattern); add `add_config_arg(parser)` on parent parser (like `sync.py:14`).
+3. Implement `cmd_next_id()` in `next_id.py` delegating to `get_next_issue_number(config)` at `issue_parser.py:42`.
+4. Implement `cmd_list()` in `list_cmd.py` using `find_issues(config, type_prefixes=...)` at `issue_parser.py:473`; apply `--priority` filter post-scan.
+5. Implement `cmd_sequence()` in `sequence.py`: call `find_issues(config)`, build `DependencyGraph.from_issues()` at `dependency_graph.py:51`, call `graph.topological_sort()` at `dependency_graph.py:223`, output rationale per issue.
+6. Implement `cmd_impact_effort()` in `impact_effort.py`: infer effort/impact from `priority_int` (0-1 = high, 2-3 = medium, 4-5 = low), override with frontmatter values if present; render ASCII 2D grid (plain Python strings following `sprint/_helpers.py:12` pattern — no Rich).
+7. Export `main_issues` in `scripts/little_loops/cli/__init__.py` (lines 16-46, same pattern as other exports).
+8. Register `ll-issues = "little_loops.cli:main_issues"` in `scripts/pyproject.toml` (after existing entries at line 58).
+9. Add deprecation notice to `scripts/little_loops/cli/next_id.py` `--help` epilog pointing to `ll-issues next-id`.
+10. Add `scripts/tests/test_issues_cli.py` with one class per subcommand; use `patch("sys.argv", ["ll-issues", subcmd, "--config", ...])` + `capsys` + `temp_project_dir`/`sample_config`/`config_file`/`issues_dir` fixtures from `conftest.py`.
+11. Update `commands/help.md`, `.claude/CLAUDE.md`, and `README.md` (lines 325-343) to document `ll-issues`.
 
 ## Integration Map
 
 ### Files to Create
-- `scripts/little_loops/cli/issues.py` — main entry point + sub-command implementations
+- `scripts/little_loops/cli/issues/__init__.py` — `main_issues()` dispatcher with `add_subparsers()`
+- `scripts/little_loops/cli/issues/next_id.py` — `cmd_next_id()` delegating to `get_next_issue_number()`
+- `scripts/little_loops/cli/issues/list_cmd.py` — `cmd_list()` using `find_issues()` with `type_prefixes`
+- `scripts/little_loops/cli/issues/sequence.py` — `cmd_sequence()` using `DependencyGraph.topological_sort()`
+- `scripts/little_loops/cli/issues/impact_effort.py` — `cmd_impact_effort()` with ASCII grid renderer
+- `scripts/tests/test_issues_cli.py` — one test class per sub-command
 
 ### Files to Modify
-- `scripts/pyproject.toml` — add `ll-issues` entry point
-- `scripts/little_loops/cli/next_id.py` — add deprecation notice in `--help` epilog
+- `scripts/pyproject.toml` — add `ll-issues = "little_loops.cli:main_issues"` (after line 58)
+- `scripts/little_loops/cli/__init__.py` — export `main_issues` (follows existing export pattern lines 16-46)
+- `scripts/little_loops/issue_parser.py` — add optional `effort: int | None` and `impact: int | None` fields to `IssueInfo` dataclass (line 127); update `IssueParser.parse_file()` (line 212) to populate them from frontmatter
+- `scripts/little_loops/cli/next_id.py` — add deprecation notice in `--help` epilog pointing to `ll-issues next-id`
 - `commands/help.md` — add `ll-issues` to CLI tool listing
 - `.claude/CLAUDE.md` — add `ll-issues` to CLI Tools section
+- `README.md` — add `ll-issues` to CLI tools section (near existing `ll-next-id` and `ll-deps` entries, around lines 325-343)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/issues/next_id.py` — imports `get_next_issue_number` from `issue_parser.py:42`
+- `scripts/little_loops/cli/issues/list_cmd.py` — imports `find_issues` from `issue_parser.py:473`
+- `scripts/little_loops/cli/issues/sequence.py` — imports `find_issues` from `issue_parser.py:473`, `DependencyGraph` from `dependency_graph.py:51`
+- `scripts/little_loops/cli/issues/impact_effort.py` — imports `find_issues` from `issue_parser.py:473`
+
+### Similar Patterns
+- `scripts/little_loops/cli/sprint/__init__.py:46` — sub-package dispatcher with per-file subcommand handlers (closest structural match)
+- `scripts/little_loops/cli/history.py:9` — clean `add_subparsers(dest="command")` + no-command guard pattern
+- `scripts/little_loops/cli/sync.py:14` — `add_config_arg(parser)` on parent parser pattern
+- `scripts/little_loops/cli/sprint/_helpers.py:12` — ASCII execution plan renderer with unicode box-drawing chars (model for `impact-effort` grid)
+- `scripts/little_loops/dependency_graph.py:223` — `topological_sort()` — reuse directly for `sequence`
 
 ### Tests
 - `scripts/tests/test_issues_cli.py` — unit tests for each sub-command
+  - `TestIssuesCLINextId` — follows `test_cli_next_id.py` exactly
+  - `TestIssuesCLIList` — uses `issues_dir` fixture + `--type`/`--priority` filter assertions
+  - `TestIssuesCLISequence` — uses `issues_dir` fixture + `DependencyGraph` mock or real
+  - `TestIssuesCLIImpactEffort` — uses `issues_dir` fixture + output string assertions
+  - All use `patch("sys.argv", ["ll-issues", subcmd, "--config", str(temp_project_dir)])` + `capsys`
 - Integration: verify `ll-issues next-id` output matches `ll-next-id` output
+
+### Documentation
+- `commands/help.md` — add `ll-issues` to CLI tool listing
+- `.claude/CLAUDE.md` — add `ll-issues` to CLI Tools section
+- `README.md` — add `ll-issues` (near lines 325-343 where `ll-next-id` and `ll-deps` are documented)
 
 ## Impact
 
@@ -165,6 +242,7 @@ All sub-commands accept `--config PATH` to specify project root (consistent with
 ## Session Log
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71365a34-a4b0-468f-af55-a3641738c45e.jsonl`
 - `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
+- `/ll:refine-issue` - 2026-02-25T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
 
 ---
 
