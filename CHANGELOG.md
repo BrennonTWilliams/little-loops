@@ -12,6 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.22.0] - 2026-02-25
+
+### Added
+
+- **Deferred issues folder support** - Add support for deferred issues folder in issue management (6a62ba9)
+
+### Fixed
+
+- **Config-driven category lists** - Replace hardcoded category lists with config-driven values (c18269c)
+- **Impact-effort grid alignment** - Fix grid alignment and axis labels in impact-effort visualization (d7e8fdc)
+- **Impact-effort row labels** - Fix row label repetition in impact-effort grid (5c0cd76)
+
+### Changed
+
+- refactor(issues): refine issue files with updated scores and research (8f6b06e)
+
+### Other
+
+- test(workflow-analyzer): add unit tests for internal pipeline functions (68f3f4c)
+- docs(plans): add implementation plan for ENH-471 issue_discovery split (6391fc1)
+- chore: update session continuation prompt (91348c4)
+
+[1.22.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.21.0...v1.22.0
+
 ## [1.21.0] - 2026-02-25
 
 ### Added
