@@ -3,6 +3,8 @@ discovered_commit: 95d4139206f3659159b727db57578ffb2930085b
 discovered_branch: main
 discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # ENH-483: Add tests for workflow_sequence_analyzer internal functions
@@ -75,6 +77,17 @@ Add test classes `TestLinkSessions`, `TestClusterByEntities`, `TestComputeBounda
 
 ---
 
+## Resolution
+
+**Completed** | 2026-02-25
+
+Added four new test classes directly targeting the internal pipeline functions:
+
+- `TestLinkSessions` (8 tests): empty sessions, single session, same git branch, handoff marker, entity overlap alone insufficient, missing timestamps → zero span, empty session messages skipped, span hours from timestamps
+- `TestClusterByEntities` (7 tests): empty messages, no entities, single-message cluster filtered, two messages same entity, no entity overlap, custom overlap threshold, cohesion score range
+- `TestComputeBoundaries` (8 tests): empty messages, single message, missing timestamps → zero gap, 5-minute gap weight, large gap → is_boundary True, high entity overlap reduces score, UUID capture, N messages → N-1 boundaries
+- `TestDetectWorkflows` (7 tests): empty messages, single-message segment skipped, no category matches, debug→fix→test template detected, unmatched category sequence, boundary splits segments, duration calculated from timestamps
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Priority: P3

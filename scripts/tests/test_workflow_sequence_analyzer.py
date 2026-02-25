@@ -17,6 +17,10 @@ from little_loops.workflow_sequence_analyzer import (
     Workflow,
     WorkflowAnalysis,
     WorkflowBoundary,
+    _cluster_by_entities,
+    _compute_boundaries,
+    _detect_workflows,
+    _link_sessions,
     analyze_workflows,
     calculate_boundary_weight,
     entity_overlap,
@@ -644,3 +648,478 @@ class TestAnalyzeWorkflows:
                     for link in result.session_links
                 )
                 assert has_handoff_link
+
+
+class TestLinkSessions:
+    """Tests for _link_sessions internal function."""
+
+    def test_empty_sessions(self) -> None:
+        """Empty sessions dict returns no links."""
+        result = _link_sessions({})
+        assert result == []
+
+    def test_single_session(self) -> None:
+        """Single session returns no links — no pairs to compare."""
+        sessions = {
+            "session-1": [{"content": "Fix checkout.py", "uuid": "msg-1"}],
+        }
+        result = _link_sessions(sessions)
+        assert result == []
+
+    def test_same_git_branch_creates_link(self) -> None:
+        """Two sessions sharing a git branch are linked with shared_branch evidence."""
+        sessions = {
+            "session-1": [
+                {
+                    "content": "Work on feature.py",
+                    "uuid": "msg-1",
+                    "git_branch": "feat-123",
+                    "timestamp": "2026-01-15T10:00:00",
+                }
+            ],
+            "session-2": [
+                {
+                    "content": "Continue feature.py",
+                    "uuid": "msg-2",
+                    "git_branch": "feat-123",
+                    "timestamp": "2026-01-15T12:00:00",
+                }
+            ],
+        }
+        result = _link_sessions(sessions)
+        assert len(result) == 1
+        assert result[0].confidence >= 0.4
+        assert any("shared_branch" in s["link_evidence"] for s in result[0].sessions)
+
+    def test_handoff_marker_creates_link(self) -> None:
+        """Session with /ll:handoff content is linked to the next session."""
+        sessions = {
+            "session-1": [
+                {
+                    "content": "/ll:handoff continue in next session",
+                    "uuid": "msg-1",
+                    "timestamp": "2026-01-15T10:00:00",
+                }
+            ],
+            "session-2": [
+                {
+                    "content": "Continuing from previous session",
+                    "uuid": "msg-2",
+                    "timestamp": "2026-01-15T11:00:00",
+                }
+            ],
+        }
+        result = _link_sessions(sessions)
+        assert len(result) == 1
+        assert any(s["link_evidence"] == "handoff_detected" for s in result[0].sessions)
+
+    def test_entity_overlap_alone_insufficient(self) -> None:
+        """High entity overlap alone yields score 0.2, below the 0.3 link threshold."""
+        sessions = {
+            "session-1": [{"content": "Fix checkout.py and config.json", "uuid": "msg-1"}],
+            "session-2": [{"content": "Test checkout.py and config.json", "uuid": "msg-2"}],
+        }
+        result = _link_sessions(sessions)
+        # score = 0.2 (entity overlap only) which is not > 0.3
+        assert result == []
+
+    def test_missing_timestamps_produce_zero_span(self) -> None:
+        """Sessions linked via git branch but with no timestamps report span_hours=0.0."""
+        sessions = {
+            "session-1": [{"content": "Start work", "uuid": "msg-1", "git_branch": "feat"}],
+            "session-2": [{"content": "Continue work", "uuid": "msg-2", "git_branch": "feat"}],
+        }
+        result = _link_sessions(sessions)
+        assert len(result) == 1
+        assert result[0].unified_workflow["span_hours"] == 0.0
+
+    def test_empty_session_messages_skipped(self) -> None:
+        """A session with no messages is skipped and produces no links."""
+        sessions = {
+            "session-empty": [],
+            "session-1": [{"content": "Fix checkout.py", "uuid": "msg-1", "git_branch": "feat"}],
+        }
+        result = _link_sessions(sessions)
+        assert result == []
+
+    def test_span_hours_calculated_from_timestamps(self) -> None:
+        """Span hours reflect the time difference between the earliest and latest messages."""
+        sessions = {
+            "session-1": [
+                {
+                    "content": "Start work",
+                    "uuid": "msg-1",
+                    "git_branch": "feat",
+                    "timestamp": "2026-01-15T10:00:00",
+                }
+            ],
+            "session-2": [
+                {
+                    "content": "Continue work",
+                    "uuid": "msg-2",
+                    "git_branch": "feat",
+                    "timestamp": "2026-01-15T12:00:00",
+                }
+            ],
+        }
+        result = _link_sessions(sessions)
+        assert len(result) == 1
+        assert result[0].unified_workflow["span_hours"] == 2.0
+
+
+class TestClusterByEntities:
+    """Tests for _cluster_by_entities internal function."""
+
+    def test_empty_messages(self) -> None:
+        """Empty messages list returns no clusters."""
+        result = _cluster_by_entities([])
+        assert result == []
+
+    def test_messages_with_no_entities(self) -> None:
+        """Messages with no extractable entities return no clusters."""
+        messages = [
+            {"content": "Hello world how are you", "uuid": "msg-1"},
+            {"content": "The sky is blue today", "uuid": "msg-2"},
+        ]
+        result = _cluster_by_entities(messages)
+        assert result == []
+
+    def test_single_message_cluster_filtered_out(self) -> None:
+        """A cluster with only one message is filtered from the result."""
+        messages = [
+            {"content": "Fix checkout.py now", "uuid": "msg-1"},
+        ]
+        result = _cluster_by_entities(messages)
+        assert result == []
+
+    def test_two_messages_same_entity_form_cluster(self) -> None:
+        """Two messages sharing an entity are grouped into one cluster."""
+        messages = [
+            {"content": "Fix checkout.py bug", "uuid": "msg-1"},
+            {"content": "Test checkout.py changes", "uuid": "msg-2"},
+        ]
+        result = _cluster_by_entities(messages)
+        assert len(result) == 1
+        assert "checkout.py" in result[0].all_entities
+        assert len(result[0].messages) == 2
+
+    def test_no_entity_overlap_produces_no_cluster(self) -> None:
+        """Messages with disjoint entities each form single-message clusters, which are filtered."""
+        messages = [
+            {"content": "Fix checkout.py bug", "uuid": "msg-1"},
+            {"content": "Update config.json settings", "uuid": "msg-2"},
+        ]
+        result = _cluster_by_entities(messages)
+        assert result == []
+
+    def test_custom_overlap_threshold_controls_grouping(self) -> None:
+        """Lowering overlap_threshold allows partial-overlap messages to cluster."""
+        messages = [
+            {"content": "Fix checkout.py and update config.json", "uuid": "msg-1"},
+            {"content": "Test checkout.py", "uuid": "msg-2"},
+        ]
+        # With strict threshold (0.9): Jaccard ~0.5 does not pass → both single-msg clusters filtered
+        result_strict = _cluster_by_entities(messages, overlap_threshold=0.9)
+        assert result_strict == []
+
+        # With lenient threshold (0.0): any overlap passes → cluster of 2 returned
+        result_lenient = _cluster_by_entities(messages, overlap_threshold=0.0)
+        assert len(result_lenient) == 1
+        assert len(result_lenient[0].messages) == 2
+
+    def test_cohesion_score_in_valid_range(self) -> None:
+        """Cohesion score for a cluster is between 0.0 and 1.0."""
+        messages = [
+            {"content": "Fix checkout.py issue", "uuid": "msg-1"},
+            {"content": "Test checkout.py fix", "uuid": "msg-2"},
+        ]
+        result = _cluster_by_entities(messages)
+        assert len(result) == 1
+        assert 0.0 <= result[0].cohesion_score <= 1.0
+
+
+class TestComputeBoundaries:
+    """Tests for _compute_boundaries internal function."""
+
+    def test_empty_messages(self) -> None:
+        """Empty messages returns no boundaries."""
+        result = _compute_boundaries([])
+        assert result == []
+
+    def test_single_message(self) -> None:
+        """A single message produces no boundaries."""
+        result = _compute_boundaries(
+            [{"content": "Fix file.py", "uuid": "msg-1", "timestamp": "2026-01-15T10:00:00"}]
+        )
+        assert result == []
+
+    def test_missing_timestamps_produce_zero_gap(self) -> None:
+        """Messages without timestamps produce gap_seconds=0 and time_gap_weight=0.0."""
+        messages = [
+            {"content": "Fix file.py", "uuid": "msg-1"},
+            {"content": "Test changes", "uuid": "msg-2"},
+        ]
+        result = _compute_boundaries(messages)
+        assert len(result) == 1
+        assert result[0].time_gap_seconds == 0
+        assert result[0].time_gap_weight == 0.0
+
+    def test_five_minute_gap_weight(self) -> None:
+        """A 5-minute gap (300s) produces time_gap_weight=0.5."""
+        messages = [
+            {"content": "Fix checkout.py", "uuid": "msg-1", "timestamp": "2026-01-15T10:00:00"},
+            {"content": "Test checkout.py", "uuid": "msg-2", "timestamp": "2026-01-15T10:05:00"},
+        ]
+        result = _compute_boundaries(messages)
+        assert len(result) == 1
+        assert result[0].time_gap_seconds == 300
+        assert result[0].time_gap_weight == 0.5
+
+    def test_large_gap_no_entity_overlap_is_boundary(self) -> None:
+        """A 1-hour gap with no shared entities yields is_boundary=True."""
+        messages = [
+            {"content": "Fix main.py issue", "uuid": "msg-1", "timestamp": "2026-01-15T10:00:00"},
+            {"content": "Update config.json", "uuid": "msg-2", "timestamp": "2026-01-15T11:00:00"},
+        ]
+        result = _compute_boundaries(messages)
+        assert len(result) == 1
+        assert result[0].time_gap_seconds == 3600
+        assert result[0].time_gap_weight == 0.85
+        assert result[0].is_boundary is True
+
+    def test_high_entity_overlap_reduces_boundary_score(self) -> None:
+        """Entity overlap > 0.5 reduces final_boundary_score by 0.3."""
+        messages = [
+            {
+                "content": "Fix checkout.py and config.json",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-15T10:00:00",
+            },
+            {
+                "content": "Test checkout.py and config.json",
+                "uuid": "msg-2",
+                "timestamp": "2026-01-15T10:20:00",  # 20-min gap → weight 0.7
+            },
+        ]
+        result = _compute_boundaries(messages)
+        assert len(result) == 1
+        assert result[0].entity_overlap > 0.5
+        # Score should be reduced from 0.7 by 0.3 → 0.4
+        assert result[0].final_boundary_score < result[0].time_gap_weight
+
+    def test_uuid_captured_in_boundary(self) -> None:
+        """Boundary records the UUIDs of the two adjacent messages."""
+        messages = [
+            {"content": "Fix something", "uuid": "uuid-AAA", "timestamp": "2026-01-15T10:00:00"},
+            {"content": "Fix another", "uuid": "uuid-BBB", "timestamp": "2026-01-15T11:00:00"},
+        ]
+        result = _compute_boundaries(messages)
+        assert result[0].msg_a == "uuid-AAA"
+        assert result[0].msg_b == "uuid-BBB"
+
+    def test_n_messages_produce_n_minus_one_boundaries(self) -> None:
+        """Three messages produce exactly two boundaries."""
+        messages = [
+            {"content": "Msg A", "uuid": "msg-1", "timestamp": "2026-01-15T10:00:00"},
+            {"content": "Msg B", "uuid": "msg-2", "timestamp": "2026-01-15T10:05:00"},
+            {"content": "Msg C", "uuid": "msg-3", "timestamp": "2026-01-15T10:10:00"},
+        ]
+        result = _compute_boundaries(messages)
+        assert len(result) == 2
+
+
+class TestDetectWorkflows:
+    """Tests for _detect_workflows internal function."""
+
+    def test_empty_messages(self) -> None:
+        """Empty messages list returns no workflows."""
+        result = _detect_workflows([], [], {})
+        assert result == []
+
+    def test_single_message_segment_skipped(self) -> None:
+        """A segment with only one message is skipped — too short for a multi-step workflow."""
+        messages = [
+            {
+                "content": "Fix checkout.py",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-15T10:00:00",
+                "session_id": "s1",
+            }
+        ]
+        result = _detect_workflows(messages, [], {"category_distribution": []})
+        assert result == []
+
+    def test_no_category_matches_yields_no_workflows(self) -> None:
+        """When no messages have category entries in patterns, no workflows are detected."""
+        messages = [
+            {
+                "content": "First action",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-15T10:00:00",
+                "session_id": "s1",
+            },
+            {
+                "content": "Second action",
+                "uuid": "msg-2",
+                "timestamp": "2026-01-15T10:05:00",
+                "session_id": "s1",
+            },
+        ]
+        result = _detect_workflows(messages, [], {"category_distribution": []})
+        assert result == []
+
+    def test_debug_fix_test_template_detected(self) -> None:
+        """Three messages matching the debug→fix→test template produce a workflow."""
+        messages = [
+            {
+                "content": "Find the bug",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-15T10:00:00",
+                "session_id": "s1",
+            },
+            {
+                "content": "Fix the bug",
+                "uuid": "msg-2",
+                "timestamp": "2026-01-15T10:05:00",
+                "session_id": "s1",
+            },
+            {
+                "content": "Run the tests",
+                "uuid": "msg-3",
+                "timestamp": "2026-01-15T10:10:00",
+                "session_id": "s1",
+            },
+        ]
+        patterns: dict[str, Any] = {
+            "category_distribution": [
+                {
+                    "category": "debugging",
+                    "example_messages": [{"uuid": "msg-1", "content": "Find the bug"}],
+                },
+                {
+                    "category": "code_modification",
+                    "example_messages": [{"uuid": "msg-2", "content": "Fix the bug"}],
+                },
+                {
+                    "category": "testing",
+                    "example_messages": [{"uuid": "msg-3", "content": "Run the tests"}],
+                },
+            ]
+        }
+        result = _detect_workflows(messages, [], patterns)
+        assert len(result) == 1
+        assert result[0].pattern == "debug → fix → test"
+        assert result[0].pattern_confidence == 1.0
+
+    def test_unmatched_category_sequence_yields_no_workflow(self) -> None:
+        """A category sequence that matches no template produces no workflow."""
+        messages = [
+            {
+                "content": "Msg A",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-15T10:00:00",
+                "session_id": "s1",
+            },
+            {
+                "content": "Msg B",
+                "uuid": "msg-2",
+                "timestamp": "2026-01-15T10:05:00",
+                "session_id": "s1",
+            },
+        ]
+        patterns: dict[str, Any] = {
+            "category_distribution": [
+                {
+                    "category": "documentation",
+                    "example_messages": [{"uuid": "msg-1"}, {"uuid": "msg-2"}],
+                },
+            ]
+        }
+        result = _detect_workflows(messages, [], patterns)
+        assert result == []
+
+    def test_boundary_splits_messages_into_separate_segments(self) -> None:
+        """A true boundary divides messages; each resulting segment is evaluated independently."""
+        messages = [
+            {
+                "content": "Msg A",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-15T10:00:00",
+                "session_id": "s1",
+            },
+            {
+                "content": "Msg B",
+                "uuid": "msg-2",
+                "timestamp": "2026-01-15T10:05:00",
+                "session_id": "s1",
+            },
+            {
+                "content": "Msg C",
+                "uuid": "msg-3",
+                "timestamp": "2026-01-15T12:00:00",
+                "session_id": "s1",
+            },
+            {
+                "content": "Msg D",
+                "uuid": "msg-4",
+                "timestamp": "2026-01-15T12:05:00",
+                "session_id": "s1",
+            },
+        ]
+        # Boundary between msg-2 and msg-3 splits into two 2-message segments
+        boundaries = [
+            WorkflowBoundary(
+                msg_a="msg-2",
+                msg_b="msg-3",
+                time_gap_seconds=7200,
+                time_gap_weight=0.95,
+                entity_overlap=0.0,
+                final_boundary_score=0.95,
+                is_boundary=True,
+            )
+        ]
+        # No category info → no template match, but segmentation runs without error
+        result = _detect_workflows(messages, boundaries, {"category_distribution": []})
+        assert result == []
+
+    def test_workflow_duration_calculated_from_timestamps(self) -> None:
+        """Workflow duration_minutes reflects the time span of the matching segment."""
+        messages = [
+            {
+                "content": "Find bug",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-15T10:00:00",
+                "session_id": "s1",
+            },
+            {
+                "content": "Fix bug",
+                "uuid": "msg-2",
+                "timestamp": "2026-01-15T10:30:00",
+                "session_id": "s1",
+            },
+            {
+                "content": "Test fix",
+                "uuid": "msg-3",
+                "timestamp": "2026-01-15T11:00:00",
+                "session_id": "s1",
+            },
+        ]
+        patterns: dict[str, Any] = {
+            "category_distribution": [
+                {
+                    "category": "debugging",
+                    "example_messages": [{"uuid": "msg-1", "content": "Find bug"}],
+                },
+                {
+                    "category": "code_modification",
+                    "example_messages": [{"uuid": "msg-2", "content": "Fix bug"}],
+                },
+                {
+                    "category": "testing",
+                    "example_messages": [{"uuid": "msg-3", "content": "Test fix"}],
+                },
+            ]
+        }
+        result = _detect_workflows(messages, [], patterns)
+        assert len(result) == 1
+        assert result[0].duration_minutes == 60
