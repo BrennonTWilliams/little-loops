@@ -993,96 +993,98 @@ if errors:
 
 ## little_loops.issue_discovery
 
-Issue discovery, duplicate detection, and regression analysis.
+Issue discovery, duplicate detection, and regression analysis. Implemented as a
+package (`issue_discovery/`) with three sub-modules: `matching`, `extraction`,
+and `search`.
 
-### Public Functions (7)
+### Public Functions (6)
 
 | Function | Purpose |
 |----------|---------|
-| `find_duplicate_issues()` | Find existing issues matching criteria |
-| `detect_regression()` | Check if completed issue has regressed |
-| `update_existing_issue()` | Update existing issue with new findings |
-| `search_issues_by_similarity()` | Find semantically similar issues |
-| `check_file_references()` | Check if issues reference same files |
-| `find_related_issues()` | Find issues with shared blockers |
-| `classify_match_type()` | Classify the type of match found |
+| `search_issues_by_content()` | Search issues by content with relevance scoring |
+| `search_issues_by_file_path()` | Search for issues mentioning a specific file path |
+| `detect_regression_or_duplicate()` | Classify a completed issue match |
+| `find_existing_issue()` | Multi-pass search for an existing issue matching a finding |
+| `reopen_issue()` | Move a completed issue back to active with Reopened section |
+| `update_existing_issue()` | Add new findings to an existing active issue |
 
 ### Classes
 
 #### MatchClassification
 
-Type of duplicate match found.
+Enum classifying how a finding relates to an existing issue.
 
 ```python
-@dataclass
-class MatchClassification:
-    """Classification of a duplicate match."""
-    match_type: Literal["exact", "similar", "related", "none"]
-    confidence: float  # 0.0-1.0
-    reason: str
+class MatchClassification(Enum):
+    NEW_ISSUE = "new_issue"    # No existing issue matches
+    DUPLICATE = "duplicate"    # Active issue exists
+    REGRESSION = "regression"  # Completed, fix broken by later changes
+    INVALID_FIX = "invalid_fix"  # Completed, fix never worked
+    UNVERIFIED = "unverified"  # Completed, no fix commit tracked
 ```
 
 #### RegressionEvidence
 
-Evidence of a regression.
+Evidence gathered when classifying a completed-issue match.
 
 ```python
 @dataclass
 class RegressionEvidence:
-    """Evidence that a previously completed issue has regressed."""
-    issue_id: str
-    completed_at: str
-    regression_detected: bool
-    evidence: list[str]
-    confidence: float
+    fix_commit_sha: str | None = None
+    fix_commit_exists: bool = True
+    files_modified_since_fix: list[str] = field(default_factory=list)
+    days_since_fix: int = 0
+    related_commits: list[str] = field(default_factory=list)
 ```
 
 #### FindingMatch
 
-Match result with metadata.
+Result of matching a finding to an existing issue.
 
 ```python
 @dataclass
 class FindingMatch:
-    """Result of matching a new issue against existing issues."""
-    issue_id: str
-    match_type: MatchClassification
-    similarity_score: float
-    shared_files: list[str]
-    shared_keywords: list[str]
+    issue_path: Path | None
+    match_type: str  # "exact", "similar", "content", "none"
+    match_score: float  # 0.0–1.0
+    is_completed: bool = False
+    matched_terms: list[str] = field(default_factory=list)
+    classification: MatchClassification = MatchClassification.NEW_ISSUE
+    regression_evidence: RegressionEvidence | None = None
 ```
+
+Key properties: `should_skip` (score ≥ 0.8), `should_update` (0.5–0.8),
+`should_create` (< 0.5), `should_reopen`, `should_reopen_as_regression`,
+`should_reopen_as_invalid_fix`, `is_unverified`.
 
 ### Example
 
 ```python
 from little_loops.issue_discovery import (
-    find_duplicate_issues,
-    detect_regression,
-    search_issues_by_similarity,
+    find_existing_issue,
+    reopen_issue,
+    MatchClassification,
 )
-from little_loops.issue_parser import IssueInfo
 from little_loops.config import BRConfig
 from pathlib import Path
 
 config = BRConfig(Path.cwd())
 
-# Check for duplicates
-new_issue = IssueInfo(
-    path=Path(".issues/bugs/P1-BUG-100-test.md"),
-    issue_type="bugs",
-    priority="P1",
-    issue_id="BUG-100",
-    title="Fix authentication bug"
+# Search for an existing issue matching a new finding
+match = find_existing_issue(
+    config,
+    finding_type="BUG",
+    file_path="scripts/little_loops/config.py",
+    finding_title="Config fails to load on missing key",
+    finding_content="KeyError raised when optional key absent",
 )
 
-duplicates = find_duplicate_issues(new_issue, config)
-for dup in duplicates:
-    print(f"Potential duplicate: {dup.issue_id} ({dup.match_type.match_type})")
-
-# Check for regressions
-regression = detect_regression("BUG-050", config)
-if regression.regression_detected:
-    print(f"Regression detected: {regression.evidence}")
+if match.should_skip:
+    print(f"Duplicate of {match.issue_path}")
+elif match.should_reopen_as_regression:
+    print(f"Regression: {match.issue_path} — {match.regression_evidence}")
+elif match.should_create:
+    print("New issue — no match found")
 ```
 
 ---

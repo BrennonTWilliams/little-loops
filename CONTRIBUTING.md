@@ -189,7 +189,7 @@ little-loops/
         ├── link_checker.py      # Link validation
         ├── issue_manager.py
         ├── issue_parser.py
-        ├── issue_discovery.py   # Issue discovery and deduplication
+        ├── issue_discovery/     # Issue discovery and deduplication (package)
         ├── issue_lifecycle.py
         ├── issue_history.py     # Issue history and statistics
         ├── git_operations.py

@@ -187,7 +187,11 @@ little-loops/
         ├── link_checker.py      # Link validation
         ├── issue_manager.py     # Sequential automation
         ├── issue_parser.py      # Issue file parsing
-        ├── issue_discovery.py   # Issue discovery and deduplication
+        ├── issue_discovery/     # Issue discovery and deduplication (package)
+        │   ├── __init__.py      # Re-exports public API
+        │   ├── matching.py      # Types and text similarity helpers
+        │   ├── extraction.py    # Git history analysis and regression detection
+        │   └── search.py        # Issue file search and discovery functions
         ├── issue_lifecycle.py   # Issue lifecycle operations
         ├── issue_history.py     # Issue history and statistics
         ├── git_operations.py    # Git utilities

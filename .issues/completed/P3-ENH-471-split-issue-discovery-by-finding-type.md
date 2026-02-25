@@ -4,6 +4,8 @@ discovered_branch: main
 discovered_date: 2026-02-24
 discovered_by: audit-architecture
 focus_area: large-files
+confidence_score: 95
+outcome_confidence: 86
 ---
 
 # ENH-471: Split issue_discovery.py by finding type
@@ -64,8 +66,8 @@ Split into focused modules within an `issue_discovery/` package:
 - `scripts/little_loops/issue_discovery.py` — convert to package
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/issue_manager.py` — imports from issue_discovery
-- TBD - use grep to find additional references: `grep -r "from.*issue_discovery import\|issue_discovery\." scripts/`
+- `scripts/tests/test_issue_discovery.py` — imports all public symbols and several private functions
+- No production code directly imports `issue_discovery`; it is invoked via Claude tools only
 
 ### Similar Patterns
 - `issue_history/` package — already uses sub-module pattern for analysis
@@ -74,7 +76,9 @@ Split into focused modules within an `issue_discovery/` package:
 - `scripts/tests/` — existing issue_discovery tests should pass unchanged
 
 ### Documentation
-- N/A
+- `docs/ARCHITECTURE.md` — references `issue_discovery.py` in module listing
+- `docs/reference/API.md` — documents `little_loops.issue_discovery` module (path and example imports)
+- `CONTRIBUTING.md` — references `issue_discovery.py` in module listing
 
 ### Configuration
 - N/A
@@ -93,9 +97,36 @@ Split into focused modules within an `issue_discovery/` package:
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
 - `/ll:verify-issues` - 2026-02-24 - Corrected "3 dataclasses" to "2 dataclasses + 1 Enum"
+- `/ll:ready-issue` - 2026-02-25 - Corrected Dependent Files (issue_manager.py removed, test_issue_discovery.py added); added docs to Documentation section
 
 ---
 
+## Resolution
+
+- **Completed**: 2026-02-25
+- **Fix Commit**: TBD
+- **Action**: refactor
+
+### Summary
+
+Split `scripts/little_loops/issue_discovery.py` (954 lines) into an
+`issue_discovery/` package with three focused sub-modules:
+
+- `matching.py` — `MatchClassification`, `RegressionEvidence`, `FindingMatch`, text helpers, `_matches_issue_type`
+- `extraction.py` — git history analysis, `detect_regression_or_duplicate`, `_build_reopen_section`
+- `search.py` — file search functions, `find_existing_issue`, `reopen_issue`, `update_existing_issue`
+- `__init__.py` — re-exports all public + test-accessed private names
+
+Public API unchanged. All 56 tests pass, mypy clean, ruff clean.
+
+### Files Changed
+
+- `scripts/little_loops/issue_discovery/` (new package, 4 files)
+- `scripts/little_loops/issue_discovery.py` (deleted)
+- `docs/ARCHITECTURE.md`
+- `docs/reference/API.md`
+- `CONTRIBUTING.md`
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Completed: 2026-02-25 | Priority: P3
