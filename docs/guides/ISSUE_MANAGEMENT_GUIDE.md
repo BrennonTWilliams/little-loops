@@ -447,6 +447,7 @@ When a fix regresses or an issue was closed prematurely:
 
 - [Command Reference](../COMMANDS.md) — complete flag documentation for every `/ll:` command
 - [Issue Template Guide](../ISSUE_TEMPLATE.md) — v2.0 template sections, examples, and quality checklists
+- [Sprint Guide](SPRINT_GUIDE.md) — batch-process issues with dependency-aware waves, parallelism, and resume
 - [Loops Guide](LOOPS_GUIDE.md) — automate multi-step issue workflows with FSM loops
 - [Session Handoff](../SESSION_HANDOFF.md) — continue issue work across sessions
 - `/ll:issue-workflow` — quick reference card for the issue lifecycle

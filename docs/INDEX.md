@@ -5,6 +5,7 @@ Complete reference for all little-loops documentation.
 ## Quick Start
 
 New to little-loops? Start here:
+- [Getting Started Guide](guides/GETTING_STARTED.md) - Mental model, first workflow, and when to escalate
 - [README](../README.md) - Installation, quick start, and configuration
 - [Command Reference](reference/COMMANDS.md) - All available slash commands
 - [Troubleshooting](development/TROUBLESHOOTING.md) - Common issues and solutions
@@ -18,6 +19,7 @@ Documentation for using little-loops in your projects.
 - [Troubleshooting](development/TROUBLESHOOTING.md) - Common issues, diagnostic commands, and solutions
 - [Session Handoff](guides/SESSION_HANDOFF.md) - Context management and session continuation guide
 - [Issue Management Guide](guides/ISSUE_MANAGEMENT_GUIDE.md) - End-to-end issue workflow: discovery, refinement, validation, and implementation
+- [Sprint Guide](guides/SPRINT_GUIDE.md) - Sprint creation, wave execution, dependency ordering, file contention, and resume
 - [Loops Guide](guides/LOOPS_GUIDE.md) - Loop creation, paradigms, built-in loops, and walkthrough
 - [Issue Template Guide](reference/ISSUE_TEMPLATE.md) - Issue file structure, sections, and template v2.0 reference
 
@@ -35,7 +37,7 @@ Documentation for contributing to and developing little-loops.
 
 Deep dives into specific systems and internals.
 
-- [FSM Loop System Design](guides/generalized-fsm-loop.md) - Internal FSM architecture, schema, evaluators, and compiler details
+- [FSM Loop System Design](generalized-fsm-loop.md) - Internal FSM architecture, schema, evaluators, and compiler details
 - [Merge Coordinator](development/MERGE-COORDINATOR.md) - Sophisticated merge coordination for parallel processing
 - [Claude CLI Integration](research/claude-cli-integration-mechanics.md) - Technical details on Claude CLI integration
 - [CLI Tools Audit](research/CLI-TOOLS-AUDIT.md) - Review and audit of CLI tools
