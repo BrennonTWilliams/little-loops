@@ -12,7 +12,7 @@ Formalize a progressive disclosure convention for the persistent memory system: 
 
 ## Current Behavior
 
-`memory/MEMORY.md` is loaded into every conversation context. It currently contains a mix of dense pointers and inline details. The 200-line truncation limit is noted in the auto-memory system instructions, but there is no formal convention enforcing that detailed notes belong in separate files.
+The auto memory system loads `MEMORY.md` from a project-specific directory (e.g., `~/.claude/projects/<project-hash>/memory/MEMORY.md`) into every conversation context. For this project, that directory does not yet exist — no `MEMORY.md` has been created. The 200-line truncation limit is noted in the auto-memory system instructions, but there is no formal convention enforcing how memory files should be structured when they are created (pointer-only index vs. inline details, separate topic files, etc.).
 
 ## Expected Behavior
 
@@ -71,6 +71,7 @@ Every line in `MEMORY.md` consumes context tokens in every conversation, whether
 
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:verify-issues` - 2026-02-25 - Updated Current Behavior: memory directory does not yet exist for this project; corrected description of what "currently" exists
 
 ---
 

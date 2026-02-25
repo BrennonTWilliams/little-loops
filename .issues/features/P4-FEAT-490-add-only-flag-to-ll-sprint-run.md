@@ -13,11 +13,15 @@ The `--only` flag exists in `cli_args.py` and is used by `ll-auto` and `ll-paral
 
 ## Current Behavior
 
-`ll-sprint run` accepts `--skip` (exclude issues) and `--type` (filter by type) but has no `--only` flag. The `add_only_arg` function in `cli_args.py:44-51` exists but is not called in the sprint run parser setup at `cli/sprint.py:106-121`.
+`ll-sprint run` accepts `--skip` (exclude issues) and `--type` (filter by type) but has no `--only` flag. The `add_only_arg` function in `cli_args.py:44-51` exists but is not called in the sprint run parser setup at `cli/sprint/__init__.py:111-126`.
 
 ## Expected Behavior
 
 `ll-sprint run <name> --only ENH-123,BUG-456` processes only the specified issues from the sprint definition.
+
+## Motivation
+
+`ll-auto` and `ll-parallel` both support `--only` for targeted issue reprocessing, but `ll-sprint run` lacks this flag. This inconsistency forces sprint users to use `--skip` with a long list of IDs when they only want to reprocess a few. Adding `--only` to `ll-sprint run` makes the flag available consistently across all execution modes and simplifies recovery from partial sprint failures.
 
 ## Use Case
 
@@ -43,7 +47,7 @@ Add `add_only_arg(run_parser)` to `cli/sprint.py` and wire `args.only` into the 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/sprint.py` — add `add_only_arg(run_parser)` and wire to config
+- `scripts/little_loops/cli/sprint/__init__.py` — add `add_only_arg(run_parser)` to run parser setup (lines ~111-126) and wire to config
 
 ### Dependent Files (Callers/Importers)
 - N/A
@@ -74,6 +78,8 @@ Add `add_only_arg(run_parser)` to `cli/sprint.py` and wire `args.only` into the 
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
+- `/ll:verify-issues` - 2026-02-25 - Updated file reference from `cli/sprint.py:106-121` to `cli/sprint/__init__.py:111-126` (sprint CLI was refactored into a package)
 
 ---
 

@@ -22,6 +22,10 @@ The idle-timeout kill mechanism (`idle_timeout_seconds` in config) is fully func
 
 Both `ll-auto` and `ll-parallel` accept an `--idle-timeout SECONDS` flag that overrides the config file value for that run.
 
+## Motivation
+
+The `--idle-timeout` config value exists but requires users to edit `ll-config.json` to change it per run. For one-off runs with problematic issues, this is cumbersome. Exposing `--idle-timeout` as a CLI flag follows the existing `--timeout` pattern and allows per-run overrides without modifying shared config — consistent with the principle that CLI flags override config values.
+
 ## Use Case
 
 A developer runs `ll-parallel --idle-timeout 300` to kill any worker that produces no output for 5 minutes, without modifying the shared config file. This is useful for one-off runs with known-problematic issues.
@@ -79,6 +83,7 @@ Add `add_idle_timeout_arg(parser)` to `cli_args.py` following the `add_timeout_a
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
 
 ---
 

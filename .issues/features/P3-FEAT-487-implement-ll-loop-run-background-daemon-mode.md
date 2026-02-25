@@ -50,6 +50,14 @@ A developer starts a long-running scan loop: `ll-loop run continuous-scan --back
 
 Use Python's `daemon` pattern (or `subprocess.Popen` with `start_new_session=True`) to detach the process. Write PID to `.loops/pids/` directory. Redirect output to `.loops/logs/`. Add `status` and `stop` subcommands to manage background loops.
 
+## API/Interface
+
+```bash
+ll-loop run <name> --background   # Detach as daemon; writes PID to .loops/pids/<name>.pid
+ll-loop stop <name>               # Send SIGTERM to background loop; removes PID file
+ll-loop status [<name>]           # Show running background loops (enhanced from current)
+```
+
 ## Implementation Steps
 
 1. Create `.loops/pids/` and `.loops/logs/` directories
@@ -94,6 +102,7 @@ Use Python's `daemon` pattern (or `subprocess.Popen` with `start_new_session=Tru
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
 
 ---
 

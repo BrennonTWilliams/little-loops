@@ -24,6 +24,10 @@ discovered_by: scan-codebase
 - `ll-sync diff [ID]` shows content differences between local and GitHub versions of an issue
 - `ll-sync close [ID]` closes a GitHub issue when the corresponding local issue is in `completed/`
 
+## Motivation
+
+`ll-sync` has a gap in the issue lifecycle: when a local issue is completed (moved to `completed/`), the corresponding GitHub issue remains open. Users must manually close it via the GitHub UI or `gh` CLI. Similarly, there is no way to inspect content differences before pushing changes. The `diff` and `close` subcommands complete the sync workflow and enable proper issue lifecycle management from the terminal.
+
 ## Use Case
 
 A developer completes an issue locally and moves it to `.issues/completed/`. They run `ll-sync close ENH-123` to close the corresponding GitHub issue with a completion note. Before pushing changes, they run `ll-sync diff BUG-456` to review what changed since the last sync.
@@ -83,6 +87,7 @@ A developer completes an issue locally and moves it to `.issues/completed/`. The
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
+- `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
 
 ---
 
