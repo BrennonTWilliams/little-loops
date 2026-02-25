@@ -177,7 +177,7 @@ def _update_issue_frontmatter(
     existing: dict[str, Any] = yaml.safe_load(fm_match.group(1)) or {}
     existing.update(updates)
     fm_text = yaml.dump(existing, default_flow_style=False, sort_keys=False).strip()
-    return f"---\n{fm_text}\n---{content[fm_match.end():]}"
+    return f"---\n{fm_text}\n---{content[fm_match.end() :]}"
 
 
 def _parse_issue_title(content: str) -> str:

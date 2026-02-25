@@ -436,9 +436,7 @@ class TestGitHubSyncManager:
         manager = GitHubSyncManager(mock_config, mock_logger)
 
         bugs_dir = tmp_path / ".issues" / "bugs"
-        (bugs_dir / "P1-BUG-001-valid.md").write_text(
-            "---\ngithub_issue: 42\n---\n# BUG-001"
-        )
+        (bugs_dir / "P1-BUG-001-valid.md").write_text("---\ngithub_issue: 42\n---\n# BUG-001")
         (bugs_dir / "P2-BUG-002-malformed.md").write_text(
             "---\ngithub_issue: pending\n---\n# BUG-002"
         )

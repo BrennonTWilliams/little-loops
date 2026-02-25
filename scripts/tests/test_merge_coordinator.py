@@ -1753,7 +1753,9 @@ class TestMergeStrategySkipsRebaseRetry:
             cmd: list[str], **kwargs: object
         ) -> subprocess.CompletedProcess[str]:
             if cmd[:2] == ["git", "status"]:
-                return subprocess.CompletedProcess(cmd, returncode=0, stdout="M test.txt\n", stderr="")
+                return subprocess.CompletedProcess(
+                    cmd, returncode=0, stdout="M test.txt\n", stderr=""
+                )
             if cmd[:3] == ["git", "stash", "push"]:
                 return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
             if cmd[:2] == ["git", "fetch"]:
@@ -1762,16 +1764,24 @@ class TestMergeStrategySkipsRebaseRetry:
                 return subprocess.CompletedProcess(cmd, returncode=0, stdout="", stderr="")
             if cmd[:3] == ["git", "stash", "pop"]:
                 return subprocess.CompletedProcess(
-                    cmd, returncode=1, stdout="", stderr="CONFLICT (content): Merge conflict in test.txt"
+                    cmd,
+                    returncode=1,
+                    stdout="",
+                    stderr="CONFLICT (content): Merge conflict in test.txt",
                 )
             return original_run(cmd, **kwargs)
 
-        with patch("little_loops.parallel.merge_coordinator.subprocess.run", side_effect=mock_subprocess_run):
+        with patch(
+            "little_loops.parallel.merge_coordinator.subprocess.run",
+            side_effect=mock_subprocess_run,
+        ):
             coordinator._handle_conflict(request, used_merge_strategy=False)
 
         # Stash pop failed: should mark as failed, not re-queue
         assert len(failure_called) == 1, "Should call _handle_failure once"
-        assert "stash pop" in failure_called[0].lower(), f"Expected stash pop error, got: {failure_called[0]}"
+        assert "stash pop" in failure_called[0].lower(), (
+            f"Expected stash pop error, got: {failure_called[0]}"
+        )
         assert len(requeued) == 0, "Should NOT re-queue when stash pop fails"
 
 

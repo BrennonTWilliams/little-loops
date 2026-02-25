@@ -1430,7 +1430,6 @@ issues:
         import argparse
 
         from little_loops.cli import sprint as cli
-        from little_loops.sprint import SprintState
 
         # Create project with 2 waves via dependency
         issues_dir = tmp_path / ".issues"
@@ -1538,4 +1537,6 @@ issues:
         # BUG-001 must have been retried (not skipped)
         assert call_count.get("BUG-001", 0) >= 1, "BUG-001 should be retried on resume"
         # BUG-002 should also have been executed
-        assert call_count.get("BUG-002", 0) >= 1, "BUG-002 should be executed after BUG-001 succeeds"
+        assert call_count.get("BUG-002", 0) >= 1, (
+            "BUG-002 should be executed after BUG-001 succeeds"
+        )
