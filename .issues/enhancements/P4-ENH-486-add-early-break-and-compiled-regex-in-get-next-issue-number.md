@@ -3,6 +3,8 @@ discovered_commit: 95d4139206f3659159b727db57578ffb2930085b
 discovered_branch: main
 discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
+confidence_score: 80
+outcome_confidence: 97
 ---
 
 # ENH-486: Add early break and compiled regex in `get_next_issue_number`
@@ -25,7 +27,7 @@ After a match is found for a given file, the inner prefix loop breaks early. A s
 
 ## Proposed Solution
 
-1. Add `break` after the `max_num = num` assignment at line 73
+1. Add `break` after the `max_num = num` assignment at line 76
 2. Optionally, pre-compile a single union regex: `re.compile(r"(" + "|".join(all_prefixes) + r")-(\d+)")`
 
 ## Scope Boundaries
@@ -74,6 +76,8 @@ After a match is found for a given file, the inner prefix loop breaks early. A s
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
+- `/ll:verify-issues` - 2026-02-25 - Corrected line reference: `max_num = num` is at line 76, not 73 (line 73 is `if match:`)
+- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with verified line references; no knowledge gaps identified
 
 ---
 

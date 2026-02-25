@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-24
 discovered_by: capture-issue
+confidence_score: 73
+outcome_confidence: 61
 ---
 
 # ENH-492: Split issue-sections.json into per-type files
@@ -30,12 +32,27 @@ This is an architectural quality-of-life improvement — no new functionality, j
 
 ## Proposed Solution
 
-TBD - requires investigation
+**Consumer Audit Complete** — all consumers are skill/command markdown files (Claude reads the JSON directly); there is no Python code that loads `issue-sections.json` (the planned `issue_template.py` from ENH-491 doesn't exist yet).
 
-Key decisions to make:
-- How to handle sections shared across types (copy into each file vs. extract to a `common-sections.json` that the per-type files reference or are merged with at load time)
-- Whether all consumer skills need updating or if a thin loader shim (`load_sections(issue_type)`) can centralize the file-selection logic
-- Migration strategy for any projects that reference `issue-sections.json` by name in config
+**Load interface:** Every consumer uses a natural-language instruction: "Read templates/issue-sections.json". There is no import statement or config reference to migrate.
+
+**Key decisions resolved by audit:**
+
+1. **Shared sections strategy**: Since all consumers are AI agents reading files directly, a `common-sections.json` + loader shim approach is unnecessary overhead. The simplest migration is to copy shared sections into each per-type file. Agents can be instructed to load only the type-appropriate file.
+
+2. **Loader shim not needed**: No Python code reads this file, so no Python shim is required. Each skill's markdown instruction is updated from "Read templates/issue-sections.json" to "Read templates/{type}-sections.json where {type} is the issue type (bug/feat/enh)".
+
+3. **Migration strategy**: Update the instruction text in 5 consumer files (no config migration needed):
+
+| Consumer | File | Lines to update |
+|---|---|---|
+| `capture-issue` | `skills/capture-issue/SKILL.md:231` | Change filename in read instruction |
+| `format-issue` (gap check) | `skills/format-issue/SKILL.md:166,191` | Change filename in read instruction |
+| `format-issue` (template) | `skills/format-issue/templates.md:7,54` | Change filename in read instruction |
+| `scan-codebase` | `commands/scan-codebase.md:243` | Change filename in read instruction |
+| `ready-issue` | `commands/ready-issue.md:123` | Change filename in read instruction |
+
+**Python code (sync.py)**: The `_create_local_issue()` hardcoded template (`sync.py:615-670`) is addressed by ENH-491, which plans to add `issue_template.py`. That new module will need to load the per-type file — coordinate with ENH-491.
 
 ## Scope Boundaries
 
@@ -93,6 +110,7 @@ Key decisions to make:
 
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/568ba5fc-d209-4c80-bff7-a8c1237be3b5.jsonl`
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Consumer audit complete: 5 skill/command files reference issue-sections.json; no Python code loads it yet; proposed solution TBD replaced with concrete migration plan
 
 ---
 

@@ -2,6 +2,8 @@
 discovered_date: 2026-02-24
 discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
+confidence_score: 80
+outcome_confidence: 71
 ---
 
 # ENH-501: Forward-Message Pattern for ll-parallel Result Fidelity
@@ -55,9 +57,31 @@ This is worth investigating before implementing: if our coordinator already forw
 
 ## Integration Map
 
-### Files to Modify (if Phase 2 needed)
-- `scripts/little_loops/merge_coordinator.py` — forwarding logic
-- `scripts/little_loops/parallel.py` — sub-agent report format
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — Investigation of `merge_coordinator.py` completed:_
+
+**Phase 1 Investigation Result: MergeCoordinator does NOT synthesize sub-agent output.**
+
+`merge_coordinator.py` is a pure git orchestrator. It has no concept of "reports" or sub-agent output:
+
+- **Input**: `MergeRequest` objects wrapping `WorkerResult` (contains `issue_id`, `branch_name`, `worktree_path` — git metadata only, not text)
+- **Processing**: The `_process_merge()` method (`merge_coordinator.py:690-915`) performs only git operations: stash, checkout, pull --rebase, merge --no-ff, unstash
+- **Output interface**: Three read-only properties — `merged_ids` (list of merged issue IDs), `failed_merges` (dict of ID→error string), `stash_pop_failures` (dict)
+- **No file reading**: Does not read worktree output files; only reads `git status --porcelain` output and git command return codes
+
+**Consequence**: There is no "synthesis" step happening in MergeCoordinator. The Telephone Game Problem described in this issue is not occurring at the coordinator level.
+
+**Where report aggregation actually happens**: The `ParallelOrchestrator` reads `merge_coordinator.merged_ids` and `merge_coordinator.failed_merges` to build the final status report. If any paraphrasing exists, it would be in `orchestrator.py`'s reporting section, not in `merge_coordinator.py`.
+
+**Revised file references (if Phase 2 is warranted after investigating orchestrator):**
+- `scripts/little_loops/parallel/merge_coordinator.py` — No changes needed (pure git ops)
+- `scripts/little_loops/parallel/orchestrator.py` — Investigate `_generate_summary()` or similar reporting method for paraphrasing risk
+- `scripts/little_loops/parallel/worker_pool.py` — Sub-agent output is captured here; check if result text is passed through or summarized
+
+### Files to Modify (if Phase 2 needed, pending orchestrator investigation)
+- `scripts/little_loops/parallel/orchestrator.py` — forwarding logic (if paraphrasing found in summary generation)
+- `scripts/little_loops/parallel/worker_pool.py` — sub-agent report format
 
 ### Related Issues
 - ENH-499 — Context degradation (complementary; addresses sequential not parallel)
@@ -80,6 +104,7 @@ This is worth investigating before implementing: if our coordinator already forw
 
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Investigated merge_coordinator.py: no synthesis/paraphrasing found; MergeCoordinator is pure git orchestration. Investigation focus should shift to orchestrator.py reporting methods.
 
 ---
 

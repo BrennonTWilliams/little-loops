@@ -4,18 +4,20 @@ discovered_branch: main
 discovered_date: 2026-02-25
 discovered_by: audit-architecture
 focus_area: large-files
+confidence_score: 93
+outcome_confidence: 60
 ---
 
 # ENH-506: Split `dependency_mapper.py` into focused modules
 
 ## Summary
 
-Architectural issue found by `/ll:audit-architecture`. `dependency_mapper.py` is 1,321 lines and handles five distinct concerns in a single module: data models, conflict analysis, dependency validation, fix operations, and CLI entry point.
+Architectural issue found by `/ll:audit-architecture`. `dependency_mapper.py` is 1,337 lines and handles five distinct concerns in a single module: data models, conflict analysis, dependency validation, fix operations, and CLI entry point.
 
 ## Location
 
 - **File**: `scripts/little_loops/dependency_mapper.py`
-- **Line(s)**: 1–1,321 (entire file)
+- **Line(s)**: 1–1,337 (entire file)
 - **Module**: `little_loops.dependency_mapper`
 
 ## Finding
@@ -86,6 +88,10 @@ CLI entry (`main`) moves to `scripts/little_loops/cli/deps.py` or remains as a t
 ## Status
 
 **Open** | Created: 2026-02-25 | Priority: P4
+
+## Session Log
+- `/ll:verify-issues` - 2026-02-25 - Corrected line count: 1,321 → 1,337 (file has grown since issue was created)
+- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with complete module split plan and caller list; no knowledge gaps identified
 
 ## Blocked By
 

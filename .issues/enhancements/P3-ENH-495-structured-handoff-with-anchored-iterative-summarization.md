@@ -2,6 +2,8 @@
 discovered_date: 2026-02-24
 discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
+confidence_score: 98
+outcome_confidence: 68
 ---
 
 # ENH-495: Structured Handoff with Anchored Iterative Summarization
@@ -56,7 +58,7 @@ Additionally, a machine-readable schema enables future `ll-resume` enhancements 
 
 ## Implementation Steps
 
-1. Read current `skills/handoff/SKILL.md` and `skills/resume/SKILL.md`
+1. Read current `commands/handoff.md` and `commands/resume.md`
 2. Define the four-section schema with field descriptions
 3. Update handoff skill prompt to emit each section explicitly
 4. Add YAML frontmatter spec to the schema
@@ -66,12 +68,34 @@ Additionally, a machine-readable schema enables future `ll-resume` enhancements 
 ## Integration Map
 
 ### Files to Modify
-- `skills/handoff/SKILL.md` — updated output schema and prompt
-- `skills/resume/SKILL.md` — parse structured fields on resume
+- `commands/handoff.md` — updated output schema and prompt (handoff is a command, not a skill)
+- `commands/resume.md` — parse structured fields on resume (resume is a command, not a skill)
 - `.claude/ll-continue-prompt.md` — output format (generated, not edited directly)
 
 ### Similar Patterns
 - `thoughts/shared/plans/` — existing structured planning documents
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — Current handoff and resume schema details:_
+
+**Current `commands/handoff.md` output schema (lines 124-174):**
+The existing template has these sections: `## Conversation Summary` (with subsections: Primary Intent, What Happened, User Feedback, Errors and Resolutions, Code Changes), `## Resume Point` (What Was Being Worked On, Direct Quote, Next Step), `## Important Context` (Decisions Made, Gotchas Discovered, User-Specified Constraints, Patterns Being Followed). The `--deep` mode appends `## Artifact Validation`.
+
+**Current `commands/resume.md` behavior:**
+- Resume displays the full markdown blob from `ll-continue-prompt.md` verbatim (no structured field extraction)
+- A separate `ll-session-state.json` file already carries structured fields: `timestamp`, `active_issue`, `phase`, `plan_file`, `todos`, `context`, `handoff_prompt`
+- `commands/resume.md:106-120` — the session state JSON schema
+
+**What ENH-495 proposes vs. current state:**
+- Current: 3-section prose template (Conversation Summary, Resume Point, Important Context)
+- Proposed: 4-section anchored schema (Intent, File Modifications, Decisions Made, Next Steps)
+- Key change: rename and restructure to place Intent first (attention-favored) and reduce free-form prose
+- YAML frontmatter addition (`session_date`, `session_branch`, `issues_in_progress`) would complement the existing `ll-session-state.json`
+
+**Resume parsing opportunity:**
+- Current resume reads `ll-continue-prompt.md` as a blob; with the new structured schema, it could parse and surface `## Intent` and `## Next Steps` prominently without displaying all sections
+- The existing `ll-session-state.json` parsing in `commands/resume.md:47-56` provides the structural pattern to follow
 
 ### Tests
 - Manual: run `/ll:handoff`, verify four sections appear in output
@@ -93,6 +117,8 @@ Additionally, a machine-readable schema enables future `ll-resume` enhancements 
 
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:verify-issues` - 2026-02-25 - Corrected file paths: `skills/handoff/SKILL.md` → `commands/handoff.md`; `skills/resume/SKILL.md` → `commands/resume.md` (handoff/resume are commands, not skills)
+- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Documented current handoff schema (3-section prose) and resume behavior; noted existing ll-session-state.json structured fields
 
 ---
 

@@ -80,6 +80,7 @@ Add `add_only_arg(run_parser)` to `cli/sprint.py` and wire `args.only` into the 
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
 - `/ll:verify-issues` - 2026-02-25 - Updated file reference from `cli/sprint.py:106-121` to `cli/sprint/__init__.py:111-126` (sprint CLI was refactored into a package)
+- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified; add_only_arg(parser) at cli/parallel.py:119 confirmed as the model; ParallelConfig.only_ids confirmed as the wiring target; no knowledge gaps identified
 
 ---
 

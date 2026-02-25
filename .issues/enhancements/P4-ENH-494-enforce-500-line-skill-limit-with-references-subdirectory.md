@@ -2,6 +2,8 @@
 discovered_date: 2026-02-24
 discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
+confidence_score: 80
+outcome_confidence: 68
 ---
 
 # ENH-494: Enforce 500-Line SKILL.md Limit with references/ Subdirectory Pattern
@@ -43,11 +45,40 @@ Every line in a `SKILL.md` is loaded into the context window when that skill is 
 
 ## Implementation Steps
 
-1. Run `wc -l skills/*/SKILL.md | sort -n` to identify oversized skills
+1. ~~Run `wc -l skills/*/SKILL.md | sort -n` to identify oversized skills~~ (**Done — see Research Findings below**)
 2. For each violating skill, extract reference/example sections to `references/` files
 3. Add `## See Also` section in `SKILL.md` with links
 4. Update `CONTRIBUTING.md` with the 500-line limit and `references/` pattern
 5. Optionally extend `ll-check-links` to also check skill line counts
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — Skill line count audit:_
+
+**Current line counts (descending):**
+```
+708  skills/audit-claude-config/SKILL.md  ← EXCEEDS by 208 lines
+524  skills/confidence-check/SKILL.md     ← EXCEEDS by 24 lines
+447  skills/manage-issue/SKILL.md
+386  skills/init/SKILL.md
+371  skills/capture-issue/SKILL.md
+356  skills/format-issue/SKILL.md
+335  skills/audit-docs/SKILL.md
+305  skills/create-loop/SKILL.md
+304  skills/configure/SKILL.md
+295  skills/workflow-automation-proposer/SKILL.md
+280  skills/product-analyzer/SKILL.md
+275  skills/issue-size-review/SKILL.md
+173  skills/map-dependencies/SKILL.md
+168  skills/issue-workflow/SKILL.md
+116  skills/analyze-history/SKILL.md
+```
+
+**Only 2 skills exceed 500 lines** — scope is smaller than expected:
+- `audit-claude-config/SKILL.md` (708 lines) — extract wave definitions, sub-agent prompt templates, or audit checklists to `references/`
+- `confidence-check/SKILL.md` (524 lines) — extract scoring rubrics or evaluation criteria to `references/`
+
+**No `references/` subdirectories exist yet** — this PR establishes the convention from scratch
 
 ## Integration Map
 
@@ -77,6 +108,7 @@ Every line in a `SKILL.md` is loaded into the context window when that skill is 
 
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Completed skill line count audit; 2 skills exceed 500 lines: audit-claude-config (708) and confidence-check (524)
 
 ---
 

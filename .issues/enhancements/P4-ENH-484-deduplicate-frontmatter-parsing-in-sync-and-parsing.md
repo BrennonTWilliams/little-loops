@@ -3,6 +3,8 @@ discovered_commit: 95d4139206f3659159b727db57578ffb2930085b
 discovered_branch: main
 discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
+confidence_score: 80
+outcome_confidence: 100
 ---
 
 # ENH-484: Deduplicate frontmatter parsing in sync.py and parsing.py
@@ -78,6 +80,7 @@ Reduces maintenance surface and eliminates risk of the copies drifting out of sy
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
 - `/ll:verify-issues` - 2026-02-24 - Updated sync.py line references: 221-225/251-256 → 194-198/224-228
+- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with verified line references; no knowledge gaps identified
 
 ---
 

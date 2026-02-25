@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-02-24
 discovered_by: capture-issue
+confidence_score: 80
+outcome_confidence: 75
 ---
 
 # ENH-504: Format Highest-Priority Issue When No Args Provided
@@ -37,13 +39,55 @@ Currently, running `/ll:format-issue` without arguments has undefined or unprodu
 ## Integration Map
 
 ### Files to Modify
-- `skills/format-issue/SKILL.md` — Step 0 (Parse Flags) and Arguments section: add no-arg default-selection logic
+- `skills/format-issue/SKILL.md` — Replace lines 81-85 (the error-exit block) with the priority selection loop
 
 ### Dependent Files (Callers/Importers)
 - N/A — skill-level change only
 
 ### Similar Patterns
-- `skills/manage-issue/SKILL.md` — existing highest-priority selection logic to mirror
+- `skills/manage-issue/SKILL.md:54-83` — exact priority selection loop to mirror
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — Exact insertion point and pattern:_
+
+**Exact location to modify** (`skills/format-issue/SKILL.md:81-85`):
+```bash
+# Current block to REPLACE:
+if [[ -z "$ISSUE_ID" ]]; then
+    echo "Error: issue_id is required when not using --all flag"
+    echo "Usage: /ll:format-issue [ISSUE_ID] [--auto]"
+    exit 1
+fi
+```
+
+**Pattern to follow from `manage-issue/SKILL.md:62-70`:**
+```bash
+# Find highest priority (P0 > P1 > P2 > ...)
+for P in P0 P1 P2 P3 P4 P5; do
+    ISSUE_FILE=$(ls "$SEARCH_DIR"/$P-*.md 2>/dev/null | sort | head -1)
+    if [ -n "$ISSUE_FILE" ]; then
+        break
+    fi
+done
+```
+
+**Adaptation needed for format-issue:** Unlike `manage-issue`, `format-issue` searches across all active category directories (`bugs/`, `features/`, `enhancements/`) in its existing loop at lines 87-99. The no-arg selection logic must iterate over all three categories at each priority level, not just a single `$SEARCH_DIR`. Suggested pattern:
+```bash
+if [[ -z "$ISSUE_ID" ]] && [[ "$ALL_MODE" == false ]]; then
+    for P in P0 P1 P2 P3 P4 P5; do
+        for dir in {{config.issues.base_dir}}/*/; do
+            if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ]; then continue; fi
+            FOUND=$(ls "$dir"/$P-*.md 2>/dev/null | sort | head -1)
+            if [ -n "$FOUND" ]; then FILE="$FOUND"; break 2; fi
+        done
+    done
+    if [ -z "$FILE" ]; then echo "No active issues found."; exit 0; fi
+    echo "Selected highest-priority issue: $(basename $FILE)"
+fi
+```
+
+**Arguments section** (`skills/format-issue/SKILL.md:9-15`): Update `issue_id` description from current to: "Specific issue ID (e.g., BUG-004). If empty and --all is not set, selects highest-priority active issue."
 
 ### Tests
 - N/A — skill-level testing is manual
@@ -75,6 +119,7 @@ Currently, running `/ll:format-issue` without arguments has undefined or unprodu
 ## Session Log
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc790b97-8457-4261-96c9-b25c3abc9efc.jsonl`
 - `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Identified exact insertion point (format-issue/SKILL.md:81-85) and priority loop pattern from manage-issue/SKILL.md:62-70
 
 ---
 

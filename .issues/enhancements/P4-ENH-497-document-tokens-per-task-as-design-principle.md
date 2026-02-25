@@ -2,6 +2,8 @@
 discovered_date: 2026-02-24
 discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
+confidence_score: 80
+outcome_confidence: 100
 ---
 
 # ENH-497: Document Tokens-per-Task as ll-auto/ll-parallel Design Principle
@@ -51,10 +53,45 @@ Secondary benefit: it provides the conceptual foundation for the context degrada
 ## Integration Map
 
 ### Files to Modify
-- `docs/ARCHITECTURE.md` — new "Context Efficiency" section
+- `docs/ARCHITECTURE.md` — new `### Context Efficiency` sub-section within `## Key Design Decisions`
 
 ### Related Issues
 - ENH-499 — Context degradation checkpoints (implements this principle)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — Exact insertion point in ARCHITECTURE.md:_
+
+**Best insertion point:** After `### Context Monitor and Session Continuation` section (which ends at approximately line 839), before `## Data Flow Summary` (at approximately line 842). This slots the new section inside `## Key Design Decisions` (line 694) alongside related automation design rationale.
+
+**Structure of `## Key Design Decisions` (existing sub-sections):**
+```
+## Key Design Decisions (line 694)
+├── ### Git Worktree Isolation     (line 696)
+├── ### Sequential Merging         (line 719)
+├── ### State Persistence          (line 738)
+├── ### Merge Strategy             (line 757)
+├── ### Context Monitor and Session Continuation  (line 771)
+└── ### Context Efficiency         ← INSERT HERE (after ~line 839)
+
+## Data Flow Summary               (line 842)
+```
+
+**Existing 80% threshold documentation** (`docs/ARCHITECTURE.md:819-832`): The `auto_handoff_threshold: 80` config value is already documented in the Context Monitor section. ENH-497's "70-80% utilization compression trigger recommendation" directly references this — cross-link from the new section to the existing config documentation.
+
+**Draft section content:**
+```markdown
+### Context Efficiency
+
+> **Efficiency metric: tokens-per-task, not tokens-per-request.**
+
+For ll-auto, ll-parallel, and ll-sprint, the correct optimization target is minimizing total tokens consumed per completed issue, not per individual turn. Over-aggressive compression that causes retries, re-reads, or error recovery is less efficient than a longer conversation that completes the task cleanly.
+
+**Implications for compression decisions:**
+- Compress at 70-80% context utilization (see `auto_handoff_threshold` above), not earlier
+- Prefer keeping relevant tool outputs in context over re-fetching when needed again
+- A failed task that restarts from scratch costs more tokens than a task that completes in a long conversation
+```
 
 ## Impact
 
@@ -69,6 +106,7 @@ Secondary benefit: it provides the conceptual foundation for the context degrada
 
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
+- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Identified insertion point in ARCHITECTURE.md (after line ~839, inside ## Key Design Decisions, after Context Monitor section)
 
 ---
 

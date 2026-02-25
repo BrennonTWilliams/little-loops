@@ -87,6 +87,7 @@ Also consider adding `.claude/ll.local.md` to the `.gitignore` entries in Step 9
 - `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/38aa90ae-336c-46b5-839d-82b4dc01908c.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
 - `/ll:verify-issues` - 2026-02-24 - Updated Step 9/10 line references; removed satisfied blocker ENH-453 (completed)
+- `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Confirmed: Step 9 (lines 301-323) currently adds only .auto-manage-state.json, .parallel-manage-state.json, .claude/ll-context-state.json, .claude/ll-sync-state.json to .gitignore — `.claude/ll.local.md` is NOT present and needs to be added
 
 ---
 
