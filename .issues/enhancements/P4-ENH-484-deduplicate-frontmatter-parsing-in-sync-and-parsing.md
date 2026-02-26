@@ -88,6 +88,24 @@ Reduces maintenance surface and eliminates risk of the copies drifting out of sy
 
 **Open** | Created: 2026-02-24 | Priority: P4
 
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-26 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | LOW |
+| Complexity added | LOW |
+| Technical debt risk | LOW |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Deferred - Clean, low-risk deduplication refactor but blocked by 4 upstream issues (FEAT-489, ENH-481, ENH-491, FEAT-503). Will naturally fall into place once blockers resolve.
+
 ## Blocked By
 
 - FEAT-489

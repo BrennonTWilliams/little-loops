@@ -92,6 +92,24 @@ Add `add_idle_timeout_arg(parser)` to `cli_args.py` following the `add_timeout_a
 
 **Open** | Created: 2026-02-24 | Priority: P4
 
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-26 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | LOW |
+| Complexity added | LOW |
+| Technical debt risk | LOW |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Deferred - Good utility-to-cost ratio (MEDIUM utility, LOW effort) but blocked by 3 upstream issues (FEAT-490, FEAT-441, ENH-459). This becomes a quick win once blockers resolve. No changes needed to the issue itself.
+
 ## Blocked By
 
 - FEAT-490

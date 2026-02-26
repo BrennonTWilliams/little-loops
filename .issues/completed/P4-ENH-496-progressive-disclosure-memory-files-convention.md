@@ -92,3 +92,21 @@ Every line in `MEMORY.md` consumes context tokens in every conversation, whether
 
 - FEAT-441
 - ENH-494
+
+---
+
+## Resolution
+
+- **Status**: Closed - Tradeoff Review
+- **Completed**: 2026-02-26
+- **Reason**: Low utility relative to implementation complexity
+
+### Tradeoff Review Scores
+- Utility: LOW
+- Implementation Effort: MEDIUM
+- Complexity Added: MEDIUM
+- Technical Debt Risk: MEDIUM
+- Maintenance Overhead: MEDIUM
+
+### Rationale
+Memory files do not yet exist for this project, making this a speculative convention for non-existent infrastructure. The convention should emerge from actual usage rather than be designed upfront. Blocked by 3 upstream issues, making it impractical regardless.

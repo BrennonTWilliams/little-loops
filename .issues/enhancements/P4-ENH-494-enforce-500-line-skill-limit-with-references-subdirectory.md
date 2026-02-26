@@ -116,6 +116,24 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 
 **Open** | Created: 2026-02-24 | Priority: P4
 
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-26 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | LOW |
+| Complexity added | LOW |
+| Technical debt risk | LOW |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Update first - Only 2 skills exceed the 500-line limit (audit-claude-config: 708, confidence-check: 524), making scope smaller than expected. However, the `references/` subdirectory pattern needs to be defined and documented before extracting content. Blocked by ENH-493 (trigger descriptions), ENH-491, and FEAT-441. Implement after those resolve and the pattern convention is established in CONTRIBUTING.md.
+
 ## Blocked By
 
 - ENH-493

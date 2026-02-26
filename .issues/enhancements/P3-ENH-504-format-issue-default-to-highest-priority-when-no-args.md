@@ -127,6 +127,24 @@ fi
 
 **Open** | Created: 2026-02-24 | Priority: P3
 
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-26 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | LOW |
+| Complexity added | LOW |
+| Technical debt risk | LOW |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Deferred - Trivially simple implementation following existing manage-issue pattern, but blocked by FEAT-441. Implement as a quick win once blocker resolves.
+
 ## Blocked By
 
 - FEAT-441

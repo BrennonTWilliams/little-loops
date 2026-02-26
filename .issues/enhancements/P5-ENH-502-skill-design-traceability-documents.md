@@ -95,6 +95,24 @@ Secondary benefit: if we ever publish this plugin to a marketplace (as the sourc
 
 **Open** | Created: 2026-02-24 | Priority: P5
 
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-02-26 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | LOW |
+| Implementation effort | LOW |
+| Complexity added | LOW |
+| Technical debt risk | LOW |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first - Blocked by 5 upstream issues (ENH-494, ENH-493, ENH-491, ENH-496, FEAT-441). Skills are not yet stable enough to write accurate design rationale documents. Wait until blocking skill improvements (trigger descriptions, line limits) land before documenting the "why" behind their design.
+
 ## Blocked By
 
 - ENH-494
