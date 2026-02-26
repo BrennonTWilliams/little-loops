@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.23.0] - 2026-02-26
+
+### Added
+
+- **TDD mode for issue implementation** - Add test-first development mode to manage-issue skill with Phase 3a (Write Tests — Red), config toggle, and plan template updates (0c54487)
+- **Observation masking scratch pad pattern** - Add scratch pad behavioral instructions for handling large tool outputs (>200 lines) to reduce context window usage in automation (010df53)
+
+[1.23.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.22.0...v1.23.0
+
 ## [1.22.0] - 2026-02-25
 
 ### Added
