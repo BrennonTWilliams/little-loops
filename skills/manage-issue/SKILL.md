@@ -187,7 +187,51 @@ ELSE:
 
 ---
 
-## Phase 3: Implement
+## Phase 3a: Write Tests — Red (TDD Mode)
+
+**Skip this phase if**: `config.commands.tdd_mode` is `false` (default), or action is `verify` or `plan`.
+
+When `config.commands.tdd_mode` is `true`, write tests BEFORE implementation:
+
+1. **Read the plan's "Phase 0: Write Tests (Red)" section** for test specifications
+2. **Write test files** based on the issue's acceptance criteria and the plan's test specifications
+3. **Run tests** against the current (unmodified) codebase:
+
+```bash
+{{config.project.test_cmd}} [newly_written_test_files] -v
+```
+
+4. **Validate Red phase** — check test output:
+
+```
+RUN {{config.project.test_cmd}} on new test files
+
+IF exit code is 0 (tests pass):
+  HALT: "✗ Red phase failed: tests pass against current code.
+         Tests should fail before implementation. Review test logic."
+  Fix tests to properly assert expected behavior, then re-run.
+
+IF exit code is non-zero:
+  SCAN test output:
+    IF output contains "FAILED" (pytest assertion failures):
+      LOG: "✓ Red phase passed: tests fail with assertion errors as expected."
+      PROCEED to Phase 3b (Implementation)
+
+    IF output contains "ERROR", "ImportError", "SyntaxError", or "ModuleNotFoundError":
+      HALT: "✗ Red phase invalid: tests have structural errors, not assertion failures.
+             Fix import paths, syntax, or test setup before proceeding."
+      Fix test code and re-run validation.
+```
+
+5. **Commit test files** (optional, if `--gates` flag is set and user approves)
+
+> **Phase Gate** (requires `--gates` flag): After Red validation passes, pause to show test files written and validation results before proceeding to implementation.
+
+---
+
+## Phase 3 (3b in TDD Mode): Implement
+
+> **TDD Mode note**: When `config.commands.tdd_mode` is `true`, this phase is Phase 3b. The goal is to make the Phase 3a tests pass (Green). After implementation, verify that all Phase 3a tests now pass before proceeding to Phase 4.
 
 ### Resuming Work (--resume flag)
 

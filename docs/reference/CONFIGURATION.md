@@ -69,7 +69,8 @@ For interactive editing, use `/ll:configure`.
     "confidence_gate": {
       "enabled": false,
       "threshold": 85
-    }
+    },
+    "tdd_mode": false
   },
 
   "scan": {
@@ -236,8 +237,11 @@ Command customization for `/ll:manage-issue`:
 | `custom_verification` | `[]` | Additional verification commands |
 | `confidence_gate.enabled` | `false` | Enable confidence score gate before implementation |
 | `confidence_gate.threshold` | `85` | Minimum confidence score (1-100) required to proceed |
+| `tdd_mode` | `false` | Enable TDD mode: write failing tests before implementation |
 
 When `confidence_gate.enabled` is `true`, `manage-issue` checks the issue's `confidence_score` frontmatter before Phase 3 (Implementation). If the score is below `threshold`, implementation halts. Use `--force-implement` to bypass.
+
+When `tdd_mode` is `true`, `manage-issue` splits Phase 3 into Phase 3a (Write Tests — Red) and Phase 3b (Implement — Green). In Phase 3a, tests are written based on the plan's acceptance criteria and must fail against the current codebase. In Phase 3b, implementation code is written to make those tests pass.
 
 ### `scan`
 

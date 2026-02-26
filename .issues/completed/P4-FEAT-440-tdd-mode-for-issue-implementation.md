@@ -1,8 +1,8 @@
 ---
 discovered_date: "2026-02-18"
 discovered_by: capture-issue
-confidence_score: 90
-outcome_confidence: 71
+confidence_score: 95
+outcome_confidence: 63
 ---
 
 # FEAT-440: TDD Mode for Issue Implementation
@@ -48,14 +48,14 @@ A developer configures `"tdd_mode": true` in their `ll-config.json`. When `ll-pa
 
 ## Acceptance Criteria
 
-- [ ] New `tdd_mode` boolean toggle in `ll-config.json` (default: `false`)
-- [ ] When enabled, `manage-issue` inserts a "Write Tests" phase before implementation
-- [ ] The test-writing phase produces tests that fail against the current codebase (Red)
-- [ ] Red-phase validation uses exit-code + output scan: assert non-zero exit AND scan output for `FAILED` markers (not `ERROR`/`ImportError`/`SyntaxError`)
-- [ ] The implementation phase makes those tests pass (Green)
-- [ ] Standard verification (Phase 4) still runs as a final check
-- [ ] `ll-auto`, `ll-parallel`, and `ll-sprint` all respect the toggle (they invoke `manage-issue` which reads config)
-- [ ] When disabled, behavior is identical to current flow (no regression)
+- [x] New `tdd_mode` boolean toggle in `ll-config.json` (default: `false`)
+- [x] When enabled, `manage-issue` inserts a "Write Tests" phase before implementation
+- [x] The test-writing phase produces tests that fail against the current codebase (Red)
+- [x] Red-phase validation uses exit-code + output scan: assert non-zero exit AND scan output for `FAILED` markers (not `ERROR`/`ImportError`/`SyntaxError`)
+- [x] The implementation phase makes those tests pass (Green)
+- [x] Standard verification (Phase 4) still runs as a final check
+- [x] `ll-auto`, `ll-parallel`, and `ll-sprint` all respect the toggle (they invoke `manage-issue` which reads config)
+- [x] When disabled, behavior is identical to current flow (no regression)
 - [x] Design decision resolved: conditional logic in `manage-issue` (Approach A), `tdd_mode` under `commands` config section
 - [x] Design decision resolved: Red-phase validation via exit-code + output scan (not exit-code only or two-stage)
 
@@ -97,16 +97,16 @@ The Red phase must distinguish valid test failures (assertions fail because code
    - **Invalid Red**: Output contains `ERROR`, `ImportError`, `SyntaxError`, `ModuleNotFoundError`, or collection errors — halt and fix test code before proceeding
 4. If tests **pass** (zero exit code): halt — tests should not pass against unimplemented code
 
-This follows the same pass/fail interpretation pattern used in Phase 4 (`SKILL.md:288-313`) but inverts the success condition and adds output classification.
+This follows the same pass/fail interpretation pattern used in Phase 4 (`SKILL.md:289-313`) but inverts the success condition and adds output classification.
 
 ## Integration Map
 
 ### Files to Modify
-- `skills/manage-issue/SKILL.md:189-285` — Add Phase 3a/3b conditional logic gated on `config.commands.tdd_mode`, following the Phase 2.5 confidence gate skip-condition pattern at lines 153-186
+- `skills/manage-issue/SKILL.md:189-285` — Add Phase 3a/3b conditional logic gated on `config.commands.tdd_mode`, following the Phase 2.5 confidence gate skip-condition pattern at lines 154-186
 - `skills/manage-issue/templates.md:128-168` — Add "Phase 0: Write Tests (Red)" sub-phase inside `## Implementation Phases` section, following the existing phase/success-criteria structure
-- `scripts/little_loops/config.py:268-285` — Add `tdd_mode: bool = False` field to `CommandsConfig` dataclass and `from_dict()` method
-- `scripts/little_loops/config.py:682-690` — Add `"tdd_mode": self._commands.tdd_mode` to `to_dict()` commands dict (required for `{{config.commands.tdd_mode}}` template interpolation via `resolve_variable()` at line 717)
-- `config-schema.json:223-262` — Add `tdd_mode` boolean property to `commands` section (note: `additionalProperties: false` at line 261 blocks unknown keys until explicitly added)
+- `scripts/little_loops/config.py:270-287` — Add `tdd_mode: bool = False` field to `CommandsConfig` dataclass and `from_dict()` method
+- `scripts/little_loops/config.py:689-697` — Add `"tdd_mode": self._commands.tdd_mode` to `to_dict()` commands dict (required for `{{config.commands.tdd_mode}}` template interpolation via `resolve_variable()` at line 724)
+- `config-schema.json:228-266` — Add `tdd_mode` boolean property to `commands` section (note: `additionalProperties: false` at line 266 blocks unknown keys until explicitly added)
 - `skills/configure/areas.md:311-358` — Add `tdd_mode` to the commands config area display so `/ll:configure` shows it
 - `skills/init/interactive.md:852-857` — Add TDD mode option to init wizard impl-hooks mapping
 
@@ -119,14 +119,14 @@ This follows the same pass/fail interpretation pattern used in Phase 4 (`SKILL.m
 - `scripts/little_loops/cli/sprint/run.py` — Uses same two paths (inplace / parallel) unchanged
 
 ### Similar Patterns
-- **Phase 2.5 Confidence Gate** (`SKILL.md:153-186`) — Closest pattern: config boolean (`confidence_gate.enabled`) gates entire phase execution with skip-condition header. Model Phase 3a skip-condition after this.
-- **`--gates` flag** (`SKILL.md:254-271`) — Conditional phase gate pauses; same prose-level conditional instruction style
-- **`ConfidenceGateConfig`** (`config.py:252-265`) — Closest dataclass pattern: `enabled: bool = False` with `from_dict()` using `data.get("enabled", False)`
+- **Phase 2.5 Confidence Gate** (`SKILL.md:154-186`) — Closest pattern: config boolean (`confidence_gate.enabled`) gates entire phase execution with skip-condition header. Model Phase 3a skip-condition after this.
+- **`--gates` flag** (`SKILL.md:255-271`) — Conditional phase gate pauses; same prose-level conditional instruction style
+- **`ConfidenceGateConfig`** (`config.py:252-267`) — Closest dataclass pattern: `enabled: bool = False` with `from_dict()` using `data.get("enabled", False)`
 - **`p0_sequential`** (`config.py:210-211`) — Flat boolean field pattern on a config dataclass
 - `commands.pre_implement` / `commands.post_implement` (`config.py:272-273`) — **Note: these are dead code** — defined in config but no skill currently invokes them. Do not model after these.
 
 ### Tests
-- `scripts/tests/test_config.py:231-258` — Add `tdd_mode` assertions to existing `TestCommandsConfig.test_from_dict_with_all_fields()` and `test_from_dict_with_defaults()`, following the same pattern used for `pre_implement`, `confidence_gate`, etc.
+- `scripts/tests/test_config.py:241-258` — Add `tdd_mode` assertions to existing `TestCommandsConfig.test_from_dict_with_all_fields()` and `test_from_dict_with_defaults()`, following the same pattern used for `pre_implement`, `confidence_gate`, etc.
 
 ### Documentation
 - `docs/reference/CONFIGURATION.md` — Document `tdd_mode` config option in commands section
@@ -142,8 +142,8 @@ This follows the same pass/fail interpretation pattern used in Phase 4 (`SKILL.m
 ### Phase 1: Config Infrastructure
 1. Add `tdd_mode: bool = False` field to `CommandsConfig` dataclass at `config.py:270` (after `confidence_gate`)
 2. Add `tdd_mode=data.get("tdd_mode", False)` to `CommandsConfig.from_dict()` at `config.py:282`
-3. Add `"tdd_mode": self._commands.tdd_mode` to `BRConfig.to_dict()` commands dict at `config.py:688`
-4. Add `"tdd_mode": { "type": "boolean", "description": "Enable TDD mode (test-first) for manage-issue", "default": false }` to `config-schema.json` commands properties (before the closing `additionalProperties: false` at line 261)
+3. Add `"tdd_mode": self._commands.tdd_mode` to `BRConfig.to_dict()` commands dict at `config.py:689`
+4. Add `"tdd_mode": { "type": "boolean", "description": "Enable TDD mode (test-first) for manage-issue", "default": false }` to `config-schema.json` commands properties (before the closing `additionalProperties: false` at line 266)
 5. Add `tdd_mode` assertions to `TestCommandsConfig` tests at `test_config.py:231-258`: assert default is `False` and explicit `True` is parsed
 
 ### Phase 2: Plan Template
@@ -206,6 +206,27 @@ This follows the same pass/fail interpretation pattern used in Phase 4 (`SKILL.m
 
 `feature`, `captured`, `workflow`, `tdd`, `manage-issue`
 
+## Resolution
+
+**Action**: Implemented
+**Date**: 2026-02-25
+
+### Changes Made
+- `scripts/little_loops/config.py` — Added `tdd_mode: bool = False` to `CommandsConfig`, `from_dict()`, and `to_dict()`
+- `config-schema.json` — Added `tdd_mode` boolean property to `commands` schema
+- `scripts/tests/test_config.py` — Added `tdd_mode` assertions to both `TestCommandsConfig` test methods
+- `skills/manage-issue/SKILL.md` — Added Phase 3a (Write Tests — Red) with skip-condition and Red-phase validation, updated Phase 3 heading for TDD mode
+- `skills/manage-issue/templates.md` — Added Phase 0: Write Tests (Red) to plan template with TDD mode guidance
+- `skills/configure/areas.md` — Added `tdd_mode` to commands area display and configuration questions
+- `skills/init/interactive.md` — Added TDD Mode question and mapping to init wizard
+- `docs/reference/CONFIGURATION.md` — Documented `tdd_mode` config option with description
+- `docs/reference/API.md` — Updated `CommandsConfig` description to include `tdd_mode`
+
+### Verification
+- 2954 tests passed (0 failures)
+- Type check clean on `config.py`
+- No new lint issues introduced
+
 ## Session Log
 - `/ll:capture-issue` - 2026-02-18T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dde3da3f-b9fb-4092-9940-a33135c3b17f.jsonl`
 - `/ll:format-issue` - 2026-02-22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6952751c-b227-418e-a8d3-d419ea5b0bf6.jsonl`
@@ -217,7 +238,7 @@ This follows the same pass/fail interpretation pattern used in Phase 4 (`SKILL.m
 
 ## Status
 
-**Open** | Created: 2026-02-18 | Priority: P3
+**Completed** | Created: 2026-02-18 | Completed: 2026-02-25 | Priority: P4
 
 ---
 

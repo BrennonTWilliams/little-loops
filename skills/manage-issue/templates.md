@@ -127,6 +127,30 @@ Write the plan using this structure (sections are recommended, skip if not appli
 
 ## Implementation Phases
 
+> **TDD Mode** (when `config.commands.tdd_mode` is `true`): Include "Phase 0: Write Tests (Red)" as the first implementation phase. This phase writes failing tests derived from the issue's acceptance criteria and the plan's success criteria. The tests must fail against the current codebase (Red). Subsequent phases then implement code to make these tests pass (Green).
+
+### Phase 0: Write Tests — Red *(TDD mode only, skip if `config.commands.tdd_mode` is `false`)*
+
+#### Overview
+Write tests that encode the issue's acceptance criteria. These tests must FAIL against the current codebase.
+
+#### Test Files
+- [List specific test files to create/modify]
+- [List test function names and what each asserts]
+
+#### Red Validation
+After writing tests, run: `{{config.project.test_cmd}} [test_files] -v`
+- **Expected**: Non-zero exit code with `FAILED` markers (assertion failures)
+- **Invalid**: `ERROR`, `ImportError`, `SyntaxError`, `ModuleNotFoundError` — fix test code before proceeding
+
+#### Success Criteria
+
+**Automated Verification**:
+- [ ] Tests fail with assertion errors (not import/syntax errors): `{{config.project.test_cmd}} [test_files] -v` returns non-zero exit
+- [ ] Test output contains `FAILED` (not `ERROR`/`ImportError`/`SyntaxError`)
+
+---
+
 ### Phase 1: [Descriptive Name]
 
 #### Overview

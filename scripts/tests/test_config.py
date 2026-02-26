@@ -248,6 +248,7 @@ class TestCommandsConfig:
             "post_implement": "npm run build",
             "custom_verification": ["npm test", "npm run e2e"],
             "confidence_gate": {"enabled": True, "threshold": 90},
+            "tdd_mode": True,
         }
         config = CommandsConfig.from_dict(data)
 
@@ -256,6 +257,7 @@ class TestCommandsConfig:
         assert config.custom_verification == ["npm test", "npm run e2e"]
         assert config.confidence_gate.enabled is True
         assert config.confidence_gate.threshold == 90
+        assert config.tdd_mode is True
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating CommandsConfig with default values."""
@@ -266,6 +268,7 @@ class TestCommandsConfig:
         assert config.custom_verification == []
         assert config.confidence_gate.enabled is False
         assert config.confidence_gate.threshold == 85
+        assert config.tdd_mode is False
 
 
 class TestScanConfig:

@@ -275,6 +275,7 @@ class CommandsConfig:
     post_implement: str | None = None
     custom_verification: list[str] = field(default_factory=list)
     confidence_gate: ConfidenceGateConfig = field(default_factory=ConfidenceGateConfig)
+    tdd_mode: bool = False
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CommandsConfig:
@@ -284,6 +285,7 @@ class CommandsConfig:
             post_implement=data.get("post_implement"),
             custom_verification=data.get("custom_verification", []),
             confidence_gate=ConfidenceGateConfig.from_dict(data.get("confidence_gate", {})),
+            tdd_mode=data.get("tdd_mode", False),
         )
 
 
@@ -694,6 +696,7 @@ class BRConfig:
                     "enabled": self._commands.confidence_gate.enabled,
                     "threshold": self._commands.confidence_gate.threshold,
                 },
+                "tdd_mode": self._commands.tdd_mode,
             },
             "scan": {
                 "focus_dirs": self._scan.focus_dirs,

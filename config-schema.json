@@ -261,6 +261,11 @@
             }
           },
           "additionalProperties": false
+        },
+        "tdd_mode": {
+          "type": "boolean",
+          "description": "Enable TDD mode: write failing tests before implementation in manage-issue",
+          "default": false
         }
       },
       "additionalProperties": false

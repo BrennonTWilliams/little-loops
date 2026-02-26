@@ -85,7 +85,7 @@ BRConfig(project_root: Path)
 | `issues` | `IssuesConfig` | Issue management settings |
 | `automation` | `AutomationConfig` | Sequential automation settings |
 | `parallel` | `ParallelAutomationConfig` | Parallel automation settings |
-| `commands` | `CommandsConfig` | Command customization (includes `confidence_gate: ConfidenceGateConfig`) |
+| `commands` | `CommandsConfig` | Command customization (includes `confidence_gate: ConfidenceGateConfig`, `tdd_mode: bool`) |
 | `scan` | `ScanConfig` | Codebase scanning settings |
 | `issue_categories` | `list[str]` | List of category names |
 | `issue_priorities` | `list[str]` | List of priority prefixes |

@@ -856,6 +856,21 @@ questions:
 
 Use the actual `test_cmd` and `lint_cmd` values selected in Round 1 for these commands.
 
+```yaml
+  - header: "TDD Mode"
+    question: "Enable test-first (TDD) mode for issue implementation?"
+    options:
+      - label: "Skip (Recommended)"
+        description: "Standard implementation flow — tests alongside code"
+      - label: "Enable TDD"
+        description: "Write failing tests first, then implement to pass them"
+    multiSelect: false
+```
+
+**TDD Mode mapping:**
+- "Skip" → omit `commands.tdd_mode` (defaults to `false`)
+- "Enable TDD" → `{ "commands": { "tdd_mode": true } }`
+
 ## Round 9: Continuation Behavior (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**

@@ -317,9 +317,10 @@ Current Commands Configuration
   confidence_gate:
     enabled:        {{config.commands.confidence_gate.enabled}}
     threshold:      {{config.commands.confidence_gate.threshold}}
+  tdd_mode:         {{config.commands.tdd_mode}}
 ```
 
-### Round 1 (3 questions)
+### Round 1 (4 questions)
 
 ```yaml
 questions:
@@ -354,6 +355,17 @@ questions:
         description: "85 (default)"
       - label: "95"
         description: "95 (strict)"
+    multiSelect: false
+
+  - header: "TDD"
+    question: "Enable TDD mode (test-first) for manage-issue?"
+    options:
+      - label: "{{current tdd_mode}} (keep)"
+        description: "Keep current setting"
+      - label: "true"
+        description: "Yes, write tests before implementation (Red/Green)"
+      - label: "false"
+        description: "No, standard implementation flow (default)"
     multiSelect: false
 ```
 
