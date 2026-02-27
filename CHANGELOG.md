@@ -12,6 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.24.0] - 2026-02-26
+
+### Added
+
+- **Grouped ll-issues list output** - `ll-issues list` now groups output by type (BUG, FEAT, ENH) with section counts and a total footer; added `--flat` flag for backward-compatible scripting output (ENH-509)
+
+### Other
+
+- docs(architecture): fix outdated counts and CLI directory structure (54f1f83)
+- style: fix lint and format issues in scripts (3fec926)
+- chore(issues): tradeoff review of 23 active issues (7ba83dd)
+
+[1.24.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.23.0...v1.24.0
+
 ## [1.23.0] - 2026-02-26
 
 ### Added
