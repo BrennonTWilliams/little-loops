@@ -14,11 +14,13 @@ from little_loops.config import (
     CategoryConfig,
     CommandsConfig,
     ConfidenceGateConfig,
+    DependencyMappingConfig,
     GitHubSyncConfig,
     IssuesConfig,
     ParallelAutomationConfig,
     ProjectConfig,
     ScanConfig,
+    ScoringWeightsConfig,
     SprintsConfig,
     SyncConfig,
 )
@@ -863,3 +865,117 @@ class TestBRConfigSyncIntegration:
 
         assert config.resolve_variable("sync.enabled") == "True"
         assert config.resolve_variable("sync.provider") == "github"
+
+
+class TestScoringWeightsConfig:
+    """Tests for ScoringWeightsConfig dataclass."""
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating ScoringWeightsConfig with default values."""
+        config = ScoringWeightsConfig.from_dict({})
+        assert config.semantic == 0.5
+        assert config.section == 0.3
+        assert config.type == 0.2
+
+    def test_from_dict_with_all_fields(self) -> None:
+        """Test creating ScoringWeightsConfig with all fields specified."""
+        data = {"semantic": 0.6, "section": 0.2, "type": 0.2}
+        config = ScoringWeightsConfig.from_dict(data)
+        assert config.semantic == 0.6
+        assert config.section == 0.2
+        assert config.type == 0.2
+
+
+class TestDependencyMappingConfig:
+    """Tests for DependencyMappingConfig dataclass."""
+
+    def test_from_dict_with_defaults(self) -> None:
+        """Test creating DependencyMappingConfig with default values."""
+        config = DependencyMappingConfig.from_dict({})
+        assert config.overlap_min_files == 2
+        assert config.overlap_min_ratio == 0.25
+        assert config.min_directory_depth == 2
+        assert config.conflict_threshold == 0.4
+        assert config.high_conflict_threshold == 0.7
+        assert config.confidence_modifier == 0.5
+        assert config.scoring_weights.semantic == 0.5
+        assert config.scoring_weights.section == 0.3
+        assert config.scoring_weights.type == 0.2
+        assert "__init__.py" in config.exclude_common_files
+        assert "pyproject.toml" in config.exclude_common_files
+
+    def test_from_dict_with_all_fields(self) -> None:
+        """Test creating DependencyMappingConfig with all fields specified."""
+        data = {
+            "overlap_min_files": 3,
+            "overlap_min_ratio": 0.5,
+            "min_directory_depth": 3,
+            "conflict_threshold": 0.5,
+            "high_conflict_threshold": 0.8,
+            "confidence_modifier": 0.3,
+            "scoring_weights": {"semantic": 0.7, "section": 0.2, "type": 0.1},
+            "exclude_common_files": ["README.md"],
+        }
+        config = DependencyMappingConfig.from_dict(data)
+        assert config.overlap_min_files == 3
+        assert config.overlap_min_ratio == 0.5
+        assert config.min_directory_depth == 3
+        assert config.conflict_threshold == 0.5
+        assert config.high_conflict_threshold == 0.8
+        assert config.confidence_modifier == 0.3
+        assert config.scoring_weights.semantic == 0.7
+        assert config.scoring_weights.section == 0.2
+        assert config.scoring_weights.type == 0.1
+        assert config.exclude_common_files == ["README.md"]
+
+    def test_from_dict_partial_data(self) -> None:
+        """Test creating DependencyMappingConfig with partial data."""
+        data = {"conflict_threshold": 0.6}
+        config = DependencyMappingConfig.from_dict(data)
+        assert config.conflict_threshold == 0.6
+        # Other fields should use defaults
+        assert config.overlap_min_files == 2
+        assert config.scoring_weights.semantic == 0.5
+
+    def test_brconfig_defaults(self, temp_project_dir: Path) -> None:
+        """Test BRConfig loads dependency_mapping with defaults."""
+        config = BRConfig(temp_project_dir)
+        assert config.dependency_mapping.overlap_min_files == 2
+        assert config.dependency_mapping.conflict_threshold == 0.4
+
+    def test_brconfig_loads_from_file(
+        self, temp_project_dir: Path, sample_config: dict[str, Any]
+    ) -> None:
+        """Test BRConfig loads dependency_mapping from config file."""
+        sample_config["dependency_mapping"] = {
+            "overlap_min_files": 5,
+            "conflict_threshold": 0.6,
+            "scoring_weights": {"semantic": 0.8, "section": 0.1, "type": 0.1},
+        }
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.dependency_mapping.overlap_min_files == 5
+        assert config.dependency_mapping.conflict_threshold == 0.6
+        assert config.dependency_mapping.scoring_weights.semantic == 0.8
+
+    def test_dependency_mapping_in_to_dict(self, temp_project_dir: Path) -> None:
+        """Test dependency_mapping config appears in to_dict output."""
+        config = BRConfig(temp_project_dir)
+        result = config.to_dict()
+
+        assert "dependency_mapping" in result
+        dm = result["dependency_mapping"]
+        assert "overlap_min_files" in dm
+        assert "conflict_threshold" in dm
+        assert "scoring_weights" in dm
+        assert dm["scoring_weights"]["semantic"] == 0.5
+
+    def test_resolve_variable_dependency_mapping(
+        self, temp_project_dir: Path
+    ) -> None:
+        """Test resolve_variable works for dependency_mapping config paths."""
+        config = BRConfig(temp_project_dir)
+        assert config.resolve_variable("dependency_mapping.conflict_threshold") == "0.4"
+        assert config.resolve_variable("dependency_mapping.overlap_min_files") == "2"

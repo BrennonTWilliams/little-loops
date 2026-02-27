@@ -102,7 +102,9 @@ class ParallelOrchestrator:
 
         # Overlap detection (ENH-143)
         self.overlap_detector: OverlapDetector | None = (
-            OverlapDetector() if parallel_config.overlap_detection else None
+            OverlapDetector(config=br_config.dependency_mapping)
+            if parallel_config.overlap_detection
+            else None
         )
         # Track deferred issues for re-check after active issues complete
         self._deferred_issues: list[IssueInfo] = []

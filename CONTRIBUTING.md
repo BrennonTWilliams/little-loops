@@ -198,13 +198,14 @@ little-loops/
         ├── issue_parser.py
         ├── issue_discovery/     # Issue discovery and deduplication (package)
         ├── issue_lifecycle.py
-        ├── issue_history.py     # Issue history and statistics
+        ├── issue_history/       # Issue history and statistics (package)
         ├── git_operations.py
         ├── work_verification.py
         ├── sprint.py            # Sprint planning and execution
         ├── sync.py              # GitHub Issues sync
         ├── goals_parser.py      # Goals file parsing
         ├── subprocess_utils.py
+        ├── text_utils.py        # Text processing utilities
         ├── logger.py
         ├── logo.py              # CLI logo display
         ├── dependency_graph.py  # Dependency graph construction

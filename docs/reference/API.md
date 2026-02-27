@@ -3,9 +3,9 @@
 This document provides the public API for the little-loops Python package.
 
 > **Related Documentation:**
-> - [Architecture Overview](ARCHITECTURE.md) - System design and diagrams
-> - [Troubleshooting](TROUBLESHOOTING.md) - Common issues and diagnostic commands
-> - [README](../README.md) - Installation and quick start
+> - [Architecture Overview](../ARCHITECTURE.md) - System design and diagrams
+> - [Troubleshooting](../development/TROUBLESHOOTING.md) - Common issues and diagnostic commands
+> - [README](../../README.md) - Installation and quick start
 
 ## Installation
 

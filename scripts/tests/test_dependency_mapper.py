@@ -1476,3 +1476,77 @@ class TestMainCLIFix:
         assert result == 0
         captured = capsys.readouterr()  # type: ignore[union-attr]
         assert "No fixable issues found" in captured.out
+
+
+# =============================================================================
+# Configurable thresholds tests (ENH-514)
+# =============================================================================
+
+
+class TestConfigurableThresholds:
+    """Tests for configurable threshold support via DependencyMappingConfig."""
+
+    def _make_config(self, **kwargs):  # type: ignore[no-untyped-def]
+        """Helper to create a DependencyMappingConfig with overrides."""
+        from little_loops.config import DependencyMappingConfig
+
+        return DependencyMappingConfig.from_dict(kwargs)
+
+    def test_compute_conflict_score_custom_weights(self) -> None:
+        """Custom scoring weights should change conflict score."""
+        content_a = "Add tooltip to header section"
+        content_b = "Add badge to header toolbar"
+
+        # Default weights
+        default_score = compute_conflict_score(content_a, content_b)
+
+        # Zero out section weight, increase semantic weight
+        config = self._make_config(
+            scoring_weights={"semantic": 0.8, "section": 0.0, "type": 0.2}
+        )
+        custom_score = compute_conflict_score(content_a, content_b, config=config)
+
+        # Scores should differ when weights change
+        assert default_score != custom_score
+
+    def test_find_file_overlaps_custom_conflict_threshold(self) -> None:
+        """Custom conflict threshold should change what's parallel-safe."""
+        issues = [
+            make_issue("FEAT-001", priority="P1"),
+            make_issue("FEAT-002", priority="P2"),
+        ]
+        contents = {
+            "FEAT-001": "Fix `scripts/config.py`",
+            "FEAT-002": "Update `scripts/config.py`",
+        }
+
+        # Default threshold 0.4 — score might be above or below
+        proposals_default, safe_default = find_file_overlaps(issues, contents)
+
+        # Very high threshold — everything should be parallel-safe
+        config = self._make_config(conflict_threshold=1.0)
+        proposals_high, safe_high = find_file_overlaps(issues, contents, config=config)
+        assert len(proposals_high) == 0
+        assert len(safe_high) > 0
+
+    def test_find_file_overlaps_custom_confidence_modifier(self) -> None:
+        """Custom confidence modifier should affect proposal confidence."""
+        issues = [
+            make_issue("FEAT-001", priority="P1"),
+            make_issue("FEAT-002", priority="P1"),  # Same priority triggers modifier
+        ]
+        contents = {
+            "FEAT-001": "Add button to ActivityCard in day-columns.tsx",
+            "FEAT-002": "Add star toggle to ActivityCard in day-columns.tsx",
+        }
+
+        # Very low threshold so we get proposals
+        config_low_mod = self._make_config(
+            conflict_threshold=0.0, confidence_modifier=0.1
+        )
+        proposals, _ = find_file_overlaps(issues, contents, config=config_low_mod)
+
+        # With such a low modifier, confidence should be very low
+        if proposals:
+            for p in proposals:
+                assert p.confidence <= 0.5  # Reduced by modifier

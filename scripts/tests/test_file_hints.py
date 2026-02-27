@@ -457,3 +457,85 @@ class TestThresholdConstants:
     def test_min_directory_depth(self) -> None:
         """MIN_DIRECTORY_DEPTH should be 2."""
         assert MIN_DIRECTORY_DEPTH == 2
+
+
+class TestConfigurableThresholds:
+    """Tests for configurable threshold support via DependencyMappingConfig."""
+
+    def _make_config(self, **kwargs):  # type: ignore[no-untyped-def]
+        """Helper to create a DependencyMappingConfig with overrides."""
+        from little_loops.config import DependencyMappingConfig
+
+        return DependencyMappingConfig.from_dict(kwargs)
+
+    def test_overlaps_with_stricter_min_files(self) -> None:
+        """Raising min_files and ratio should prevent overlap when default would trigger."""
+        # 2 shared files out of 3 each → count=2 meets default min_files=2
+        h1 = FileHints(files={"src/a.py", "src/b.py", "src/x.py"}, issue_id="A")
+        h2 = FileHints(files={"src/a.py", "src/b.py", "src/c.py"}, issue_id="B")
+        assert h1.overlaps_with(h2) is True
+
+        # Raising min_files=3 and ratio=0.7 prevents overlap:
+        # count=2 < 3, ratio=2/3=0.667 < 0.7 → both branches of OR fail
+        config = self._make_config(overlap_min_files=3, overlap_min_ratio=0.7)
+        assert h1.overlaps_with(h2, config=config) is False
+
+    def test_overlaps_with_stricter_ratio(self) -> None:
+        """Raising ratio threshold should prevent overlap from ratio trigger."""
+        # 1 shared out of 4 each: count=1 < min_files=2, ratio=1/4=0.25 >= 0.25 → True
+        h1 = FileHints(files={"src/a.py", "src/b.py", "src/c.py", "src/d.py"}, issue_id="A")
+        h2 = FileHints(files={"src/a.py", "src/e.py", "src/f.py", "src/g.py"}, issue_id="B")
+        assert h1.overlaps_with(h2) is True
+
+        # Raising ratio to 0.5: count=1 < 2, ratio=0.25 < 0.5 → both fail → False
+        config = self._make_config(overlap_min_ratio=0.5)
+        assert h1.overlaps_with(h2, config=config) is False
+
+    def test_overlaps_with_custom_exclude(self) -> None:
+        """Custom exclude list should filter different files."""
+        h1 = FileHints(files={"src/a.py", "src/b.py"}, issue_id="A")
+        h2 = FileHints(files={"src/a.py", "src/b.py"}, issue_id="B")
+
+        # With default, a.py and b.py both match
+        assert h1.overlaps_with(h2) is True
+
+        # If we exclude a.py and b.py, nothing matches
+        config = self._make_config(exclude_common_files=["a.py", "b.py"])
+        assert h1.overlaps_with(h2, config=config) is False
+
+    def test_overlaps_with_lower_directory_depth(self) -> None:
+        """Lowering min depth should detect overlap on shallow directories."""
+        h1 = FileHints(directories={"scripts/"}, issue_id="A")
+        h2 = FileHints(directories={"scripts/"}, issue_id="B")
+
+        # Default min_depth=2 prevents depth-1 directory overlap
+        assert h1.overlaps_with(h2) is False
+
+        # Lowering to depth 1 should allow it
+        config = self._make_config(min_directory_depth=1)
+        assert h1.overlaps_with(h2, config=config) is True
+
+    def test_get_overlapping_paths_with_config(self) -> None:
+        """get_overlapping_paths should respect config thresholds."""
+        # 2 shared out of 3 each: count=2 >= min_files=2 → overlaps
+        h1 = FileHints(files={"src/a.py", "src/b.py", "src/x.py"}, issue_id="A")
+        h2 = FileHints(files={"src/a.py", "src/b.py", "src/y.py"}, issue_id="B")
+
+        paths = h1.get_overlapping_paths(h2)
+        assert paths == {"src/a.py", "src/b.py"}
+
+        # min_files=3 and ratio=0.7: count=2 < 3, ratio=2/3=0.667 < 0.7 → no overlap
+        config = self._make_config(overlap_min_files=3, overlap_min_ratio=0.7)
+        paths = h1.get_overlapping_paths(h2, config=config)
+        assert "src/a.py" not in paths
+        assert "src/b.py" not in paths
+
+    def test_directories_overlap_with_custom_depth(self) -> None:
+        """_directories_overlap should respect min_depth parameter."""
+        assert _directories_overlap("scripts/", "scripts/", min_depth=1) is True
+        assert _directories_overlap("scripts/", "scripts/", min_depth=2) is False
+
+    def test_file_in_directory_with_custom_depth(self) -> None:
+        """_file_in_directory should respect min_depth parameter."""
+        assert _file_in_directory("scripts/a.py", "scripts/", min_depth=1) is True
+        assert _file_in_directory("scripts/a.py", "scripts/", min_depth=2) is False

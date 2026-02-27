@@ -14,6 +14,7 @@ from typing import TYPE_CHECKING
 from little_loops.parallel.file_hints import FileHints, extract_file_hints
 
 if TYPE_CHECKING:
+    from little_loops.config import DependencyMappingConfig
     from little_loops.issue_parser import IssueInfo
 
 logger = logging.getLogger(__name__)
@@ -59,10 +60,18 @@ class OverlapDetector:
         detector.unregister_issue(issue_id)
     """
 
-    def __init__(self) -> None:
-        """Initialize the overlap detector."""
+    def __init__(
+        self,
+        config: DependencyMappingConfig | None = None,
+    ) -> None:
+        """Initialize the overlap detector.
+
+        Args:
+            config: Optional dependency mapping config for custom thresholds.
+        """
         self._lock = RLock()
         self._active_hints: dict[str, FileHints] = {}
+        self._config = config
 
     def register_issue(self, issue: IssueInfo) -> FileHints:
         """Register an issue as actively being processed.
@@ -113,7 +122,7 @@ class OverlapDetector:
             result = OverlapResult()
 
             for active_id, active_hints in self._active_hints.items():
-                if new_hints.overlaps_with(active_hints):
+                if new_hints.overlaps_with(active_hints, config=self._config):
                     result.has_overlap = True
                     result.overlapping_issues.append(active_id)
                     # Find specific overlapping paths

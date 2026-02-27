@@ -179,7 +179,8 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
 
         if not has_cycles:
             waves = dep_graph.get_execution_waves()
-            waves, contention_notes = refine_waves_for_contention(waves)
+            dep_config = config.dependency_mapping if config else None
+            waves, contention_notes = refine_waves_for_contention(waves, config=dep_config)
 
     print(f"Sprint: {sprint.name}")
     print(f"Description: {sprint.description or '(none)'}")
@@ -199,7 +200,9 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
         from little_loops.dependency_mapper import analyze_dependencies
 
         issue_contents = _build_issue_contents(issue_infos)
-        dep_report = analyze_dependencies(issue_infos, issue_contents, all_known_ids=all_known_ids)
+        dep_report = analyze_dependencies(
+            issue_infos, issue_contents, all_known_ids=all_known_ids, config=dep_config
+        )
 
         # Build wave ordering map so we can filter already-satisfied proposals
         for wave_idx, wave in enumerate(waves):
@@ -239,7 +242,10 @@ def _cmd_sprint_show(args: argparse.Namespace, manager: SprintManager) -> int:
     # Render dependency analysis output
     if dep_report is not None:
         _render_dependency_analysis(
-            dep_report, logger, issue_to_wave=issue_to_wave if issue_to_wave else None
+            dep_report,
+            logger,
+            issue_to_wave=issue_to_wave if issue_to_wave else None,
+            config=dep_config,
         )
 
     if invalid:

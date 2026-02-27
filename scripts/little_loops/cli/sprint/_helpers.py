@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
+    from little_loops.config import DependencyMappingConfig
     from little_loops.dependency_graph import DependencyGraph, WaveContentionNote
     from little_loops.logger import Logger
 
@@ -142,6 +143,8 @@ def _render_dependency_analysis(
     report: Any,
     logger: Logger,
     issue_to_wave: dict[str, int] | None = None,
+    *,
+    config: DependencyMappingConfig | None = None,
 ) -> None:
     """Display dependency analysis results in CLI format.
 
@@ -151,6 +154,7 @@ def _render_dependency_analysis(
         issue_to_wave: Optional mapping of issue_id -> wave index. When
             provided, proposals where the target already runs before the
             source in wave ordering are counted as "already handled".
+        config: Optional dependency mapping config for custom thresholds.
     """
     if not report.proposals and not report.validation.has_issues:
         return
@@ -176,10 +180,12 @@ def _render_dependency_analysis(
 
         if novel:
             logger.warning(f"Found {len(novel)} potential missing dependency(ies):")
+            high_threshold = config.high_conflict_threshold if config else 0.7
+            conflict_threshold = config.conflict_threshold if config else 0.4
             for p in novel:
-                if p.conflict_score >= 0.7:
+                if p.conflict_score >= high_threshold:
                     conflict = "HIGH"
-                elif p.conflict_score >= 0.4:
+                elif p.conflict_score >= conflict_threshold:
                     conflict = "MEDIUM"
                 else:
                     conflict = "LOW"

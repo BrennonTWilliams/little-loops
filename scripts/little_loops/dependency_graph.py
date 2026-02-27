@@ -12,6 +12,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
+    from little_loops.config import DependencyMappingConfig
     from little_loops.issue_parser import IssueInfo
 
 logger = logging.getLogger(__name__)
@@ -338,6 +339,8 @@ class DependencyGraph:
 
 def refine_waves_for_contention(
     waves: list[list[IssueInfo]],
+    *,
+    config: DependencyMappingConfig | None = None,
 ) -> tuple[list[list[IssueInfo]], list[WaveContentionNote | None]]:
     """Refine execution waves by splitting on file overlap.
 
@@ -376,7 +379,7 @@ def refine_waves_for_contention(
         conflicts: dict[str, set[str]] = {issue.issue_id: set() for issue in wave}
         for i, a in enumerate(wave):
             for b in wave[i + 1 :]:
-                if hints[a.issue_id].overlaps_with(hints[b.issue_id]):
+                if hints[a.issue_id].overlaps_with(hints[b.issue_id], config=config):
                     conflicts[a.issue_id].add(b.issue_id)
                     conflicts[b.issue_id].add(a.issue_id)
 
@@ -390,7 +393,9 @@ def refine_waves_for_contention(
         contended: set[str] = set()
         for i, a in enumerate(wave):
             for b in wave[i + 1 :]:
-                contended.update(hints[a.issue_id].get_overlapping_paths(hints[b.issue_id]))
+                contended.update(
+                    hints[a.issue_id].get_overlapping_paths(hints[b.issue_id], config=config)
+                )
         contended_paths = sorted(contended)
 
         # Greedy graph coloring — assign each issue the lowest color

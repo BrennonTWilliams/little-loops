@@ -29,6 +29,8 @@ __all__ = [
     "GitHubSyncConfig",
     "ConfidenceGateConfig",
     "SyncConfig",
+    "ScoringWeightsConfig",
+    "DependencyMappingConfig",
     "REQUIRED_CATEGORIES",
     "DEFAULT_CATEGORIES",
 ]
@@ -388,6 +390,99 @@ class SyncConfig:
         )
 
 
+@dataclass
+class ScoringWeightsConfig:
+    """Scoring weights for semantic conflict analysis.
+
+    Weights for the three signals used in compute_conflict_score().
+    Should sum to 1.0 for normalized scoring.
+
+    Attributes:
+        semantic: Weight for semantic target overlap (component/function names)
+        section: Weight for section mention overlap (UI regions)
+        type: Weight for modification type match
+    """
+
+    semantic: float = 0.5
+    section: float = 0.3
+    type: float = 0.2
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> ScoringWeightsConfig:
+        """Create ScoringWeightsConfig from dictionary."""
+        return cls(
+            semantic=data.get("semantic", 0.5),
+            section=data.get("section", 0.3),
+            type=data.get("type", 0.2),
+        )
+
+
+@dataclass
+class DependencyMappingConfig:
+    """Dependency mapping threshold configuration.
+
+    Controls overlap detection sensitivity and conflict scoring thresholds.
+    Default values match the previously hardcoded constants for backwards
+    compatibility.
+
+    Attributes:
+        overlap_min_files: Minimum overlapping files to trigger overlap
+        overlap_min_ratio: Minimum ratio of overlapping files to smaller set
+        min_directory_depth: Minimum path segments for directory overlap
+        conflict_threshold: Below = parallel-safe, above = dependency proposed
+        high_conflict_threshold: Above = HIGH conflict label
+        confidence_modifier: Applied when dependency direction is ambiguous
+        scoring_weights: Weights for semantic/section/type signals
+        exclude_common_files: Infrastructure files excluded from overlap detection
+    """
+
+    overlap_min_files: int = 2
+    overlap_min_ratio: float = 0.25
+    min_directory_depth: int = 2
+    conflict_threshold: float = 0.4
+    high_conflict_threshold: float = 0.7
+    confidence_modifier: float = 0.5
+    scoring_weights: ScoringWeightsConfig = field(default_factory=ScoringWeightsConfig)
+    exclude_common_files: list[str] = field(
+        default_factory=lambda: [
+            "__init__.py",
+            "pyproject.toml",
+            "setup.py",
+            "setup.cfg",
+            "CHANGELOG.md",
+            "README.md",
+            "conftest.py",
+        ]
+    )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> DependencyMappingConfig:
+        """Create DependencyMappingConfig from dictionary."""
+        return cls(
+            overlap_min_files=data.get("overlap_min_files", 2),
+            overlap_min_ratio=data.get("overlap_min_ratio", 0.25),
+            min_directory_depth=data.get("min_directory_depth", 2),
+            conflict_threshold=data.get("conflict_threshold", 0.4),
+            high_conflict_threshold=data.get("high_conflict_threshold", 0.7),
+            confidence_modifier=data.get("confidence_modifier", 0.5),
+            scoring_weights=ScoringWeightsConfig.from_dict(
+                data.get("scoring_weights", {})
+            ),
+            exclude_common_files=data.get(
+                "exclude_common_files",
+                [
+                    "__init__.py",
+                    "pyproject.toml",
+                    "setup.py",
+                    "setup.cfg",
+                    "CHANGELOG.md",
+                    "README.md",
+                    "conftest.py",
+                ],
+            ),
+        )
+
+
 class BRConfig:
     """Main configuration class for little-loops.
 
@@ -436,6 +531,9 @@ class BRConfig:
         self._sprints = SprintsConfig.from_dict(self._raw_config.get("sprints", {}))
         self._loops = LoopsConfig.from_dict(self._raw_config.get("loops", {}))
         self._sync = SyncConfig.from_dict(self._raw_config.get("sync", {}))
+        self._dependency_mapping = DependencyMappingConfig.from_dict(
+            self._raw_config.get("dependency_mapping", {})
+        )
 
     @property
     def project(self) -> ProjectConfig:
@@ -481,6 +579,11 @@ class BRConfig:
     def sync(self) -> SyncConfig:
         """Get sync configuration."""
         return self._sync
+
+    @property
+    def dependency_mapping(self) -> DependencyMappingConfig:
+        """Get dependency mapping configuration."""
+        return self._dependency_mapping
 
     @property
     def repo_path(self) -> Path:
@@ -721,6 +824,20 @@ class BRConfig:
                     "sync_completed": self._sync.github.sync_completed,
                     "state_file": self._sync.github.state_file,
                 },
+            },
+            "dependency_mapping": {
+                "overlap_min_files": self._dependency_mapping.overlap_min_files,
+                "overlap_min_ratio": self._dependency_mapping.overlap_min_ratio,
+                "min_directory_depth": self._dependency_mapping.min_directory_depth,
+                "conflict_threshold": self._dependency_mapping.conflict_threshold,
+                "high_conflict_threshold": self._dependency_mapping.high_conflict_threshold,
+                "confidence_modifier": self._dependency_mapping.confidence_modifier,
+                "scoring_weights": {
+                    "semantic": self._dependency_mapping.scoring_weights.semantic,
+                    "section": self._dependency_mapping.scoring_weights.section,
+                    "type": self._dependency_mapping.scoring_weights.type,
+                },
+                "exclude_common_files": self._dependency_mapping.exclude_common_files,
             },
         }
 

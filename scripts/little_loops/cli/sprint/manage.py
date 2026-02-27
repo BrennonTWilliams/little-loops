@@ -90,7 +90,8 @@ def _cmd_sprint_analyze(args: argparse.Namespace, manager: SprintManager) -> int
 
     # Generate waves and refine for contention
     waves = dep_graph.get_execution_waves()
-    waves, contention_notes = refine_waves_for_contention(waves)
+    dep_config = config.dependency_mapping if config else None
+    waves, contention_notes = refine_waves_for_contention(waves, config=dep_config)
 
     # Extract file hints and detect pairwise conflicts
     hints: dict[str, FileHints] = {}
@@ -101,8 +102,10 @@ def _cmd_sprint_analyze(args: argparse.Namespace, manager: SprintManager) -> int
     conflict_pairs: list[dict[str, Any]] = []
     for i, a in enumerate(issue_infos):
         for b in issue_infos[i + 1 :]:
-            if hints[a.issue_id].overlaps_with(hints[b.issue_id]):
-                overlapping = sorted(hints[a.issue_id].get_overlapping_paths(hints[b.issue_id]))
+            if hints[a.issue_id].overlaps_with(hints[b.issue_id], config=dep_config):
+                overlapping = sorted(
+                    hints[a.issue_id].get_overlapping_paths(hints[b.issue_id], config=dep_config)
+                )
                 conflict_pairs.append(
                     {
                         "issue_a": a.issue_id,

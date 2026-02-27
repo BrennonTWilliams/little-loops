@@ -20,7 +20,7 @@ from little_loops.dependency_graph import DependencyGraph
 from little_loops.text_utils import extract_file_paths
 
 if TYPE_CHECKING:
-    from little_loops.config import BRConfig
+    from little_loops.config import BRConfig, DependencyMappingConfig
     from little_loops.issue_parser import IssueInfo
 
 logger = logging.getLogger(__name__)
@@ -268,17 +268,21 @@ def _classify_modification_type(content: str) -> str:
 def compute_conflict_score(
     content_a: str,
     content_b: str,
+    *,
+    config: DependencyMappingConfig | None = None,
 ) -> float:
     """Compute semantic conflict score between two issues.
 
-    Combines three signals:
-    - Semantic target overlap (component/function names): weight 0.5
-    - Section mention overlap (UI regions): weight 0.3
-    - Modification type match: weight 0.2
+    Combines three signals with configurable weights:
+    - Semantic target overlap (component/function names)
+    - Section mention overlap (UI regions)
+    - Modification type match
 
     Args:
         content_a: First issue's file content
         content_b: Second issue's file content
+        config: Optional dependency mapping config for custom scoring weights.
+            Falls back to default weights (0.5/0.3/0.2) when not provided.
 
     Returns:
         Conflict score from 0.0 (parallel-safe) to 1.0 (definite conflict)
@@ -291,6 +295,11 @@ def compute_conflict_score(
 
     type_a = _classify_modification_type(content_a)
     type_b = _classify_modification_type(content_b)
+
+    # Resolve scoring weights from config or defaults
+    w_semantic = config.scoring_weights.semantic if config else 0.5
+    w_section = config.scoring_weights.section if config else 0.3
+    w_type = config.scoring_weights.type if config else 0.2
 
     # Signal 1: Semantic target overlap (0.0 - 1.0)
     if targets_a and targets_b:
@@ -308,12 +317,14 @@ def compute_conflict_score(
     # Signal 3: Modification type match (0.0 or 1.0)
     type_score = 1.0 if type_a == type_b else 0.0
 
-    return round(target_score * 0.5 + section_score * 0.3 + type_score * 0.2, 2)
+    return round(target_score * w_semantic + section_score * w_section + type_score * w_type, 2)
 
 
 def find_file_overlaps(
     issues: list[IssueInfo],
     issue_contents: dict[str, str],
+    *,
+    config: DependencyMappingConfig | None = None,
 ) -> tuple[list[DependencyProposal], list[ParallelSafePair]]:
     """Find issues that reference overlapping files and propose dependencies.
 
@@ -326,6 +337,8 @@ def find_file_overlaps(
     Args:
         issues: List of parsed issue objects
         issue_contents: Mapping from issue_id to file content
+        config: Optional dependency mapping config for custom thresholds.
+            Falls back to hardcoded defaults when not provided.
 
     Returns:
         Tuple of (proposed dependencies, parallel-safe pairs)
@@ -362,12 +375,15 @@ def find_file_overlaps(
 
             content_a = issue_contents.get(id_a, "")
             content_b = issue_contents.get(id_b, "")
-            conflict = compute_conflict_score(content_a, content_b)
+            conflict = compute_conflict_score(content_a, content_b, config=config)
 
             overlap_list = sorted(overlap)
 
+            # Resolve conflict threshold from config or default
+            conflict_threshold = config.conflict_threshold if config else 0.4
+
             # Low-conflict pairs are parallel-safe
-            if conflict < 0.4:
+            if conflict < conflict_threshold:
                 sections_a = _extract_section_mentions(content_a)
                 sections_b = _extract_section_mentions(content_b)
                 if sections_a and sections_b:
@@ -418,7 +434,9 @@ def find_file_overlaps(
                         target_id, source_id = id_a, id_b
                     else:
                         target_id, source_id = id_b, id_a
-                    confidence_modifier = 0.5
+                    confidence_modifier = (
+                        config.confidence_modifier if config else 0.5
+                    )
 
             min_paths = min(len(issue_paths[id_a]), len(issue_paths[id_b]))
             confidence = len(overlap) / min_paths if min_paths > 0 else 0.0
@@ -513,6 +531,8 @@ def analyze_dependencies(
     issue_contents: dict[str, str],
     completed_ids: set[str] | None = None,
     all_known_ids: set[str] | None = None,
+    *,
+    config: DependencyMappingConfig | None = None,
 ) -> DependencyReport:
     """Run full dependency analysis: discovery and validation.
 
@@ -521,11 +541,12 @@ def analyze_dependencies(
         issue_contents: Mapping from issue_id to file content
         completed_ids: Set of completed issue IDs
         all_known_ids: Set of all issue IDs that exist on disk
+        config: Optional dependency mapping config for custom thresholds.
 
     Returns:
         Comprehensive dependency report
     """
-    proposals, parallel_safe = find_file_overlaps(issues, issue_contents)
+    proposals, parallel_safe = find_file_overlaps(issues, issue_contents, config=config)
     validation = validate_dependencies(issues, completed_ids, all_known_ids)
 
     existing_dep_count = sum(len(issue.blocked_by) for issue in issues)
@@ -539,11 +560,16 @@ def analyze_dependencies(
     )
 
 
-def format_report(report: DependencyReport) -> str:
+def format_report(
+    report: DependencyReport,
+    *,
+    config: DependencyMappingConfig | None = None,
+) -> str:
     """Format a dependency report as human-readable markdown.
 
     Args:
         report: The analysis report to format
+        config: Optional dependency mapping config for custom thresholds.
 
     Returns:
         Markdown-formatted report string
@@ -569,10 +595,12 @@ def format_report(report: DependencyReport) -> str:
         lines.append(
             "|---|-----------------|-----------------|--------|----------|------------|-----------|"
         )
+        high_threshold = config.high_conflict_threshold if config else 0.7
+        conflict_threshold = config.conflict_threshold if config else 0.4
         for i, p in enumerate(report.proposals, 1):
-            if p.conflict_score >= 0.7:
+            if p.conflict_score >= high_threshold:
                 conflict_level = "HIGH"
-            elif p.conflict_score >= 0.4:
+            elif p.conflict_score >= conflict_threshold:
                 conflict_level = "MEDIUM"
             else:
                 conflict_level = "LOW"
@@ -1204,8 +1232,13 @@ Examples:
         _dm_config = None
     all_known_ids = gather_all_issue_ids(issues_dir, config=_dm_config)
 
+    # Load dependency mapping config
+    dep_config = _dm_config.dependency_mapping if _dm_config else None
+
     if args.command == "analyze":
-        report = analyze_dependencies(issues, issue_contents, completed_ids, all_known_ids)
+        report = analyze_dependencies(
+            issues, issue_contents, completed_ids, all_known_ids, config=dep_config
+        )
 
         if args.format == "json":
             data = {
@@ -1243,7 +1276,7 @@ Examples:
             }
             print(_json.dumps(data, indent=2))
         else:
-            print(format_report(report))
+            print(format_report(report, config=dep_config))
             if args.graph:
                 print()
                 print("## Dependency Graph")

@@ -147,8 +147,11 @@ def _cmd_sprint_run(
         from little_loops.dependency_mapper import analyze_dependencies
 
         issue_contents = _build_issue_contents(issue_infos)
-        dep_report = analyze_dependencies(issue_infos, issue_contents, all_known_ids=all_known_ids)
-        _render_dependency_analysis(dep_report, logger)
+        dep_config = config.dependency_mapping
+        dep_report = analyze_dependencies(
+            issue_infos, issue_contents, all_known_ids=all_known_ids, config=dep_config
+        )
+        _render_dependency_analysis(dep_report, logger, config=dep_config)
 
     # Build dependency graph
     dep_graph = DependencyGraph.from_issues(issue_infos, all_known_ids=all_known_ids)
@@ -168,7 +171,9 @@ def _cmd_sprint_run(
         return 1
 
     # Refine waves for file overlap (ENH-306)
-    waves, contention_notes = refine_waves_for_contention(waves)
+    waves, contention_notes = refine_waves_for_contention(
+        waves, config=config.dependency_mapping
+    )
 
     # Display execution plan
     logger.info(f"Running sprint: {sprint.name}")

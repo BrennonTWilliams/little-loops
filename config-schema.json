@@ -585,6 +585,81 @@
       },
       "additionalProperties": false
     },
+    "dependency_mapping": {
+      "type": "object",
+      "description": "Dependency mapping threshold configuration for overlap detection and conflict scoring",
+      "properties": {
+        "overlap_min_files": {
+          "type": "integer",
+          "description": "Minimum overlapping files to trigger overlap detection",
+          "default": 2,
+          "minimum": 1
+        },
+        "overlap_min_ratio": {
+          "type": "number",
+          "description": "Minimum ratio of overlapping files to smaller set",
+          "default": 0.25,
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "min_directory_depth": {
+          "type": "integer",
+          "description": "Minimum path segments for directory overlap (e.g., src/components/ = 2)",
+          "default": 2,
+          "minimum": 1
+        },
+        "conflict_threshold": {
+          "type": "number",
+          "description": "Conflict score cutoff: below = parallel-safe, above = dependency proposed",
+          "default": 0.4,
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "high_conflict_threshold": {
+          "type": "number",
+          "description": "Conflict score above which issues are labeled HIGH conflict",
+          "default": 0.7,
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "confidence_modifier": {
+          "type": "number",
+          "description": "Confidence reduction applied when dependency direction is ambiguous",
+          "default": 0.5,
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "scoring_weights": {
+          "type": "object",
+          "description": "Weights for semantic conflict scoring signals (should sum to 1.0)",
+          "properties": {
+            "semantic": {
+              "type": "number",
+              "description": "Weight for semantic target overlap (component/function names)",
+              "default": 0.5
+            },
+            "section": {
+              "type": "number",
+              "description": "Weight for section mention overlap (UI regions)",
+              "default": 0.3
+            },
+            "type": {
+              "type": "number",
+              "description": "Weight for modification type match",
+              "default": 0.2
+            }
+          },
+          "additionalProperties": false
+        },
+        "exclude_common_files": {
+          "type": "array",
+          "description": "Infrastructure files excluded from overlap detection",
+          "items": {"type": "string"},
+          "default": ["__init__.py", "pyproject.toml", "setup.py", "setup.cfg", "CHANGELOG.md", "README.md", "conftest.py"]
+        }
+      },
+      "additionalProperties": false
+    },
     "sync": {
       "type": "object",
       "description": "GitHub Issues synchronization settings (opt-in feature, disabled by default)",
