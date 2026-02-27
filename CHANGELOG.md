@@ -12,6 +12,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.25.0] - 2026-02-27
+
+### Added
+
+- **Configurable dependency mapping thresholds** - All overlap and conflict thresholds now configurable via `ll-config.json` with `DependencyMappingConfig` dataclass and per-project overrides (ENH-514)
+
+### Fixed
+
+- **Impact-effort matrix row labels** - Fixed repeated "IMPACT" labels on every row of the 2×2 ASCII matrix (BUG-508)
+- fix(deps): prune generic keywords from section and type matching to reduce false positives (9fb7605)
+- fix(parallel): add thresholds to overlap detection to reduce false serialization (3f352ef)
+
+### Changed
+
+- **Sprint runner optimization** - Disabled redundant runtime overlap detection in sprint path since wave splitting already guarantees no overlap (ENH-512)
+
+### Other
+
+- docs(api): add text_utils module to API reference (bc28e52)
+- docs: fix outdated directory trees and wrong API doc path (46a37e8)
+
+[1.25.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.24.0...v1.25.0
+
 ## [1.24.0] - 2026-02-26
 
 ### Added
