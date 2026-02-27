@@ -66,11 +66,10 @@ little-loops/
 │   └── plugin.json          # Plugin manifest
 ├── config-schema.json       # JSON Schema for validation
 ├── commands/                # 28 slash command templates
-│   ├── init.md
 │   ├── help.md
 │   ├── check-code.md
 │   ├── run-tests.md
-│   ├── manage-issue.md
+│   ├── scan-codebase.md
 │   ├── normalize-issues.md
 │   └── ...
 ├── agents/                  # 8 specialized agents

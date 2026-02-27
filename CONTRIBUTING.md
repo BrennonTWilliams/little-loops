@@ -148,24 +148,30 @@ little-loops/
 │   └── workflow-automation-proposer/ # Propose automations from patterns
 ├── templates/            # Project-type config templates
 ├── docs/                 # Documentation
-│   ├── API.md                           # Python API reference
 │   ├── ARCHITECTURE.md                  # System design diagrams
-│   ├── CLI-TOOLS-AUDIT.md               # CLI tools audit
-│   ├── COMMANDS.md                      # Command reference
-│   ├── CONFIGURATION.md                 # Configuration reference
-│   ├── E2E_TESTING.md                   # End-to-end testing guide
 │   ├── INDEX.md                         # Documentation index
-│   ├── ISSUE_TEMPLATE.md               # Issue template guide
-│   ├── MERGE-COORDINATOR.md            # Merge coordinator docs
-│   ├── SESSION_HANDOFF.md               # Context management guide
-│   ├── TESTING.md                       # Testing patterns and conventions
-│   ├── TROUBLESHOOTING.md              # Common issues and solutions
-│   ├── claude-cli-integration-mechanics.md
-│   ├── claude-code/                     # Claude Code documentation
-│   ├── demo/                            # Demo materials
-│   ├── demo-repo-rubric.md
 │   ├── generalized-fsm-loop.md         # FSM loop system
-│   └── research/                        # Research documents
+│   ├── reference/                       # Reference documentation
+│   │   ├── API.md                       # Python API reference
+│   │   ├── COMMANDS.md                  # Command reference
+│   │   ├── CONFIGURATION.md             # Configuration reference
+│   │   └── ISSUE_TEMPLATE.md            # Issue template guide
+│   ├── guides/                          # User guides
+│   │   ├── GETTING_STARTED.md           # Getting started guide
+│   │   ├── ISSUE_MANAGEMENT_GUIDE.md    # Issue management workflow
+│   │   ├── LOOPS_GUIDE.md               # Loop creation and paradigms
+│   │   ├── SESSION_HANDOFF.md           # Context management guide
+│   │   └── SPRINT_GUIDE.md             # Sprint planning and execution
+│   ├── development/                     # Developer documentation
+│   │   ├── E2E_TESTING.md              # End-to-end testing guide
+│   │   ├── MERGE-COORDINATOR.md        # Merge coordinator docs
+│   │   ├── TESTING.md                   # Testing patterns and conventions
+│   │   └── TROUBLESHOOTING.md          # Common issues and solutions
+│   ├── research/                        # Research documents
+│   │   ├── CLI-TOOLS-AUDIT.md           # CLI tools audit
+│   │   └── claude-cli-integration-mechanics.md
+│   ├── claude-code/                     # Claude Code documentation
+│   └── demo/                            # Demo materials
 └── scripts/              # Python CLI tools
     ├── pyproject.toml    # Package configuration
     ├── tests/            # Test suite
@@ -175,12 +181,13 @@ little-loops/
         │   ├── auto.py
         │   ├── docs.py
         │   ├── history.py
-        │   ├── loop.py
         │   ├── messages.py
         │   ├── next_id.py
         │   ├── parallel.py
-        │   ├── sprint.py
-        │   └── sync.py
+        │   ├── sync.py
+        │   ├── loop/            # ll-loop subcommands
+        │   ├── sprint/          # ll-sprint subcommands
+        │   └── issues/          # ll-issues subcommands
         ├── cli_args.py          # Argument parsing
         ├── config.py            # Configuration management
         ├── state.py             # State persistence
