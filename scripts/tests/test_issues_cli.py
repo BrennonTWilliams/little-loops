@@ -26,9 +26,7 @@ class TestIssuesCLINextId:
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True)
 
-        with patch.object(
-            sys, "argv", ["ll-issues", "next-id", "--config", str(temp_project_dir)]
-        ):
+        with patch.object(sys, "argv", ["ll-issues", "next-id", "--config", str(temp_project_dir)]):
             from little_loops.cli import main_issues
 
             result = main_issues()
@@ -48,9 +46,7 @@ class TestIssuesCLINextId:
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
-        with patch.object(
-            sys, "argv", ["ll-issues", "next-id", "--config", str(temp_project_dir)]
-        ):
+        with patch.object(sys, "argv", ["ll-issues", "next-id", "--config", str(temp_project_dir)]):
             from little_loops.cli import main_issues
 
             result = main_issues()

@@ -986,7 +986,7 @@ def fix_dependencies(
     return result
 
 
-def gather_all_issue_ids(issues_dir: Path, config: "BRConfig | None" = None) -> set[str]:
+def gather_all_issue_ids(issues_dir: Path, config: BRConfig | None = None) -> set[str]:
     """Scan all issue directories for issue IDs (lightweight, filename-only).
 
     Scans active-category and completed subdirectories for markdown files

@@ -1173,9 +1173,7 @@ class TestDeferIssue:
                     cmd, 0, stdout=str(sample_issue_info.path), stderr=""
                 )
             if "commit" in cmd:
-                return subprocess.CompletedProcess(
-                    cmd, 0, stdout="[main abc123] commit", stderr=""
-                )
+                return subprocess.CompletedProcess(cmd, 0, stdout="[main abc123] commit", stderr="")
             return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
         with patch("subprocess.run", side_effect=mock_run):
@@ -1324,9 +1322,7 @@ class TestUndeferIssue:
         mock_logger: MagicMock,
     ) -> None:
         """Test undeferring when deferred file doesn't exist."""
-        result = undefer_issue(
-            sample_config, Path("/nonexistent.md"), mock_logger, reason="test"
-        )
+        result = undefer_issue(sample_config, Path("/nonexistent.md"), mock_logger, reason="test")
         assert result is None
         mock_logger.error.assert_called()
 

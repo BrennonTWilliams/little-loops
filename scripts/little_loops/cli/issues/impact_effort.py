@@ -117,10 +117,7 @@ def _render_grid(
     effort_label = "\u2190 EFFORT \u2192"
     out.append(" " * label_width + effort_label.center(grid_width))
     out.append(
-        " " * (label_width + 1)
-        + "Low".center(col_section)
-        + " "
-        + "High".center(col_section)
+        " " * (label_width + 1) + "Low".center(col_section) + " " + "High".center(col_section)
     )
 
     out.append(" " * label_width + top_border)
