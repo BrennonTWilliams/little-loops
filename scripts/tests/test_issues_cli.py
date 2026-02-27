@@ -87,6 +87,17 @@ class TestIssuesCLINextId:
         assert issues_out == next_id_out == "006"
 
 
+@pytest.fixture
+def issues_dir_with_enh(issues_dir: Path) -> Path:
+    """Extend issues_dir fixture with a sample ENH issue."""
+    enh_dir = issues_dir / "enhancements"
+    enh_dir.mkdir(parents=True, exist_ok=True)
+    (enh_dir / "P3-ENH-010-improve-output.md").write_text(
+        "# ENH-010: Improve output formatting\n\n## Summary\nBetter formatting."
+    )
+    return issues_dir
+
+
 class TestIssuesCLIList:
     """Tests for ll-issues list sub-command."""
 
@@ -97,7 +108,7 @@ class TestIssuesCLIList:
         issues_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """list outputs all active issues."""
+        """list outputs all active issues grouped by type."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
@@ -110,6 +121,77 @@ class TestIssuesCLIList:
         captured = capsys.readouterr()
         assert "BUG-001" in captured.out
         assert "FEAT-001" in captured.out
+
+    def test_list_grouped_output_has_headers(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir_with_enh: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list default output groups issues with type headers and counts."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "list", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Bugs (3)" in captured.out
+        assert "Features (2)" in captured.out
+        assert "Enhancements (1)" in captured.out
+        assert "Total: 6 active issues" in captured.out
+
+    def test_list_grouped_output_line_format(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list default output formats each line as '  Pn  TYPE-NNN  Title'."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "list", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "  P0  BUG-001  " in captured.out
+        assert "  P1  FEAT-001  " in captured.out
+
+    def test_list_flat_backward_compatibility(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --flat produces original filename + title format."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "--flat", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Flat format shows full filename
+        assert "P0-BUG-001-critical-crash.md" in captured.out
+        assert "P1-FEAT-001-dark-mode.md" in captured.out
+        # No group headers in flat mode
+        assert "Bugs (" not in captured.out
+        assert "Total:" not in captured.out
 
     def test_list_filter_by_type(
         self,
@@ -159,6 +241,27 @@ class TestIssuesCLIList:
         captured = capsys.readouterr()
         assert "BUG-001" in captured.out  # BUG-001 is P0
         assert "BUG-002" not in captured.out  # BUG-002 is P1
+
+    def test_list_empty_groups_shown(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list shows all type groups including empty ones (e.g. ENH when no ENH issues)."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "list", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # issues_dir has no ENH issues — group should still appear with count 0
+        assert "Enhancements (0)" in captured.out
 
     def test_list_empty_project(
         self,

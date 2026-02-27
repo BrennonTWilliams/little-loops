@@ -52,6 +52,11 @@ Examples:
         choices=["P0", "P1", "P2", "P3", "P4", "P5"],
         help="Filter by priority level",
     )
+    ls.add_argument(
+        "--flat",
+        action="store_true",
+        help="Output flat list (current format) for scripting compatibility",
+    )
     add_config_arg(ls)
 
     seq = subs.add_parser("sequence", help="Suggest implementation order based on dependencies")
