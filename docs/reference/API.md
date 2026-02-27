@@ -39,6 +39,7 @@ pip install -e "/path/to/little-loops/scripts[dev]"
 | `little_loops.goals_parser` | Product goals file parsing |
 | `little_loops.sync` | GitHub Issues bidirectional sync |
 | `little_loops.session_log` | Session log linking for issue files |
+| `little_loops.text_utils` | Text extraction utilities for issue content |
 | `little_loops.cli` | CLI entry points (package) |
 | `little_loops.parallel` | Parallel processing subpackage |
 | `little_loops.fsm` | FSM loop system subpackage |
@@ -3692,4 +3693,62 @@ if result.has_errors:
             print(f"Broken: {r.url} at {r.file}:{r.line}")
 else:
     print(f"All {result.total_links} links valid!")
+```
+
+---
+
+## little_loops.text_utils
+
+Text extraction utilities for issue content. Provides shared functions for extracting file paths from markdown issue text, used by `dependency_mapper`, `issue_history`, and other modules that need to identify file references.
+
+### Public Constants
+
+| Constant | Type | Description |
+|----------|------|-------------|
+| `SOURCE_EXTENSIONS` | `frozenset[str]` | Recognized source file extensions for path filtering |
+
+### Public Functions
+
+| Function | Purpose |
+|----------|---------|
+| `extract_file_paths` | Extract file paths from issue content |
+
+### SOURCE_EXTENSIONS
+
+```python
+SOURCE_EXTENSIONS: frozenset[str]
+```
+
+A `frozenset` of 24 file extension strings (each with leading dot) considered real source file paths. Used to filter false-positive path matches during extraction.
+
+Includes: `.py`, `.ts`, `.js`, `.tsx`, `.jsx`, `.md`, `.json`, `.yaml`, `.yml`, `.toml`, `.cfg`, `.ini`, `.html`, `.css`, `.scss`, `.sh`, `.bash`, `.sql`, `.go`, `.rs`, `.java`, `.kt`, `.rb`, `.php`
+
+### extract_file_paths
+
+```python
+def extract_file_paths(content: str) -> set[str]
+```
+
+Extract file paths from issue content. Searches for paths in backtick-quoted references, bold `**File**:` labels, and standalone paths with recognized extensions. Code fence blocks are stripped before extraction to avoid matching example code.
+
+**Parameters:**
+- `content` - Issue file content (markdown text)
+
+**Returns:** `set[str]` of file paths found in the content.
+
+**Example:**
+```python
+from little_loops.text_utils import extract_file_paths
+
+content = """
+## Location
+
+**File**: `scripts/little_loops/config.py`
+
+See also `docs/reference/API.md` and scripts/little_loops/state.py:42.
+"""
+
+paths = extract_file_paths(content)
+print(paths)
+# {'scripts/little_loops/config.py', 'docs/reference/API.md', 'scripts/little_loops/state.py'}
 ```
