@@ -92,6 +92,7 @@ CLI entry (`main`) moves to `scripts/little_loops/cli/deps.py` or remains as a t
 ## Session Log
 - `/ll:verify-issues` - 2026-02-25 - Corrected line count: 1,321 → 1,337 (file has grown since issue was created)
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with complete module split plan and caller list; no knowledge gaps identified
+- `/ll:audit-architecture` - 2026-02-26 - Dependency mapping audit: dependency_mapper.py has 5 consumers (cli/sprint/edit, cli/sprint/manage, cli/sprint/run, cli/sprint/show, issue_manager.py), sits at Layer 2 in dependency hierarchy. Split would allow consumers to import only the sub-module they need (analysis vs formatting vs operations), reducing transitive load.
 
 ## Blocked By
 
