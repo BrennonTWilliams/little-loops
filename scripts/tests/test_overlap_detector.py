@@ -64,7 +64,19 @@ class TestOverlapDetector:
         assert len(result.overlapping_issues) == 0
 
     def test_detect_directory_overlap(self) -> None:
-        """Should detect directory overlaps."""
+        """Should detect directory overlaps with sufficient depth."""
+        detector = OverlapDetector()
+
+        issue1 = make_issue("ENH-001", "Changes in scripts/little_loops/ directory")
+        issue2 = make_issue("ENH-002", "Modify scripts/little_loops/cli.py")
+
+        detector.register_issue(issue1)
+        result = detector.check_overlap(issue2)
+
+        assert result.has_overlap
+
+    def test_shallow_directory_no_overlap(self) -> None:
+        """Shallow directory should not trigger overlap."""
         detector = OverlapDetector()
 
         issue1 = make_issue("ENH-001", "Changes in scripts/ directory")
@@ -73,7 +85,7 @@ class TestOverlapDetector:
         detector.register_issue(issue1)
         result = detector.check_overlap(issue2)
 
-        assert result.has_overlap
+        assert not result.has_overlap
 
     def test_detect_scope_overlap(self) -> None:
         """Should detect scope overlaps."""

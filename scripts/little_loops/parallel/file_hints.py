@@ -31,6 +31,25 @@ SCOPE_PATTERN = re.compile(
     re.IGNORECASE,
 )
 
+# Overlap detection thresholds
+MIN_OVERLAP_FILES = 2  # Minimum overlapping files to trigger overlap
+OVERLAP_RATIO_THRESHOLD = 0.25  # Minimum ratio of overlapping files to smaller set
+MIN_DIRECTORY_DEPTH = 2  # Minimum path segments for directory overlap (e.g., src/components/ = 2)
+
+# Common infrastructure files excluded from overlap detection.
+# These appear incidentally in many issues but are rarely the actual conflict.
+COMMON_FILES_EXCLUDE = frozenset(
+    {
+        "__init__.py",
+        "pyproject.toml",
+        "setup.py",
+        "setup.cfg",
+        "CHANGELOG.md",
+        "README.md",
+        "conftest.py",
+    }
+)
+
 
 @dataclass
 class FileHints:
@@ -61,31 +80,41 @@ class FileHints:
     def overlaps_with(self, other: FileHints) -> bool:
         """Check if this hint set overlaps with another.
 
-        Returns True if:
-        - Any files match exactly
-        - Any directories overlap (one contains the other)
-        - Any scopes match
+        Uses graduated thresholds rather than binary matching:
+        - Common infrastructure files are excluded from file checks
+        - File overlap requires minimum count or ratio threshold
+        - Directory overlap requires minimum path depth
+        - Scope matches are kept as-is (intentional semantic signals)
         """
         # Empty hints don't overlap
         if self.is_empty or other.is_empty:
             return False
 
-        # Exact file matches
-        if self.files & other.files:
-            return True
+        # Filter common infrastructure files
+        self_files = {f for f in self.files if not _is_common_file(f)}
+        other_files = {f for f in other.files if not _is_common_file(f)}
 
-        # Directory overlaps
+        # Exact file matches with thresholds
+        shared_files = self_files & other_files
+        if shared_files:
+            smaller_set = min(len(self_files), len(other_files))
+            if smaller_set > 0:
+                ratio = len(shared_files) / smaller_set
+                if len(shared_files) >= MIN_OVERLAP_FILES or ratio >= OVERLAP_RATIO_THRESHOLD:
+                    return True
+
+        # Directory overlaps (depth check in _directories_overlap)
         for d1 in self.directories:
             for d2 in other.directories:
                 if _directories_overlap(d1, d2):
                     return True
 
-        # File in directory
-        for f in self.files:
+        # File in directory (depth check in _file_in_directory)
+        for f in self_files:
             for d in other.directories:
                 if _file_in_directory(f, d):
                     return True
-        for f in other.files:
+        for f in other_files:
             for d in self.directories:
                 if _file_in_directory(f, d):
                     return True
@@ -100,28 +129,39 @@ class FileHints:
         """Get specific paths that overlap between two hint sets.
 
         Unlike overlaps_with() which returns bool, this returns the
-        actual file/directory paths causing the overlap.
+        actual file/directory paths causing the overlap. Applies the
+        same filtering and thresholds as overlaps_with().
         """
         if self.is_empty or other.is_empty:
             return set()
 
         overlapping: set[str] = set()
 
-        # Exact file matches
-        overlapping.update(self.files & other.files)
+        # Filter common infrastructure files
+        self_files = {f for f in self.files if not _is_common_file(f)}
+        other_files = {f for f in other.files if not _is_common_file(f)}
 
-        # Directory overlaps (use shorter/parent path)
+        # Exact file matches (only if they meet thresholds)
+        shared_files = self_files & other_files
+        if shared_files:
+            smaller_set = min(len(self_files), len(other_files))
+            if smaller_set > 0:
+                ratio = len(shared_files) / smaller_set
+                if len(shared_files) >= MIN_OVERLAP_FILES or ratio >= OVERLAP_RATIO_THRESHOLD:
+                    overlapping.update(shared_files)
+
+        # Directory overlaps (depth check in _directories_overlap)
         for d1 in self.directories:
             for d2 in other.directories:
                 if _directories_overlap(d1, d2):
                     overlapping.add(d1 if len(d1) <= len(d2) else d2)
 
-        # File in directory
-        for f in self.files:
+        # File in directory (depth check in _file_in_directory)
+        for f in self_files:
             for d in other.directories:
                 if _file_in_directory(f, d):
                     overlapping.add(f)
-        for f in other.files:
+        for f in other_files:
             for d in self.directories:
                 if _file_in_directory(f, d):
                     overlapping.add(f)
@@ -129,17 +169,40 @@ class FileHints:
         return overlapping
 
 
+def _is_common_file(path: str) -> bool:
+    """Check if a file is a common infrastructure file to exclude from overlap."""
+    basename = path.rsplit("/", 1)[-1] if "/" in path else path
+    return basename in COMMON_FILES_EXCLUDE
+
+
 def _directories_overlap(dir1: str, dir2: str) -> bool:
-    """Check if two directory paths overlap (one contains the other)."""
+    """Check if two directory paths overlap (one contains the other).
+
+    Requires the shorter (parent) directory to have at least MIN_DIRECTORY_DEPTH
+    path segments to avoid treating broad directories like ``scripts/`` as
+    a conflict signal.
+    """
     d1 = dir1.rstrip("/") + "/"
     d2 = dir2.rstrip("/") + "/"
-    return d1.startswith(d2) or d2.startswith(d1)
+    if not (d1.startswith(d2) or d2.startswith(d1)):
+        return False
+    # Require minimum depth on the shorter (parent) path
+    shorter = d1 if len(d1) <= len(d2) else d2
+    depth = len(shorter.rstrip("/").split("/"))
+    return depth >= MIN_DIRECTORY_DEPTH
 
 
 def _file_in_directory(file_path: str, dir_path: str) -> bool:
-    """Check if a file is within a directory."""
+    """Check if a file is within a directory.
+
+    Requires the directory to have at least MIN_DIRECTORY_DEPTH path
+    segments to avoid treating broad directories as a conflict signal.
+    """
     dir_normalized = dir_path.rstrip("/") + "/"
-    return file_path.startswith(dir_normalized)
+    if not file_path.startswith(dir_normalized):
+        return False
+    depth = len(dir_normalized.rstrip("/").split("/"))
+    return depth >= MIN_DIRECTORY_DEPTH
 
 
 def extract_file_hints(content: str, issue_id: str = "") -> FileHints:
