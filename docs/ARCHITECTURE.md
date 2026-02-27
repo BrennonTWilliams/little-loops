@@ -21,9 +21,9 @@ The system consists of three main layers:
 ```mermaid
 flowchart TB
     subgraph "Claude Code Plugin"
-        CMD[Commands<br/>35 slash commands]
+        CMD[Commands<br/>28 slash commands]
         AGT[Agents<br/>8 specialized agents]
-        SKL[Skills<br/>8 composable skills]
+        SKL[Skills<br/>15 composable skills]
     end
 
     subgraph "Configuration"
@@ -65,7 +65,7 @@ little-loops/
 ├── .claude-plugin/
 │   └── plugin.json          # Plugin manifest
 ├── config-schema.json       # JSON Schema for validation
-├── commands/                # 35 slash command templates
+├── commands/                # 28 slash command templates
 │   ├── init.md
 │   ├── help.md
 │   ├── check-code.md
@@ -169,7 +169,21 @@ little-loops/
         │   ├── sync.py
         │   ├── docs.py
         │   ├── history.py
-        │   ├── sprint.py
+        │   ├── next_id.py
+        │   ├── sprint/
+        │   │   ├── __init__.py      # Entry point (main_sprint) + argparse
+        │   │   ├── _helpers.py      # Shared utilities
+        │   │   ├── create.py        # create subcommand
+        │   │   ├── edit.py          # edit subcommand
+        │   │   ├── manage.py        # delete, analyze subcommands
+        │   │   ├── run.py           # run subcommand
+        │   │   └── show.py          # list, show subcommands
+        │   ├── issues/
+        │   │   ├── __init__.py      # Entry point (main_issues) + argparse
+        │   │   ├── list_cmd.py      # list subcommand
+        │   │   ├── next_id.py       # next-id subcommand
+        │   │   ├── sequence.py      # sequence subcommand
+        │   │   └── impact_effort.py # impact-effort subcommand
         │   └── loop/
         │       ├── __init__.py      # Entry point (main_loop) + argparse
         │       ├── _helpers.py      # Shared utilities
