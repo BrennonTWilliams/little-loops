@@ -3,10 +3,35 @@
 from __future__ import annotations
 
 import argparse
+import os
+import signal
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import load_loop
 from little_loops.logger import Logger
+
+
+def _read_pid_file(pid_file: Path) -> int | None:
+    """Read and validate a PID file.
+
+    Returns:
+        The PID as an integer, or None if the file doesn't exist or is invalid.
+    """
+    if not pid_file.exists():
+        return None
+    try:
+        return int(pid_file.read_text().strip())
+    except (ValueError, OSError):
+        return None
+
+
+def _process_alive(pid: int) -> bool:
+    """Check if a process is still running."""
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
 
 
 def cmd_status(
@@ -30,6 +55,17 @@ def cmd_status(
     print(f"Iteration: {state.iteration}")
     print(f"Started: {state.started_at}")
     print(f"Updated: {state.updated_at}")
+
+    # Show PID info if available (background mode)
+    running_dir = loops_dir / ".running"
+    pid_file = running_dir / f"{loop_name}.pid"
+    pid = _read_pid_file(pid_file)
+    if pid is not None:
+        if _process_alive(pid):
+            print(f"PID: {pid} (running)")
+        else:
+            print(f"PID: {pid} (not running - stale PID file)")
+
     if state.continuation_prompt:
         # Show truncated continuation context
         prompt_preview = state.continuation_prompt[:200]
@@ -60,7 +96,21 @@ def cmd_stop(
 
     state.status = "interrupted"
     persistence.save_state(state)
-    logger.success(f"Marked {loop_name} as interrupted")
+
+    # Send SIGTERM to background process if PID file exists
+    running_dir = loops_dir / ".running"
+    pid_file = running_dir / f"{loop_name}.pid"
+    pid = _read_pid_file(pid_file)
+    if pid is not None:
+        if _process_alive(pid):
+            os.kill(pid, signal.SIGTERM)
+            logger.success(f"Sent SIGTERM to {loop_name} (PID: {pid})")
+        else:
+            logger.info(f"Process {pid} not running, cleaning up PID file")
+            pid_file.unlink(missing_ok=True)
+    else:
+        logger.success(f"Marked {loop_name} as interrupted")
+
     return 0
 
 

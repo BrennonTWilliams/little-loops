@@ -86,7 +86,10 @@ Examples:
         "--dry-run", action="store_true", help="Show execution plan without running"
     )
     run_parser.add_argument(
-        "--background", "-b", action="store_true", help="Run as daemon (not yet implemented)"
+        "--background", "-b", action="store_true", help="Run as background daemon"
+    )
+    run_parser.add_argument(
+        "--foreground-internal", action="store_true", help=argparse.SUPPRESS,
     )
     run_parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress output")
     run_parser.add_argument(

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import subprocess
+import sys
 import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -131,6 +133,57 @@ def print_execution_plan(fsm: FSMLoop) -> None:
     print(f"Max iterations: {fsm.max_iterations}")
     if fsm.timeout:
         print(f"Timeout: {fsm.timeout}s")
+
+
+def run_background(loop_name: str, args: argparse.Namespace, loops_dir: Path) -> int:
+    """Launch loop as a detached background process.
+
+    Spawns a new process with start_new_session=True that re-executes
+    the loop with --foreground-internal. The parent writes the PID file
+    and returns immediately.
+
+    Returns:
+        Exit code (0 = launched successfully).
+    """
+    running_dir = loops_dir / ".running"
+    running_dir.mkdir(parents=True, exist_ok=True)
+
+    pid_file = running_dir / f"{loop_name}.pid"
+    log_file = running_dir / f"{loop_name}.log"
+
+    # Build re-exec command with --foreground-internal instead of --background
+    cmd = [sys.executable, "-m", "little_loops.cli.loop", "run", loop_name,
+           "--foreground-internal"]
+
+    # Forward relevant args
+    max_iter = getattr(args, "max_iterations", None)
+    if max_iter:
+        cmd.extend(["--max-iterations", str(max_iter)])
+    if getattr(args, "no_llm", False):
+        cmd.append("--no-llm")
+    llm_model = getattr(args, "llm_model", None)
+    if llm_model:
+        cmd.extend(["--llm-model", llm_model])
+    if getattr(args, "quiet", False):
+        cmd.append("--quiet")
+    if getattr(args, "queue", False):
+        cmd.append("--queue")
+
+    log_fh = open(log_file, "w")  # noqa: SIM115
+    process = subprocess.Popen(
+        cmd,
+        start_new_session=True,
+        stdout=log_fh,
+        stderr=log_fh,
+        stdin=subprocess.DEVNULL,
+    )
+
+    pid_file.write_text(str(process.pid))
+    print(f"Loop '{loop_name}' started in background (PID: {process.pid})")
+    print(f"  Log: {log_file}")
+    print(f"  Status: ll-loop status {loop_name}")
+    print(f"  Stop: ll-loop stop {loop_name}")
+    return 0
 
 
 def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int:

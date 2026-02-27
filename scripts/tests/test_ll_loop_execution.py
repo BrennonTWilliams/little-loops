@@ -647,13 +647,13 @@ states:
         # No per-iteration lines in quiet mode
         assert "[1/" not in captured.out
 
-    def test_background_flag_shows_warning(
+    def test_background_flag_spawns_daemon(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """--background flag shows warning that it's not implemented."""
+        """--background flag spawns a detached background process."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         loop_content = """
@@ -667,7 +667,8 @@ states:
         (loops_dir / "test-background.yaml").write_text(loop_content)
 
         monkeypatch.chdir(tmp_path)
-        with patch("little_loops.fsm.executor.subprocess.run"):
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 12345
             with patch.object(sys, "argv", ["ll-loop", "run", "test-background", "--background"]):
                 from little_loops.cli import main_loop
 
@@ -675,9 +676,13 @@ states:
 
             assert result == 0
             captured = capsys.readouterr()
-            # Warning should appear about background mode
-            assert "Background mode not yet implemented" in captured.out
-            assert "running in foreground" in captured.out
+            assert "started in background" in captured.out
+            assert "12345" in captured.out
+
+            # Verify PID file was written
+            pid_file = loops_dir / ".running" / "test-background.pid"
+            assert pid_file.exists()
+            assert pid_file.read_text() == "12345"
 
     def test_creates_state_files(
         self,
