@@ -412,8 +412,12 @@ issues:
         # Wave 2 has 2 issues and should use orchestrator
         assert 2 in orchestrator_wave_sizes, "Wave 2 (2 issues) should use ParallelOrchestrator"
 
-    def test_sprint_enables_overlap_detection(self, tmp_path: Path, monkeypatch: Any) -> None:
-        """Test sprint runner enables overlap detection for parallel waves (BUG-305)."""
+    def test_sprint_disables_runtime_overlap_detection(self, tmp_path: Path, monkeypatch: Any) -> None:
+        """Test sprint runner disables runtime overlap detection (ENH-512).
+
+        Wave splitting via refine_waves_for_contention() already handles
+        overlap, so runtime OverlapDetector is redundant for sprints.
+        """
         import argparse
 
         from little_loops.cli import sprint as cli
@@ -474,10 +478,11 @@ issues:
         result = cli._cmd_sprint_run(args, manager, config)
         assert result == 0
 
-        # Verify overlap detection is enabled on all parallel configs
+        # Verify runtime overlap detection is disabled for sprints (ENH-512)
+        # Wave splitting via refine_waves_for_contention() handles overlap instead
         assert len(captured_configs) > 0, "Should have created at least one ParallelConfig"
         for pc in captured_configs:
-            assert pc.overlap_detection is True, "Sprint should enable overlap detection"
+            assert pc.overlap_detection is False, "Sprint should disable runtime overlap detection"
             assert pc.serialize_overlapping is True, "Sprint should serialize overlapping issues"
 
 

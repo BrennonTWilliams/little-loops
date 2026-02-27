@@ -299,11 +299,14 @@ def _cmd_sprint_run(
                     cwd=Path.cwd(),
                 )
                 _base_branch = _br.stdout.strip() if _br.returncode == 0 else "main"
+                # Runtime overlap detection disabled for sprints (ENH-512):
+                # refine_waves_for_contention() already splits overlapping
+                # issues into separate sub-waves before dispatch.
                 parallel_config = config.create_parallel_config(
                     max_workers=min(max_workers, len(wave)),
                     only_ids=only_ids,
                     dry_run=args.dry_run,
-                    overlap_detection=True,
+                    overlap_detection=False,
                     serialize_overlapping=True,
                     base_branch=_base_branch,
                 )
