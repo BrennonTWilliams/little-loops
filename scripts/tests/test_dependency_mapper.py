@@ -402,6 +402,29 @@ class TestFindFileOverlapsSemanticAnalysis:
         assert len(parallel_safe) == 1
         assert "Different sections" in parallel_safe[0].reason
 
+    def test_generic_words_no_false_section_matches(self) -> None:
+        """Generic programming words should not inflate section scores (BUG-513).
+
+        Words like list, input, table, field previously mapped to UI sections
+        (body, form), causing false dependency proposals between unrelated issues
+        that touched different components in the same file.
+        """
+        issues = [
+            make_issue("ENH-050", priority="P2"),
+            make_issue("ENH-051", priority="P2"),
+        ]
+        # Different PascalCase components → target_score = 0.0.
+        # Generic words (list, input, table, field) should NOT produce section
+        # matches, keeping section_score at the 0.5 default rather than 1.0.
+        contents = {
+            "ENH-050": "Fix the list rendering and input handling in ConfigParser in `scripts/config.py`",
+            "ENH-051": "Update table field and event handler in LogManager for `scripts/config.py`",
+        }
+        proposals, parallel_safe = find_file_overlaps(issues, contents)
+        # Different components + no false section overlap → parallel-safe
+        assert len(proposals) == 0
+        assert len(parallel_safe) == 1
+
 
 # =============================================================================
 # validate_dependencies tests

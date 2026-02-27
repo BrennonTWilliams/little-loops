@@ -37,13 +37,13 @@ _COMPONENT_SCOPE = re.compile(
 
 # UI region / section keywords mapped to canonical names
 _SECTION_KEYWORDS: dict[str, frozenset[str]] = {
-    "header": frozenset({"header", "heading", "title bar", "top bar", "nav", "navbar", "toolbar"}),
-    "body": frozenset({"body", "content", "main", "droppable", "list", "table", "grid"}),
-    "footer": frozenset({"footer", "bottom", "status bar", "action bar"}),
-    "sidebar": frozenset({"sidebar", "side panel", "drawer", "menu"}),
-    "card": frozenset({"card", "tile", "item", "row", "entry"}),
-    "modal": frozenset({"modal", "dialog", "popup", "overlay", "sheet"}),
-    "form": frozenset({"form", "input", "field", "editor", "picker"}),
+    "header": frozenset({"header", "navbar", "toolbar", "top bar"}),
+    "body": frozenset({"droppable"}),
+    "footer": frozenset({"footer", "status bar", "action bar"}),
+    "sidebar": frozenset({"sidebar", "side panel", "drawer"}),
+    "card": frozenset({"card", "tile"}),
+    "modal": frozenset({"modal", "dialog", "popup", "overlay"}),
+    "form": frozenset({"form"}),
 }
 
 # Modification type classification keywords
@@ -63,14 +63,8 @@ _MODIFICATION_TYPES: dict[str, frozenset[str]] = {
     ),
     "infrastructure": frozenset(
         {
-            "enable",
-            "hook",
-            "handler",
-            "event",
             "listener",
             "provider",
-            "context",
-            "store",
             "state management",
             "routing",
             "middleware",
@@ -88,11 +82,6 @@ _MODIFICATION_TYPES: dict[str, frozenset[str]] = {
             "add stats",
             "add icon",
             "add toggle",
-            "display",
-            "show",
-            "render",
-            "style",
-            "format",
             "empty state",
             "placeholder",
             "tooltip",
