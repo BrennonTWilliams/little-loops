@@ -1501,9 +1501,7 @@ class TestConfigurableThresholds:
         default_score = compute_conflict_score(content_a, content_b)
 
         # Zero out section weight, increase semantic weight
-        config = self._make_config(
-            scoring_weights={"semantic": 0.8, "section": 0.0, "type": 0.2}
-        )
+        config = self._make_config(scoring_weights={"semantic": 0.8, "section": 0.0, "type": 0.2})
         custom_score = compute_conflict_score(content_a, content_b, config=config)
 
         # Scores should differ when weights change
@@ -1541,9 +1539,7 @@ class TestConfigurableThresholds:
         }
 
         # Very low threshold so we get proposals
-        config_low_mod = self._make_config(
-            conflict_threshold=0.0, confidence_modifier=0.1
-        )
+        config_low_mod = self._make_config(conflict_threshold=0.0, confidence_modifier=0.1)
         proposals, _ = find_file_overlaps(issues, contents, config=config_low_mod)
 
         # With such a low modifier, confidence should be very low

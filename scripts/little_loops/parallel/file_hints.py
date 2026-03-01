@@ -108,9 +108,7 @@ class FileHints:
         min_files = config.overlap_min_files if config else MIN_OVERLAP_FILES
         ratio_threshold = config.overlap_min_ratio if config else OVERLAP_RATIO_THRESHOLD
         min_depth = config.min_directory_depth if config else MIN_DIRECTORY_DEPTH
-        exclude_files = (
-            frozenset(config.exclude_common_files) if config else COMMON_FILES_EXCLUDE
-        )
+        exclude_files = frozenset(config.exclude_common_files) if config else COMMON_FILES_EXCLUDE
 
         # Filter common infrastructure files
         self_files = {f for f in self.files if not _is_common_file(f, exclude_files)}
@@ -173,9 +171,7 @@ class FileHints:
         min_files = config.overlap_min_files if config else MIN_OVERLAP_FILES
         ratio_threshold = config.overlap_min_ratio if config else OVERLAP_RATIO_THRESHOLD
         min_depth = config.min_directory_depth if config else MIN_DIRECTORY_DEPTH
-        exclude_files = (
-            frozenset(config.exclude_common_files) if config else COMMON_FILES_EXCLUDE
-        )
+        exclude_files = frozenset(config.exclude_common_files) if config else COMMON_FILES_EXCLUDE
 
         # Filter common infrastructure files
         self_files = {f for f in self.files if not _is_common_file(f, exclude_files)}

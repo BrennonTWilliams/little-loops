@@ -152,8 +152,7 @@ def run_background(loop_name: str, args: argparse.Namespace, loops_dir: Path) ->
     log_file = running_dir / f"{loop_name}.log"
 
     # Build re-exec command with --foreground-internal instead of --background
-    cmd = [sys.executable, "-m", "little_loops.cli.loop", "run", loop_name,
-           "--foreground-internal"]
+    cmd = [sys.executable, "-m", "little_loops.cli.loop", "run", loop_name, "--foreground-internal"]
 
     # Forward relevant args
     max_iter = getattr(args, "max_iterations", None)

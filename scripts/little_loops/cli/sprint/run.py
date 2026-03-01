@@ -171,9 +171,7 @@ def _cmd_sprint_run(
         return 1
 
     # Refine waves for file overlap (ENH-306)
-    waves, contention_notes = refine_waves_for_contention(
-        waves, config=config.dependency_mapping
-    )
+    waves, contention_notes = refine_waves_for_contention(waves, config=config.dependency_mapping)
 
     # Display execution plan
     logger.info(f"Running sprint: {sprint.name}")

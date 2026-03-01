@@ -765,10 +765,7 @@ class TestIssuesCLIShow:
 
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         (bugs_dir / "P1-BUG-203-with-risk.md").write_text(
-            "# BUG-203: Bug with risk\n\n"
-            "## Impact\n\n"
-            "- **Effort**: Medium\n"
-            "- **Risk**: High\n"
+            "# BUG-203: Bug with risk\n\n## Impact\n\n- **Effort**: Medium\n- **Risk**: High\n"
         )
 
         with patch.object(
@@ -796,8 +793,7 @@ class TestIssuesCLIShow:
 
         features_dir = temp_project_dir / ".issues" / "features"
         (features_dir / "P2-FEAT-204-with-labels.md").write_text(
-            "# FEAT-204: Feature with labels\n\n"
-            "## Labels\n\n`cli`, `enhancement`, `docs`\n"
+            "# FEAT-204: Feature with labels\n\n## Labels\n\n`cli`, `enhancement`, `docs`\n"
         )
 
         with patch.object(

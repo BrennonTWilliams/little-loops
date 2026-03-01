@@ -89,7 +89,9 @@ Examples:
         "--background", "-b", action="store_true", help="Run as background daemon"
     )
     run_parser.add_argument(
-        "--foreground-internal", action="store_true", help=argparse.SUPPRESS,
+        "--foreground-internal",
+        action="store_true",
+        help=argparse.SUPPRESS,
     )
     run_parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress output")
     run_parser.add_argument(

@@ -123,12 +123,8 @@ class TestFileHintsOverlap:
     def test_single_file_below_ratio_threshold(self) -> None:
         """Single file match below ratio threshold should not overlap."""
         # 1 shared file out of 5 = 20% < 25% threshold, and 1 < MIN_OVERLAP_FILES
-        hints1 = FileHints(
-            files={"src/a.py", "src/b.py", "src/c.py", "src/d.py", "src/cli.py"}
-        )
-        hints2 = FileHints(
-            files={"src/e.py", "src/f.py", "src/g.py", "src/h.py", "src/cli.py"}
-        )
+        hints1 = FileHints(files={"src/a.py", "src/b.py", "src/c.py", "src/d.py", "src/cli.py"})
+        hints2 = FileHints(files={"src/e.py", "src/f.py", "src/g.py", "src/h.py", "src/cli.py"})
         assert not hints1.overlaps_with(hints2)
 
     def test_no_file_overlap(self) -> None:
@@ -217,21 +213,15 @@ class TestFileHintsOverlap:
 
     def test_common_files_plus_real_overlap(self) -> None:
         """Common files don't prevent detection of real overlaps."""
-        hints1 = FileHints(
-            files={"scripts/__init__.py", "scripts/cli.py", "scripts/config.py"}
-        )
-        hints2 = FileHints(
-            files={"scripts/__init__.py", "scripts/cli.py", "scripts/config.py"}
-        )
+        hints1 = FileHints(files={"scripts/__init__.py", "scripts/cli.py", "scripts/config.py"})
+        hints2 = FileHints(files={"scripts/__init__.py", "scripts/cli.py", "scripts/config.py"})
         # __init__.py excluded, but cli.py + config.py = 2 files >= MIN_OVERLAP_FILES
         assert hints1.overlaps_with(hints2)
 
     def test_ratio_threshold_edge(self) -> None:
         """Edge case: exactly at the ratio threshold should overlap."""
         # 1 shared file out of 4 = 25% == OVERLAP_RATIO_THRESHOLD
-        hints1 = FileHints(
-            files={"src/a.py", "src/b.py", "src/c.py", "src/shared.py"}
-        )
+        hints1 = FileHints(files={"src/a.py", "src/b.py", "src/c.py", "src/shared.py"})
         hints2 = FileHints(files={"src/shared.py"})
         # 1/1 = 100% ratio (smaller set is 1) - meets threshold
         assert hints1.overlaps_with(hints2)
@@ -255,12 +245,8 @@ class TestGetOverlappingPaths:
 
     def test_single_file_below_threshold_returns_empty(self) -> None:
         """Single shared file below threshold should return empty set."""
-        hints1 = FileHints(
-            files={"src/a.py", "src/b.py", "src/c.py", "src/d.py", "src/cli.py"}
-        )
-        hints2 = FileHints(
-            files={"src/e.py", "src/f.py", "src/g.py", "src/h.py", "src/cli.py"}
-        )
+        hints1 = FileHints(files={"src/a.py", "src/b.py", "src/c.py", "src/d.py", "src/cli.py"})
+        hints2 = FileHints(files={"src/e.py", "src/f.py", "src/g.py", "src/h.py", "src/cli.py"})
         result = hints1.get_overlapping_paths(hints2)
         assert result == set()
 

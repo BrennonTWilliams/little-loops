@@ -434,9 +434,7 @@ def find_file_overlaps(
                         target_id, source_id = id_a, id_b
                     else:
                         target_id, source_id = id_b, id_a
-                    confidence_modifier = (
-                        config.confidence_modifier if config else 0.5
-                    )
+                    confidence_modifier = config.confidence_modifier if config else 0.5
 
             min_paths = min(len(issue_paths[id_a]), len(issue_paths[id_b]))
             confidence = len(overlap) / min_paths if min_paths > 0 else 0.0

@@ -412,7 +412,9 @@ issues:
         # Wave 2 has 2 issues and should use orchestrator
         assert 2 in orchestrator_wave_sizes, "Wave 2 (2 issues) should use ParallelOrchestrator"
 
-    def test_sprint_disables_runtime_overlap_detection(self, tmp_path: Path, monkeypatch: Any) -> None:
+    def test_sprint_disables_runtime_overlap_detection(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
         """Test sprint runner disables runtime overlap detection (ENH-512).
 
         Wave splitting via refine_waves_for_contention() already handles

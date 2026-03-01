@@ -972,9 +972,7 @@ class TestDependencyMappingConfig:
         assert "scoring_weights" in dm
         assert dm["scoring_weights"]["semantic"] == 0.5
 
-    def test_resolve_variable_dependency_mapping(
-        self, temp_project_dir: Path
-    ) -> None:
+    def test_resolve_variable_dependency_mapping(self, temp_project_dir: Path) -> None:
         """Test resolve_variable works for dependency_mapping config paths."""
         config = BRConfig(temp_project_dir)
         assert config.resolve_variable("dependency_mapping.conflict_threshold") == "0.4"

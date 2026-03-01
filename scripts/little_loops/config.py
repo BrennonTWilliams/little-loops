@@ -465,9 +465,7 @@ class DependencyMappingConfig:
             conflict_threshold=data.get("conflict_threshold", 0.4),
             high_conflict_threshold=data.get("high_conflict_threshold", 0.7),
             confidence_modifier=data.get("confidence_modifier", 0.5),
-            scoring_weights=ScoringWeightsConfig.from_dict(
-                data.get("scoring_weights", {})
-            ),
+            scoring_weights=ScoringWeightsConfig.from_dict(data.get("scoring_weights", {})),
             exclude_common_files=data.get(
                 "exclude_common_files",
                 [
