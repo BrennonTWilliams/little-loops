@@ -249,6 +249,7 @@ FSM-based automation loop execution (create loops with `/ll:create-loop`):
 
 ```bash
 ll-loop run <loop-name>          # Execute a loop by name
+ll-loop run <loop-name> -b       # Run as background daemon
 ll-loop list                     # List all available loops
 ll-loop stop <loop-name>         # Stop a running loop
 ll-loop status <loop-name>       # Show loop status
@@ -350,6 +351,8 @@ Issue management and visualization utilities:
 ll-issues next-id                             # Next available issue number (same as ll-next-id)
 ll-issues list                                # List all active issues
 ll-issues list --type FEAT --priority P2      # Filter by type and priority
+ll-issues list --flat                         # Flat output for scripting
+ll-issues show FEAT-001                       # Show summary card for an issue
 ll-issues sequence                            # Dependency-ordered implementation sequence
 ll-issues sequence --limit 5                  # Show top 5 issues to work on
 ll-issues impact-effort                       # ASCII impact vs effort matrix
