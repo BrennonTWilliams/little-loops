@@ -2264,7 +2264,11 @@ Display a formatted summary card for a single issue. Accepts three input formats
 - Type + ID: `ll-issues show FEAT-518`
 - Priority + Type + ID: `ll-issues show P3-FEAT-518`
 
-Searches all active category directories and the completed directory. Displays title, priority, status, effort, confidence scores, and file path in a box-drawing character card.
+Searches all active category directories and the completed directory. Displays a box-drawing character card with:
+- **Metadata**: priority, status, effort, risk level
+- **Scores**: confidence score, outcome confidence (when present in frontmatter)
+- **Details**: summary text (truncated to 80 chars), integration file count, labels, session log history with command counts
+- **Path**: relative path from project root
 
 ### main_messages
 

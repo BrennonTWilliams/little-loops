@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -79,11 +80,12 @@ def _resolve_issue_id(config: BRConfig, user_input: str) -> Path | None:
     return None
 
 
-def _parse_card_fields(path: Path) -> dict[str, str | None]:
+def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     """Parse issue file to extract summary card fields.
 
     Args:
         path: Path to the issue file
+        config: Project configuration (used for relative path computation)
 
     Returns:
         Dictionary of card fields
@@ -123,6 +125,60 @@ def _parse_card_fields(path: Path) -> dict[str, str | None]:
     outcome = frontmatter.get("outcome_confidence")
     effort = frontmatter.get("effort")
 
+    # --- New fields ---
+
+    # Summary: first sentence from ## Summary section (truncated to 80 chars)
+    summary: str | None = None
+    summary_match = re.search(r"^## Summary\n+(.+?)(?:\n|$)", content, re.MULTILINE)
+    if summary_match:
+        text = summary_match.group(1).strip()
+        summary = (text[:77] + "...") if len(text) > 80 else text
+
+    # Integration file count: count items under ### Files to Modify
+    integration_files: int | None = None
+    ftm_match = re.search(r"^### Files to Modify\s*$", content, re.MULTILINE)
+    if ftm_match:
+        start = ftm_match.end()
+        next_header = re.search(r"^#{2,3}\s+", content[start:], re.MULTILINE)
+        section = content[start : start + next_header.start()] if next_header else content[start:]
+        count = len(re.findall(r"^- .+", section, re.MULTILINE))
+        if count > 0:
+            integration_files = count
+
+    # Risk: extract from ## Impact section
+    risk: str | None = None
+    risk_match = re.search(r"\*\*Risk\*\*:\s*(Low|Medium|High)", content, re.IGNORECASE)
+    if risk_match:
+        risk = risk_match.group(1).capitalize()
+
+    # Labels: extract backtick-delimited labels from ## Labels section
+    labels: str | None = None
+    labels_match = re.search(
+        r"^## Labels\s*\n+(.*?)(?:\n\n|\n##|\Z)", content, re.MULTILINE | re.DOTALL
+    )
+    if labels_match:
+        found = re.findall(r"`([^`]+)`", labels_match.group(1))
+        if found:
+            labels = ", ".join(found)
+
+    # Session log: parse ## Session Log for unique /ll:* commands with counts
+    history: str | None = None
+    log_match = re.search(
+        r"^## Session Log\s*\n+(.*?)(?:\n##|\n---|\Z)", content, re.MULTILINE | re.DOTALL
+    )
+    if log_match:
+        cmds = re.findall(r"`(/[\w:-]+)`", log_match.group(1))
+        if cmds:
+            counts = Counter(cmds)
+            parts = [f"{cmd} ({n})" if n > 1 else cmd for cmd, n in counts.items()]
+            history = ", ".join(parts)
+
+    # Relative path
+    try:
+        rel_path = str(path.relative_to(config.project_root))
+    except ValueError:
+        rel_path = str(path)
+
     return {
         "issue_id": issue_id,
         "title": title,
@@ -131,7 +187,12 @@ def _parse_card_fields(path: Path) -> dict[str, str | None]:
         "effort": str(effort) if effort is not None else None,
         "confidence": str(confidence) if confidence is not None else None,
         "outcome": str(outcome) if outcome is not None else None,
-        "path": str(path),
+        "summary": summary,
+        "integration_files": str(integration_files) if integration_files is not None else None,
+        "risk": risk,
+        "labels": labels,
+        "history": history,
+        "path": rel_path,
     }
 
 
@@ -166,6 +227,8 @@ def _render_card(fields: dict[str, str | None]) -> str:
         meta_parts.append(f"Status: {fields['status']}")
     if fields.get("effort"):
         meta_parts.append(f"Effort: {fields['effort']}")
+    if fields.get("risk"):
+        meta_parts.append(f"Risk: {fields['risk']}")
     meta_line = "  \u2502  ".join(meta_parts)
 
     # Build scores line (only if at least one score present)
@@ -176,6 +239,20 @@ def _render_card(fields: dict[str, str | None]) -> str:
         score_parts.append(f"Outcome: {fields['outcome']}")
     scores_line = "  \u2502  ".join(score_parts) if score_parts else None
 
+    # Build detail lines (summary, integration+labels, history)
+    detail_lines: list[str] = []
+    if fields.get("summary"):
+        detail_lines.append(f"Summary: {fields['summary']}")
+    detail_mid_parts: list[str] = []
+    if fields.get("integration_files"):
+        detail_mid_parts.append(f"Integration: {fields['integration_files']} files")
+    if fields.get("labels"):
+        detail_mid_parts.append(f"Labels: {fields['labels']}")
+    if detail_mid_parts:
+        detail_lines.append("  \u2502  ".join(detail_mid_parts))
+    if fields.get("history"):
+        detail_lines.append(f"History: {fields['history']}")
+
     # Build path line
     path_line = f"Path: {fields.get('path', '???')}"
 
@@ -183,6 +260,7 @@ def _render_card(fields: dict[str, str | None]) -> str:
     content_lines = [header, meta_line, path_line]
     if scores_line:
         content_lines.append(scores_line)
+    content_lines.extend(detail_lines)
     width = max(len(line) for line in content_lines) + 2  # +2 for padding
 
     # Build card
@@ -197,6 +275,10 @@ def _render_card(fields: dict[str, str | None]) -> str:
     lines.append(f"{v} {meta_line:<{width - 1}}{v}")
     if scores_line:
         lines.append(f"{v} {scores_line:<{width - 1}}{v}")
+    if detail_lines:
+        lines.append(mid_border)
+        for dl in detail_lines:
+            lines.append(f"{v} {dl:<{width - 1}}{v}")
     lines.append(mid_border)
     lines.append(f"{v} {path_line:<{width - 1}}{v}")
     lines.append(bot_border)
@@ -221,7 +303,7 @@ def cmd_show(config: BRConfig, args: argparse.Namespace) -> int:
         print(f"Error: Issue '{issue_id}' not found.")
         return 1
 
-    fields = _parse_card_fields(path)
+    fields = _parse_card_fields(path, config)
     card = _render_card(fields)
     print(card)
     return 0

@@ -659,6 +659,248 @@ class TestIssuesCLIShow:
         assert "\u2502" in captured.out  # │
         assert "\u2500" in captured.out  # ─
 
+    def test_show_with_summary(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show displays summary text from ## Summary section."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P2-FEAT-200-with-summary.md").write_text(
+            "# FEAT-200: Feature with summary\n\n"
+            "## Summary\n\nThis is a detailed summary of the feature.\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "FEAT-200", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Summary: This is a detailed summary of the feature." in captured.out
+
+    def test_show_with_summary_truncated(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show truncates summary longer than 80 chars."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        long_text = "A" * 100
+        (features_dir / "P2-FEAT-201-long-summary.md").write_text(
+            f"# FEAT-201: Long summary\n\n## Summary\n\n{long_text}\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "FEAT-201", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Summary: " in captured.out
+        assert "..." in captured.out
+        # Should not contain the full 100-char string
+        assert long_text not in captured.out
+
+    def test_show_with_integration_files(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show displays integration file count from ### Files to Modify."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P2-FEAT-202-with-integration.md").write_text(
+            "# FEAT-202: With integration map\n\n"
+            "## Integration Map\n\n"
+            "### Files to Modify\n"
+            "- `src/foo.py` - update handler\n"
+            "- `src/bar.py` - add new function\n"
+            "- `tests/test_foo.py` - add tests\n\n"
+            "### Dependent Files\n"
+            "- `src/baz.py`\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "FEAT-202", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Integration: 3 files" in captured.out
+
+    def test_show_with_risk(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show displays risk level from ## Impact section."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        (bugs_dir / "P1-BUG-203-with-risk.md").write_text(
+            "# BUG-203: Bug with risk\n\n"
+            "## Impact\n\n"
+            "- **Effort**: Medium\n"
+            "- **Risk**: High\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "BUG-203", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        # Risk is shown in metadata section
+        assert "Risk: High" in captured.out
+
+    def test_show_with_labels(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show displays labels from ## Labels section."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P2-FEAT-204-with-labels.md").write_text(
+            "# FEAT-204: Feature with labels\n\n"
+            "## Labels\n\n`cli`, `enhancement`, `docs`\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "FEAT-204", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Labels: cli, enhancement, docs" in captured.out
+
+    def test_show_with_session_log(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show displays session log history with deduped command counts."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P2-FEAT-205-with-log.md").write_text(
+            "# FEAT-205: Feature with session log\n\n"
+            "## Session Log\n"
+            "- `/ll:capture-issue` - 2026-03-01 - `~/.claude/sess1.jsonl`\n"
+            "- `/ll:refine-issue` - 2026-03-01 - `~/.claude/sess2.jsonl`\n"
+            "- `/ll:refine-issue` - 2026-03-01 - `~/.claude/sess3.jsonl`\n"
+            "- `/ll:refine-issue` - 2026-03-01 - `~/.claude/sess4.jsonl`\n"
+            "\n---\n\n## Status\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "FEAT-205", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "History: " in captured.out
+        assert "/ll:capture-issue" in captured.out
+        assert "/ll:refine-issue (3)" in captured.out
+
+    def test_show_relative_path(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show displays relative path instead of absolute."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "BUG-001", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Path: .issues/" in captured.out
+        # Should NOT contain absolute path
+        assert "Path: /" not in captured.out
+
+    def test_show_new_fields_absent_gracefully(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show omits new fields when not present in issue file."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        # Create a minimal issue with no Summary, Impact, Labels, Session Log, or Integration Map
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        (bugs_dir / "P1-BUG-300-minimal.md").write_text("# BUG-300: Minimal issue\n")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "BUG-300", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-300" in captured.out
+        assert "Summary:" not in captured.out
+        assert "Integration:" not in captured.out
+        assert "Risk:" not in captured.out
+        assert "Labels:" not in captured.out
+        assert "History:" not in captured.out
+
 
 class TestIssuesCLIHelp:
     """Tests for ll-issues help and no-command behavior."""
