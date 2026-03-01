@@ -127,12 +127,15 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
 
     # --- New fields ---
 
-    # Summary: first sentence from ## Summary section (truncated to 80 chars)
+    # Summary: full first paragraph from ## Summary section
     summary: str | None = None
-    summary_match = re.search(r"^## Summary\n+(.+?)(?:\n|$)", content, re.MULTILINE)
+    summary_match = re.search(
+        r"^## Summary\s*\n+(.*?)(?:\n\n|\n##|\Z)", content, re.MULTILINE | re.DOTALL
+    )
     if summary_match:
         text = summary_match.group(1).strip()
-        summary = (text[:77] + "...") if len(text) > 80 else text
+        if text:
+            summary = text
 
     # Integration file count: count items under ### Files to Modify
     integration_files: int | None = None
@@ -239,10 +242,14 @@ def _render_card(fields: dict[str, str | None]) -> str:
         score_parts.append(f"Outcome: {fields['outcome']}")
     scores_line = "  \u2502  ".join(score_parts) if score_parts else None
 
-    # Build detail lines (summary, integration+labels, history)
+    # Build summary lines (full paragraph, own section)
+    summary_lines: list[str] = []
+    summary_text = fields.get("summary")
+    if summary_text:
+        summary_lines = summary_text.splitlines()
+
+    # Build detail lines (integration+labels, history)
     detail_lines: list[str] = []
-    if fields.get("summary"):
-        detail_lines.append(f"Summary: {fields['summary']}")
     detail_mid_parts: list[str] = []
     if fields.get("integration_files"):
         detail_mid_parts.append(f"Integration: {fields['integration_files']} files")
@@ -260,6 +267,7 @@ def _render_card(fields: dict[str, str | None]) -> str:
     content_lines = [header, meta_line, path_line]
     if scores_line:
         content_lines.append(scores_line)
+    content_lines.extend(summary_lines)
     content_lines.extend(detail_lines)
     width = max(len(line) for line in content_lines) + 2  # +2 for padding
 
@@ -275,6 +283,10 @@ def _render_card(fields: dict[str, str | None]) -> str:
     lines.append(f"{v} {meta_line:<{width - 1}}{v}")
     if scores_line:
         lines.append(f"{v} {scores_line:<{width - 1}}{v}")
+    if summary_lines:
+        lines.append(mid_border)
+        for sl in summary_lines:
+            lines.append(f"{v} {sl:<{width - 1}}{v}")
     if detail_lines:
         lines.append(mid_border)
         for dl in detail_lines:

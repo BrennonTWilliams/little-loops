@@ -685,16 +685,16 @@ class TestIssuesCLIShow:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "Summary: This is a detailed summary of the feature." in captured.out
+        assert "This is a detailed summary of the feature." in captured.out
 
-    def test_show_with_summary_truncated(
+    def test_show_with_long_summary(
         self,
         temp_project_dir: Path,
         sample_config: dict[str, Any],
         issues_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """show truncates summary longer than 80 chars."""
+        """show displays full summary without truncation."""
         config_path = temp_project_dir / ".claude" / "ll-config.json"
         config_path.write_text(json.dumps(sample_config))
 
@@ -713,10 +713,43 @@ class TestIssuesCLIShow:
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "Summary: " in captured.out
-        assert "..." in captured.out
-        # Should not contain the full 100-char string
-        assert long_text not in captured.out
+        # Full text should appear without truncation
+        assert long_text in captured.out
+        assert "..." not in captured.out
+
+    def test_show_with_multiline_summary(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show displays multi-line summary in its own section."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P2-FEAT-203-multiline-summary.md").write_text(
+            "# FEAT-203: Multi-line summary\n\n"
+            "## Summary\n\n"
+            "First line of the summary.\n"
+            "Second line of the summary.\n"
+            "Third line of the summary.\n\n"
+            "## Details\n\nMore info here.\n"
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "FEAT-203", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "First line of the summary." in captured.out
+        assert "Second line of the summary." in captured.out
+        assert "Third line of the summary." in captured.out
 
     def test_show_with_integration_files(
         self,
