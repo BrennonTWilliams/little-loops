@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import textwrap
 from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -242,12 +243,6 @@ def _render_card(fields: dict[str, str | None]) -> str:
         score_parts.append(f"Outcome: {fields['outcome']}")
     scores_line = "  \u2502  ".join(score_parts) if score_parts else None
 
-    # Build summary lines (full paragraph, own section)
-    summary_lines: list[str] = []
-    summary_text = fields.get("summary")
-    if summary_text:
-        summary_lines = summary_text.splitlines()
-
     # Build detail lines (integration+labels, history)
     detail_lines: list[str] = []
     detail_mid_parts: list[str] = []
@@ -263,13 +258,29 @@ def _render_card(fields: dict[str, str | None]) -> str:
     # Build path line
     path_line = f"Path: {fields.get('path', '???')}"
 
-    # Calculate width (minimum of inner content + padding)
-    content_lines = [header, meta_line, path_line]
+    # Calculate structural width from non-summary content
+    structural_lines = [header, meta_line, path_line]
     if scores_line:
-        content_lines.append(scores_line)
-    content_lines.extend(summary_lines)
-    content_lines.extend(detail_lines)
-    width = max(len(line) for line in content_lines) + 2  # +2 for padding
+        structural_lines.append(scores_line)
+    structural_lines.extend(detail_lines)
+    wrap_width = max((len(line) for line in structural_lines), default=60)
+    wrap_width = max(wrap_width, 60)  # minimum content width
+
+    # Build summary lines — wrap to fit structural width
+    summary_lines: list[str] = []
+    summary_text = fields.get("summary")
+    if summary_text:
+        for line in summary_text.splitlines():
+            if line.strip():
+                summary_lines.extend(
+                    textwrap.wrap(line, width=wrap_width, break_long_words=False)
+                )
+            else:
+                summary_lines.append("")
+
+    # Final width includes wrapped summary (may exceed wrap_width for unbreakable tokens)
+    all_lines = structural_lines + summary_lines
+    width = max(len(line) for line in all_lines) + 2  # +2 for padding
 
     # Build card
     lines: list[str] = []
