@@ -18,6 +18,7 @@ def main_issues() -> int:
     from little_loops.cli.issues.list_cmd import cmd_list
     from little_loops.cli.issues.next_id import cmd_next_id
     from little_loops.cli.issues.sequence import cmd_sequence
+    from little_loops.cli.issues.show import cmd_show
     from little_loops.cli_args import add_config_arg
     from little_loops.config import BRConfig
 
@@ -29,12 +30,14 @@ def main_issues() -> int:
 Sub-commands:
   next-id        Print next globally unique issue number
   list           List active issues with optional filters
+  show           Show summary card for a single issue
   sequence       Suggest dependency-ordered implementation sequence
   impact-effort  Display impact vs effort matrix for active issues
 
 Examples:
   %(prog)s next-id
   %(prog)s list --type FEAT --priority P2
+  %(prog)s show FEAT-518
   %(prog)s sequence --limit 10
   %(prog)s impact-effort
 """,
@@ -65,6 +68,10 @@ Examples:
     )
     add_config_arg(seq)
 
+    show = subs.add_parser("show", help="Show summary card for an issue")
+    show.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
+    add_config_arg(show)
+
     ie = subs.add_parser("impact-effort", help="Display impact vs effort matrix")
     add_config_arg(ie)
 
@@ -83,6 +90,8 @@ Examples:
         return cmd_list(config, args)
     if args.command == "sequence":
         return cmd_sequence(config, args)
+    if args.command == "show":
+        return cmd_show(config, args)
     if args.command == "impact-effort":
         return cmd_impact_effort(config, args)
     return 1

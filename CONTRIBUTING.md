@@ -210,6 +210,7 @@ little-loops/
         ├── logo.py              # CLI logo display
         ├── dependency_graph.py  # Dependency graph construction
         ├── dependency_mapper.py # Cross-issue dependency discovery
+        ├── session_log.py       # Session log linking for issues
         ├── user_messages.py     # User message extraction
         ├── workflow_sequence_analyzer.py  # Workflow analysis (ll-workflows)
         ├── fsm/                  # FSM loop system

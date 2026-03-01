@@ -156,6 +156,7 @@ little-loops/
 │   ├── java-gradle.json
 │   ├── dotnet.json
 │   ├── issue-sections.json
+│   ├── ll-goals-template.md
 │   └── generic.json
 └── scripts/                 # Python package
     └── little_loops/
@@ -207,9 +208,10 @@ little-loops/
         │   ├── extraction.py    # Git history analysis and regression detection
         │   └── search.py        # Issue file search and discovery functions
         ├── issue_lifecycle.py   # Issue lifecycle operations
-        ├── issue_history.py     # Issue history and statistics
+        ├── issue_history/       # Issue history and statistics (package)
         ├── git_operations.py    # Git utilities
         ├── work_verification.py # Verification helpers
+        ├── text_utils.py        # Text processing utilities
         ├── subprocess_utils.py  # Subprocess handling
         ├── sprint.py            # Sprint definition and management
         ├── sync.py              # GitHub Issues sync

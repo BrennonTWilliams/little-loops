@@ -2233,6 +2233,39 @@ Entry point for `ll-loop` command. FSM-based automation loop execution.
 
 **Returns:** Exit code
 
+### main_issues
+
+```python
+def main_issues() -> int
+```
+
+Entry point for `ll-issues` command. Issue management and visualization utilities.
+
+**Returns:** Exit code
+
+**Sub-commands:**
+
+| Sub-command | Description |
+|-------------|-------------|
+| `next-id` | Print next globally unique issue number |
+| `list` | List active issues with optional type/priority filters |
+| `show` | Show summary card for a single issue |
+| `sequence` | Suggest dependency-ordered implementation sequence |
+| `impact-effort` | Display impact vs effort matrix for active issues |
+
+#### show
+
+```
+ll-issues show <issue_id>
+```
+
+Display a formatted summary card for a single issue. Accepts three input formats:
+- Numeric ID: `ll-issues show 518`
+- Type + ID: `ll-issues show FEAT-518`
+- Priority + Type + ID: `ll-issues show P3-FEAT-518`
+
+Searches all active category directories and the completed directory. Displays title, priority, status, effort, confidence scores, and file path in a box-drawing character card.
+
 ### main_messages
 
 ```python

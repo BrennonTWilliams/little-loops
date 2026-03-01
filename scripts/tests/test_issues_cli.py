@@ -457,6 +457,209 @@ class TestIssuesCLIImpactEffort:
         assert "QUICK WINS" in captured.out
 
 
+class TestIssuesCLIShow:
+    """Tests for ll-issues show sub-command."""
+
+    def test_show_by_numeric_id(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show finds issue by numeric ID only."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "001", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-001" in captured.out
+        assert "Critical crash on startup" in captured.out
+
+    def test_show_by_type_and_id(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show finds issue by TYPE-NNN format."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "FEAT-001", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "FEAT-001" in captured.out
+        assert "Add dark mode" in captured.out
+
+    def test_show_by_full_prefix(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show finds issue by P-TYPE-NNN format."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "P0-BUG-001", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-001" in captured.out
+        assert "Priority: P0" in captured.out
+
+    def test_show_not_found(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show returns 1 and prints error when issue not found."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "999", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "not found" in captured.out.lower()
+
+    def test_show_completed_issue(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show displays Completed status for issues in completed/ directory."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        completed_dir = temp_project_dir / ".issues" / "completed"
+        (completed_dir / "P2-BUG-050-fixed-issue.md").write_text(
+            "# BUG-050: Fixed issue\n\n## Summary\nThis was fixed."
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "BUG-050", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Status: Completed" in captured.out
+
+    def test_show_with_frontmatter_scores(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show displays confidence_score and outcome_confidence from frontmatter."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        features_dir = temp_project_dir / ".issues" / "features"
+        (features_dir / "P1-FEAT-099-scored-issue.md").write_text(
+            "---\nconfidence_score: 85\noutcome_confidence: 78\neffort: Small\n---\n"
+            "# FEAT-099: Scored issue\n\n## Summary\nHas scores."
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "FEAT-099", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Confidence: 85" in captured.out
+        assert "Outcome: 78" in captured.out
+        assert "Effort: Small" in captured.out
+
+    def test_show_missing_frontmatter_graceful(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show handles issues without frontmatter scores gracefully."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "BUG-002", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-002" in captured.out
+        # Should not contain confidence/outcome lines when not in frontmatter
+        assert "Confidence:" not in captured.out
+        assert "Outcome:" not in captured.out
+
+    def test_show_box_drawing_characters(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show uses box-drawing characters for card border."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "BUG-001", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            main_issues()
+
+        captured = capsys.readouterr()
+        assert "\u250c" in captured.out  # ┌
+        assert "\u2510" in captured.out  # ┐
+        assert "\u2514" in captured.out  # └
+        assert "\u2518" in captured.out  # ┘
+        assert "\u2502" in captured.out  # │
+        assert "\u2500" in captured.out  # ─
+
+
 class TestIssuesCLIHelp:
     """Tests for ll-issues help and no-command behavior."""
 
