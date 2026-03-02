@@ -54,6 +54,23 @@ To compare recent vs previous period:
 ll-history analyze --compare 30
 ```
 
+### Documentation Synthesis
+
+Generate architecture documentation from completed issue history:
+```bash
+ll-history generate-docs "authentication"
+```
+
+Write to a file with a specific format:
+```bash
+ll-history generate-docs "sprint system" --output docs/arch/sprint.md --format structured
+```
+
+Filter by date or issue type:
+```bash
+ll-history generate-docs "API layer" --since 2026-01-01 --type ENH
+```
+
 ### Output Formats
 
 | Format | Command | Best For |
@@ -81,6 +98,8 @@ ll-history analyze --compare 30
 | "Are we making progress?" | `ll-history analyze --format markdown` |
 | "What's our velocity?" | `ll-history summary` |
 | "Show quarterly trends" | `ll-history analyze --period quarterly` |
+| "Generate docs about the sprint system" | `ll-history generate-docs "sprint system"` |
+| "Document our auth changes since January" | `ll-history generate-docs "authentication" --since 2026-01-01` |
 
 ## Interpretation Guide
 

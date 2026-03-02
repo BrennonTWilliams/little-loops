@@ -81,7 +81,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 
 ## What's Included
 
-- **43 slash commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
+- **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
 - **15 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
 - **13 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, etc.) for autonomous and parallel issue processing
@@ -307,12 +307,14 @@ Requires `sync.enabled: true` in config. Run `ll-sync --help` for all options.
 
 ### ll-history
 
-View completed issue statistics:
+View completed issue statistics and generate documentation:
 
 ```bash
 ll-history summary               # Display issue statistics
 ll-history summary --json        # Output as JSON
 ll-history analyze               # Full analysis with trends and debt metrics
+ll-history generate-docs "topic" # Synthesize docs from issue history
+ll-history generate-docs "sprint" --output docs/arch/sprint.md
 ```
 
 ### ll-workflows

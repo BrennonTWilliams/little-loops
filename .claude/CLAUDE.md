@@ -107,7 +107,7 @@ The `scripts/` directory contains Python CLI tools:
 - `ll-loop` - Execute FSM-based automation loops
 - `ll-workflows` - Identify multi-step workflow patterns from user message history
 - `ll-messages` - Extract user messages from Claude Code logs
-- `ll-history` - View completed issue statistics and history
+- `ll-history` - View completed issue statistics, analysis, and generate docs from history
 - `ll-deps` - Cross-issue dependency analysis and validation
 - `ll-sync` - Sync local issues with GitHub Issues
 - `ll-verify-docs` - Verify documented counts match actual file counts
