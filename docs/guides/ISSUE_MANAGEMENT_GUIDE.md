@@ -316,14 +316,14 @@ Planning separately from implementing catches misunderstandings early. An incorr
 ### Implementing
 
 ```
-/ll:manage-issue fix [issue-id]        ← for bugs
-/ll:manage-issue implement [issue-id]  ← for features
-/ll:manage-issue improve [issue-id]    ← for enhancements
+/ll:manage-issue bug fix [issue-id]             ← for bugs
+/ll:manage-issue feature implement [issue-id]   ← for features
+/ll:manage-issue enhancement improve [issue-id] ← for enhancements
 ```
 
 Executes the approved plan. The skill works through each step, modifying files, writing tests, and verifying as it goes. After each significant change, it checks that existing tests still pass.
 
-If you don't specify a type, `manage-issue` infers it from the issue filename.
+The `type` argument is required (`bug`, `feature`, or `enhancement`).
 
 ### The No Open Questions Rule
 
@@ -366,7 +366,7 @@ Processes issues one at a time, in priority order (P0 first). After each issue, 
 
 ```bash
 ll-parallel --workers 3             ← process 3 issues simultaneously
-ll-parallel --sprint sprint-name    ← process issues in a sprint
+ll-sprint run sprint-name           ← process issues in a sprint
 ```
 
 Runs multiple issues in separate git worktrees simultaneously. Each worker gets an isolated branch; the coordinator merges results. Significantly faster than sequential, but requires issues to have non-overlapping file changes. Run `/ll:map-dependencies` first to identify conflicts.
@@ -394,7 +394,7 @@ The minimal path from observation to merged fix:
 2. /ll:format-issue --auto
 3. /ll:refine-issue <file>
 4. /ll:ready-issue <file>
-5. /ll:manage-issue fix <issue-id>
+5. /ll:manage-issue bug fix <issue-id>
    → /ll:commit
 ```
 

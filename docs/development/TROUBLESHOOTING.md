@@ -483,7 +483,7 @@ grep state_file .claude/ll-config.json
    ```
 5. For custom tuning, edit `hooks/scripts/context-monitor.sh` lines 56-118
 
-For comprehensive documentation, see [Session Handoff Guide](SESSION_HANDOFF.md).
+For comprehensive documentation, see [Session Handoff Guide](../guides/SESSION_HANDOFF.md).
 
 ---
 
@@ -920,11 +920,11 @@ python -m pytest scripts/tests/test_hooks_integration.py -v -s
 
 ## Diagnostic Commands
 
-These commands use the Python API directly. See [API Reference](API.md) for full documentation.
+These commands use the Python API directly. See [API Reference](../reference/API.md) for full documentation.
 
 ### Check configuration
 
-Uses [`BRConfig`](API.md#brconfig) to load and display resolved configuration:
+Uses [`BRConfig`](../reference/API.md#brconfig) to load and display resolved configuration:
 
 ```bash
 # View resolved config
@@ -939,7 +939,7 @@ print(json.dumps(c.to_dict(), indent=2))
 
 ### Check issue discovery
 
-Uses [`find_issues()`](API.md#find_issues) to list all discovered issues:
+Uses [`find_issues()`](../reference/API.md#find_issues) to list all discovered issues:
 
 ```bash
 # List all discovered issues
@@ -997,8 +997,8 @@ python -c "import little_loops; print(little_loops.__file__)"
 If you're still stuck:
 
 1. Check the [README](../README.md) for basic setup
-2. Review [ARCHITECTURE.md](ARCHITECTURE.md) for system understanding
-3. Check [API.md](API.md) for module details
+2. Review [ARCHITECTURE.md](../ARCHITECTURE.md) for system understanding
+3. Check [API.md](../reference/API.md) for module details
 
 For persistent issues, create a bug report with:
 - Config file (sanitized - remove any secrets)

@@ -117,7 +117,7 @@ For a trivial bug, skip this step and go straight to implementation. For anythin
 `/ll:manage-issue` handles the full implementation cycle: plan, implement, run tests, and move the issue to completed.
 
 ```bash
-/ll:manage-issue fix BUG-001
+/ll:manage-issue bug fix BUG-001
 #    → Plans → implements → runs tests → moves issue to .issues/completed/
 ```
 

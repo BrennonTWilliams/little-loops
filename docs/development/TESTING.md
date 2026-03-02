@@ -5,7 +5,7 @@ This guide covers all testing patterns, conventions, and examples for contributo
 > **Related Documentation:**
 > - [End-to-End Testing](E2E_TESTING.md) - E2E CLI workflow testing
 > - [Contributing Guide](../CONTRIBUTING.md) - Development setup and guidelines
-> - [Architecture](ARCHITECTURE.md) - System design and component relationships
+> - [Architecture](../ARCHITECTURE.md) - System design and component relationships
 
 ## Table of Contents
 
@@ -485,7 +485,7 @@ mutmut show 42
 mutmut apply 42
 ```
 
-**Configuration** (`scripts/pyproject.toml:122-126`):
+**Configuration** (`scripts/pyproject.toml:128-131`):
 ```toml
 [tool.mutmut]
 paths_to_mutate = ["little_loops/"]
@@ -794,7 +794,7 @@ def test_concurrent_updates(self, hook_script: Path, tmp_path: Path) -> None:
 
 ### Coverage Configuration
 
-**Configuration** (`scripts/pyproject.toml:104-120`):
+**Configuration** (`scripts/pyproject.toml:110-127`):
 
 ```toml
 [tool.coverage.run]
@@ -910,6 +910,6 @@ Verify the line is exactly in `exclude_lines` configuration.
 ## Additional Resources
 
 - **E2E Testing**: See [E2E_TESTING.md](E2E_TESTING.md) for CLI workflow testing
-- **Architecture**: See [ARCHITECTURE.md](ARCHITECTURE.md) for system design
+- **Architecture**: See [ARCHITECTURE.md](../ARCHITECTURE.md) for system design
 - **Contributing**: See [CONTRIBUTING.md](../CONTRIBUTING.md) for development setup
-- **API Reference**: See [API.md](API.md) for Python module documentation
+- **API Reference**: See [API.md](../reference/API.md) for Python module documentation

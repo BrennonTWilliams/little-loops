@@ -281,7 +281,7 @@ Session continuation and handoff settings (`/ll:handoff`, `/ll:resume`):
 
 ### `context_monitor`
 
-Context window monitoring for automatic session handoff. See [Session Handoff Guide](SESSION_HANDOFF.md) for full details.
+Context window monitoring for automatic session handoff. See [Session Handoff Guide](../guides/SESSION_HANDOFF.md) for full details.
 
 | Key | Default | Description |
 |-----|---------|-------------|

@@ -33,7 +33,7 @@ flowchart TB
     end
 
     subgraph "Python Automation"
-        CLI[cli.py<br/>Entry points]
+        CLI[cli/<br/>Entry points]
         AUTO[issue_manager.py<br/>Sequential processing]
         PARALLEL[parallel/<br/>Parallel processing]
     end
@@ -105,7 +105,7 @@ little-loops/
 │   ├── sprint-execution.yaml
 │   └── workflow-analysis.yaml
 ├── skills/                  # 15 skill definitions (4 proactive, 11 user-invoked)
-│   ├── analyze-history/     # User-invoked (disable-model-invocation: true)
+│   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
 │   ├── audit-claude-config/ # User-invoked
 │   │   ├── SKILL.md

@@ -43,6 +43,7 @@ pip install -e "/path/to/little-loops/scripts[dev]"
 | `little_loops.cli` | CLI entry points (package) |
 | `little_loops.parallel` | Parallel processing subpackage |
 | `little_loops.fsm` | FSM loop system subpackage |
+| `little_loops.cli_args` | CLI argument parsing utilities |
 | `little_loops.sprint` | Sprint planning and execution |
 
 ---
@@ -2007,7 +2008,7 @@ Both `ll-auto` and `ll-parallel` use `parse_ready_issue_output()` but handle res
 
 Sequential merge queue with sophisticated conflict handling, error recovery, and adaptive strategies.
 
-**See [MERGE-COORDINATOR.md](MERGE-COORDINATOR.md) for comprehensive documentation.**
+**See [MERGE-COORDINATOR.md](../development/MERGE-COORDINATOR.md) for comprehensive documentation.**
 
 ```python
 from little_loops.parallel import MergeCoordinator

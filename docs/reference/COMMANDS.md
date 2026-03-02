@@ -130,10 +130,10 @@ Autonomously manage issues - plan, implement, verify, complete.
 
 **Arguments:**
 - `type`: `bug`, `feature`, `enhancement`
-- `action`: `fix`, `implement`, `improve`, `verify`
+- `action`: `fix`, `implement`, `improve`, `verify`, `plan`
 - `issue_id` (optional)
 
-**Flags:** `--plan-only`, `--dry-run` (alias for --plan-only), `--resume`, `--gates`, `--quick` (skip deep research)
+**Flags:** `--plan-only`, `--dry-run` (alias for --plan-only), `--resume`, `--gates`, `--quick` (skip deep research), `--force-implement` (bypass confidence gate)
 
 ### `/ll:iterate-plan`
 Iterate on existing implementation plans with updates.

@@ -684,8 +684,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.0.0] - 2026-01-02
 
-[1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
-
 ### Added
 
 - **20 slash commands** for development workflows:
@@ -756,3 +754,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - All subprocess calls use argument lists (no shell=True)
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
+
+[1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
