@@ -17,6 +17,7 @@ import yaml
 
 from little_loops.frontmatter import parse_frontmatter
 from little_loops.issue_parser import get_next_issue_number
+from little_loops.issue_template import assemble_issue_markdown, load_issue_sections
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -265,6 +266,7 @@ class GitHubSyncManager:
         self.logger = logger
         self.dry_run = dry_run
         self.issues_dir = config.project_root / config.issues.base_dir
+        self._sections_data: dict[str, Any] | None = None
 
     def _get_local_issues(self) -> list[Path]:
         """Get all local issue files to sync.
@@ -649,24 +651,51 @@ class GitHubSyncManager:
 
         issue_path = category_dir / filename
 
-        # Build content
+        # Build content using shared issue-sections.json template
         now = datetime.now(UTC).isoformat(timespec="seconds")
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
+
+        if self._sections_data is None:
+            templates_dir = (
+                Path(self.config.issues.templates_dir)
+                if self.config.issues.templates_dir
+                else None
+            )
+            self._sections_data = load_issue_sections(templates_dir)
+
+        frontmatter = {
+            "github_issue": gh_number,
+            "github_url": gh_url,
+            "last_synced": now,
+            "discovered_by": "github_sync",
+            "discovered_date": today,
+        }
+        section_content: dict[str, str] = {}
+        if gh_body:
+            section_content["Summary"] = gh_body
+        section_content["Impact"] = (
+            f"- **Priority**: {priority}\n"
+            f"- **Effort**: Unknown\n"
+            f"- **Risk**: Unknown\n"
+            f"- **Breaking Change**: Unknown"
+        )
+        section_content["Status"] = f"**Open** | Created: {today} | Priority: {priority}"
+
         labels_str = ", ".join(f"`{lbl}`" for lbl in gh_labels) if gh_labels else ""
-        content = f"""---
-github_issue: {gh_number}
-github_url: {gh_url}
-last_synced: {now}
-discovered_by: github_sync
----
+        if labels_str:
+            section_content["Labels"] = labels_str
 
-# {issue_id}: {gh_title}
-
-{gh_body}
-
-## Labels
-
-{labels_str}
-"""
+        variant = self.sync_config.github.pull_template
+        content = assemble_issue_markdown(
+            sections_data=self._sections_data,
+            issue_type=issue_type,
+            variant=variant,
+            issue_id=issue_id,
+            title=gh_title,
+            frontmatter=frontmatter,
+            content=section_content,
+            labels=gh_labels,
+        )
         issue_path.write_text(content, encoding="utf-8")
         result.created.append(f"#{gh_number} → {issue_id}")
         self.logger.success(f"Created {filename} from GitHub #{gh_number}")

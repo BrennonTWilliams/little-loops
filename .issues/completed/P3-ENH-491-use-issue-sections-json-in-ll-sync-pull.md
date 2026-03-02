@@ -91,7 +91,7 @@ This output lacks the v2.0 section structure (Summary, Current Behavior, Expecte
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Completed: 2026-03-01 | Priority: P3
 
 ## Blocks
 
@@ -106,4 +106,26 @@ This output lacks the v2.0 section structure (Summary, Current Behavior, Expecte
 - FEAT-503
 ## Blocked By
 
-- ENH-498
+- ~ENH-498~ (completed)
+
+---
+
+## Resolution
+
+- **Status**: Completed
+- **Closed**: 2026-03-01
+- **Reason**: Implemented as designed
+
+### Changes Made
+1. Created `scripts/little_loops/issue_template.py` — shared utility that reads `templates/issue-sections.json` and assembles structured markdown given type, variant, and content fragments
+2. Added `pull_template` config option to `GitHubSyncConfig` (default: `"minimal"`) in `config.py` and `config-schema.json`
+3. Refactored `_create_local_issue()` in `sync.py` to use the new template utility instead of a hardcoded f-string template
+4. Added comprehensive tests: 10 unit tests for `issue_template.py`, 3 integration tests for refactored sync pull
+
+### Files Changed
+- `scripts/little_loops/issue_template.py` (new)
+- `scripts/little_loops/sync.py`
+- `scripts/little_loops/config.py`
+- `config-schema.json`
+- `scripts/tests/test_issue_template.py` (new)
+- `scripts/tests/test_sync.py`

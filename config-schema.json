@@ -708,6 +708,12 @@
               "type": "string",
               "description": "File to track sync state",
               "default": ".claude/ll-sync-state.json"
+            },
+            "pull_template": {
+              "type": "string",
+              "enum": ["full", "minimal", "legacy"],
+              "description": "Creation variant for issues pulled from GitHub (determines section structure)",
+              "default": "minimal"
             }
           },
           "additionalProperties": false

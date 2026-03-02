@@ -357,6 +357,7 @@ class GitHubSyncConfig:
     priority_labels: bool = True
     sync_completed: bool = False
     state_file: str = ".claude/ll-sync-state.json"
+    pull_template: str = "minimal"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> GitHubSyncConfig:
@@ -369,6 +370,7 @@ class GitHubSyncConfig:
             priority_labels=data.get("priority_labels", True),
             sync_completed=data.get("sync_completed", False),
             state_file=data.get("state_file", ".claude/ll-sync-state.json"),
+            pull_template=data.get("pull_template", "minimal"),
         )
 
 
@@ -821,6 +823,7 @@ class BRConfig:
                     "priority_labels": self._sync.github.priority_labels,
                     "sync_completed": self._sync.github.sync_completed,
                     "state_file": self._sync.github.state_file,
+                    "pull_template": self._sync.github.pull_template,
                 },
             },
             "dependency_mapping": {

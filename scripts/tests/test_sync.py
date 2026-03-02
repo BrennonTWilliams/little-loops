@@ -634,6 +634,81 @@ github_issue: 1
             f"Expected BUG-43, got: {list((tmp_path / '.issues' / 'bugs').glob('*.md'))}"
         )
 
+    def test_create_local_issue_uses_template_structure(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """Pulled issues have v2.0 section structure from issue-sections.json."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        result = SyncResult(action="pull", success=True)
+        gh_issue = {
+            "number": 10,
+            "title": "Add dark mode",
+            "body": "We need dark mode support for the UI.",
+            "url": "https://github.com/test/repo/issues/10",
+            "labels": [{"name": "enhancement"}],
+        }
+
+        manager._create_local_issue(gh_issue, "ENH", result)
+
+        created = list((tmp_path / ".issues" / "enhancements").glob("*.md"))
+        assert len(created) == 1
+        content = created[0].read_text()
+        # Verify v2.0 minimal sections present
+        assert "## Summary" in content
+        assert "## Current Behavior" in content
+        assert "## Expected Behavior" in content
+        assert "## Impact" in content
+        assert "## Status" in content
+
+    def test_create_local_issue_body_in_summary(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """GitHub body content appears in Summary section."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        result = SyncResult(action="pull", success=True)
+        gh_issue = {
+            "number": 11,
+            "title": "Fix login",
+            "body": "Login fails when using SSO provider.",
+            "url": "https://github.com/test/repo/issues/11",
+            "labels": [{"name": "bug"}],
+        }
+
+        manager._create_local_issue(gh_issue, "BUG", result)
+
+        created = list((tmp_path / ".issues" / "bugs").glob("*.md"))
+        assert len(created) == 1
+        content = created[0].read_text()
+        # Body should be in the Summary section
+        assert "Login fails when using SSO provider." in content
+        # Verify frontmatter has expected fields
+        assert "github_issue: 11" in content
+        assert "discovered_by: github_sync" in content
+        assert "discovered_date:" in content
+
+    def test_create_local_issue_labels_in_section(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """GitHub labels appear in Labels section."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        result = SyncResult(action="pull", success=True)
+        gh_issue = {
+            "number": 12,
+            "title": "Add tests",
+            "body": "Need more tests.",
+            "url": "https://github.com/test/repo/issues/12",
+            "labels": [{"name": "enhancement"}, {"name": "testing"}],
+        }
+
+        manager._create_local_issue(gh_issue, "ENH", result)
+
+        created = list((tmp_path / ".issues" / "enhancements").glob("*.md"))
+        assert len(created) == 1
+        content = created[0].read_text()
+        assert "## Labels" in content
+        assert "`enhancement`" in content
+        assert "`testing`" in content
+
     def test_push_single_issue_creates_new(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
