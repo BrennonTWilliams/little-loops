@@ -9,7 +9,7 @@ allowed-tools:
   - Glob
   - Grep
   - Write
-  - Bash(ll-next-id:*, git:*)
+  - Bash(ll-issues:*, git:*)
 arguments:
   - name: input
     description: Natural language description of the issue (optional - analyzes conversation if omitted)
@@ -198,7 +198,7 @@ Proceed directly to issue creation without user confirmation.
 1. **Get next globally unique issue number:**
 
    ```bash
-   ll-next-id
+   ll-issues next-id
    ```
 
    This prints the next available issue number as 3 digits (e.g., 071).

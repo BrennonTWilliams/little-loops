@@ -195,7 +195,6 @@ ll-history        View completed issue statistics and history
 ll-deps           Cross-issue dependency analysis and validation
 ll-sync           Sync local issues with GitHub Issues
 ll-issues         Issue management and visualization (next-id, list, show, sequence, impact-effort)
-ll-next-id        Print next globally unique issue number
 ll-verify-docs    Verify documented counts match actual file counts
 ll-check-links    Check markdown documentation for broken links
 

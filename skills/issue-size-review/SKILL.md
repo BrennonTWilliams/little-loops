@@ -7,7 +7,7 @@ model: sonnet
 allowed-tools:
   - Read
   - Glob
-  - Bash(ll-next-id:*, git:*)
+  - Bash(ll-issues:*, git:*)
 ---
 
 # Issue Size Review Skill
@@ -116,7 +116,7 @@ For each approved decomposition:
 
 1. **Get next issue numbers**:
    ```bash
-   ll-next-id
+   ll-issues next-id
    ```
    Next numbers are the printed value, +1, +2, etc. for multiple issues.
 

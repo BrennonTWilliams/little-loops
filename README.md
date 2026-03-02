@@ -334,21 +334,12 @@ ll-deps validate                 # Validate existing dependency references
 ll-deps fix                      # Auto-fix broken refs, stale refs, backlinks
 ```
 
-### ll-next-id
-
-Print the next available issue number:
-
-```bash
-ll-next-id                       # Print next issue number (e.g., 042)
-ll-next-id --config /path        # Use specific project root
-```
-
 ### ll-issues
 
 Issue management and visualization utilities:
 
 ```bash
-ll-issues next-id                             # Next available issue number (same as ll-next-id)
+ll-issues next-id                             # Next available issue number
 ll-issues list                                # List all active issues
 ll-issues list --type FEAT --priority P2      # Filter by type and priority
 ll-issues list --flat                         # Flat output for scripting

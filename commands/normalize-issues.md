@@ -4,7 +4,7 @@ allowed-tools:
   - Read
   - Glob
   - Edit
-  - Bash(git:*, ll-next-id:*)
+  - Bash(git:*, ll-issues:*)
 ---
 
 # Normalize Issues
@@ -162,7 +162,7 @@ Map directories to category prefixes based on configuration:
 Get the next globally unique issue number:
 
 ```bash
-ll-next-id
+ll-issues next-id
 ```
 
 **Important**: Issue IDs are globally unique across all types. If BUG-005, FEAT-007, and ENH-003 exist, the next ID for ANY type should be 008.

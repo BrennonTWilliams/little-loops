@@ -250,7 +250,7 @@ After user approval:
 
 1. **Get next issue number** (globally unique across ALL types):
    ```bash
-   ll-next-id
+   ll-issues next-id
    ```
 
 2. **Generate filenames** using the pattern: `P[4-5]-ENH-[NNN]-[slug].md`

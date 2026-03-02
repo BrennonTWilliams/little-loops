@@ -56,32 +56,6 @@ class TestIssuesCLINextId:
         # issues_dir fixture has BUG-001, BUG-002, BUG-003, FEAT-001, FEAT-002
         assert captured.out.strip() == "004"
 
-    def test_next_id_matches_ll_next_id(
-        self,
-        temp_project_dir: Path,
-        sample_config: dict[str, Any],
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """ll-issues next-id output matches ll-next-id output."""
-        config_path = temp_project_dir / ".claude" / "ll-config.json"
-        config_path.write_text(json.dumps(sample_config))
-        (temp_project_dir / ".issues" / "bugs").mkdir(parents=True)
-        (temp_project_dir / ".issues" / "bugs" / "P0-BUG-005-test.md").write_text("# BUG-005")
-
-        with patch.object(sys, "argv", ["ll-issues", "next-id", "--config", str(temp_project_dir)]):
-            from little_loops.cli import main_issues
-
-            main_issues()
-        issues_out = capsys.readouterr().out.strip()
-
-        with patch.object(sys, "argv", ["ll-next-id", "--config", str(temp_project_dir)]):
-            from little_loops.cli import main_next_id
-
-            main_next_id()
-        next_id_out = capsys.readouterr().out.strip()
-
-        assert issues_out == next_id_out == "006"
-
 
 @pytest.fixture
 def issues_dir_with_enh(issues_dir: Path) -> Path:

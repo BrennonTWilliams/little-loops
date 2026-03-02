@@ -225,9 +225,9 @@ After ALL sub-agents complete:
    - P5: Future considerations, low-priority features
 4. **Skip cross-referencing if `--quick`**: When `--quick` is set, skip step 5 (cross-reference for dependencies) to save time.
 5. **Assign globally unique sequential numbers**:
-   - Run `ll-next-id` to get the next available issue number
+   - Run `ll-issues next-id` to get the next available issue number
    - Use that value for the first new issue, increment for subsequent issues
-   - Example: If `ll-next-id` prints `011`, assign 011, 012, 013, etc.
+   - Example: If `ll-issues next-id` prints `011`, assign 011, 012, 013, etc.
 6. **Cross-reference for dependencies** (skip if `--quick`): After assigning IDs to new findings:
    - For each new finding, extract the file path(s) from its Location section
    - Compare against file paths in ALL existing active issues (read their Location sections)
