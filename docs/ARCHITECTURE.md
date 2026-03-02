@@ -104,7 +104,7 @@ little-loops/
 │   ├── quality-gate.yaml
 │   ├── sprint-execution.yaml
 │   └── workflow-analysis.yaml
-├── skills/                  # 15 skill definitions (4 proactive, 11 user-invoked)
+├── skills/                  # 15 skill definitions (5 proactive, 10 user-invoked)
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
 │   ├── audit-claude-config/ # User-invoked

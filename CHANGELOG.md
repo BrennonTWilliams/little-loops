@@ -614,6 +614,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 [1.6.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.5.0...v1.6.0
 
+<!-- Versions 1.2.0-1.4.0 were internal development milestones without tagged releases. -->
+
 ## [1.5.0] - 2026-02-09
 
 ### Added

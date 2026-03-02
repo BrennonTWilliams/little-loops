@@ -152,6 +152,36 @@ Evaluate active issues for utility vs complexity trade-offs and recommend which 
 
 **Trigger keywords:** "tradeoff review", "review issues", "prune backlog", "sense check issues"
 
+### `/ll:product-analyzer`
+Analyze codebase against product goals to identify feature gaps, user experience improvements, and business value opportunities.
+
+**Prerequisites:**
+- Product analysis enabled in config (`product.enabled: true`)
+- Goals file exists (`.claude/ll-goals.md` by default)
+
+### `/ll:confidence-check`
+Pre-implementation confidence check that validates readiness and estimates outcome confidence before coding begins. Produces dual scores: a Readiness Score (go/no-go) and an Outcome Confidence Score (implementation risk).
+
+**Arguments:**
+- `issue_id` (optional): Specific issue to check
+
+**Flags:** `--auto` (non-interactive), `--all` (batch all active issues)
+
+### `/ll:issue-workflow`
+Quick reference for the little-loops issue management workflow. Displays the issue lifecycle diagram and command order.
+
+**Trigger keywords:** "issue workflow", "issue lifecycle", "what commands for issues"
+
+### `/ll:issue-size-review`
+Evaluate the size and complexity of active issues and propose decomposition for large ones.
+
+**Trigger keywords:** "issue size review", "decompose issues", "split large issues"
+
+### `/ll:map-dependencies`
+Analyze active issues to discover cross-issue dependencies based on file overlap, validate existing dependency references, and propose new relationships. Delegates to `ll-deps` CLI subcommands.
+
+**Trigger keywords:** "map dependencies", "dependency mapping", "find dependencies"
+
 ---
 
 ## Sprint Management
@@ -213,6 +243,11 @@ Analyze user message history to identify patterns, workflows, and automation opp
 
 **Arguments:**
 - `file` (optional): Path to user-messages JSONL file (auto-detected if omitted)
+
+### `/ll:analyze-history`
+Analyze issue history to understand project health, trends, and progress. Delegates to `ll-history` CLI subcommands.
+
+**Trigger keywords:** "analyze history", "velocity report", "bug trends", "project health"
 
 ---
 
@@ -300,6 +335,12 @@ Analyze user message history to suggest FSM loop configurations automatically.
 ```
 
 **Trigger keywords:** "suggest loops", "loop from history", "automate workflow"
+
+### `/ll:workflow-automation-proposer`
+Synthesize workflow patterns into concrete automation proposals. Final step (Step 3) of the `/ll:analyze-workflows` pipeline.
+
+**Arguments:**
+- `step1_file step2_file` (optional): Paths to step 1 and step 2 YAML files (auto-detected if omitted)
 
 ---
 

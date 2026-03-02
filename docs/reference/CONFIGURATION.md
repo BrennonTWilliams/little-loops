@@ -128,6 +128,33 @@ For interactive editing, use `/ll:configure`.
   "documents": {
     "enabled": false,
     "categories": {}
+  },
+
+  "loops": {
+    "loops_dir": ".loops"
+  },
+
+  "scratch_pad": {
+    "enabled": false,
+    "threshold_lines": 200
+  },
+
+  "dependency_mapping": {
+    "overlap_min_files": 2,
+    "overlap_min_ratio": 0.25,
+    "min_directory_depth": 2,
+    "conflict_threshold": 0.4,
+    "high_conflict_threshold": 0.7,
+    "confidence_modifier": 0.5,
+    "scoring_weights": {
+      "semantic": 0.5,
+      "section": 0.3,
+      "type": 0.2
+    },
+    "exclude_common_files": [
+      "__init__.py", "pyproject.toml", "setup.py",
+      "setup.cfg", "CHANGELOG.md", "README.md", "conftest.py"
+    ]
   }
 }
 ```
@@ -341,6 +368,42 @@ To enable document tracking, set `documents.enabled: true` and define categories
 ```
 
 Each category requires a `files` array of relative paths. The optional `description` field documents what the category covers.
+
+### `loops`
+
+FSM loop settings:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `loops_dir` | `.loops` | Directory for loop definitions and runtime state |
+
+### `scratch_pad`
+
+Observation masking via scratch pad files to reduce context bloat in automation sessions:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `enabled` | `false` | Enable scratch pad instructions for automation sessions |
+| `threshold_lines` | `200` | Line count threshold above which tool outputs are redirected to scratch files (50-1000) |
+
+### `dependency_mapping`
+
+Dependency mapping threshold configuration for overlap detection and conflict scoring:
+
+| Key | Default | Description |
+|-----|---------|-------------|
+| `overlap_min_files` | `2` | Minimum overlapping files to trigger overlap detection |
+| `overlap_min_ratio` | `0.25` | Minimum ratio of overlapping files to smaller set (0.0-1.0) |
+| `min_directory_depth` | `2` | Minimum path segments for directory overlap (e.g., `src/components/` = 2) |
+| `conflict_threshold` | `0.4` | Conflict score cutoff: below = parallel-safe, above = dependency proposed (0.0-1.0) |
+| `high_conflict_threshold` | `0.7` | Conflict score above which issues are labeled HIGH conflict (0.0-1.0) |
+| `confidence_modifier` | `0.5` | Confidence reduction applied when dependency direction is ambiguous (0.0-1.0) |
+| `scoring_weights.semantic` | `0.5` | Weight for semantic target overlap (component/function names) |
+| `scoring_weights.section` | `0.3` | Weight for section mention overlap (UI regions) |
+| `scoring_weights.type` | `0.2` | Weight for modification type match |
+| `exclude_common_files` | See below | Infrastructure files excluded from overlap detection |
+
+Default `exclude_common_files`: `["__init__.py", "pyproject.toml", "setup.py", "setup.cfg", "CHANGELOG.md", "README.md", "conftest.py"]`
 
 ## Manual Configuration
 
