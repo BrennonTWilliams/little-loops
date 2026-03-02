@@ -101,12 +101,12 @@ Files in `.issues/` follow: `P[0-5]-[TYPE]-[NNN]-description.md`
 ## CLI Tools
 
 The `scripts/` directory contains Python CLI tools:
-- `ll-auto` - Automated sequential issue processing
-- `ll-parallel` - Parallel issue processing with git worktrees
+- `ll-auto` - Process all backlog issues sequentially in priority order
+- `ll-parallel` - Process issues concurrently using isolated git worktrees
+- `ll-sprint` - Define and execute curated issue sets with dependency-aware ordering
+- `ll-loop` - Execute FSM-based automation loops
+- `ll-workflows` - Identify multi-step workflow patterns from user message history
 - `ll-messages` - Extract user messages from Claude Code logs
-- `ll-loop` - FSM-based automation loop execution
-- `ll-sprint` - Sprint-based issue processing
-- `ll-workflows` - Workflow sequence analyzer
 - `ll-history` - View completed issue statistics and history
 - `ll-deps` - Cross-issue dependency analysis and validation
 - `ll-sync` - Sync local issues with GitHub Issues

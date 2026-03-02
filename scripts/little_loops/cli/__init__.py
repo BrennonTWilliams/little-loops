@@ -1,13 +1,15 @@
 """CLI entry points for little-loops tools.
 
 Provides command-line interfaces for automated issue management:
-- ll-auto: Sequential issue processing
-- ll-parallel: Parallel issue processing with git worktrees
+- ll-auto: Process all backlog issues sequentially in priority order
+- ll-parallel: Process issues concurrently using isolated git worktrees
+- ll-sprint: Define and execute curated issue sets with dependency-aware ordering
+- ll-loop: Execute FSM-based automation loops
+- ll-workflows: Identify multi-step workflow patterns from user message history
 - ll-messages: Extract user messages from Claude Code logs
-- ll-loop: FSM-based automation loop execution
-- ll-sprint: Sprint and sequence management
-- ll-sync: GitHub Issues sync
 - ll-history: Completed issue statistics and analysis
+- ll-deps: Cross-issue dependency discovery and validation
+- ll-sync: GitHub Issues sync
 - ll-verify-docs: Documentation count verification
 - ll-check-links: Markdown link checking
 - ll-next-id: Print next globally unique issue number

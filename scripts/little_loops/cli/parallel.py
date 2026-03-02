@@ -1,4 +1,4 @@
-"""ll-parallel: Parallel issue management using git worktrees."""
+"""ll-parallel: Process issues concurrently using isolated git worktrees."""
 
 from __future__ import annotations
 
@@ -25,13 +25,13 @@ from little_loops.logger import Logger
 def main_parallel() -> int:
     """Entry point for ll-parallel command.
 
-    Parallel issue management using git worktrees.
+    Process issues concurrently using isolated git worktrees.
 
     Returns:
         Exit code (0 = success)
     """
     parser = argparse.ArgumentParser(
-        description="Parallel issue management with git worktrees",
+        description="Process issues concurrently using isolated git worktrees",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

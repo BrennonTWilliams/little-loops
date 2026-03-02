@@ -219,7 +219,7 @@ pip install -e /path/to/little-loops/scripts
 
 ### ll-auto
 
-Sequential issue processing:
+Process all backlog issues sequentially in priority order:
 
 ```bash
 ll-auto                          # Process all issues
@@ -232,7 +232,7 @@ Run `ll-auto --help` for all options.
 
 ### ll-parallel
 
-Parallel issue processing with git worktree isolation:
+Process issues concurrently using isolated git worktrees:
 
 ```bash
 ll-parallel                      # Process with default workers
@@ -267,7 +267,7 @@ Run `ll-loop --help` for all options. See [Loops Guide](docs/guides/LOOPS_GUIDE.
 
 ### ll-sprint
 
-Sprint-based issue processing:
+Define and execute curated issue sets with dependency-aware ordering:
 
 ```bash
 ll-sprint create sprint-1 --issues BUG-001,FEAT-010
@@ -317,7 +317,7 @@ ll-history analyze               # Full analysis with trends and debt metrics
 
 ### ll-workflows
 
-Workflow sequence analysis (step 2 of the workflow analysis pipeline):
+Identify multi-step workflow patterns from user message history:
 
 ```bash
 ll-workflows analyze --input messages.jsonl --patterns step1.yaml

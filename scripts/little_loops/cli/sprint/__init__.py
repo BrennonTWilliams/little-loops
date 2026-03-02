@@ -1,4 +1,4 @@
-"""ll-sprint: Sprint and sequence management with dependency-aware execution."""
+"""ll-sprint: Define and execute curated issue sets with dependency-aware ordering."""
 
 from __future__ import annotations
 
@@ -46,7 +46,7 @@ __all__ = [
 def main_sprint() -> int:
     """Entry point for ll-sprint command.
 
-    Manage and execute sprint/sequence definitions.
+    Define and execute curated issue sets with dependency-aware ordering.
 
     Returns:
         Exit code (0 = success)
@@ -67,7 +67,7 @@ def main_sprint() -> int:
 
     parser = argparse.ArgumentParser(
         prog="ll-sprint",
-        description="Manage and execute sprint/sequence definitions",
+        description="Define and execute curated issue sets with dependency-aware ordering",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

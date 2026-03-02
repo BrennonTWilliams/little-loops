@@ -1,4 +1,4 @@
-"""ll-auto: Sequential automated issue management with Claude CLI."""
+"""ll-auto: Process all backlog issues sequentially in priority order."""
 
 from __future__ import annotations
 
@@ -13,13 +13,13 @@ from little_loops.issue_manager import AutoManager
 def main_auto() -> int:
     """Entry point for ll-auto command.
 
-    Sequential automated issue management with Claude CLI.
+    Process all backlog issues sequentially in priority order.
 
     Returns:
         Exit code (0 = success)
     """
     parser = argparse.ArgumentParser(
-        description="Automated sequential issue management with Claude CLI",
+        description="Process all backlog issues sequentially in priority order",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

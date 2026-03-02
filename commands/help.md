@@ -183,6 +183,22 @@ SESSION & CONFIG
     Toggle automatic prompt optimization settings
     Settings: enabled, mode, confirm, status
 
+CLI TOOLS (pip install -e ./scripts)
+------------------------------------
+ll-auto           Process all backlog issues sequentially in priority order
+ll-parallel       Process issues concurrently using isolated git worktrees
+ll-sprint         Define and execute curated issue sets with dependency-aware ordering
+ll-loop           Execute FSM-based automation loops
+ll-workflows      Identify multi-step workflow patterns from user message history
+ll-messages       Extract user messages from Claude Code logs
+ll-history        View completed issue statistics and history
+ll-deps           Cross-issue dependency analysis and validation
+ll-sync           Sync local issues with GitHub Issues
+ll-issues         Issue management and visualization (next-id, list, show, sequence, impact-effort)
+ll-next-id        Print next globally unique issue number
+ll-verify-docs    Verify documented counts match actual file counts
+ll-check-links    Check markdown documentation for broken links
+
 ================================================================================
 Usage: /ll:<command> [arguments] [flags]
 

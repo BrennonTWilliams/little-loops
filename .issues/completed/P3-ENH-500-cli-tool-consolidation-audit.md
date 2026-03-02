@@ -72,8 +72,8 @@ _Added by `/ll:refine-issue` — Current CLI argparse descriptions:_
 | `ll-parallel` | `cli/parallel.py:34` | "Parallel issue management with git worktrees" |
 | `ll-history` | `cli/history.py:31` | "Display summary statistics and analysis for completed issues" |
 | `ll-sync` | `cli/sync.py:24` | "Sync local .issues/ files with GitHub Issues" |
-| `ll-verify-docs` | `cli/docs.py:26` | "Verify documented counts match actual file counts" |
-| `ll-check-links` | `cli/docs.py:118` | "Check markdown documentation for broken links" |
+| `ll-verify-docs` | `cli/docs.py:27` | "Verify documented counts match actual file counts" |
+| `ll-check-links` | `cli/docs.py:119` | "Check markdown documentation for broken links" |
 | `ll-messages` | `cli/messages.py:31` | "Extract user messages from Claude Code logs" |
 | `ll-next-id` | `cli/next_id.py:23` | "Print the next globally unique issue number" |
 
@@ -110,9 +110,45 @@ _Added by `/ll:refine-issue` — Current CLI argparse descriptions:_
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Captured actual argparse description strings for 8 CLI tools; noted ll-sprint/ll-loop/ll-workflows need separate audit from their subdirectories
+- `/ll:manage-issue` - 2026-03-01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl` - Completed audit: sharpened descriptions for 4 tools, added CLI TOOLS section to help.md, updated all docs
+
+## Resolution
+
+**Resolved**: 2026-03-01 | Action: implement
+
+### Audit Findings
+
+1. **Tool count**: 13 CLI tools — within the 10–20 recommended range. No tools need removal.
+
+2. **Overlap assessment**:
+   - **ll-auto vs ll-sprint**: NOT redundant. ll-auto processes the entire backlog dynamically; ll-sprint executes curated YAML-defined issue sets. Descriptions sharpened to make this distinction explicit.
+   - **ll-loop vs ll-workflows**: NOT redundant. ll-loop runs FSM automations; ll-workflows analyzes message patterns. No description change needed.
+   - **ll-next-id vs ll-issues next-id**: Genuinely redundant (both call `get_next_issue_number()`). Low-impact; recommend deprecation of standalone `ll-next-id` in a separate issue.
+
+3. **Description improvements** (4 tools updated):
+   - `ll-auto`: "Automated sequential issue management with Claude CLI" → "Process all backlog issues sequentially in priority order"
+   - `ll-parallel`: "Parallel issue management with git worktrees" → "Process issues concurrently using isolated git worktrees"
+   - `ll-sprint`: "Manage and execute sprint/sequence definitions" → "Define and execute curated issue sets with dependency-aware ordering"
+   - `ll-workflows`: "Workflow Sequence Analyzer - Step 2 of workflow analysis pipeline" → "Identify multi-step workflow patterns from user message history"
+
+4. **Documentation updated**: CLAUDE.md, README.md, commands/help.md, docs/reference/API.md, cli/__init__.py
+
+### Consolidation Proposals
+- Consider deprecating standalone `ll-next-id` (subsumed by `ll-issues next-id`) — separate issue recommended
+
+### Changes Made
+- `scripts/little_loops/cli/auto.py` — argparse description + module docstring
+- `scripts/little_loops/cli/parallel.py` — argparse description + module docstring
+- `scripts/little_loops/cli/sprint/__init__.py` — argparse description + module docstring
+- `scripts/little_loops/workflow_sequence_analyzer.py` — argparse description + module docstring
+- `scripts/little_loops/cli/__init__.py` — module docstring
+- `.claude/CLAUDE.md` — CLI Tools section
+- `README.md` — CLI tool section headers
+- `commands/help.md` — added CLI TOOLS section
+- `docs/reference/API.md` — module description
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Resolved: 2026-03-01 | Priority: P3

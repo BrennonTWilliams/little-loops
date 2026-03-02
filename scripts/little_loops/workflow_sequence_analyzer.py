@@ -1,4 +1,4 @@
-"""Workflow Sequence Analyzer - Step 2 of the workflow analysis pipeline.
+"""ll-workflows: Identify multi-step workflow patterns from user message history.
 
 Identifies multi-step workflows and cross-session patterns using:
 - Entity-based clustering
@@ -813,7 +813,7 @@ def main() -> int:
     import sys
 
     parser = argparse.ArgumentParser(
-        description="Workflow Sequence Analyzer - Step 2 of workflow analysis pipeline",
+        description="Identify multi-step workflow patterns from user message history",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:

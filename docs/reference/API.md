@@ -1422,7 +1422,7 @@ Filter out files in excluded directories.
 
 ## little_loops.issue_manager
 
-Sequential automated issue management.
+Process all backlog issues sequentially in priority order.
 
 ### AutoManager
 
@@ -2220,7 +2220,7 @@ CLI entry points for the package.
 def main_auto() -> int
 ```
 
-Entry point for `ll-auto` command. Sequential automated issue management.
+Entry point for `ll-auto` command. Process all backlog issues sequentially in priority order.
 
 **Returns:** Exit code
 
