@@ -45,7 +45,7 @@ Currently, running `/ll:format-issue` without arguments has undefined or unprodu
 - N/A — skill-level change only
 
 ### Similar Patterns
-- `skills/manage-issue/SKILL.md:54-83` — exact priority selection loop to mirror
+- `skills/manage-issue/SKILL.md:77-83` — exact priority selection loop to mirror
 
 ### Codebase Research Findings
 
@@ -61,7 +61,7 @@ if [[ -z "$ISSUE_ID" ]]; then
 fi
 ```
 
-**Pattern to follow from `manage-issue/SKILL.md:62-70`:**
+**Pattern to follow from `manage-issue/SKILL.md:77-83`:**
 ```bash
 # Find highest priority (P0 > P1 > P2 > ...)
 for P in P0 P1 P2 P3 P4 P5; do
@@ -116,16 +116,30 @@ fi
 
 `enhancement`, `ux`, `format-issue`
 
+## Resolution
+
+**Resolved**: 2026-03-01
+
+### Changes Made
+- `skills/format-issue/SKILL.md`: Replaced error block (lines 81-85) with priority selection loop that searches all active category directories (P0→P5), excluding completed/ and deferred/
+- `skills/format-issue/SKILL.md`: Updated Arguments section to document the new no-arg behavior
+
+### Verification
+- All 3043 tests pass
+- Linting clean
+- Pattern matches manage-issue priority selection convention
+
 ## Session Log
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bc790b97-8457-4261-96c9-b25c3abc9efc.jsonl`
 - `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Identified exact insertion point (format-issue/SKILL.md:81-85) and priority loop pattern from manage-issue/SKILL.md:62-70
+- `/ll:manage-issue` - 2026-03-01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/65b1e12e-afaf-4daa-8340-a9901db9e490.jsonl` - Implemented no-arg priority selection
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Resolved: 2026-03-01 | Priority: P3
 
 ---
 
