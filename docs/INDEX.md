@@ -41,7 +41,29 @@ Deep dives into specific systems and internals.
 - [Merge Coordinator](development/MERGE-COORDINATOR.md) - Sophisticated merge coordination for parallel processing
 - [Claude CLI Integration](research/claude-cli-integration-mechanics.md) - Technical details on Claude CLI integration
 - [CLI Tools Audit](research/CLI-TOOLS-AUDIT.md) - Review and audit of CLI tools
+- [LCM: Lossless Context Management](research/LCM-Lossless-Context-Management.md) - Research paper on lossless context management
+- [LCM Integration Brainstorm](research/LCM-Integration-Brainstorm.md) - Technical roadmap for issue-based LCM integration
 - [Demo Repository Rubric](demo/demo-repo-rubric.md) - Criteria for evaluating demo repositories
+- [Demo Scenarios](demo/scenarios.md) - Demo scenarios showcasing key plugin capabilities
+- [Demo Modules](demo/modules.md) - Bootcamp module list and focus areas
+- [Demo README](demo/README.md) - Demo setup instructions and quick start
+
+## Claude Code Reference
+
+Reference documentation for Claude Code platform features.
+
+- [Automate Workflows with Hooks](claude-code/automate-workflows-with-hooks.md) - Create hooks to automate repetitive workflows
+- [Checkpointing](claude-code/checkpointing.md) - Session checkpointing and restoration
+- [CLI Programmatic Usage](claude-code/cli-programmatic-usage.md) - Run Claude Code programmatically
+- [CLI Reference](claude-code/cli-reference.md) - Complete CLI command reference
+- [Create Plugins](claude-code/create-plugin.md) - Guide to creating Claude Code plugins
+- [Custom Subagents](claude-code/custom-subagents.md) - Define and configure custom subagents
+- [Hooks Reference](claude-code/hooks-reference.md) - Complete hooks API reference
+- [Memory](claude-code/memory.md) - Manage Claude's memory and context
+- [Plugins Reference](claude-code/plugins-reference.md) - Plugin system reference and configuration
+- [Agent Teams](claude-code/run-agent-teams.md) - Orchestrate teams of Claude Code sessions
+- [Settings](claude-code/settings.md) - Claude Code settings and configuration
+- [Skills](claude-code/skills.md) - Extend Claude with skills
 
 ---
 
