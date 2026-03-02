@@ -1,7 +1,8 @@
-"""Issue template assembly using shared issue-sections.json definitions.
+"""Issue template assembly using per-type section definition files.
 
-Reads the canonical templates/issue-sections.json and assembles structured
-markdown for issue files. Used by sync pull to produce v2.0-compliant issues.
+Reads per-type template files (bug-sections.json, feat-sections.json,
+enh-sections.json) from templates/ and assembles structured markdown for
+issue files. Used by sync pull to produce v2.0-compliant issues.
 """
 
 from __future__ import annotations
@@ -16,20 +17,24 @@ def _default_templates_dir() -> Path:
     return Path(__file__).resolve().parent.parent.parent / "templates"
 
 
-def load_issue_sections(templates_dir: Path | None = None) -> dict[str, Any]:
-    """Load issue-sections.json from the given or default templates directory.
+def load_issue_sections(
+    issue_type: str, templates_dir: Path | None = None
+) -> dict[str, Any]:
+    """Load per-type sections JSON from the given or default templates directory.
 
     Args:
+        issue_type: Issue type prefix (BUG, FEAT, ENH).
         templates_dir: Optional override path. Defaults to bundled templates/.
 
     Returns:
         Parsed JSON data as a dict.
 
     Raises:
-        FileNotFoundError: If issue-sections.json does not exist at the path.
+        FileNotFoundError: If the per-type sections file does not exist.
     """
     base = templates_dir if templates_dir is not None else _default_templates_dir()
-    path = base / "issue-sections.json"
+    filename = f"{issue_type.lower()}-sections.json"
+    path = base / filename
     with open(path, encoding="utf-8") as f:
         return json.load(f)
 
@@ -47,7 +52,7 @@ def assemble_issue_markdown(
     """Assemble structured markdown from template sections and content.
 
     Args:
-        sections_data: Parsed issue-sections.json data.
+        sections_data: Parsed per-type sections data.
         issue_type: Issue type prefix (BUG, FEAT, ENH).
         variant: Creation variant name (full, minimal, legacy).
         issue_id: Issue identifier (e.g. "ENH-517").
@@ -66,7 +71,7 @@ def assemble_issue_markdown(
         raise ValueError(f"Unknown creation variant: {variant!r}")
 
     common_sections = sections_data.get("common_sections", {})
-    type_sections = sections_data.get("type_sections", {}).get(issue_type, {})
+    type_sections = sections_data.get("type_sections", {})
     exclude_deprecated = variant_config.get("exclude_deprecated", False)
     include_common = variant_config.get("include_common", [])
     include_type = variant_config.get("include_type_sections", False)

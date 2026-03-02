@@ -1,0 +1,264 @@
+{
+  "_meta": {
+    "name": "Issue Section Definitions",
+    "description": "Shared section requirements for BUG, FEAT, and ENH issue types. Referenced by format-issue, capture-issue, ready-issue, and scan-codebase commands.",
+    "version": "2.0",
+    "changelog": "2.0 - Added Motivation, Root Cause, Implementation Steps, API/Interface, Integration Map; Enhanced Proposed Solution and Impact; Deprecated 8 low-value sections; Renamed User Story to Use Case",
+    "type": "BUG"
+  },
+  "common_sections": {
+    "Summary": {
+      "required": true,
+      "description": "Clear description of the issue",
+      "ai_usage": "HIGH",
+      "creation_template": "[Description extracted from input]"
+    },
+    "Context": {
+      "required": false,
+      "description": "How this issue was identified",
+      "ai_usage": "LOW",
+      "creation_template": "[How this issue was identified]",
+      "creation_contexts": [
+        "capture"
+      ],
+      "deprecated": true,
+      "deprecation_reason": "Informational only, 0% usage by agents during implementation"
+    },
+    "Current Behavior": {
+      "required": true,
+      "description": "What currently happens",
+      "ai_usage": "HIGH",
+      "creation_template": "[If applicable - describe what currently happens]"
+    },
+    "Expected Behavior": {
+      "required": true,
+      "description": "What should happen instead",
+      "ai_usage": "HIGH",
+      "creation_template": "[What should happen instead]"
+    },
+    "Motivation": {
+      "required": false,
+      "description": "Why this issue matters - business value, user impact, or technical debt cost",
+      "ai_usage": "MEDIUM",
+      "human_value": "HIGH",
+      "quality_guidance": [
+        "Explain why this matters to users or the project",
+        "Quantify impact where possible (affects X users, saves Y minutes, blocks Z features)",
+        "For ENH: replaces 'Current Pain Point' with clearer WHY focus"
+      ],
+      "creation_template": "[Why this issue matters - business value, user impact, technical debt cost]"
+    },
+    "Proposed Solution": {
+      "required": false,
+      "description": "Suggested approach with code examples and anchor-based references",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "quality_guidance": [
+        "Include code examples or pseudocode showing the fix",
+        "Use anchor-based references (function/class names) not line numbers",
+        "Provide 2-3 implementation approaches if multiple options exist",
+        "Reference existing utilities/patterns to reuse"
+      ],
+      "creation_template": "TBD - requires investigation"
+    },
+    "Integration Map": {
+      "required": false,
+      "description": "Files, modules, and systems that interact with or depend on the changed code",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "quality_guidance": [
+        "Identify files that call/import the changed code (use grep to find references)",
+        "List files with similar patterns that should be updated consistently",
+        "Enumerate test files that need updates or new tests",
+        "Identify documentation files that reference this behavior",
+        "Note configuration files, constants, or settings affected",
+        "Consider integration points with external systems",
+        "Think: what breaks if I change this in isolation?",
+        "Use N/A for categories with no changes, don't leave blank"
+      ],
+      "creation_template": "### Files to Modify\n- TBD - requires codebase analysis\n\n### Dependent Files (Callers/Importers)\n- TBD - use grep to find references\n\n### Similar Patterns\n- TBD - search for consistency\n\n### Tests\n- TBD - identify test files to update\n\n### Documentation\n- TBD - docs that need updates\n\n### Configuration\n- N/A or list config files"
+    },
+    "Implementation Steps": {
+      "required": false,
+      "description": "High-level outline/checklist for implementing this issue",
+      "ai_usage": "HIGH",
+      "human_value": "MEDIUM",
+      "quality_guidance": [
+        "Keep steps high-level (3-8 steps typical)",
+        "Focus on major phases, not detailed substeps",
+        "Agent will expand this into detailed implementation plan",
+        "Think: outline the agent will flesh out, not replacement for agent's plan"
+      ],
+      "creation_template": "1. [Major phase 1]\n2. [Major phase 2]\n3. [Verification approach]"
+    },
+    "Impact": {
+      "required": true,
+      "description": "Priority, effort, and risk assessment with justifications",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "quality_guidance": [
+        "Include justification for priority (why P0? why P2?)",
+        "Justify effort estimate (reuses existing code? new patterns?)",
+        "Explain risk level (breaking change? well-tested path?)"
+      ],
+      "creation_template": "- **Priority**: [P0-P5] - [Justification]\n- **Effort**: [Small/Medium/Large] - [Justification]\n- **Risk**: [Low/Medium/High] - [Justification]\n- **Breaking Change**: [Yes/No]"
+    },
+    "Related Key Documentation": {
+      "required": false,
+      "description": "Links to relevant project documentation",
+      "ai_usage": "LOW",
+      "human_value": "MEDIUM",
+      "creation_template": "_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._"
+    },
+    "Labels": {
+      "required": true,
+      "description": "Issue categorization labels",
+      "ai_usage": "MEDIUM",
+      "human_value": "LOW",
+      "creation_template": "`[type-label]`, `captured`"
+    },
+    "Session Log": {
+      "required": false,
+      "description": "Links to Claude Code JSONL session files involved in this issue's lifecycle",
+      "ai_usage": "LOW",
+      "human_value": "MEDIUM",
+      "creation_template": ""
+    },
+    "Status": {
+      "required": true,
+      "description": "Current issue status footer",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "creation_template": "**Open** | Created: [YYYY-MM-DD] | Priority: [P0-P5]"
+    }
+  },
+  "type_sections": {
+    "Steps to Reproduce": {
+      "level": "required",
+      "description": "Numbered steps to reproduce the bug",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "question": "What are the steps to reproduce this bug?",
+      "creation_template": "1. [Step 1]\n2. [Step 2]\n3. [Observe: description of the bug]"
+    },
+    "Actual Behavior": {
+      "level": "required",
+      "description": "What actually happens when the bug occurs",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "question": "What actually happens when the bug occurs?"
+    },
+    "Root Cause": {
+      "level": "conditional",
+      "description": "File, function/class anchor, and explanation of WHY bug occurs",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "question": "Do you know the root cause? If so, which file and function, and why does the bug happen?",
+      "creation_contexts": [
+        "scan"
+      ],
+      "creation_template": "- **File**: `path/to/file.py`\n- **Anchor**: `in function buggy_func()`\n- **Cause**: [Explanation of why bug happens]"
+    },
+    "Error Messages": {
+      "level": "conditional",
+      "description": "Error messages or stack traces",
+      "ai_usage": "MEDIUM",
+      "human_value": "HIGH",
+      "question": "Are there any error messages or stack traces?"
+    },
+    "Environment": {
+      "level": "nice-to-have",
+      "description": "Environment details (browser, OS, versions)",
+      "ai_usage": "LOW",
+      "human_value": "LOW",
+      "question": "What environment does this occur in (browser, OS, versions)?",
+      "deprecated": true,
+      "deprecation_reason": "Rarely filled, low value for implementation"
+    },
+    "Frequency": {
+      "level": "nice-to-have",
+      "description": "How often the bug occurs",
+      "ai_usage": "LOW",
+      "human_value": "LOW",
+      "question": "How often does this happen (always, sometimes, rarely)?",
+      "deprecated": true,
+      "deprecation_reason": "Priority field captures this adequately"
+    },
+    "Location": {
+      "level": "conditional",
+      "description": "File, line numbers, anchor, and code snippet where the bug occurs",
+      "ai_usage": "HIGH",
+      "human_value": "HIGH",
+      "creation_contexts": [
+        "scan"
+      ],
+      "creation_template": "- **File**: `path/to/file`\n- **Line(s)**: [lines] (at scan commit: [COMMIT_HASH_SHORT])\n- **Anchor**: `in function name()`\n- **Code**:\n```\n# Relevant code snippet\n```"
+    }
+  },
+  "creation_variants": {
+    "full": {
+      "description": "Complete issue template with all applicable sections (v2.0 optimized)",
+      "include_common": [
+        "Summary",
+        "Current Behavior",
+        "Expected Behavior",
+        "Motivation",
+        "Proposed Solution",
+        "Integration Map",
+        "Implementation Steps",
+        "Impact",
+        "Related Key Documentation",
+        "Labels",
+        "Status"
+      ],
+      "include_type_sections": true,
+      "exclude_deprecated": false
+    },
+    "minimal": {
+      "description": "Lightweight template with core sections only",
+      "include_common": [
+        "Summary",
+        "Current Behavior",
+        "Expected Behavior",
+        "Impact",
+        "Status"
+      ],
+      "include_type_sections": false,
+      "exclude_deprecated": true
+    },
+    "legacy": {
+      "description": "Backward compatible template including deprecated sections",
+      "include_common": [
+        "Summary",
+        "Context",
+        "Current Behavior",
+        "Expected Behavior",
+        "Proposed Solution",
+        "Impact",
+        "Related Key Documentation",
+        "Labels",
+        "Status"
+      ],
+      "include_type_sections": true,
+      "exclude_deprecated": false
+    }
+  },
+  "quality_checks": {
+    "BUG": [
+      "Steps to Reproduce should have numbered concrete steps (not \"do the thing\")",
+      "Expected vs Actual should describe different specific behaviors (not just \"it should work\")",
+      "Error messages should include actual error text, not just \"there's an error\"",
+      "Root Cause should identify file + function anchor + explanation (not just \"investigate\")",
+      "Proposed Solution should use anchor-based references (function/class names) not line numbers"
+    ],
+    "common": [
+      "Impact must include justifications for priority, effort, and risk assessments",
+      "Proposed Solution should use anchor-based code references (function/class names) instead of line numbers",
+      "Implementation Steps (if present) should be high-level outline, not detailed implementation plan",
+      "Integration Map should identify callers/importers (use grep to find references)",
+      "Integration Map should list test files that need updates for each changed file",
+      "Integration Map should note similar patterns to keep consistent across codebase",
+      "Integration Map should use 'N/A' for categories with no changes, not leave them as 'TBD'"
+    ]
+  }
+}

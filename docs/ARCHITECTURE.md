@@ -155,7 +155,9 @@ little-loops/
 │   ├── java-maven.json
 │   ├── java-gradle.json
 │   ├── dotnet.json
-│   ├── issue-sections.json
+│   ├── bug-sections.json
+│   ├── feat-sections.json
+│   ├── enh-sections.json
 │   ├── ll-goals-template.md
 │   └── generic.json
 └── scripts/                 # Python package

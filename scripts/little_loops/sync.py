@@ -266,7 +266,7 @@ class GitHubSyncManager:
         self.logger = logger
         self.dry_run = dry_run
         self.issues_dir = config.project_root / config.issues.base_dir
-        self._sections_data: dict[str, Any] | None = None
+        self._sections_data: dict[str, dict[str, Any]] = {}
 
     def _get_local_issues(self) -> list[Path]:
         """Get all local issue files to sync.
@@ -651,17 +651,19 @@ class GitHubSyncManager:
 
         issue_path = category_dir / filename
 
-        # Build content using shared issue-sections.json template
+        # Build content using per-type sections template
         now = datetime.now(UTC).isoformat(timespec="seconds")
         today = datetime.now(UTC).strftime("%Y-%m-%d")
 
-        if self._sections_data is None:
+        if issue_type not in self._sections_data:
             templates_dir = (
                 Path(self.config.issues.templates_dir)
                 if self.config.issues.templates_dir
                 else None
             )
-            self._sections_data = load_issue_sections(templates_dir)
+            self._sections_data[issue_type] = load_issue_sections(
+                issue_type, templates_dir
+            )
 
         frontmatter = {
             "github_issue": gh_number,
@@ -687,7 +689,7 @@ class GitHubSyncManager:
 
         variant = self.sync_config.github.pull_template
         content = assemble_issue_markdown(
-            sections_data=self._sections_data,
+            sections_data=self._sections_data[issue_type],
             issue_type=issue_type,
             variant=variant,
             issue_id=issue_id,

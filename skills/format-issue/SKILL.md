@@ -173,7 +173,7 @@ See [templates.md](templates.md) for:
 
 ### 3. Identify Gaps
 
-Analyze content against type-specific checklists defined in `templates/issue-sections.json` v2.0 (relative to the little-loops plugin directory).
+Analyze content against type-specific checklists defined in the per-type template `templates/{type}-sections.json` v2.0 (relative to the little-loops plugin directory), where `{type}` is `bug`, `feat`, or `enh` based on the issue type.
 
 See [templates.md](templates.md) for:
 - Template v2.0 structure and section definitions
@@ -198,7 +198,7 @@ For each section that has content, evaluate against these checks:
 
 #### Type-Specific Quality Checks
 
-Read `quality_checks.[TYPE]` from `templates/issue-sections.json` for the issue's type (BUG/FEAT/ENH). Apply each quality check to the corresponding section content.
+Read `quality_checks.[TYPE]` from the per-type template `templates/{type}-sections.json` for the issue's type (BUG/FEAT/ENH). Apply each quality check to the corresponding section content.
 
 #### Classification
 

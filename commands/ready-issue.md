@@ -120,9 +120,9 @@ Check for completeness:
 
 #### Required Sections
 
-Read `templates/issue-sections.json` v2.0 (relative to the little-loops plugin directory) and verify:
+Read the per-type template `templates/{type}-sections.json` v2.0 (relative to the little-loops plugin directory), where `{type}` is `bug`, `feat`, or `enh` based on the issue type, and verify:
 - [ ] All `common_sections` where `required: true` are present and non-empty (Summary, Current Behavior, Expected Behavior, Impact, Labels, Status)
-- [ ] For the issue's type (BUG/FEAT/ENH), all `type_sections.[TYPE]` entries where `level: "required"` are present and non-empty
+- [ ] All `type_sections` entries where `level: "required"` are present and non-empty
 - [ ] Proposed Solution section is present (even if marked TBD)
 
 **Backward Compatibility (v2.0)**:

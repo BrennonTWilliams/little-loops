@@ -80,7 +80,7 @@ Before proceeding, check if `.claude/ll-config.json` already exists:
 
 ### 3. Detect Project Type
 
-Read all project-type template JSON files from `templates/` (relative to the little-loops plugin directory), excluding `issue-sections.json` and `ll-goals-template.md`. For each template, check `_meta.detect` patterns against files in the project root:
+Read all project-type template JSON files from `templates/` (relative to the little-loops plugin directory), excluding `bug-sections.json`, `feat-sections.json`, `enh-sections.json`, and `ll-goals-template.md`. For each template, check `_meta.detect` patterns against files in the project root:
 
 1. For each template file, read its `_meta.detect` array
 2. Check if ANY listed indicator file exists in the project root

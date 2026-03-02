@@ -238,12 +238,11 @@ After ALL sub-agents complete:
 
 ### 4. Create Issue Files
 
-For each finding, create an issue file using the section structure from `templates/issue-sections.json` (relative to the little-loops plugin directory):
+For each finding, create an issue file using the section structure from per-type template files (relative to the little-loops plugin directory):
 
-1. Read `templates/issue-sections.json` for section definitions
+1. Read the per-type template `templates/{type}-sections.json` where `{type}` is `bug`, `feat`, or `enh` based on the issue type
 2. Use `creation_variants.full` to determine which common sections to include
-3. For BUG issues, include `type_sections.BUG` sections (especially "Steps to Reproduce" — use this exact name, not "Reproduction Steps")
-4. For ENH issues, include `type_sections.ENH` sections
+3. Include `type_sections` from the loaded file (especially "Steps to Reproduce" for BUGs — use this exact name, not "Reproduction Steps")
 5. Always include the scan-specific YAML frontmatter and Location section
 
 The assembled file follows this structure:
@@ -275,7 +274,7 @@ discovered_by: scan-codebase
 
 [Remaining sections from template: Current Behavior, Expected Behavior,
 type-specific sections (e.g. Steps to Reproduce for BUGs), Proposed Solution,
-Impact, Labels, Status — using section names and structure from issue-sections.json]
+Impact, Labels, Status — using section names and structure from per-type sections files]
 ```
 
 **Note**: Only include Permalink if `PERMALINKS_AVAILABLE` is true.

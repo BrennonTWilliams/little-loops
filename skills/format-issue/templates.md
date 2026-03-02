@@ -4,7 +4,7 @@ This file contains the template v2.0 section definitions, alignment mappings, an
 
 ## Template v2.0 Section Alignment
 
-Read `templates/issue-sections.json` (relative to the little-loops plugin directory) and apply v1.0 → v2.0 section renaming.
+Read the per-type template `templates/{type}-sections.json` (relative to the little-loops plugin directory), where `{type}` is `bug`, `feat`, or `enh` based on the issue type, and apply v1.0 → v2.0 section renaming.
 
 ### Known v1.0 → v2.0 Mappings
 
@@ -49,10 +49,10 @@ In interactive mode (no --auto), skip automatic renaming and let user decide.
 
 ### Template v2.0 Structure
 
-Analyze content against type-specific checklists defined in `templates/issue-sections.json` v2.0:
+Analyze content against type-specific checklists defined in the per-type template `templates/{type}-sections.json` v2.0:
 
-1. Read the shared template file `templates/issue-sections.json` (v2.0 - optimized for AI implementation)
-2. For the issue's type (BUG/FEAT/ENH), look up `type_sections.[TYPE]` for type-specific sections
+1. Read the per-type template file `templates/{type}-sections.json` where `{type}` is `bug`, `feat`, or `enh` (v2.0 - optimized for AI implementation)
+2. Look up `type_sections` for type-specific sections (each file contains only its type's sections)
 3. Also check `common_sections` for universal required sections (Summary, Current Behavior, Expected Behavior, Motivation, etc.)
 4. For each section, use its `level` (required/conditional/nice-to-have) and `question` field
 5. **Note**: Sections marked `deprecated: true` are still supported for backward compatibility but should not be suggested for new content

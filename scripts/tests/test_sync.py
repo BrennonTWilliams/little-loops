@@ -637,7 +637,7 @@ github_issue: 1
     def test_create_local_issue_uses_template_structure(
         self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
     ) -> None:
-        """Pulled issues have v2.0 section structure from issue-sections.json."""
+        """Pulled issues have v2.0 section structure from per-type sections files."""
         manager = GitHubSyncManager(mock_config, mock_logger)
         result = SyncResult(action="pull", success=True)
         gh_issue = {

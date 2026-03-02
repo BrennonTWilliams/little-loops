@@ -228,10 +228,10 @@ ELSE:
 
 **Build issue from shared template:**
 
-1. Read `templates/issue-sections.json` (v2.0 - optimized for AI implementation)
+1. Read the per-type template `templates/{type}-sections.json` where `{type}` is `bug`, `feat`, or `enh` based on the issue type (v2.0 - optimized for AI implementation)
 2. Look up `creation_variants.[TEMPLATE_STYLE]` to determine which sections to include
 3. For each section name in `include_common`, use `common_sections.[name].creation_template` as placeholder content
-4. If `include_type_sections` is true, also include sections from `type_sections.[TYPE]` that have a `creation_template`
+4. If `include_type_sections` is true, also include sections from `type_sections` that have a `creation_template`
 5. Always include YAML frontmatter with `discovered_date` and `discovered_by: capture-issue`
 
 **New sections in v2.0** (auto-included based on template variant):
