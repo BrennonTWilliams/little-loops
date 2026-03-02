@@ -83,7 +83,7 @@ After a match is found for a given file, the inner prefix loop breaks early. A s
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P4
+**Open** | Created: 2026-02-24 | Priority: P5
 
 ---
 

@@ -109,7 +109,7 @@ scripts/little_loops/output_parsing.py
 
 ## Status
 
-**Open** | Created: 2026-02-26 | Priority: P3
+**Open** | Created: 2026-02-26 | Priority: P2
 
 ## Session Log
 - `/ll:audit-architecture` - 2026-02-26 - Created from dependency mapping audit; bidirectional root↔parallel coupling finding
