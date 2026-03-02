@@ -12,6 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.28.0] - 2026-03-02
+
+### Added
+
+- **ll-sync diff and close subcommands** - New `ll-sync diff [ID]` to show content differences between local and GitHub versions, and `ll-sync close [ID]` to close GitHub issues when local counterparts are completed (399e95c)
+
+### Other
+
+- docs(issues): update ENH-484 line refs and mark blockers resolved (1ae3d75)
+- docs(readme): correct CLI tools count from 13 to 12 (043d252)
+- docs(index): add 17 missing entries to docs/INDEX.md (8325dc7)
+
+[1.28.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.27.0...v1.28.0
+
 ## [1.27.0] - 2026-03-02
 
 ### Added
