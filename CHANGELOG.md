@@ -12,6 +12,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.26.0] - 2026-03-01
+
+### Added
+
+- **ll-issues show sub-command** - View issue summary cards with detail fields and full summary in dedicated card section (FEAT-505)
+- **ll-loop --background daemon mode** - Run FSM loops as background daemon processes (feat, 6d4d58c)
+
+### Fixed
+
+- fix(cli): wrap long summary text in ll-issues show card (853053e)
+- fix(docs): correct 20 documentation issues found by full audit (0e51bc8)
+- fix(docs): address 5 remaining documentation audit findings (caa31d2)
+
+### Changed
+
+- **Forward-message pattern investigation** - Investigated coordinator synthesis behavior for ll-parallel result fidelity; closed as low utility (ENH-501)
+- **ll-issues list layout** - Enhanced list output with type-based grouping, section headers, counts, and `--flat` flag (ENH-509)
+- **issue_discovery module split** - Refactored 954-line module into focused package with matching, extraction, and search sub-modules (ENH-471)
+- **Confidence-check outcome scoring** - Added dual-score output with Readiness Score and Outcome Confidence Score (ENH-446)
+- **Init conflicting flags and dry-run** - Added conflict detection for mutually exclusive flags and `--dry-run` preview mode (ENH-458)
+- **Audit frontmatter validation** - Extended plugin-config-auditor with 8 agent fields and 5 skill fields validation (ENH-464)
+
+### Other
+
+- docs(readme): add recently-added CLI features to README (43a0263)
+- style: apply ruff formatting to scripts (d11cfb2)
+- style: fix formatting in issues show card renderer (2afb4c2)
+
+[1.26.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.25.0...v1.26.0
+
 ## [1.25.0] - 2026-02-27
 
 ### Added
