@@ -161,8 +161,7 @@ def build_narrative_doc(
     lines.append(f"# {topic}")
     lines.append("")
     lines.append(
-        f"*Synthesized from {len(scored_issues)} completed issue(s). "
-        f"Generated from issue history.*"
+        f"*Synthesized from {len(scored_issues)} completed issue(s). Generated from issue history.*"
     )
     lines.append("")
 
@@ -171,9 +170,7 @@ def build_narrative_doc(
         display_title = title or issue.issue_id
 
         # Section heading with date
-        date_str = (
-            issue.completed_date.isoformat() if issue.completed_date else "unknown"
-        )
+        date_str = issue.completed_date.isoformat() if issue.completed_date else "unknown"
         lines.append(f"## {display_title}")
         lines.append("")
         lines.append(
@@ -229,8 +226,7 @@ def build_structured_doc(
     lines.append(f"# {topic}")
     lines.append("")
     lines.append(
-        f"*Synthesized from {len(scored_issues)} completed issue(s). "
-        f"Generated from issue history.*"
+        f"*Synthesized from {len(scored_issues)} completed issue(s). Generated from issue history.*"
     )
     lines.append("")
 
@@ -244,12 +240,9 @@ def build_structured_doc(
         # Truncate long titles for the table
         if len(title) > 60:
             title = title[:57] + "..."
-        date_str = (
-            issue.completed_date.isoformat() if issue.completed_date else "N/A"
-        )
+        date_str = issue.completed_date.isoformat() if issue.completed_date else "N/A"
         lines.append(
-            f"| {title} | {issue.issue_type} | {issue.priority} | "
-            f"{date_str} | {score:.0%} |"
+            f"| {title} | {issue.issue_type} | {issue.priority} | {date_str} | {score:.0%} |"
         )
     lines.append("")
 
@@ -259,9 +252,7 @@ def build_structured_doc(
 
     for issue, _score, content in scored_issues:
         title = _extract_title(content) or issue.issue_id
-        date_str = (
-            issue.completed_date.isoformat() if issue.completed_date else "unknown"
-        )
+        date_str = issue.completed_date.isoformat() if issue.completed_date else "unknown"
 
         lines.append(f"### {title}")
         lines.append("")

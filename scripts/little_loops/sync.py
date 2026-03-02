@@ -657,13 +657,9 @@ class GitHubSyncManager:
 
         if issue_type not in self._sections_data:
             templates_dir = (
-                Path(self.config.issues.templates_dir)
-                if self.config.issues.templates_dir
-                else None
+                Path(self.config.issues.templates_dir) if self.config.issues.templates_dir else None
             )
-            self._sections_data[issue_type] = load_issue_sections(
-                issue_type, templates_dir
-            )
+            self._sections_data[issue_type] = load_issue_sections(issue_type, templates_dir)
 
         frontmatter = {
             "github_issue": gh_number,

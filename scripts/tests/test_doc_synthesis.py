@@ -109,9 +109,7 @@ def _make_contents(
 ) -> dict[Path, str]:
     """Build contents dict from issue_id -> content mapping."""
     return {
-        issue.path: content_map[issue.issue_id]
-        for issue in issues
-        if issue.issue_id in content_map
+        issue.path: content_map[issue.issue_id] for issue in issues if issue.issue_id in content_map
     }
 
 
@@ -184,9 +182,7 @@ class TestSynthesizeDocs:
         issues = [_make_issue("ENH-200", "ENH", completed_date=date(2026, 2, 1))]
         contents = _make_contents(issues, {"ENH-200": _ISSUE_CONTENT_B})
 
-        doc = synthesize_docs(
-            "completely unrelated xyz abc", issues, contents, min_relevance=0.9
-        )
+        doc = synthesize_docs("completely unrelated xyz abc", issues, contents, min_relevance=0.9)
         assert "No completed issues found" in doc
 
     def test_type_filter(self) -> None:
@@ -200,9 +196,7 @@ class TestSynthesizeDocs:
             {"FEAT-100": _ISSUE_CONTENT_A, "BUG-050": _ISSUE_CONTENT_C},
         )
 
-        doc = synthesize_docs(
-            "history", issues, contents, min_relevance=0.01, issue_type="FEAT"
-        )
+        doc = synthesize_docs("history", issues, contents, min_relevance=0.01, issue_type="FEAT")
         assert "FEAT-100" in doc
         assert "BUG-050" not in doc
 
@@ -292,15 +286,11 @@ class TestBuildStructuredDoc:
 class TestGenerateDocsCLI:
     """Tests for generate-docs CLI subcommand."""
 
-    def test_generate_docs_stdout(
-        self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_generate_docs_stdout(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """generate-docs prints to stdout by default."""
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
-        (completed_dir / "P2-FEAT-100-session-logging.md").write_text(
-            _ISSUE_CONTENT_A
-        )
+        (completed_dir / "P2-FEAT-100-session-logging.md").write_text(_ISSUE_CONTENT_A)
 
         with patch.object(
             sys,
@@ -327,9 +317,7 @@ class TestGenerateDocsCLI:
         """generate-docs writes to file with --output."""
         completed_dir = tmp_path / ".issues" / "completed"
         completed_dir.mkdir(parents=True)
-        (completed_dir / "P2-FEAT-100-session-logging.md").write_text(
-            _ISSUE_CONTENT_A
-        )
+        (completed_dir / "P2-FEAT-100-session-logging.md").write_text(_ISSUE_CONTENT_A)
 
         output_path = tmp_path / "output" / "docs.md"
 

@@ -17,9 +17,7 @@ def _default_templates_dir() -> Path:
     return Path(__file__).resolve().parent.parent.parent / "templates"
 
 
-def load_issue_sections(
-    issue_type: str, templates_dir: Path | None = None
-) -> dict[str, Any]:
+def load_issue_sections(issue_type: str, templates_dir: Path | None = None) -> dict[str, Any]:
     """Load per-type sections JSON from the given or default templates directory.
 
     Args:
