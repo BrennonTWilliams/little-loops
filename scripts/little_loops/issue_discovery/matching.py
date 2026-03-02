@@ -8,6 +8,10 @@ from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+# Promoted to text_utils.py as public functions; aliased here for backward compat
+from little_loops.text_utils import calculate_word_overlap as _calculate_word_overlap  # noqa: F401
+from little_loops.text_utils import extract_words as _extract_words  # noqa: F401
+
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
@@ -150,65 +154,6 @@ def _normalize_text(text: str) -> str:
         Lowercase text with normalized whitespace
     """
     return re.sub(r"\s+", " ", text.lower().strip())
-
-
-def _extract_words(text: str) -> set[str]:
-    """Extract significant words from text.
-
-    Args:
-        text: Input text
-
-    Returns:
-        Set of lowercase words (3+ chars, excluding common words)
-    """
-    common_words = {
-        "the",
-        "and",
-        "for",
-        "this",
-        "that",
-        "with",
-        "from",
-        "are",
-        "was",
-        "were",
-        "been",
-        "have",
-        "has",
-        "had",
-        "not",
-        "but",
-        "can",
-        "will",
-        "should",
-        "would",
-        "could",
-        "may",
-        "might",
-        "must",
-        "file",
-        "code",
-        "issue",
-    }
-    words = set(re.findall(r"\b[a-z]{3,}\b", text.lower()))
-    return words - common_words
-
-
-def _calculate_word_overlap(words1: set[str], words2: set[str]) -> float:
-    """Calculate Jaccard similarity between word sets.
-
-    Args:
-        words1: First word set
-        words2: Second word set
-
-    Returns:
-        Similarity score from 0.0 to 1.0
-    """
-    if not words1 or not words2:
-        return 0.0
-    intersection = words1 & words2
-    union = words1 | words2
-    return len(intersection) / len(union)
 
 
 def _extract_line_numbers(text: str) -> set[int]:

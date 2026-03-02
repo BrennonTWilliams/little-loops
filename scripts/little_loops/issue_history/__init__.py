@@ -54,6 +54,12 @@ Public exports:
     format_analysis_json: Format analysis as JSON
     format_analysis_markdown: Format analysis as markdown
     format_analysis_yaml: Format analysis as YAML
+
+    # Documentation synthesis
+    synthesize_docs: Synthesize documentation from issue history
+    score_relevance: Score issue relevance to a topic
+    build_narrative_doc: Build narrative-style documentation
+    build_structured_doc: Build structured documentation
 """
 
 from little_loops.issue_history.analysis import calculate_analysis
@@ -62,6 +68,12 @@ from little_loops.issue_history.debt import (
     analyze_agent_effectiveness,
     analyze_complexity_proxy,
     detect_cross_cutting_smells,
+)
+from little_loops.issue_history.doc_synthesis import (
+    build_narrative_doc,
+    build_structured_doc,
+    score_relevance,
+    synthesize_docs,
 )
 from little_loops.issue_history.formatting import (
     format_analysis_json,
@@ -170,6 +182,11 @@ __all__ = [
     "format_analysis_json",
     "format_analysis_markdown",
     "format_analysis_yaml",
+    # Documentation synthesis
+    "synthesize_docs",
+    "score_relevance",
+    "build_narrative_doc",
+    "build_structured_doc",
     # Private functions re-exported for test access
     "_detect_processing_agent",
     "_extract_paths_from_issue",

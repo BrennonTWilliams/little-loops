@@ -24,6 +24,7 @@ def main_history() -> int:
         format_summary_json,
         format_summary_text,
         scan_completed_issues,
+        synthesize_docs,
     )
 
     parser = argparse.ArgumentParser(
@@ -37,6 +38,8 @@ Examples:
   %(prog)s analyze              # Full analysis report
   %(prog)s analyze --format markdown  # Markdown report
   %(prog)s analyze --compare 30 # Compare last 30 days to previous
+  %(prog)s generate-docs "session log"  # Synthesize docs from history
+  %(prog)s generate-docs "sprint CLI" --output docs/arch/sprint.md
 """,
     )
 
@@ -94,6 +97,60 @@ Examples:
         help="Compare last N days to previous N days",
     )
 
+    # generate-docs subcommand (FEAT-503)
+    gendocs_parser = subparsers.add_parser(
+        "generate-docs",
+        help="Synthesize documentation from completed issue history",
+    )
+    gendocs_parser.add_argument(
+        "topic",
+        type=str,
+        help="Topic, area, or system to generate documentation for",
+    )
+    gendocs_parser.add_argument(
+        "--output",
+        type=Path,
+        default=None,
+        help="Write output to file instead of stdout",
+    )
+    gendocs_parser.add_argument(
+        "-f",
+        "--format",
+        type=str,
+        choices=["narrative", "structured"],
+        default="narrative",
+        help="Output format (default: narrative)",
+    )
+    gendocs_parser.add_argument(
+        "-d",
+        "--directory",
+        type=Path,
+        default=None,
+        help="Path to issues directory (default: .issues)",
+    )
+    gendocs_parser.add_argument(
+        "--since",
+        type=str,
+        default=None,
+        metavar="DATE",
+        help="Only include issues completed after DATE (YYYY-MM-DD)",
+    )
+    gendocs_parser.add_argument(
+        "--min-relevance",
+        type=float,
+        default=0.3,
+        metavar="FLOAT",
+        help="Minimum relevance score threshold (default: 0.3)",
+    )
+    gendocs_parser.add_argument(
+        "--type",
+        type=str,
+        choices=["BUG", "FEAT", "ENH"],
+        default=None,
+        dest="issue_type",
+        help="Filter by issue type",
+    )
+
     args = parser.parse_args()
 
     if not args.command:
@@ -134,6 +191,37 @@ Examples:
             print(format_analysis_markdown(analysis))
         else:
             print(format_analysis_text(analysis))
+
+        return 0
+
+    if args.command == "generate-docs":
+        from datetime import date as date_type
+
+        from little_loops.issue_history.analysis import _load_issue_contents
+
+        issues = scan_completed_issues(completed_dir)
+        contents = _load_issue_contents(issues)
+
+        since_date = None
+        if args.since:
+            since_date = date_type.fromisoformat(args.since)
+
+        doc = synthesize_docs(
+            topic=args.topic,
+            issues=issues,
+            contents=contents,
+            format=args.format,
+            min_relevance=args.min_relevance,
+            since=since_date,
+            issue_type=args.issue_type,
+        )
+
+        if args.output:
+            args.output.parent.mkdir(parents=True, exist_ok=True)
+            args.output.write_text(doc, encoding="utf-8")
+            print(f"Documentation written to {args.output}")
+        else:
+            print(doc)
 
         return 0
 

@@ -6,6 +6,8 @@ status: open
 title: "ll-history generate-docs: architecture documentation synthesis from issue history"
 discovered_date: 2026-02-24
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # FEAT-503: ll-history generate-docs: architecture documentation synthesis from issue history
@@ -58,17 +60,19 @@ Add a `generate-docs` subcommand that scores completed issues for relevance usin
 
 ## Implementation Steps
 
-1. **Add `generate-docs` subparser** to `scripts/little_loops/cli/history.py` (alongside existing `summary` and `analyze`)
-2. **Topic-based issue filtering**: accept a topic string and score completed issues by relevance (title + description keyword overlap, similar to duplicate detection in `capture-issue`)
-3. **Chronological synthesis**: sort matched issues by `completed_date` ascending; iterate to build document sections
-4. **Document construction**: for each issue, emit a section with:
+1. **Promote shared text helpers to `text_utils.py`**: Move `_extract_words()` and `_calculate_word_overlap()` from `issue_discovery/matching.py` to `text_utils.py` as public functions. Update `matching.py` to import from the new location.
+2. **Add `generate-docs` subparser** to `scripts/little_loops/cli/history.py` (alongside existing `summary` and `analyze`). Follow the same deferred-import and `subparsers.add_parser()` pattern used by `summary` and `analyze`.
+3. **Create `doc_synthesis.py` module** in `scripts/little_loops/issue_history/`. Import `extract_words` and `calculate_word_overlap` from `text_utils.py` for relevance scoring. Use the `contents: dict[Path, str]` pre-loading pattern from `analysis.py` to avoid repeated file reads.
+4. **Topic-based issue filtering**: accept a topic string and score completed issues by relevance using Jaccard word overlap (the promoted `extract_words`/`calculate_word_overlap` helpers)
+5. **Chronological synthesis**: sort matched issues by `completed_date` ascending; iterate to build document sections
+6. **Document construction**: use the `lines: list[str]` accumulation + `"\n".join(lines)` return pattern established in `formatting.py`. For each issue, emit a section with:
    - Issue ID + title as heading
    - Completion date
    - Summary/description content
    - Implementation notes (if present in the issue file)
-5. **Output options**: `--output <path>` to write file, default stdout; `--format` flag for `narrative` vs `structured` styles
-6. **Optional filters**: `--since <date>`, `--min-relevance <float>`, `--type BUG|FEAT|ENH`
-7. **Add a new module** `scripts/little_loops/issue_history/doc_synthesis.py` for the synthesis logic (keeping CLI thin)
+7. **Output options**: `--output <path>` to write file, default stdout; `--format` flag for `narrative` vs `structured` styles
+8. **Optional filters**: `--since <date>`, `--min-relevance <float>`, `--type BUG|FEAT|ENH`
+9. **Export new functions** from `issue_history/__init__.py` (`synthesize_docs`, `score_relevance`, etc.)
 
 ## API/Interface
 
@@ -104,20 +108,30 @@ New module: `scripts/little_loops/issue_history/doc_synthesis.py`
 
 ### Files to Modify
 - `scripts/little_loops/cli/history.py` — add `generate-docs` subparser and `cmd_generate_docs` handler
+- `scripts/little_loops/text_utils.py` — promote `extract_words()` and `calculate_word_overlap()` as public shared helpers
+- `scripts/little_loops/issue_discovery/matching.py` — update to import from `text_utils.py` instead of defining locally
+- `scripts/little_loops/issue_history/__init__.py` — export new `doc_synthesis` functions (`synthesize_docs`, `score_relevance`, etc.)
 
 ### New Files
 - `scripts/little_loops/issue_history/doc_synthesis.py` — synthesis logic (`synthesize_docs`, `score_relevance`, `build_narrative_doc`, `build_structured_doc`)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/issue_history/parsing.py` — `CompletedIssue` type used for input
-- `scripts/little_loops/issue_history/analysis.py` — existing issue scoring patterns to reuse
+- `scripts/little_loops/issue_history/parsing.py` — `CompletedIssue` type used for input; `scan_completed_issues()` loads issues from `.issues/completed/`
+- `scripts/little_loops/issue_history/models.py` — `CompletedIssue` dataclass (fields: `path`, `issue_type`, `priority`, `issue_id`, `discovered_by`, `discovered_date`, `completed_date`)
+- `scripts/little_loops/issue_history/analysis.py` — `_load_issue_contents()` pre-loading pattern to reuse
 
 ### Similar Patterns
-- `capture-issue` duplicate detection — same keyword overlap scoring approach
-- Existing `ll-history summary` subcommand — same pattern for adding new subcommands
+- `issue_discovery/matching.py` — `_extract_words()` (Jaccard word overlap) and `_calculate_word_overlap()` — the exact scoring approach to reuse (promote to `text_utils.py`)
+- `issue_discovery/search.py` — `search_issues_by_content()` with minimum threshold 0.1 — reference for topic-based filtering with scored results
+- `issue_history/formatting.py` — `format_analysis_markdown()` uses `lines: list[str]` accumulation pattern for markdown generation
+- `cli/history.py` — `summary` and `analyze` subcommands — deferred imports, `subparsers.add_parser()`, common `-d` directory arg
 
 ### Tests
 - `scripts/tests/test_doc_synthesis.py` — at least 5 unit tests for scoring, ordering, and formatting
+  - Follow CLI integration pattern from `test_issue_history_cli.py`: `patch.object(sys, "argv", ...)` + `capsys`
+  - Follow `CompletedIssue` direct construction pattern from `test_issue_history_summary.py` (no file I/O needed)
+  - Follow `_make_base_analysis` factory helper pattern from `test_issue_history_formatting.py` for test data construction
+- `scripts/tests/test_text_utils.py` — add tests for promoted `extract_words()` and `calculate_word_overlap()` if not already covered
 
 ### Documentation
 - N/A — `--help` auto-generated
@@ -147,12 +161,36 @@ New module: `scripts/little_loops/issue_history/doc_synthesis.py`
 - `/ll:capture-issue` - 2026-02-24T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81df3c59-9dd6-4928-bbf8-ba4b14bd0d12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is comprehensive; cli/history.py integration point confirmed; issue_history/analysis.py confirmed as similar pattern source; no knowledge gaps identified
+- `/ll:refine-issue` - 2026-03-02T21:18:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/aeb88b26-e26a-40a3-b4a8-c9ce8bafe847.jsonl` - Enriched Integration Map with 4 files-to-modify, concrete dependent file details, specific similar patterns with file:line refs, and test pattern guidance; added text_utils.py promotion step to Implementation Steps; user chose: promote helpers to text_utils.py, keep high-level step descriptions
+
+---
+
+## Resolution
+
+- **Action**: implement
+- **Completed**: 2026-03-02
+- **Status**: Completed
+
+### Changes Made
+- `scripts/little_loops/text_utils.py` — Added `extract_words()` and `calculate_word_overlap()` as public functions promoted from `matching.py`
+- `scripts/little_loops/issue_discovery/matching.py` — Replaced local definitions with re-exports from `text_utils`
+- `scripts/little_loops/issue_history/doc_synthesis.py` — New module with `score_relevance`, `synthesize_docs`, `build_narrative_doc`, `build_structured_doc`
+- `scripts/little_loops/cli/history.py` — Added `generate-docs` subcommand with `--output`, `--format`, `--since`, `--min-relevance`, `--type` flags
+- `scripts/little_loops/issue_history/__init__.py` — Exported new doc_synthesis functions
+- `scripts/tests/test_doc_synthesis.py` — 12 tests covering scoring, synthesis, formatting, CLI integration
+- `scripts/tests/test_text_utils.py` — 9 tests for promoted text utility functions
+
+### Verification Results
+- All 3066 tests pass
+- Ruff lint: clean
+- Mypy type checking: clean
+- Smoke tested against actual completed issues
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Completed: 2026-03-02 | Priority: P3
 
 ## Blocks
 

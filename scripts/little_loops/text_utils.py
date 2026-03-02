@@ -87,3 +87,75 @@ def extract_file_paths(content: str) -> set[str]:
             if ext in SOURCE_EXTENSIONS and ("/" in path or ext):
                 paths.add(path)
     return paths
+
+
+# =============================================================================
+# Word Extraction and Overlap Scoring
+# =============================================================================
+
+# Common stop words excluded from word extraction
+_COMMON_WORDS = frozenset(
+    {
+        "the",
+        "and",
+        "for",
+        "this",
+        "that",
+        "with",
+        "from",
+        "are",
+        "was",
+        "were",
+        "been",
+        "have",
+        "has",
+        "had",
+        "not",
+        "but",
+        "can",
+        "will",
+        "should",
+        "would",
+        "could",
+        "may",
+        "might",
+        "must",
+        "file",
+        "code",
+        "issue",
+    }
+)
+
+
+def extract_words(text: str) -> set[str]:
+    """Extract significant words from text.
+
+    Extracts all lowercase alphabetic words of 3+ characters,
+    excluding common stop words. Useful for topic-based relevance
+    scoring via Jaccard similarity.
+
+    Args:
+        text: Input text
+
+    Returns:
+        Set of lowercase words (3+ chars, excluding common words)
+    """
+    words = set(re.findall(r"\b[a-z]{3,}\b", text.lower()))
+    return words - _COMMON_WORDS
+
+
+def calculate_word_overlap(words1: set[str], words2: set[str]) -> float:
+    """Calculate Jaccard similarity between word sets.
+
+    Args:
+        words1: First word set
+        words2: Second word set
+
+    Returns:
+        Similarity score from 0.0 to 1.0
+    """
+    if not words1 or not words2:
+        return 0.0
+    intersection = words1 & words2
+    union = words1 | words2
+    return len(intersection) / len(union)
