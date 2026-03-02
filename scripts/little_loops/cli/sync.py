@@ -29,6 +29,10 @@ Examples:
   %(prog)s push               # Push all local issues to GitHub
   %(prog)s push BUG-123       # Push specific issue
   %(prog)s pull               # Pull GitHub Issues to local
+  %(prog)s diff BUG-123       # Show diff for specific issue
+  %(prog)s diff               # Show diff summary for all synced issues
+  %(prog)s close ENH-123      # Close GitHub issue for ENH-123
+  %(prog)s close --all-completed  # Close all completed issues on GitHub
 """,
     )
 
@@ -52,6 +56,31 @@ Examples:
         "-l",
         type=str,
         help="Filter by labels (comma-separated)",
+    )
+
+    # Diff subcommand
+    diff_parser = subparsers.add_parser(
+        "diff", help="Show differences between local and GitHub issues"
+    )
+    diff_parser.add_argument(
+        "issue_id",
+        nargs="?",
+        help="Specific issue ID to diff (e.g., BUG-123). Omit for summary of all.",
+    )
+
+    # Close subcommand
+    close_parser = subparsers.add_parser(
+        "close", help="Close GitHub issues for completed local issues"
+    )
+    close_parser.add_argument(
+        "issue_ids",
+        nargs="*",
+        help="Specific issue IDs to close (e.g., ENH-123)",
+    )
+    close_parser.add_argument(
+        "--all-completed",
+        action="store_true",
+        help="Close all GitHub issues whose local counterparts are in completed/",
     )
 
     # Common args
@@ -96,6 +125,25 @@ Examples:
             logger.info("[DRY RUN] Showing what would be pulled (no changes will be made)")
         labels = args.labels.split(",") if args.labels else None
         result = manager.pull_issues(labels)
+        _print_sync_result(result, logger)
+        return 0 if result.success else 1
+
+    elif args.action == "diff":
+        issue_id = getattr(args, "issue_id", None)
+        if issue_id:
+            result = manager.diff_issue(issue_id)
+            _print_diff_result(result, logger)
+        else:
+            result = manager.diff_all()
+            _print_sync_result(result, logger)
+        return 0 if result.success else 1
+
+    elif args.action == "close":
+        if dry_run:
+            logger.info("[DRY RUN] Showing what would be closed (no changes will be made)")
+        issue_ids = args.issue_ids if args.issue_ids else None
+        all_completed = getattr(args, "all_completed", False)
+        result = manager.close_issues(issue_ids, all_completed=all_completed)
         _print_sync_result(result, logger)
         return 0 if result.success else 1
 
@@ -154,3 +202,24 @@ def _print_sync_result(result: SyncResult, logger: Logger) -> None:
         for error in result.errors:
             logger.error(f"  - {error}")
     logger.info("=" * 80)
+
+
+def _print_diff_result(result: SyncResult, logger: Logger) -> None:
+    """Print diff result showing unified diff output."""
+    if result.errors:
+        for error in result.errors:
+            logger.error(error)
+        return
+
+    if result.skipped:
+        for item in result.skipped:
+            logger.info(item)
+        return
+
+    if result.updated:
+        logger.info(result.updated[0])
+        logger.info("")
+
+    # Diff lines are stored in created field
+    for line in result.created:
+        logger.info(line)

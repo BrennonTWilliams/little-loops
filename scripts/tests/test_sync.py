@@ -967,3 +967,309 @@ discovered_by: test
         assert "would create" in result.created[0]
         assert "#99" in result.created[0]
         assert "Remote Bug" in result.created[0]
+
+
+class TestDiffIssue:
+    """Tests for diff_issue and diff_all methods."""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path: Path) -> BRConfig:
+        """Create a mock BRConfig with test directories."""
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        config_file = claude_dir / "ll-config.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "sync": {
+                        "enabled": True,
+                        "github": {
+                            "repo": "test/repo",
+                            "label_mapping": {"BUG": "bug", "FEAT": "enhancement"},
+                            "priority_labels": True,
+                        },
+                    },
+                    "issues": {"base_dir": ".issues"},
+                }
+            )
+        )
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "bugs").mkdir(parents=True)
+        (issues_dir / "features").mkdir(parents=True)
+        (issues_dir / "enhancements").mkdir(parents=True)
+        (issues_dir / "completed").mkdir(parents=True)
+        return BRConfig(tmp_path)
+
+    @pytest.fixture
+    def mock_logger(self) -> MagicMock:
+        return MagicMock(spec=Logger)
+
+    def test_diff_shows_differences(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """diff_issue shows unified diff when content differs."""
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text(
+            "---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nLocal body differs.\n"
+        )
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="GitHub body is different.\n", stderr=""
+                )
+                result = manager.diff_issue("BUG-001")
+
+        assert result.success is True
+        assert len(result.updated) == 1
+        assert "differs" in result.updated[0]
+        assert len(result.created) > 0  # diff lines
+
+    def test_diff_in_sync(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """diff_issue reports 'in sync' when content matches."""
+        body = "Same body content."
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text(f"---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\n{body}\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout=f"{body}", stderr=""
+                )
+                result = manager.diff_issue("BUG-001")
+
+        assert result.success is True
+        assert len(result.skipped) == 1
+        assert "in sync" in result.skipped[0]
+
+    def test_diff_no_github_issue(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """diff_issue reports error when issue is not synced."""
+        issue_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\ndiscovered_by: test\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            result = manager.diff_issue("BUG-001")
+
+        assert result.success is False
+        assert any("not synced" in e for e in result.errors)
+
+    def test_diff_issue_not_found(self, mock_config: BRConfig, mock_logger: MagicMock) -> None:
+        """diff_issue reports error when local issue doesn't exist."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            result = manager.diff_issue("BUG-999")
+
+        assert result.success is False
+        assert any("not found" in e for e in result.errors)
+
+    def test_diff_auth_failure(self, mock_config: BRConfig, mock_logger: MagicMock) -> None:
+        """diff_issue reports error on auth failure."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = False
+            result = manager.diff_issue("BUG-001")
+
+        assert result.success is False
+        assert any("not authenticated" in e for e in result.errors)
+
+    def test_diff_all_summary(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """diff_all shows summary for multiple issues."""
+        bug_file = tmp_path / ".issues" / "bugs" / "P1-BUG-001-test-bug.md"
+        bug_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nLocal body.\n")
+        feat_file = tmp_path / ".issues" / "features" / "P2-FEAT-002-test-feat.md"
+        feat_file.write_text(
+            "---\ngithub_issue: 43\n---\n\n# FEAT-002: Test Feature\n\nSame body.\n"
+        )
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+
+        def gh_side_effect(
+            args: list[str], logger: MagicMock, **kwargs: object
+        ) -> subprocess.CompletedProcess[str]:
+            # Return different body for #42, same for #43
+            if "42" in args:
+                return subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="Different body.\n", stderr=""
+                )
+            return subprocess.CompletedProcess(
+                args=[], returncode=0, stdout="Same body.", stderr=""
+            )
+
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.side_effect = gh_side_effect
+                result = manager.diff_all()
+
+        assert result.success is True
+        assert len(result.updated) == 1  # BUG-001 differs
+        assert len(result.skipped) == 1  # FEAT-002 in sync
+
+
+class TestCloseIssue:
+    """Tests for close_issues method."""
+
+    @pytest.fixture
+    def mock_config(self, tmp_path: Path) -> BRConfig:
+        """Create a mock BRConfig with test directories."""
+        claude_dir = tmp_path / ".claude"
+        claude_dir.mkdir()
+        config_file = claude_dir / "ll-config.json"
+        config_file.write_text(
+            json.dumps(
+                {
+                    "sync": {
+                        "enabled": True,
+                        "github": {
+                            "repo": "test/repo",
+                            "label_mapping": {
+                                "BUG": "bug",
+                                "FEAT": "enhancement",
+                                "ENH": "enhancement",
+                            },
+                            "priority_labels": True,
+                        },
+                    },
+                    "issues": {"base_dir": ".issues"},
+                }
+            )
+        )
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "bugs").mkdir(parents=True)
+        (issues_dir / "features").mkdir(parents=True)
+        (issues_dir / "enhancements").mkdir(parents=True)
+        (issues_dir / "completed").mkdir(parents=True)
+        return BRConfig(tmp_path)
+
+    @pytest.fixture
+    def mock_logger(self) -> MagicMock:
+        return MagicMock(spec=Logger)
+
+    def test_close_specific_issue(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """close_issues closes a specific GitHub issue."""
+        issue_file = tmp_path / ".issues" / "completed" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="", stderr=""
+                )
+                result = manager.close_issues(issue_ids=["BUG-001"])
+
+        assert result.success is True
+        assert len(result.updated) == 1
+        assert "closed" in result.updated[0]
+        mock_run.assert_called_once()
+        call_args = mock_run.call_args[0][0]
+        assert "issue" in call_args
+        assert "close" in call_args
+        assert "42" in call_args
+        assert "--comment" in call_args
+
+    def test_close_all_completed(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """close_issues with all_completed closes all completed issues."""
+        completed_dir = tmp_path / ".issues" / "completed"
+        (completed_dir / "P1-BUG-001-bug.md").write_text(
+            "---\ngithub_issue: 42\n---\n\n# BUG-001: Bug\n\nBody.\n"
+        )
+        (completed_dir / "P2-ENH-002-enh.md").write_text(
+            "---\ngithub_issue: 43\n---\n\n# ENH-002: Enhancement\n\nBody.\n"
+        )
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                mock_run.return_value = subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout="", stderr=""
+                )
+                result = manager.close_issues(all_completed=True)
+
+        assert result.success is True
+        assert len(result.updated) == 2
+        assert mock_run.call_count == 2
+
+    def test_close_no_github_issue(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """close_issues skips issues not synced to GitHub."""
+        issue_file = tmp_path / ".issues" / "completed" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\ndiscovered_by: test\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            result = manager.close_issues(issue_ids=["BUG-001"])
+
+        assert result.success is True
+        assert len(result.skipped) == 1
+        assert "not synced" in result.skipped[0]
+
+    def test_close_dry_run(
+        self, mock_config: BRConfig, mock_logger: MagicMock, tmp_path: Path
+    ) -> None:
+        """close_issues in dry-run mode does not call gh."""
+        issue_file = tmp_path / ".issues" / "completed" / "P1-BUG-001-test-bug.md"
+        issue_file.write_text("---\ngithub_issue: 42\n---\n\n# BUG-001: Test Bug\n\nBody.\n")
+
+        manager = GitHubSyncManager(mock_config, mock_logger, dry_run=True)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            with patch("little_loops.sync._run_gh_command") as mock_run:
+                result = manager.close_issues(issue_ids=["BUG-001"])
+
+        mock_run.assert_not_called()
+        assert result.success is True
+        assert len(result.updated) == 1
+        assert "would close" in result.updated[0]
+
+    def test_close_auth_failure(self, mock_config: BRConfig, mock_logger: MagicMock) -> None:
+        """close_issues reports error on auth failure."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = False
+            result = manager.close_issues(issue_ids=["BUG-001"])
+
+        assert result.success is False
+        assert any("not authenticated" in e for e in result.errors)
+
+    def test_close_no_args(self, mock_config: BRConfig, mock_logger: MagicMock) -> None:
+        """close_issues with no args and no all_completed returns error."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            result = manager.close_issues()
+
+        assert result.success is False
+        assert any("--all-completed" in e for e in result.errors)
+
+    def test_close_issue_not_found(self, mock_config: BRConfig, mock_logger: MagicMock) -> None:
+        """close_issues reports failure when local issue doesn't exist."""
+        manager = GitHubSyncManager(mock_config, mock_logger)
+        with patch("little_loops.sync._check_gh_auth") as mock_auth:
+            mock_auth.return_value = True
+            result = manager.close_issues(issue_ids=["BUG-999"])
+
+        assert result.success is False
+        assert len(result.failed) == 1
+        assert "not found" in result.failed[0][1]

@@ -92,9 +92,26 @@ A developer completes an issue locally and moves it to `.issues/completed/`. The
 
 ---
 
+## Resolution
+
+**Completed** on 2026-03-02.
+
+### Changes Made
+- `scripts/little_loops/sync.py` — Added `_find_local_issue()`, `diff_issue()`, `diff_all()`, and `close_issues()` methods to `GitHubSyncManager`
+- `scripts/little_loops/cli/sync.py` — Added `diff` and `close` subparser registration, dispatch branches, `_print_diff_result()` helper, updated epilog
+- `scripts/tests/test_sync.py` — Added `TestDiffIssue` (6 tests) and `TestCloseIssue` (7 tests) classes
+
+### Verification
+- All 3079 tests pass (13 new tests for diff/close)
+- Lint: ruff check passes
+- Types: mypy passes
+- Format: ruff format applied
+
+---
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Completed: 2026-03-02 | Priority: P3
 
 ## Blocks
 

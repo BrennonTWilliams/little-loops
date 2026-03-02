@@ -5,6 +5,7 @@ Provides bidirectional sync between local .issues/ files and GitHub Issues.
 
 from __future__ import annotations
 
+import difflib
 import json
 import re
 import subprocess
@@ -737,3 +738,220 @@ class GitHubSyncManager:
                 self.logger.warning(status.github_error)
 
         return status
+
+    def _find_local_issue(self, issue_id: str) -> Path | None:
+        """Find the local file matching an issue ID.
+
+        Searches active category directories and completed directory.
+
+        Args:
+            issue_id: Issue ID to find (e.g., BUG-123)
+
+        Returns:
+            Path to the issue file, or None if not found
+        """
+        for issue_path in self._get_local_issues():
+            if self._extract_issue_id(issue_path.name) == issue_id:
+                return issue_path
+        # Also check completed directory
+        completed_dir = self.config.get_completed_dir()
+        if completed_dir.exists():
+            for issue_file in completed_dir.glob("*.md"):
+                if self._extract_issue_id(issue_file.name) == issue_id:
+                    return issue_file
+        return None
+
+    def diff_issue(self, issue_id: str) -> SyncResult:
+        """Show content differences between a local issue and its GitHub counterpart.
+
+        Args:
+            issue_id: Issue ID to diff (e.g., BUG-123)
+
+        Returns:
+            SyncResult with diff information
+        """
+        result = SyncResult(action="diff", success=True)
+
+        if not _check_gh_auth(self.logger):
+            result.success = False
+            result.errors.append("GitHub CLI not authenticated. Run: gh auth login")
+            return result
+
+        issue_path = self._find_local_issue(issue_id)
+        if not issue_path:
+            result.success = False
+            result.errors.append(f"Local issue {issue_id} not found")
+            return result
+
+        content = issue_path.read_text(encoding="utf-8")
+        frontmatter = parse_frontmatter(content, coerce_types=True)
+        github_number = frontmatter.get("github_issue")
+
+        if github_number is None:
+            result.success = False
+            result.errors.append(
+                f"{issue_id} is not synced to GitHub (no github_issue in frontmatter)"
+            )
+            return result
+
+        try:
+            cmd_result = _run_gh_command(
+                ["issue", "view", str(int(github_number)), "--json", "body", "-q", ".body"],
+                self.logger,
+            )
+            github_body = cmd_result.stdout.rstrip("\n")
+        except subprocess.CalledProcessError as e:
+            result.success = False
+            result.errors.append(f"Failed to fetch GitHub issue #{github_number}: {e.stderr}")
+            return result
+
+        local_body = _get_issue_body(content)
+
+        local_lines = local_body.splitlines(keepends=True)
+        github_lines = github_body.splitlines(keepends=True)
+
+        diff = list(
+            difflib.unified_diff(
+                github_lines,
+                local_lines,
+                fromfile=f"github:#{github_number}",
+                tofile=f"local:{issue_id}",
+            )
+        )
+
+        if diff:
+            result.updated.append(f"{issue_id} (#{github_number}): differs")
+            # Store diff lines in created field for display
+            result.created = [line.rstrip("\n") for line in diff]
+        else:
+            result.skipped.append(f"{issue_id} (#{github_number}): in sync")
+
+        return result
+
+    def diff_all(self) -> SyncResult:
+        """Show summary of differences between all synced local issues and GitHub.
+
+        Returns:
+            SyncResult with diff summary
+        """
+        result = SyncResult(action="diff", success=True)
+
+        if not _check_gh_auth(self.logger):
+            result.success = False
+            result.errors.append("GitHub CLI not authenticated. Run: gh auth login")
+            return result
+
+        local_issues = self._get_local_issues()
+
+        for issue_path in local_issues:
+            issue_id = self._extract_issue_id(issue_path.name)
+            if not issue_id:
+                continue
+
+            content = issue_path.read_text(encoding="utf-8")
+            frontmatter = parse_frontmatter(content, coerce_types=True)
+            github_number = frontmatter.get("github_issue")
+
+            if github_number is None:
+                continue
+
+            try:
+                cmd_result = _run_gh_command(
+                    ["issue", "view", str(int(github_number)), "--json", "body", "-q", ".body"],
+                    self.logger,
+                )
+                github_body = cmd_result.stdout.rstrip("\n")
+            except subprocess.CalledProcessError as e:
+                result.failed.append((issue_id, f"Failed to fetch #{github_number}: {e.stderr}"))
+                continue
+
+            local_body = _get_issue_body(content)
+
+            if local_body.strip() != github_body.strip():
+                result.updated.append(f"{issue_id} (#{github_number}): differs")
+            else:
+                result.skipped.append(f"{issue_id} (#{github_number}): in sync")
+
+        if result.failed:
+            result.success = False
+
+        return result
+
+    def close_issues(
+        self,
+        issue_ids: list[str] | None = None,
+        all_completed: bool = False,
+    ) -> SyncResult:
+        """Close GitHub issues for completed local issues.
+
+        Args:
+            issue_ids: Specific issue IDs to close, or None
+            all_completed: If True, close all GitHub issues whose local counterparts
+                          are in the completed directory
+
+        Returns:
+            SyncResult with operation details
+        """
+        result = SyncResult(action="close", success=True)
+
+        if not _check_gh_auth(self.logger):
+            result.success = False
+            result.errors.append("GitHub CLI not authenticated. Run: gh auth login")
+            return result
+
+        files_to_close: list[tuple[Path, str]] = []  # (path, issue_id)
+
+        if all_completed:
+            completed_dir = self.config.get_completed_dir()
+            if completed_dir.exists():
+                for issue_file in completed_dir.glob("*.md"):
+                    eid = self._extract_issue_id(issue_file.name)
+                    if eid:
+                        files_to_close.append((issue_file, eid))
+        elif issue_ids:
+            for eid in issue_ids:
+                issue_path = self._find_local_issue(eid)
+                if issue_path:
+                    files_to_close.append((issue_path, eid))
+                else:
+                    result.failed.append((eid, "Local issue not found"))
+        else:
+            result.success = False
+            result.errors.append("Specify issue IDs or use --all-completed")
+            return result
+
+        for issue_path, issue_id in files_to_close:
+            content = issue_path.read_text(encoding="utf-8")
+            frontmatter = parse_frontmatter(content, coerce_types=True)
+            github_number = frontmatter.get("github_issue")
+
+            if github_number is None:
+                result.skipped.append(f"{issue_id} (not synced to GitHub)")
+                continue
+
+            if self.dry_run:
+                result.updated.append(f"{issue_id} → #{github_number} (would close)")
+                self.logger.info(f"Would close GitHub issue #{github_number} for {issue_id}")
+                continue
+
+            try:
+                _run_gh_command(
+                    [
+                        "issue",
+                        "close",
+                        str(int(github_number)),
+                        "--comment",
+                        f"Closed via ll-sync. Issue {issue_id} completed locally.",
+                    ],
+                    self.logger,
+                )
+                result.updated.append(f"{issue_id} → #{github_number} (closed)")
+                self.logger.success(f"Closed GitHub issue #{github_number} for {issue_id}")
+            except subprocess.CalledProcessError as e:
+                result.failed.append((issue_id, f"gh issue close failed: {e.stderr}"))
+                self.logger.error(f"Failed to close GitHub issue #{github_number}: {e.stderr}")
+
+        if result.failed:
+            result.success = False
+
+        return result
