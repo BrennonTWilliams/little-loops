@@ -1,8 +1,7 @@
-"""Output parsing utilities for automation tools.
+"""Output parsing utilities for little-loops.
 
-Provides parsing functions for Claude CLI command outputs, enabling both
-sequential and parallel issue processors to interpret structured command
-responses consistently.
+Provides parsing functions for Claude CLI command outputs,
+used by both issue_manager (ll-auto) and worker_pool (ll-parallel).
 """
 
 from __future__ import annotations

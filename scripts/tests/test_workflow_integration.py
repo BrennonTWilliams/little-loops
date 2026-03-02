@@ -345,7 +345,7 @@ class TestOutputParsing:
 
     def test_ready_verdict_parsing_new_format(self) -> None:
         """Ready issue output is correctly parsed in the new format."""
-        from little_loops.parallel.output_parsing import parse_ready_issue_output
+        from little_loops.output_parsing import parse_ready_issue_output
 
         # Test READY verdict (new format with separate lines)
         ready_output = """

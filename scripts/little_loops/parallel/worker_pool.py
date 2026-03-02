@@ -20,8 +20,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, cast
 
+from little_loops.output_parsing import parse_ready_issue_output
 from little_loops.parallel.git_lock import GitLock
-from little_loops.parallel.output_parsing import parse_ready_issue_output
 from little_loops.parallel.types import ParallelConfig, WorkerResult, WorkerStage
 from little_loops.subprocess_utils import (
     detect_context_handoff,

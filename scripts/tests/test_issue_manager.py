@@ -80,7 +80,7 @@ CORRECTED
             original_path = mock_issue_info.path
 
             # Simulate the parsing and path update logic
-            from little_loops.parallel.output_parsing import parse_ready_issue_output
+            from little_loops.output_parsing import parse_ready_issue_output
 
             parsed = parse_ready_issue_output(mock_output)
 
@@ -157,7 +157,7 @@ CORRECTED
 ## VALIDATED_FILE
 {relative_path}
 """
-        from little_loops.parallel.output_parsing import parse_ready_issue_output
+        from little_loops.output_parsing import parse_ready_issue_output
 
         parsed = parse_ready_issue_output(mock_output)
         validated_path = parsed.get("validated_file_path")
@@ -239,7 +239,7 @@ class TestPathMismatchFallback:
         self, temp_project_dir: Path
     ) -> None:
         """Test that fallback retry with explicit path succeeds."""
-        from little_loops.parallel.output_parsing import parse_ready_issue_output
+        from little_loops.output_parsing import parse_ready_issue_output
 
         issues_dir = temp_project_dir / ".issues" / "enhancements"
         issues_dir.mkdir(parents=True)
@@ -282,7 +282,7 @@ READY
 
     def test_fallback_fails_when_retry_still_mismatched(self, temp_project_dir: Path) -> None:
         """Test that persistent mismatch after fallback properly fails."""
-        from little_loops.parallel.output_parsing import parse_ready_issue_output
+        from little_loops.output_parsing import parse_ready_issue_output
 
         issues_dir = temp_project_dir / ".issues" / "enhancements"
         issues_dir.mkdir(parents=True)

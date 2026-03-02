@@ -234,13 +234,13 @@ little-loops/
         │   ├── persistence.py       # State persistence
         │   ├── signal_detector.py   # Output signal detection
         │   └── handoff_handler.py   # Session handoff handling
+        ├── output_parsing.py        # Shared output parsing (ll-auto, ll-parallel)
         └── parallel/
             ├── __init__.py
             ├── orchestrator.py
             ├── worker_pool.py
             ├── merge_coordinator.py
             ├── priority_queue.py
-            ├── output_parsing.py
             ├── git_lock.py
             ├── file_hints.py       # File hint extraction
             ├── overlap_detector.py  # File overlap detection

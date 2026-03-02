@@ -1924,7 +1924,7 @@ WorkerPool(
 
 ### Output Parsing
 
-Utilities for parsing Claude's output from `/ll:ready-issue` commands. Located at `little_loops.parallel.output_parsing`.
+Utilities for parsing Claude's output from `/ll:ready-issue` commands. Located at `little_loops.output_parsing`.
 
 #### parse_ready_issue_output
 
@@ -1957,7 +1957,7 @@ Parse the output from a `/ll:ready-issue` command to extract verdict and metadat
 
 **Example:**
 ```python
-from little_loops.parallel.output_parsing import parse_ready_issue_output
+from little_loops.output_parsing import parse_ready_issue_output
 
 result = subprocess.run(["claude", "-p", "/ll:ready-issue BUG-001"], capture_output=True, text=True)
 parsed = parse_ready_issue_output(result.stdout)
@@ -2635,7 +2635,7 @@ from little_loops.parallel import (
 )
 from little_loops.parallel.priority_queue import IssuePriorityQueue
 from little_loops.parallel.types import QueuedIssue, MergeRequest, MergeStatus
-from little_loops.parallel.output_parsing import parse_ready_issue_output
+from little_loops.output_parsing import parse_ready_issue_output
 ```
 
 ---

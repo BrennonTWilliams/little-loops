@@ -30,7 +30,7 @@ from little_loops.issue_lifecycle import (
 )
 from little_loops.issue_parser import IssueInfo, IssueParser, find_issues
 from little_loops.logger import Logger, format_duration
-from little_loops.parallel.output_parsing import parse_ready_issue_output
+from little_loops.output_parsing import parse_ready_issue_output
 from little_loops.state import ProcessingState, StateManager
 from little_loops.subprocess_utils import (
     detect_context_handoff,

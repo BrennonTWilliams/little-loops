@@ -1,8 +1,8 @@
-"""Tests for little_loops.parallel.output_parsing module."""
+"""Tests for little_loops.output_parsing module."""
 
 from __future__ import annotations
 
-from little_loops.parallel.output_parsing import (
+from little_loops.output_parsing import (
     parse_manage_issue_output,
     parse_ready_issue_output,
     parse_sections,

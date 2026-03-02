@@ -15,6 +15,7 @@ from little_loops.issue_lifecycle import (
     verify_issue_completed,
 )
 from little_loops.issue_manager import AutoManager
+from little_loops.output_parsing import parse_manage_issue_output, parse_ready_issue_output
 from little_loops.sync import GitHubSyncManager, SyncResult, SyncStatus
 from little_loops.work_verification import (
     EXCLUDED_DIRECTORIES,
@@ -38,6 +39,9 @@ __all__ = [
     "complete_issue_lifecycle",
     "create_issue_from_failure",
     "verify_issue_completed",
+    # output_parsing
+    "parse_manage_issue_output",
+    "parse_ready_issue_output",
     # issue_manager
     "AutoManager",
     # sync

@@ -226,13 +226,13 @@ little-loops/
         │   ├── persistence.py
         │   ├── signal_detector.py
         │   └── handoff_handler.py
+        ├── output_parsing.py  # Shared output parsing
         └── parallel/     # Parallel processing module
             ├── __init__.py
             ├── orchestrator.py
             ├── worker_pool.py
             ├── merge_coordinator.py
             ├── priority_queue.py
-            ├── output_parsing.py
             ├── git_lock.py
             ├── file_hints.py
             ├── overlap_detector.py

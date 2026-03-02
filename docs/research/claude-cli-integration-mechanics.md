@@ -165,7 +165,7 @@ Used for:
 
 ### Structured Output Parsing
 
-**Source**: `scripts/little_loops/parallel/output_parsing.py:1-463`
+**Source**: `scripts/little_loops/output_parsing.py:1-463`
 
 Parses Claude's natural language output into structured data:
 
@@ -250,7 +250,7 @@ User/Automation → claude CLI → Slash Command → Claude Execution → Output
 |------|---------|
 | `scripts/little_loops/subprocess_utils.py` | Core CLI invocation and output handling |
 | `scripts/little_loops/parallel/worker_pool.py` | Parallel execution with worktrees |
-| `scripts/little_loops/parallel/output_parsing.py` | Structured output extraction |
+| `scripts/little_loops/output_parsing.py` | Structured output extraction |
 | `scripts/little_loops/state.py` | State persistence layer |
 | `scripts/little_loops/issue_manager.py` | Sequential issue processing |
 | `commands/manage-issue.md` | Full issue lifecycle with phases |
