@@ -272,9 +272,7 @@ def _render_card(fields: dict[str, str | None]) -> str:
     if summary_text:
         for line in summary_text.splitlines():
             if line.strip():
-                summary_lines.extend(
-                    textwrap.wrap(line, width=wrap_width, break_long_words=False)
-                )
+                summary_lines.extend(textwrap.wrap(line, width=wrap_width, break_long_words=False))
             else:
                 summary_lines.append("")
 
