@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.27.0] - 2026-03-02
+
+### Added
+
+- **ll-history generate-docs subcommand** - Synthesize architecture documentation from completed issue history with relevance scoring and progressive construction (FEAT-503)
+
+### Changed
+
+- enhance(format-issue): default to highest-priority issue when no args (b395620)
+- enhance(sync): use issue-sections.json template in ll-sync pull (25bc374)
+- enhance(architecture): extract output_parsing from parallel/ to root package (bbd577c)
+- enhance(cli): remove redundant ll-next-id standalone tool (bac9428)
+- enhance(cli): sharpen CLI tool descriptions for unambiguous tool selection (c576cd9)
+- refactor(templates): split issue-sections.json into per-type files (50231fb)
+
+### Other
+
+- docs(ll-history): document generate-docs subcommand across all references (e7c2a61)
+- style: apply ruff formatting to 4 files (1a7ca55)
+
+[1.27.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.26.0...v1.27.0
+
 ## [1.26.0] - 2026-03-01
 
 ### Added
