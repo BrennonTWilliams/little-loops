@@ -32,7 +32,7 @@ $ARGUMENTS
 - **issue_id** (optional): Issue ID to format (e.g., BUG-071, FEAT-225, ENH-042)
   - If provided, formats that specific issue
   - If omitted with `--all`, processes all active issues
-  - If omitted without `--all`, shows error
+  - If omitted without `--all`, selects highest-priority active issue
 
 - **flags** (optional): Command behavior flags
   - `--auto` - Enable non-interactive auto-format mode (applies inferred changes without prompts)
@@ -79,9 +79,19 @@ fi
 
 ```bash
 if [[ -z "$ISSUE_ID" ]]; then
-    echo "Error: issue_id is required when not using --all flag"
-    echo "Usage: /ll:format-issue [ISSUE_ID] [--auto]"
-    exit 1
+    # No issue_id provided — select highest-priority active issue
+    for P in P0 P1 P2 P3 P4 P5; do
+        for dir in {{config.issues.base_dir}}/*/; do
+            if [ "$(basename "$dir")" = "{{config.issues.completed_dir}}" ] || [ "$(basename "$dir")" = "{{config.issues.deferred_dir}}" ]; then continue; fi
+            FOUND=$(ls "$dir"/$P-*.md 2>/dev/null | sort | head -1)
+            if [ -n "$FOUND" ]; then FILE="$FOUND"; break 2; fi
+        done
+    done
+    if [ -z "$FILE" ]; then
+        echo "No active issues found."
+        exit 0
+    fi
+    echo "Selected highest-priority issue: $(basename "$FILE")"
 fi
 
 # Search for issue file across categories (not completed/ or deferred/)
