@@ -12,6 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.28.1] - 2026-03-02
+
+### Fixed
+
+- fix(ll-history): replace Jaccard with intersection scoring (d253f0b)
+
+[1.28.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.28.0...v1.28.1
+
 ## [1.28.0] - 2026-03-02
 
 ### Added
