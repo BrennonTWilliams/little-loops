@@ -356,7 +356,7 @@ When you have many issues to process, the CLI tools can handle them in bulk with
 
 ```bash
 ll-auto                              ← process all active issues one by one
-ll-auto --issue P2-BUG-042-...md    ← process a specific issue
+ll-auto --only BUG-042              ← process a specific issue
 ll-auto --dry-run                    ← preview what would be processed
 ```
 

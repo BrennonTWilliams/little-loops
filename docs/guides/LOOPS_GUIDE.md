@@ -424,6 +424,7 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 | `-n <N>` | Override `max_iterations` |
 | `--queue` | Wait for conflicting scoped loops instead of erroring |
 | `-q` / `--quiet` | Suppress progress output |
+| `-b` / `--background` | Run as a background daemon |
 
 ### Simulate Scenarios
 
