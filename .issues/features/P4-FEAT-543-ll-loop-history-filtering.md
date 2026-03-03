@@ -147,3 +147,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 **Open** | Created: 2026-03-03 | Priority: P4
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-03-03 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | HIGH |
+| Implementation effort | MEDIUM |
+| Complexity added | MEDIUM |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first — HIGH utility (debugging 200+ event logs is a real pain point), but the `--since` duration parser is a non-trivial utility that will also be needed by `ll-messages` and `ll-history`. Before implementing, extract the duration string parser (`"1h"` → seconds, `"30m"` → seconds, `"2d"` → seconds) as a shared utility in `little_loops/text_utils.py` or a new `time_utils.py`. This reduces maintenance overhead (one implementation vs three) and makes the feature scope cleaner. Once that utility exists, the filtering implementation is straightforward.

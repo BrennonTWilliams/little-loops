@@ -122,3 +122,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 **Open** | Created: 2026-03-03 | Priority: P2
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-03-03 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | MEDIUM |
+| Complexity added | MEDIUM |
+| Technical debt risk | MEDIUM |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first — Before implementing, clarify the error-handling semantics to avoid tech debt: (1) How does `ll-loop resume` handle a loop terminated with `status="error"` — should it refuse to resume, warn, or treat as a normal resume point? (2) Should `FATAL_ERROR` write a final state snapshot before terminating, or terminate immediately? (3) Does `PersistentExecutor` need a separate `_finish()` override to handle error terminal state? Answering these questions will ensure the implementation is complete and doesn't require a follow-up rework pass.

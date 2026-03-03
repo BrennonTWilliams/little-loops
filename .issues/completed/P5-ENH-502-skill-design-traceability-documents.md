@@ -127,3 +127,21 @@ Update first - Blocked by 5 upstream issues (ENH-494, ENH-493, ENH-491, ENH-496,
 - ENH-491
 - ENH-496
 - FEAT-441
+
+---
+
+## Resolution
+
+- **Status**: Closed - Tradeoff Review
+- **Completed**: 2026-03-03
+- **Reason**: Low utility relative to implementation complexity
+
+### Tradeoff Review Scores
+- Utility: LOW
+- Implementation Effort: LOW
+- Complexity Added: LOW
+- Technical Debt Risk: LOW
+- Maintenance Overhead: MEDIUM
+
+### Rationale
+Skills are not yet stable enough to write accurate design rationale documents — ENH-493 and ENH-494 will restructure skill descriptions and line limits, making any WHY.md written now stale on arrival. LOW utility vs MEDIUM maintenance burden. Deferred until all 5 blocking issues resolve and skills stabilize.

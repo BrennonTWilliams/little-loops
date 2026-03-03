@@ -131,3 +131,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ---
 
 **Open** | Created: 2026-03-03 | Priority: P3
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-03-03 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | LOW |
+| Complexity added | MEDIUM |
+| Technical debt risk | HIGH |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Update first — The edge-case timing semantics need to be specified carefully before implementation. HIGH tech debt risk from ordering-dependent logic. Before implementing, define: (1) the exact wait window after SIGTERM, (2) behavior when the process exits between PID check and SIGTERM, and (3) whether to poll for process exit or return immediately with "stop signal sent." A more detailed implementation plan addressing these timing semantics will reduce regression risk.

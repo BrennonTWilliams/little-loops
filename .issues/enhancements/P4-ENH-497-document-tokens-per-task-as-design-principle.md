@@ -120,6 +120,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-02-24 | Priority: P4
 
-## Blocked By
 
-- FEAT-441

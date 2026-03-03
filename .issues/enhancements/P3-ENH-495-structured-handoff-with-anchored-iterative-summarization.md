@@ -131,3 +131,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Status
 
 **Open** | Created: 2026-02-24 | Priority: P3
+
+---
+
+## Tradeoff Review Note
+
+**Reviewed**: 2026-03-03 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | MEDIUM |
+| Complexity added | LOW |
+| Technical debt risk | LOW |
+| Maintenance overhead | MEDIUM |
+
+### Recommendation
+Update first — Good intent, but the handoff schema becomes part of a session-continuity contract once changed. Before restructuring, validate the proposed four-section schema against 3-5 real session handoff files. Also: document the current 3-section schema (Conversation Summary / Resume Point / Important Context) in `CONTRIBUTING.md` as a baseline, so the diff from current → proposed is explicit. The MEDIUM maintenance overhead comes from `/ll:resume` needing updates to parse and surface structured fields — ensure that change is scoped into this issue before implementation.

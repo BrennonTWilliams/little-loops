@@ -146,6 +146,24 @@ Update first - Only 2 skills exceed the 500-line limit (audit-claude-config: 708
 
 - ENH-491
 - FEAT-441
+
+---
+
+## Tradeoff Review Note (2026-03-03 Update)
+
+**Reviewed**: 2026-03-03 by `/ll:tradeoff-review-issues`
+
+### Scores
+| Dimension | Score |
+|-----------|-------|
+| Utility to project | MEDIUM |
+| Implementation effort | LOW |
+| Complexity added | LOW |
+| Technical debt risk | LOW |
+| Maintenance overhead | LOW |
+
+### Recommendation
+Update first — Implement ENH-493 (rewrite skill descriptions as trigger documents) first. Only after trigger descriptions are finalized should content be split into `references/` directories, so that reorganized reference material matches the new description style. Scope remains well-bounded (only 2 skills exceed 500 lines). Implementation is straightforward once ENH-493 resolves.
 ## Blocks
 
 - ENH-502
