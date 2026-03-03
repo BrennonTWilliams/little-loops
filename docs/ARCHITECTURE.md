@@ -219,7 +219,12 @@ little-loops/
         ├── sync.py              # GitHub Issues sync
         ├── goals_parser.py      # Goals file parsing
         ├── dependency_graph.py  # Dependency graph construction
-        ├── dependency_mapper.py # Cross-issue dependency discovery
+        ├── dependency_mapper/   # Cross-issue dependency discovery (sub-package)
+        │   ├── __init__.py      #   Re-exports for backwards compatibility
+        │   ├── models.py        #   Data models (DependencyProposal, FixResult, etc.)
+        │   ├── analysis.py      #   Conflict scoring and dependency analysis
+        │   ├── formatting.py    #   Report and graph formatting
+        │   └── operations.py    #   File mutation operations (apply/fix)
         ├── session_log.py       # Session log linking for issues
         ├── user_messages.py     # User message extraction
         ├── workflow_sequence_analyzer.py  # Workflow analysis
@@ -693,7 +698,7 @@ Issues within each wave execute in parallel. Waves execute sequentially.
 The `dependency_mapper` module complements `dependency_graph` by discovering new dependency relationships:
 
 - **dependency_graph.py**: Execution ordering from existing `Blocked By` data
-- **dependency_mapper.py**: Discovery of new relationships via file overlap + semantic conflict analysis
+- **dependency_mapper/**: Discovery of new relationships via file overlap + semantic conflict analysis (split into `models`, `analysis`, `formatting`, `operations` sub-modules)
 
 The `/ll:map-dependencies` skill uses `dependency_mapper` to analyze active issues, propose dependencies based on shared file references, validate existing dependency integrity (broken refs, missing backlinks, cycles), and write approved relationships to issue files.
 

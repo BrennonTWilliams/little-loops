@@ -209,7 +209,12 @@ little-loops/
         ├── logger.py
         ├── logo.py              # CLI logo display
         ├── dependency_graph.py  # Dependency graph construction
-        ├── dependency_mapper.py # Cross-issue dependency discovery
+        ├── dependency_mapper/   # Cross-issue dependency discovery (sub-package)
+        │   ├── __init__.py      #   Re-exports for backwards compatibility
+        │   ├── models.py        #   Data models
+        │   ├── analysis.py      #   Conflict scoring and analysis
+        │   ├── formatting.py    #   Report and graph formatting
+        │   └── operations.py    #   File mutation operations
         ├── session_log.py       # Session log linking for issues
         ├── user_messages.py     # User message extraction
         ├── workflow_sequence_analyzer.py  # Workflow analysis (ll-workflows)

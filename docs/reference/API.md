@@ -25,7 +25,7 @@ pip install -e "/path/to/little-loops/scripts[dev]"
 | `little_loops.issue_history` | Issue history and statistics |
 | `little_loops.git_operations` | Git utilities |
 | `little_loops.dependency_graph` | Dependency graph construction |
-| `little_loops.dependency_mapper` | Cross-issue dependency discovery and mapping |
+| `little_loops.dependency_mapper` | Cross-issue dependency discovery and mapping (sub-package: `models`, `analysis`, `formatting`, `operations`) |
 | `little_loops.work_verification` | Verification helpers |
 | `little_loops.subprocess_utils` | Subprocess handling |
 | `little_loops.state` | State persistence |
@@ -603,6 +603,14 @@ Find all cycles in the graph using DFS.
 ## little_loops.dependency_mapper
 
 Cross-issue dependency discovery and mapping. Analyzes active issues to discover potential dependencies based on file overlap and validates existing dependency references for integrity.
+
+This is a sub-package split into focused modules:
+- `dependency_mapper.models` — data models (`DependencyProposal`, `ParallelSafePair`, `ValidationResult`, `DependencyReport`, `FixResult`)
+- `dependency_mapper.analysis` — conflict scoring and dependency analysis
+- `dependency_mapper.formatting` — report and graph formatting
+- `dependency_mapper.operations` — file mutation operations (apply/fix)
+
+All names are re-exported from `little_loops.dependency_mapper` for backwards compatibility.
 
 Complements `dependency_graph`:
 - `dependency_graph` = execution ordering from existing `Blocked By` data

@@ -16,6 +16,7 @@ Provides command-line interfaces for automated issue management:
 """
 
 from little_loops.cli.auto import main_auto
+from little_loops.cli.deps import main_deps
 from little_loops.cli.docs import main_check_links, main_verify_docs
 from little_loops.cli.history import main_history
 from little_loops.cli.issues import main_issues
@@ -33,6 +34,7 @@ from little_loops.cli.sync import main_sync
 __all__ = [
     "main_auto",
     "main_check_links",
+    "main_deps",
     "main_history",
     "main_issues",
     "main_loop",

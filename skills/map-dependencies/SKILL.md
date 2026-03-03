@@ -122,7 +122,7 @@ After reviewing the analysis output, if you want to apply proposed dependencies:
    - "Select individually" — choose per proposal
    - "Skip all" — don't write changes
 
-2. For each approved proposal, use the `apply_proposals()` function from `dependency_mapper.py` via Python, or manually:
+2. For each approved proposal, use the `apply_proposals()` function from `little_loops.dependency_mapper` via Python, or manually:
    - Add target ID to source issue's `## Blocked By` section
    - Add source ID to target issue's `## Blocks` section
 
