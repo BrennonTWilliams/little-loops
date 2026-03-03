@@ -368,7 +368,7 @@ class TestGenerateDocsCLI:
             "argv",
             [
                 "ll-history",
-                "generate-docs",
+                "export",
                 "session logging history",
                 "-d",
                 str(tmp_path / ".issues"),
@@ -397,7 +397,7 @@ class TestGenerateDocsCLI:
             "argv",
             [
                 "ll-history",
-                "generate-docs",
+                "export",
                 "session logging history",
                 "-d",
                 str(tmp_path / ".issues"),
@@ -429,7 +429,7 @@ class TestGenerateDocsCLI:
             "argv",
             [
                 "ll-history",
-                "generate-docs",
+                "export",
                 "session logging history",
                 "-d",
                 str(tmp_path / ".issues"),
@@ -460,7 +460,7 @@ class TestGenerateDocsCLI:
             "argv",
             [
                 "ll-history",
-                "generate-docs",
+                "export",
                 "session logging history",
                 "-d",
                 str(tmp_path / ".issues"),

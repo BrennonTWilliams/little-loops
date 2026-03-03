@@ -245,7 +245,7 @@ Analyze user message history to identify patterns, workflows, and automation opp
 - `file` (optional): Path to user-messages JSONL file (auto-detected if omitted)
 
 ### `/ll:analyze-history`
-Analyze issue history to understand project health, trends, and progress. Delegates to `ll-history` CLI subcommands (`summary`, `analyze`, `generate-docs`). The `generate-docs` subcommand synthesizes architecture documentation from completed issue history.
+Analyze issue history to understand project health, trends, and progress. Delegates to `ll-history` CLI subcommands (`summary`, `analyze`, `export`). The `export` subcommand compiles topic-filtered issue excerpts from completed issue history.
 
 **Trigger keywords:** "analyze history", "velocity report", "bug trends", "project health"
 

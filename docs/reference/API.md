@@ -2295,15 +2295,15 @@ Entry point for `ll-history` command. Display summary statistics, analysis, and 
 |-------------|-------------|
 | `summary` | Show issue statistics (count, velocity, type/priority breakdown) |
 | `analyze` | Full analysis with trends, subsystems, and debt metrics |
-| `generate-docs` | Synthesize documentation from completed issue history |
+| `export` | Export topic-filtered excerpts from completed issue history |
 
-#### generate-docs
+#### export
 
 ```
-ll-history generate-docs <topic> [options]
+ll-history export <topic> [options]
 ```
 
-Synthesizes a markdown document from completed issues matching a topic.
+Exports a markdown document from completed issues matching a topic.
 
 **Arguments:**
 - `topic` - Topic, area, or system to generate documentation for
@@ -2325,13 +2325,13 @@ Synthesizes a markdown document from completed issues matching a topic.
 **Example:**
 ```bash
 # Default intersection scoring
-ll-history generate-docs "session logging" --output docs/arch/session.md
+ll-history export "session logging" --output docs/arch/session.md
 
 # Hybrid scoring for better ranking among many results
-ll-history generate-docs "sprint CLI" --scoring hybrid --min-relevance 0.3
+ll-history export "sprint CLI" --scoring hybrid --min-relevance 0.3
 
 # BM25-only for precision-focused ranking
-ll-history generate-docs "dependency resolution" --scoring bm25 --format structured
+ll-history export "dependency resolution" --scoring bm25 --format structured
 ```
 
 ### main_messages

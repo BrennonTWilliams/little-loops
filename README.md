@@ -313,8 +313,8 @@ View completed issue statistics and generate documentation:
 ll-history summary               # Display issue statistics
 ll-history summary --json        # Output as JSON
 ll-history analyze               # Full analysis with trends and debt metrics
-ll-history generate-docs "topic" # Synthesize docs from issue history
-ll-history generate-docs "sprint" --output docs/arch/sprint.md
+ll-history export "topic" # Export topic-filtered issue excerpts
+ll-history export "sprint" --output docs/arch/sprint.md
 ```
 
 ### ll-workflows

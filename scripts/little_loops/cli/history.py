@@ -38,8 +38,8 @@ Examples:
   %(prog)s analyze              # Full analysis report
   %(prog)s analyze --format markdown  # Markdown report
   %(prog)s analyze --compare 30 # Compare last 30 days to previous
-  %(prog)s generate-docs "session log"  # Synthesize docs from history
-  %(prog)s generate-docs "sprint CLI" --output docs/arch/sprint.md
+  %(prog)s export "session log"  # Export topic-filtered issue excerpts
+  %(prog)s export "sprint CLI" --output docs/arch/sprint.md
 """,
     )
 
@@ -97,10 +97,10 @@ Examples:
         help="Compare last N days to previous N days",
     )
 
-    # generate-docs subcommand (FEAT-503)
+    # export subcommand (FEAT-503, renamed from generate-docs in ENH-523)
     gendocs_parser = subparsers.add_parser(
-        "generate-docs",
-        help="Synthesize documentation from completed issue history",
+        "export",
+        help="Export topic-filtered excerpts from completed issue history",
     )
     gendocs_parser.add_argument(
         "topic",
@@ -201,7 +201,7 @@ Examples:
 
         return 0
 
-    if args.command == "generate-docs":
+    if args.command == "export":
         from datetime import date as date_type
 
         from little_loops.issue_history.analysis import _load_issue_contents
