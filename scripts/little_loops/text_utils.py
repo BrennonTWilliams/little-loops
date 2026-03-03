@@ -7,6 +7,7 @@ need to identify file references in issue text.
 
 from __future__ import annotations
 
+import math
 import re
 from pathlib import Path
 
@@ -159,3 +160,47 @@ def calculate_word_overlap(words1: set[str], words2: set[str]) -> float:
     intersection = words1 & words2
     union = words1 | words2
     return len(intersection) / len(union)
+
+
+def score_bm25(
+    query_words: set[str],
+    doc_words: set[str],
+    doc_freq: dict[str, int],
+    avg_doc_len: float,
+    total_docs: int,
+    k1: float = 1.5,
+    b: float = 0.75,
+) -> float:
+    """Compute BM25 relevance score for a document against a query.
+
+    Uses the Robertson BM25 formula with IDF smoothing. Since doc_words
+    is a set (unique terms only), term frequency within the document is
+    always 1 for matching terms.
+
+    Args:
+        query_words: Set of query terms
+        doc_words: Set of document terms (unique words, from extract_words)
+        doc_freq: Document frequency per term (number of docs containing each term)
+        avg_doc_len: Average document length in unique words across corpus
+        total_docs: Total number of documents in corpus
+        k1: Term frequency saturation parameter (default: 1.5)
+        b: Length normalization parameter (default: 0.75)
+
+    Returns:
+        BM25 score (non-negative float, unbounded above)
+    """
+    if not query_words or not doc_words or total_docs == 0 or avg_doc_len == 0:
+        return 0.0
+
+    doc_len = len(doc_words)
+    score = 0.0
+
+    for term in query_words & doc_words:
+        df = doc_freq.get(term, 0)
+        # Robertson IDF with +1 smoothing to keep score non-negative
+        idf = math.log((total_docs - df + 0.5) / (df + 0.5) + 1)
+        # TF = 1 (term present in doc), with length normalization
+        tf_norm = (k1 + 1) / (1 + k1 * (1 - b + b * doc_len / avg_doc_len))
+        score += idf * tf_norm
+
+    return score

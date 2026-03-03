@@ -2271,6 +2271,61 @@ Searches all active category directories and the completed directory. Displays a
 - **Details**: summary text (truncated to 80 chars), integration file count, labels, session log history with command counts
 - **Path**: relative path from project root
 
+### main_history
+
+```python
+def main_history() -> int
+```
+
+Entry point for `ll-history` command. Display summary statistics, analysis, and synthesized documentation for completed issues.
+
+**Returns:** Exit code
+
+**Sub-commands:**
+
+| Sub-command | Description |
+|-------------|-------------|
+| `summary` | Show issue statistics (count, velocity, type/priority breakdown) |
+| `analyze` | Full analysis with trends, subsystems, and debt metrics |
+| `generate-docs` | Synthesize documentation from completed issue history |
+
+#### generate-docs
+
+```
+ll-history generate-docs <topic> [options]
+```
+
+Synthesizes a markdown document from completed issues matching a topic.
+
+**Arguments:**
+- `topic` - Topic, area, or system to generate documentation for
+
+**Options:**
+- `--output PATH` - Write output to file instead of stdout
+- `-f, --format {narrative,structured}` - Output format (default: `narrative`)
+- `-d, --directory PATH` - Path to issues directory (default: `.issues`)
+- `--since DATE` - Only include issues completed after DATE (YYYY-MM-DD)
+- `--min-relevance FLOAT` - Minimum relevance score threshold (default: `0.5`)
+- `--type {BUG,FEAT,ENH}` - Filter by issue type
+- `--scoring {intersection,bm25,hybrid}` - Relevance scoring method (default: `intersection`)
+
+**Scoring modes:**
+- `intersection` (default): fraction of topic words appearing in the issue — best recall, no corpus needed
+- `hybrid`: `intersection * 0.5 + normalized_bm25 * 0.5` — blends recall and ranking precision
+- `bm25`: normalized BM25 score only — ranks by term frequency and IDF weighting
+
+**Example:**
+```bash
+# Default intersection scoring
+ll-history generate-docs "session logging" --output docs/arch/session.md
+
+# Hybrid scoring for better ranking among many results
+ll-history generate-docs "sprint CLI" --scoring hybrid --min-relevance 0.3
+
+# BM25-only for precision-focused ranking
+ll-history generate-docs "dependency resolution" --scoring bm25 --format structured
+```
+
 ### main_messages
 
 ```python
@@ -3750,6 +3805,9 @@ Text extraction utilities for issue content. Provides shared functions for extra
 | Function | Purpose |
 |----------|---------|
 | `extract_file_paths` | Extract file paths from issue content |
+| `extract_words` | Tokenize text into a set of significant words (3+ chars, stop words removed) |
+| `calculate_word_overlap` | Jaccard similarity between two word sets |
+| `score_bm25` | BM25 relevance score for a document against a query |
 
 ### SOURCE_EXTENSIONS
 
@@ -3789,4 +3847,74 @@ See also `docs/reference/API.md` and scripts/little_loops/state.py:42.
 paths = extract_file_paths(content)
 print(paths)
 # {'scripts/little_loops/config.py', 'docs/reference/API.md', 'scripts/little_loops/state.py'}
+```
+
+### extract_words
+
+```python
+def extract_words(text: str) -> set[str]
+```
+
+Extract significant words from text. Returns lowercase alphabetic words of 3+ characters, excluding common stop words (`the`, `and`, `file`, `code`, `issue`, etc.).
+
+**Parameters:**
+- `text` - Input text
+
+**Returns:** `set[str]` of significant words.
+
+### calculate_word_overlap
+
+```python
+def calculate_word_overlap(words1: set[str], words2: set[str]) -> float
+```
+
+Calculate Jaccard similarity between two word sets: `|intersection| / |union|`.
+
+**Returns:** Float in `[0.0, 1.0]`.
+
+### score_bm25
+
+```python
+def score_bm25(
+    query_words: set[str],
+    doc_words: set[str],
+    doc_freq: dict[str, int],
+    avg_doc_len: float,
+    total_docs: int,
+    k1: float = 1.5,
+    b: float = 0.75,
+) -> float
+```
+
+BM25 relevance score for a document against a query. Uses Robertson BM25 with IDF smoothing. Since `doc_words` comes from `extract_words()` (a set), term frequency within the document is always 1 for matching terms.
+
+**Parameters:**
+- `query_words` - Set of query terms
+- `doc_words` - Set of document terms (unique words, from `extract_words`)
+- `doc_freq` - Document frequency per term (number of docs containing each term)
+- `avg_doc_len` - Average document length in unique words across corpus
+- `total_docs` - Total number of documents in corpus
+- `k1` - Term frequency saturation parameter (default: `1.5`)
+- `b` - Length normalization parameter (default: `0.75`)
+
+**Returns:** Non-negative float. Normalize to `[0, 1)` via `score / (score + 1)` before combining with intersection scores.
+
+**Example:**
+```python
+from little_loops.text_utils import extract_words, score_bm25
+
+docs = ["session logging added to history CLI", "sprint dependency ordering fixed"]
+doc_words_list = [extract_words(d) for d in docs]
+
+# Build corpus stats
+doc_freq: dict[str, int] = {}
+for words in doc_words_list:
+    for word in words:
+        doc_freq[word] = doc_freq.get(word, 0) + 1
+avg_doc_len = sum(len(w) for w in doc_words_list) / len(doc_words_list)
+
+query = extract_words("session logging")
+raw = score_bm25(query, doc_words_list[0], doc_freq=doc_freq, avg_doc_len=avg_doc_len, total_docs=2)
+normalized = raw / (raw + 1)  # map to [0, 1)
+print(f"BM25 normalized: {normalized:.3f}")
 ```

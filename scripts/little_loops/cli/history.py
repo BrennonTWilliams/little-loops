@@ -150,6 +150,13 @@ Examples:
         dest="issue_type",
         help="Filter by issue type",
     )
+    gendocs_parser.add_argument(
+        "--scoring",
+        type=str,
+        choices=["intersection", "bm25", "hybrid"],
+        default="intersection",
+        help="Relevance scoring method: intersection (default), bm25, or hybrid",
+    )
 
     args = parser.parse_args()
 
@@ -214,6 +221,7 @@ Examples:
             min_relevance=args.min_relevance,
             since=since_date,
             issue_type=args.issue_type,
+            scoring=args.scoring,
         )
 
         if args.output:

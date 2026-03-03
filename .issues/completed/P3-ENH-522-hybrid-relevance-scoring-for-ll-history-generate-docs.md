@@ -4,9 +4,12 @@
 issue_id: ENH-522
 issue_type: ENH
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-03-02
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 86
+completed_date: 2026-03-03
 ---
 
 ## Summary
@@ -17,7 +20,7 @@ Enhance `ll-history generate-docs` with hybrid relevance scoring that combines i
 
 Currently `score_relevance()` at `doc_synthesis.py:18-42` uses intersection scoring: `len(topic_words & issue_words) / len(topic_words)`. This measures what fraction of topic words appear anywhere in the issue text, producing binary-ish scores (0.0, 0.5, 1.0) with no way to rank among matching documents. All documents with the same intersection score are effectively tied.
 
-The `extract_words()` function at `text_utils.py:130-144` tokenizes via `re.findall(r"\b[a-z]{3,}\b", text.lower())` and removes 26 stop words — no stemming, no term frequency, no IDF weighting.
+The `extract_words()` function at `text_utils.py:130-144` tokenizes via `re.findall(r"\b[a-z]{3,}\b", text.lower())` and removes 27 stop words — no stemming, no term frequency, no IDF weighting.
 
 ## Expected Behavior
 
@@ -98,7 +101,7 @@ These would be computed via a pre-scan step in `synthesize_docs()` or cached.
 1. **Add `score_bm25()` to `text_utils.py`** — Place after `calculate_word_overlap()` (line 161). Implement BM25 with parameters `k1=1.5`, `b=0.75`. Function signature: `score_bm25(query_words: set[str], doc_words: set[str], doc_freq: dict[str, int], avg_doc_len: float, total_docs: int) -> float`
 2. **Add corpus pre-scan to `synthesize_docs()`** — In `doc_synthesis.py`, before the scoring loop (line 112), add a pre-pass computing: document frequencies per term, average document length, total document count. Store in a `dict` passed to `score_relevance()`
 3. **Update `score_relevance()` signature** — Add optional `corpus_stats: dict | None = None` parameter. When `None`, use current intersection-only scoring. When provided, compute hybrid score: `intersection * 0.5 + normalize(bm25) * 0.5`
-4. **Add `--scoring` CLI flag** — In `cli/history.py`, add to `generate-docs` subparser (after `--min-relevance` at line 144): `choices=["intersection", "bm25", "hybrid"]`, default `"intersection"`. Wire through `synthesize_docs()` to control whether corpus stats are computed
+4. **Add `--scoring` CLI flag** — In `cli/history.py`, add to `generate-docs` subparser (after `--type` at line 152): `choices=["intersection", "bm25", "hybrid"]`, default `"intersection"`. Wire through `synthesize_docs()` to control whether corpus stats are computed
 5. **Add tests** — In `test_text_utils.py`: test `score_bm25()` with known inputs. In `test_doc_synthesis.py`: test `score_relevance()` with and without corpus_stats, verify hybrid scoring produces differentiated rankings. In `test_issue_history_cli.py`: test `--scoring` flag parsing
 6. **Update API docs** — Add `score_bm25()` and `--scoring` flag to `docs/reference/API.md`
 
@@ -113,9 +116,27 @@ These would be computed via a pre-scan step in `synthesize_docs()` or cached.
 
 `enhancement`, `ll-history`, `captured`
 
+## Resolution
+
+**Action**: improve
+**Completed**: 2026-03-03
+
+### Implementation Notes
+
+Added `score_bm25()` to `text_utils.py` (Robertson BM25 with IDF smoothing, k1=1.5, b=0.75, normalized via x/(x+1)). Updated `score_relevance()` in `doc_synthesis.py` to accept `corpus_stats` and `scoring` parameters supporting "intersection" (default), "hybrid" (intersection*0.5 + bm25_normalized*0.5), and "bm25" modes. Added `_compute_corpus_stats()` helper and updated `synthesize_docs()` to pre-scan candidates and pass corpus stats when scoring != "intersection". Added `--scoring {intersection,bm25,hybrid}` CLI flag to `ll-history generate-docs`. All changes backward compatible — intersection mode remains default. Added 10 new tests covering BM25 properties, hybrid scoring, and CLI flag. Updated `docs/reference/API.md` with `score_bm25()` docs and `--scoring` CLI reference.
+
+**Files modified:**
+- `scripts/little_loops/text_utils.py` — Added `score_bm25()`, `extract_words()`, `calculate_word_overlap()` docs
+- `scripts/little_loops/issue_history/doc_synthesis.py` — Updated `score_relevance()`, added `_compute_corpus_stats()`, updated `synthesize_docs()`
+- `scripts/little_loops/cli/history.py` — Added `--scoring` flag to `generate-docs` subparser
+- `scripts/tests/test_text_utils.py` — Added `TestScoreBM25` (7 tests)
+- `scripts/tests/test_doc_synthesis.py` — Added hybrid/BM25 and CLI `--scoring` tests
+- `docs/reference/API.md` — Documented `score_bm25()`, `extract_words()`, `calculate_word_overlap()`, `main_history`, `--scoring` flag
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/54ea04b1-9748-4277-ba23-8560b42c40a0.jsonl`
 - `/ll:refine-issue` - 2026-03-03 - Corrected test file refs (test_issue_history.py→test_doc_synthesis.py); added exact line numbers for score_relevance, synthesize_docs, extract_words; identified similar patterns (compute_conflict_score, semantic_similarity); enriched integration map and implementation steps
+- `/ll:manage-issue` - 2026-03-03 - Implemented hybrid BM25 scoring; all 3099 tests pass
 
 ---
-**Open** | Created: 2026-03-02 | Priority: P3
+**Completed** | Created: 2026-03-02 | Completed: 2026-03-03 | Priority: P3

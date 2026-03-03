@@ -12,20 +12,31 @@ from datetime import date
 from pathlib import Path
 
 from little_loops.issue_history.models import CompletedIssue
-from little_loops.text_utils import extract_words
+from little_loops.text_utils import extract_words, score_bm25
 
 
-def score_relevance(topic: str, issue: CompletedIssue, content: str) -> float:
+def score_relevance(
+    topic: str,
+    issue: CompletedIssue,
+    content: str,
+    corpus_stats: dict | None = None,
+    scoring: str = "intersection",
+) -> float:
     """Score how relevant a completed issue is to a topic.
 
-    Uses intersection-based scoring: what fraction of topic words
-    appear in the issue? This works better than Jaccard for topic
-    matching because it doesn't penalize long documents.
+    Supports three scoring modes:
+    - "intersection" (default): fraction of topic words appearing in the issue.
+      Works well for topic matching because it doesn't penalize long documents.
+    - "hybrid": intersection * 0.5 + normalized BM25 * 0.5. Requires corpus_stats.
+    - "bm25": normalized BM25 score only. Requires corpus_stats.
 
     Args:
         topic: Search topic string
         issue: Completed issue to score
         content: Raw file content of the issue
+        corpus_stats: Corpus statistics for BM25 (doc_freq, avg_doc_len, total_docs).
+            Required for "hybrid" and "bm25" modes; ignored for "intersection".
+        scoring: Scoring mode — "intersection", "hybrid", or "bm25"
 
     Returns:
         Relevance score from 0.0 to 1.0
@@ -39,7 +50,55 @@ def score_relevance(topic: str, issue: CompletedIssue, content: str) -> float:
     issue_words = extract_words(issue_text)
 
     # Intersection-based: what fraction of topic words appear in the issue?
-    return len(topic_words & issue_words) / len(topic_words)
+    intersection_score = len(topic_words & issue_words) / len(topic_words)
+
+    if scoring == "intersection" or not corpus_stats:
+        return intersection_score
+
+    # BM25 scoring requires at least one matching term (early exit for efficiency)
+    if intersection_score == 0.0:
+        return 0.0
+
+    raw_bm25 = score_bm25(topic_words, issue_words, **corpus_stats)
+    # Normalize BM25 to [0, 1) using x / (x + 1) — smooth and monotonic
+    bm25_normalized = raw_bm25 / (raw_bm25 + 1) if raw_bm25 > 0 else 0.0
+
+    if scoring == "bm25":
+        return bm25_normalized
+    # "hybrid": equal blend of intersection (recall) and BM25 (precision)
+    return intersection_score * 0.5 + bm25_normalized * 0.5
+
+
+def _compute_corpus_stats(candidates: list[tuple[CompletedIssue, str]]) -> dict:
+    """Compute BM25 corpus statistics over a set of candidate issues.
+
+    Args:
+        candidates: List of (issue, content) tuples
+
+    Returns:
+        dict with keys: doc_freq (dict[str, int]), avg_doc_len (float), total_docs (int)
+    """
+    doc_words_list: list[set[str]] = []
+    for issue, content in candidates:
+        issue_text = f"{issue.issue_id} {issue.path.stem.replace('-', ' ')} {content}"
+        doc_words_list.append(extract_words(issue_text))
+
+    total_docs = len(doc_words_list)
+    if total_docs == 0:
+        return {"doc_freq": {}, "avg_doc_len": 0.0, "total_docs": 0}
+
+    doc_freq: dict[str, int] = {}
+    total_len = 0
+    for words in doc_words_list:
+        total_len += len(words)
+        for word in words:
+            doc_freq[word] = doc_freq.get(word, 0) + 1
+
+    return {
+        "doc_freq": doc_freq,
+        "avg_doc_len": total_len / total_docs,
+        "total_docs": total_docs,
+    }
 
 
 def _extract_section(content: str, heading: str) -> str:
@@ -89,6 +148,7 @@ def synthesize_docs(
     min_relevance: float = 0.5,
     since: date | None = None,
     issue_type: str | None = None,
+    scoring: str = "intersection",
 ) -> str:
     """Synthesize documentation from completed issues matching a topic.
 
@@ -103,26 +163,32 @@ def synthesize_docs(
         min_relevance: Minimum relevance score threshold
         since: Only include issues completed after this date
         issue_type: Filter by issue type (BUG, FEAT, ENH)
+        scoring: Relevance scoring mode — "intersection" (default), "hybrid", or "bm25"
 
     Returns:
         Synthesized markdown document
     """
-    # Score and filter issues
-    scored: list[tuple[CompletedIssue, float, str]] = []
+    # Pre-filter by type and date (before relevance scoring)
+    candidates: list[tuple[CompletedIssue, str]] = []
     for issue in issues:
         content = contents.get(issue.path, "")
         if not content:
             continue
-
-        # Apply type filter
         if issue_type and issue.issue_type != issue_type:
             continue
-
-        # Apply date filter
         if since and issue.completed_date and issue.completed_date < since:
             continue
+        candidates.append((issue, content))
 
-        score = score_relevance(topic, issue, content)
+    # Compute corpus statistics for BM25-based scoring modes
+    corpus_stats: dict | None = None
+    if scoring != "intersection" and candidates:
+        corpus_stats = _compute_corpus_stats(candidates)
+
+    # Score and filter issues
+    scored: list[tuple[CompletedIssue, float, str]] = []
+    for issue, content in candidates:
+        score = score_relevance(topic, issue, content, corpus_stats=corpus_stats, scoring=scoring)
         if score >= min_relevance:
             scored.append((issue, score, content))
 
