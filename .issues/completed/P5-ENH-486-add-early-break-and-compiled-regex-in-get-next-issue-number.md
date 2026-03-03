@@ -3,8 +3,8 @@ discovered_commit: 95d4139206f3659159b727db57578ffb2930085b
 discovered_branch: main
 discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
-confidence_score: 80
-outcome_confidence: 97
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # ENH-486: Add early break and compiled regex in `get_next_issue_number`
@@ -64,7 +64,7 @@ After a match is found for a given file, the inner prefix loop breaks early. A s
 
 ## Impact
 
-- **Priority**: P4 — Minor performance improvement
+- **Priority**: P5 — Minor performance improvement
 - **Effort**: Small — Add `break` statement and optional regex refactor
 - **Risk**: Low — Logic-preserving optimization
 - **Breaking Change**: No
@@ -79,12 +79,21 @@ After a match is found for a given file, the inner prefix loop breaks early. A s
 - `/ll:verify-issues` - 2026-02-25 - Corrected line reference: `max_num = num` is at line 76, not 73 (line 73 is `if match:`)
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with verified line references; no knowledge gaps identified
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by ENH-481, FEAT-489, ENH-484
+- `/ll:manage-issue` - 2026-03-03 - Implemented: pre-compiled union regex replaces inner prefix loop; 69 tests pass
+
+---
+
+## Resolution
+
+Replaced the triple-nested loop with a single pre-compiled union regex (`re.compile(r"(?:BUG|FEAT|ENH)-(\d+)")`), eliminating the inner prefix iteration entirely. This achieves both goals from the issue: early break (no iteration at all after first match per file) and pre-compiled regex (compiled once before the directory scan). Added an early-return guard for the empty-prefixes edge case. All 69 `test_issue_parser.py` tests pass unchanged. Lint and mypy clean.
+
+**Resolved**: 2026-03-03 | `/ll:manage-issue enhancement fix ENH-486`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P5
+**Completed** | Created: 2026-02-24 | Resolved: 2026-03-03 | Priority: P5
 
 ---
 
@@ -106,7 +115,4 @@ Update first - Micro-optimization with LOW utility given realistic issue directo
 
 ## Blocked By
 
-- ENH-481
-
-- FEAT-489
-- ENH-484
+None — ENH-481, FEAT-489, and ENH-484 are all completed.

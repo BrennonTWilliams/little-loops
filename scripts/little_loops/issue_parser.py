@@ -63,17 +63,21 @@ def get_next_issue_number(config: BRConfig, category: str | None = None) -> int:
     for cat_name in config.issues.categories:
         dirs_to_scan.append(config.get_issue_dir(cat_name))
 
+    if not all_prefixes:
+        return max_num + 1
+
+    # Pre-compile a single union regex to match any known prefix
+    prefix_pattern = re.compile(r"(?:" + "|".join(re.escape(p) for p in all_prefixes) + r")-(\d+)")
+
     for dir_path in dirs_to_scan:
         if not dir_path.exists():
             continue
         for file in dir_path.glob("*.md"):
-            # Check all prefixes to find global maximum
-            for prefix in all_prefixes:
-                match = re.search(rf"{prefix}-(\d+)", file.name)
-                if match:
-                    num = int(match.group(1))
-                    if num > max_num:
-                        max_num = num
+            match = prefix_pattern.search(file.name)
+            if match:
+                num = int(match.group(1))
+                if num > max_num:
+                    max_num = num
 
     return max_num + 1
 
