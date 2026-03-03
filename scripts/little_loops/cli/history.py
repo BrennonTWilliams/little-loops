@@ -138,9 +138,9 @@ Examples:
     gendocs_parser.add_argument(
         "--min-relevance",
         type=float,
-        default=0.3,
+        default=0.5,
         metavar="FLOAT",
-        help="Minimum relevance score threshold (default: 0.3)",
+        help="Minimum relevance score threshold (default: 0.5)",
     )
     gendocs_parser.add_argument(
         "--type",

@@ -12,14 +12,15 @@ from datetime import date
 from pathlib import Path
 
 from little_loops.issue_history.models import CompletedIssue
-from little_loops.text_utils import calculate_word_overlap, extract_words
+from little_loops.text_utils import extract_words
 
 
 def score_relevance(topic: str, issue: CompletedIssue, content: str) -> float:
     """Score how relevant a completed issue is to a topic.
 
-    Uses Jaccard word overlap between the topic and the issue's
-    title + summary content.
+    Uses intersection-based scoring: what fraction of topic words
+    appear in the issue? This works better than Jaccard for topic
+    matching because it doesn't penalize long documents.
 
     Args:
         topic: Search topic string
@@ -37,7 +38,8 @@ def score_relevance(topic: str, issue: CompletedIssue, content: str) -> float:
     issue_text = f"{issue.issue_id} {issue.path.stem.replace('-', ' ')} {content}"
     issue_words = extract_words(issue_text)
 
-    return calculate_word_overlap(topic_words, issue_words)
+    # Intersection-based: what fraction of topic words appear in the issue?
+    return len(topic_words & issue_words) / len(topic_words)
 
 
 def _extract_section(content: str, heading: str) -> str:
@@ -84,7 +86,7 @@ def synthesize_docs(
     issues: list[CompletedIssue],
     contents: dict[Path, str],
     format: str = "narrative",
-    min_relevance: float = 0.3,
+    min_relevance: float = 0.5,
     since: date | None = None,
     issue_type: str | None = None,
 ) -> str:
