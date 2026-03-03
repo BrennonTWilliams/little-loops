@@ -1,0 +1,124 @@
+---
+discovered_commit: 47c81c895baaac1acac69d105ed75ff1ec82ed2c
+discovered_branch: main
+discovered_date: 2026-03-03T21:56:26Z
+discovered_by: scan-codebase
+---
+
+# BUG-530: `--no-llm` Flag Sets `llm.enabled=False` But Executor Never Reads the Field
+
+## Summary
+
+The `ll-loop run --no-llm` flag sets `fsm.llm.enabled = False` on the loaded `FSMLoop` object, but neither `FSMExecutor` nor any evaluator ever reads `llm.enabled`. LLM evaluation calls in `evaluate_llm_structured` proceed unconditionally. The `--no-llm` flag silently has no effect.
+
+## Location
+
+- **File**: `scripts/little_loops/cli/loop/run.py`
+- **Line(s)**: 84–85 (at scan commit: 47c81c8)
+- **Anchor**: `in function cmd_run()`, `--no-llm` branch
+- **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/cli/loop/run.py#L84-L85)
+- **Code**:
+```python
+if args.no_llm:
+    fsm.llm.enabled = False   # sets field...
+
+# executor.py _evaluate() — never reads llm.enabled:
+result = evaluate_llm_structured(
+    action_result.output,
+    model=self.fsm.llm.model,
+    ...
+)
+```
+
+## Current Behavior
+
+Running `ll-loop run my-loop --no-llm` sets `fsm.llm.enabled = False` in memory but the FSM executor proceeds to call `evaluate_llm_structured` normally. LLM API calls are made, tokens are consumed, and latency is incurred — the same as if `--no-llm` was not passed.
+
+## Expected Behavior
+
+`--no-llm` prevents any LLM evaluation calls. Evaluators that use LLM should fall back to a default verdict (e.g., `"unknown"` or `"error"`) or raise a clear error when `llm.enabled = False`.
+
+## Motivation
+
+`--no-llm` is presumably intended for dry-run, testing, or cost-control scenarios. If it doesn't work, users who rely on it to avoid API costs or test without credentials will be silently making LLM calls. The flag's existence creates a false sense of safety.
+
+## Steps to Reproduce
+
+1. Create a loop using `evaluate: llm_structured`
+2. Run: `ll-loop run my-loop --no-llm`
+3. Observe: LLM API call is made (network traffic, API key required, tokens consumed)
+
+## Actual Behavior
+
+`evaluate_llm_structured` is called regardless of `llm.enabled`.
+
+## Root Cause
+
+- **File**: `scripts/little_loops/cli/loop/run.py` (sets field) and `scripts/little_loops/fsm/executor.py` (ignores it)
+- **Anchor**: `in method FSMExecutor._evaluate()`, `in function cmd_run()`
+- **Cause**: `llm.enabled` was defined as a schema field but `_evaluate()` in `executor.py` was never updated to check it before dispatching to `evaluate_llm_structured`
+
+## Proposed Solution
+
+In `FSMExecutor._evaluate()`, check `self.fsm.llm.enabled` before calling LLM evaluation:
+
+```python
+# In FSMExecutor._evaluate():
+if eval_config.type == "llm_structured":
+    if not self.fsm.llm.enabled:
+        return EvaluationResult(
+            verdict="error",
+            details={"error": "LLM evaluation disabled via --no-llm"},
+        )
+    return evaluate_llm_structured(...)
+```
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/fsm/executor.py` — `FSMExecutor._evaluate()`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/persistence.py` — uses `FSMExecutor` internally; inherits fix
+- `scripts/little_loops/cli/loop/run.py` — sets `llm.enabled`; no change needed
+
+### Similar Patterns
+- `scripts/little_loops/fsm/schema.py:300-301` — `LLMConfig.enabled` field definition
+
+### Tests
+- `scripts/tests/test_ll_loop_execution.py` — add test: `llm.enabled=False` → `_evaluate()` returns error verdict without calling `evaluate_llm_structured`
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Implementation Steps
+
+1. Add `if not self.fsm.llm.enabled: return error verdict` guard in `FSMExecutor._evaluate()` for `llm_structured` type
+2. Add test verifying that `--no-llm` prevents LLM evaluator from being called
+3. Optionally: surface a clear warning to the user when `--no-llm` skips an LLM evaluation
+
+## Impact
+
+- **Priority**: P3 — Silent misbehavior; flag that does nothing is a UX and cost-control bug
+- **Effort**: Small — Guard clause addition in `_evaluate()`
+- **Risk**: Low — Only affects `llm_structured` evaluator path; no other evaluators impacted
+- **Breaking Change**: No
+
+## Related Key Documentation
+
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
+## Labels
+
+`bug`, `ll-loop`, `llm`, `scan-codebase`
+
+## Session Log
+
+- `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
+
+---
+
+**Open** | Created: 2026-03-03 | Priority: P3
