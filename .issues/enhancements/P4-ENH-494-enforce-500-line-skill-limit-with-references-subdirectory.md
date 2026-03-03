@@ -102,6 +102,10 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 - **Risk**: Low — Reorganization only, skill behavior unchanged
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
 ## Labels
 
 `enhancement`, `skills`, `context-engineering`, `progressive-disclosure`
@@ -110,6 +114,7 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Completed skill line count audit; 2 skills exceed 500 lines: audit-claude-config (708) and confidence-check (524)
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by ENH-493, ENH-491, FEAT-441
+- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 
 ---
 

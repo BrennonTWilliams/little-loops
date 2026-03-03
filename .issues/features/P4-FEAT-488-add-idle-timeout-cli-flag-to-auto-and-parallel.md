@@ -77,6 +77,10 @@ Add `add_idle_timeout_arg(parser)` to `cli_args.py` following the `add_timeout_a
 - **Risk**: Low — Additive CLI flag
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
 ## Labels
 
 `feature`, `cli`, `automation`, `auto-generated`
@@ -86,6 +90,7 @@ Add `add_idle_timeout_arg(parser)` to `cli_args.py` following the `add_timeout_a
 - `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified; add_timeout_arg pattern in cli_args.py confirmed as the model to follow; no knowledge gaps identified
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by FEAT-490, FEAT-441, ENH-459
+- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 
 ---
 

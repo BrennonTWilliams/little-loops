@@ -72,6 +72,10 @@ Add `add_only_arg(run_parser)` to `cli/sprint.py` and wire `args.only` into the 
 - **Risk**: Low — Uses existing infrastructure
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
 ## Labels
 
 `feature`, `cli`, `sprint`, `auto-generated`
@@ -82,6 +86,7 @@ Add `add_only_arg(run_parser)` to `cli/sprint.py` and wire `args.only` into the 
 - `/ll:verify-issues` - 2026-02-25 - Updated file reference from `cli/sprint.py:106-121` to `cli/sprint/__init__.py:111-126` (sprint CLI was refactored into a package)
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified; add_only_arg(parser) at cli/parallel.py:119 confirmed as the model; ParallelConfig.only_ids confirmed as the wiring target; no knowledge gaps identified
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by FEAT-441
+- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 
 ---
 

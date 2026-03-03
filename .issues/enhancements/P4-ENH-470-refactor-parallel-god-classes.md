@@ -119,6 +119,10 @@ Extract cross-cutting concerns into focused helper modules:
 - **Risk**: Medium — Concurrency code is sensitive to restructuring
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
 ## Labels
 
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
@@ -131,6 +135,7 @@ Extract cross-cutting concerns into focused helper modules:
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl`
 - `/ll:audit-architecture` - 2026-02-26 - Dependency mapping audit: `parallel/` has 4 cross-package runtime imports from root (issue_parser, logger, subprocess_utils, work_verification) plus bidirectional coupling via issue_manager→parallel.output_parsing. orchestrator.py sits at Layer 3 with 8 internal deps. Recommend extracting output_parsing to root first (ENH-510) to eliminate bidirectional coupling before tackling god class refactor.
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; comprehensive caller/importer list and thread safety notes remain current
+- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 
 ---
 
