@@ -105,7 +105,10 @@ if self.fsm.backoff and self.fsm.backoff > 0:
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+| Document | Relevance |
+|----------|-----------|
+| `docs/generalized-fsm-loop.md` | FSM schema — `backoff` field definition (line 357), execution engine flow (line 1425) |
+| `docs/guides/LOOPS_GUIDE.md` | Loop configuration reference (line 295) |
 
 ## Labels
 
@@ -114,6 +117,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
+- `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; noted `test_fsm_executor.py:23` (MockActionRunner) as test pattern
 
 ---
 

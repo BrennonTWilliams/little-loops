@@ -86,7 +86,7 @@ if eval_config.type == "llm_structured":
 - `scripts/little_loops/fsm/schema.py:300-301` — `LLMConfig.enabled` field definition
 
 ### Tests
-- `scripts/tests/test_ll_loop_execution.py` — add test: `llm.enabled=False` → `_evaluate()` returns error verdict without calling `evaluate_llm_structured`
+- `scripts/tests/test_ll_loop_execution.py:746` (`TestLLMFlags` class) — add test: `llm.enabled=False` → `_evaluate()` returns error verdict without calling `evaluate_llm_structured`
 
 ### Documentation
 - N/A
@@ -109,7 +109,10 @@ if eval_config.type == "llm_structured":
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+| Document | Relevance |
+|----------|-----------|
+| `docs/generalized-fsm-loop.md` | Evaluator types — LLM evaluator (line 545), CLI run flags (line 1381) |
+| `docs/guides/LOOPS_GUIDE.md` | LLM evaluator documentation (line 295) |
 
 ## Labels
 
@@ -118,6 +121,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
+- `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test ref to `test_ll_loop_execution.py:746` (TestLLMFlags)
 
 ---
 

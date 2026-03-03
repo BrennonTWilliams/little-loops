@@ -113,7 +113,10 @@ The existing template has these sections: `## Conversation Summary` (with subsec
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+| Document | Relevance |
+|----------|-----------|
+| `commands/handoff.md` | Current handoff output schema (3-section prose template, lines 124–174) |
+| `commands/resume.md` | Resume parsing behavior and `ll-session-state.json` schema (lines 47–56, 106–120) |
 
 ## Labels
 
@@ -125,6 +128,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Documented current handoff schema (3-section prose) and resume behavior; noted existing ll-session-state.json structured fields
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; research findings from 2026-02-25 remain current
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
+- `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `commands/handoff.md` (lines 124–174) and `commands/resume.md` (lines 47–56, 106–120)
 
 ---
 

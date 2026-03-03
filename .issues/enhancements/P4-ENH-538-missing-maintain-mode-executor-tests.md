@@ -87,9 +87,20 @@ class TestMaintainMode:
 
 ### Similar Patterns
 - Existing `MockActionRunner`-based tests in `test_fsm_executor.py` and `test_ll_loop_execution.py`
+- `test_fsm_executor.py:1606` — `TestSignalHandling` class — same test class pattern to follow
 
 ### Tests
 - This issue IS the tests
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — Existing maintain mode test coverage:_
+
+**IMPORTANT: Tests already exist — verify before implementing:**
+- `scripts/tests/test_fsm_executor.py:840` — `TestMaintainMode` class already exists
+- `scripts/tests/test_fsm_executor.py:2133` — `TestMaintainModeExecutor` class also exists
+
+Before implementing new tests, verify whether these classes cover the four scenarios listed in this issue: (1) terminal state with `maintain=True` causes restart, (2) `on_maintain` target overrides `initial`, (3) `max_iterations` still terminates, (4) route event with `reason: "maintain"` emitted. If fully covered, this issue can be **closed** rather than implemented.
 
 ### Documentation
 - N/A
@@ -112,7 +123,10 @@ class TestMaintainMode:
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+| Document | Relevance |
+|----------|-----------|
+| `docs/generalized-fsm-loop.md` | Testing strategy — mock patterns and fixture examples (line 1525), maintain paradigm (line 33) |
+| `docs/development/TESTING.md` | FSM execution testing patterns (line 668), `MockActionRunner` documentation (line 537) |
 
 ## Labels
 
@@ -121,6 +135,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
+- `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — CRITICAL: Found `TestMaintainMode:840` and `TestMaintainModeExecutor:2133` already exist in `test_fsm_executor.py`; issue may be stale
 
 ---
 

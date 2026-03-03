@@ -80,7 +80,9 @@ Or alternatively, call `_save_state()` only when state actually changes (issue c
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+| Document | Relevance |
+|----------|-----------|
+| `docs/ARCHITECTURE.md` | Parallel mode orchestrator design (line 320), state persistence (line 763) |
 
 ## Labels
 
@@ -92,6 +94,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with specific line references and code sample; no knowledge gaps identified
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by FEAT-441
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
+- `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/ARCHITECTURE.md` (lines 320, 763) to Related Key Documentation
 
 ---
 

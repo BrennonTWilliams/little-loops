@@ -121,7 +121,9 @@ Extract cross-cutting concerns into focused helper modules:
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+| Document | Relevance |
+|----------|-----------|
+| `docs/ARCHITECTURE.md` | Parallel mode architecture — `WorkerPool`, `MergeCoordinator`, `ParallelOrchestrator` class relationships (line 428), parallel mode components (line 417) |
 
 ## Labels
 
@@ -136,6 +138,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:audit-architecture` - 2026-02-26 - Dependency mapping audit: `parallel/` has 4 cross-package runtime imports from root (issue_parser, logger, subprocess_utils, work_verification) plus bidirectional coupling via issue_manager→parallel.output_parsing. orchestrator.py sits at Layer 3 with 8 internal deps. Recommend extracting output_parsing to root first (ENH-510) to eliminate bidirectional coupling before tackling god class refactor.
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; comprehensive caller/importer list and thread safety notes remain current
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
+- `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/ARCHITECTURE.md` (lines 428, 417) to Related Key Documentation
 
 ---
 

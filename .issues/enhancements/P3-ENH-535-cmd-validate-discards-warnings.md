@@ -87,7 +87,8 @@ Option A requires a signature change to `load_and_validate`; Option B is simpler
 - N/A
 
 ### Tests
-- `scripts/tests/test_ll_loop_commands.py` — add: validate with unreachable state prints warning to stdout
+- `scripts/tests/test_ll_loop_commands.py:18` (`TestCmdValidate` class) — add: validate with unreachable state prints warning to stdout
+- YAML fixture: `scripts/tests/fixtures/fsm/loop-with-unreachable-state.yaml` already exists — use directly
 
 ### Documentation
 - N/A
@@ -110,7 +111,10 @@ Option A requires a signature change to `load_and_validate`; Option B is simpler
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+| Document | Relevance |
+|----------|-----------|
+| `docs/generalized-fsm-loop.md` | FSM schema validation (line 357), CLI interface — `ll-loop validate` (line 1381) |
+| `docs/guides/LOOPS_GUIDE.md` | Validation walkthrough (line 191) |
 
 ## Labels
 
@@ -119,6 +123,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
+- `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test ref to `test_ll_loop_commands.py:18` (TestCmdValidate) + noted `fixtures/fsm/loop-with-unreachable-state.yaml` fixture
 
 ---
 

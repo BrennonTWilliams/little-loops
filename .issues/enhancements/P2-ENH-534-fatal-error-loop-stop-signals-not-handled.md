@@ -84,8 +84,8 @@ Since `_run_action` is called inside `_execute_state`, which is called inside `r
 - `_shutdown_requested` flag pattern in `FSMExecutor` — reuse same approach for `_pending_error`
 
 ### Tests
-- `scripts/tests/test_ll_loop_execution.py` — add: action output with `FATAL_ERROR:` terminates with error
-- `scripts/tests/test_ll_loop_execution.py` — add: action output with `LOOP_STOP:` gracefully stops loop
+- `scripts/tests/test_fsm_executor.py:1972` (`TestHandoffDetection` class) — follow pattern for `FATAL_ERROR:` signal termination test
+- `scripts/tests/test_fsm_executor.py:1606` (`TestSignalHandling` class) — follow pattern for `LOOP_STOP:` graceful stop test
 
 ### Documentation
 - N/A — behavior is implied by signal pattern names
@@ -109,7 +109,10 @@ Since `_run_action` is called inside `_execute_state`, which is called inside `r
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+| Document | Relevance |
+|----------|-----------|
+| `docs/generalized-fsm-loop.md` | Structured events — signal patterns `FATAL_ERROR`, `LOOP_STOP`, `CONTEXT_HANDOFF` (line 1464), error handling (line 1196) |
+| `docs/guides/LOOPS_GUIDE.md` | Loop control signals documentation (line 295) |
 
 ## Labels
 
@@ -118,6 +121,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
+- `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test refs to `test_fsm_executor.py:1972` (TestHandoffDetection) and `:1606` (TestSignalHandling)
 
 ---
 

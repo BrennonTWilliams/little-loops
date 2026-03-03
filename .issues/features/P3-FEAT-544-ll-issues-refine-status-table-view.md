@@ -68,37 +68,60 @@ Example JSON record:
 
 ## Implementation Steps
 
-1. Extend `issue_parser.py` with `parse_session_log(path) -> list[str]` and frontmatter score extraction (`confidence_score`, `outcome_confidence`)
-2. Implement `scripts/little_loops/cli/issues/refine_status.py` — aggregate data, derive dynamic column set, sort, and render table with terminal-width truncation
-3. Register `refine-status` subparser in `__init__.py` with `--type` and `--format` flags (following `list_cmd.py` pattern)
-4. Add `--format json` path to emit newline-delimited JSON records
-5. Write tests in `scripts/tests/test_refine_status.py` and verify against real issue files
+1. **Extract `parse_session_log()` to `session_log.py`** — move the inline logic from `show.py:168-178` to a standalone exported function in `scripts/little_loops/session_log.py`; signature: `parse_session_log(content: str) -> list[str]` returning distinct `/ll:*` command names found in the `## Session Log` section. Regex: `r"^## Session Log\s*\n+(.*?)(?:\n##|\n---|\Z)"` (MULTILINE|DOTALL), then `r"`(/[\w:-]+)`"` to extract commands.
+2. **Add `confidence_score` and `outcome_confidence` to `IssueInfo`** — extend `scripts/little_loops/issue_parser.py:131-158` with two new fields (`confidence_score: int | None` and `outcome_confidence: int | None`) and populate them from `parse_frontmatter(content, coerce_types=True)` in `IssueParser.parse_file()` (around line 245). Also add `session_commands: list[str]` field populated by calling `parse_session_log()`.
+3. **Implement `scripts/little_loops/cli/issues/refine_status.py`** — `cmd_refine_status(config, args) -> int`:
+   - Call `find_issues(config, type_prefixes=...)` for issue list (already sorted by priority)
+   - Derive dynamic column set: collect all distinct command names across all issues' `session_commands`, sort consistently
+   - Use `shutil.get_terminal_size().columns` to compute max title width; truncate with `…` (U+2026)
+   - Render header row + separator + per-issue rows with `✓`/`—` cells
+   - For `--format json`: emit one JSON object per line (JSONL) with fields: `id`, `priority`, `title`, `commands`, `confidence_score`, `outcome_confidence`, `total`
+4. **Register `refine-status` subparser in `__init__.py`** — follow `impact_effort.py` pattern (line 22 import, `subs.add_parser("refine-status", ...)`, `add_config_arg()`, dispatch `if args.command == "refine-status"`); add `--type` flag (mirroring `list` subcommand at line 53) and `--format` flag with `choices=["table", "json"]`
+5. **Write tests in `scripts/tests/test_refine_status.py`** — follow `test_issues_cli.py:563-583` pattern: write fixture issue files with frontmatter + Session Log entries, patch `sys.argv`, call `main_issues()`, assert `capsys.readouterr()` output; cover: Session Log parsing, dynamic column derivation, sort order (by Total desc then priority), `—` for missing scores, JSONL output format, `--type` filter
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/issues/__init__.py` — register `refine-status` subparser
-- `scripts/little_loops/issue_parser.py` — add `parse_session_log()` and frontmatter score extraction
+- `scripts/little_loops/cli/issues/__init__.py` — register `refine-status` subparser (add import at line ~22, `subs.add_parser` call, and dispatch `if args.command == "refine-status"`)
+- `scripts/little_loops/issue_parser.py` — add `confidence_score: int | None`, `outcome_confidence: int | None`, and `session_commands: list[str]` fields to `IssueInfo` dataclass (lines 131–158); populate in `IssueParser.parse_file()` (~line 245)
+- `scripts/little_loops/session_log.py` — extract `parse_session_log(content: str) -> list[str]` from inline logic in `show.py:168-178` into a new exported function here
 
 ### Files to Create
-- `scripts/little_loops/cli/issues/refine_status.py` — new subcommand module
+- `scripts/little_loops/cli/issues/refine_status.py` — new subcommand module implementing `cmd_refine_status(config, args) -> int`
 
 ### Dependent Files (Callers/Importers)
-- N/A — new additive subcommand; no existing callers
+- `scripts/little_loops/cli/issues/show.py:168-178` — currently contains the inline Session Log parsing to refactor into `session_log.py`; update to call the new shared function after extraction
 
 ### Similar Patterns
-- `scripts/little_loops/cli/issues/list_cmd.py` — `cmd_list()` as reference for issue iteration and filtering
-- `scripts/little_loops/cli/issues/impact_effort_cmd.py` — table rendering pattern (if present)
+- `scripts/little_loops/cli/issues/list_cmd.py` — `cmd_list()` for issue iteration and `--type` filter pattern (`type_prefixes = {args.type} if args.type else None`)
+- `scripts/little_loops/cli/issues/impact_effort.py` — table rendering with `✓`/`…` patterns and `_COL_WIDTH` fixed-column approach (note: filename is `impact_effort.py`, not `impact_effort_cmd.py`)
+- `scripts/little_loops/cli/issues/show.py:261-281` — dynamic-width card rendering using `textwrap` (content-width-based)
+- `scripts/little_loops/cli/deps.py:107-218` — `--format` argparse + `if args.format == "json"` dispatch pattern
+- `scripts/little_loops/user_messages.py:717-726` — JSONL output via `print(json.dumps(obj))` per record
 
 ### Tests
-- `scripts/tests/test_refine_status.py` — new test file covering Session Log parsing, dynamic column derivation, sort order, and JSON output
+- `scripts/tests/test_refine_status.py` — new test file (follow `test_issues_cli.py:563-583` fixture pattern: write issue files, patch `sys.argv`, call `main_issues()`, assert `capsys.readouterr()`)
+- `scripts/tests/test_session_log.py` — add tests for new `parse_session_log()` function
+- `scripts/tests/test_issue_parser.py` — add tests for new `IssueInfo` fields
 
 ### Documentation
 - CLI help text auto-generated via argparse `description`
-- `docs/reference/API.md` — update `ll-issues` subcommand list if documented
+- `docs/reference/API.md` — update `ll-issues` subcommand list (line ~2251)
 
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Session Log regex** (from `show.py:168-174`): `re.search(r"^## Session Log\s*\n+(.*?)(?:\n##|\n---|\Z)", content, re.MULTILINE | re.DOTALL)` then `re.findall(r"`(/[\w:-]+)`", log_match.group(1))` — works for both `—` (em-dash) and `-` (hyphen) separator variants found in real issue files
+- **IssueInfo is at `issue_parser.py:131-158`**; `find_issues()` at line 491 returns `List[IssueInfo]` sorted by `(priority_int, issue_id)` ascending — refine-status will need to re-sort descending by `len(session_commands)` then ascending by priority
+- **`parse_frontmatter(content, coerce_types=True)`** (from `frontmatter.py:13`) returns `confidence_score` and `outcome_confidence` as Python `int` when present; `IssueParser.parse_file()` currently calls it without `coerce_types` — need `coerce_types=True` for numeric fields
+- **`confidence_score`/`outcome_confidence` only in a subset of issues**: 4 issues confirmed (ENH-507, ENH-493, ENH-470, ENH-495); most recent issues (BUG-525+) lack them — `—` display for absent values is necessary
+- **No `shutil.get_terminal_size` currently used anywhere** — this is a new pattern for the codebase; `show.py` uses content-width sizing instead. Decision: use `shutil.get_terminal_size().columns` for the title truncation column
+- **JSON output decision**: use JSONL (one object per line via `print(json.dumps(record))`) — matches `user_messages.py:717-726` pattern and issue spec; deviates from `deps.py` indented JSON convention
+- **`--format` flag in `__init__.py`**: add `refine_s.add_argument("--format", choices=["table", "json"], default="table")` consistent with `ll-deps` / `ll-history` patterns
 
 ## Impact
 
@@ -117,6 +140,7 @@ Example JSON record:
 
 ## Session Log
 
+- `/ll:refine-issue` — 2026-03-03T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a9be526-ccb3-43a0-b119-5acbc3fba8f2.jsonl`
 - `/ll:capture-issue` — 2026-03-03T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ace9385-297c-4f88-9e68-d349c8dea381.jsonl`
 - `/ll:format-issue` — 2026-03-03T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26ee613e-e461-449f-abe5-936627dc59aa.jsonl`
 

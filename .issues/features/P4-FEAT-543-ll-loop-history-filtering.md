@@ -107,9 +107,9 @@ In `cmd_history()`:
 - `ll-history` (`scripts/little_loops/cli/history.py`) — filtering patterns
 
 ### Tests
-- `scripts/tests/test_ll_loop_commands.py` — add: `--event evaluate` filters to only evaluate events
-- `scripts/tests/test_ll_loop_commands.py` — add: `--json` emits valid JSON lines
-- `scripts/tests/test_ll_loop_commands.py` — add: `--state check` filters to check-state events
+- `scripts/tests/test_ll_loop_commands.py:101` (`TestCmdHistory` class) — add: `--event evaluate` filters to only evaluate events
+- `scripts/tests/test_ll_loop_commands.py:148` (`TestHistoryTail` class) — add: `--json` emits valid JSON lines; `--state check` filters to check-state events
+- Pattern: `many_events_file` fixture at `conftest.py:296` provides 10-event JSONL file; follow `TestHistoryTail` pattern for filter tests
 
 ### Documentation
 - N/A
@@ -134,7 +134,10 @@ In `cmd_history()`:
 
 ## Related Key Documentation
 
-_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+| Document | Relevance |
+|----------|-----------|
+| `docs/generalized-fsm-loop.md` | Structured events — all 8 event types and their fields (line 1464), CLI history subcommand (line 1381) |
+| `docs/guides/LOOPS_GUIDE.md` | CLI Quick Reference — history subcommand (line 398) |
 
 ## Labels
 
@@ -143,6 +146,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
+- `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test refs to `test_ll_loop_commands.py:101` (TestCmdHistory) and `:148` (TestHistoryTail)
 
 ---
 
