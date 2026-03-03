@@ -78,6 +78,7 @@ After a match is found for a given file, the inner prefix loop breaks early. A s
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
 - `/ll:verify-issues` - 2026-02-25 - Corrected line reference: `max_num = num` is at line 76, not 73 (line 73 is `if match:`)
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with verified line references; no knowledge gaps identified
+- `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by ENH-481, FEAT-489, ENH-484
 
 ---
 
