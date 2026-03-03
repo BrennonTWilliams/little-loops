@@ -124,6 +124,14 @@ For each approved decomposition:
    - Determine target directory based on type (bugs/, features/, enhancements/)
    - Generate filename: `P[priority]-[TYPE]-[NNN]-[slug].md`
    - Write issue content with parent reference in frontmatter
+   - For each child issue file created, append a session log entry:
+
+```markdown
+## Session Log
+- `/ll:issue-size-review` - [ISO timestamp] - `[path to current session JSONL]`
+```
+
+To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
 
 3. **Update and move parent issue**:
    Add resolution section to parent:
@@ -147,6 +155,15 @@ For each approved decomposition:
    git mv "{{config.issues.base_dir}}/[category]/[parent-file].md" \
           "{{config.issues.base_dir}}/completed/"
    ```
+
+   Before moving the parent, append a session log entry to the parent issue file:
+
+```markdown
+## Session Log
+- `/ll:issue-size-review` - [ISO timestamp] - `[path to current session JSONL]`
+```
+
+To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
 
 4. **Stage all changes**:
    ```bash

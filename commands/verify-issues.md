@@ -117,6 +117,17 @@ For resolved issues:
 - Add resolution note
 - Consider moving to `{{config.issues.base_dir}}/completed/`
 
+### 4.5 Append Session Log Entries
+
+After updating each issue file, append a session log entry:
+
+```markdown
+## Session Log
+- `/ll:verify-issues` - [ISO timestamp] - `[path to current session JSONL]`
+```
+
+To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
+
 ### 5. Output Report
 
 ```markdown

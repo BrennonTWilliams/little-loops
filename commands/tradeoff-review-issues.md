@@ -248,6 +248,15 @@ git mv "{{config.issues.base_dir}}/[category]/[file].md" \
        "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/"
 ```
 
+3. Append a session log entry to the issue file before moving it:
+
+```markdown
+## Session Log
+- `/ll:tradeoff-review-issues` - [ISO timestamp] - `[path to current session JSONL]`
+```
+
+To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
+
 #### For Approved Updates
 
 Append review notes to the issue file:
@@ -272,6 +281,15 @@ Append review notes to the issue file:
 ### Recommendation
 Update first - [specific suggestion from rationale]
 ```
+
+After appending the review note, append a session log entry to the issue file:
+
+```markdown
+## Session Log
+- `/ll:tradeoff-review-issues` - [ISO timestamp] - `[path to current session JSONL]`
+```
+
+To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
 
 #### Stage All Changes
 

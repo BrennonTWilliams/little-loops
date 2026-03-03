@@ -390,6 +390,15 @@ outcome_confidence: 62
 ---
 ```
 
+After updating the frontmatter, append a session log entry to the issue file:
+
+```markdown
+## Session Log
+- `/ll:confidence-check` - [ISO timestamp] - `[path to current session JSONL]`
+```
+
+To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
+
 ### Auto Mode Behavior
 
 When `AUTO_MODE` is true:
