@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from little_loops.frontmatter import parse_frontmatter
+from little_loops.frontmatter import parse_frontmatter, strip_frontmatter
 
 
 class TestParseFrontmatter:
@@ -83,3 +83,33 @@ class TestParseFrontmatter:
         content = "---\nkey: value\n---   \n\nBody\n"
         result = parse_frontmatter(content)
         assert result == {"key": "value"}
+
+
+class TestStripFrontmatter:
+    """Tests for strip_frontmatter function."""
+
+    def test_empty_content(self) -> None:
+        assert strip_frontmatter("") == ""
+
+    def test_no_frontmatter(self) -> None:
+        content = "# Title\n\nBody"
+        assert strip_frontmatter(content) == content
+
+    def test_strips_frontmatter(self) -> None:
+        content = "---\nkey: value\n---\n\n# Title\n"
+        assert strip_frontmatter(content) == "# Title\n"
+
+    def test_preserves_body(self) -> None:
+        content = "---\nfoo: bar\n---\n\nParagraph one.\n\nParagraph two.\n"
+        result = strip_frontmatter(content)
+        assert "Paragraph one." in result
+        assert "Paragraph two." in result
+        assert "foo: bar" not in result
+
+    def test_no_closing_delimiter(self) -> None:
+        content = "---\nkey: value\n# No closing\n"
+        assert strip_frontmatter(content) == content
+
+    def test_whitespace_around_closing_delimiter(self) -> None:
+        content = "---\nkey: value\n---   \n\nBody\n"
+        assert strip_frontmatter(content) == "Body\n"

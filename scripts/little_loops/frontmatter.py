@@ -1,7 +1,7 @@
 """Frontmatter parsing utilities for little-loops.
 
-Provides shared YAML-subset frontmatter parsing used by issue_parser,
-sync, and issue_history modules.
+Provides shared YAML-subset frontmatter parsing and stripping used by
+issue_parser, sync, and issue_history modules.
 """
 
 from __future__ import annotations
@@ -49,3 +49,26 @@ def parse_frontmatter(content: str, *, coerce_types: bool = False) -> dict[str, 
             else:
                 result[key] = value
     return result
+
+
+def strip_frontmatter(content: str) -> str:
+    """Remove YAML frontmatter from content, returning the body.
+
+    Strips the ``---`` delimited frontmatter block (if present) and
+    returns everything after the closing delimiter.
+
+    Args:
+        content: File content possibly starting with frontmatter
+
+    Returns:
+        Content with frontmatter removed. Returns original content
+        unchanged if no valid frontmatter block is found.
+    """
+    if not content or not content.startswith("---"):
+        return content
+
+    end_match = re.search(r"\n---\s*\n", content[3:])
+    if not end_match:
+        return content
+
+    return content[3 + end_match.end() :]

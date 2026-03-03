@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 from datetime import date
 from pathlib import Path
+from typing import Any
 
 from little_loops.frontmatter import parse_frontmatter
 from little_loops.issue_history.models import CompletedIssue
@@ -44,9 +45,10 @@ def parse_completed_issue(file_path: Path) -> CompletedIssue:
         issue_type = type_match.group(1)
         issue_id = f"{type_match.group(1)}-{type_match.group(2)}"
 
-    # Parse frontmatter for discovered_by and discovered_date
-    discovered_by = _parse_discovered_by(content)
-    discovered_date = _parse_discovered_date(content)
+    # Parse frontmatter once for discovered_by and discovered_date
+    fm = parse_frontmatter(content)
+    discovered_by = _parse_discovered_by(fm)
+    discovered_date = _parse_discovered_date(fm)
 
     # Parse completion date from Resolution section or file mtime
     completed_date = _parse_completion_date(content, file_path)
@@ -62,16 +64,15 @@ def parse_completed_issue(file_path: Path) -> CompletedIssue:
     )
 
 
-def _parse_discovered_by(content: str) -> str | None:
-    """Extract discovered_by from YAML frontmatter.
+def _parse_discovered_by(fm: dict[str, Any]) -> str | None:
+    """Extract discovered_by from parsed frontmatter.
 
     Args:
-        content: File content
+        fm: Parsed frontmatter dictionary
 
     Returns:
         discovered_by value or None
     """
-    fm = parse_frontmatter(content)
     value = fm.get("discovered_by")
     return value if isinstance(value, str) else None
 
@@ -218,16 +219,15 @@ def scan_completed_issues(completed_dir: Path) -> list[CompletedIssue]:
     return issues
 
 
-def _parse_discovered_date(content: str) -> date | None:
-    """Extract discovered_date from YAML frontmatter.
+def _parse_discovered_date(fm: dict[str, Any]) -> date | None:
+    """Extract discovered_date from parsed frontmatter.
 
     Args:
-        content: File content
+        fm: Parsed frontmatter dictionary
 
     Returns:
         discovered_date value or None
     """
-    fm = parse_frontmatter(content)
     value = fm.get("discovered_date")
     if not isinstance(value, str):
         return None
@@ -364,7 +364,8 @@ def scan_active_issues(
             discovered_date = None
             try:
                 content = file_path.read_text(encoding="utf-8")
-                discovered_date = _parse_discovered_date(content)
+                fm = parse_frontmatter(content)
+                discovered_date = _parse_discovered_date(fm)
             except Exception:
                 pass
 

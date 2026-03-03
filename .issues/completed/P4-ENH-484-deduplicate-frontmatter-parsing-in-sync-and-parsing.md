@@ -3,8 +3,8 @@ discovered_commit: 95d4139206f3659159b727db57578ffb2930085b
 discovered_branch: main
 discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
-confidence_score: 80
-outcome_confidence: 100
+confidence_score: 98
+outcome_confidence: 93
 ---
 
 # ENH-484: Deduplicate frontmatter parsing in sync.py and parsing.py
@@ -83,12 +83,27 @@ Reduces maintenance surface and eliminates risk of the copies drifting out of sy
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is well-specified with verified line references; no knowledge gaps identified
 - `/ll:ready-issue` - 2026-03-02 - Corrected sync.py line refs (194-198→196-199, 224-228→226-229); updated blocker status (3/4 completed)
 - `/ll:ready-issue` - 2026-03-02 - Corrected sync.py line refs (196-199→196-200, 226-229→226-230); marked FEAT-489 completed (4/4 blockers resolved)
+- `/ll:refine-issue` - 2026-03-03 - Verified: sync.py:196-200 and 226-230 frontmatter skip blocks still accurate; parsing.py:74 and 230 parse_frontmatter calls still accurate; all 4 blockers confirmed completed
+
+- `/ll:manage-issue` - 2026-03-03 - fix ENH-484: Added strip_frontmatter to frontmatter.py, deduplicated sync.py skip blocks, single parse_frontmatter call in parsing.py
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P4
+**Completed** | Created: 2026-02-24 | Completed: 2026-03-03 | Priority: P4
+
+## Resolution
+
+- **Action**: fix
+- **Completed**: 2026-03-03
+
+### Changes Made
+- Added `strip_frontmatter(content: str) -> str` to `frontmatter.py`
+- Replaced duplicated 4-line frontmatter skip blocks in `sync.py:_parse_issue_title` and `_get_issue_body` with `strip_frontmatter()` calls
+- Refactored `parsing.py:parse_completed_issue` to call `parse_frontmatter` once, passing dict to `_parse_discovered_by` and `_parse_discovered_date`
+- Updated `scan_active_issues` call site in `parsing.py` for new helper signatures
+- Added 6 tests for `strip_frontmatter` in `test_frontmatter.py`
 
 ---
 

@@ -16,7 +16,7 @@ from typing import TYPE_CHECKING, Any
 
 import yaml
 
-from little_loops.frontmatter import parse_frontmatter
+from little_loops.frontmatter import parse_frontmatter, strip_frontmatter
 from little_loops.issue_parser import get_next_issue_number
 from little_loops.issue_template import assemble_issue_markdown, load_issue_sections
 
@@ -193,11 +193,7 @@ def _parse_issue_title(content: str) -> str:
     Returns:
         Title string or empty string if not found
     """
-    # Skip frontmatter
-    if content.startswith("---"):
-        end_match = re.search(r"\n---\s*\n", content[3:])
-        if end_match:
-            content = content[3 + end_match.end() :]
+    content = strip_frontmatter(content)
 
     # Find first heading
     for line in content.split("\n"):
@@ -223,11 +219,7 @@ def _get_issue_body(content: str) -> str:
     Returns:
         Body content
     """
-    # Skip frontmatter
-    if content.startswith("---"):
-        end_match = re.search(r"\n---\s*\n", content[3:])
-        if end_match:
-            content = content[3 + end_match.end() :]
+    content = strip_frontmatter(content)
 
     # Skip leading blank lines
     lines = content.split("\n")
