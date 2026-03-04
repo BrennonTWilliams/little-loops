@@ -429,6 +429,7 @@ For detailed solutions, see [Troubleshooting Guide](docs/development/TROUBLESHOO
 - [**Documentation Index**](docs/INDEX.md) - Complete reference for all documentation
 - [Configuration Reference](docs/reference/CONFIGURATION.md) - Full config options and examples
 - [Command Reference](docs/reference/COMMANDS.md) - All slash commands with usage
+- [CLI Reference](docs/reference/CLI.md) - All `ll-` CLI tools with flags and examples
 - [Loops Guide](docs/guides/LOOPS_GUIDE.md) - Loop creation, paradigms, and practical examples
 - [Session Handoff Guide](docs/guides/SESSION_HANDOFF.md) - Context management and session continuation
 - [Merge Coordinator Guide](docs/development/MERGE-COORDINATOR.md) - Sophisticated merge coordination for parallel processing

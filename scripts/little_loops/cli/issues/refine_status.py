@@ -16,30 +16,57 @@ _MIN_TITLE_WIDTH = 20
 # Fixed column widths for non-title columns
 _ID_WIDTH = 8  # "BUG-525 "
 _PRI_WIDTH = 4  # "P2  "
-_SCORE_WIDTH = 7  # " Ready  " / "OutConf "
-_TOTAL_WIDTH = 6  # "Total "
-# Width of each command column: strip "/ll:" prefix and display short name
-_CMD_WIDTH = 9  # enough for most command short names
-_NORM_WIDTH = 4  # "Norm" / "✓" / "✗"
+_SCORE_WIDTH = 7  # "ready" col
+_CONF_WIDTH = 10  # "confidence" col
+_TOTAL_WIDTH = 5  # "total"
+# Width of each command column: longest alias is "capture" = 7 chars
+_CMD_WIDTH = 7
+_NORM_WIDTH = 4  # "norm" / "✓" / "✗"
+
+# Canonical workflow order for command columns
+_CANONICAL_CMD_ORDER = [
+    "/ll:capture-issue",
+    "/ll:scan-codebase",
+    "/ll:audit-architecture",
+    "/ll:format-issue",
+    "/ll:verify-issues",
+    "/ll:refine-issue",
+]
+
+_CMD_ALIASES: dict[str, str] = {
+    "/ll:capture-issue": "capture",
+    "/ll:scan-codebase": "scan",
+    "/ll:audit-architecture": "audit",
+    "/ll:format-issue": "format",
+    "/ll:verify-issues": "verify",
+    "/ll:refine-issue": "refine",
+}
 
 
-def _short_name(cmd: str) -> str:
-    """Strip /ll: prefix from a command name for compact column header."""
-    if cmd.startswith("/ll:"):
-        return cmd[4:]
-    return cmd
+def _cmd_label(cmd: str) -> str:
+    """Return display label for a command column header."""
+    if cmd in _CMD_ALIASES:
+        return _CMD_ALIASES[cmd]
+    # Fallback: strip /ll: prefix and truncate
+    short = cmd[4:] if cmd.startswith("/ll:") else cmd
+    return _truncate(short, _CMD_WIDTH)
 
 
 def _truncate(text: str, width: int) -> str:
     """Truncate text to width, replacing last char with ellipsis if needed."""
     if len(text) <= width:
         return text
-    return text[: width - 1] + "\u2026"
+    return text[: width - 1].rstrip() + "\u2026"
 
 
 def _col(text: str, width: int) -> str:
     """Left-justify text in a fixed-width column."""
     return text.ljust(width)[:width]
+
+
+def _rcol(text: str, width: int) -> str:
+    """Right-justify text in a fixed-width column."""
+    return text.rjust(width)[:width]
 
 
 def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
@@ -70,7 +97,14 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     for issue in issues:
         for cmd in issue.session_commands:
             seen[cmd] = None
-    all_cmds: list[str] = list(seen.keys())
+
+    def _canonical_sort_key(cmd: str) -> tuple[int, str]:
+        try:
+            return (_CANONICAL_CMD_ORDER.index(cmd), cmd)
+        except ValueError:
+            return (len(_CANONICAL_CMD_ORDER), cmd)
+
+    all_cmds: list[str] = sorted(seen.keys(), key=_canonical_sort_key)
 
     # Sort issues: descending by total commands touched, then ascending priority
     def _sort_key(issue: IssueInfo) -> tuple[int, int]:
@@ -91,6 +125,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 "outcome_confidence": issue.outcome_confidence,
                 "total": len(issue.session_commands),
                 "normalized": is_normalized(issue.path.name),
+                "refine_count": issue.session_command_counts.get("/ll:refine-issue", 0),
             }
             print(json.dumps(record))
         return 0
@@ -99,13 +134,13 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     term_cols = shutil.get_terminal_size().columns
 
     # Compute how much space is consumed by fixed columns + command columns
-    # Layout: ID | Pri | Title | [cmd cols...] | Norm | Ready | OutConf | Total
+    # Layout: ID | Pri | Title | norm | [cmd cols...] | ready | confidence | total
     fixed_width = (
         _ID_WIDTH + 1
         + _PRI_WIDTH + 1
-        + _NORM_WIDTH + 1  # Norm
-        + _SCORE_WIDTH + 1  # Ready
-        + _SCORE_WIDTH + 1  # OutConf
+        + _NORM_WIDTH + 1  # norm (before cmds)
+        + _SCORE_WIDTH + 1  # ready
+        + _CONF_WIDTH + 1  # confidence
         + _TOTAL_WIDTH
     )
     cmd_cols_width = len(all_cmds) * (_CMD_WIDTH + 1)
@@ -115,35 +150,40 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
         issue_id: str,
         pri: str,
         title: str,
-        cmd_cells: list[str],
         norm: str,
+        cmd_cells: list[str],
         ready: str,
-        out_conf: str,
+        conf: str,
         total: str,
     ) -> str:
         parts = [
             _col(issue_id, _ID_WIDTH),
             _col(pri, _PRI_WIDTH),
             _col(title, title_width),
+            _col(norm, _NORM_WIDTH),
         ]
         for cell in cmd_cells:
             parts.append(_col(cell, _CMD_WIDTH))
-        parts.append(_col(norm, _NORM_WIDTH))
-        parts.append(_col(ready, _SCORE_WIDTH))
-        parts.append(_col(out_conf, _SCORE_WIDTH))
-        parts.append(_col(total, _TOTAL_WIDTH))
+        parts.append(_rcol(ready, _SCORE_WIDTH))
+        parts.append(_rcol(conf, _CONF_WIDTH))
+        parts.append(_rcol(total, _TOTAL_WIDTH))
         return "  ".join(parts)
 
     # Header row
-    cmd_headers = [_col(_truncate(_short_name(c), _CMD_WIDTH), _CMD_WIDTH) for c in all_cmds]
-    header = _row("ID", "Pri", "Title", cmd_headers, "Norm", "Ready", "OutConf", "Total")
+    cmd_headers = [_col(_cmd_label(c), _CMD_WIDTH) for c in all_cmds]
+    header = _row("ID", "Pri", "Title", "Norm", cmd_headers, "ready", "confidence", "total")
     separator = "-" * len(header)
 
     rows: list[str] = [header, separator]
 
     for issue in sorted_issues:
         cmd_set = set(issue.session_commands)
-        cmd_cells = ["\u2713" if c in cmd_set else "\u2014" for c in all_cmds]
+        cmd_cells = []
+        for c in all_cmds:
+            if c == "/ll:refine-issue":
+                cmd_cells.append(str(issue.session_command_counts.get(c, 0)))
+            else:
+                cmd_cells.append("\u2713" if c in cmd_set else "\u2014")
         norm_cell = "\u2713" if is_normalized(issue.path.name) else "\u2717"
         ready = str(issue.confidence_score) if issue.confidence_score is not None else "\u2014"
         out_conf = (
@@ -155,8 +195,8 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 issue.issue_id,
                 issue.priority,
                 _truncate(issue.title, title_width),
-                cmd_cells,
                 norm_cell,
+                cmd_cells,
                 ready,
                 out_conf,
                 total,
@@ -165,6 +205,10 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
 
     print("\n".join(rows))
 
+    issue_word = "issue" if len(sorted_issues) == 1 else "issues"
+    scored = sum(1 for i in sorted_issues if i.confidence_score is not None)
+    print(f"\n{len(sorted_issues)} {issue_word}  ({scored} scored)")
+
     if not getattr(args, "no_key", False):
         _print_key(all_cmds)
 
@@ -172,14 +216,17 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
 
 
 def _print_key(all_cmds: list[str]) -> None:
-    """Print a legend mapping truncated column headers to full names."""
+    """Print a legend mapping column headers to their full command names."""
     print("\nKey:")
+    print(f"  {'norm':<12} Filename follows naming convention (P[0-5]-TYPE-NNN-desc.md)")
     for cmd in all_cmds:
-        short = _truncate(_short_name(cmd), _CMD_WIDTH)
-        print(f"  {short:<12} {cmd}")
-    print(f"  {'Norm':<12} Filename matches naming convention (P[0-5]-TYPE-NNN-desc.md)")
-    print(f"  {'Ready':<12} Readiness score (0\u2013100)")
-    print(f"  {'OutConf':<12} Outcome confidence score (0\u2013100)")
-    print(f"  {'Total':<12} Count of command columns with \u2713")
+        label = _cmd_label(cmd)
+        if cmd == "/ll:refine-issue":
+            print(f"  {label:<12} Times /ll:refine-issue was run")
+        else:
+            print(f"  {label:<12} {cmd}")
+    print(f"  {'ready':<12} Readiness score (0\u2013100)")
+    print(f"  {'confidence':<12} Outcome confidence score (0\u2013100)")
+    print(f"  {'total':<12} Number of /ll:* skills applied")
 
 

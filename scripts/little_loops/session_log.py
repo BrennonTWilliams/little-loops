@@ -39,6 +39,26 @@ def parse_session_log(content: str) -> list[str]:
     return list(dict.fromkeys(cmds))
 
 
+def count_session_commands(content: str) -> dict[str, int]:
+    """Count occurrences of each /ll:* command in the ## Session Log section.
+
+    Unlike parse_session_log(), this does NOT deduplicate — each entry is counted.
+
+    Args:
+        content: Full text of an issue markdown file.
+
+    Returns:
+        Mapping of command name to occurrence count (e.g. {"/ll:refine-issue": 3}).
+    """
+    log_match = _SESSION_LOG_SECTION_RE.search(content)
+    if not log_match:
+        return {}
+    counts: dict[str, int] = {}
+    for cmd in _COMMAND_RE.findall(log_match.group(1)):
+        counts[cmd] = counts.get(cmd, 0) + 1
+    return counts
+
+
 def get_current_session_jsonl(cwd: Path | None = None) -> Path | None:
     """Resolve the active Claude Code session's JSONL file path.
 

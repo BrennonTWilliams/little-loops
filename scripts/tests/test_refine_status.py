@@ -167,13 +167,13 @@ class TestRefineStatusTable:
         assert bug011_pos is not None
         assert bug010_pos < bug011_pos, "Higher Total should sort first"
 
-    def test_checkmarks_and_dashes_in_cells(
+    def test_refine_column_shows_integer_count(
         self,
         temp_project_dir: Path,
         sample_config: dict[str, Any],
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """✓ appears for commands present, — for commands absent."""
+        """Refine column shows integer count (1 for refined once, 0 for untouched)."""
         _write_config(temp_project_dir, sample_config)
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True, exist_ok=True)
@@ -197,8 +197,51 @@ class TestRefineStatusTable:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "\u2713" in out, "Checkmark ✓ should appear for issues with session commands"
-        assert "\u2014" in out, "Em-dash — should appear for issues without a command"
+        lines = out.splitlines()
+        bug020_line = next((ln for ln in lines if "BUG-020" in ln), None)
+        bug021_line = next((ln for ln in lines if "BUG-021" in ln), None)
+        assert bug020_line is not None
+        assert bug021_line is not None
+        assert "1" in bug020_line, "Refined once should show '1' in refine column"
+        assert "0" in bug021_line, "Untouched should show '0' in refine column"
+
+    def test_refine_column_shows_count_for_multiple_runs(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Refine column shows count > 1 when /ll:refine-issue appears multiple times."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-022-multi-refined.md",
+            "BUG-022: Multi refined",
+            session_commands=[
+                "/ll:refine-issue",
+                "/ll:refine-issue",
+                "/ll:refine-issue",
+            ],
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        lines = out.splitlines()
+        bug022_line = next((ln for ln in lines if "BUG-022" in ln), None)
+        assert bug022_line is not None
+        assert "3" in bug022_line, "Three refine runs should show '3' in refine column"
 
     def test_ready_and_outconf_columns(
         self,
@@ -512,6 +555,7 @@ class TestRefineStatusJson:
         assert record["outcome_confidence"] == 80
         assert "refine-issue" in record["commands"][0]
         assert record["total"] == 2
+        assert record["refine_count"] == 1
 
     def test_json_missing_scores_are_null(
         self,

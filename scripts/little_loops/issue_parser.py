@@ -161,6 +161,7 @@ class IssueInfo:
         confidence_score: Readiness score (0-100) written by /ll:confidence-check, or None
         outcome_confidence: Outcome confidence (0-100) written by /ll:confidence-check, or None
         session_commands: Distinct /ll:* commands found in the ## Session Log section
+        session_command_counts: Per-command occurrence counts from the ## Session Log section
     """
 
     path: Path
@@ -177,6 +178,7 @@ class IssueInfo:
     confidence_score: int | None = None
     outcome_confidence: int | None = None
     session_commands: list[str] = field(default_factory=list)
+    session_command_counts: dict[str, int] = field(default_factory=dict)
 
     @property
     def priority_int(self) -> int:
@@ -204,6 +206,7 @@ class IssueInfo:
             "confidence_score": self.confidence_score,
             "outcome_confidence": self.outcome_confidence,
             "session_commands": self.session_commands,
+            "session_command_counts": self.session_command_counts,
         }
 
     @classmethod
@@ -224,6 +227,7 @@ class IssueInfo:
             confidence_score=data.get("confidence_score"),
             outcome_confidence=data.get("outcome_confidence"),
             session_commands=data.get("session_commands", []),
+            session_command_counts=data.get("session_command_counts", {}),
         )
 
 
@@ -295,9 +299,10 @@ class IssueParser:
         blocks = self._parse_blocks(content)
 
         # Parse session commands from ## Session Log section
-        from little_loops.session_log import parse_session_log
+        from little_loops.session_log import count_session_commands, parse_session_log
 
         session_commands = parse_session_log(content)
+        session_command_counts = count_session_commands(content)
 
         return IssueInfo(
             path=issue_path,
@@ -314,6 +319,7 @@ class IssueParser:
             confidence_score=confidence_score,
             outcome_confidence=outcome_confidence,
             session_commands=session_commands,
+            session_command_counts=session_command_counts,
         )
 
     def _parse_priority(self, filename: str) -> str:
