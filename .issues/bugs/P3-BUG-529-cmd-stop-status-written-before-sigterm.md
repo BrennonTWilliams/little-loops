@@ -137,6 +137,12 @@ os.kill(pid, signal.SIGTERM)
 
 ---
 
+## Blocks
+
+- FEAT-543
+
+---
+
 **Open** | Created: 2026-03-03 | Priority: P3
 
 ---

@@ -116,4 +116,11 @@ for i, (src, dst, label) in enumerate(edges):
 
 ---
 
+## Blocked By
+
+- BUG-530
+- ENH-541
+
+---
+
 **Open** | Created: 2026-03-03 | Priority: P4

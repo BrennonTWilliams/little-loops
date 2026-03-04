@@ -128,4 +128,10 @@ Option A requires a signature change to `load_and_validate`; Option B is simpler
 
 ---
 
+## Blocks
+
+- BUG-532
+
+---
+
 **Open** | Created: 2026-03-03 | Priority: P3

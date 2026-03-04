@@ -129,6 +129,7 @@ if eval_config.type == "llm_structured":
 ## Blocks
 
 - ENH-563
+- ENH-542
 
 ---
 

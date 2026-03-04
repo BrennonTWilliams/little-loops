@@ -110,4 +110,10 @@ Option A is simpler and doesn't change function signatures.
 
 ---
 
+## Blocks
+
+- ENH-542
+
+---
+
 **Open** | Created: 2026-03-03 | Priority: P4

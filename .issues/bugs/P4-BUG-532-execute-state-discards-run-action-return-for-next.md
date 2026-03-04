@@ -123,4 +123,10 @@ if state.next:
 
 ---
 
+## Blocked By
+
+- ENH-535
+
+---
+
 **Open** | Created: 2026-03-03 | Priority: P4

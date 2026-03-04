@@ -151,6 +151,12 @@ In `cmd_history()`:
 
 ---
 
+## Blocked By
+
+- BUG-529
+
+---
+
 **Open** | Created: 2026-03-03 | Priority: P4
 
 ---
