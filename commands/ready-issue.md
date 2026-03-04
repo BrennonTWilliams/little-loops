@@ -28,6 +28,8 @@ You are tasked with analyzing an issue file to determine if it's ready for imple
 This command uses project configuration from `.claude/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Categories**: `{{config.issues.categories}}`
+- **Templates dir**: `{{config.issues.templates_dir}}` (custom section JSON directory, or plugin default if null)
+- **Template style**: `{{config.issues.capture_template}}` (full, minimal, or legacy — controls which creation variant to use when assembling sections)
 
 ## Process
 

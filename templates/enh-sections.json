@@ -164,6 +164,19 @@
       "question": "Are there backwards compatibility concerns?",
       "deprecated": true,
       "deprecation_reason": "Move to Impact or Proposed Solution to reduce fragmentation"
+    },
+    "API/Interface": {
+      "level": "conditional",
+      "description": "Public API or interface contracts (function signatures, data schemas, CLI args)",
+      "ai_usage": "HIGH",
+      "human_value": "MEDIUM",
+      "question": "Does this introduce or change any public APIs, interfaces, or contracts?",
+      "quality_guidance": [
+        "Document function signatures, class interfaces, CLI arguments",
+        "Include data schemas or type definitions",
+        "Note breaking changes to existing interfaces"
+      ],
+      "creation_template": "```python\n# Example interface/signature\n```"
     }
   },
   "creation_variants": {

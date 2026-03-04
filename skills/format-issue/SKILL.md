@@ -24,6 +24,8 @@ Align issue files with template v2.0 structure through section renaming, structu
 This skill uses project configuration from `.claude/ll-config.json`:
 - **Issues base**: `{{config.issues.base_dir}}`
 - **Completed dir**: `{{config.issues.completed_dir}}`
+- **Templates dir**: `{{config.issues.templates_dir}}` (custom section JSON directory, or plugin default if null)
+- **Template style**: `{{config.issues.capture_template}}` (full, minimal, or legacy — controls which creation variant to use when assembling sections)
 
 ## Arguments
 

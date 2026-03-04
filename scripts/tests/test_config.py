@@ -109,6 +109,7 @@ class TestIssuesConfig:
             "completed_dir": "done",
             "priorities": ["P0", "P1"],
             "templates_dir": "templates/",
+            "capture_template": "minimal",
         }
         config = IssuesConfig.from_dict(data)
 
@@ -122,6 +123,7 @@ class TestIssuesConfig:
         assert config.deferred_dir == "deferred"  # default when not specified
         assert config.priorities == ["P0", "P1"]
         assert config.templates_dir == "templates/"
+        assert config.capture_template == "minimal"
 
     def test_from_dict_with_deferred_dir(self) -> None:
         """Test creating IssuesConfig with custom deferred_dir."""
@@ -130,6 +132,12 @@ class TestIssuesConfig:
         }
         config = IssuesConfig.from_dict(data)
         assert config.deferred_dir == "parked"
+
+    def test_from_dict_with_capture_template(self) -> None:
+        """Test creating IssuesConfig with custom capture_template."""
+        for variant in ("full", "minimal", "legacy"):
+            config = IssuesConfig.from_dict({"capture_template": variant})
+            assert config.capture_template == variant
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating IssuesConfig with default values."""
@@ -144,6 +152,7 @@ class TestIssuesConfig:
         assert config.deferred_dir == "deferred"
         assert config.priorities == ["P0", "P1", "P2", "P3", "P4", "P5"]
         assert config.templates_dir is None
+        assert config.capture_template == "full"
 
 
 class TestAutomationConfig:

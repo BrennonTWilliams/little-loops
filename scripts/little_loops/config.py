@@ -104,6 +104,7 @@ class IssuesConfig:
     deferred_dir: str = "deferred"
     priorities: list[str] = field(default_factory=lambda: ["P0", "P1", "P2", "P3", "P4", "P5"])
     templates_dir: str | None = None
+    capture_template: str = "full"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> IssuesConfig:
@@ -130,6 +131,7 @@ class IssuesConfig:
             deferred_dir=data.get("deferred_dir", "deferred"),
             priorities=data.get("priorities", ["P0", "P1", "P2", "P3", "P4", "P5"]),
             templates_dir=data.get("templates_dir"),
+            capture_template=data.get("capture_template", "full"),
         )
 
     def get_category_by_prefix(self, prefix: str) -> CategoryConfig | None:
@@ -770,6 +772,7 @@ class BRConfig:
                 "deferred_dir": self._issues.deferred_dir,
                 "priorities": self._issues.priorities,
                 "templates_dir": self._issues.templates_dir,
+                "capture_template": self._issues.capture_template,
             },
             "automation": {
                 "timeout_seconds": self._automation.timeout_seconds,

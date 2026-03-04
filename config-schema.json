@@ -116,6 +116,12 @@
           "type": ["string", "null"],
           "description": "Directory for issue templates",
           "default": null
+        },
+        "capture_template": {
+          "type": "string",
+          "enum": ["full", "minimal", "legacy"],
+          "description": "Creation variant for issues assembled by skills (capture-issue, format-issue, ready-issue)",
+          "default": "full"
         }
       },
       "additionalProperties": false
