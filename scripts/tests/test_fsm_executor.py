@@ -2181,3 +2181,121 @@ class TestShutdownRequest:
         result = executor.run()
 
         assert result.terminated_by == "signal"
+
+
+class TestBackoff:
+    """Tests for backoff sleep between iterations."""
+
+    def test_backoff_sleep_called_between_iterations(self) -> None:
+        """Executor sleeps for backoff duration after each iteration."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            backoff=0.01,  # tiny real value so deadline advances naturally
+            max_iterations=2,
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    on_success="check",
+                    on_failure="check",
+                ),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        sleep_calls: list[float] = []
+
+        # Mock sleep to capture calls without blocking; let time.time() advance naturally
+        with patch("little_loops.fsm.executor.time.sleep", side_effect=sleep_calls.append):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            executor.run()
+
+        assert len(sleep_calls) > 0, "Expected time.sleep to be called during backoff"
+
+    def test_no_backoff_no_sleep(self) -> None:
+        """Executor does not sleep when backoff is None."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            backoff=None,
+            max_iterations=3,
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    on_success="done",
+                    on_failure="check",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        with patch("little_loops.fsm.executor.time.sleep") as mock_sleep:
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            executor.run()
+
+        mock_sleep.assert_not_called()
+
+    def test_zero_backoff_no_sleep(self) -> None:
+        """Executor does not sleep when backoff is 0."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            backoff=0.0,
+            max_iterations=3,
+            states={
+                "check": StateConfig(
+                    action="check.sh",
+                    on_success="done",
+                    on_failure="check",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        with patch("little_loops.fsm.executor.time.sleep") as mock_sleep:
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            executor.run()
+
+        mock_sleep.assert_not_called()
+
+    def test_shutdown_during_backoff_terminates_cleanly(self) -> None:
+        """Shutdown request during backoff sleep stops the loop cleanly."""
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            backoff=60.0,  # Large backoff so we'd block if not interruptible
+            max_iterations=10,
+            states={
+                "work": StateConfig(
+                    action="work.sh",
+                    on_success="work",
+                    on_failure="work",
+                ),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+
+        real_time = __import__("time").time
+        call_count = [0]
+
+        def mock_time() -> float:
+            call_count[0] += 1
+            t = real_time()
+            # After a few calls, trigger shutdown to simulate interrupt during backoff
+            if call_count[0] > 5:
+                executor.request_shutdown()
+            return t
+
+        with patch("little_loops.fsm.executor.time.time", side_effect=mock_time):
+            with patch("little_loops.fsm.executor.time.sleep"):
+                result = executor.run()
+
+        assert result.terminated_by == "signal"

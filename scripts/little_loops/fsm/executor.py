@@ -429,6 +429,14 @@ class FSMExecutor:
 
                 self.current_state = resolved_next
 
+                # Interruptible backoff sleep between iterations
+                if self.fsm.backoff and self.fsm.backoff > 0:
+                    deadline = time.time() + self.fsm.backoff
+                    while time.time() < deadline:
+                        if self._shutdown_requested:
+                            break
+                        time.sleep(min(0.1, deadline - time.time()))
+
         except Exception as exc:
             return self._finish("error", error=str(exc))
 

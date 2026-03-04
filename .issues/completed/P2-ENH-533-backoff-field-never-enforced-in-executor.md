@@ -107,18 +107,37 @@ if self.fsm.backoff and self.fsm.backoff > 0:
 
 | Document | Relevance |
 |----------|-----------|
-| `docs/generalized-fsm-loop.md` | FSM schema — `backoff` field definition (line 357), execution engine flow (line 1425) |
-| `docs/guides/LOOPS_GUIDE.md` | Loop configuration reference (line 295) |
+| `docs/generalized-fsm-loop.md` | FSM schema — `backoff` field definition (line 408), YAML examples (lines 192, 213) |
+| `docs/guides/LOOPS_GUIDE.md` | Loop configuration reference (line 443) |
 
 ## Labels
 
 `enhancement`, `ll-loop`, `executor`, `scan-codebase`
 
+## Resolution
+
+**Status**: Resolved
+
+**Implementation**: Added interruptible backoff sleep at the end of `FSMExecutor.run()` while loop in `scripts/little_loops/fsm/executor.py`. After `self.current_state = resolved_next`, the executor now sleeps `fsm.backoff` seconds using a tight inner loop that checks `_shutdown_requested` every 0.1s, allowing clean termination during backoff.
+
+Note: `PersistentExecutor.run()` required no changes — it delegates entirely to `FSMExecutor.run()`, so the single change in executor.py covers both code paths.
+
+**Files Changed**:
+- `scripts/little_loops/fsm/executor.py` — added 6 lines after `self.current_state = resolved_next`
+- `scripts/tests/test_fsm_executor.py` — added `TestBackoff` class with 4 tests
+
+**Tests Added** (`TestBackoff`):
+- `test_backoff_sleep_called_between_iterations` — verifies `time.sleep` is called when `backoff > 0`
+- `test_no_backoff_no_sleep` — verifies no sleep when `backoff=None`
+- `test_zero_backoff_no_sleep` — verifies no sleep when `backoff=0.0`
+- `test_shutdown_during_backoff_terminates_cleanly` — verifies `terminated_by == "signal"` when shutdown requested during backoff
+
 ## Session Log
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; noted `test_fsm_executor.py:23` (MockActionRunner) as test pattern
+- `/ll:manage-issue` — 2026-03-03T00:00:00Z — fixed, 81/81 tests pass, lint and mypy clean
 
 ---
 
-**Open** | Created: 2026-03-03 | Priority: P2
+**Resolved** | Created: 2026-03-03 | Priority: P2
