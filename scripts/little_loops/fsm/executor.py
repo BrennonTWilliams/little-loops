@@ -524,7 +524,7 @@ class FSMExecutor:
             is_slash_command=is_slash_command,
         )
 
-        preview = result.output[-500:].strip() if result.output else None
+        preview = result.output[:2000].strip() if result.output else None
         self._emit(
             "action_complete",
             {
@@ -663,6 +663,8 @@ class FSMExecutor:
             return self._resolve_route(state.on_failure, ctx)
         if verdict == "error" and state.on_error:
             return self._resolve_route(state.on_error, ctx)
+        if verdict == "partial" and state.on_partial:
+            return self._resolve_route(state.on_partial, ctx)
 
         return None
 

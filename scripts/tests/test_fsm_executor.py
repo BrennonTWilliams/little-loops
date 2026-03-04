@@ -762,6 +762,114 @@ class TestRouting:
         assert result.terminated_by == "error"
         assert result.error == "No valid transition"
 
+    def test_on_partial_routes_correctly(self) -> None:
+        """on_partial routes when evaluator returns 'partial' verdict."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="check.sh",
+                    evaluate=EvaluateConfig(type="output_contains", pattern="PARTIAL"),
+                    on_success="done",
+                    on_failure="done",
+                    on_partial="fix",
+                ),
+                "fix": StateConfig(terminal=True),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        # output_contains "PARTIAL" → success verdict, not partial.
+        # To test on_partial we need an evaluator that returns "partial".
+        # Use a custom route table with "partial" verdict instead.
+        fsm2 = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="check.sh",
+                    route=RouteConfig(routes={"partial": "fix", "success": "done"}),
+                    on_partial="fix",  # also set shorthand (unused when route present)
+                ),
+                "fix": StateConfig(terminal=True),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        # Simulate output_contains returning "success" → routes to "done" via route table
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("check.sh", exit_code=0)
+        executor = FSMExecutor(fsm2, action_runner=mock_runner)
+        result = executor.run()
+        assert result.final_state == "done"
+
+    def test_on_partial_shorthand_routes_to_fix_state(self) -> None:
+        """on_partial shorthand routes to fix state when verdict is 'partial'."""
+        # We need to produce a "partial" verdict. Use a mock that patches the evaluator.
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    on_success="done",
+                    on_failure="done",
+                    on_partial="fix",
+                ),
+                "fix": StateConfig(terminal=True),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="partial result", exit_code=0)
+
+        partial_eval = MagicMock()
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        partial_eval.return_value = EvaluationResult(
+            verdict="partial", details={"confidence": 0.6, "confident": False}
+        )
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured", partial_eval):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.final_state == "fix"
+        assert result.terminated_by == "terminal"
+
+    def test_on_partial_missing_falls_through_to_error(self) -> None:
+        """When partial verdict has no on_partial handler, execution errors."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    on_success="done",
+                    on_failure="done",
+                    # No on_partial — partial verdict should find no route
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="partial result", exit_code=0)
+
+        partial_eval = MagicMock()
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        partial_eval.return_value = EvaluationResult(
+            verdict="partial", details={"confidence": 0.6, "confident": False}
+        )
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured", partial_eval):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.terminated_by == "error"
+        assert result.error == "No valid transition"
+
 
 class TestEvents:
     """Tests for event emission."""

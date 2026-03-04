@@ -101,6 +101,8 @@ def _render_fsm_diagram(fsm: FSMLoop) -> str:
             edges.append((name, state.on_failure, "fail"))
         if state.on_error:
             edges.append((name, state.on_error, "error"))
+        if state.on_partial:
+            edges.append((name, state.on_partial, "partial"))
         if state.next:
             edges.append((name, state.next, "next"))
         if state.route:
@@ -554,6 +556,8 @@ def cmd_show(
             print(f"    on_failure \u2500\u2500\u2192 {state.on_failure}")
         if state.on_error:
             print(f"    on_error \u2500\u2500\u2192 {state.on_error}")
+        if state.on_partial:
+            print(f"    on_partial \u2500\u2500\u2192 {state.on_partial}")
         if state.next:
             print(f"    next \u2500\u2500\u2192 {state.next}")
         if state.route:

@@ -180,6 +180,7 @@ class StateConfig:
         on_success: Shorthand for success verdict routing
         on_failure: Shorthand for failure verdict routing
         on_error: Shorthand for error verdict routing
+        on_partial: Shorthand for partial verdict routing
         next: Unconditional transition (no evaluation)
         terminal: If True, this is an end state
         capture: Variable name to store action output
@@ -194,6 +195,7 @@ class StateConfig:
     on_success: str | None = None
     on_failure: str | None = None
     on_error: str | None = None
+    on_partial: str | None = None
     next: str | None = None
     terminal: bool = False
     capture: str | None = None
@@ -218,6 +220,8 @@ class StateConfig:
             result["on_failure"] = self.on_failure
         if self.on_error is not None:
             result["on_error"] = self.on_error
+        if self.on_partial is not None:
+            result["on_partial"] = self.on_partial
         if self.next is not None:
             result["next"] = self.next
         if self.terminal:
@@ -250,6 +254,7 @@ class StateConfig:
             on_success=data.get("on_success"),
             on_failure=data.get("on_failure"),
             on_error=data.get("on_error"),
+            on_partial=data.get("on_partial"),
             next=data.get("next"),
             terminal=data.get("terminal", False),
             capture=data.get("capture"),
@@ -271,6 +276,8 @@ class StateConfig:
             refs.add(self.on_failure)
         if self.on_error is not None:
             refs.add(self.on_error)
+        if self.on_partial is not None:
+            refs.add(self.on_partial)
         if self.next is not None:
             refs.add(self.next)
         if self.on_maintain is not None:

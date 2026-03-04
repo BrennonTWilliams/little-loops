@@ -280,6 +280,64 @@ class TestStateConfig:
 
         assert refs == {"done", "fix", "alert", "escalate", "retry"}
 
+    def test_on_partial_field(self) -> None:
+        """StateConfig accepts on_partial field."""
+        state = StateConfig(
+            action="check.sh",
+            on_success="done",
+            on_failure="done",
+            on_partial="fix",
+        )
+        assert state.on_partial == "fix"
+
+    def test_on_partial_in_from_dict(self) -> None:
+        """from_dict reads on_partial key from YAML data."""
+        data = {
+            "action": "check.sh",
+            "on_success": "done",
+            "on_failure": "retry",
+            "on_partial": "fix",
+        }
+        state = StateConfig.from_dict(data)
+        assert state.on_partial == "fix"
+
+    def test_on_partial_in_to_dict(self) -> None:
+        """to_dict serializes on_partial when set."""
+        state = StateConfig(
+            action="check.sh",
+            on_success="done",
+            on_partial="fix",
+        )
+        d = state.to_dict()
+        assert d["on_partial"] == "fix"
+
+    def test_on_partial_absent_from_to_dict_when_none(self) -> None:
+        """to_dict omits on_partial key when not set."""
+        state = StateConfig(action="check.sh", on_success="done")
+        d = state.to_dict()
+        assert "on_partial" not in d
+
+    def test_on_partial_in_get_referenced_states(self) -> None:
+        """get_referenced_states includes on_partial target."""
+        state = StateConfig(
+            on_success="done",
+            on_failure="retry",
+            on_partial="fix",
+        )
+        refs = state.get_referenced_states()
+        assert "fix" in refs
+
+    def test_on_partial_roundtrip(self) -> None:
+        """on_partial survives to_dict/from_dict roundtrip."""
+        original = StateConfig(
+            action="check.sh",
+            on_success="done",
+            on_failure="retry",
+            on_partial="fix",
+        )
+        restored = StateConfig.from_dict(original.to_dict())
+        assert restored.on_partial == "fix"
+
     def test_roundtrip_serialization(self) -> None:
         """Roundtrip through to_dict and from_dict."""
         original = StateConfig(
