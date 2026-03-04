@@ -320,7 +320,7 @@ class TestRefineStatusTable:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "Norm" in out, "Norm column header should appear"
+        assert "norm" in out, "norm column header should appear"
 
     def test_norm_checkmark_for_normalized_filename(
         self,
@@ -393,7 +393,7 @@ class TestRefineStatusTable:
             bugs_dir,
             "P2-BUG-100-with-cmd.md",
             "BUG-100: Key section test",
-            session_commands=["/ll:scan-codebase"],
+            session_commands=["/ll:format-issue"],
         )
 
         with patch.object(
@@ -406,7 +406,8 @@ class TestRefineStatusTable:
         assert result == 0
         out = capsys.readouterr().out
         assert "Key:" in out, "Key section header should appear"
-        assert "/ll:scan-codebase" in out, "Full command name should appear in Key"
+        assert "source" in out, "source column entry should appear in Key"
+        assert "/ll:format-issue" in out, "Full command name should appear in Key for non-source cmds"
         assert "Readiness score" in out, "Ready explanation should appear in Key"
         assert "Outcome confidence" in out, "OutConf explanation should appear in Key"
 
@@ -506,8 +507,132 @@ class TestRefineStatusTable:
         assert result == 0
         out = capsys.readouterr().out
         # Header should contain (at least the prefix of) the short command name
-        # "my-custom-cmd" stripped of "/ll:" is "my-custom-cmd"; truncated to _CMD_WIDTH=9 → "my-custo…"
-        assert "my-custo" in out
+        # "my-custom-cmd" stripped of "/ll:" is "my-custom-cmd"; truncated to _CMD_WIDTH=8 → "my-cust…"
+        assert "my-cust" in out
+
+    def test_tradeoff_column_shows_checkmark(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """tradeoff column appears and shows ✓ only for issues that had tradeoff-review run."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            bugs_dir,
+            "P1-BUG-110-tradeoff.md",
+            "BUG-110: Tradeoff reviewed",
+            session_commands=["/ll:tradeoff-review-issues"],
+        )
+        _make_issue(bugs_dir, "P2-BUG-111-no-tradeoff.md", "BUG-111: No tradeoff review")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "tradeoff" in out, "'tradeoff' column header should appear"
+        lines = out.splitlines()
+        bug110_line = next((ln for ln in lines if "BUG-110" in ln), None)
+        assert bug110_line is not None
+        assert "\u2713" in bug110_line, "BUG-110 should show ✓ in tradeoff column"
+
+    def test_map_column_shows_checkmark(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """map column appears and shows ✓ only for issues that had map-dependencies run."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            bugs_dir,
+            "P1-BUG-120-mapped.md",
+            "BUG-120: Dependencies mapped",
+            session_commands=["/ll:map-dependencies"],
+        )
+        _make_issue(bugs_dir, "P2-BUG-121-no-map.md", "BUG-121: No dependency map")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "map" in out, "'map' column header should appear"
+        lines = out.splitlines()
+        bug120_line = next((ln for ln in lines if "BUG-120" in ln), None)
+        assert bug120_line is not None
+        assert "\u2713" in bug120_line, "BUG-120 should show ✓ in map column"
+
+    def test_table_row_width_fits_terminal(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Table rows must not exceed the terminal width."""
+        from unittest.mock import patch
+        import shutil
+
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        # Issue with several cmd columns to stress-test width calculation
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-200-width-test.md",
+            "BUG-200: Width test issue with a moderately long title",
+            session_commands=[
+                "/ll:format-issue",
+                "/ll:verify-issues",
+                "/ll:refine-issue",
+                "/ll:tradeoff-review-issues",
+            ],
+        )
+
+        import os
+
+        terminal_width = 120
+        fake_size = os.terminal_size((terminal_width, 40))
+
+        with (
+            patch("shutil.get_terminal_size", return_value=fake_size),
+            patch.object(
+                sys, "argv", ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)]
+            ),
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        data_lines = [ln for ln in out.splitlines() if ln.strip() and not ln.startswith("\n")]
+        for line in data_lines:
+            assert len(line) <= terminal_width, (
+                f"Row width {len(line)} exceeds terminal width {terminal_width}: {line!r}"
+            )
 
 
 class TestRefineStatusJson:

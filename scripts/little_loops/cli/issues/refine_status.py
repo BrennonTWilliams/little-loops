@@ -19,9 +19,13 @@ _PRI_WIDTH = 4  # "P2  "
 _SCORE_WIDTH = 7  # "ready" col
 _CONF_WIDTH = 10  # "confidence" col
 _TOTAL_WIDTH = 5  # "total"
-# Width of each command column: longest alias is "capture" = 7 chars
-_CMD_WIDTH = 7
+# Width of each command column: longest alias is "tradeoff" = 8 chars
+_CMD_WIDTH = 8
 _NORM_WIDTH = 4  # "norm" / "✓" / "✗"
+_SOURCE_WIDTH = 7  # "source" header / "capture" value max
+
+# Commands that are excluded from dynamic columns (shown as `source` instead)
+_SOURCE_CMDS = {"/ll:capture-issue", "/ll:scan-codebase", "/ll:audit-architecture"}
 
 # Canonical workflow order for command columns
 _CANONICAL_CMD_ORDER = [
@@ -31,6 +35,8 @@ _CANONICAL_CMD_ORDER = [
     "/ll:format-issue",
     "/ll:verify-issues",
     "/ll:refine-issue",
+    "/ll:tradeoff-review-issues",
+    "/ll:map-dependencies",
 ]
 
 _CMD_ALIASES: dict[str, str] = {
@@ -40,6 +46,8 @@ _CMD_ALIASES: dict[str, str] = {
     "/ll:format-issue": "format",
     "/ll:verify-issues": "verify",
     "/ll:refine-issue": "refine",
+    "/ll:tradeoff-review-issues": "tradeoff",
+    "/ll:map-dependencies": "map",
 }
 
 
@@ -50,6 +58,16 @@ def _cmd_label(cmd: str) -> str:
     # Fallback: strip /ll: prefix and truncate
     short = cmd[4:] if cmd.startswith("/ll:") else cmd
     return _truncate(short, _CMD_WIDTH)
+
+
+def _source_label(discovered_by: str | None) -> str:
+    """Return short display label for an issue's origin source."""
+    if not discovered_by:
+        return "\u2014"  # em-dash
+    if discovered_by in _CMD_ALIASES:
+        return _CMD_ALIASES[discovered_by]
+    # Non-/ll: values like "github_sync" — truncate to fit
+    return _truncate(discovered_by, _SOURCE_WIDTH)
 
 
 def _truncate(text: str, width: int) -> str:
@@ -104,7 +122,10 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
         except ValueError:
             return (len(_CANONICAL_CMD_ORDER), cmd)
 
-    all_cmds: list[str] = sorted(seen.keys(), key=_canonical_sort_key)
+    all_cmds: list[str] = [
+        cmd for cmd in sorted(seen.keys(), key=_canonical_sort_key)
+        if cmd not in _SOURCE_CMDS
+    ]
 
     # Sort issues: descending by total commands touched, then ascending priority
     def _sort_key(issue: IssueInfo) -> tuple[int, int]:
@@ -120,6 +141,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 "id": issue.issue_id,
                 "priority": issue.priority,
                 "title": issue.title,
+                "source": issue.discovered_by,
                 "commands": issue.session_commands,
                 "confidence_score": issue.confidence_score,
                 "outcome_confidence": issue.outcome_confidence,
@@ -133,23 +155,28 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     # --- Table rendering ---
     term_cols = shutil.get_terminal_size().columns
 
-    # Compute how much space is consumed by fixed columns + command columns
-    # Layout: ID | Pri | Title | norm | [cmd cols...] | ready | confidence | total
+    # Compute how much space is consumed by fixed columns + command columns.
+    # Layout: ID | Pri | Title | source | norm | [cmd cols...] | ready | confidence | total
+    # _row uses "  ".join(parts) — 2-char separator between each part.
+    # Each "+2" below accounts for the 2-char separator that follows that column.
+    # The final "- 2" accounts for the separator between Title and the next column (source).
     fixed_width = (
-        _ID_WIDTH + 1
-        + _PRI_WIDTH + 1
-        + _NORM_WIDTH + 1  # norm (before cmds)
-        + _SCORE_WIDTH + 1  # ready
-        + _CONF_WIDTH + 1  # confidence
+        _ID_WIDTH + 2
+        + _PRI_WIDTH + 2
+        + _SOURCE_WIDTH + 2  # source (before norm)
+        + _NORM_WIDTH + 2    # norm
+        + _SCORE_WIDTH + 2   # ready
+        + _CONF_WIDTH + 2    # confidence
         + _TOTAL_WIDTH
     )
-    cmd_cols_width = len(all_cmds) * (_CMD_WIDTH + 1)
+    cmd_cols_width = len(all_cmds) * (_CMD_WIDTH + 2)
     title_width = max(_MIN_TITLE_WIDTH, term_cols - fixed_width - cmd_cols_width - 2)
 
     def _row(
         issue_id: str,
         pri: str,
         title: str,
+        source: str,
         norm: str,
         cmd_cells: list[str],
         ready: str,
@@ -160,6 +187,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
             _col(issue_id, _ID_WIDTH),
             _col(pri, _PRI_WIDTH),
             _col(title, title_width),
+            _col(source, _SOURCE_WIDTH),
             _col(norm, _NORM_WIDTH),
         ]
         for cell in cmd_cells:
@@ -171,7 +199,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
 
     # Header row
     cmd_headers = [_col(_cmd_label(c), _CMD_WIDTH) for c in all_cmds]
-    header = _row("ID", "Pri", "Title", "Norm", cmd_headers, "ready", "confidence", "total")
+    header = _row("ID", "Pri", "Title", "source", "norm", cmd_headers, "ready", "confidence", "total")
     separator = "-" * len(header)
 
     rows: list[str] = [header, separator]
@@ -184,6 +212,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 cmd_cells.append(str(issue.session_command_counts.get(c, 0)))
             else:
                 cmd_cells.append("\u2713" if c in cmd_set else "\u2014")
+        source_cell = _source_label(issue.discovered_by)
         norm_cell = "\u2713" if is_normalized(issue.path.name) else "\u2717"
         ready = str(issue.confidence_score) if issue.confidence_score is not None else "\u2014"
         out_conf = (
@@ -195,6 +224,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 issue.issue_id,
                 issue.priority,
                 _truncate(issue.title, title_width),
+                source_cell,
                 norm_cell,
                 cmd_cells,
                 ready,
@@ -218,6 +248,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
 def _print_key(all_cmds: list[str]) -> None:
     """Print a legend mapping column headers to their full command names."""
     print("\nKey:")
+    print(f"  {'source':<12} Origin command/workflow that created the issue")
     print(f"  {'norm':<12} Filename follows naming convention (P[0-5]-TYPE-NNN-desc.md)")
     for cmd in all_cmds:
         label = _cmd_label(cmd)
