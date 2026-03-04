@@ -133,9 +133,26 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `cli`, `ux`, `captured`
 
+## Resolution
+
+**Resolved** — All 10 display issues fixed in `scripts/little_loops/cli/loop/info.py`:
+
+1. Label clipping: `dstart = max(0, ...)` clamp added
+2. Redundant `Loop: name` line removed
+3. YAML `|` artifact removed from verbose and prompt-preview action display
+4. Evaluate type humanized (`llm_structured → LLM (structured)`, `exit_code → exit code`, etc.)
+5. Same-target transitions grouped (`failure/error/partial ──→ fix`)
+6. `on_` prefix stripped from all transition labels
+7. Summary stats line added (`N states · N transitions [· paradigm]`)
+8. INITIAL (`→`) and TERMINAL (`◉`) markers added in FSM diagram
+9. Verbose prompt uses `│` gutter at 4-space indent
+10. `ll-loop stop` added to Commands section
+
+86 tests pass with updated assertions for items 2, 3, 4, 6.
+
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P3
+**Closed** | Created: 2026-03-04 | Resolved: 2026-03-04 | Priority: P3
 
 ---
 
