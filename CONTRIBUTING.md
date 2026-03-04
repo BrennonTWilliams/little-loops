@@ -180,9 +180,9 @@ little-loops/
         │   ├── __init__.py
         │   ├── auto.py
         │   ├── docs.py
+        │   ├── deps.py
         │   ├── history.py
         │   ├── messages.py
-        │   ├── next_id.py
         │   ├── parallel.py
         │   ├── sync.py
         │   ├── loop/            # ll-loop subcommands

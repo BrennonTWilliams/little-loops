@@ -171,7 +171,7 @@ little-loops/
         │   ├── sync.py
         │   ├── docs.py
         │   ├── history.py
-        │   ├── next_id.py
+        │   ├── deps.py              # ll-deps entry point
         │   ├── sprint/
         │   │   ├── __init__.py      # Entry point (main_sprint) + argparse
         │   │   ├── _helpers.py      # Shared utilities
@@ -185,7 +185,9 @@ little-loops/
         │   │   ├── list_cmd.py      # list subcommand
         │   │   ├── next_id.py       # next-id subcommand
         │   │   ├── sequence.py      # sequence subcommand
-        │   │   └── impact_effort.py # impact-effort subcommand
+        │   │   ├── impact_effort.py # impact-effort subcommand
+        │   │   ├── show.py          # show subcommand
+        │   │   └── refine_status.py # refine-status subcommand
         │   └── loop/
         │       ├── __init__.py      # Entry point (main_loop) + argparse
         │       ├── _helpers.py      # Shared utilities
