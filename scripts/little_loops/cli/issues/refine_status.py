@@ -123,8 +123,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
             return (len(_CANONICAL_CMD_ORDER), cmd)
 
     all_cmds: list[str] = [
-        cmd for cmd in sorted(seen.keys(), key=_canonical_sort_key)
-        if cmd not in _SOURCE_CMDS
+        cmd for cmd in sorted(seen.keys(), key=_canonical_sort_key) if cmd not in _SOURCE_CMDS
     ]
 
     # Sort issues: descending by total commands touched, then ascending priority
@@ -161,12 +160,18 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     # Each "+2" below accounts for the 2-char separator that follows that column.
     # The final "- 2" accounts for the separator between Title and the next column (source).
     fixed_width = (
-        _ID_WIDTH + 2
-        + _PRI_WIDTH + 2
-        + _SOURCE_WIDTH + 2  # source (before norm)
-        + _NORM_WIDTH + 2    # norm
-        + _SCORE_WIDTH + 2   # ready
-        + _CONF_WIDTH + 2    # confidence
+        _ID_WIDTH
+        + 2
+        + _PRI_WIDTH
+        + 2
+        + _SOURCE_WIDTH
+        + 2  # source (before norm)
+        + _NORM_WIDTH
+        + 2  # norm
+        + _SCORE_WIDTH
+        + 2  # ready
+        + _CONF_WIDTH
+        + 2  # confidence
         + _TOTAL_WIDTH
     )
     cmd_cols_width = len(all_cmds) * (_CMD_WIDTH + 2)
@@ -199,7 +204,9 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
 
     # Header row
     cmd_headers = [_col(_cmd_label(c), _CMD_WIDTH) for c in all_cmds]
-    header = _row("ID", "Pri", "Title", "source", "norm", cmd_headers, "ready", "confidence", "total")
+    header = _row(
+        "ID", "Pri", "Title", "source", "norm", cmd_headers, "ready", "confidence", "total"
+    )
     separator = "-" * len(header)
 
     rows: list[str] = [header, separator]
@@ -259,5 +266,3 @@ def _print_key(all_cmds: list[str]) -> None:
     print(f"  {'ready':<12} Readiness score (0\u2013100)")
     print(f"  {'confidence':<12} Outcome confidence score (0\u2013100)")
     print(f"  {'total':<12} Number of /ll:* skills applied")
-
-

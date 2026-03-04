@@ -330,7 +330,9 @@ class FSMExecutor:
         self.prev_result: dict[str, Any] | None = None
         self.started_at = ""
         self.start_time_ms = 0
-        self.elapsed_offset_ms = 0  # milliseconds from segments before current run (set by PersistentExecutor on resume)
+        self.elapsed_offset_ms = (
+            0  # milliseconds from segments before current run (set by PersistentExecutor on resume)
+        )
 
         # Shutdown flag for graceful signal handling
         self._shutdown_requested = False

@@ -102,9 +102,9 @@ class TestRefineStatusTable:
         assert any("ID" in ln and "Pri" in ln and "Title" in ln for ln in lines), (
             "Header row missing"
         )
-        assert any(
-            set(ln.strip()).issubset({"-", " "}) and len(ln.strip()) > 5 for ln in lines
-        ), ("Separator line missing")
+        assert any(set(ln.strip()).issubset({"-", " "}) and len(ln.strip()) > 5 for ln in lines), (
+            "Separator line missing"
+        )
 
     def test_table_shows_issue_ids(
         self,
@@ -160,7 +160,9 @@ class TestRefineStatusTable:
         assert result == 0
         out = capsys.readouterr().out
         lines = out.splitlines()
-        positions = {line: i for i, line in enumerate(lines) if "BUG-010" in line or "BUG-011" in line}
+        positions = {
+            line: i for i, line in enumerate(lines) if "BUG-010" in line or "BUG-011" in line
+        }
         bug010_pos = next((i for line, i in positions.items() if "BUG-010" in line), None)
         bug011_pos = next((i for line, i in positions.items() if "BUG-011" in line), None)
         assert bug010_pos is not None
@@ -407,7 +409,9 @@ class TestRefineStatusTable:
         out = capsys.readouterr().out
         assert "Key:" in out, "Key section header should appear"
         assert "source" in out, "source column entry should appear in Key"
-        assert "/ll:format-issue" in out, "Full command name should appear in Key for non-source cmds"
+        assert "/ll:format-issue" in out, (
+            "Full command name should appear in Key for non-source cmds"
+        )
         assert "Readiness score" in out, "Ready explanation should appear in Key"
         assert "Outcome confidence" in out, "OutConf explanation should appear in Key"
 
@@ -590,7 +594,6 @@ class TestRefineStatusTable:
     ) -> None:
         """Table rows must not exceed the terminal width."""
         from unittest.mock import patch
-        import shutil
 
         _write_config(temp_project_dir, sample_config)
         bugs_dir = temp_project_dir / ".issues" / "bugs"
@@ -619,7 +622,9 @@ class TestRefineStatusTable:
         with (
             patch("shutil.get_terminal_size", return_value=fake_size),
             patch.object(
-                sys, "argv", ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)]
+                sys,
+                "argv",
+                ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
             ),
         ):
             from little_loops.cli import main_issues

@@ -288,9 +288,7 @@ class IssueParser:
             else None
         )
         outcome_confidence = (
-            int(outcome_raw)
-            if outcome_raw is not None and str(outcome_raw).isdigit()
-            else None
+            int(outcome_raw) if outcome_raw is not None and str(outcome_raw).isdigit() else None
         )
 
         # Parse title and dependencies from file content

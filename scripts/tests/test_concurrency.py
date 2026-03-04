@@ -159,9 +159,7 @@ class TestLockManager:
         assert manager.acquire("new", ["src/"])
         assert not lock_file.exists()  # Stale lock was cleaned
 
-    def test_stale_lock_eperm_treated_as_alive(
-        self, manager: LockManager, tmp_loops: Path
-    ) -> None:
+    def test_stale_lock_eperm_treated_as_alive(self, manager: LockManager, tmp_loops: Path) -> None:
         """EPERM on os.kill means process exists — lock must not be cleaned up (BUG-526)."""
         running_dir = tmp_loops / ".running"
         running_dir.mkdir()
@@ -182,9 +180,7 @@ class TestLockManager:
             assert not manager.acquire("new", ["src/"])  # Conflict detected
             assert lock_file.exists()  # Lock must NOT be deleted
 
-    def test_stale_lock_esrch_treated_as_dead(
-        self, manager: LockManager, tmp_loops: Path
-    ) -> None:
+    def test_stale_lock_esrch_treated_as_dead(self, manager: LockManager, tmp_loops: Path) -> None:
         """ESRCH on os.kill means process is gone — lock should be cleaned up (BUG-526)."""
         running_dir = tmp_loops / ".running"
         running_dir.mkdir()
@@ -334,9 +330,7 @@ class TestLockManagerRaceConditions:
         # Should not raise, should return empty list
         assert manager.list_locks() == []
 
-    def test_concurrent_acquire_same_scope_only_one_wins(
-        self, manager: LockManager
-    ) -> None:
+    def test_concurrent_acquire_same_scope_only_one_wins(self, manager: LockManager) -> None:
         """Concurrent acquire() on same scope: exactly one succeeds (BUG-525).
 
         Two threads race to acquire the same scope simultaneously.  The

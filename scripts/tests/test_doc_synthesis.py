@@ -150,8 +150,11 @@ class TestScoreRelevance:
         score_plain = score_relevance("session logging history", issue, _ISSUE_CONTENT_A)
         corpus = {"doc_freq": {"session": 1}, "avg_doc_len": 50.0, "total_docs": 1}
         score_with_stats = score_relevance(
-            "session logging history", issue, _ISSUE_CONTENT_A,
-            corpus_stats=corpus, scoring="intersection",
+            "session logging history",
+            issue,
+            _ISSUE_CONTENT_A,
+            corpus_stats=corpus,
+            scoring="intersection",
         )
         assert score_plain == score_with_stats
 
@@ -160,8 +163,11 @@ class TestScoreRelevance:
         issue = _make_issue("FEAT-100", "FEAT")
         corpus = {"doc_freq": {"session": 1, "logging": 1}, "avg_doc_len": 80.0, "total_docs": 1}
         score = score_relevance(
-            "session logging", issue, _ISSUE_CONTENT_A,
-            corpus_stats=corpus, scoring="hybrid",
+            "session logging",
+            issue,
+            _ISSUE_CONTENT_A,
+            corpus_stats=corpus,
+            scoring="hybrid",
         )
         assert 0.0 <= score <= 1.0
 
@@ -170,8 +176,11 @@ class TestScoreRelevance:
         issue = _make_issue("ENH-200", "ENH")
         corpus = {"doc_freq": {"session": 0}, "avg_doc_len": 50.0, "total_docs": 1}
         score = score_relevance(
-            "session logging", issue, _ISSUE_CONTENT_B,
-            corpus_stats=corpus, scoring="bm25",
+            "session logging",
+            issue,
+            _ISSUE_CONTENT_B,
+            corpus_stats=corpus,
+            scoring="bm25",
         )
         # _ISSUE_CONTENT_B is about sprint dependency, not session logging
         assert score == 0.0 or score < 0.3

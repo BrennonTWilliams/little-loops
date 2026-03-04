@@ -321,7 +321,9 @@ class PersistentExecutor:
             started_at=self._executor.started_at,
             updated_at="",  # Will be set by save_state
             status=status,
-            accumulated_ms=_now_ms() - self._executor.start_time_ms + self._executor.elapsed_offset_ms,
+            accumulated_ms=_now_ms()
+            - self._executor.start_time_ms
+            + self._executor.elapsed_offset_ms,
         )
         self.persistence.save_state(state)
 
