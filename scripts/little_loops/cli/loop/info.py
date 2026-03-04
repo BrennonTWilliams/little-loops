@@ -427,14 +427,14 @@ def _render_2d_diagram(
             row = [" "] * total_width
             if has_down and 0 <= down_col < total_width:
                 row[down_col] = "\u2502"  # \u2502
-                dlabel = down_labels[0]
+                dlabel = "/".join(down_labels)
                 dstart = down_col - len(dlabel) - 1
                 for j, ch in enumerate(dlabel):
                     if 0 <= dstart + j < total_width:
                         row[dstart + j] = ch
             if has_up and 0 <= up_col < total_width:
                 row[up_col] = "\u2502"  # \u2502
-                ulabel = up_labels[0]
+                ulabel = "/".join(up_labels)
                 ustart = up_col + 2
                 for j, ch in enumerate(ulabel):
                     if 0 <= ustart + j < total_width:
