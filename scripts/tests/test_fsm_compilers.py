@@ -6,6 +6,7 @@ import pytest
 
 from little_loops.fsm import validate_fsm
 from little_loops.fsm.compilers import (
+    _parse_tool_entry,
     compile_convergence,
     compile_goal,
     compile_imperative,
@@ -194,6 +195,170 @@ class TestGoalCompiler:
             "paradigm": "goal",
             "goal": "Test",
             "tools": ["cmd1", "cmd2"],
+        }
+        fsm = compile_goal(spec)
+        errors = validate_fsm(fsm)
+        assert not any(e.severity.value == "error" for e in errors)
+
+
+class TestParseToolEntry:
+    """Tests for _parse_tool_entry helper."""
+
+    def test_string_entry_returns_none_action_type(self) -> None:
+        """Plain string returns (string, None)."""
+        action, action_type = _parse_tool_entry("my-command")
+        assert action == "my-command"
+        assert action_type is None
+
+    def test_dict_entry_with_action_type(self) -> None:
+        """Dict with tool and action_type returns both."""
+        entry = {"tool": "Run checks", "action_type": "prompt"}
+        action, action_type = _parse_tool_entry(entry)
+        assert action == "Run checks"
+        assert action_type == "prompt"
+
+    def test_dict_entry_without_action_type(self) -> None:
+        """Dict without action_type returns None for action_type."""
+        entry = {"tool": "my-command"}
+        action, action_type = _parse_tool_entry(entry)
+        assert action == "my-command"
+        assert action_type is None
+
+    def test_dict_entry_shell_action_type(self) -> None:
+        """Dict with shell action_type is accepted."""
+        action, action_type = _parse_tool_entry({"tool": "cmd", "action_type": "shell"})
+        assert action_type == "shell"
+
+    def test_dict_entry_slash_command_action_type(self) -> None:
+        """Dict with slash_command action_type is accepted."""
+        action, action_type = _parse_tool_entry(
+            {"tool": "/ll:check-code", "action_type": "slash_command"}
+        )
+        assert action_type == "slash_command"
+
+    def test_dict_missing_tool_raises(self) -> None:
+        """Dict without 'tool' key raises ValueError."""
+        with pytest.raises(ValueError, match="must have a 'tool' key"):
+            _parse_tool_entry({"action_type": "prompt"})
+
+    def test_invalid_entry_type_raises(self) -> None:
+        """Non-string, non-dict entry raises ValueError."""
+        with pytest.raises(ValueError, match="must have a 'tool' key"):
+            _parse_tool_entry(42)  # type: ignore[arg-type]
+
+    def test_invalid_action_type_raises(self) -> None:
+        """Dict with invalid action_type raises ValueError."""
+        with pytest.raises(ValueError, match="Invalid action_type"):
+            _parse_tool_entry({"tool": "cmd", "action_type": "unknown"})
+
+
+class TestGoalWithObjectTools:
+    """Tests for compile_goal with object-style tool entries (FEAT-572)."""
+
+    def test_object_check_tool_with_prompt(self) -> None:
+        """Object-style check tool with action_type=prompt is used."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "All issues refined",
+            "tools": [
+                {"tool": "Run `ll-issues refine-status`", "action_type": "prompt"},
+                "ll-issues refine-status",
+            ],
+        }
+        fsm = compile_goal(spec)
+        assert fsm.states["evaluate"].action == "Run `ll-issues refine-status`"
+        assert fsm.states["evaluate"].action_type == "prompt"
+        assert fsm.states["fix"].action == "ll-issues refine-status"
+        assert fsm.states["fix"].action_type is None
+
+    def test_object_fix_tool_with_shell(self) -> None:
+        """Object-style fix tool with action_type=shell is used."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Clean",
+            "tools": [
+                "check-cmd",
+                {"tool": "fix-cmd", "action_type": "shell"},
+            ],
+        }
+        fsm = compile_goal(spec)
+        assert fsm.states["fix"].action == "fix-cmd"
+        assert fsm.states["fix"].action_type == "shell"
+
+    def test_mixed_string_and_object_tools(self) -> None:
+        """Mix of string and object tool entries works correctly."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Tests pass",
+            "tools": [
+                "pytest",
+                {"tool": "/ll:manage-issue bug fix", "action_type": "slash_command"},
+            ],
+        }
+        fsm = compile_goal(spec)
+        assert fsm.states["evaluate"].action == "pytest"
+        assert fsm.states["evaluate"].action_type is None
+        assert fsm.states["fix"].action == "/ll:manage-issue bug fix"
+        assert fsm.states["fix"].action_type == "slash_command"
+
+    def test_both_object_tools(self) -> None:
+        """Both tools as object entries work correctly."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Done",
+            "tools": [
+                {"tool": "check this", "action_type": "prompt"},
+                {"tool": "fix this", "action_type": "prompt"},
+            ],
+        }
+        fsm = compile_goal(spec)
+        assert fsm.states["evaluate"].action == "check this"
+        assert fsm.states["evaluate"].action_type == "prompt"
+        assert fsm.states["fix"].action == "fix this"
+        assert fsm.states["fix"].action_type == "prompt"
+
+    def test_single_object_tool_used_for_both(self) -> None:
+        """Single object-style tool is used for both check and fix."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Clean",
+            "tools": [{"tool": "my-prompt", "action_type": "prompt"}],
+        }
+        fsm = compile_goal(spec)
+        assert fsm.states["evaluate"].action == "my-prompt"
+        assert fsm.states["evaluate"].action_type == "prompt"
+        assert fsm.states["fix"].action == "my-prompt"
+        assert fsm.states["fix"].action_type == "prompt"
+
+    def test_object_tool_missing_tool_key_raises(self) -> None:
+        """Object tool entry without 'tool' key raises ValueError."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Clean",
+            "tools": [{"action_type": "prompt"}],
+        }
+        with pytest.raises(ValueError, match="must have a 'tool' key"):
+            compile_goal(spec)
+
+    def test_object_tool_invalid_action_type_raises(self) -> None:
+        """Object tool entry with invalid action_type raises ValueError."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Clean",
+            "tools": [{"tool": "cmd", "action_type": "bad"}],
+        }
+        with pytest.raises(ValueError, match="Invalid action_type"):
+            compile_goal(spec)
+
+    def test_object_tool_validates(self) -> None:
+        """Generated FSM with object-style tools passes validation."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Test",
+            "tools": [
+                {"tool": "check", "action_type": "shell"},
+                {"tool": "fix", "action_type": "shell"},
+            ],
         }
         fsm = compile_goal(spec)
         errors = validate_fsm(fsm)

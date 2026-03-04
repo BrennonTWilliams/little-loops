@@ -23,7 +23,7 @@ Example usage:
 from __future__ import annotations
 
 import re
-from typing import Any
+from typing import Any, Literal
 
 from little_loops.fsm.schema import (
     EvaluateConfig,
@@ -131,6 +131,33 @@ def _passthrough_fsm(spec: dict[str, Any]) -> FSMLoop:
     return FSMLoop.from_dict(spec)
 
 
+def _parse_tool_entry(
+    entry: str | dict,
+) -> tuple[str, Literal["prompt", "slash_command", "shell"] | None]:
+    """Parse a tools[] entry into (action, action_type).
+
+    Args:
+        entry: Either a plain string or a dict with 'tool' and optional 'action_type' keys.
+
+    Returns:
+        Tuple of (action_string, action_type_or_None).
+
+    Raises:
+        ValueError: If entry is a dict missing the required 'tool' key.
+    """
+    if isinstance(entry, str):
+        return entry, None
+    if not isinstance(entry, dict) or "tool" not in entry:
+        raise ValueError(f"Invalid tool entry: {entry!r}. Dict entries must have a 'tool' key.")
+    raw_type = entry.get("action_type")
+    if raw_type is not None and raw_type not in ("shell", "prompt", "slash_command"):
+        raise ValueError(
+            f"Invalid action_type {raw_type!r}. Must be one of: shell, prompt, slash_command"
+        )
+    action_type: Literal["prompt", "slash_command", "shell"] | None = raw_type  # type: ignore[assignment]
+    return entry["tool"], action_type
+
+
 def compile_goal(spec: dict[str, Any]) -> FSMLoop:
     """Compile goal paradigm to FSM.
 
@@ -171,8 +198,9 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
 
     goal = spec["goal"]
     tools = spec["tools"]
-    check_tool = tools[0]
-    fix_tool = tools[1] if len(tools) > 1 else tools[0]
+    check_action, check_type = _parse_tool_entry(tools[0])
+    fix_entry = tools[1] if len(tools) > 1 else tools[0]
+    fix_action, fix_type = _parse_tool_entry(fix_entry)
 
     name = spec.get("name", f"goal-{_slugify(goal)}")
 
@@ -181,14 +209,16 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
 
     states = {
         "evaluate": StateConfig(
-            action=check_tool,
+            action=check_action,
+            action_type=check_type,
             evaluate=evaluate_config,
             on_success="done",
             on_failure="fix",
             on_error="fix",
         ),
         "fix": StateConfig(
-            action=fix_tool,
+            action=fix_action,
+            action_type=fix_type,
             next="evaluate",
         ),
         "done": StateConfig(terminal=True),

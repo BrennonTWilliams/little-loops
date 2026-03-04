@@ -156,8 +156,8 @@ paradigm: goal
 name: "<loop-name>"
 goal: "<description of what passes>"
 tools:
-  - "<check-command>"      # First tool is the check
-  - "<fix-command>"        # Second tool is the fix
+  - "<check-command>"      # First tool is the check (plain string)
+  - "<fix-command>"        # Second tool is the fix (plain string)
 max_iterations: <selected-max>
 # Include evaluator only if not using default (exit_code):
 evaluator:                 # Optional - omit for exit_code default
@@ -166,6 +166,31 @@ evaluator:                 # Optional - omit for exit_code default
   operator: "<eq|lt|gt>"   # For output_numeric only
   target: <number>         # For output_numeric only
 ```
+
+**Object-style tool entries** (explicit `action_type`):
+
+Each `tools:` entry may also be an object to declare `action_type` explicitly:
+
+```yaml
+tools:
+  - tool: "<command-or-prompt>"   # required
+    action_type: prompt           # shell | prompt | slash_command
+```
+
+Both styles are backward-compatible and may be mixed:
+
+```yaml
+paradigm: goal
+goal: "All issues refined"
+tools:
+  - "ll-issues refine-status"           # string → executor infers dispatch mode
+  - tool: |                              # object → explicit dispatch mode
+      Run `ll-issues refine-status` and
+      confirm all statuses are updated.
+    action_type: prompt
+```
+
+Valid `action_type` values: `shell`, `prompt`, `slash_command`. Omitting `action_type` from an object entry is equivalent to a plain string (executor infers dispatch mode).
 
 **Example for "Type errors + Lint errors":**
 
