@@ -50,9 +50,11 @@ Wire into `compile_goal` when building the fix `StateConfig`:
 ```python
 fix_action_type = _infer_action_type(fix_tool)
 if fix_action_type == "prompt":
-    logger.debug("compile_goal: multiline fix tool detected, using action_type='prompt'")
+    logger.warning("compile_goal: multiline fix tool detected, using action_type='prompt'")
 "fix": StateConfig(action=fix_tool, action_type=fix_action_type, next="evaluate"),
 ```
+
+> **Note**: `compilers.py` currently has no logging — add `import logging` and `logger = logging.getLogger(__name__)` at the top of the module. Follow the pattern in `validation.py:16-26`.
 
 ## Integration Map
 
@@ -75,8 +77,11 @@ if fix_action_type == "prompt":
 
 ### Dependent Files (Reference Only)
 
-- `scripts/little_loops/fsm/executor.py` — `_dispatch_action()` / `is_slash_command` check — downstream dispatcher; no change needed here
-- `scripts/tests/test_fsm_compilers.py` — add new test cases
+- `scripts/little_loops/fsm/executor.py:515-525` — `_run_action()` / `is_slash_command` dispatch — no change needed; `action_type="prompt"` is already handled
+- `scripts/little_loops/fsm/executor.py:576-592` — `_evaluate()` default evaluator selection — **side effect**: setting `action_type="prompt"` here will also cause the fix state to use LLM evaluation (via `evaluate_llm_structured`) instead of exit-code evaluation; this is the correct and desired behavior
+- `scripts/little_loops/fsm/schema.py:191` — `action_type: Literal["prompt", "slash_command", "shell"] | None = None` — reference for valid values
+- `scripts/little_loops/fsm/validation.py:16-26` — logger pattern to follow: `import logging; logger = logging.getLogger(__name__)`
+- `scripts/tests/test_fsm_compilers.py` — add new test cases; assertion style: `fsm.states["fix"].action_type == "prompt"` using inline spec dicts, no fixtures
 
 ### Similar Patterns
 
@@ -96,9 +101,13 @@ if fix_action_type == "prompt":
 
 ## Implementation Steps
 
-1. Add `_infer_action_type()` helper in `compilers.py` above `compile_goal`
-2. Wire result into fix `StateConfig` with debug logging in `compile_goal`
-3. Add test cases in `test_fsm_compilers.py` (multiline → prompt, slash-cmd → None, shell-cmd → None)
+1. Add `import logging` and `logger = logging.getLogger(__name__)` at the top of `compilers.py` (currently has no logger; follow `validation.py:16-26` pattern)
+2. Add `_infer_action_type()` helper in `compilers.py` above `compile_goal` (around line 134)
+3. Wire result into fix `StateConfig` with `logger.warning(...)` in `compile_goal` (around lines 173-195)
+4. Add test cases in `scripts/tests/test_fsm_compilers.py` inside `TestGoalCompiler`:
+   - Multiline fix tool → `fsm.states["fix"].action_type == "prompt"`
+   - Single-line `/ll:cmd` fix tool → `fsm.states["fix"].action_type is None`
+   - Single-line shell command fix tool → `fsm.states["fix"].action_type is None`
 
 ## Impact
 
@@ -135,6 +144,18 @@ Open
 
 ---
 
+## Verification Notes
+
+**Verdict: VALID** — verified 2026-03-04
+
+- `compilers.py:175` `fix_tool = tools[1] if len(tools) > 1 else tools[0]` — confirmed; issue omits conditional fallback and slightly mislabels as line 174, but core claim is accurate
+- `executor.py:519` `is_slash_command = action.startswith("/")` — verified exactly
+- Fix state `StateConfig(action=fix_tool, next="evaluate")` — confirmed; no `action_type` set, errors silently swallowed
+- `_infer_action_type` helper does not exist — confirmed, fix not yet implemented
+- No multiline/prompt `action_type` tests for `compile_goal` in `test_fsm_compilers.py` — confirmed
+
 ## Session Log
 - `capture-issue` - 2026-03-04 - root cause discovered while debugging `.loops/issue-refinement.yaml` infinite loop
 - `/ll:format-issue` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f4dee21-8bf7-4b06-a184-dbae77b0cc48.jsonl`
+- `/ll:verify-issues` - 2026-03-04 - VALID; all core claims confirmed against codebase
+- `/ll:refine-issue` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/037c8035-cf2b-4bea-8dab-6337898b38c5.jsonl`
