@@ -549,18 +549,18 @@ class TestProgressDisplay:
         "action_length,expect_truncation",
         [
             (50, False),
-            (60, False),
-            (61, True),
-            (70, True),
-            (100, True),
+            (120, False),
+            (121, True),
+            (150, True),
+            (200, True),
         ],
     )
     def test_action_truncation(self, action_length: int, expect_truncation: bool) -> None:
-        """Actions over 60 chars are truncated with ellipsis."""
+        """Actions over 120 chars are truncated with ellipsis."""
         action = "x" * action_length
-        action_display = action[:60] + "..." if len(action) > 60 else action
+        action_display = action[:120] + "..." if len(action) > 120 else action
         if expect_truncation:
-            assert len(action_display) == 63  # 60 chars + "..."
+            assert len(action_display) == 123  # 120 chars + "..."
             assert action_display.endswith("...")
         else:
             assert action_display == action

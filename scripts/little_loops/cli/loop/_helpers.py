@@ -222,7 +222,7 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             action = event.get("action", "")
             is_prompt = event.get("is_prompt", False)
             prefix = "[prompt] " if is_prompt else ""
-            max_len = 60 - len(prefix)
+            max_len = 120 - len(prefix)
             action_display = action[:max_len] + "..." if len(action) > max_len else action
             print(f" -> {prefix}{action_display}", flush=True)
 
@@ -242,11 +242,19 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
                 parts.append(f"exit: {exit_code}")
             print("  ".join(parts), flush=True)
             if output_preview:
-                # Show last line(s) of output, truncated
-                last_line = output_preview.splitlines()[-1] if output_preview else ""
-                if last_line:
-                    display = last_line[:100] + "..." if len(last_line) > 100 else last_line
-                    print(f"       ...{display}", flush=True)
+                is_prompt = event.get("is_prompt", False)
+                lines = [ln for ln in output_preview.splitlines() if ln.strip()]
+                if is_prompt:
+                    # Show last 3 lines for prompts to give more context
+                    show_lines = lines[-3:] if lines else []
+                    for line in show_lines:
+                        display = line[:120] + "..." if len(line) > 120 else line
+                        print(f"       ...{display}", flush=True)
+                else:
+                    last_line = lines[-1] if lines else ""
+                    if last_line:
+                        display = last_line[:100] + "..." if len(last_line) > 100 else last_line
+                        print(f"       ...{display}", flush=True)
 
         elif event_type == "evaluate":
             verdict = event.get("verdict", "")
@@ -267,7 +275,7 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             print(f"       {verdict_line}", flush=True)
             # Show reason on a second line if present (and not already shown as error)
             if reason and not (error and verdict == "error"):
-                reason_display = reason[:120] + "..." if len(reason) > 120 else reason
+                reason_display = reason[:300] + "..." if len(reason) > 300 else reason
                 print(f"         {reason_display}", flush=True)
 
         elif event_type == "route":
