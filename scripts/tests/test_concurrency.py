@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import os
 import threading
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -156,6 +158,52 @@ class TestLockManager:
         # Should not conflict (stale lock removed)
         assert manager.acquire("new", ["src/"])
         assert not lock_file.exists()  # Stale lock was cleaned
+
+    def test_stale_lock_eperm_treated_as_alive(
+        self, manager: LockManager, tmp_loops: Path
+    ) -> None:
+        """EPERM on os.kill means process exists — lock must not be cleaned up (BUG-526)."""
+        running_dir = tmp_loops / ".running"
+        running_dir.mkdir()
+        lock_file = running_dir / "privileged.lock"
+        lock_file.write_text(
+            json.dumps(
+                {
+                    "loop_name": "privileged",
+                    "scope": ["src/"],
+                    "pid": 12345,
+                    "started_at": "2024-01-01T00:00:00Z",
+                }
+            )
+        )
+
+        # EPERM: process exists but current user cannot signal it
+        with patch("os.kill", side_effect=OSError(errno.EPERM, "Operation not permitted")):
+            assert not manager.acquire("new", ["src/"])  # Conflict detected
+            assert lock_file.exists()  # Lock must NOT be deleted
+
+    def test_stale_lock_esrch_treated_as_dead(
+        self, manager: LockManager, tmp_loops: Path
+    ) -> None:
+        """ESRCH on os.kill means process is gone — lock should be cleaned up (BUG-526)."""
+        running_dir = tmp_loops / ".running"
+        running_dir.mkdir()
+        lock_file = running_dir / "dead.lock"
+        lock_file.write_text(
+            json.dumps(
+                {
+                    "loop_name": "dead",
+                    "scope": ["src/"],
+                    "pid": 12345,
+                    "started_at": "2024-01-01T00:00:00Z",
+                }
+            )
+        )
+
+        # ESRCH: no such process
+        with patch("os.kill", side_effect=OSError(errno.ESRCH, "No such process")):
+            assert manager.acquire("new", ["src/"])  # Stale lock cleaned, no conflict
+            assert not lock_file.exists()  # Lock was deleted
 
     def test_find_conflict_returns_lock(self, manager: LockManager) -> None:
         """find_conflict returns conflicting ScopeLock."""

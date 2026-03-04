@@ -121,11 +121,21 @@ Apply the same fix to the duplicate in `lifecycle.py` (or extract to a shared ut
 
 `bug`, `ll-loop`, `concurrency`, `scan-codebase`
 
+## Resolution
+
+Fixed `_process_alive` in both locations to distinguish `errno.ESRCH` (process dead → return `False`) from `errno.EPERM` and other errors (process alive, no permission → return `True`). Added `import errno` to both files. Added two new tests to `test_concurrency.py` covering the EPERM (lock preserved) and ESRCH (lock cleaned) cases.
+
+Files changed:
+- `scripts/little_loops/fsm/concurrency.py` — `LockManager._process_alive()`
+- `scripts/little_loops/cli/loop/lifecycle.py` — module-level `_process_alive()`
+- `scripts/tests/test_concurrency.py` — 2 new tests for BUG-526
+
 ## Session Log
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; noted `test_cli_loop_background.py:220` (TestCmdStopWithPid) as os.kill mock pattern
+- `/ll:manage-issue` — 2026-03-03T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/` — Implemented fix; 3127 tests passed
 
 ---
 
-**Open** | Created: 2026-03-03 | Priority: P2
+**Completed** | Created: 2026-03-03 | Resolved: 2026-03-03 | Priority: P2
