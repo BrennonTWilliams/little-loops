@@ -6,7 +6,11 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-from little_loops.session_log import append_session_log_entry, get_current_session_jsonl
+from little_loops.session_log import (
+    append_session_log_entry,
+    get_current_session_jsonl,
+    parse_session_log,
+)
 
 
 class TestGetCurrentSessionJsonl:
@@ -144,3 +148,63 @@ class TestAppendSessionLogEntry:
         assert len(lines) == 1
         assert lines[0].startswith("- `/ll:test` - ")
         assert lines[0].endswith(f"- `{jsonl}`")
+
+
+class TestParseSessionLog:
+    """Tests for parse_session_log."""
+
+    def test_returns_empty_for_no_section(self) -> None:
+        content = "# Issue\n\n## Summary\nNo session log here."
+        assert parse_session_log(content) == []
+
+    def test_returns_empty_for_empty_section(self) -> None:
+        content = "# Issue\n\n## Session Log\n\n---\n\n## Status\n\n**Open**"
+        assert parse_session_log(content) == []
+
+    def test_extracts_single_command(self) -> None:
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:refine-issue` - 2026-01-01T00:00:00 - `/session.jsonl`\n"
+        )
+        assert parse_session_log(content) == ["/ll:refine-issue"]
+
+    def test_deduplicates_commands(self) -> None:
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:refine-issue` - 2026-01-01T00:00:00 - `/s1.jsonl`\n"
+            "- `/ll:refine-issue` - 2026-01-02T00:00:00 - `/s2.jsonl`\n"
+        )
+        result = parse_session_log(content)
+        assert result == ["/ll:refine-issue"]
+
+    def test_preserves_insertion_order(self) -> None:
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:capture-issue` - 2026-01-01T00:00:00 - `/s.jsonl`\n"
+            "- `/ll:refine-issue` - 2026-01-02T00:00:00 - `/s.jsonl`\n"
+            "- `/ll:ready-issue` - 2026-01-03T00:00:00 - `/s.jsonl`\n"
+        )
+        assert parse_session_log(content) == [
+            "/ll:capture-issue",
+            "/ll:refine-issue",
+            "/ll:ready-issue",
+        ]
+
+    def test_stops_at_next_section(self) -> None:
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:refine-issue` - 2026-01-01T00:00:00 - `/s.jsonl`\n"
+            "\n## Another Section\n"
+            "- `/ll:should-not-appear` - 2026-01-02T00:00:00 - `/s.jsonl`\n"
+        )
+        result = parse_session_log(content)
+        assert "/ll:should-not-appear" not in result
+        assert "/ll:refine-issue" in result
+
+    def test_stops_at_triple_dash_separator(self) -> None:
+        content = (
+            "# Issue\n\n## Session Log\n"
+            "- `/ll:refine-issue` - 2026-01-01T00:00:00 - `/s.jsonl`\n"
+            "\n---\n\n**Open**"
+        )
+        assert parse_session_log(content) == ["/ll:refine-issue"]

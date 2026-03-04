@@ -17,6 +17,7 @@ def main_issues() -> int:
     from little_loops.cli.issues.impact_effort import cmd_impact_effort
     from little_loops.cli.issues.list_cmd import cmd_list
     from little_loops.cli.issues.next_id import cmd_next_id
+    from little_loops.cli.issues.refine_status import cmd_refine_status
     from little_loops.cli.issues.sequence import cmd_sequence
     from little_loops.cli.issues.show import cmd_show
     from little_loops.cli_args import add_config_arg
@@ -33,6 +34,7 @@ Sub-commands:
   show           Show summary card for a single issue
   sequence       Suggest dependency-ordered implementation sequence
   impact-effort  Display impact vs effort matrix for active issues
+  refine-status  Show refinement depth table sorted by commands touched
 
 Examples:
   %(prog)s next-id
@@ -40,6 +42,9 @@ Examples:
   %(prog)s show FEAT-518
   %(prog)s sequence --limit 10
   %(prog)s impact-effort
+  %(prog)s refine-status
+  %(prog)s refine-status --type BUG
+  %(prog)s refine-status --format json
 """,
     )
 
@@ -75,6 +80,18 @@ Examples:
     ie = subs.add_parser("impact-effort", help="Display impact vs effort matrix")
     add_config_arg(ie)
 
+    refine_s = subs.add_parser(
+        "refine-status", help="Show refinement depth table sorted by commands touched"
+    )
+    refine_s.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
+    refine_s.add_argument(
+        "--format",
+        choices=["table", "json"],
+        default="table",
+        help="Output format (default: table)",
+    )
+    add_config_arg(refine_s)
+
     args = parser.parse_args()
 
     if not args.command:
@@ -94,4 +111,6 @@ Examples:
         return cmd_show(config, args)
     if args.command == "impact-effort":
         return cmd_impact_effort(config, args)
+    if args.command == "refine-status":
+        return cmd_refine_status(config, args)
     return 1

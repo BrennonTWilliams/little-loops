@@ -167,14 +167,17 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
 
     # Session log: parse ## Session Log for unique /ll:* commands with counts
     history: str | None = None
+    from little_loops.session_log import parse_session_log
+
     log_match = re.search(
         r"^## Session Log\s*\n+(.*?)(?:\n##|\n---|\Z)", content, re.MULTILINE | re.DOTALL
     )
     if log_match:
-        cmds = re.findall(r"`(/[\w:-]+)`", log_match.group(1))
-        if cmds:
-            counts = Counter(cmds)
-            parts = [f"{cmd} ({n})" if n > 1 else cmd for cmd, n in counts.items()]
+        raw_cmds = re.findall(r"`(/[\w:-]+)`", log_match.group(1))
+        if raw_cmds:
+            counts = Counter(raw_cmds)
+            distinct = parse_session_log(content)
+            parts = [f"{cmd} ({counts[cmd]})" if counts[cmd] > 1 else cmd for cmd in distinct]
             history = ", ".join(parts)
 
     # Relative path

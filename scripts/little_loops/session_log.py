@@ -6,10 +6,37 @@ session log entries with command name, timestamp, and file path.
 
 from __future__ import annotations
 
+import re
 from datetime import UTC, datetime
 from pathlib import Path
 
 from little_loops.user_messages import get_project_folder
+
+# Regex to isolate the ## Session Log section content
+_SESSION_LOG_SECTION_RE = re.compile(
+    r"^## Session Log\s*\n+(.*?)(?:\n##|\n---|\Z)", re.MULTILINE | re.DOTALL
+)
+# Regex to extract backtick-quoted /ll:* command names from session log entries
+_COMMAND_RE = re.compile(r"`(/[\w:-]+)`")
+
+
+def parse_session_log(content: str) -> list[str]:
+    """Extract distinct /ll:* command names from the ## Session Log section.
+
+    Returns commands in first-seen order, deduplicated (preserves insertion order).
+
+    Args:
+        content: Full text of an issue markdown file.
+
+    Returns:
+        List of distinct command names (e.g. ["/ll:refine-issue", "/ll:ready-issue"]).
+    """
+    log_match = _SESSION_LOG_SECTION_RE.search(content)
+    if not log_match:
+        return []
+    cmds = _COMMAND_RE.findall(log_match.group(1))
+    # Deduplicate while preserving insertion order
+    return list(dict.fromkeys(cmds))
 
 
 def get_current_session_jsonl(cwd: Path | None = None) -> Path | None:

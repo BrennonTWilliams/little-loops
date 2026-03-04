@@ -143,6 +143,9 @@ class IssueInfo:
         product_impact: Product impact assessment (optional)
         effort: Effort estimate (1=low, 2=medium, 3=high), inferred from priority if absent
         impact: Impact estimate (1=low, 2=medium, 3=high), inferred from priority if absent
+        confidence_score: Readiness score (0-100) written by /ll:confidence-check, or None
+        outcome_confidence: Outcome confidence (0-100) written by /ll:confidence-check, or None
+        session_commands: Distinct /ll:* commands found in the ## Session Log section
     """
 
     path: Path
@@ -156,6 +159,9 @@ class IssueInfo:
     product_impact: ProductImpact | None = None
     effort: int | None = None
     impact: int | None = None
+    confidence_score: int | None = None
+    outcome_confidence: int | None = None
+    session_commands: list[str] = field(default_factory=list)
 
     @property
     def priority_int(self) -> int:
@@ -180,6 +186,9 @@ class IssueInfo:
             "product_impact": (self.product_impact.to_dict() if self.product_impact else None),
             "effort": self.effort,
             "impact": self.impact,
+            "confidence_score": self.confidence_score,
+            "outcome_confidence": self.outcome_confidence,
+            "session_commands": self.session_commands,
         }
 
     @classmethod
@@ -197,6 +206,9 @@ class IssueInfo:
             product_impact=ProductImpact.from_dict(data.get("product_impact")),
             effort=data.get("effort"),
             impact=data.get("impact"),
+            confidence_score=data.get("confidence_score"),
+            outcome_confidence=data.get("outcome_confidence"),
+            session_commands=data.get("session_commands", []),
         )
 
 
@@ -249,11 +261,28 @@ class IssueParser:
         impact_raw = frontmatter.get("impact")
         effort = int(effort_raw) if effort_raw is not None and str(effort_raw).isdigit() else None
         impact = int(impact_raw) if impact_raw is not None and str(impact_raw).isdigit() else None
+        confidence_raw = frontmatter.get("confidence_score")
+        outcome_raw = frontmatter.get("outcome_confidence")
+        confidence_score = (
+            int(confidence_raw)
+            if confidence_raw is not None and str(confidence_raw).isdigit()
+            else None
+        )
+        outcome_confidence = (
+            int(outcome_raw)
+            if outcome_raw is not None and str(outcome_raw).isdigit()
+            else None
+        )
 
         # Parse title and dependencies from file content
         title = self._parse_title_from_content(content, issue_path)
         blocked_by = self._parse_blocked_by(content)
         blocks = self._parse_blocks(content)
+
+        # Parse session commands from ## Session Log section
+        from little_loops.session_log import parse_session_log
+
+        session_commands = parse_session_log(content)
 
         return IssueInfo(
             path=issue_path,
@@ -267,6 +296,9 @@ class IssueParser:
             product_impact=product_impact,
             effort=effort,
             impact=impact,
+            confidence_score=confidence_score,
+            outcome_confidence=outcome_confidence,
+            session_commands=session_commands,
         )
 
     def _parse_priority(self, filename: str) -> str:

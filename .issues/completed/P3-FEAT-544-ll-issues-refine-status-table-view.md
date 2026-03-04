@@ -116,12 +116,22 @@ Example JSON record:
 _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - **Session Log regex** (from `show.py:168-174`): `re.search(r"^## Session Log\s*\n+(.*?)(?:\n##|\n---|\Z)", content, re.MULTILINE | re.DOTALL)` then `re.findall(r"`(/[\w:-]+)`", log_match.group(1))` — works for both `—` (em-dash) and `-` (hyphen) separator variants found in real issue files
-- **IssueInfo is at `issue_parser.py:131-158`**; `find_issues()` at line 491 returns `List[IssueInfo]` sorted by `(priority_int, issue_id)` ascending — refine-status will need to re-sort descending by `len(session_commands)` then ascending by priority
-- **`parse_frontmatter(content, coerce_types=True)`** (from `frontmatter.py:13`) returns `confidence_score` and `outcome_confidence` as Python `int` when present; `IssueParser.parse_file()` currently calls it without `coerce_types` — need `coerce_types=True` for numeric fields
+- **`show.py:168-178` uses `Counter` for display** — the existing code returns a comma-joined string like `"/ll:refine-issue (2), /ll:ready-issue"` for the card view. `parse_session_log()` must return a distinct list instead: `list(dict.fromkeys(cmds))` preserves insertion order and deduplicates. The display string logic stays in `show.py`.
+- **IssueInfo is at `issue_parser.py:131-158`**; `find_issues()` at line 491 returns `list[IssueInfo]` sorted by `(priority_int, issue_id)` ascending — refine-status will need to re-sort descending by `len(session_commands)` then ascending by priority
+- **`parse_frontmatter(content, coerce_types=True)`** (from `frontmatter.py:13`) returns `confidence_score` and `outcome_confidence` as Python `int` when present; `IssueParser.parse_file()` currently calls it without `coerce_types` and does **manual** int conversion for `effort`/`impact` at lines 250-251. For consistency, use the same `str(val).isdigit()` guard pattern for `confidence_score`/`outcome_confidence` rather than switching to `coerce_types=True`.
 - **`confidence_score`/`outcome_confidence` only in a subset of issues**: 4 issues confirmed (ENH-507, ENH-493, ENH-470, ENH-495); most recent issues (BUG-525+) lack them — `—` display for absent values is necessary
 - **No `shutil.get_terminal_size` currently used anywhere** — this is a new pattern for the codebase; `show.py` uses content-width sizing instead. Decision: use `shutil.get_terminal_size().columns` for the title truncation column
 - **JSON output decision**: use JSONL (one object per line via `print(json.dumps(record))`) — matches `user_messages.py:717-726` pattern and issue spec; deviates from `deps.py` indented JSON convention
 - **`--format` flag in `__init__.py`**: add `refine_s.add_argument("--format", choices=["table", "json"], default="table")` consistent with `ll-deps` / `ll-history` patterns
+
+### Corrections from Second Refinement Pass
+
+_Added by `/ll:refine-issue` — verified against codebase:_
+
+- **`session_log.py` already exists** at `scripts/little_loops/session_log.py` — it exposes `get_current_session_jsonl()` (line 15) and `append_session_log_entry()` (line 38). Implementation Step 1 should ADD `parse_session_log()` to this existing file, NOT create a new one. The "Files to Modify" list is correct; the "Files to Create" list should NOT include `session_log.py`.
+- **`__init__.py` imports are deferred inside `main_issues()`** — all five command imports are at lines 17–21 INSIDE the function body, not at module level. The new `from little_loops.cli.issues.refine_status import cmd_refine_status` import goes inside `main_issues()` alongside the others, not at "line ~22" of the module.
+- **`impact_effort.py` does NOT use `✓`/`—` cells** — it uses fixed-width quadrant box rendering with `ljust(_COL_WIDTH)` (`impact_effort.py:52-60`). The `✓`/`—` cell pattern described in this issue does not exist anywhere in the codebase and must be implemented fresh in `refine_status.py`. Reference `list_cmd.py` for row-by-row issue iteration; the cell rendering logic is novel.
+- **Test fixture reference correction** — `test_issues_cli.py:563-583` contains `test_show_with_frontmatter_scores` (a test method), not a fixture definition. The shared pytest fixture block is at line 60+. Both are valid references: line 60+ for fixture setup pattern, lines 563-583 for the `patch.object(sys, "argv", [...]) + main_issues() + capsys.readouterr()` invocation pattern.
 
 ## Impact
 
@@ -138,13 +148,35 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 | `scripts/little_loops/cli/issues/__init__.py` | Where to register new subparser |
 | `scripts/little_loops/issue_parser.py` | Issue parsing utilities to extend |
 
+## Resolution
+
+Implemented 2026-03-03. All acceptance criteria met:
+
+- `ll-issues refine-status` prints table of all active issues
+- Columns dynamically derived from distinct `/ll:*` entries across all Session Log sections
+- `✓` / `—` cells for command presence/absence per issue
+- `Ready` and `OutConf` numeric columns from frontmatter; `Total` column
+- Issues sorted descending by total, ascending priority as tiebreaker
+- `--type BUG|FEAT|ENH` filter and `--format json` (JSONL) supported
+- Terminal-width-aware title truncation with `…`
+
+### Files Changed
+
+- `scripts/little_loops/session_log.py` — added `parse_session_log()`
+- `scripts/little_loops/issue_parser.py` — added `confidence_score`, `outcome_confidence`, `session_commands` to `IssueInfo`
+- `scripts/little_loops/cli/issues/show.py` — refactored to use `parse_session_log()`
+- `scripts/little_loops/cli/issues/refine_status.py` — new subcommand
+- `scripts/little_loops/cli/issues/__init__.py` — registered `refine-status` subparser
+
 ## Session Log
 
+- `/ll:manage-issue` — 2026-03-03T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:refine-issue` — 2026-03-03T09:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2a1b4efd-c8d7-4a60-8c4d-2fe9383c1af1.jsonl`
 - `/ll:refine-issue` — 2026-03-03T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a9be526-ccb3-43a0-b119-5acbc3fba8f2.jsonl`
 - `/ll:capture-issue` — 2026-03-03T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ace9385-297c-4f88-9e68-d349c8dea381.jsonl`
 - `/ll:format-issue` — 2026-03-03T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/26ee613e-e461-449f-abe5-936627dc59aa.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-03 | Priority: P3
+**Completed** | Created: 2026-03-03 | Resolved: 2026-03-03 | Priority: P3
 `feat`, `ll-issues`, `refinement`, `table-view`, `capture-issue`
