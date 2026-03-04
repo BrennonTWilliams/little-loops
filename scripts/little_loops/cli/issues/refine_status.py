@@ -20,6 +20,7 @@ _SCORE_WIDTH = 7  # " Ready  " / "OutConf "
 _TOTAL_WIDTH = 6  # "Total "
 # Width of each command column: strip "/ll:" prefix and display short name
 _CMD_WIDTH = 9  # enough for most command short names
+_NORM_WIDTH = 4  # "Norm" / "✓" / "✗"
 
 
 def _short_name(cmd: str) -> str:
@@ -55,7 +56,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = success).
     """
-    from little_loops.issue_parser import find_issues
+    from little_loops.issue_parser import find_issues, is_normalized
 
     type_prefixes = {args.type} if getattr(args, "type", None) else None
     issues = find_issues(config, type_prefixes=type_prefixes)
@@ -89,6 +90,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 "confidence_score": issue.confidence_score,
                 "outcome_confidence": issue.outcome_confidence,
                 "total": len(issue.session_commands),
+                "normalized": is_normalized(issue.path.name),
             }
             print(json.dumps(record))
         return 0
@@ -97,10 +99,11 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     term_cols = shutil.get_terminal_size().columns
 
     # Compute how much space is consumed by fixed columns + command columns
-    # Layout: ID | Pri | Title | [cmd cols...] | Ready | OutConf | Total
+    # Layout: ID | Pri | Title | [cmd cols...] | Norm | Ready | OutConf | Total
     fixed_width = (
         _ID_WIDTH + 1
         + _PRI_WIDTH + 1
+        + _NORM_WIDTH + 1  # Norm
         + _SCORE_WIDTH + 1  # Ready
         + _SCORE_WIDTH + 1  # OutConf
         + _TOTAL_WIDTH
@@ -113,6 +116,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
         pri: str,
         title: str,
         cmd_cells: list[str],
+        norm: str,
         ready: str,
         out_conf: str,
         total: str,
@@ -124,6 +128,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
         ]
         for cell in cmd_cells:
             parts.append(_col(cell, _CMD_WIDTH))
+        parts.append(_col(norm, _NORM_WIDTH))
         parts.append(_col(ready, _SCORE_WIDTH))
         parts.append(_col(out_conf, _SCORE_WIDTH))
         parts.append(_col(total, _TOTAL_WIDTH))
@@ -131,7 +136,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
 
     # Header row
     cmd_headers = [_col(_truncate(_short_name(c), _CMD_WIDTH), _CMD_WIDTH) for c in all_cmds]
-    header = _row("ID", "Pri", "Title", cmd_headers, "Ready", "OutConf", "Total")
+    header = _row("ID", "Pri", "Title", cmd_headers, "Norm", "Ready", "OutConf", "Total")
     separator = "-" * len(header)
 
     rows: list[str] = [header, separator]
@@ -139,6 +144,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     for issue in sorted_issues:
         cmd_set = set(issue.session_commands)
         cmd_cells = ["\u2713" if c in cmd_set else "\u2014" for c in all_cmds]
+        norm_cell = "\u2713" if is_normalized(issue.path.name) else "\u2717"
         ready = str(issue.confidence_score) if issue.confidence_score is not None else "\u2014"
         out_conf = (
             str(issue.outcome_confidence) if issue.outcome_confidence is not None else "\u2014"
@@ -150,6 +156,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 issue.priority,
                 _truncate(issue.title, title_width),
                 cmd_cells,
+                norm_cell,
                 ready,
                 out_conf,
                 total,

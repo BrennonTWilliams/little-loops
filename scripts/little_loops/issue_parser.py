@@ -25,6 +25,21 @@ logger = logging.getLogger(__name__)
 ISSUE_ID_PATTERN = re.compile(r"^[-*]\s+\*{0,2}([A-Z]+-\d+)", re.MULTILINE)
 
 
+_NORMALIZED_RE = re.compile(r"^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$")
+
+
+def is_normalized(filename: str) -> bool:
+    """Check whether an issue filename conforms to naming conventions.
+
+    Args:
+        filename: The basename of the issue file (e.g. 'P2-BUG-010-my-issue.md').
+
+    Returns:
+        True if the filename matches ``^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\\.md$``.
+    """
+    return bool(_NORMALIZED_RE.match(filename))
+
+
 def slugify(text: str) -> str:
     """Convert text to slug format for filenames.
 

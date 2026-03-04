@@ -2277,7 +2277,7 @@ Display a formatted summary card for a single issue. Accepts three input formats
 Searches all active category directories and the completed directory. Displays a box-drawing character card with:
 - **Metadata**: priority, status, effort, risk level
 - **Scores**: confidence score, outcome confidence (when present in frontmatter)
-- **Details**: summary text (truncated to 80 chars), integration file count, labels, session log history with command counts
+- **Details**: summary text (word-wrapped to fit card width), integration file count, labels, session log history with command counts
 - **Path**: relative path from project root
 
 ### main_history

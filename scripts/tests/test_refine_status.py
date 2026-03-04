@@ -258,6 +258,81 @@ class TestRefineStatusTable:
         assert "BUG-001" in out
         assert "FEAT-001" not in out
 
+    def test_norm_column_header_present(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """refine-status table header includes 'Norm' column."""
+        _write_config(temp_project_dir, sample_config)
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Norm" in out, "Norm column header should appear"
+
+    def test_norm_checkmark_for_normalized_filename(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """✓ appears in Norm column for filenames matching naming convention."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(bugs_dir, "P2-BUG-080-normalized.md", "BUG-080: Normalized filename")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # ✓ from Norm column (and possibly from cmd columns too, but ✗ must not appear)
+        assert "\u2713" in out, "Checkmark ✓ should appear for normalized filename"
+        assert "\u2717" not in out, "X ✗ should not appear when all filenames are normalized"
+
+    def test_norm_x_for_non_normalized_filename(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """✗ appears in Norm column for filenames not matching naming convention."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(bugs_dir, "invalid-filename.md", "Non-normalized issue")
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "\u2717" in out, "X ✗ should appear for non-normalized filename"
+
     def test_dynamic_columns_from_session_log(
         self,
         temp_project_dir: Path,
@@ -368,6 +443,44 @@ class TestRefineStatusJson:
         assert record["confidence_score"] is None
         assert record["outcome_confidence"] is None
         assert record["total"] == 0
+
+    def test_json_normalized_field(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """JSON output includes 'normalized' boolean field per record."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(bugs_dir, "P1-BUG-090-normal.md", "BUG-090: Normalized")
+        _make_issue(bugs_dir, "invalid-filename.md", "Non-normalized issue")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--format", "json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+        records = [json.loads(ln) for ln in lines]
+        by_id = {r["id"]: r for r in records if "id" in r}
+
+        # BUG-090 has normalized filename
+        assert "BUG-090" in by_id
+        assert by_id["BUG-090"]["normalized"] is True
+
+        # The invalid-filename.md issue won't have a standard ID, check via normalized=False
+        non_norm = [r for r in records if r.get("normalized") is False]
+        assert len(non_norm) == 1, "One record should have normalized=False"
 
     def test_json_sort_order(
         self,
