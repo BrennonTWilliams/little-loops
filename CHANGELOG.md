@@ -12,6 +12,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.29.0] - 2026-03-04
+
+### Added
+
+- **FSM executor improvements** - Enhanced event system, CLI display, interruptible sleep with backoff enforcement (40f1741, e83879c)
+- **LLM evaluator migration** - Migrate FSM LLM evaluator from Anthropic SDK to Claude CLI (da750eb)
+- **ll-issues refine-status subcommand** - New `ll-issues refine-status` with dynamic column table: Key, Norm, source/tradeoff/map columns, and refine-run counts (ENH-560, ENH-561)
+- **Dual confidence thresholds** - Configurable dual confidence thresholds in confidence-check config (ENH-562)
+- **BM25 relevance scoring** - Hybrid BM25 relevance scoring in `ll-history export` (2ae2133)
+- **Session Log audit trail** - Session log steps added to issue-modifying commands and skills (ENH-524)
+
+### Fixed
+
+- **Loop resume elapsed time** - Restore elapsed time correctly across loop resume (BUG-527)
+- **Concurrency TOCTOU race** - Eliminate TOCTOU race condition in LockManager.acquire() (b96efcf)
+- **Process signal distinction** - Distinguish ESRCH from EPERM in _process_alive (e43fc6f)
+- **FSM signal handling** - Handle FATAL_ERROR and LOOP_STOP signals in FSMExecutor (0da74d8)
+- **Issue-refinement loop** - Fix evaluate prompt and convert from goal to FSM paradigm (9f459c3, 2041c5f)
+
+### Changed
+
+- **Frontmatter deduplication** - Remove duplicate frontmatter parsing between sync.py and parsing.py (ENH-484)
+- **Dependency mapper module** - Split monolithic dependency_mapper into focused sub-package (275a1b4)
+- **Issue parser performance** - Replace prefix loop with pre-compiled union regex (6de1002)
+- **ll-history export rename** - Rename `generate-docs` subcommand to `export` (6772aca)
+
+[1.29.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.28.1...v1.29.0
+
 ## [1.28.1] - 2026-03-02
 
 ### Fixed
