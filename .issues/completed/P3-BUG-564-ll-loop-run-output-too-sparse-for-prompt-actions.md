@@ -93,10 +93,23 @@ Users should be able to see:
 
 ---
 
+## Resolution
+
+- **Status**: Fixed
+- **Date**: 2026-03-04
+- **Changes**:
+  - `scripts/little_loops/fsm/executor.py:527` — Removed `not is_slash_command` guard so prompt actions now emit output preview (last 500 chars)
+  - `scripts/little_loops/cli/loop/_helpers.py:225` — Increased action truncation limit from 60 to 120 chars (prompts now show ~111 chars instead of ~51)
+  - `scripts/little_loops/cli/loop/_helpers.py:244-257` — Prompt `action_complete` now shows last 3 lines of output (each up to 120 chars); shell keeps showing last 1 line (up to 100 chars)
+  - `scripts/little_loops/cli/loop/_helpers.py:280` — Increased evaluate `reason` truncation from 120 to 300 chars
+  - `scripts/tests/test_ll_loop_display.py` — Updated `test_action_truncation` to use new 120-char limit
+
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-04T09:50:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/07dab55f-8142-425b-8507-7a9873d64648.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bbc1c475-4122-4160-92ec-f5d55de86681.jsonl`
+- `/ll:manage-issue` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 
 ---
 
-**Open** | Created: 2026-03-04 | Priority: P3
+**Completed** | Created: 2026-03-04 | Priority: P3

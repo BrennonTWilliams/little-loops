@@ -138,6 +138,10 @@ if fix_action_type == "prompt":
 - `scripts/tests/test_fsm_compilers.py` — test patterns to follow
 - `.loops/tests-until-passing.yaml` — working reference: uses `action_type: prompt` explicitly
 
+## Blocked By
+
+- BUG-530
+
 ## Status
 
 Open
@@ -159,3 +163,4 @@ Open
 - `/ll:format-issue` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f4dee21-8bf7-4b06-a184-dbae77b0cc48.jsonl`
 - `/ll:verify-issues` - 2026-03-04 - VALID; all core claims confirmed against codebase
 - `/ll:refine-issue` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/037c8035-cf2b-4bea-8dab-6337898b38c5.jsonl`
+- `/ll:map-dependencies` - 2026-03-04 - validated existing `Blocked By: BUG-530`; added missing backlink `Blocks: ENH-563` to BUG-530

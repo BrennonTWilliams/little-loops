@@ -126,6 +126,10 @@ if eval_config.type == "llm_structured":
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test ref to `test_ll_loop_execution.py:746` (TestLLMFlags)
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 
+## Blocks
+
+- ENH-563
+
 ---
 
 **Open** | Created: 2026-03-03 | Priority: P3

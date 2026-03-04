@@ -103,5 +103,20 @@ Open
 
 ---
 
+## Verification Notes
+
+**Verdict: RESOLVED** (verified 2026-03-04)
+
+The feature described in this issue has already been implemented:
+
+- `_print_key()` function exists at `scripts/little_loops/cli/issues/refine_status.py:255`
+- `--no-key` flag suppression is implemented at line 249
+- Running `ll-issues refine-status` produces a Key section with all expected mappings (`source`, `norm`, `format`, `verify`, `refine`, `ready`, `confidence`, `total`)
+- The Key is omitted from `--format json` output (confirmed by inspecting the JSON code path)
+
+All acceptance criteria from the issue are satisfied. This issue can be closed/moved to completed.
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T03:38:39Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57effe1c-b988-485d-9160-c576120a0097.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d7dfca8-2373-4003-a4ba-595ff38e7842.jsonl`
+- `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/825dce99-8053-4c78-9dca-cfe8a45bcd07.jsonl`

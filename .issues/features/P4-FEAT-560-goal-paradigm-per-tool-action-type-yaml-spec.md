@@ -40,6 +40,16 @@ tools:
 
 ENH-562 provides auto-detection of multiline → prompt, but some users will want to explicitly declare `action_type` for clarity, documentation, or to force a specific dispatch mode. Explicit beats implicit. This feature also makes the `goal` paradigm's expressiveness closer to the `fsm` paradigm without requiring users to write a full FSM.
 
+## Use Case
+
+**Who**: A developer writing a `goal` paradigm loop YAML who needs precise control over tool dispatch mode.
+
+**Context**: When authoring a loop where a tool entry contains a multiline prompt (or slash command) that auto-detection might misclassify, or when they want the loop configuration to be self-documenting about dispatch intent.
+
+**Goal**: Declare `action_type: prompt` (or `shell` / `slash_command`) directly inline on a tool entry—without relying on ENH-562 auto-detection heuristics or converting the entire loop to FSM paradigm.
+
+**Outcome**: The loop executor respects the declared `action_type` and dispatches the tool entry correctly, with no silent fallback or misclassification.
+
 ## Acceptance Criteria
 
 - [ ] `tools:` list items may be plain strings (existing) or objects `{tool: str, action_type: str}`
@@ -67,6 +77,50 @@ ENH-562 provides auto-detection of multiline → prompt, but some users will wan
 ### Dependent Files (Reference Only)
 
 - `scripts/tests/test_fsm_compilers.py` — add tests for object-style tool entries
+
+### Similar Patterns
+
+- `scripts/little_loops/fsm/compilers.py` — existing `compile_goal` handles plain-string tools; new logic mirrors the FSM paradigm's per-state `action_type` field
+- `.loops/tests-until-passing.yaml` — working reference for `action_type: prompt` in an FSM loop
+
+### Tests
+
+- `scripts/tests/test_fsm_compilers.py` — add tests: object-style tool entry, mixed string/object entries, missing `tool` key raises `ValueError`, invalid `action_type` raises error
+
+### Documentation
+
+- `skills/create-loop/paradigms.md` — add object-syntax example to `goal` paradigm section
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — inline schema comments updated
+
+### Configuration
+
+- N/A — no config file changes required
+
+## API/Interface
+
+New internal helper in `scripts/little_loops/fsm/compilers.py`:
+
+```python
+def _parse_tool_entry(entry: str | dict) -> tuple[str, str | None]:
+    """Parse a tools[] entry into (action, action_type).
+
+    Args:
+        entry: Either a plain string or a dict with 'tool' and optional 'action_type' keys.
+
+    Returns:
+        Tuple of (action_string, action_type_or_None).
+
+    Raises:
+        ValueError: If entry is a dict missing the required 'tool' key.
+    """
+    if isinstance(entry, str):
+        return entry, None
+    if not isinstance(entry, dict) or "tool" not in entry:
+        raise ValueError(f"Invalid tool entry: {entry!r}")
+    return entry["tool"], entry.get("action_type")
+```
+
+Schema change in `scripts/little_loops/fsm/fsm-loop-schema.json` — `tools` array items updated from `{"type": "string"}` to `oneOf: [string, object]`. No public CLI API changes.
 
 ## Implementation Steps
 
@@ -144,3 +198,4 @@ Open
 
 ## Session Log
 - `capture-issue` - 2026-03-04 - identified while debugging `.loops/issue-refinement.yaml`; Option C counterpart to ENH-562 Option B
+- `/ll:format-issue` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8508667-855e-42a5-8045-689c560ff2ef.jsonl`
