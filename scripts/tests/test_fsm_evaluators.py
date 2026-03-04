@@ -652,8 +652,64 @@ class TestLLMStructuredEvaluator:
         assert result.verdict == "error"
         assert result.details.get("api_error") is True
 
+    def test_empty_stdout(self, mock_cli) -> None:
+        """Empty stdout from CLI returns error with diagnostic message."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = ""
+        mock_result.stderr = ""
+
+        result = evaluate_llm_structured("...")
+
+        assert result.verdict == "error"
+        assert result.details.get("empty_output") is True
+        assert "empty output" in result.details["error"]
+
+    def test_empty_stdout_includes_stderr(self, mock_cli) -> None:
+        """Empty stdout error includes stderr content when available."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = ""
+        mock_result.stderr = "rate limit exceeded"
+
+        result = evaluate_llm_structured("...")
+
+        assert result.verdict == "error"
+        assert "rate limit exceeded" in result.details["error"]
+
+    def test_is_error_in_envelope(self, mock_cli) -> None:
+        """is_error=true in envelope returns error even with exit code 0."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = json.dumps({"is_error": True, "result": ""})
+
+        result = evaluate_llm_structured("...")
+
+        assert result.verdict == "error"
+        assert result.details.get("api_error") is True
+
+    def test_result_as_dict_in_envelope(self, mock_cli) -> None:
+        """result field as dict (not string) is handled correctly."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = json.dumps(
+            {"result": {"verdict": "success", "confidence": 0.9, "reason": "Done"}}
+        )
+
+        result = evaluate_llm_structured("...")
+
+        assert result.verdict == "success"
+        assert result.details["confidence"] == 0.9
+
+    def test_empty_result_field_includes_raw_preview(self, mock_cli) -> None:
+        """Empty result field returns error with raw_preview for diagnosis."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = json.dumps({"result": "", "is_error": False})
+
+        result = evaluate_llm_structured("...")
+
+        assert result.verdict == "error"
+        assert "raw_preview" in result.details
+        assert "Empty result field" in result.details["error"]
+
     def test_invalid_json_response(self, mock_cli) -> None:
-        """Unparseable JSON from CLI returns error."""
+        """Unparseable JSON from CLI returns error with raw_preview."""
         mock_run, mock_result = mock_cli
         mock_result.stdout = "not json"
 
@@ -661,6 +717,7 @@ class TestLLMStructuredEvaluator:
 
         assert result.verdict == "error"
         assert "Failed to parse" in result.details["error"]
+        assert "raw_preview" in result.details
 
     def test_output_truncation(self, mock_cli) -> None:
         """Long output is truncated to last 4000 chars."""

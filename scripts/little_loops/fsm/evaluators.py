@@ -447,15 +447,51 @@ def evaluate_llm_structured(
             details={"error": f"Claude CLI error: {proc.stderr.strip()}", "api_error": True},
         )
 
-    # Parse the CLI JSON envelope and extract structured result
-    try:
-        envelope = json.loads(proc.stdout)
-        llm_text = envelope.get("result", "")
-        llm_result: dict[str, Any] = json.loads(llm_text)
-    except (json.JSONDecodeError, TypeError, ValueError) as e:
+    # Guard: empty stdout with exit 0 (API error not reflected in exit code)
+    if not proc.stdout.strip():
+        stderr_info = proc.stderr.strip()[:200] if proc.stderr else ""
+        error_msg = "Claude CLI returned empty output"
+        if stderr_info:
+            error_msg += f" (stderr: {stderr_info})"
         return EvaluationResult(
             verdict="error",
-            details={"error": f"Failed to parse LLM response: {e}"},
+            details={"error": error_msg, "empty_output": True},
+        )
+
+    # Parse the CLI JSON envelope and extract structured result.
+    # The envelope format is {"result": "<json-string>", "is_error": false, ...}.
+    # Some CLI versions set is_error=true with exit 0, or return result as a dict.
+    try:
+        envelope = json.loads(proc.stdout)
+
+        # Check is_error flag (some CLI versions exit 0 but report error in envelope)
+        if envelope.get("is_error", False):
+            err_text = str(envelope.get("result", "") or "")[:200]
+            return EvaluationResult(
+                verdict="error",
+                details={"error": f"Claude CLI reported error: {err_text}", "api_error": True},
+            )
+
+        raw_result = envelope.get("result", "")
+        if isinstance(raw_result, dict):
+            # Some CLI versions embed the structured object directly
+            llm_result: dict[str, Any] = raw_result
+        elif raw_result:
+            llm_result = json.loads(raw_result)
+        else:
+            raw_preview = proc.stdout[:300]
+            return EvaluationResult(
+                verdict="error",
+                details={
+                    "error": "Empty result field in Claude CLI response",
+                    "raw_preview": raw_preview,
+                },
+            )
+    except (json.JSONDecodeError, TypeError, ValueError) as e:
+        raw_preview = proc.stdout[:300] if proc.stdout else "(empty)"
+        return EvaluationResult(
+            verdict="error",
+            details={"error": f"Failed to parse LLM response: {e}", "raw_preview": raw_preview},
         )
 
     # Build result with confidence handling
