@@ -128,7 +128,16 @@ Alternatively, add `elapsed_before_resume_ms` to `LoopState` and use it to offse
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md` persistence section; `test_fsm_persistence.py:290` (TestPersistentExecutor) for test patterns
+- `/ll:manage-issue` — 2026-03-03T23:30:00Z — Fixed via commit 4cc0de1
+
+## Resolution
+
+- Added `elapsed_offset_ms: int = 0` to `FSMExecutor`; applied to timeout check, `_build_context`, and both `_finish` paths
+- Added `accumulated_ms: int = 0` to `LoopState` with backwards-compatible serialization
+- `PersistentExecutor._save_state()` and `run()` now persist accumulated elapsed time
+- `PersistentExecutor.resume()` sets `executor.elapsed_offset_ms = state.accumulated_ms` before delegating to `run()`
+- Added test: `test_resume_restores_accumulated_duration` verifies `duration_ms >= prior_elapsed_ms` after resume
 
 ---
 
-**Open** | Created: 2026-03-03 | Priority: P2
+**Closed** | Created: 2026-03-03 | Resolved: 2026-03-03 | Priority: P2
