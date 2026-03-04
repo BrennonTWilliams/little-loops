@@ -54,6 +54,27 @@ For `llm_structured`, show a truncated preview of the prompt (first 2 lines). Fu
 - State-level `capture` tells you what variable an action's output is stored in — important for context-dependent loops.
 - `on_maintain` determines restart behavior — invisible without reading the YAML.
 
+## Acceptance Criteria
+
+- [ ] `ll-loop show` displays a truncated evaluate prompt preview (first 2 lines, max 100 chars each) for `llm_structured` evaluators
+- [ ] `ll-loop show` displays `min_confidence` only when it differs from the default (0.5)
+- [ ] `ll-loop show` displays `operator` and `target` for numeric/threshold evaluators when set
+- [ ] `ll-loop show` displays `pattern` when set on an evaluator
+- [ ] `ll-loop show` displays state-level `capture`, `timeout`, and `on_maintain` when configured on a state
+- [ ] LLM config block shown in metadata section when non-default values are present
+- [ ] All existing `ll-loop show` output is preserved (no regressions)
+
+## Success Metrics
+
+- **Before**: `ll-loop show` output omits evaluate prompt, min_confidence, operator/target, pattern, and all state-level fields
+- **After**: All configured evaluate and state-level fields visible in `ll-loop show` output without requiring the user to read the YAML file directly
+- **Regression**: `ll-loop show` on loops with no evaluate config or no optional state fields produces identical output to current behavior
+
+## Scope Boundaries
+
+- **In scope**: `cmd_show` display logic in `scripts/little_loops/cli/loop/info.py`; evaluate config fields (`prompt` preview, `min_confidence`, `operator`, `target`, `pattern`); state-level fields (`capture`, `timeout`, `on_maintain`); LLM config block in metadata
+- **Out of scope**: Full evaluate prompt display (deferred to ENH-569 `--verbose` flag); `ll-loop run` output; other loop commands (`status`, `list`, `history`)
+
 ## Implementation Steps
 
 1. **Evaluate config display** in `cmd_show` (`scripts/little_loops/cli/loop/info.py`):
@@ -92,9 +113,19 @@ For `llm_structured`, show a truncated preview of the prompt (first 2 lines). Fu
 
 4. In `--verbose` mode (see ENH-569), print full evaluate prompt without truncation.
 
-## Files to Change
+## Integration Map
 
+### Files to Modify
 - `scripts/little_loops/cli/loop/info.py` — `cmd_show` evaluate and state field display
+
+### Tests
+- `scripts/tests/test_ll_loop_display.py` — add cases for evaluate prompt preview, min_confidence, operator/target, state-level fields
+
+### Documentation
+- N/A — `ll-loop show` is a CLI command; behavior is self-documenting
+
+### Configuration
+- N/A
 
 ## Dependencies
 
@@ -102,3 +133,4 @@ For `llm_structured`, show a truncated preview of the prompt (first 2 lines). Fu
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d569869-6d78-45db-ae07-4c05f23b46fe.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6597c7fe-9a5f-4855-8b66-52360a144614.jsonl`
