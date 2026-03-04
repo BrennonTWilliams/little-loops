@@ -337,6 +337,9 @@ class FSMExecutor:
         # Pending handoff signal (set by _run_action, checked by main loop)
         self._pending_handoff: DetectedSignal | None = None
 
+        # Pending error payload from FATAL_ERROR signal (set by _run_action, checked by main loop)
+        self._pending_error: str | None = None
+
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the executor.
 
@@ -404,6 +407,10 @@ class FSMExecutor:
 
                 # Execute state
                 next_state = self._execute_state(state_config)
+
+                # Check for pending error signal (FATAL_ERROR)
+                if self._pending_error is not None:
+                    return self._finish("error", error=self._pending_error)
 
                 # Check for pending handoff signal
                 if self._pending_handoff:
@@ -534,8 +541,13 @@ class FSMExecutor:
         # Check for signals in output
         if self.signal_detector:
             signal = self.signal_detector.detect_first(result.output)
-            if signal and signal.signal_type == "handoff":
-                self._pending_handoff = signal
+            if signal:
+                if signal.signal_type == "handoff":
+                    self._pending_handoff = signal
+                elif signal.signal_type == "error":
+                    self._pending_error = signal.payload
+                elif signal.signal_type == "stop":
+                    self.request_shutdown()
 
         return result
 

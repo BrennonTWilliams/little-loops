@@ -2053,6 +2053,122 @@ class TestHandoffDetection:
         mock_handler.handle.assert_called_once_with("test", "prompt")
 
 
+class TestFatalErrorAndStopSignals:
+    """Tests for FATAL_ERROR and LOOP_STOP signal handling in executor."""
+
+    def test_fatal_error_signal_terminates_with_error(self) -> None:
+        """FATAL_ERROR signal terminates executor with terminated_by='error'."""
+        from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
+
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="echo FATAL_ERROR: disk full",
+                    on_success="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("echo", output="FATAL_ERROR: disk full")
+
+        mock_detector = MagicMock(spec=SignalDetector)
+        mock_detector.detect_first.return_value = DetectedSignal(
+            signal_type="error",
+            payload="disk full",
+            raw_match="FATAL_ERROR: disk full",
+        )
+
+        executor = FSMExecutor(
+            fsm,
+            action_runner=mock_runner,
+            signal_detector=mock_detector,
+        )
+        result = executor.run()
+
+        assert result.terminated_by == "error"
+        assert result.error == "disk full"
+
+    def test_fatal_error_signal_does_not_continue_to_next_state(self) -> None:
+        """FATAL_ERROR stops execution before transitioning to next state."""
+        from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
+
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="echo FATAL_ERROR: abort",
+                    on_success="next",
+                ),
+                "next": StateConfig(
+                    action="echo should not run",
+                    on_success="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("echo", output="FATAL_ERROR: abort")
+
+        mock_detector = MagicMock(spec=SignalDetector)
+        mock_detector.detect_first.return_value = DetectedSignal(
+            signal_type="error",
+            payload="abort",
+            raw_match="FATAL_ERROR: abort",
+        )
+
+        executor = FSMExecutor(
+            fsm,
+            action_runner=mock_runner,
+            signal_detector=mock_detector,
+        )
+        result = executor.run()
+
+        assert result.terminated_by == "error"
+        # Only the first action ran (one detect_first call)
+        assert mock_detector.detect_first.call_count == 1
+
+    def test_loop_stop_signal_requests_graceful_shutdown(self) -> None:
+        """LOOP_STOP signal causes graceful shutdown (terminated_by='signal')."""
+        from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
+
+        fsm = FSMLoop(
+            name="test",
+            initial="work",
+            states={
+                "work": StateConfig(
+                    action="echo LOOP_STOP: goal achieved",
+                    on_success="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("echo", output="LOOP_STOP: goal achieved")
+
+        mock_detector = MagicMock(spec=SignalDetector)
+        mock_detector.detect_first.return_value = DetectedSignal(
+            signal_type="stop",
+            payload="goal achieved",
+            raw_match="LOOP_STOP: goal achieved",
+        )
+
+        executor = FSMExecutor(
+            fsm,
+            action_runner=mock_runner,
+            signal_detector=mock_detector,
+        )
+        result = executor.run()
+
+        assert result.terminated_by == "signal"
+
+
 class TestRoutingEdgeCases:
     """Tests for routing edge cases in executor."""
 
