@@ -13,6 +13,17 @@ states:
     action_type: shell
     evaluate:
       type: llm_structured
+      prompt: |
+        Examine this ll-issues refine-status table output.
+        Return verdict "success" ONLY if every issue row satisfies ALL of the following:
+          1. All boolean columns (format, verify, map) show ✓ (not — em-dash).
+             Note: map column is dynamic — if it is absent from the table entirely,
+             treat it as incomplete (not yet run for any issue).
+          2. Both the ready (readiness score) and confidence (outcome confidence) columns
+             show integer values (not —) that meet or exceed their configured thresholds.
+        Return "failure" if any issue still has — in a format, verify, or map column, or if any issue
+        has unscored or below-threshold ready/confidence values.
+        Return "partial" if the output is ambiguous or truncated.
     on_success: done
     on_failure: fix
     on_error: fix
@@ -25,23 +36,24 @@ states:
       commands.confidence_gate.
 
       Find the highest Issue ID that still needs refinement work, where:
-      - Any boolean column shows — (em-dash): format, verify, tradeoff, or map
-      - OR the Ready (confidence_score) column shows — or is below readiness_threshold
-      - OR the OutConf (outcome_confidence) column shows — or is below outcome_threshold
+      - Any boolean column shows — (em-dash) for format or verify
+      - OR the map column is absent from the table entirely, or shows —
+      - OR the ready (confidence_score) column shows — or is below readiness_threshold
+      - OR the confidence (outcome_confidence) column shows — or is below outcome_threshold
 
       For that issue, execute the following steps in sequence:
 
-      Step A — Complete missing boolean columns (run each command that shows —):
-      - format column (—): /ll:format-issue [ISSUE_ID] --auto
-      - verify column (—): /ll:verify-issues [ISSUE_ID]
-      - tradeoff column (—): /ll:tradeoff-review-issues [ISSUE_ID]
-      - map column (—): /ll:map-dependencies [ISSUE_ID]
+      Step A — Complete all missing refinement commands. For each command below, check
+      whether it has been run for this issue (column present and showing ✓). If not, run it:
+      - format not done (column shows — or absent): /ll:format-issue [ISSUE_ID] --auto
+      - verify not done (column shows — or absent): /ll:verify-issues [ISSUE_ID] --auto
+      - map not done (column shows — or absent): /ll:map-dependencies [ISSUE_ID] --auto
 
       Step B — Score if unscored:
-      - If Ready or OutConf shows — (not yet scored): /ll:confidence-check [ISSUE_ID] --auto
+      - If ready or confidence shows — (not yet scored): /ll:confidence-check [ISSUE_ID] --auto
 
       Step C — Refine until scores meet thresholds (maximum 5 refinements):
-      - While (Ready < readiness_threshold OR OutConf < outcome_threshold):
+      - While (ready < readiness_threshold OR confidence < outcome_threshold):
         1. /ll:refine-issue [ISSUE_ID] --auto
         2. /ll:confidence-check [ISSUE_ID] --auto
         3. Check updated scores; stop if both thresholds met or 5 refinements reached
