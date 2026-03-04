@@ -11,6 +11,10 @@ discovered_by: capture-issue
 
 Extend `/ll:align-issues` to support aligning issues against a specific skill (e.g., `/ll:align-issues skill capture-issue`). Currently the command aligns issues against key documents in configured categories. This feature adds a parallel path that uses a skill's `SKILL.md` as the alignment reference, so users can check whether an issue is well-scoped for a particular skill to implement.
 
+## Current Behavior
+
+`/ll:align-issues` only aligns issues against key document categories (e.g., `architecture`, `product`, `roadmap`). There is no way to align an issue against a specific skill's documented scope, interface, or behavior. Users who want to verify an issue is correctly described for a particular skill must manually inspect the skill's `SKILL.md` alongside the issue file.
+
 ## Motivation
 
 Users sometimes want to verify that an issue is correctly described relative to what a specific skill is capable of — for example, checking that a `capture-issue` issue accurately references the skill's input handling, duplicate detection logic, or template behavior. Key documents cover architecture and specs, but skills represent executable capability; aligning issues to skills gives a tighter feedback loop for issue-to-implementation readiness.
