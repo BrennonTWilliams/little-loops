@@ -114,7 +114,9 @@ def print_execution_plan(fsm: FSMLoop) -> None:
                     preview += " ..."
                 print(f"    action: |\n      {preview}")
             else:
-                action_display = state.action[:70] + "..." if len(state.action) > 70 else state.action
+                action_display = (
+                    state.action[:70] + "..." if len(state.action) > 70 else state.action
+                )
                 print(f"    action: {action_display}")
         if state.evaluate:
             print(f"    evaluate: {state.evaluate.type}")

@@ -434,7 +434,7 @@ class TestCmdShow:
             "initial: fix\n"
             "states:\n"
             "  fix:\n"
-            f"    action: |\n"
+            "    action: |\n"
             + "\n".join(f"      {line}" for line in long_prompt.splitlines())
             + "\n"
             "    action_type: prompt\n"
@@ -501,7 +501,7 @@ class TestCmdShow:
             "initial: fix\n"
             "states:\n"
             "  fix:\n"
-            f"    action: |\n"
+            "    action: |\n"
             + "\n".join(f"      {line}" for line in full_prompt.splitlines())
             + "\n"
             "    action_type: prompt\n"

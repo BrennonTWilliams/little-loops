@@ -566,7 +566,9 @@ def cmd_show(
                     preview += " ..."
                 print(f"    action: |\n      {preview}")
             else:  # shell, slash_command, or None
-                action_display = state.action[:70] + "..." if len(state.action) > 70 else state.action
+                action_display = (
+                    state.action[:70] + "..." if len(state.action) > 70 else state.action
+                )
                 print(f"    action: {action_display}")
         if state.action_type:
             print(f"    type: {state.action_type}")
@@ -581,7 +583,9 @@ def cmd_show(
                         print(f"        {line}")
                 else:
                     lines = ev.prompt.strip().splitlines()
-                    preview = lines[0][:100] + (" ..." if len(lines) > 1 or len(lines[0]) > 100 else "")
+                    preview = lines[0][:100] + (
+                        " ..." if len(lines) > 1 or len(lines[0]) > 100 else ""
+                    )
                     print(f"      prompt: {preview}")
             if ev.min_confidence != 0.5:
                 print(f"      min_confidence: {ev.min_confidence}")

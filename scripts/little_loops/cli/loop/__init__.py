@@ -164,7 +164,9 @@ Examples:
     # Show subcommand
     show_parser = subparsers.add_parser("show", help="Show loop details and structure")
     show_parser.add_argument("loop", help="Loop name or path")
-    show_parser.add_argument("--verbose", "-v", action="store_true", help="Show full action text and evaluate prompt")
+    show_parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show full action text and evaluate prompt"
+    )
 
     args = parser.parse_args(argv)
 

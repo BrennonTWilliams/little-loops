@@ -764,21 +764,6 @@ class TestRouting:
 
     def test_on_partial_routes_correctly(self) -> None:
         """on_partial routes when evaluator returns 'partial' verdict."""
-        fsm = FSMLoop(
-            name="test",
-            initial="evaluate",
-            states={
-                "evaluate": StateConfig(
-                    action="check.sh",
-                    evaluate=EvaluateConfig(type="output_contains", pattern="PARTIAL"),
-                    on_success="done",
-                    on_failure="done",
-                    on_partial="fix",
-                ),
-                "fix": StateConfig(terminal=True),
-                "done": StateConfig(terminal=True),
-            },
-        )
         # output_contains "PARTIAL" → success verdict, not partial.
         # To test on_partial we need an evaluator that returns "partial".
         # Use a custom route table with "partial" verdict instead.
