@@ -3,6 +3,8 @@ discovered_commit: a574ea0ec555811db2490fece9aaf0819b3e3065
 discovered_branch: main
 discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
+confidence_score: 98
+outcome_confidence: 93
 ---
 
 # BUG-548: `_link_sessions` drops middle evidence entries — handoff count under-reported
@@ -93,16 +95,19 @@ Change both per-session `link_evidence` values to the full `evidence` list. Upda
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/workflow_sequence_analyzer.py` — `_link_sessions` and `analyze_workflows` handoff_count logic
+- `scripts/little_loops/workflow_sequence_analyzer.py:387` — `_link_sessions`: preserve full evidence list in `SessionLink`
+- `scripts/little_loops/workflow_sequence_analyzer.py:759-763` — `analyze_workflows` `handoff_count` logic: `sum(1 for link in session_links if any(s.get("link_evidence") == "handoff_detected" for s in link.sessions))` — update to check `unified_workflow.get("evidence", [])` instead
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/workflow_sequence_analyzer.py` — `analyze_workflows` reads `link.sessions[*]["link_evidence"]`
+- `scripts/little_loops/workflow_sequence_analyzer.py:428` — `"handoff_detected"` is appended to `evidence` list inside `_link_sessions` here
+- `scripts/little_loops/workflow_sequence_analyzer.py:762` — predicate: `any(s.get("link_evidence") == "handoff_detected" for s in link.sessions)` — this is the consumer that needs updating
+- `scripts/little_loops/workflow_sequence_analyzer.py:774` — `if len(session_links) > handoff_count:` — recommendation branch uses the count
 
 ### Similar Patterns
 - N/A
 
 ### Tests
-- `scripts/tests/test_workflow_sequence_analyzer.py` — `TestLinkSessions` class, add three-evidence test case
+- `scripts/tests/test_workflow_sequence_analyzer.py:653` — `TestLinkSessions` EXISTS — add three-evidence test case verifying `unified_workflow["evidence"]` contains all signals and `handoff_count` is correct
 
 ### Documentation
 - N/A
@@ -131,6 +136,7 @@ Change both per-session `link_evidence` values to the full `evidence` list. Upda
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:refine-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a020aaf9-77a1-4304-b1e8-283c2006ae91.jsonl` — Added exact line refs for `_link_sessions:387`, evidence append at `:428`, `handoff_count` sum at `:759-763`, predicate at `:762`; confirmed `TestLinkSessions:653` as existing test target
 
 ---
 

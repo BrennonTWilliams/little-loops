@@ -3,6 +3,8 @@ discovered_commit: a574ea0ec555811db2490fece9aaf0819b3e3065
 discovered_branch: main
 discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
+confidence_score: 98
+outcome_confidence: 86
 ---
 
 # BUG-546: `TypeError` on mixed naive/aware timestamps crashes `_compute_boundaries`
@@ -84,17 +86,19 @@ Note: This issue is related to ENH-549 (consolidate timestamp parsing), which co
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/workflow_sequence_analyzer.py` — `_compute_boundaries` except clause
+- `scripts/little_loops/workflow_sequence_analyzer.py:562-565` — `_compute_boundaries`: `except (ValueError, AttributeError)` → add `TypeError`
+- `scripts/little_loops/workflow_sequence_analyzer.py:448-455` — `_link_sessions`: `except ValueError` at line 450 only covers `fromisoformat`; the subtraction `(max - min)` at line 455 is **outside the try block** — mixed timestamps crash here with no handler at all
+- `scripts/little_loops/workflow_sequence_analyzer.py:683-690` — `_detect_workflows`: identical structure — `except ValueError` at line 685, subtraction at line 690 is **outside the try block** — same unhandled `TypeError` possible
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/workflow_sequence_analyzer.py` — `analyze_workflows` calls `_compute_boundaries`
+- `scripts/little_loops/workflow_sequence_analyzer.py` — `analyze_workflows` calls all three affected functions
 
 ### Similar Patterns
-- `_link_sessions` has similar timestamp parsing (lines 443–455) — same fix may be needed there
-- `_detect_workflows` also re-sorts by timestamp string (line 620)
+- Option B requires importing `timezone` from `datetime` — currently only `datetime` (the class) is imported (`from datetime import datetime` at line 28); `timezone` must be added
 
 ### Tests
-- `scripts/tests/test_workflow_sequence_analyzer.py` — add test with mixed naive/aware timestamps
+- `scripts/tests/test_workflow_sequence_analyzer.py:841` — `TestComputeBoundaries` EXISTS (8 test methods, none cover mixed naive/aware) — add mixed timezone test here
+- Also add tests for `_link_sessions:455` and `_detect_workflows:690` crash sites in `TestLinkSessions:653` and `TestDetectWorkflows:931`
 
 ### Documentation
 - N/A
@@ -104,9 +108,11 @@ Note: This issue is related to ENH-549 (consolidate timestamp parsing), which co
 
 ## Implementation Steps
 
-1. Add `TypeError` to the `except` tuple in `_compute_boundaries`
-2. Optionally normalize naive datetimes to UTC in all three timestamp-parsing sites (see ENH-549)
-3. Add regression test with mixed naive/aware timestamp input
+1. Fix `_compute_boundaries` (line 565): add `TypeError` to the `except` tuple — or wrap the subtraction separately
+2. Fix `_link_sessions` (line 455): wrap the `(max - min)` subtraction in a `try/except (TypeError,)` — it currently sits **outside** the try block with no protection
+3. Fix `_detect_workflows` (line 690): same as step 2 — wrap `(max - min)` subtraction
+4. If using Option B (normalize to UTC): add `timezone` to the import at line 28 (`from datetime import datetime, timezone`)
+5. Add regression tests in `TestComputeBoundaries:841`, `TestLinkSessions:653`, and `TestDetectWorkflows:931` with mixed naive/aware timestamps
 
 ## Impact
 
@@ -123,6 +129,7 @@ Note: This issue is related to ENH-549 (consolidate timestamp parsing), which co
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:refine-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a020aaf9-77a1-4304-b1e8-283c2006ae91.jsonl` — Discovered 2 additional unhandled crash sites: `_link_sessions:455` and `_detect_workflows:690` (subtraction outside try block); confirmed `timezone` not imported; updated Integration Map, Implementation Steps, and test class refs
 
 ---
 

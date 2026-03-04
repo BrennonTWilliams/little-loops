@@ -3,6 +3,8 @@ discovered_commit: 47c81c895baaac1acac69d105ed75ff1ec82ed2c
 discovered_branch: main
 discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
+confidence_score: 95
+outcome_confidence: 93
 ---
 
 # BUG-529: `cmd_stop` Writes "interrupted" Status Before SIGTERM — State Can Diverge from Reality

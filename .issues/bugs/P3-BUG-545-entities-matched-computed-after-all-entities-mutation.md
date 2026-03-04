@@ -3,6 +3,8 @@ discovered_commit: a574ea0ec555811db2490fece9aaf0819b3e3065
 discovered_branch: main
 discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # BUG-545: `entities_matched` computed after `all_entities` is mutated — always shows full entity set
@@ -80,13 +82,13 @@ matched_cluster.messages.append(
 - `scripts/little_loops/workflow_sequence_analyzer.py` — swap mutation/intersection order in `_cluster_by_entities`
 
 ### Dependent Files (Callers/Importers)
-- `scripts/tests/test_workflow_sequence_analyzer.py` — `TestClusterByEntities` class
+- `scripts/tests/test_workflow_sequence_analyzer.py:770` — `TestClusterByEntities` class (callers test `_cluster_by_entities` indirectly via `analyze_workflows`)
 
 ### Similar Patterns
 - N/A
 
 ### Tests
-- `scripts/tests/test_workflow_sequence_analyzer.py` — add assertion checking `entities_matched` only contains pre-existing cluster entities
+- `scripts/tests/test_workflow_sequence_analyzer.py:770` — `TestClusterByEntities` EXISTS — add assertion checking `entities_matched` only contains pre-existing cluster entities (entities that were in `all_entities` before the incoming message was appended)
 
 ### Documentation
 - N/A
@@ -115,6 +117,7 @@ matched_cluster.messages.append(
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:refine-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a020aaf9-77a1-4304-b1e8-283c2006ae91.jsonl` — Confirmed source at `workflow_sequence_analyzer.py:484`; updated `TestClusterByEntities:770` as existing test class target
 
 ---
 
