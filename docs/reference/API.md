@@ -2261,6 +2261,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 | `show` | Show summary card for a single issue |
 | `sequence` | Suggest dependency-ordered implementation sequence |
 | `impact-effort` | Display impact vs effort matrix for active issues |
+| `refine-status` | Refinement depth table sorted by commands touched (`--type`, `--format json`) |
 
 #### show
 

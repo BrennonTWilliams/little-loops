@@ -349,6 +349,9 @@ ll-issues show FEAT-001                       # Show summary card for an issue
 ll-issues sequence                            # Dependency-ordered implementation sequence
 ll-issues sequence --limit 5                  # Show top 5 issues to work on
 ll-issues impact-effort                       # ASCII impact vs effort matrix
+ll-issues refine-status                       # Refinement depth table sorted by commands touched
+ll-issues refine-status --type BUG            # Filter to bugs only
+ll-issues refine-status --format json         # JSONL output for scripting
 ```
 
 ### ll-verify-docs / ll-check-links
