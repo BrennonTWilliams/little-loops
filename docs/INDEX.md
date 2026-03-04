@@ -21,6 +21,7 @@ Documentation for using little-loops in your projects.
 - [Issue Management Guide](guides/ISSUE_MANAGEMENT_GUIDE.md) - End-to-end issue workflow: discovery, refinement, validation, and implementation
 - [Sprint Guide](guides/SPRINT_GUIDE.md) - Sprint creation, wave execution, dependency ordering, file contention, and resume
 - [Loops Guide](guides/LOOPS_GUIDE.md) - Loop creation, paradigms, built-in loops, and walkthrough
+- [Workflow Analysis Guide](guides/WORKFLOW_ANALYSIS_GUIDE.md) - Discover automation opportunities from message history using ll-workflows, analyze-workflows, and workflow-automation-proposer
 - [Issue Template Guide](reference/ISSUE_TEMPLATE.md) - Issue file structure, sections, and template v2.0 reference
 
 ## Developer Documentation
