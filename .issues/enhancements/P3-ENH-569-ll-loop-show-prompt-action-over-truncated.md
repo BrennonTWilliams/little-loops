@@ -60,10 +60,55 @@ When debugging a loop or reviewing it before running, the prompt action text is 
 
 3. In verbose mode, print full action text and full evaluate prompt without truncation.
 
-## Files to Change
+## Integration Map
 
-- `scripts/little_loops/cli/loop/info.py` — `cmd_show` action display logic
-- `scripts/little_loops/cli/loop/__init__.py` (or main arg parser) — add `--verbose` flag
+### Files to Modify
+- `scripts/little_loops/cli/loop/info.py` — `cmd_show` action display logic (per-type truncation)
+- `scripts/little_loops/cli/loop/__init__.py` — add `--verbose` / `-v` flag to `show` subparser; thread through to `cmd_show`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/loop/__init__.py` calls `cmd_show(args.loop, loops_dir, logger)` — signature may need `verbose` param added
+
+### Similar Patterns
+- N/A — no other subcommands truncate action text in the same way
+
+### Tests
+- `scripts/tests/test_ll_loop_commands.py` — `test_show_displays_metadata`, `test_show_displays_diagram` cover `cmd_show`; add tests for per-type truncation and `--verbose` flag
+
+### Documentation
+- N/A — no docs reference the 70-char truncation behavior
+
+### Configuration
+- N/A
+
+## Scope Boundaries
+
+- **In scope**: Display logic in `ll-loop show` — per-type action text truncation and `--verbose` flag
+- **Out of scope**: YAML file editing or reformatting; changes to `ll-loop run` or other subcommands; interactive pager or viewer
+
+## Success Metrics
+
+- `shell` actions truncate at ≤70 chars (no change from current behavior)
+- `prompt` actions show first 3 lines or ~200 chars followed by `...`
+- `slash_command` actions display in full (typically short)
+- `--verbose` flag shows 100% of action text and evaluate prompt with no truncation
+- After the fix, a user reviewing `ll-loop show` output can understand the intent of prompt actions without opening the YAML file directly
+
+## Impact
+
+- **Priority**: P3 — minor UX friction; users must open YAML to read prompt actions, but functionality is unaffected
+- **Effort**: Medium — arg parser change + display logic branch + verbose flag threading (~30–50 lines across 2 files)
+- **Risk**: Low — display-only change; no state mutation, no FSM logic touched
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `ll-loop`, `ux`, `cli`
+
+---
+
+**Open** | Created: 2026-03-04 | Priority: P3
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0d569869-6d78-45db-ae07-4c05f23b46fe.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4468f93a-677c-4cfe-9445-cc1a243211e3.jsonl`
