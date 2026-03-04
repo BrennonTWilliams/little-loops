@@ -72,3 +72,5 @@ scripts/.parallel-manage-state.json
 *-state.json
 
 docs/demo
+.loops/.running/
+*.Cast

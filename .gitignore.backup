@@ -51,12 +51,15 @@ temp/
 # Claude Code
 .claude/settings.local.json
 .claude/ll.local.md
+.claude/loop-suggestions/
+.claude/skills/
 .mcp.json
 
 # Python
 __pycache__/
 *.py[cod]
 *.egg-info/
+.hypothesis/
 
 # Runtime state files
 scripts/.parallel-manage-state.json
@@ -65,3 +68,7 @@ scripts/.parallel-manage-state.json
 
 # ll-parallel artifacts
 .worktrees/
+.sprints/
+*-state.json
+
+docs/demo
