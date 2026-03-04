@@ -761,6 +761,38 @@ class TestAcceptanceCriteria:
         # Iteration should have increased from saved state
         assert result.iterations >= saved_iteration
 
+    def test_resume_restores_accumulated_duration(
+        self, simple_fsm: FSMLoop, tmp_loops_dir: Path
+    ) -> None:
+        """AC: duration_ms after resume includes time from before the interruption (BUG-527)."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+
+        # Simulate a state saved after 5 seconds of prior execution
+        prior_elapsed_ms = 5000
+        state = LoopState(
+            loop_name="test-loop",
+            current_state="check",
+            iteration=3,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2024-01-15T10:30:00Z",
+            updated_at="",
+            status="running",
+            accumulated_ms=prior_elapsed_ms,
+        )
+        persistence.save_state(state)
+
+        executor = PersistentExecutor(
+            simple_fsm, persistence=persistence, action_runner=MockActionRunner()
+        )
+        result = executor.resume()
+
+        assert result is not None
+        # duration_ms must include the prior 5 seconds, not reset to 0
+        assert result.duration_ms >= prior_elapsed_ms
+
     def test_resume_preserves_captured_for_interpolation(self, tmp_loops_dir: Path) -> None:
         """Captures from before interrupt are usable after resume via interpolation."""
         # FSM where step2 uses captured value from step1

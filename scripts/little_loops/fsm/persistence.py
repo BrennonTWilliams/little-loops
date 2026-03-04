@@ -17,6 +17,7 @@ File structure:
 from __future__ import annotations
 
 import json
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -31,6 +32,11 @@ RUNNING_DIR = ".running"
 def _iso_now() -> str:
     """Return current time as ISO 8601 string."""
     return datetime.now(UTC).isoformat()
+
+
+def _now_ms() -> int:
+    """Return current time in milliseconds."""
+    return int(time.time() * 1000)
 
 
 @dataclass
@@ -54,6 +60,9 @@ class LoopState:
         updated_at: ISO timestamp when state was last saved
         status: Execution status (running, completed, failed, interrupted, awaiting_continuation)
         continuation_prompt: Continuation context from handoff signal (if status is awaiting_continuation)
+        accumulated_ms: Total milliseconds elapsed across all segments up to this save (used to restore
+            elapsed time correctly after resume, so duration_ms and ${loop.elapsed_ms} reflect the
+            full loop lifetime rather than only the most recent segment)
     """
 
     loop_name: str
@@ -66,6 +75,7 @@ class LoopState:
     updated_at: str
     status: str  # "running", "completed", "failed", "interrupted", "awaiting_continuation"
     continuation_prompt: str | None = None
+    accumulated_ms: int = 0  # total elapsed ms across all segments (for resume offset)
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -79,6 +89,7 @@ class LoopState:
             "started_at": self.started_at,
             "updated_at": self.updated_at,
             "status": self.status,
+            "accumulated_ms": self.accumulated_ms,
         }
         if self.continuation_prompt is not None:
             result["continuation_prompt"] = self.continuation_prompt
@@ -105,6 +116,7 @@ class LoopState:
             updated_at=data.get("updated_at", ""),
             status=data["status"],
             continuation_prompt=data.get("continuation_prompt"),
+            accumulated_ms=data.get("accumulated_ms", 0),
         )
 
 
@@ -309,6 +321,7 @@ class PersistentExecutor:
             started_at=self._executor.started_at,
             updated_at="",  # Will be set by save_state
             status=status,
+            accumulated_ms=_now_ms() - self._executor.start_time_ms + self._executor.elapsed_offset_ms,
         )
         self.persistence.save_state(state)
 
@@ -344,6 +357,7 @@ class PersistentExecutor:
             updated_at="",
             status=final_status,
             continuation_prompt=self._continuation_prompt,
+            accumulated_ms=result.duration_ms,
         )
         self.persistence.save_state(final_state)
 
@@ -371,6 +385,12 @@ class PersistentExecutor:
         self._executor.prev_result = state.prev_result
         self._executor.started_at = state.started_at
         self._last_result = state.last_result
+
+        # Restore accumulated elapsed time so duration_ms and ${loop.elapsed_ms} reflect
+        # the full loop lifetime (all segments), not just the resumed segment.
+        # FSMExecutor.run() will reset start_time_ms to _now_ms(), so we use elapsed_offset_ms
+        # to carry forward the time already spent before this resume.
+        self._executor.elapsed_offset_ms = state.accumulated_ms
 
         # Clear any pending handoff from previous run
         self._executor._pending_handoff = None

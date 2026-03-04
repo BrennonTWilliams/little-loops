@@ -330,6 +330,7 @@ class FSMExecutor:
         self.prev_result: dict[str, Any] | None = None
         self.started_at = ""
         self.start_time_ms = 0
+        self.elapsed_offset_ms = 0  # milliseconds from segments before current run (set by PersistentExecutor on resume)
 
         # Shutdown flag for graceful signal handling
         self._shutdown_requested = False
@@ -371,7 +372,7 @@ class FSMExecutor:
 
                 # Check timeout
                 if self.fsm.timeout:
-                    elapsed = _now_ms() - self.start_time_ms
+                    elapsed = _now_ms() - self.start_time_ms + self.elapsed_offset_ms
                     if elapsed > self.fsm.timeout * 1000:
                         return self._finish("timeout")
 
@@ -689,7 +690,7 @@ class FSMExecutor:
             iteration=self.iteration,
             loop_name=self.fsm.name,
             started_at=self.started_at,
-            elapsed_ms=_now_ms() - self.start_time_ms,
+            elapsed_ms=_now_ms() - self.start_time_ms + self.elapsed_offset_ms,
         )
 
     def _emit(self, event: str, data: dict[str, Any]) -> None:
@@ -717,7 +718,7 @@ class FSMExecutor:
             final_state=self.current_state,
             iterations=self.iteration,
             terminated_by=terminated_by,
-            duration_ms=_now_ms() - self.start_time_ms,
+            duration_ms=_now_ms() - self.start_time_ms + self.elapsed_offset_ms,
             captured=self.captured,
             error=error,
         )
@@ -758,7 +759,7 @@ class FSMExecutor:
             final_state=self.current_state,
             iterations=self.iteration,
             terminated_by="handoff",
-            duration_ms=_now_ms() - self.start_time_ms,
+            duration_ms=_now_ms() - self.start_time_ms + self.elapsed_offset_ms,
             captured=self.captured,
             handoff=True,
             continuation_prompt=signal.payload,
