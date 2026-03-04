@@ -315,8 +315,9 @@ Current Commands Configuration
   pre_implement:    {{config.commands.pre_implement}}
   post_implement:   {{config.commands.post_implement}}
   confidence_gate:
-    enabled:        {{config.commands.confidence_gate.enabled}}
-    threshold:      {{config.commands.confidence_gate.threshold}}
+    enabled:              {{config.commands.confidence_gate.enabled}}
+    readiness_threshold:  {{config.commands.confidence_gate.readiness_threshold}}
+    outcome_threshold:    {{config.commands.confidence_gate.outcome_threshold}}
   tdd_mode:         {{config.commands.tdd_mode}}
 ```
 
@@ -339,15 +340,15 @@ questions:
       - label: "{{current confidence_gate.enabled}} (keep)"
         description: "Keep current setting"
       - label: "true"
-        description: "Yes, block implementation below threshold"
+        description: "Yes, block implementation below thresholds"
       - label: "false"
         description: "No, advisory only (default)"
     multiSelect: false
 
-  - header: "Threshold"
-    question: "Minimum confidence score to proceed with implementation?"
+  - header: "Readiness"
+    question: "Minimum readiness score (confidence_score) to proceed with implementation?"
     options:
-      - label: "{{current confidence_gate.threshold}} (keep)"
+      - label: "{{current confidence_gate.readiness_threshold}} (keep)"
         description: "Keep current setting"
       - label: "70"
         description: "70 (permissive)"
@@ -357,6 +358,24 @@ questions:
         description: "95 (strict)"
     multiSelect: false
 
+  - header: "Outcome"
+    question: "Minimum outcome confidence score (outcome_confidence) to proceed with implementation?"
+    options:
+      - label: "{{current confidence_gate.outcome_threshold}} (keep)"
+        description: "Keep current setting"
+      - label: "60"
+        description: "60 (permissive)"
+      - label: "70"
+        description: "70 (default)"
+      - label: "85"
+        description: "85 (strict)"
+    multiSelect: false
+```
+
+### Round 2 (1 question)
+
+```yaml
+questions:
   - header: "TDD"
     question: "Enable TDD mode (test-first) for manage-issue?"
     options:

@@ -250,7 +250,7 @@ Count active conditions for Round 5:
   if Round 3a → "Parallel processing":           ACTIVE += 3  # worktree_files + parallel_workers + parallel_timeout
   if Round 3a → "Context monitoring":            ACTIVE += 1
   if Round 3a → "GitHub sync":                   ACTIVE += 2  # priority_labels + sync_completed questions
-  if Round 3a → "Confidence gate":               ACTIVE += 1
+  if Round 3a → "Confidence gate":               ACTIVE += 2
   if Round 3b → "Sprint management":             ACTIVE += 1
   if Round 3b → "Sequential automation":         ACTIVE += 1
 
@@ -416,16 +416,17 @@ If Round 5c is presented, increment STEP by 1 and output: **Step [STEP] of [TOTA
 6. **threshold** - If user selected "Context monitoring" in Round 3a
 7. **priority_labels** - If user selected "GitHub sync" in Round 3a
 8. **sync_completed** - If user selected "GitHub sync" in Round 3a
-9. **gate_threshold** - If user selected "Confidence gate" in Round 3a
-10. **sprints_workers** - If user selected "Sprint management" in Round 3b
-11. **auto_timeout** - If user selected "Sequential automation (ll-auto)" in Round 3b
+9. **gate_readiness** - If user selected "Confidence gate" in Round 3a
+10. **gate_outcome** - If user selected "Confidence gate" in Round 3a
+11. **sprints_workers** - If user selected "Sprint management" in Round 3b
+12. **auto_timeout** - If user selected "Sequential automation (ll-auto)" in Round 3b
 
 If all conditions are false, skip this round entirely and proceed directly to Round 6 (Document Tracking).
 
 **Overflow handling**: Before presenting, count the number of active conditions. `AskUserQuestion` supports a maximum of 4 questions per call. If the active count exceeds 4, split into multiple sub-rounds using separate `AskUserQuestion` calls:
 - **Round 5a** — first 4 active questions (always presented when any condition is true)
 - **Round 5b** — next up to 4 active questions, positions 5–8 in the ordered list above (only presented when active count > 4)
-- **Round 5c** — remaining active questions, positions 9–11 in the ordered list above (only presented when active count > 8)
+- **Round 5c** — remaining active questions, positions 9–12 in the ordered list above (only presented when active count > 8)
 
 ### Round 5a: Advanced Settings (first batch)
 
@@ -533,8 +534,8 @@ questions:
     multiSelect: false
 
   # ONLY include if user selected "Confidence gate" in Round 3a:
-  - header: "Gate Threshold"
-    question: "What confidence score threshold should gate implementation?"
+  - header: "Readiness Gate"
+    question: "Minimum readiness score (confidence_score) required to proceed with implementation?"
     options:
       - label: "85 (Recommended)"
         description: "Enforces solid readiness before implementation"
@@ -542,6 +543,18 @@ questions:
         description: "Allows most issues through"
       - label: "95"
         description: "Strict; only near-perfect issues proceed"
+    multiSelect: false
+
+  # ONLY include if user selected "Confidence gate" in Round 3a:
+  - header: "Outcome Gate"
+    question: "Minimum outcome confidence score (outcome_confidence) required to proceed with implementation?"
+    options:
+      - label: "70 (Recommended)"
+        description: "Balanced outcome confidence requirement"
+      - label: "60"
+        description: "Permissive — allows higher-risk implementations"
+      - label: "85"
+        description: "Strict — only high-confidence outcomes proceed"
     multiSelect: false
 
   # ONLY include if user selected "Sprint management" in Round 3b:
@@ -573,13 +586,13 @@ questions:
 
 ### Round 5c: Advanced Settings (second overflow batch)
 
-**Only present this call when the total active condition count exceeds 8.** Collect the remaining active questions (positions 9–11 in the ordered list):
+**Only present this call when the total active condition count exceeds 8.** Collect the remaining active questions (positions 9–12 in the ordered list):
 
 ```yaml
 questions:
   # ONLY include if user selected "Confidence gate" in Round 3a (if not already shown in 5b):
-  - header: "Gate Threshold"
-    question: "What confidence score threshold should gate implementation?"
+  - header: "Readiness Gate"
+    question: "Minimum readiness score (confidence_score) required to proceed with implementation?"
     options:
       - label: "85 (Recommended)"
         description: "Enforces solid readiness before implementation"
@@ -587,6 +600,18 @@ questions:
         description: "Allows most issues through"
       - label: "95"
         description: "Strict; only near-perfect issues proceed"
+    multiSelect: false
+
+  # ONLY include if user selected "Confidence gate" in Round 3a (if not already shown in 5b):
+  - header: "Outcome Gate"
+    question: "Minimum outcome confidence score (outcome_confidence) required to proceed with implementation?"
+    options:
+      - label: "70 (Recommended)"
+        description: "Balanced outcome confidence requirement"
+      - label: "60"
+        description: "Permissive — allows higher-risk implementations"
+      - label: "85"
+        description: "Strict — only high-confidence outcomes proceed"
     multiSelect: false
 
   # ONLY include if user selected "Sprint management" in Round 3b (if not already shown in 5b):
@@ -650,7 +675,7 @@ If GitHub sync is enabled:
 
 If confidence gate is enabled:
 ```json
-{ "commands": { "confidence_gate": { "enabled": true, "threshold": 85 } } }
+{ "commands": { "confidence_gate": { "enabled": true, "readiness_threshold": 85, "outcome_threshold": 70 } } }
 ```
 
 If sprint management is configured with non-default workers:
@@ -673,8 +698,9 @@ If sequential automation is configured with non-default timeout:
 - Only include `sync.github.priority_labels` if user selected "No" (true is the default)
 - Only include `sync.github.sync_completed` if user selected "Yes" (false is the default)
 - If both sync sub-settings are defaults, the `sync.github` object can be omitted (just include `sync.enabled: true`)
-- Only include `commands.confidence_gate.threshold` if user selected a non-default value (not 85)
-- If user selected 85 (the default threshold), just include `commands.confidence_gate.enabled: true`
+- Only include `commands.confidence_gate.readiness_threshold` if user selected a non-default value (not 85)
+- Only include `commands.confidence_gate.outcome_threshold` if user selected a non-default value (not 70)
+- If user selected all defaults, just include `commands.confidence_gate.enabled: true`
 - Only include `sprints.default_max_workers` if user selected a non-default value (not 4); if 4 is selected, omit the sprints section
 - Only include `automation.timeout_seconds` if user selected a non-default value (not 3600); if 3600 is selected, omit the automation section
 - FSM loops (`loops_dir` default is `.loops`) has no non-default settings to configure via init; the `.loops` directory is used automatically

@@ -65,6 +65,22 @@ Sequential Automation Configuration (ll-auto)
 Edit: /ll:configure automation
 ```
 
+## commands --show
+
+```
+Commands Configuration
+----------------------
+  pre_implement:    {{config.commands.pre_implement}}              (default: none)
+  post_implement:   {{config.commands.post_implement}}             (default: none)
+  confidence_gate:
+    enabled:              {{config.commands.confidence_gate.enabled}}              (default: false)
+    readiness_threshold:  {{config.commands.confidence_gate.readiness_threshold}}  (default: 85)
+    outcome_threshold:    {{config.commands.confidence_gate.outcome_threshold}}    (default: 70)
+  tdd_mode:         {{config.commands.tdd_mode}}                   (default: false)
+
+Edit: /ll:configure commands
+```
+
 ## documents --show
 
 ```

@@ -34,6 +34,13 @@
       }
     }
   },
+  "commands": {
+    "confidence_gate": {
+      "enabled": false,
+      "readiness_threshold": 85,
+      "outcome_threshold": 70
+    }
+  },
   "sprints": {
     "sprints_dir": ".sprints",
     "default_timeout": 3600,
