@@ -337,7 +337,8 @@ class TestRefineStatusTable:
         (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
         (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
 
-        _make_issue(bugs_dir, "P2-BUG-080-normalized.md", "BUG-080: Normalized filename")
+        # Use a fully-formatted BUG so both norm and fmt show ✓ (no ✗ in output)
+        _make_fully_formatted_bug(bugs_dir, "P2-BUG-080-normalized.md", "BUG-080: Normalized filename")
 
         with patch.object(
             sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
@@ -348,7 +349,7 @@ class TestRefineStatusTable:
 
         assert result == 0
         out = capsys.readouterr().out
-        # ✓ from Norm column (and possibly from cmd columns too, but ✗ must not appear)
+        # Both norm and fmt should show ✓; ✗ must not appear
         assert "\u2713" in out, "Checkmark ✓ should appear for normalized filename"
         assert "\u2717" not in out, "X ✗ should not appear when all filenames are normalized"
 
@@ -391,11 +392,12 @@ class TestRefineStatusTable:
         (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
         (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
 
+        # Use /ll:verify-issues which is a dynamic (non-source) command
         _make_issue(
             bugs_dir,
             "P2-BUG-100-with-cmd.md",
             "BUG-100: Key section test",
-            session_commands=["/ll:format-issue"],
+            session_commands=["/ll:verify-issues"],
         )
 
         with patch.object(
@@ -409,9 +411,10 @@ class TestRefineStatusTable:
         out = capsys.readouterr().out
         assert "Key:" in out, "Key section header should appear"
         assert "source" in out, "source column entry should appear in Key"
-        assert "/ll:format-issue" in out, (
+        assert "/ll:verify-issues" in out, (
             "Full command name should appear in Key for non-source cmds"
         )
+        assert "fmt" in out, "fmt column entry should appear in Key"
         assert "Readiness score" in out, "Ready explanation should appear in Key"
         assert "Outcome confidence" in out, "OutConf explanation should appear in Key"
 
@@ -791,3 +794,191 @@ class TestRefineStatusJson:
         records = [json.loads(ln) for ln in lines]
         assert records[0]["id"] == "BUG-070", "Highest total should be first"
         assert records[1]["id"] == "BUG-071"
+
+
+def _make_fully_formatted_bug(directory: Path, filename: str, title: str) -> None:
+    """Write a BUG issue file with all required v2.0 sections."""
+    content = "\n".join([
+        "---",
+        "discovered_by: capture-issue",
+        "---",
+        "",
+        f"# {title}",
+        "",
+        "## Summary",
+        "Test issue.",
+        "",
+        "## Current Behavior",
+        "It does X.",
+        "",
+        "## Expected Behavior",
+        "It should do Y.",
+        "",
+        "## Steps to Reproduce",
+        "1. Do the thing.",
+        "",
+        "## Impact",
+        "- **Priority**: P2 - Medium priority",
+        "- **Effort**: Small",
+        "- **Risk**: Low",
+        "- **Breaking Change**: No",
+        "",
+        "## Labels",
+        "`bug`",
+        "",
+        "## Status",
+        "**Open** | Created: 2026-01-01 | Priority: P2",
+    ])
+    (directory / filename).write_text(content)
+
+
+class TestRefineStatusFormatColumn:
+    """Tests for the static fmt column using structural template detection."""
+
+    def test_fmt_checkmark_for_fully_formatted_bug(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """✓ appears in fmt column for a BUG with all required v2.0 sections."""
+        import json as json_module
+
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_fully_formatted_bug(
+            bugs_dir, "P2-BUG-300-formatted.md", "BUG-300: Fully formatted"
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--format", "json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+        record = json_module.loads(lines[0])
+        assert record["id"] == "BUG-300"
+        assert record["formatted"] is True, "Fully formatted BUG should report formatted=True"
+
+    def test_fmt_x_for_missing_required_sections(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """✗ appears in fmt column for an issue missing required sections."""
+        import json as json_module
+
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        # Minimal file: only has Summary — missing Impact, Status, Steps to Reproduce, etc.
+        _make_issue(bugs_dir, "P2-BUG-301-sparse.md", "BUG-301: Sparse issue")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--format", "json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+        record = json_module.loads(lines[0])
+        assert record["id"] == "BUG-301"
+        assert record["formatted"] is False, "Sparse BUG should report formatted=False"
+
+    def test_fmt_x_despite_format_issue_in_session_log(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """✗ for an issue that ran /ll:format-issue but is still missing required sections."""
+        import json as json_module
+
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        # Has /ll:format-issue in session log but is still missing required sections
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-302-log-not-content.md",
+            "BUG-302: Log not content",
+            session_commands=["/ll:format-issue"],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--format", "json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+        record = json_module.loads(lines[0])
+        assert record["id"] == "BUG-302"
+        assert record["formatted"] is False, (
+            "Session log entry for /ll:format-issue must not affect structural detection"
+        )
+
+    def test_format_cmd_no_longer_creates_dynamic_column(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """'format' does not appear as a dynamic command column header in table output."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-303-has-format-cmd.md",
+            "BUG-303: Has format-issue cmd",
+            session_commands=["/ll:format-issue"],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        header_line = next(
+            (ln for ln in out.splitlines() if "ID" in ln and "Pri" in ln), None
+        )
+        assert header_line is not None
+        # "fmt" is the static column; "format" as a standalone dynamic header must not appear
+        # The header contains "fmt" (static), not "format" as a dynamic command alias
+        assert "format" not in header_line.split(), (
+            "/ll:format-issue must not create a dynamic 'format' column header"
+        )

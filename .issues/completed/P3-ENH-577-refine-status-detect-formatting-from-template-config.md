@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-04
 discovered_by: capture-issue
+confidence_score: 98
+outcome_confidence: 93
 ---
 
 # ENH-577: Detect issue formatting from template config instead of session log
@@ -64,6 +66,19 @@ Session log entries record *process*, not *state*. Coupling a structural quality
 
 ---
 
+## Resolution
+
+Implemented structural template detection for the `fmt` column in `ll-issues refine-status`.
+
+**Changes:**
+- `scripts/little_loops/issue_parser.py`: Added `is_formatted(issue_path, templates_dir=None)` that loads the per-type `{type}-sections.json`, collects required section names (common sections with `required: true` and type sections with `level: "required"`, both excluding deprecated), parses `##` headings from the file, and returns `True` if all required headings are present.
+- `scripts/little_loops/cli/issues/refine_status.py`: Added `/ll:format-issue` to `_SOURCE_CMDS` (removing it as a dynamic column), added a static `fmt` column (4-char width, after `norm`) populated by `is_formatted()`, updated `_row()`, fixed_width, header, JSON output (`formatted` field), and `_print_key()` descriptions.
+- `scripts/tests/test_refine_status.py`: Added `TestRefineStatusFormatColumn` with 4 tests covering: fully-formatted BUG shows `formatted=True`, sparse file shows `formatted=False`, session log entry alone doesn't affect detection, and `/ll:format-issue` no longer creates a dynamic column header.
+
+**Resolved:** 2026-03-04
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c867334-8723-481e-ab0c-6699be487fb7.jsonl`
 - `/ll:format-issue` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7eb1c0c-cf36-4cd9-b49f-3ccc1518217f.jsonl`
+- `/ll:confidence-check` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d7d3dc2d-8ea3-48d0-a891-5926ddc9fa04.jsonl`
+- `/ll:manage-issue` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`

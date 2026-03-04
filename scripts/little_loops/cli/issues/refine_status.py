@@ -22,10 +22,16 @@ _TOTAL_WIDTH = 5  # "total"
 # Width of each command column: longest alias is "tradeoff" = 8 chars
 _CMD_WIDTH = 8
 _NORM_WIDTH = 4  # "norm" / "✓" / "✗"
+_FMT_WIDTH = 4  # "fmt" / "✓" / "✗"
 _SOURCE_WIDTH = 7  # "source" header / "capture" value max
 
-# Commands that are excluded from dynamic columns (shown as `source` instead)
-_SOURCE_CMDS = {"/ll:capture-issue", "/ll:scan-codebase", "/ll:audit-architecture"}
+# Commands that are excluded from dynamic columns (shown as static columns instead)
+_SOURCE_CMDS = {
+    "/ll:capture-issue",
+    "/ll:scan-codebase",
+    "/ll:audit-architecture",
+    "/ll:format-issue",
+}
 
 # Canonical workflow order for command columns
 _CANONICAL_CMD_ORDER = [
@@ -101,7 +107,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     Returns:
         Exit code (0 = success).
     """
-    from little_loops.issue_parser import find_issues, is_normalized
+    from little_loops.issue_parser import find_issues, is_formatted, is_normalized
 
     type_prefixes = {args.type} if getattr(args, "type", None) else None
     issues = find_issues(config, type_prefixes=type_prefixes)
@@ -146,6 +152,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 "outcome_confidence": issue.outcome_confidence,
                 "total": len(issue.session_commands),
                 "normalized": is_normalized(issue.path.name),
+                "formatted": is_formatted(issue.path),
                 "refine_count": issue.session_command_counts.get("/ll:refine-issue", 0),
             }
             print(json.dumps(record))
@@ -155,7 +162,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     term_cols = shutil.get_terminal_size().columns
 
     # Compute how much space is consumed by fixed columns + command columns.
-    # Layout: ID | Pri | Title | source | norm | [cmd cols...] | ready | confidence | total
+    # Layout: ID | Pri | Title | source | norm | fmt | [cmd cols...] | ready | confidence | total
     # _row uses "  ".join(parts) — 2-char separator between each part.
     # Each "+2" below accounts for the 2-char separator that follows that column.
     # The final "- 2" accounts for the separator between Title and the next column (source).
@@ -168,6 +175,8 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
         + 2  # source (before norm)
         + _NORM_WIDTH
         + 2  # norm
+        + _FMT_WIDTH
+        + 2  # fmt
         + _SCORE_WIDTH
         + 2  # ready
         + _CONF_WIDTH
@@ -183,6 +192,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
         title: str,
         source: str,
         norm: str,
+        fmt: str,
         cmd_cells: list[str],
         ready: str,
         conf: str,
@@ -194,6 +204,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
             _col(title, title_width),
             _col(source, _SOURCE_WIDTH),
             _col(norm, _NORM_WIDTH),
+            _col(fmt, _FMT_WIDTH),
         ]
         for cell in cmd_cells:
             parts.append(_col(cell, _CMD_WIDTH))
@@ -205,7 +216,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     # Header row
     cmd_headers = [_col(_cmd_label(c), _CMD_WIDTH) for c in all_cmds]
     header = _row(
-        "ID", "Pri", "Title", "source", "norm", cmd_headers, "ready", "confidence", "total"
+        "ID", "Pri", "Title", "source", "norm", "fmt", cmd_headers, "ready", "confidence", "total"
     )
     separator = "-" * len(header)
 
@@ -221,6 +232,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 cmd_cells.append("\u2713" if c in cmd_set else "\u2014")
         source_cell = _source_label(issue.discovered_by)
         norm_cell = "\u2713" if is_normalized(issue.path.name) else "\u2717"
+        fmt_cell = "\u2713" if is_formatted(issue.path) else "\u2717"
         ready = str(issue.confidence_score) if issue.confidence_score is not None else "\u2014"
         out_conf = (
             str(issue.outcome_confidence) if issue.outcome_confidence is not None else "\u2014"
@@ -233,6 +245,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                 _truncate(issue.title, title_width),
                 source_cell,
                 norm_cell,
+                fmt_cell,
                 cmd_cells,
                 ready,
                 out_conf,
@@ -257,6 +270,7 @@ def _print_key(all_cmds: list[str]) -> None:
     print("\nKey:")
     print(f"  {'source':<12} Origin command/workflow that created the issue")
     print(f"  {'norm':<12} Filename follows naming convention (P[0-5]-TYPE-NNN-desc.md)")
+    print(f"  {'fmt':<12} Issue has all required sections per type template (structural check)")
     for cmd in all_cmds:
         label = _cmd_label(cmd)
         if cmd == "/ll:refine-issue":

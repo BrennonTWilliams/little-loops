@@ -26,6 +26,7 @@ ISSUE_ID_PATTERN = re.compile(r"^[-*]\s+\*{0,2}([A-Z]+-\d+)", re.MULTILINE)
 
 
 _NORMALIZED_RE = re.compile(r"^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$")
+_ISSUE_TYPE_RE = re.compile(r"-(BUG|FEAT|ENH)-")
 
 
 def is_normalized(filename: str) -> bool:
@@ -38,6 +39,55 @@ def is_normalized(filename: str) -> bool:
         True if the filename matches ``^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\\.md$``.
     """
     return bool(_NORMALIZED_RE.match(filename))
+
+
+def is_formatted(issue_path: Path, templates_dir: Path | None = None) -> bool:
+    """Check whether an issue file has all required sections per its type template.
+
+    Detects the issue type from the filename, loads the corresponding
+    ``{type}-sections.json`` template, collects section names that are marked
+    required (and not deprecated), then verifies each is present as a ``##``
+    heading in the file.
+
+    Args:
+        issue_path: Path to the issue markdown file.
+        templates_dir: Optional override for the templates directory.
+
+    Returns:
+        True if all required sections are present as ## headings, False otherwise.
+        Returns False for files whose type cannot be determined or whose template
+        cannot be loaded.
+    """
+    from little_loops.issue_template import load_issue_sections
+
+    type_match = _ISSUE_TYPE_RE.search(issue_path.name)
+    if not type_match:
+        return False
+    issue_type = type_match.group(1)
+
+    try:
+        sections_data = load_issue_sections(issue_type, templates_dir)
+    except Exception:
+        return False
+
+    required: set[str] = set()
+    for name, defn in sections_data.get("common_sections", {}).items():
+        if defn.get("required") is True and not defn.get("deprecated", False):
+            required.add(name)
+    for name, defn in sections_data.get("type_sections", {}).items():
+        if defn.get("level") == "required" and not defn.get("deprecated", False):
+            required.add(name)
+
+    if not required:
+        return True
+
+    try:
+        content = issue_path.read_text(encoding="utf-8")
+    except Exception:
+        return False
+
+    headings = {m.strip() for m in re.findall(r"^##\s+(.+)$", content, re.MULTILINE)}
+    return required.issubset(headings)
 
 
 def slugify(text: str) -> str:
