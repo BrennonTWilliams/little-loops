@@ -94,30 +94,33 @@ class LockManager:
             scope = ["."]
         scope = [self._normalize_path(p) for p in scope]
 
-        # Check for conflicts with other running loops
-        conflict = self.find_conflict(scope)
-        if conflict:
-            return False
-
-        # Ensure running directory exists
+        # Ensure running directory exists before opening sentinel lock
         self.running_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create lock file
-        lock_file = self.running_dir / f"{loop_name}.lock"
-        lock = ScopeLock(
-            loop_name=loop_name,
-            scope=scope,
-            pid=os.getpid(),
-            started_at=_iso_now(),
-        )
+        # Serialize the check-and-create sequence across processes using a
+        # sentinel file.  This eliminates the TOCTOU window between
+        # find_conflict() (read) and lock-file creation (write).
+        # .acquire.lock is a dotfile so Path.glob("*.lock") will not match it
+        # and stale-lock cleanup in find_conflict/list_locks ignores it.
+        dir_lock_path = self.running_dir / ".acquire.lock"
+        with open(dir_lock_path, "w") as dir_lock:
+            fcntl.flock(dir_lock, fcntl.LOCK_EX)
 
-        with open(lock_file, "w") as f:
-            # Use file locking for atomicity
-            fcntl.flock(f, fcntl.LOCK_EX)
-            try:
+            # Check for conflicts (now atomic with write below)
+            conflict = self.find_conflict(scope)
+            if conflict:
+                return False
+
+            # Create lock file
+            lock_file = self.running_dir / f"{loop_name}.lock"
+            lock = ScopeLock(
+                loop_name=loop_name,
+                scope=scope,
+                pid=os.getpid(),
+                started_at=_iso_now(),
+            )
+            with open(lock_file, "w") as f:
                 json.dump(lock.to_dict(), f)
-            finally:
-                fcntl.flock(f, fcntl.LOCK_UN)
 
         return True
 

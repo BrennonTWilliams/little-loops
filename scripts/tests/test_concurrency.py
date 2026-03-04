@@ -286,6 +286,33 @@ class TestLockManagerRaceConditions:
         # Should not raise, should return empty list
         assert manager.list_locks() == []
 
+    def test_concurrent_acquire_same_scope_only_one_wins(
+        self, manager: LockManager
+    ) -> None:
+        """Concurrent acquire() on same scope: exactly one succeeds (BUG-525).
+
+        Two threads race to acquire the same scope simultaneously.  The
+        directory-level sentinel lock must ensure exactly one succeeds.
+        """
+        results: list[bool] = []
+        barrier = threading.Barrier(2)
+
+        def try_acquire(name: str) -> None:
+            barrier.wait()  # Both threads start at the same instant
+            result = manager.acquire(name, ["src/"])
+            results.append(result)
+
+        t1 = threading.Thread(target=try_acquire, args=("loop-a",))
+        t2 = threading.Thread(target=try_acquire, args=("loop-b",))
+        t1.start()
+        t2.start()
+        t1.join()
+        t2.join()
+
+        assert len(results) == 2
+        assert results.count(True) == 1, f"Expected exactly 1 success, got: {results}"
+        assert results.count(False) == 1
+
 
 class TestLockManagerWait:
     """Tests for wait_for_scope functionality."""

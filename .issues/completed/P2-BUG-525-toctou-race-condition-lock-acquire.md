@@ -3,6 +3,8 @@ discovered_commit: 47c81c895baaac1acac69d105ed75ff1ec82ed2c
 discovered_branch: main
 discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-525: TOCTOU Race Condition in `LockManager.acquire` — Two Loops Can Acquire Same Scope
@@ -116,7 +118,7 @@ with open(dir_lock_path, "w") as dir_lock:
 | Document | Relevance |
 |----------|-----------|
 | `docs/generalized-fsm-loop.md` | Concurrency and locking model (line 1288), scope declaration, overlap rules |
-| `docs/guides/LOOPS_GUIDE.md` | Scope-based concurrency overview (line 295) |
+| `docs/guides/LOOPS_GUIDE.md` | Scope-based concurrency overview (line 386) |
 
 ## Labels
 
@@ -127,6 +129,17 @@ with open(dir_lock_path, "w") as dir_lock:
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md` concurrency section
 
+## Resolution
+
+- **Status**: Fixed
+- **Date**: 2026-03-03
+- **Commit**: (see git log)
+
+### Changes Made
+
+- `scripts/little_loops/fsm/concurrency.py`: Wrapped `find_conflict()` + lock-file creation in `LockManager.acquire()` with an `fcntl.LOCK_EX` on `.running/.acquire.lock` sentinel. The sentinel is a dotfile, so `Path.glob("*.lock")` does not match it and stale-lock cleanup in `find_conflict`/`list_locks` ignores it. The directory-level exclusive lock serializes all `acquire()` calls across processes/threads, eliminating the TOCTOU gap.
+- `scripts/tests/test_concurrency.py`: Added `test_concurrent_acquire_same_scope_only_one_wins` to `TestLockManagerRaceConditions` — spawns two threads racing to acquire the same scope via `threading.Barrier`, asserts exactly one returns `True`.
+
 ---
 
-**Open** | Created: 2026-03-03 | Priority: P2
+**Closed** | Created: 2026-03-03 | Closed: 2026-03-03 | Priority: P2
