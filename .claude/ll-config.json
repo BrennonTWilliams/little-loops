@@ -44,7 +44,7 @@
   "sprints": {
     "sprints_dir": ".sprints",
     "default_timeout": 3600,
-    "default_max_workers": 4
+    "default_max_workers": 2
   },
   "sync": {
     "enabled": true,
