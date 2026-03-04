@@ -33,6 +33,27 @@ The `goal` paradigm is supposed to offer a simpler alternative to writing a full
   - Single-line `/ll:cmd` fix tool produces `StateConfig(action_type=None)` (existing behavior)
   - Single-line `ll-issues refine-status` fix tool produces `StateConfig(action_type=None)`
 
+## Proposed Solution
+
+Add `_infer_action_type()` helper above `compile_goal` in `compilers.py`:
+
+```python
+def _infer_action_type(tool: str) -> str | None:
+    """Infer action_type from tool string. Multiline text → 'prompt'."""
+    if "\n" in tool:
+        return "prompt"
+    return None
+```
+
+Wire into `compile_goal` when building the fix `StateConfig`:
+
+```python
+fix_action_type = _infer_action_type(fix_tool)
+if fix_action_type == "prompt":
+    logger.debug("compile_goal: multiline fix tool detected, using action_type='prompt'")
+"fix": StateConfig(action=fix_tool, action_type=fix_action_type, next="evaluate"),
+```
+
 ## Integration Map
 
 ### Files to Modify
@@ -54,33 +75,30 @@ The `goal` paradigm is supposed to offer a simpler alternative to writing a full
 
 ### Dependent Files (Reference Only)
 
-- `scripts/little_loops/fsm/executor.py:519` — `is_slash_command = action.startswith("/")` — this is the downstream dispatcher; no change needed here
+- `scripts/little_loops/fsm/executor.py` — `_dispatch_action()` / `is_slash_command` check — downstream dispatcher; no change needed here
 - `scripts/tests/test_fsm_compilers.py` — add new test cases
+
+### Similar Patterns
+
+- `executor.py` `is_slash_command = action.startswith("/")` — same dispatch-by-inspection pattern; `_infer_action_type` extends this to compile time
+
+### Tests
+
+- `scripts/tests/test_fsm_compilers.py` — add multiline, slash-cmd, and shell-cmd test cases
+
+### Documentation
+
+- N/A — no user-facing docs change; behavior is transparent to YAML authors
+
+### Configuration
+
+- N/A — no config changes
 
 ## Implementation Steps
 
-1. **Add `_infer_action_type()` helper** in `compilers.py` above `compile_goal`:
-   ```python
-   def _infer_action_type(tool: str) -> str | None:
-       """Infer action_type from tool string. Multiline text → 'prompt'."""
-       if "\n" in tool:
-           return "prompt"
-       return None
-   ```
-
-2. **Wire into `compile_goal`** — capture result and pass to `StateConfig`:
-   ```python
-   fix_action_type = _infer_action_type(fix_tool)
-   if fix_action_type == "prompt":
-       logger.debug("compile_goal: multiline fix tool detected, using action_type='prompt'")
-   # ...
-   "fix": StateConfig(action=fix_tool, action_type=fix_action_type, next="evaluate"),
-   ```
-
-3. **Add tests** in `test_fsm_compilers.py`:
-   - Test multiline fix tool → `StateConfig.action_type == "prompt"`
-   - Test single-line `/ll:cmd` → `StateConfig.action_type is None`
-   - Test single-line shell command → `StateConfig.action_type is None`
+1. Add `_infer_action_type()` helper in `compilers.py` above `compile_goal`
+2. Wire result into fix `StateConfig` with debug logging in `compile_goal`
+3. Add test cases in `test_fsm_compilers.py` (multiline → prompt, slash-cmd → None, shell-cmd → None)
 
 ## Impact
 
@@ -99,6 +117,11 @@ The `goal` paradigm is supposed to offer a simpler alternative to writing a full
 - Supporting object-style tool entries in YAML is **out of scope** — see FEAT-560
 - Changing executor dispatch logic is **out of scope**
 
+## Success Metrics
+
+- All new tests in `test_fsm_compilers.py` pass (multiline → prompt, single-line unaffected)
+- Goal-paradigm loop with multiline fix tool no longer cycles silently — fix state dispatches via Claude prompt, not `bash -c`
+
 ## Related Key Documentation
 
 - `scripts/little_loops/fsm/compilers.py` — primary implementation target
@@ -114,3 +137,4 @@ Open
 
 ## Session Log
 - `capture-issue` - 2026-03-04 - root cause discovered while debugging `.loops/issue-refinement.yaml` infinite loop
+- `/ll:format-issue` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f4dee21-8bf7-4b06-a184-dbae77b0cc48.jsonl`
