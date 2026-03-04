@@ -879,3 +879,150 @@ class TestCmdShow:
         assert result == 0
         out = capsys.readouterr().out
         assert "LLM config" not in out
+
+    def test_show_verbose_multiline_action_all_lines_indented(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--verbose: all continuation lines of a multiline action are indented."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: fix\n"
+            "states:\n"
+            "  fix:\n"
+            "    action: |\n"
+            "      First line of action.\n"
+            "      Second line of action.\n"
+            "      Third line of action.\n"
+            "    action_type: prompt\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # Collect lines that are part of the action block (6-space indented content)
+        action_content_lines = []
+        in_action = False
+        for line in out.splitlines():
+            if "action: |" in line:
+                in_action = True
+                continue
+            if in_action:
+                if line.startswith("      "):  # 6-space indent = action content
+                    action_content_lines.append(line)
+                else:
+                    break
+        assert len(action_content_lines) == 3, (
+            f"Expected 3 action content lines, got {len(action_content_lines)}: {action_content_lines}"
+        )
+        for line in action_content_lines:
+            assert line.startswith("      "), f"Action line not indented: {line!r}"
+
+    def test_show_diagram_appears_before_states(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Diagram section appears before States section in output."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        diagram_pos = out.find("Diagram:")
+        states_pos = out.find("States:")
+        assert diagram_pos != -1
+        assert states_pos != -1
+        assert diagram_pos < states_pos, "Diagram: must appear before States:"
+
+    def test_show_state_header_includes_type_badge(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """State header includes (action_type) badge; standalone type: line is absent."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: run\n"
+            "states:\n"
+            "  run:\n"
+            '    action: "echo hello"\n'
+            "    action_type: shell\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # The state header for an initial state shows "[run] [INITIAL] (shell)"
+        assert "(shell)" in out
+        assert "    type: shell" not in out
+
+    def test_show_commands_section_lists_all_subcommands(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Commands section lists run, test, status, and history subcommands."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Commands:" in out
+        assert "ll-loop run my-loop" in out
+        assert "ll-loop test my-loop" in out
+        assert "ll-loop status my-loop" in out
+        assert "ll-loop history my-loop" in out

@@ -161,19 +161,34 @@ Fix in `cmd_show()` in `info.py`:
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/info.py` — `cmd_show()`
+- `scripts/little_loops/cli/loop/info.py` — `cmd_show()` (lines 503–631):
+  - Description block: lines 524–526 — `print(f"Description: {description}")` — note: `description` sourced from raw `spec.get("description", "")` dict, NOT from `FSMLoop` (no `description` field on `FSMLoop`)
+  - Action verbose block: lines 559–561 — missing line-by-line indentation
+  - `action_type` print: lines 573–574 — currently printed after action block; move to state header
+  - Evaluate block: lines 575–595
+  - Transition arrows: lines 596–617 — add `Transitions:` sub-header
+  - Diagram section: lines 619–624 — move before `States:` block
+  - Run command section: lines 626–630 — expand to full `Commands:` block
 
 ### Dependent Files
-- `scripts/little_loops/cli/loop/__init__.py` — routes `show` subcommand; no changes needed
+- `scripts/little_loops/cli/loop/__init__.py` — routes `show` subcommand (line 168–172), dispatches to `cmd_show` at line 201–202; no changes needed
+
+### Data Model (confirmed)
+- `scripts/little_loops/fsm/schema.py:192` — `StateConfig.action_type: Literal["prompt", "slash_command", "shell"] | None = None` (confirmed available for state header badge)
 
 ### Similar Patterns
 - N/A — `cmd_show()` is the only verbose multi-section output renderer in the loop CLI; other commands (`cmd_list()`, `cmd_status()`) use single-line tabular output
 
 ### Tests
-- `scripts/tests/test_ll_loop_commands.py` — `TestCmdShow` class (if it exists) or new test:
-  - Verify multiline action indentation (all lines indented, not just first)
-  - Verify diagram appears before states section in output
-  - Verify type badge appears on state header line
+- `scripts/tests/test_ll_loop_commands.py` — `TestCmdShow` class at line 312 (confirmed):
+  - `test_show_verbose_shows_full_action` (line 489) — **will need updating** (output format changes)
+  - `test_show_verbose_shows_evaluate_prompt` (line 523) — **will need updating** (evaluate indent changes)
+  - Non-verbose truncation test (line 562) — check for impact
+  - Add: verify multiline action indentation (all lines indented, not just first)
+  - Add: verify diagram appears before `States:` block in `--verbose` output
+  - Add: verify `(type)` badge appears on state header line
+  - Add: verify `Commands:` section lists `run`, `test`, `status`, `history`
+- `scripts/tests/test_ll_loop_display.py` — display rendering tests; review for overlap with verbose output changes
 
 ### Documentation
 - N/A
@@ -214,7 +229,26 @@ Fix in `cmd_show()` in `info.py`:
 
 - `/ll:capture-issue` — 2026-03-04T20:10:46Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffa88660-2b5b-4a83-a475-9f7a9def1102.jsonl`
 - `/ll:format-issue` — 2026-03-04T20:33:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fac97403-79d6-481f-b8da-20f7f34b52d4.jsonl`
+- `/ll:refine-issue` — 2026-03-04T21:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c0fc3ec7-815a-4ad7-8412-f5d9275a2dc4.jsonl`
+- `/ll:ready-issue` — 2026-03-04T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f0f739c-fb26-490f-a599-0820d59a6c52.jsonl`
+
+## Resolution
+
+**Status**: Completed — 2026-03-04
+
+All 8 items resolved in `cmd_show()` (`scripts/little_loops/cli/loop/info.py`):
+
+1. **Fixed action indent** — `"\n      ".join(state.action.strip().splitlines())` ensures all lines indented in verbose mode
+2. **Fixed description indent** — printed as `Description:\n  line\n  line` block
+3. **Moved diagram before states** — `Diagram:` section now prints between metadata and `States:`
+4. **Added blank lines between states** — `first_state` flag adds `print()` before each subsequent state
+5. **Type badge on state header** — `(action_type)` inline on header; standalone `type:` line removed
+6. **Transitions sub-header** — all transition arrows grouped under `    Transitions:` label at 6-space indent
+7. **Enriched Commands section** — `Commands:` block with `run`, `test`, `status`, `history` and aligned comments
+8. **Metadata separator** — `── {loop_name} ──...` separator printed before metadata fields
+
+Also added 4 new tests to `scripts/tests/test_ll_loop_commands.py` to cover new behaviour.
 
 ---
 
-**Open** | Created: 2026-03-04 | Priority: P3
+**Completed** | Created: 2026-03-04 | Priority: P3

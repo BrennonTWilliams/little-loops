@@ -517,13 +517,12 @@ def cmd_show(
         logger.error(f"Invalid loop: {e}")
         return 1
 
-    # --- Metadata ---
+    # --- Metadata header ---
+    separator_dashes = "─" * max(0, 52 - len(loop_name))
+    print(f"── {loop_name} {separator_dashes}")
     print(f"Loop: {fsm.name}")
     if fsm.paradigm:
         print(f"Paradigm: {fsm.paradigm}")
-    description = spec.get("description", "").strip()
-    if description:
-        print(f"Description: {description}")
     print(f"Max iterations: {fsm.max_iterations}")
     print(f"On handoff: {fsm.on_handoff}")
     if fsm.timeout:
@@ -548,17 +547,38 @@ def cmd_show(
         print(f"LLM config: {', '.join(llm_parts)}")
     print(f"Source: {path}")
 
+    # --- Description ---
+    description = spec.get("description", "").strip()
+    if description:
+        print()
+        print("Description:")
+        for line in description.splitlines():
+            print(f"  {line}")
+
+    # --- ASCII FSM Diagram ---
+    print()
+    print("Diagram:")
+    diagram = _render_fsm_diagram(fsm)
+    if diagram:
+        print(diagram)
+
     # --- States & Transitions ---
     print()
     print("States:")
+    verbose = getattr(args, "verbose", False)
+    first_state = True
     for name, state in fsm.states.items():
+        if not first_state:
+            print()
+        first_state = False
         terminal_marker = " [TERMINAL]" if state.terminal else ""
         initial_marker = " [INITIAL]" if name == fsm.initial else ""
-        print(f"  [{name}]{initial_marker}{terminal_marker}")
+        type_badge = f" ({state.action_type})" if state.action_type else ""
+        print(f"  [{name}]{initial_marker}{terminal_marker}{type_badge}")
         if state.action:
-            verbose = getattr(args, "verbose", False)
             if verbose:
-                print(f"    action: |\n      {state.action.strip()}")
+                indented = "\n      ".join(state.action.strip().splitlines())
+                print(f"    action: |\n      {indented}")
             elif state.action_type == "prompt":
                 lines = state.action.strip().splitlines()
                 preview = "\n      ".join(lines[:3])
@@ -570,12 +590,9 @@ def cmd_show(
                     state.action[:70] + "..." if len(state.action) > 70 else state.action
                 )
                 print(f"    action: {action_display}")
-        if state.action_type:
-            print(f"    type: {state.action_type}")
         if state.evaluate:
             ev = state.evaluate
             print(f"    evaluate: {ev.type}")
-            verbose = getattr(args, "verbose", False)
             if ev.prompt:
                 if verbose:
                     print("      prompt: |")
@@ -593,39 +610,44 @@ def cmd_show(
                 print(f"      operator: {ev.operator} {ev.target}")
             if ev.pattern:
                 print(f"      pattern: {ev.pattern}")
-        if state.on_success:
-            print(f"    on_success \u2500\u2500\u2192 {state.on_success}")
-        if state.on_failure:
-            print(f"    on_failure \u2500\u2500\u2192 {state.on_failure}")
-        if state.on_error:
-            print(f"    on_error \u2500\u2500\u2192 {state.on_error}")
-        if state.on_partial:
-            print(f"    on_partial \u2500\u2500\u2192 {state.on_partial}")
-        if state.next:
-            print(f"    next \u2500\u2500\u2192 {state.next}")
         if state.capture:
             print(f"    capture: {state.capture}")
         if state.timeout:
             print(f"    timeout: {state.timeout}s")
+        transitions: list[str] = []
+        if state.on_success:
+            transitions.append(f"on_success \u2500\u2500\u2192 {state.on_success}")
+        if state.on_failure:
+            transitions.append(f"on_failure \u2500\u2500\u2192 {state.on_failure}")
+        if state.on_error:
+            transitions.append(f"on_error   \u2500\u2500\u2192 {state.on_error}")
+        if state.on_partial:
+            transitions.append(f"on_partial \u2500\u2500\u2192 {state.on_partial}")
+        if state.next:
+            transitions.append(f"next \u2500\u2500\u2192 {state.next}")
         if state.on_maintain:
-            print(f"    on_maintain \u2500\u2500\u2192 {state.on_maintain}")
+            transitions.append(f"on_maintain \u2500\u2500\u2192 {state.on_maintain}")
         if state.route:
-            print("    route:")
             for verdict, target in state.route.routes.items():
-                print(f"      {verdict} \u2500\u2500\u2192 {target}")
+                transitions.append(f"{verdict} \u2500\u2500\u2192 {target}")
             if state.route.default:
-                print(f"      _ \u2500\u2500\u2192 {state.route.default}")
+                transitions.append(f"_ \u2500\u2500\u2192 {state.route.default}")
+        if transitions:
+            print("    Transitions:")
+            for t in transitions:
+                print(f"      {t}")
 
-    # --- ASCII FSM Diagram ---
+    # --- Commands ---
     print()
-    print("Diagram:")
-    diagram = _render_fsm_diagram(fsm)
-    if diagram:
-        print(diagram)
-
-    # --- Run Command ---
-    print()
-    print("Run command:")
-    print(f"  ll-loop run {loop_name}")
+    print("Commands:")
+    cmds = [
+        (f"ll-loop run {loop_name}", "run"),
+        (f"ll-loop test {loop_name}", "single test iteration"),
+        (f"ll-loop status {loop_name}", "check if running"),
+        (f"ll-loop history {loop_name}", "execution history"),
+    ]
+    col_width = max(len(c) for c, _ in cmds) + 2
+    for cmd, comment in cmds:
+        print(f"  {cmd:<{col_width}}  # {comment}")
 
     return 0
