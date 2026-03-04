@@ -251,10 +251,11 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
                         display = line[:120] + "..." if len(line) > 120 else line
                         print(f"       ...{display}", flush=True)
                 else:
-                    last_line = lines[-1] if lines else ""
-                    if last_line:
-                        display = last_line[:100] + "..." if len(last_line) > 100 else last_line
-                        print(f"       ...{display}", flush=True)
+                    # Show last 8 lines for shell commands (table/report output)
+                    show_lines = lines[-8:] if lines else []
+                    for line in show_lines:
+                        display = line[:120] + "..." if len(line) > 120 else line
+                        print(f"       {display}", flush=True)
 
         elif event_type == "evaluate":
             verdict = event.get("verdict", "")
