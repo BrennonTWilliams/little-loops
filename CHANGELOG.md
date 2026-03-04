@@ -12,6 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.30.0] - 2026-03-04
+
+### Added
+
+- **Goal paradigm per-tool action_type** - Goal paradigm YAML spec supports per-tool action_type configuration (FEAT-572)
+
+### Fixed
+
+- **Mixed timestamp crashes** - Handle mixed naive/aware timestamps in workflow-analyzer (BUG-546)
+- **ll-loop prompt output** - Improve output for prompt actions (BUG-564)
+- **ll-loop shell output truncated** - Show last 8 lines of shell command output on handoff (BUG-566)
+- **on_partial transition dropped** - Add on_partial as first-class FSM transition (BUG-567)
+- **File hints scope** - Scope overlap detection to write-target sections only (BUG-571)
+- **FSM diagram multi-label edges** - Join all multi-label edges in FSM diagram (BUG-574)
+
+### Changed
+
+- **ll-loop show verbose** - Improved verbose output quality with action-type-aware truncation, on_handoff display, evaluate prompt and state-level fields (ENH-568, ENH-569, ENH-570, ENH-573, ENH-575)
+- **Section JSON alignment** - Align bug/enh section JSON with format-issue templates v2.0 (ENH-576)
+- **Sprint stability** - Reduce default_max_workers to 2 for sprint stability (7921151)
+- **Template alignment** - Align section JSONs and config with templates.md v2.0 (122167f)
+
+[1.30.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.29.0...v1.30.0
+
 ## [1.29.0] - 2026-03-04
 
 ### Added
