@@ -220,20 +220,55 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
 
         elif event_type == "action_start":
             action = event.get("action", "")
-            action_display = action[:60] + "..." if len(action) > 60 else action
-            print(f" -> {action_display}", flush=True)
+            is_prompt = event.get("is_prompt", False)
+            prefix = "[prompt] " if is_prompt else ""
+            max_len = 60 - len(prefix)
+            action_display = action[:max_len] + "..." if len(action) > max_len else action
+            print(f" -> {prefix}{action_display}", flush=True)
+
+        elif event_type == "action_complete":
+            duration_ms = event.get("duration_ms", 0)
+            exit_code = event.get("exit_code", 0)
+            output_preview = event.get("output_preview")
+            duration_sec = duration_ms / 1000
+            if duration_sec < 60:
+                duration_str = f"{duration_sec:.1f}s"
+            else:
+                minutes = int(duration_sec // 60)
+                seconds = duration_sec % 60
+                duration_str = f"{minutes}m {seconds:.0f}s"
+            parts = [f"       ({duration_str})"]
+            if exit_code != 0:
+                parts.append(f"exit: {exit_code}")
+            print("  ".join(parts), flush=True)
+            if output_preview:
+                # Show last line(s) of output, truncated
+                last_line = output_preview.splitlines()[-1] if output_preview else ""
+                if last_line:
+                    display = last_line[:100] + "..." if len(last_line) > 100 else last_line
+                    print(f"       ...{display}", flush=True)
 
         elif event_type == "evaluate":
             verdict = event.get("verdict", "")
             confidence = event.get("confidence")
+            reason = event.get("reason", "")
+            error = event.get("error", "")
             if verdict in ("success", "target", "progress"):
                 symbol = "\u2713"  # checkmark
             else:
                 symbol = "\u2717"  # x mark
-            if confidence is not None:
-                print(f"       {symbol} {verdict} (confidence: {confidence:.2f})", flush=True)
+            # Build verdict line
+            if error and verdict == "error":
+                verdict_line = f"{symbol} {verdict}: {error}"
+            elif confidence is not None:
+                verdict_line = f"{symbol} {verdict} ({confidence:.2f})"
             else:
-                print(f"       {symbol} {verdict}", flush=True)
+                verdict_line = f"{symbol} {verdict}"
+            print(f"       {verdict_line}", flush=True)
+            # Show reason on a second line if present (and not already shown as error)
+            if reason and not (error and verdict == "error"):
+                reason_display = reason[:120] + "..." if len(reason) > 120 else reason
+                print(f"         {reason_display}", flush=True)
 
         elif event_type == "route":
             to_state = event.get("to", "")

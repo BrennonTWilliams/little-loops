@@ -510,13 +510,13 @@ class FSMExecutor:
         """
         action = interpolate(action_template, ctx)
 
-        self._emit("action_start", {"action": action})
-
         # Determine if this is a slash command/prompt based on action_type or heuristic
         if state.action_type is not None:
             is_slash_command = state.action_type in ("prompt", "slash_command")
         else:
             is_slash_command = action.startswith("/")
+
+        self._emit("action_start", {"action": action, "is_prompt": is_slash_command})
 
         result = self.action_runner.run(
             action,
@@ -524,11 +524,14 @@ class FSMExecutor:
             is_slash_command=is_slash_command,
         )
 
+        preview = result.output[-200:].strip() if result.output and not is_slash_command else None
         self._emit(
             "action_complete",
             {
                 "exit_code": result.exit_code,
                 "duration_ms": result.duration_ms,
+                "output_preview": preview,
+                "is_prompt": is_slash_command,
             },
         )
 
