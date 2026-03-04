@@ -61,9 +61,9 @@ Run `/ll:init` once per project. It auto-detects your project type and generates
 /ll:init
 ```
 
-What it detects: Python, JavaScript/TypeScript, Go, Rust, Java (Maven or Gradle), and .NET projects. For each type, it infers sensible defaults for test commands, lint commands, and source directories.
+**Detected project types:** Python, JavaScript/TypeScript, Go, Rust, Java (Maven or Gradle), and .NET. For each type, it infers sensible defaults for test commands, lint commands, and source directories. Unrecognized projects fall back to a generic template.
 
-What it creates:
+**What gets created:**
 
 ```
 .issues/
@@ -71,10 +71,29 @@ What it creates:
   features/
   enhancements/
   completed/
+  deferred/
 .claude/ll-config.json
 ```
 
-The three config fields most relevant to beginners:
+**What else happens:** `/ll:init` also appends little-loops state files to your `.gitignore` (e.g. `.auto-manage-state.json`, `.claude/ll-context-state.json`) so runtime state never ends up committed.
+
+### Flags
+
+| Flag | When to use it |
+|------|---------------|
+| _(none)_ | Auto-detect, preview settings, confirm before writing |
+| `--interactive` | Step through a guided wizard to configure every option |
+| `--yes` | Accept all auto-detected defaults without confirmation |
+| `--force` | Overwrite an existing `.claude/ll-config.json` |
+| `--dry-run` | Preview what would be generated without writing any files |
+
+`--interactive` and `--yes` are mutually exclusive. All other combinations are valid — for example, `--interactive --force` runs the wizard and overwrites the existing config, and `--dry-run --force` previews what an overwrite would produce.
+
+Use `--interactive` the first time you set up a project with non-standard tooling. The wizard walks through source directories, test and lint commands, parallel worker counts, GitHub sync, and more. For a straightforward project where auto-detection gets it right, `--yes` is faster.
+
+### Key Config Fields
+
+The three fields most relevant to beginners:
 
 | Field | Purpose | Example |
 |-------|---------|---------|
