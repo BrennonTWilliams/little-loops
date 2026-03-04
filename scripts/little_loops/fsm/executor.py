@@ -524,7 +524,7 @@ class FSMExecutor:
             is_slash_command=is_slash_command,
         )
 
-        preview = result.output[:2000].strip() if result.output else None
+        preview = result.output[-2000:].strip() if result.output else None
         self._emit(
             "action_complete",
             {
