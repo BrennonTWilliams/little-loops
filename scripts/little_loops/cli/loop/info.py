@@ -524,6 +524,7 @@ def cmd_show(
     if description:
         print(f"Description: {description}")
     print(f"Max iterations: {fsm.max_iterations}")
+    print(f"On handoff: {fsm.on_handoff}")
     if fsm.timeout:
         print(f"Timeout: {fsm.timeout}s")
     if fsm.backoff:

@@ -347,9 +347,41 @@ class TestCmdShow:
         assert result == 0
         out = capsys.readouterr().out
         assert "Loop: my-loop" in out
+        assert "On handoff: pause" in out
         assert "[check]" in out
         assert "[done]" in out
         assert "ll-loop run my-loop" in out
+
+    def test_show_displays_on_handoff(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Show command displays on_handoff value when set."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "spawn-loop.yaml").write_text(
+            "name: spawn-loop\n"
+            "initial: check\n"
+            "on_handoff: spawn\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_success: done\n"
+            "    on_failure: check\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "spawn-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "On handoff: spawn" in out
 
     def test_show_displays_diagram(
         self,
