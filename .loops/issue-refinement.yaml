@@ -15,31 +15,32 @@ states:
       type: llm_structured
       prompt: |
         Examine this ll-issues refine-status table output.
+        Thresholds: readiness=85, outcome=70
+
         Return verdict "success" ONLY if every issue row satisfies ALL of the following:
           1. All boolean columns (format, verify, map) show ✓ (not — em-dash).
              Note: map column is dynamic — if it is absent from the table entirely,
              treat it as incomplete (not yet run for any issue).
           2. Both the ready (readiness score) and confidence (outcome confidence) columns
-             show integer values (not —) that meet or exceed their configured thresholds.
+             show integer values (not —) that meet or exceed thresholds (ready>=85, confidence>=70).
         Return "failure" if any issue still has — in a format, verify, or map column, or if any issue
         has unscored or below-threshold ready/confidence values.
         Return "partial" if the output is ambiguous or truncated.
     on_success: done
     on_failure: fix
+    on_partial: fix
     on_error: fix
   fix:
     action_type: prompt
     action: |
       Run `ll-issues refine-status` to see the current refinement state of all
-      active issues. Then read `.claude/ll-config.json` and note the
-      readiness_threshold and outcome_threshold values from
-      commands.confidence_gate.
+      active issues. Thresholds: readiness=85, outcome=70.
 
       Find the highest Issue ID that still needs refinement work, where:
       - Any boolean column shows — (em-dash) for format or verify
       - OR the map column is absent from the table entirely, or shows —
-      - OR the ready (confidence_score) column shows — or is below readiness_threshold
-      - OR the confidence (outcome_confidence) column shows — or is below outcome_threshold
+      - OR the ready (confidence_score) column shows — or is below 85
+      - OR the confidence (outcome_confidence) column shows — or is below 70
 
       For that issue, execute the following steps in sequence:
 
@@ -53,10 +54,10 @@ states:
       - If ready or confidence shows — (not yet scored): /ll:confidence-check [ISSUE_ID] --auto
 
       Step C — Refine until scores meet thresholds (maximum 5 refinements):
-      - While (ready < readiness_threshold OR confidence < outcome_threshold):
+      - While (ready < 85 OR confidence < 70):
         1. /ll:refine-issue [ISSUE_ID] --auto
         2. /ll:confidence-check [ISSUE_ID] --auto
-        3. Check updated scores; stop if both thresholds met or 5 refinements reached
+        3. Check updated scores; stop if both thresholds met (ready>=85, confidence>=70) or 5 refinements reached
     next: evaluate
   done:
     terminal: true
