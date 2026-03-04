@@ -999,7 +999,7 @@ class TestCmdShow:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Commands section lists run, test, stop, status, and history subcommands."""
+        """Commands section lists run, test, status, and history subcommands."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         (loops_dir / "my-loop.yaml").write_text(
