@@ -1,0 +1,52 @@
+paradigm: fsm
+name: issue-refinement
+description: |
+  Progressively refine all active issues to ensure complete coverage.
+  For each incomplete issue (starting from highest ID), runs all missing
+  refinement commands, scores with confidence-check, and iterates with
+  refine-issue until both confidence scores meet configured thresholds.
+  Repeats until all active issues are fully refined.
+initial: evaluate
+states:
+  evaluate:
+    action: "ll-issues refine-status"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+    on_success: done
+    on_failure: fix
+    on_error: fix
+  fix:
+    action_type: prompt
+    action: |
+      Run `ll-issues refine-status` to see the current refinement state of all
+      active issues. Then read `.claude/ll-config.json` and note the
+      readiness_threshold and outcome_threshold values from
+      commands.confidence_gate.
+
+      Find the highest Issue ID that still needs refinement work, where:
+      - Any boolean column shows — (em-dash): format, verify, tradeoff, or map
+      - OR the Ready (confidence_score) column shows — or is below readiness_threshold
+      - OR the OutConf (outcome_confidence) column shows — or is below outcome_threshold
+
+      For that issue, execute the following steps in sequence:
+
+      Step A — Complete missing boolean columns (run each command that shows —):
+      - format column (—): /ll:format-issue [ISSUE_ID] --auto
+      - verify column (—): /ll:verify-issues [ISSUE_ID]
+      - tradeoff column (—): /ll:tradeoff-review-issues [ISSUE_ID]
+      - map column (—): /ll:map-dependencies [ISSUE_ID]
+
+      Step B — Score if unscored:
+      - If Ready or OutConf shows — (not yet scored): /ll:confidence-check [ISSUE_ID] --auto
+
+      Step C — Refine until scores meet thresholds (maximum 5 refinements):
+      - While (Ready < readiness_threshold OR OutConf < outcome_threshold):
+        1. /ll:refine-issue [ISSUE_ID] --auto
+        2. /ll:confidence-check [ISSUE_ID] --auto
+        3. Check updated scores; stop if both thresholds met or 5 refinements reached
+    next: evaluate
+  done:
+    terminal: true
+max_iterations: 100
+on_handoff: spawn
