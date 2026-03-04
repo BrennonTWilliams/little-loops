@@ -95,6 +95,9 @@ Examples:
     )
     run_parser.add_argument("--quiet", "-q", action="store_true", help="Suppress progress output")
     run_parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show full prompt text and more output lines"
+    )
+    run_parser.add_argument(
         "--queue", action="store_true", help="Wait for conflicting loops to finish"
     )
 
