@@ -450,7 +450,7 @@ The `simulate` command accepts `--scenario` to auto-select verdicts instead of p
 |---------|-------|-----|
 | Loop stuck in a cycle | Fix action isn't changing the result the evaluator sees | Check `ll-loop history` — if the same verdict repeats, adjust the fix action |
 | Scope conflict error | Another loop holds a lock on overlapping paths | Find it with `ll-loop list --running` and stop it, or use `--queue` to wait |
-| LLM evaluator errors | Missing API key or network issue | Set `ANTHROPIC_API_KEY`, or use `--no-llm` to fall back to deterministic evaluators |
+| LLM evaluator errors | Claude CLI auth or network issue | Ensure `claude` CLI is authenticated (`claude auth`), or use `--no-llm` to fall back to deterministic evaluators |
 | "No state found" on resume | Loop already completed or was never started | Check `ll-loop status` — completed loops have no resumable state |
 
 ## Further Reading

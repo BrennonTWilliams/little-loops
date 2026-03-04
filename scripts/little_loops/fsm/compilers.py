@@ -202,6 +202,7 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
         max_iterations=spec.get("max_iterations", 50),
         backoff=spec.get("backoff"),
         timeout=spec.get("timeout"),
+        on_handoff=spec.get("on_handoff", "pause"),
     )
 
 

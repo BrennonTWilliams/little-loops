@@ -20,26 +20,16 @@ from __future__ import annotations
 
 import json
 import re
+import subprocess
 from dataclasses import dataclass
 from typing import Any
-
-from little_loops.fsm.schema import DEFAULT_LLM_MODEL
-
-# Optional import for LLM evaluator
-try:
-    import anthropic
-
-    ANTHROPIC_AVAILABLE = True
-except ImportError:
-    anthropic = None  # type: ignore[assignment]
-    ANTHROPIC_AVAILABLE = False
 
 from little_loops.fsm.interpolation import (
     InterpolationContext,
     InterpolationError,
     interpolate,
 )
-from little_loops.fsm.schema import EvaluateConfig
+from little_loops.fsm.schema import DEFAULT_LLM_MODEL, EvaluateConfig
 
 
 @dataclass
@@ -394,10 +384,10 @@ def evaluate_llm_structured(
     max_tokens: int = 256,
     timeout: int = 30,
 ) -> EvaluationResult:
-    """Evaluate action output using LLM with structured output.
+    """Evaluate action output using LLM with structured output via Claude CLI.
 
     This is the ONLY place in the FSM system that uses LLM structured output.
-    Requires the anthropic package to be installed (pip install little-loops[llm]).
+    Requires the ``claude`` CLI to be installed and authenticated.
 
     Args:
         output: Action stdout to evaluate
@@ -405,78 +395,67 @@ def evaluate_llm_structured(
         schema: Custom JSON schema for structured response
         min_confidence: Minimum confidence threshold (0-1)
         uncertain_suffix: If True, append _uncertain to low-confidence verdicts
-        model: Model identifier for API calls
-        max_tokens: Maximum tokens for response
+        model: Model identifier (CLI aliases like "sonnet" or full names)
+        max_tokens: Maximum tokens for response (passed to --max-turns is not
+            applicable; kept for signature compat)
         timeout: Timeout in seconds
 
     Returns:
         EvaluationResult with verdict from LLM and confidence/reason in details
     """
-    if not ANTHROPIC_AVAILABLE or anthropic is None:
-        return EvaluationResult(
-            verdict="error",
-            details={
-                "error": "anthropic package not installed. Install with: pip install little-loops[llm]",
-                "missing_dependency": True,
-            },
-        )
-
-    try:
-        client = anthropic.Anthropic()
-    except anthropic.AuthenticationError as e:
-        return EvaluationResult(
-            verdict="error",
-            details={"error": f"Anthropic authentication error: {e}", "auth_error": True},
-        )
-
     effective_schema = schema or DEFAULT_LLM_SCHEMA
     effective_prompt = prompt or DEFAULT_LLM_PROMPT
 
     # Truncate output to avoid context limits (keep last 4000 chars)
     truncated = output[-4000:] if len(output) > 4000 else output
 
+    user_prompt = f"{effective_prompt}\n\n<action_output>\n{truncated}\n</action_output>"
+
+    cmd = [
+        "claude",
+        "-p",
+        user_prompt,
+        "--output-format",
+        "json",
+        "--model",
+        model,
+        "--json-schema",
+        json.dumps(effective_schema),
+        "--dangerously-skip-permissions",
+        "--no-session-persistence",
+    ]
+
     try:
-        response = client.messages.create(
-            model=model,
-            max_tokens=max_tokens,
-            timeout=timeout,
-            messages=[
-                {
-                    "role": "user",
-                    "content": f"{effective_prompt}\n\n<action_output>\n{truncated}\n</action_output>",
-                }
-            ],
-            tools=[
-                {
-                    "name": "evaluate",
-                    "description": "Provide your evaluation of the action result",
-                    "input_schema": effective_schema,
-                }
-            ],
-            tool_choice={"type": "tool", "name": "evaluate"},
-        )
-    except anthropic.APITimeoutError:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except subprocess.TimeoutExpired:
         return EvaluationResult(
             verdict="error",
             details={"error": "LLM evaluation timeout", "timeout": True},
         )
-    except anthropic.APIError as e:
+    except FileNotFoundError:
         return EvaluationResult(
             verdict="error",
-            details={"error": f"LLM API error: {e}", "api_error": True},
+            details={
+                "error": "claude CLI not found. Install from https://docs.anthropic.com/en/docs/claude-code",
+                "missing_dependency": True,
+            },
         )
 
-    # Extract structured result from tool use
-    llm_result: dict[str, Any] | None = None
-    for block in response.content:
-        if block.type == "tool_use" and block.name == "evaluate":
-            llm_result = block.input
-            break
-
-    if llm_result is None:
+    if proc.returncode != 0:
         return EvaluationResult(
             verdict="error",
-            details={"error": "No evaluation in LLM response"},
+            details={"error": f"Claude CLI error: {proc.stderr.strip()}", "api_error": True},
+        )
+
+    # Parse the CLI JSON envelope and extract structured result
+    try:
+        envelope = json.loads(proc.stdout)
+        llm_text = envelope.get("result", "")
+        llm_result: dict[str, Any] = json.loads(llm_text)
+    except (json.JSONDecodeError, TypeError, ValueError) as e:
+        return EvaluationResult(
+            verdict="error",
+            details={"error": f"Failed to parse LLM response: {e}"},
         )
 
     # Build result with confidence handling

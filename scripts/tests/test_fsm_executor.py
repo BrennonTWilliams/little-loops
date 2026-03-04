@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass, field
 from typing import Any
 from unittest.mock import MagicMock, patch
@@ -1221,32 +1222,32 @@ class TestEvaluators:
             },
         )
 
-        # Create mock LLM response
-        mock_block = MagicMock()
-        mock_block.type = "tool_use"
-        mock_block.name = "evaluate"
-        mock_block.input = {
-            "verdict": "success",
-            "confidence": 0.95,
-            "reason": "Deployment completed successfully",
-        }
-        mock_response = MagicMock()
-        mock_response.content = [mock_block]
+        mock_cli_result = MagicMock()
+        mock_cli_result.returncode = 0
+        mock_cli_result.stderr = ""
+        mock_cli_result.stdout = json.dumps(
+            {
+                "result": json.dumps(
+                    {
+                        "verdict": "success",
+                        "confidence": 0.95,
+                        "reason": "Deployment completed successfully",
+                    }
+                ),
+            }
+        )
 
         mock_runner = MockActionRunner()
         mock_runner.set_result("deploy.sh", output="Deployed to production")
 
-        with patch("little_loops.fsm.evaluators.ANTHROPIC_AVAILABLE", True):
-            with patch("little_loops.fsm.evaluators.anthropic") as mock_anthropic:
-                mock_client = MagicMock()
-                mock_anthropic.Anthropic.return_value = mock_client
-                mock_client.messages.create.return_value = mock_response
-
-                result = FSMExecutor(fsm, action_runner=mock_runner).run()
+        with patch(
+            "little_loops.fsm.evaluators.subprocess.run", return_value=mock_cli_result
+        ) as mock_run:
+            result = FSMExecutor(fsm, action_runner=mock_runner).run()
 
         assert result.final_state == "done"
-        # Verify LLM was called
-        mock_client.messages.create.assert_called_once()
+        # Verify CLI was called
+        mock_run.assert_called_once()
 
     def test_llm_structured_evaluator_failure_verdict(self) -> None:
         """llm_structured evaluator routes to failure on failure verdict."""
@@ -1265,27 +1266,26 @@ class TestEvaluators:
             },
         )
 
-        mock_block = MagicMock()
-        mock_block.type = "tool_use"
-        mock_block.name = "evaluate"
-        mock_block.input = {
-            "verdict": "failure",
-            "confidence": 0.9,
-            "reason": "Tests failed",
-        }
-        mock_response = MagicMock()
-        mock_response.content = [mock_block]
+        mock_cli_result = MagicMock()
+        mock_cli_result.returncode = 0
+        mock_cli_result.stderr = ""
+        mock_cli_result.stdout = json.dumps(
+            {
+                "result": json.dumps(
+                    {
+                        "verdict": "failure",
+                        "confidence": 0.9,
+                        "reason": "Tests failed",
+                    }
+                ),
+            }
+        )
 
         mock_runner = MockActionRunner()
         mock_runner.set_result("test.sh", output="3 tests failed")
 
-        with patch("little_loops.fsm.evaluators.ANTHROPIC_AVAILABLE", True):
-            with patch("little_loops.fsm.evaluators.anthropic") as mock_anthropic:
-                mock_client = MagicMock()
-                mock_anthropic.Anthropic.return_value = mock_client
-                mock_client.messages.create.return_value = mock_response
-
-                result = FSMExecutor(fsm, action_runner=mock_runner).run()
+        with patch("little_loops.fsm.evaluators.subprocess.run", return_value=mock_cli_result):
+            result = FSMExecutor(fsm, action_runner=mock_runner).run()
 
         assert result.final_state == "retry"
 
@@ -1312,27 +1312,26 @@ class TestEvaluators:
             },
         )
 
-        mock_block = MagicMock()
-        mock_block.type = "tool_use"
-        mock_block.name = "evaluate"
-        mock_block.input = {
-            "verdict": "blocked",
-            "confidence": 0.85,
-            "reason": "Missing permissions",
-        }
-        mock_response = MagicMock()
-        mock_response.content = [mock_block]
+        mock_cli_result = MagicMock()
+        mock_cli_result.returncode = 0
+        mock_cli_result.stderr = ""
+        mock_cli_result.stdout = json.dumps(
+            {
+                "result": json.dumps(
+                    {
+                        "verdict": "blocked",
+                        "confidence": 0.85,
+                        "reason": "Missing permissions",
+                    }
+                ),
+            }
+        )
 
         mock_runner = MockActionRunner()
         mock_runner.set_result("deploy.sh", output="Permission denied")
 
-        with patch("little_loops.fsm.evaluators.ANTHROPIC_AVAILABLE", True):
-            with patch("little_loops.fsm.evaluators.anthropic") as mock_anthropic:
-                mock_client = MagicMock()
-                mock_anthropic.Anthropic.return_value = mock_client
-                mock_client.messages.create.return_value = mock_response
-
-                result = FSMExecutor(fsm, action_runner=mock_runner).run()
+        with patch("little_loops.fsm.evaluators.subprocess.run", return_value=mock_cli_result):
+            result = FSMExecutor(fsm, action_runner=mock_runner).run()
 
         assert result.final_state == "needs_help"
 

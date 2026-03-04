@@ -18,7 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 # Default LLM model for structured evaluation
-DEFAULT_LLM_MODEL: str = "claude-sonnet-4-20250514"
+DEFAULT_LLM_MODEL: str = "sonnet"
 
 
 @dataclass

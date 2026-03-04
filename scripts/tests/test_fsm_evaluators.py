@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+import subprocess
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -490,53 +492,48 @@ class TestEvaluateDispatcher:
 
 
 class TestLLMStructuredEvaluator:
-    """Tests for llm_structured evaluator (Tier 2)."""
+    """Tests for llm_structured evaluator (Tier 2) via Claude CLI."""
+
+    @staticmethod
+    def _cli_stdout(verdict: str, confidence: float, reason: str) -> str:
+        """Helper to create mock CLI JSON output."""
+        return json.dumps(
+            {
+                "result": json.dumps(
+                    {
+                        "verdict": verdict,
+                        "confidence": confidence,
+                        "reason": reason,
+                    }
+                ),
+            }
+        )
 
     @pytest.fixture
-    def mock_anthropic(self):
-        """Create mock Anthropic client and module."""
-        with patch("little_loops.fsm.evaluators.ANTHROPIC_AVAILABLE", True):
-            with patch("little_loops.fsm.evaluators.anthropic") as mock_module:
-                mock_client = MagicMock()
-                mock_module.Anthropic.return_value = mock_client
-                mock_module.APIError = Exception
-                mock_module.APITimeoutError = TimeoutError
-                mock_module.AuthenticationError = Exception
-                yield mock_client
+    def mock_cli(self):
+        """Create mock subprocess.run for Claude CLI."""
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+            yield mock_run, mock_result
 
-    @pytest.fixture
-    def mock_anthropic_unavailable(self):
-        """Mock anthropic as unavailable."""
-        with patch("little_loops.fsm.evaluators.ANTHROPIC_AVAILABLE", False):
-            with patch("little_loops.fsm.evaluators.anthropic", None):
-                yield
-
-    def _create_tool_response(self, verdict: str, confidence: float, reason: str) -> MagicMock:
-        """Helper to create mock tool use response."""
-        mock_block = MagicMock()
-        mock_block.type = "tool_use"
-        mock_block.name = "evaluate"
-        mock_block.input = {
-            "verdict": verdict,
-            "confidence": confidence,
-            "reason": reason,
-        }
-        mock_response = MagicMock()
-        mock_response.content = [mock_block]
-        return mock_response
-
-    def test_anthropic_not_installed(self, mock_anthropic_unavailable) -> None:
-        """Returns error when anthropic package not installed."""
-        result = evaluate_llm_structured("test output")
+    def test_cli_not_found(self) -> None:
+        """Returns error when claude CLI not installed."""
+        with patch(
+            "little_loops.fsm.evaluators.subprocess.run",
+            side_effect=FileNotFoundError("claude"),
+        ):
+            result = evaluate_llm_structured("test output")
         assert result.verdict == "error"
         assert result.details.get("missing_dependency") is True
-        assert "anthropic package not installed" in result.details["error"]
+        assert "claude CLI not found" in result.details["error"]
 
-    def test_success_verdict(self, mock_anthropic) -> None:
+    def test_success_verdict(self, mock_cli) -> None:
         """LLM returns success verdict."""
-        mock_anthropic.messages.create.return_value = self._create_tool_response(
-            "success", 0.9, "Action completed successfully"
-        )
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("success", 0.9, "Action completed successfully")
 
         result = evaluate_llm_structured("Fixed error in handlers.py")
 
@@ -545,60 +542,55 @@ class TestLLMStructuredEvaluator:
         assert result.details["confident"] is True
         assert result.details["reason"] == "Action completed successfully"
 
-    def test_failure_verdict(self, mock_anthropic) -> None:
+    def test_failure_verdict(self, mock_cli) -> None:
         """LLM returns failure verdict."""
-        mock_anthropic.messages.create.return_value = self._create_tool_response(
-            "failure", 0.8, "Tests still failing"
-        )
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("failure", 0.8, "Tests still failing")
 
         result = evaluate_llm_structured("3 tests failed")
 
         assert result.verdict == "failure"
         assert result.details["confident"] is True
 
-    def test_blocked_verdict(self, mock_anthropic) -> None:
+    def test_blocked_verdict(self, mock_cli) -> None:
         """LLM returns blocked verdict."""
-        mock_anthropic.messages.create.return_value = self._create_tool_response(
-            "blocked", 0.95, "Missing credentials"
-        )
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("blocked", 0.95, "Missing credentials")
 
         result = evaluate_llm_structured("Authentication required")
 
         assert result.verdict == "blocked"
 
-    def test_partial_verdict(self, mock_anthropic) -> None:
+    def test_partial_verdict(self, mock_cli) -> None:
         """LLM returns partial verdict."""
-        mock_anthropic.messages.create.return_value = self._create_tool_response(
-            "partial", 0.7, "2 of 5 items completed"
-        )
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("partial", 0.7, "2 of 5 items completed")
 
         result = evaluate_llm_structured("Completed items 1 and 2")
 
         assert result.verdict == "partial"
 
-    def test_low_confidence_without_suffix(self, mock_anthropic) -> None:
+    def test_low_confidence_without_suffix(self, mock_cli) -> None:
         """Low confidence without uncertain_suffix keeps original verdict."""
-        mock_anthropic.messages.create.return_value = self._create_tool_response(
-            "success", 0.4, "Maybe fixed"
-        )
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("success", 0.4, "Maybe fixed")
 
         result = evaluate_llm_structured("...", min_confidence=0.7, uncertain_suffix=False)
 
         assert result.verdict == "success"
         assert result.details["confident"] is False
 
-    def test_low_confidence_with_suffix(self, mock_anthropic) -> None:
+    def test_low_confidence_with_suffix(self, mock_cli) -> None:
         """Low confidence with uncertain_suffix appends _uncertain."""
-        mock_anthropic.messages.create.return_value = self._create_tool_response(
-            "success", 0.4, "Maybe fixed"
-        )
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("success", 0.4, "Maybe fixed")
 
         result = evaluate_llm_structured("...", min_confidence=0.7, uncertain_suffix=True)
 
         assert result.verdict == "success_uncertain"
         assert result.details["confident"] is False
 
-    def test_custom_schema(self, mock_anthropic) -> None:
+    def test_custom_schema(self, mock_cli) -> None:
         """Custom schema with non-standard verdicts."""
         custom_schema = {
             "type": "object",
@@ -609,82 +601,86 @@ class TestLLMStructuredEvaluator:
             "required": ["verdict"],
         }
 
-        mock_block = MagicMock()
-        mock_block.type = "tool_use"
-        mock_block.name = "evaluate"
-        mock_block.input = {"verdict": "found", "confidence": 0.95}
-        mock_response = MagicMock()
-        mock_response.content = [mock_block]
-        mock_anthropic.messages.create.return_value = mock_response
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = json.dumps(
+            {
+                "result": json.dumps({"verdict": "found", "confidence": 0.95}),
+            }
+        )
 
         result = evaluate_llm_structured("Found 3 matches", schema=custom_schema)
 
         assert result.verdict == "found"
         assert result.details["confidence"] == 0.95
+        # Verify custom schema was passed to CLI
+        call_args = mock_run.call_args[0][0]
+        schema_idx = call_args.index("--json-schema")
+        assert json.loads(call_args[schema_idx + 1]) == custom_schema
 
-    def test_custom_prompt(self, mock_anthropic) -> None:
-        """Custom prompt is passed to API."""
-        mock_anthropic.messages.create.return_value = self._create_tool_response(
-            "success", 0.9, "Done"
-        )
+    def test_custom_prompt(self, mock_cli) -> None:
+        """Custom prompt is passed to CLI."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("success", 0.9, "Done")
 
         custom_prompt = "Check if the code review was approved."
         evaluate_llm_structured("LGTM, approved", prompt=custom_prompt)
 
-        # Verify custom prompt was used
-        call_args = mock_anthropic.messages.create.call_args
-        message_content = call_args.kwargs["messages"][0]["content"]
-        assert custom_prompt in message_content
+        # Verify custom prompt was used in -p argument
+        call_args = mock_run.call_args[0][0]
+        prompt_idx = call_args.index("-p")
+        assert custom_prompt in call_args[prompt_idx + 1]
 
-    def test_api_timeout_handling(self, mock_anthropic) -> None:
+    def test_cli_timeout_handling(self) -> None:
         """Timeout returns error verdict."""
-        mock_anthropic.messages.create.side_effect = TimeoutError("Timeout")
-
-        result = evaluate_llm_structured("...")
+        with patch(
+            "little_loops.fsm.evaluators.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(cmd="claude", timeout=30),
+        ):
+            result = evaluate_llm_structured("...")
 
         assert result.verdict == "error"
         assert result.details.get("timeout") is True
 
-    def test_api_error_handling(self, mock_anthropic) -> None:
-        """API error returns error verdict."""
-        mock_anthropic.messages.create.side_effect = Exception("Rate limited")
+    def test_cli_error_handling(self, mock_cli) -> None:
+        """Non-zero exit code returns error verdict."""
+        mock_run, mock_result = mock_cli
+        mock_result.returncode = 1
+        mock_result.stderr = "Authentication required"
 
         result = evaluate_llm_structured("...")
 
         assert result.verdict == "error"
         assert result.details.get("api_error") is True
 
-    def test_no_tool_use_in_response(self, mock_anthropic) -> None:
-        """Response without tool use returns error."""
-        mock_response = MagicMock()
-        mock_response.content = []  # No tool use blocks
-        mock_anthropic.messages.create.return_value = mock_response
+    def test_invalid_json_response(self, mock_cli) -> None:
+        """Unparseable JSON from CLI returns error."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = "not json"
 
         result = evaluate_llm_structured("...")
 
         assert result.verdict == "error"
-        assert "No evaluation" in result.details["error"]
+        assert "Failed to parse" in result.details["error"]
 
-    def test_output_truncation(self, mock_anthropic) -> None:
+    def test_output_truncation(self, mock_cli) -> None:
         """Long output is truncated to last 4000 chars."""
-        mock_anthropic.messages.create.return_value = self._create_tool_response(
-            "success", 1.0, "Done"
-        )
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("success", 1.0, "Done")
 
         long_output = "x" * 10000
         evaluate_llm_structured(long_output)
 
-        # Verify truncation happened
-        call_args = mock_anthropic.messages.create.call_args
-        message_content = call_args.kwargs["messages"][0]["content"]
+        # Verify truncation happened in the -p argument
+        call_args = mock_run.call_args[0][0]
+        prompt_idx = call_args.index("-p")
+        prompt_content = call_args[prompt_idx + 1]
         # Should have prompt + truncated output (last 4000 chars) + XML tags
-        assert len(message_content) < 5000
+        assert len(prompt_content) < 5000
 
-    def test_raw_response_in_details(self, mock_anthropic) -> None:
+    def test_raw_response_in_details(self, mock_cli) -> None:
         """Raw LLM response is included in details."""
-        mock_anthropic.messages.create.return_value = self._create_tool_response(
-            "success", 0.9, "Action completed"
-        )
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("success", 0.9, "Action completed")
 
         result = evaluate_llm_structured("Done")
 
@@ -692,57 +688,54 @@ class TestLLMStructuredEvaluator:
         assert result.details["raw"]["verdict"] == "success"
         assert result.details["raw"]["confidence"] == 0.9
 
-    def test_default_values_used(self, mock_anthropic) -> None:
+    def test_default_values_used(self, mock_cli) -> None:
         """Default prompt and schema used when not specified."""
-        mock_anthropic.messages.create.return_value = self._create_tool_response(
-            "success", 0.9, "Done"
-        )
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("success", 0.9, "Done")
 
         evaluate_llm_structured("test output")
 
-        call_args = mock_anthropic.messages.create.call_args
+        call_args = mock_run.call_args[0][0]
         # Check prompt
-        message_content = call_args.kwargs["messages"][0]["content"]
-        assert DEFAULT_LLM_PROMPT in message_content
+        prompt_idx = call_args.index("-p")
+        assert DEFAULT_LLM_PROMPT in call_args[prompt_idx + 1]
         # Check schema
-        tool_schema = call_args.kwargs["tools"][0]["input_schema"]
-        assert tool_schema == DEFAULT_LLM_SCHEMA
+        schema_idx = call_args.index("--json-schema")
+        assert json.loads(call_args[schema_idx + 1]) == DEFAULT_LLM_SCHEMA
 
 
 class TestEvaluateDispatcherLLM:
     """Tests for evaluate() dispatcher with llm_structured type."""
 
-    @pytest.fixture
-    def mock_anthropic(self):
-        """Create mock Anthropic client."""
-        with patch("little_loops.fsm.evaluators.ANTHROPIC_AVAILABLE", True):
-            with patch("little_loops.fsm.evaluators.anthropic") as mock_module:
-                mock_client = MagicMock()
-                mock_module.Anthropic.return_value = mock_client
-                mock_module.APIError = Exception
-                mock_module.APITimeoutError = TimeoutError
-                mock_module.AuthenticationError = Exception
-                yield mock_client
-
-    def _create_tool_response(self, verdict: str, confidence: float, reason: str) -> MagicMock:
-        """Helper to create mock tool use response."""
-        mock_block = MagicMock()
-        mock_block.type = "tool_use"
-        mock_block.name = "evaluate"
-        mock_block.input = {
-            "verdict": verdict,
-            "confidence": confidence,
-            "reason": reason,
-        }
-        mock_response = MagicMock()
-        mock_response.content = [mock_block]
-        return mock_response
-
-    def test_dispatch_llm_structured(self, mock_anthropic) -> None:
-        """llm_structured type routes correctly."""
-        mock_anthropic.messages.create.return_value = self._create_tool_response(
-            "success", 0.9, "Done"
+    @staticmethod
+    def _cli_stdout(verdict: str, confidence: float, reason: str) -> str:
+        """Helper to create mock CLI JSON output."""
+        return json.dumps(
+            {
+                "result": json.dumps(
+                    {
+                        "verdict": verdict,
+                        "confidence": confidence,
+                        "reason": reason,
+                    }
+                ),
+            }
         )
+
+    @pytest.fixture
+    def mock_cli(self):
+        """Create mock subprocess.run for Claude CLI."""
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+            yield mock_run, mock_result
+
+    def test_dispatch_llm_structured(self, mock_cli) -> None:
+        """llm_structured type routes correctly."""
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("success", 0.9, "Done")
 
         config = EvaluateConfig(type="llm_structured")
         ctx = InterpolationContext()
@@ -751,11 +744,10 @@ class TestEvaluateDispatcherLLM:
         assert result.verdict == "success"
         assert result.details["confident"] is True
 
-    def test_dispatch_llm_with_config_options(self, mock_anthropic) -> None:
+    def test_dispatch_llm_with_config_options(self, mock_cli) -> None:
         """llm_structured uses config options."""
-        mock_anthropic.messages.create.return_value = self._create_tool_response(
-            "success", 0.4, "Maybe"
-        )
+        mock_run, mock_result = mock_cli
+        mock_result.stdout = self._cli_stdout("success", 0.4, "Maybe")
 
         config = EvaluateConfig(
             type="llm_structured",
