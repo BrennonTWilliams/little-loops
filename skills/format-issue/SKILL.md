@@ -286,24 +286,25 @@ See [templates.md](templates.md) for example additions by issue type (BUG, FEAT,
 
 1. Read the updated issue file to confirm changes
 2. Display summary of formatting changes made
-3. Offer to stage changes:
+3. Offer to commit changes:
 
 ```yaml
 questions:
-  - question: "Stage the formatted issue for commit?"
-    header: "Stage"
+  - question: "Commit the formatted issue?"
+    header: "Commit"
     multiSelect: false
     options:
-      - label: "Yes, stage changes"
-        description: "Run git add on the issue file"
-      - label: "No, don't stage"
-        description: "Leave changes unstaged"
+      - label: "Yes, commit changes"
+        description: "Stage and commit the issue file"
+      - label: "No, skip"
+        description: "Leave changes uncommitted"
 ```
 
-If staging approved:
+If commit approved:
 ```bash
 git add "[issue-file-path]"
 ```
+Then invoke `/ll:commit` to create the commit.
 
 ## Output Format
 

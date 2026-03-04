@@ -120,6 +120,7 @@ _Added by `/ll:refine-issue` — Existing maintain mode test coverage:_
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — CRITICAL: Found `TestMaintainMode:840` and `TestMaintainModeExecutor:2133` already exist in `test_fsm_executor.py`; issue may be stale
 - `/ll:verify-issues` — 2026-03-03 — Confirmed 3/4 scenarios covered by `TestMaintainMode:840` and `TestMaintainModeExecutor:2249` (not 2133); corrected line ref. Narrowed scope to single missing test: `test_maintain_route_event_emitted`
+- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 
 ---
 

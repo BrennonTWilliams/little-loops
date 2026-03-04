@@ -140,6 +140,7 @@ Extract cross-cutting concerns into focused helper modules:
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/ARCHITECTURE.md` (lines 428, 417) to Related Key Documentation
 - `/ll:verify-issues` - 2026-03-03 - Corrected `merge_coordinator.py` line count from 1,226 to 1,236 (actual); average updated from 1,174 to 1,181
+- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 
 ---
 
