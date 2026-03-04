@@ -5,7 +5,7 @@ discovered_date: 2026-03-04T20:10:46Z
 discovered_by: capture-issue
 ---
 
-# ENH-571: Improve `ll-loop show --verbose` Output Quality and Layout
+# ENH-573: Improve `ll-loop show --verbose` Output Quality and Layout
 
 ## Summary
 

@@ -5,7 +5,7 @@ confidence_score: ~
 outcome_confidence: ~
 ---
 
-# FEAT-560: Add per-tool `action_type` support to `goal` paradigm YAML spec
+# FEAT-572: Add per-tool `action_type` support to `goal` paradigm YAML spec
 
 ## Summary
 

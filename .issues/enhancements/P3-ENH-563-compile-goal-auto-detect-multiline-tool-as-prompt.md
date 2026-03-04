@@ -123,7 +123,7 @@ if fix_action_type == "prompt":
 ## Scope Boundaries
 
 - Inferring `action_type` for the **check** tool (first tool) is **out of scope** — check tools should always be shell commands
-- Supporting object-style tool entries in YAML is **out of scope** — see FEAT-560
+- Supporting object-style tool entries in YAML is **out of scope** — see FEAT-572
 - Changing executor dispatch logic is **out of scope**
 
 ## Success Metrics
