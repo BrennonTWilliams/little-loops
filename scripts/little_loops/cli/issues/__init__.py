@@ -90,6 +90,12 @@ Examples:
         default="table",
         help="Output format (default: table)",
     )
+    refine_s.add_argument(
+        "--no-key",
+        action="store_true",
+        default=False,
+        help="Suppress the Key section below the table",
+    )
     add_config_arg(refine_s)
 
     args = parser.parse_args()

@@ -164,6 +164,22 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
         )
 
     print("\n".join(rows))
+
+    if not getattr(args, "no_key", False):
+        _print_key(all_cmds)
+
     return 0
+
+
+def _print_key(all_cmds: list[str]) -> None:
+    """Print a legend mapping truncated column headers to full names."""
+    print("\nKey:")
+    for cmd in all_cmds:
+        short = _truncate(_short_name(cmd), _CMD_WIDTH)
+        print(f"  {short:<12} {cmd}")
+    print(f"  {'Norm':<12} Filename matches naming convention (P[0-5]-TYPE-NNN-desc.md)")
+    print(f"  {'Ready':<12} Readiness score (0\u2013100)")
+    print(f"  {'OutConf':<12} Outcome confidence score (0\u2013100)")
+    print(f"  {'Total':<12} Count of command columns with \u2713")
 
 

@@ -333,6 +333,106 @@ class TestRefineStatusTable:
         out = capsys.readouterr().out
         assert "\u2717" in out, "X ✗ should appear for non-normalized filename"
 
+    def test_key_section_in_default_output(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Key section appears after the table in default (table) mode."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-100-with-cmd.md",
+            "BUG-100: Key section test",
+            session_commands=["/ll:scan-codebase"],
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Key:" in out, "Key section header should appear"
+        assert "/ll:scan-codebase" in out, "Full command name should appear in Key"
+        assert "Readiness score" in out, "Ready explanation should appear in Key"
+        assert "Outcome confidence" in out, "OutConf explanation should appear in Key"
+
+    def test_no_key_flag_suppresses_key_section(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--no-key suppresses the Key section."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-101-no-key.md",
+            "BUG-101: No key test",
+            session_commands=["/ll:scan-codebase"],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Key:" not in out, "--no-key should suppress the Key section"
+
+    def test_json_output_omits_key_section(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--format json output does not include a Key section."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-102-json-key.md",
+            "BUG-102: JSON no key",
+            session_commands=["/ll:scan-codebase"],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--format", "json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Key:" not in out, "JSON output should not include Key section"
+
     def test_dynamic_columns_from_session_log(
         self,
         temp_project_dir: Path,
