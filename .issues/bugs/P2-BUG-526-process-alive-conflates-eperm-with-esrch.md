@@ -14,7 +14,7 @@ discovered_by: scan-codebase
 ## Location
 
 - **File**: `scripts/little_loops/fsm/concurrency.py`
-- **Line(s)**: 252–258 (at scan commit: 47c81c8)
+- **Line(s)**: 255–261 (at scan commit: 47c81c8; current HEAD)
 - **Anchor**: `in method LockManager._process_alive()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/fsm/concurrency.py#L252-L258)
 - **Code**:

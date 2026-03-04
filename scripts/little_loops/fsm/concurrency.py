@@ -10,6 +10,7 @@ Public exports:
 
 from __future__ import annotations
 
+import errno
 import fcntl
 import json
 import os
@@ -257,5 +258,7 @@ class LockManager:
         try:
             os.kill(pid, 0)
             return True
-        except OSError:
-            return False
+        except OSError as e:
+            if e.errno == errno.ESRCH:
+                return False  # No such process
+            return True  # EPERM or other: process exists, no permission
