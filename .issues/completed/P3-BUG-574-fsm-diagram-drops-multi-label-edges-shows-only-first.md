@@ -3,6 +3,8 @@ discovered_commit: aada94a41fd0595c3d4fbf63a9e0637c443383b9
 discovered_branch: main
 discovered_date: 2026-03-04T00:00:00Z
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-574: FSM diagram drops multi-label edges — only first label rendered
@@ -14,7 +16,7 @@ When multiple FSM transitions share the same `(src → dst)` pair (e.g. `on_fail
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/info.py`
-- **Line(s)**: 430, 436
+- **Line(s)**: 430, 437
 - **Anchor**: `in function _render_2d_diagram`
 - **Code**:
 ```python
@@ -66,7 +68,7 @@ fail/error/partial │ │ next
 ## Root Cause
 
 - **File**: `scripts/little_loops/cli/loop/info.py`
-- **Lines**: 430, 436
+- **Lines**: 430, 437
 - **Explanation**: `down_labels` and `up_labels` are lists that can contain multiple entries when several transitions share the same destination. The rendering code only indexes `[0]` rather than joining all entries.
 
 ## Motivation
@@ -94,10 +96,18 @@ ulabel = "/".join(up_labels)     # was: up_labels[0]
 
 `bug`, `loop/show`, `fsm-diagram`, `display`
 
+## Resolution
+
+**Fixed** | Completed: 2026-03-04
+
+Changed `down_labels[0]` → `"/".join(down_labels)` and `up_labels[0]` → `"/".join(up_labels)` in `_render_2d_diagram` (info.py:430, 437). All multi-label edges now render all transition labels joined with `/`.
+
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P3
+**Closed** | Created: 2026-03-04 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d3da9d72-3965-454e-83b6-5788afc46e3d.jsonl`
 - `/ll:capture-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec4504aa-1767-4a8b-b2f5-3a9c180ea452.jsonl`
 - `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9a6371ba-ae5d-4081-b3ab-d18f243784b9.jsonl`
+- `/ll:confidence-check` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5855e6b9-a56d-4bae-ab74-e23883f5c1a7.jsonl`
