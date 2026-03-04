@@ -81,7 +81,14 @@ def _parse_timestamps(messages: list[dict]) -> list[datetime]:
     return result
 ```
 
-Note: This issue is related to ENH-549 (consolidate timestamp parsing), which could incorporate Option B as part of the refactor.
+**Option C — strip-to-naive (matches codebase convention in `user_messages.py:521-529`):**
+```python
+ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+if ts.tzinfo is not None:
+    ts = ts.replace(tzinfo=None)   # strip to naive, matching user_messages.py convention
+```
+
+Note: Option B normalizes to UTC; the existing codebase convention in `user_messages.py` strips to naive instead (Option C). Option C is preferred for consistency unless UTC precision is required. This issue is also related to ENH-549 (consolidate timestamp parsing), which could incorporate Option C as part of a shared helper refactor.
 
 ## Integration Map
 
@@ -95,6 +102,19 @@ Note: This issue is related to ENH-549 (consolidate timestamp parsing), which co
 
 ### Similar Patterns
 - Option B requires importing `timezone` from `datetime` — currently only `datetime` (the class) is imported (`from datetime import datetime` at line 28); `timezone` must be added
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Existing normalization convention**: `scripts/little_loops/user_messages.py:521-529` and `614-625` establishes the codebase pattern for mixed naive/aware handling — it **strips tzinfo to naive** rather than converting to UTC:
+  ```python
+  if timestamp.tzinfo is not None:
+      timestamp = timestamp.replace(tzinfo=None)   # strip to naive
+  ```
+  This is the opposite of Option B's proposed UTC normalization (`ts.replace(tzinfo=timezone.utc)`). For consistency, the fix should follow this convention (strip to naive), unless there is a specific reason to prefer UTC normalization.
+- **ENH-549** (`P4-ENH-549-consolidate-timestamp-parsing-into-parse-timestamps-helper.md`) directly proposes extracting a `_parse_timestamps()` helper from this same file — the fix in Option B could be landed as part of that refactor.
+- `scripts/tests/test_workflow_integration.py` — integration tests for the `ll-workflows` CLI path; may also need a mixed-timezone test case for end-to-end coverage.
 
 ### Tests
 - `scripts/tests/test_workflow_sequence_analyzer.py:841` — `TestComputeBoundaries` EXISTS (8 test methods, none cover mixed naive/aware) — add mixed timezone test here
@@ -130,7 +150,21 @@ Note: This issue is related to ENH-549 (consolidate timestamp parsing), which co
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:refine-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a020aaf9-77a1-4304-b1e8-283c2006ae91.jsonl` — Discovered 2 additional unhandled crash sites: `_link_sessions:455` and `_detect_workflows:690` (subtraction outside try block); confirmed `timezone` not imported; updated Integration Map, Implementation Steps, and test class refs
+- `/ll:refine-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e920ef2-66ca-4837-be84-76f1ef991c5c.jsonl` — Confirmed all line numbers still accurate; discovered codebase strip-to-naive convention in `user_messages.py:521-529,614-625`; added Option C to Proposed Solution; noted ENH-549 overlap for shared helper refactor
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6c42e76-09c0-46f9-988a-3f34df6f3c1b.jsonl` — All code references verified accurate: lines 561-566, 448-455, 683-690 match current code; test classes at correct line numbers; no corrections needed
+- `/ll:manage-issue` - 2026-03-04 - Fixed all three crash sites using strip-to-naive convention (Option C); added TypeError to except clauses; wrapped unprotected subtractions in try/except; added 3 regression tests (76 passed)
+
+## Resolution
+
+- **Fixed**: 2026-03-04
+- **Approach**: Option C (strip tzinfo to naive) — consistent with `user_messages.py:521-529` convention
+- **Changes**:
+  - `workflow_sequence_analyzer.py` — `_compute_boundaries`: strip tzinfo before subtraction, add `TypeError` to except
+  - `workflow_sequence_analyzer.py` — `_link_sessions`: strip tzinfo in parse loop, wrap `(max-min)` subtraction
+  - `workflow_sequence_analyzer.py` — `_detect_workflows`: same as `_link_sessions`
+  - `test_workflow_sequence_analyzer.py` — 3 regression tests added to `TestComputeBoundaries`, `TestLinkSessions`, `TestDetectWorkflows`
+- **Tests**: 76 passed, 0 failed
 
 ---
 
-**Open** | Created: 2026-03-04 | Priority: P2
+**Resolved** | Created: 2026-03-04 | Priority: P2

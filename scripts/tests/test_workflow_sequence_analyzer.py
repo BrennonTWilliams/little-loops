@@ -766,6 +766,30 @@ class TestLinkSessions:
         assert len(result) == 1
         assert result[0].unified_workflow["span_hours"] == 2.0
 
+    def test_mixed_naive_aware_timestamps_do_not_crash(self) -> None:
+        """Mixed naive/aware timestamps in linked sessions do not raise TypeError."""
+        sessions = {
+            "session-1": [
+                {
+                    "content": "Start work",
+                    "uuid": "msg-1",
+                    "git_branch": "feat",
+                    "timestamp": "2026-01-15T10:00:00",
+                }
+            ],
+            "session-2": [
+                {
+                    "content": "Continue work",
+                    "uuid": "msg-2",
+                    "git_branch": "feat",
+                    "timestamp": "2026-01-15T12:00:00Z",
+                }
+            ],
+        }
+        result = _link_sessions(sessions)
+        assert len(result) == 1
+        assert result[0].unified_workflow["span_hours"] == 2.0
+
 
 class TestClusterByEntities:
     """Tests for _cluster_by_entities internal function."""
@@ -926,6 +950,16 @@ class TestComputeBoundaries:
         ]
         result = _compute_boundaries(messages)
         assert len(result) == 2
+
+    def test_mixed_naive_aware_timestamps_produce_zero_gap(self) -> None:
+        """Mixed naive/aware timestamps do not crash; gap falls back to 0."""
+        messages = [
+            {"content": "Naive ts", "uuid": "msg-1", "timestamp": "2026-01-15T10:00:00"},
+            {"content": "Aware ts", "uuid": "msg-2", "timestamp": "2026-01-15T10:05:00Z"},
+        ]
+        result = _compute_boundaries(messages)
+        assert len(result) == 1
+        assert result[0].time_gap_seconds == 300
 
 
 class TestDetectWorkflows:
@@ -1095,6 +1129,48 @@ class TestDetectWorkflows:
                 "content": "Fix bug",
                 "uuid": "msg-2",
                 "timestamp": "2026-01-15T10:30:00",
+                "session_id": "s1",
+            },
+            {
+                "content": "Test fix",
+                "uuid": "msg-3",
+                "timestamp": "2026-01-15T11:00:00",
+                "session_id": "s1",
+            },
+        ]
+        patterns: dict[str, Any] = {
+            "category_distribution": [
+                {
+                    "category": "debugging",
+                    "example_messages": [{"uuid": "msg-1", "content": "Find bug"}],
+                },
+                {
+                    "category": "code_modification",
+                    "example_messages": [{"uuid": "msg-2", "content": "Fix bug"}],
+                },
+                {
+                    "category": "testing",
+                    "example_messages": [{"uuid": "msg-3", "content": "Test fix"}],
+                },
+            ]
+        }
+        result = _detect_workflows(messages, [], patterns)
+        assert len(result) == 1
+        assert result[0].duration_minutes == 60
+
+    def test_mixed_naive_aware_timestamps_do_not_crash(self) -> None:
+        """Mixed naive/aware timestamps in a workflow segment do not raise TypeError."""
+        messages = [
+            {
+                "content": "Find bug",
+                "uuid": "msg-1",
+                "timestamp": "2026-01-15T10:00:00",
+                "session_id": "s1",
+            },
+            {
+                "content": "Fix bug",
+                "uuid": "msg-2",
+                "timestamp": "2026-01-15T10:30:00Z",
                 "session_id": "s1",
             },
             {

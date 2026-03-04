@@ -446,13 +446,18 @@ def _link_sessions(sessions: dict[str, list[dict[str, Any]]]) -> list[SessionLin
                     if ts_str:
                         try:
                             ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                            if ts.tzinfo is not None:
+                                ts = ts.replace(tzinfo=None)
                             timestamps.append(ts)
-                        except ValueError:
+                        except (ValueError, TypeError):
                             pass
 
                 span_hours = 0.0
                 if len(timestamps) >= 2:
-                    span_hours = (max(timestamps) - min(timestamps)).total_seconds() / 3600
+                    try:
+                        span_hours = (max(timestamps) - min(timestamps)).total_seconds() / 3600
+                    except TypeError:
+                        span_hours = 0.0
 
                 links.append(
                     SessionLink(
@@ -560,9 +565,13 @@ def _compute_boundaries(
 
         try:
             ts_a = datetime.fromisoformat(ts_a_str.replace("Z", "+00:00"))
+            if ts_a.tzinfo is not None:
+                ts_a = ts_a.replace(tzinfo=None)
             ts_b = datetime.fromisoformat(ts_b_str.replace("Z", "+00:00"))
+            if ts_b.tzinfo is not None:
+                ts_b = ts_b.replace(tzinfo=None)
             gap_seconds = int((ts_b - ts_a).total_seconds())
-        except (ValueError, AttributeError):
+        except (ValueError, AttributeError, TypeError):
             gap_seconds = 0
 
         # Calculate time gap weight
@@ -681,13 +690,18 @@ def _detect_workflows(
                 if ts_str:
                     try:
                         ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                        if ts.tzinfo is not None:
+                            ts = ts.replace(tzinfo=None)
                         timestamps.append(ts)
-                    except ValueError:
+                    except (ValueError, TypeError):
                         pass
 
             duration_minutes = 0
             if len(timestamps) >= 2:
-                duration_minutes = int((max(timestamps) - min(timestamps)).total_seconds() / 60)
+                try:
+                    duration_minutes = int((max(timestamps) - min(timestamps)).total_seconds() / 60)
+                except TypeError:
+                    duration_minutes = 0
 
             # Get sessions
             session_ids = list({msg.get("session_id", "") for msg in segment})
