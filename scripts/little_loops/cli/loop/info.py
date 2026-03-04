@@ -165,6 +165,7 @@ def _render_fsm_diagram(fsm: FSMLoop) -> str:
         else:
             branches.append((src, dst, label))
 
+    terminal_states = {name for name, state in fsm.states.items() if state.terminal}
     return _render_2d_diagram(
         main_path,
         edges,
@@ -172,6 +173,8 @@ def _render_fsm_diagram(fsm: FSMLoop) -> str:
         branches,
         back_edges,
         bfs_order,
+        initial=fsm.initial,
+        terminal_states=terminal_states,
     )
 
 
@@ -182,6 +185,8 @@ def _render_2d_diagram(
     branches: list[tuple[str, str, str]],
     back_edges: list[tuple[str, str, str]],
     bfs_order: list[str],
+    initial: str = "",
+    terminal_states: set[str] | None = None,
 ) -> str:
     """Render a 2D box-drawing diagram of the FSM graph."""
     if not main_path:
@@ -196,10 +201,20 @@ def _render_2d_diagram(
                 all_states.append(s)
                 off_path.append(s)
 
+    # Compute display labels (annotate initial/terminal states in diagram)
+    display_label: dict[str, str] = {}
+    for s in all_states:
+        label = s
+        if s == initial:
+            label = "→ " + label
+        if terminal_states and s in terminal_states:
+            label = label + " ◉"
+        display_label[s] = label
+
     # Box dimensions: 1 char padding each side
     box_width: dict[str, int] = {}
     for s in all_states:
-        box_width[s] = len(s) + 4  # "│ name │"
+        box_width[s] = len(display_label[s]) + 4  # "│ label │"
 
     # Compute column positions for main path boxes
     col_start: dict[str, int] = {}  # left edge of each box
@@ -257,11 +272,11 @@ def _render_2d_diagram(
         for j in range(1, w - 1):
             row_top[cx + j] = "\u2500"
         row_top[cx + w - 1] = "\u2510"
-        # Middle: │ name │
+        # Middle: │ label │
         row_mid[cx] = "\u2502"
         row_mid[cx + w - 1] = "\u2502"
         name_start = cx + 2
-        for j, ch in enumerate(sname):
+        for j, ch in enumerate(display_label[sname]):
             row_mid[name_start + j] = ch
         # Bottom border: └──...──┘
         row_bot[cx] = "\u2514"
@@ -428,7 +443,7 @@ def _render_2d_diagram(
             if has_down and 0 <= down_col < total_width:
                 row[down_col] = "\u2502"  # \u2502
                 dlabel = "/".join(down_labels)
-                dstart = down_col - len(dlabel) - 1
+                dstart = max(0, down_col - len(dlabel) - 1)
                 for j, ch in enumerate(dlabel):
                     if 0 <= dstart + j < total_width:
                         row[dstart + j] = ch
@@ -464,7 +479,7 @@ def _render_2d_diagram(
 
             box_mid_r[bx] = "\u2502"
             box_mid_r[bx + bw - 1] = "\u2502"
-            for j, ch in enumerate(off_s):
+            for j, ch in enumerate(display_label[off_s]):
                 box_mid_r[bx + 2 + j] = ch
 
             box_bot_r[bx] = "\u2514"
@@ -500,6 +515,21 @@ def _render_2d_diagram(
     return "\n".join(lines)
 
 
+_EVALUATE_TYPE_DISPLAY: dict[str, str] = {
+    "llm": "LLM",
+    "llm_structured": "LLM (structured)",
+    "exit_code": "exit code",
+    "output_numeric": "numeric",
+    "output_contains": "contains",
+    "output_json": "JSON",
+    "convergence": "convergence",
+}
+
+
+def _humanize_evaluate_type(ev_type: str) -> str:
+    return _EVALUATE_TYPE_DISPLAY.get(ev_type, ev_type)
+
+
 def cmd_show(
     loop_name: str,
     args: argparse.Namespace,
@@ -520,7 +550,6 @@ def cmd_show(
     # --- Metadata header ---
     separator_dashes = "─" * max(0, 52 - len(loop_name))
     print(f"── {loop_name} {separator_dashes}")
-    print(f"Loop: {fsm.name}")
     if fsm.paradigm:
         print(f"Paradigm: {fsm.paradigm}")
     print(f"Max iterations: {fsm.max_iterations}")
@@ -546,6 +575,19 @@ def cmd_show(
     if llm_parts:
         print(f"LLM config: {', '.join(llm_parts)}")
     print(f"Source: {path}")
+    n_states = len(fsm.states)
+    n_transitions = sum(
+        bool(s.on_success)
+        + bool(s.on_failure)
+        + bool(s.on_error)
+        + bool(s.on_partial)
+        + bool(s.next)
+        + bool(s.on_maintain)
+        + (len(s.route.routes) + bool(s.route.default) if s.route else 0)
+        for s in fsm.states.values()
+    )
+    paradigm_str = f" · {fsm.paradigm} paradigm" if fsm.paradigm else ""
+    print(f"  {n_states} states · {n_transitions} transitions{paradigm_str}")
 
     # --- Description ---
     description = spec.get("description", "").strip()
@@ -578,13 +620,13 @@ def cmd_show(
         if state.action:
             if verbose:
                 indented = "\n      ".join(state.action.strip().splitlines())
-                print(f"    action: |\n      {indented}")
+                print(f"    action:\n      {indented}")
             elif state.action_type == "prompt":
                 lines = state.action.strip().splitlines()
                 preview = "\n      ".join(lines[:3])
                 if len(lines) > 3 or len(state.action) > 200:
                     preview += " ..."
-                print(f"    action: |\n      {preview}")
+                print(f"    action:\n      {preview}")
             else:  # shell, slash_command, or None
                 action_display = (
                     state.action[:70] + "..." if len(state.action) > 70 else state.action
@@ -592,12 +634,12 @@ def cmd_show(
                 print(f"    action: {action_display}")
         if state.evaluate:
             ev = state.evaluate
-            print(f"    evaluate: {ev.type}")
+            print(f"    evaluate: {_humanize_evaluate_type(ev.type)}")
             if ev.prompt:
                 if verbose:
-                    print("      prompt: |")
+                    print("      prompt:")
                     for line in ev.prompt.strip().splitlines():
-                        print(f"        {line}")
+                        print(f"    \u2502 {line}")
                 else:
                     lines = ev.prompt.strip().splitlines()
                     preview = lines[0][:100] + (
@@ -614,24 +656,34 @@ def cmd_show(
             print(f"    capture: {state.capture}")
         if state.timeout:
             print(f"    timeout: {state.timeout}s")
-        transitions: list[str] = []
-        if state.on_success:
-            transitions.append(f"on_success \u2500\u2500\u2192 {state.on_success}")
-        if state.on_failure:
-            transitions.append(f"on_failure \u2500\u2500\u2192 {state.on_failure}")
-        if state.on_error:
-            transitions.append(f"on_error   \u2500\u2500\u2192 {state.on_error}")
-        if state.on_partial:
-            transitions.append(f"on_partial \u2500\u2500\u2192 {state.on_partial}")
-        if state.next:
-            transitions.append(f"next \u2500\u2500\u2192 {state.next}")
-        if state.on_maintain:
-            transitions.append(f"on_maintain \u2500\u2500\u2192 {state.on_maintain}")
+        # Collect (label, target) pairs with on_ prefix stripped
+        raw_transitions: list[tuple[str, str]] = []
+        for label, target in [
+            ("success", state.on_success),
+            ("failure", state.on_failure),
+            ("error", state.on_error),
+            ("partial", state.on_partial),
+            ("next", state.next),
+            ("maintain", state.on_maintain),
+        ]:
+            if target:
+                raw_transitions.append((label, target))
         if state.route:
             for verdict, target in state.route.routes.items():
-                transitions.append(f"{verdict} \u2500\u2500\u2192 {target}")
+                raw_transitions.append((verdict, target))
             if state.route.default:
-                transitions.append(f"_ \u2500\u2500\u2192 {state.route.default}")
+                raw_transitions.append(("_", state.route.default))
+        # Group by target, preserving first-seen order
+        target_labels: dict[str, list[str]] = {}
+        seen_targets: list[str] = []
+        for label, target in raw_transitions:
+            if target not in target_labels:
+                target_labels[target] = []
+                seen_targets.append(target)
+            target_labels[target].append(label)
+        transitions = [
+            f"{'/'.join(target_labels[t])} \u2500\u2500\u2192 {t}" for t in seen_targets
+        ]
         if transitions:
             print("    Transitions:")
             for t in transitions:
@@ -643,6 +695,7 @@ def cmd_show(
     cmds = [
         (f"ll-loop run {loop_name}", "run"),
         (f"ll-loop test {loop_name}", "single test iteration"),
+        (f"ll-loop stop {loop_name}", "stop a running loop"),
         (f"ll-loop status {loop_name}", "check if running"),
         (f"ll-loop history {loop_name}", "execution history"),
     ]

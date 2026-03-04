@@ -346,7 +346,6 @@ class TestCmdShow:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "Loop: my-loop" in out
         assert "On handoff: pause" in out
         assert "[check]" in out
         assert "[done]" in out
@@ -585,7 +584,7 @@ class TestCmdShow:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "evaluate: llm_structured" in out
+        assert "evaluate: LLM (structured)" in out
         assert "prompt: Examine the output carefully." in out
         assert " ..." in out  # truncated because multiple lines
         assert "Second line detail" not in out
@@ -784,7 +783,7 @@ class TestCmdShow:
         out = capsys.readouterr().out
         assert "capture: result" in out
         assert "timeout: 60s" in out
-        assert "on_maintain \u2500\u2500\u2192 check" in out
+        assert "maintain \u2500\u2500\u2192 check" in out
 
     def test_show_state_optional_fields_absent_when_unset(
         self,
@@ -915,7 +914,7 @@ class TestCmdShow:
         action_content_lines = []
         in_action = False
         for line in out.splitlines():
-            if "action: |" in line:
+            if line.rstrip() == "    action:":
                 in_action = True
                 continue
             if in_action:
@@ -1000,7 +999,7 @@ class TestCmdShow:
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Commands section lists run, test, status, and history subcommands."""
+        """Commands section lists run, test, stop, status, and history."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         (loops_dir / "my-loop.yaml").write_text(
