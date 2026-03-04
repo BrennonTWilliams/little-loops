@@ -418,3 +418,137 @@ class TestCmdShow:
             result = main_loop()
 
         assert result == 1
+
+    def test_show_prompt_action_shows_3_lines(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Prompt action type shows first 3 lines + ... not the full text."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        long_prompt = "\n".join(f"Line {i}: " + "x" * 50 for i in range(10))
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: fix\n"
+            "states:\n"
+            "  fix:\n"
+            f"    action: |\n"
+            + "\n".join(f"      {line}" for line in long_prompt.splitlines())
+            + "\n"
+            "    action_type: prompt\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "..." in out
+        assert "Line 0" in out
+        assert "Line 9" not in out
+
+    def test_show_shell_action_truncated_at_70(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Shell action still truncates at 70 chars."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        long_shell = "echo " + "x" * 100
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: run\n"
+            "states:\n"
+            "  run:\n"
+            f'    action: "{long_shell}"\n'
+            "    action_type: shell\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "..." in out
+        assert long_shell not in out
+
+    def test_show_verbose_shows_full_action(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--verbose flag shows full action text."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        full_prompt = "\n".join(f"Line {i}: " + "detail " * 10 for i in range(5))
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: fix\n"
+            "states:\n"
+            "  fix:\n"
+            f"    action: |\n"
+            + "\n".join(f"      {line}" for line in full_prompt.splitlines())
+            + "\n"
+            "    action_type: prompt\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Line 0" in out
+        assert "Line 4" in out
+
+    def test_show_verbose_shows_evaluate_prompt(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--verbose flag shows evaluate.prompt."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    evaluate:\n"
+            "      type: llm\n"
+            "      prompt: Did the command succeed? Answer yes or no.\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "evaluate_prompt" in out
+        assert "Did the command succeed" in out

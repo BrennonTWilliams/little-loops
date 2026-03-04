@@ -107,11 +107,15 @@ def print_execution_plan(fsm: FSMLoop) -> None:
         terminal_marker = " [TERMINAL]" if state.terminal else ""
         print(f"  [{name}]{terminal_marker}")
         if state.action:
-            if len(state.action) > 70:
-                action_display = state.action[:70] + "..."
+            if state.action_type == "prompt":
+                lines = state.action.strip().splitlines()
+                preview = "\n      ".join(lines[:3])
+                if len(lines) > 3 or len(state.action) > 200:
+                    preview += " ..."
+                print(f"    action: |\n      {preview}")
             else:
-                action_display = state.action
-            print(f"    action: {action_display}")
+                action_display = state.action[:70] + "..." if len(state.action) > 70 else state.action
+                print(f"    action: {action_display}")
         if state.evaluate:
             print(f"    evaluate: {state.evaluate.type}")
         if state.on_success:

@@ -164,6 +164,7 @@ Examples:
     # Show subcommand
     show_parser = subparsers.add_parser("show", help="Show loop details and structure")
     show_parser.add_argument("loop", help="Loop name or path")
+    show_parser.add_argument("--verbose", "-v", action="store_true", help="Show full action text and evaluate prompt")
 
     args = parser.parse_args(argv)
 
@@ -193,7 +194,7 @@ Examples:
     elif args.command == "install":
         return cmd_install(args.loop, loops_dir, logger)
     elif args.command == "show":
-        return cmd_show(args.loop, loops_dir, logger)
+        return cmd_show(args.loop, args, loops_dir, logger)
     else:
         parser.print_help()
         return 1

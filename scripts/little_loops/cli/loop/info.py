@@ -502,6 +502,7 @@ def _render_2d_diagram(
 
 def cmd_show(
     loop_name: str,
+    args: argparse.Namespace,
     loops_dir: Path,
     logger: Logger,
 ) -> int:
@@ -545,12 +546,24 @@ def cmd_show(
         initial_marker = " [INITIAL]" if name == fsm.initial else ""
         print(f"  [{name}]{initial_marker}{terminal_marker}")
         if state.action:
-            action_display = state.action[:70] + "..." if len(state.action) > 70 else state.action
-            print(f"    action: {action_display}")
+            verbose = getattr(args, "verbose", False)
+            if verbose:
+                print(f"    action: |\n      {state.action.strip()}")
+            elif state.action_type == "prompt":
+                lines = state.action.strip().splitlines()
+                preview = "\n      ".join(lines[:3])
+                if len(lines) > 3 or len(state.action) > 200:
+                    preview += " ..."
+                print(f"    action: |\n      {preview}")
+            else:  # shell, slash_command, or None
+                action_display = state.action[:70] + "..." if len(state.action) > 70 else state.action
+                print(f"    action: {action_display}")
         if state.action_type:
             print(f"    type: {state.action_type}")
         if state.evaluate:
             print(f"    evaluate: {state.evaluate.type}")
+            if getattr(args, "verbose", False) and state.evaluate.prompt:
+                print(f"    evaluate_prompt: |\n      {state.evaluate.prompt.strip()}")
         if state.on_success:
             print(f"    on_success \u2500\u2500\u2192 {state.on_success}")
         if state.on_failure:

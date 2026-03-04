@@ -388,6 +388,32 @@ states:
         # Full action should NOT appear
         assert long_action not in captured.out
 
+    def test_prompt_action_shows_3_lines_in_dry_run(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Prompt action type shows first 3 lines in dry-run execution plan."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        long_prompt = "\n".join(f"Line {i}: " + "x" * 50 for i in range(10))
+        yaml_content = "name: test\ninitial: fix\nstates:\n  fix:\n    action: |\n"
+        for line in long_prompt.splitlines():
+            yaml_content += f"      {line}\n"
+        yaml_content += "    action_type: prompt\n    on_success: done\n  done:\n    terminal: true\n"
+        (loops_dir / "test.yaml").write_text(yaml_content)
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "test", "--dry-run"]):
+            from little_loops.cli import main_loop
+
+            main_loop()
+
+        captured = capsys.readouterr()
+        assert "..." in captured.out
+        assert "Line 0" in captured.out
+        assert "Line 9" not in captured.out
+
     def test_evaluate_type_shown(
         self,
         tmp_path: Path,
