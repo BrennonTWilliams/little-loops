@@ -254,6 +254,32 @@ def _file_in_directory(
     return depth >= min_depth
 
 
+def _extract_write_target_files(content: str) -> set[str]:
+    """Extract file paths only from write-target sections of issue content.
+
+    Scopes extraction to "### Files to Modify" and "### Files Changed" sections
+    to avoid treating reference docs (e.g., in "Related Key Documentation") as
+    write targets, which would cause false overlap detection in sprint scheduling.
+
+    Args:
+        content: Issue markdown content
+
+    Returns:
+        Set of file paths that are actual write targets
+    """
+    files: set[str] = set()
+    section_pattern = re.compile(
+        r"###\s*(?:Files to Modify|Files Changed)\s*\n(.*?)(?=\n###|\n##|\Z)",
+        re.DOTALL,
+    )
+    for section_match in section_pattern.finditer(content):
+        section = section_match.group(1)
+        for match in FILE_PATH_PATTERN.findall(section):
+            if _is_valid_path(match):
+                files.add(match)
+    return files
+
+
 def extract_file_hints(content: str, issue_id: str = "") -> FileHints:
     """Extract file hints from issue content.
 
@@ -266,12 +292,10 @@ def extract_file_hints(content: str, issue_id: str = "") -> FileHints:
     """
     hints = FileHints(issue_id=issue_id)
 
-    # Extract file paths
-    for match in FILE_PATH_PATTERN.findall(content):
-        # Filter out obvious non-paths
-        if not _is_valid_path(match):
-            continue
-        hints.files.add(match)
+    # Extract file paths from write-target sections only.
+    # Broad extraction across the full content would include reference docs
+    # (e.g., "Related Key Documentation") causing false sprint serialization.
+    hints.files = _extract_write_target_files(content)
 
     # Extract directory paths
     for match in DIR_PATH_PATTERN.findall(content):

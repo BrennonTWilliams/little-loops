@@ -8,10 +8,15 @@ from little_loops.parallel.overlap_detector import OverlapDetector, OverlapResul
 
 
 def make_issue(issue_id: str, content: str = "") -> IssueInfo:
-    """Create a mock issue with given content."""
+    """Create a mock issue with given content.
+
+    Content is wrapped in a '### Files to Modify' section so that
+    section-aware file extraction (extract_file_hints) picks up file paths.
+    """
+    formatted = f"### Files to Modify\n{content}\n" if content else ""
     mock_path = Mock(spec=Path)
     mock_path.exists.return_value = True
-    mock_path.read_text.return_value = content
+    mock_path.read_text.return_value = formatted
 
     return IssueInfo(
         path=mock_path,

@@ -847,13 +847,15 @@ class TestSprintDependencyAnalysis:
         # Create two issues that reference the same file
         (issues_dir / "bugs" / "P1-BUG-001-fix-config.md").write_text(
             "# BUG-001: Fix config parsing\n\n"
-            "## Summary\nFix bug in `scripts/config.py` module.\n\n"
+            "## Summary\nFix bug in config module.\n\n"
+            "### Files to Modify\n- `scripts/config.py`\n\n"
             "## Blocked By\n\nNone\n\n"
             "## Blocks\n\nNone\n"
         )
         (issues_dir / "features" / "P2-FEAT-001-add-config-validation.md").write_text(
             "# FEAT-001: Add config validation\n\n"
-            "## Summary\nAdd validation to `scripts/config.py` module.\n\n"
+            "## Summary\nAdd validation to config module.\n\n"
+            "### Files to Modify\n- `scripts/config.py`\n\n"
             "## Blocked By\n\nNone\n\n"
             "## Blocks\n\nNone\n"
         )
@@ -1429,13 +1431,15 @@ class TestSprintAnalyze:
             # Two issues that reference the same file → conflict
             (issues_dir / "bugs" / "P1-BUG-001-fix-parser.md").write_text(
                 "# BUG-001: Fix parser bug\n\n"
-                "## Summary\nFix bug in `scripts/parser.py` module.\n\n"
+                "## Summary\nFix bug in parser module.\n\n"
+                "### Files to Modify\n- `scripts/parser.py`\n\n"
                 "## Blocked By\n\nNone\n\n"
                 "## Blocks\n\nNone\n"
             )
             (issues_dir / "features" / "P2-FEAT-010-add-parser-validation.md").write_text(
                 "# FEAT-010: Add parser validation\n\n"
-                "## Summary\nAdd validation to `scripts/parser.py` module.\n\n"
+                "## Summary\nAdd validation to parser module.\n\n"
+                "### Files to Modify\n- `scripts/parser.py`\n\n"
                 "## Blocked By\n\nNone\n\n"
                 "## Blocks\n\nNone\n"
             )
@@ -1443,13 +1447,15 @@ class TestSprintAnalyze:
             # Two issues that reference different files → no conflict
             (issues_dir / "bugs" / "P1-BUG-001-fix-parser.md").write_text(
                 "# BUG-001: Fix parser bug\n\n"
-                "## Summary\nFix bug in `scripts/parser.py` module.\n\n"
+                "## Summary\nFix bug in parser module.\n\n"
+                "### Files to Modify\n- `scripts/parser.py`\n\n"
                 "## Blocked By\n\nNone\n\n"
                 "## Blocks\n\nNone\n"
             )
             (issues_dir / "features" / "P2-FEAT-010-add-formatter.md").write_text(
                 "# FEAT-010: Add formatter\n\n"
-                "## Summary\nAdd formatting in `scripts/formatter.py` module.\n\n"
+                "## Summary\nAdd formatting to formatter module.\n\n"
+                "### Files to Modify\n- `scripts/formatter.py`\n\n"
                 "## Blocked By\n\nNone\n\n"
                 "## Blocks\n\nNone\n"
             )

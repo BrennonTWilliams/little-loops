@@ -7,6 +7,7 @@ from little_loops.parallel.file_hints import (
     OVERLAP_RATIO_THRESHOLD,
     FileHints,
     _directories_overlap,
+    _extract_write_target_files,
     _file_in_directory,
     _is_common_file,
     _is_valid_path,
@@ -18,27 +19,33 @@ class TestFileHintExtraction:
     """Tests for extract_file_hints function."""
 
     def test_extracts_python_files(self) -> None:
-        """Should extract .py file paths."""
-        content = "Fix the bug in `scripts/little_loops/cli.py`"
+        """Should extract .py file paths from write-target sections."""
+        content = """
+### Files to Modify
+- `scripts/little_loops/cli.py` — fix the bug
+"""
         hints = extract_file_hints(content)
         assert "scripts/little_loops/cli.py" in hints.files
 
     def test_extracts_typescript_files(self) -> None:
-        """Should extract .ts and .tsx file paths."""
-        # Paths need a delimiter (space, backtick, etc.) before them
-        content = "Modified `src/components/Button.tsx` and `utils/helpers.ts`"
+        """Should extract .ts and .tsx file paths from write-target sections."""
+        content = """
+### Files to Modify
+- `src/components/Button.tsx`
+- `utils/helpers.ts`
+"""
         hints = extract_file_hints(content)
         assert "src/components/Button.tsx" in hints.files
         assert "utils/helpers.ts" in hints.files
 
     def test_extracts_multiple_files_from_content(self) -> None:
-        """Should extract multiple file references."""
+        """Should extract multiple file references from write-target sections."""
         content = """
-        This issue affects:
-        - scripts/little_loops/cli.py
-        - scripts/little_loops/config.py
-        - tests/test_cli.py
-        """
+### Files to Modify
+- `scripts/little_loops/cli.py`
+- `scripts/little_loops/config.py`
+- `tests/test_cli.py`
+"""
         hints = extract_file_hints(content)
         assert "scripts/little_loops/cli.py" in hints.files
         assert "scripts/little_loops/config.py" in hints.files
@@ -84,24 +91,153 @@ class TestFileHintExtraction:
         hints = extract_file_hints("content", "ENH-143")
         assert hints.issue_id == "ENH-143"
 
-    def test_extracts_from_code_blocks(self) -> None:
-        """Should extract file paths mentioned in code blocks."""
+    def test_extracts_from_code_blocks_in_write_section(self) -> None:
+        """Should extract file paths from code blocks inside write-target sections."""
         content = """
-        ```bash
-        # Edit the file
-        vim scripts/little_loops/cli.py
-        ```
-        """
+### Files to Modify
+```bash
+# Edit the file
+vim scripts/little_loops/cli.py
+```
+"""
         hints = extract_file_hints(content)
         assert "scripts/little_loops/cli.py" in hints.files
 
     def test_json_and_yaml_files(self) -> None:
-        """Should extract config file types."""
-        # Paths need a delimiter before them
-        content = "Update `config.json` and `settings.yaml`"
+        """Should extract config file types from write-target sections."""
+        content = """
+### Files to Modify
+- `config.json`
+- `settings.yaml`
+"""
         hints = extract_file_hints(content)
         assert "config.json" in hints.files
         assert "settings.yaml" in hints.files
+
+    def test_files_outside_write_sections_not_extracted(self) -> None:
+        """Files mentioned outside write-target sections should not be extracted."""
+        content = "Fix the bug in `scripts/little_loops/cli.py`"
+        hints = extract_file_hints(content)
+        assert "scripts/little_loops/cli.py" not in hints.files
+
+
+class TestExtractWriteTargetFiles:
+    """Tests for _extract_write_target_files — section-scoped extraction."""
+
+    def test_extracts_from_files_to_modify(self) -> None:
+        """Should extract file paths from '### Files to Modify' section."""
+        content = """
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/parallel/file_hints.py` — add helper
+- `scripts/little_loops/cli/sprint/manage.py` — update call
+
+### Related Key Documentation
+- `docs/generalized-fsm-loop.md` — reference only
+"""
+        files = _extract_write_target_files(content)
+        assert "scripts/little_loops/parallel/file_hints.py" in files
+        assert "scripts/little_loops/cli/sprint/manage.py" in files
+        assert "docs/generalized-fsm-loop.md" not in files
+
+    def test_extracts_from_files_changed(self) -> None:
+        """Should extract file paths from '### Files Changed' section."""
+        content = """
+### Files Changed
+- `scripts/little_loops/executor.py`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/orchestrator.py`
+"""
+        files = _extract_write_target_files(content)
+        assert "scripts/little_loops/executor.py" in files
+        assert "scripts/little_loops/orchestrator.py" not in files
+
+    def test_ignores_reference_docs_section(self) -> None:
+        """Files in 'Related Key Documentation' should be excluded."""
+        content = """
+### Files to Modify
+- `scripts/little_loops/parallel/file_hints.py`
+
+### Related Key Documentation
+| Document | Relevance |
+|---|---|
+| `docs/generalized-fsm-loop.md` | Example reference |
+| `docs/guides/LOOPS_GUIDE.md` | Context |
+"""
+        files = _extract_write_target_files(content)
+        assert "docs/generalized-fsm-loop.md" not in files
+        assert "docs/guides/LOOPS_GUIDE.md" not in files
+
+    def test_returns_empty_when_no_write_sections(self) -> None:
+        """Should return empty set when no write-target sections exist."""
+        content = """
+## Summary
+Some issue description mentioning `scripts/cli.py` in passing.
+
+### Related Key Documentation
+- `docs/ARCHITECTURE.md`
+"""
+        files = _extract_write_target_files(content)
+        assert files == set()
+
+    def test_both_sections_combined(self) -> None:
+        """Should collect files from both 'Files to Modify' and 'Files Changed'."""
+        content = """
+### Files to Modify
+- `scripts/little_loops/executor.py`
+
+### Files Changed
+- `scripts/little_loops/validation.py`
+"""
+        files = _extract_write_target_files(content)
+        assert "scripts/little_loops/executor.py" in files
+        assert "scripts/little_loops/validation.py" in files
+
+
+class TestSectionAwareOverlapDetection:
+    """Integration tests: extract_file_hints + overlap using section-aware extraction."""
+
+    def test_shared_reference_doc_does_not_cause_overlap(self) -> None:
+        """Two issues sharing a file only in reference sections should not overlap."""
+        issue_a = """
+### Files to Modify
+- `scripts/little_loops/parallel/executor.py`
+
+### Related Key Documentation
+| Document | Relevance |
+|---|---|
+| `docs/generalized-fsm-loop.md` | Reference |
+"""
+        issue_b = """
+### Files to Modify
+- `scripts/little_loops/parallel/validation.py`
+
+### Related Key Documentation
+| Document | Relevance |
+|---|---|
+| `docs/generalized-fsm-loop.md` | Reference |
+"""
+        hints_a = extract_file_hints(issue_a, "BUG-001")
+        hints_b = extract_file_hints(issue_b, "BUG-002")
+        assert not hints_a.overlaps_with(hints_b)
+
+    def test_shared_write_target_still_causes_overlap(self) -> None:
+        """Two issues sharing a file in '### Files to Modify' should still overlap."""
+        issue_a = """
+### Files to Modify
+- `scripts/little_loops/parallel/executor.py`
+- `scripts/little_loops/parallel/overlap_detector.py`
+"""
+        issue_b = """
+### Files to Modify
+- `scripts/little_loops/parallel/executor.py`
+- `scripts/little_loops/parallel/file_hints.py`
+"""
+        hints_a = extract_file_hints(issue_a, "ENH-001")
+        hints_b = extract_file_hints(issue_b, "ENH-002")
+        assert hints_a.overlaps_with(hints_b)
 
 
 class TestFileHintsOverlap:

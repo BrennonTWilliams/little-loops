@@ -641,10 +641,15 @@ def _make_issue_with_content(
     blocked_by: list[str] | None = None,
     blocks: list[str] | None = None,
 ) -> IssueInfo:
-    """Helper to create IssueInfo with mock path returning given content."""
+    """Helper to create IssueInfo with mock path returning given content.
+
+    Content is wrapped in a '### Files to Modify' section so that
+    section-aware file extraction (extract_file_hints) picks up file paths.
+    """
+    formatted = f"### Files to Modify\n{content}\n" if content else ""
     mock_path = Mock(spec=Path)
     mock_path.exists.return_value = bool(content)
-    mock_path.read_text.return_value = content
+    mock_path.read_text.return_value = formatted
     return IssueInfo(
         path=mock_path,
         issue_type="features",
