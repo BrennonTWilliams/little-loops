@@ -12,15 +12,15 @@ outcome_confidence: 56
 
 ## Summary
 
-Architectural issue found by `/ll:audit-architecture`. 19 of the 24 root-level modules in `scripts/little_loops/` are missing `__all__` definitions, leaving their public API implicit and undeclared.
+Architectural issue found by `/ll:audit-architecture`. 20 of the 24 root-level modules in `scripts/little_loops/` are missing `__all__` definitions, leaving their public API implicit and undeclared.
 
 ## Current Behavior
 
-19 of 24 root-level modules in `scripts/little_loops/` are missing `__all__` definitions. Only 5 modules currently declare `__all__`: `config.py`, `cli_args.py`, `user_messages.py`, `workflow_sequence_analyzer.py`, and `text_utils.py`. Without `__all__`, star imports (`from module import *`) leak internal helpers and names imported from other modules, and IDEs/type checkers have no explicit public API boundary to work with.
+20 of 24 root-level modules in `scripts/little_loops/` are missing `__all__` definitions. Only 4 modules currently declare `__all__`: `config.py`, `cli_args.py`, `user_messages.py`, and `workflow_sequence_analyzer.py`. Without `__all__`, star imports (`from module import *`) leak internal helpers and names imported from other modules, and IDEs/type checkers have no explicit public API boundary to work with.
 
 ## Expected Behavior
 
-All 24 root-level modules in `scripts/little_loops/` define `__all__` listing only their intended public exports — non-underscore-prefixed names defined in that module, excluding names re-exported from other modules. After the change, `from little_loops.module import *` imports only the declared public API.
+All 24 root-level `.py` modules in `scripts/little_loops/` define `__all__` listing only their intended public exports — non-underscore-prefixed names defined in that module, excluding names re-exported from other modules. After the change, `from little_loops.module import *` imports only the declared public API.
 
 ## Motivation
 
@@ -32,25 +32,23 @@ Without `__all__`, the public API of each module is implicit and undeclared:
 
 ## Location
 
-- **Files**: `scripts/little_loops/*.py` (19 modules)
+- **Files**: `scripts/little_loops/*.py` (20 modules)
 - **Module**: `little_loops.*`
 
 ## Finding
 
 ### Current State
 
-Only 5 of 24 root-level modules define `__all__`:
+Only 4 of 24 root-level modules define `__all__`:
 - `config.py` ✓
 - `cli_args.py` ✓
 - `user_messages.py` ✓
 - `workflow_sequence_analyzer.py` ✓
-- `text_utils.py` ✓
 
-**Missing `__all__`** (19 modules):
+**Missing `__all__`** (20 modules):
 
 ```
 dependency_graph.py
-dependency_mapper.py
 doc_counts.py
 frontmatter.py
 git_operations.py
@@ -58,16 +56,21 @@ goals_parser.py
 issue_lifecycle.py
 issue_manager.py
 issue_parser.py
+issue_template.py
 link_checker.py
 logger.py
 logo.py
+output_parsing.py
 session_log.py
 sprint.py
 state.py
 subprocess_utils.py
 sync.py
+text_utils.py
 work_verification.py
 ```
+
+Note: `dependency_mapper` is a package directory, not a `.py` file — excluded from scope.
 
 Without `__all__`, `from little_loops.module import *` (used in some test helpers and `__init__.py` re-exports) imports every name including private helpers and imported names from other modules. IDE auto-complete and type checkers also produce less accurate results.
 
@@ -108,20 +111,20 @@ __all__ = [
 
 ## Scope Boundaries
 
-- **In scope**: Adding `__all__` to the 19 root-level modules in `scripts/little_loops/*.py` listed in `## Finding`
+- **In scope**: Adding `__all__` to the 20 root-level modules in `scripts/little_loops/*.py` listed in `## Finding`
 - **Out of scope**: Sub-packages (`fsm/`, `cli/`, `parallel/`); changing existing module structure or behavior; modifying public API
 
 ## Integration Map
 
 ### Files to Modify
-- 19 modules in `scripts/little_loops/`: `dependency_graph.py`, `dependency_mapper.py`, `doc_counts.py`, `frontmatter.py`, `git_operations.py`, `goals_parser.py`, `issue_lifecycle.py`, `issue_manager.py`, `issue_parser.py`, `link_checker.py`, `logger.py`, `logo.py`, `session_log.py`, `sprint.py`, `state.py`, `subprocess_utils.py`, `sync.py`, `work_verification.py`
+- 20 modules in `scripts/little_loops/`: `dependency_graph.py`, `doc_counts.py`, `frontmatter.py`, `git_operations.py`, `goals_parser.py`, `issue_lifecycle.py`, `issue_manager.py`, `issue_parser.py`, `issue_template.py`, `link_checker.py`, `logger.py`, `logo.py`, `output_parsing.py`, `session_log.py`, `sprint.py`, `state.py`, `subprocess_utils.py`, `sync.py`, `text_utils.py`, `work_verification.py`
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/__init__.py` — check for star imports; `__all__` changes affect star import behavior
 - TBD — use `grep -r "from little_loops\." scripts/` to verify no unintended callers
 
 ### Similar Patterns
-- 5 modules already define `__all__`: `config.py`, `cli_args.py`, `user_messages.py`, `workflow_sequence_analyzer.py`, `text_utils.py`
+- 4 modules already define `__all__`: `config.py`, `cli_args.py`, `user_messages.py`, `workflow_sequence_analyzer.py`
 
 ### Tests
 - N/A — additive change; no existing tests should break
@@ -178,6 +181,7 @@ Update first - Clean hygiene improvement but LOW utility for a CLI/plugin projec
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by FEAT-488
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/reference/API.md` (line 45) to Related Key Documentation
+- `/ll:verify-issues` - 2026-03-03 - Corrected module list: removed `dependency_mapper.py` (it's a package), added `issue_template.py`, `output_parsing.py`, `text_utils.py` (which does NOT have `__all__`). Count updated from 19→20 missing, 5→4 with `__all__`
 
 ## Status
 

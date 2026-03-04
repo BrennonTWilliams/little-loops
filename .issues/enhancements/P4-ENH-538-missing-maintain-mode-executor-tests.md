@@ -31,16 +31,12 @@ if state_config.terminal:
 
 ## Current Behavior
 
-`maintain` mode logic exists and handles both `on_maintain` and `initial` fallback, but there are no executor-level tests for:
-- Terminal state with `maintain=True` causes loop restart (not termination)
-- `on_maintain` state is used as restart target when set
-- Fallback to `initial` when `on_maintain` is not set
-- `max_iterations` still terminates a `maintain` loop
+`maintain` mode logic exists and handles both `on_maintain` and `initial` fallback. Three of four scenarios are already covered by existing test classes (`TestMaintainMode:840`, `TestMaintainModeExecutor:2249`). One scenario remains untested:
 - The emitted `route` event includes `"reason": "maintain"`
 
 ## Expected Behavior
 
-A `TestMaintainMode` class in `test_fsm_executor.py` covers the above scenarios.
+A `test_maintain_route_event_emitted` test in `TestMaintainMode` (or `TestMaintainModeExecutor`) verifies that restarting in maintain mode emits a `route` event with `reason="maintain"`.
 
 ## Motivation
 
@@ -48,38 +44,25 @@ A `TestMaintainMode` class in `test_fsm_executor.py` covers the above scenarios.
 
 ## Proposed Solution
 
-Add `TestMaintainMode` class to `scripts/tests/test_fsm_executor.py` using the existing `MockActionRunner` fixture:
+Add a single test to `TestMaintainMode` in `scripts/tests/test_fsm_executor.py`:
 
 ```python
-class TestMaintainMode:
-    def test_maintain_restarts_from_initial(self, mock_runner):
-        """Terminal state with maintain=True restarts from initial, not terminates."""
-        ...
-        result = executor.run()
-        assert result.termination_reason == "max_iterations"  # not "terminal"
-
-    def test_maintain_uses_on_maintain_target(self, mock_runner):
-        """on_maintain overrides initial as restart target."""
-        ...
-
-    def test_maintain_max_iterations_terminates(self, mock_runner):
-        """max_iterations limit still applies in maintain mode."""
-        ...
-
-    def test_maintain_route_event_emitted(self, mock_runner):
-        """Restart emits route event with reason='maintain'."""
-        ...
+def test_maintain_route_event_emitted(self, mock_runner):
+    """Restart in maintain mode emits a route event with reason='maintain'."""
+    ...
+    events = [e for e in executor.events if e["type"] == "route"]
+    assert any(e["data"].get("reason") == "maintain" for e in events)
 ```
 
 ## Scope Boundaries
 
-- Only adds tests; no implementation changes
+- Only adds one test; no implementation changes
 - Does not add new maintain-mode features (that would be a separate issue)
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/tests/test_fsm_executor.py` — add `TestMaintainMode` class (or similar)
+- `scripts/tests/test_fsm_executor.py` — add `test_maintain_route_event_emitted` to `TestMaintainMode` (line 840)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py` — code under test; no changes
@@ -96,11 +79,11 @@ class TestMaintainMode:
 
 _Added by `/ll:refine-issue` — Existing maintain mode test coverage:_
 
-**IMPORTANT: Tests already exist — verify before implementing:**
-- `scripts/tests/test_fsm_executor.py:840` — `TestMaintainMode` class already exists
-- `scripts/tests/test_fsm_executor.py:2133` — `TestMaintainModeExecutor` class also exists
+**Partial coverage confirmed (verified 2026-03-03):**
+- `scripts/tests/test_fsm_executor.py:840` — `TestMaintainMode` class exists and covers: (1) terminal state with `maintain=True` causes restart (`test_maintain_restarts_after_terminal`), (2) `on_maintain` target overrides `initial` (`test_maintain_uses_on_maintain_target`), (3) `max_iterations` still terminates (`test_maintain_max_iterations_terminates`)
+- `scripts/tests/test_fsm_executor.py:2249` — `TestMaintainModeExecutor` class also exists
 
-Before implementing new tests, verify whether these classes cover the four scenarios listed in this issue: (1) terminal state with `maintain=True` causes restart, (2) `on_maintain` target overrides `initial`, (3) `max_iterations` still terminates, (4) route event with `reason: "maintain"` emitted. If fully covered, this issue can be **closed** rather than implemented.
+**Only scenario 4 is missing**: the emitted `route` event with `reason: "maintain"` (`test_maintain_route_event_emitted`). Scope is now a single test case, not a full class.
 
 ### Documentation
 - N/A
@@ -110,9 +93,9 @@ Before implementing new tests, verify whether these classes cover the four scena
 
 ## Implementation Steps
 
-1. Locate existing `MockActionRunner` or test fixture setup in `test_fsm_executor.py`
-2. Add `TestMaintainMode` with 4 test cases covering the scenarios above
-3. Run `python -m pytest scripts/tests/test_fsm_executor.py -k "maintain"` to confirm all pass
+1. Open `scripts/tests/test_fsm_executor.py:840` (`TestMaintainMode`)
+2. Add `test_maintain_route_event_emitted` using the existing `MockActionRunner` fixture pattern
+3. Run `python -m pytest scripts/tests/test_fsm_executor.py -k "route_event_emitted"` to confirm it passes
 
 ## Impact
 
@@ -136,6 +119,7 @@ Before implementing new tests, verify whether these classes cover the four scena
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — CRITICAL: Found `TestMaintainMode:840` and `TestMaintainModeExecutor:2133` already exist in `test_fsm_executor.py`; issue may be stale
+- `/ll:verify-issues` — 2026-03-03 — Confirmed 3/4 scenarios covered by `TestMaintainMode:840` and `TestMaintainModeExecutor:2249` (not 2133); corrected line ref. Narrowed scope to single missing test: `test_maintain_route_event_emitted`
 
 ---
 

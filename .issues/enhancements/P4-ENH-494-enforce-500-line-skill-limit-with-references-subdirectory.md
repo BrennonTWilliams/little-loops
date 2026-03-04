@@ -58,8 +58,8 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 **Current line counts (descending):**
 ```
 708  skills/audit-claude-config/SKILL.md  ← EXCEEDS by 208 lines
-524  skills/confidence-check/SKILL.md     ← EXCEEDS by 24 lines
-447  skills/manage-issue/SKILL.md
+533  skills/confidence-check/SKILL.md     ← EXCEEDS by 33 lines
+500  skills/manage-issue/SKILL.md         ← AT the 500-line limit
 386  skills/init/SKILL.md
 371  skills/capture-issue/SKILL.md
 356  skills/format-issue/SKILL.md
@@ -76,7 +76,9 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 
 **Only 2 skills exceed 500 lines** — scope is smaller than expected:
 - `audit-claude-config/SKILL.md` (708 lines) — extract wave definitions, sub-agent prompt templates, or audit checklists to `references/`
-- `confidence-check/SKILL.md` (524 lines) — extract scoring rubrics or evaluation criteria to `references/`
+- `confidence-check/SKILL.md` (533 lines) — extract scoring rubrics or evaluation criteria to `references/`
+
+Note: `manage-issue/SKILL.md` has grown to exactly 500 lines — at the boundary but not exceeding.
 
 **No `references/` subdirectories exist yet** — this PR establishes the convention from scratch
 
@@ -116,6 +118,7 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Completed skill line count audit; 2 skills exceed 500 lines: audit-claude-config (708) and confidence-check (524)
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by ENH-493, ENH-491, FEAT-441
+- `/ll:verify-issues` - 2026-03-03 - Updated line counts: confidence-check 524→533, manage-issue 447→500 (now AT limit). Removed ENH-491 and FEAT-441 from Blocked By (both completed)
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `CONTRIBUTING.md` to Related Key Documentation
 
@@ -146,9 +149,6 @@ Update first - Only 2 skills exceed the 500-line limit (audit-claude-config: 708
 ## Blocked By
 
 - ENH-493
-
-- ENH-491
-- FEAT-441
 
 ---
 

@@ -72,9 +72,9 @@ _Added by `/ll:refine-issue` — Skill description audit:_
 - `skills/format-issue/SKILL.md` — "Format issue files to align with template v2.0 structure through interactive Q&A or auto mode"
 - `skills/init/SKILL.md` — "Initialize little-loops configuration for a project"
 - `skills/manage-issue/SKILL.md` — "Autonomously manage issues - plan, implement, verify, and complete"
-- `skills/workflow-automation-proposer/SKILL.md` — summary-style multiline description
+- ~~`skills/workflow-automation-proposer/SKILL.md`~~ — **Already has trigger keywords** (verified 2026-03-03): description now includes `Trigger keywords: "propose automations", "workflow proposals", "automation suggestions", "step 3 workflow analysis"`
 
-**Implementation scope: 8 skills need description rewrites** (the 7 already trigger-phrase-oriented are lower priority but may still benefit from refinement)
+**Implementation scope: 7 skills need description rewrites** (workflow-automation-proposer already done; the 7 already trigger-phrase-oriented are lower priority but may still benefit from refinement)
 
 **No `references/` subdirectories exist** — supplemental content uses flat filenames (`templates.md`, `paradigms.md`, etc.) alongside `SKILL.md`
 
@@ -111,6 +111,7 @@ _Added by `/ll:refine-issue` — Skill description audit:_
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; research findings from 2026-02-25 remain current
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `CONTRIBUTING.md` and `docs/reference/COMMANDS.md` to Related Key Documentation
+- `/ll:verify-issues` - 2026-03-03 - `workflow-automation-proposer/SKILL.md` already has trigger keywords; scope corrected from 8 → 7 skills needing rewrites
 
 ---
 

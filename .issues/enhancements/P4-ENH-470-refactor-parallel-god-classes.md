@@ -12,13 +12,13 @@ outcome_confidence: 45
 
 ## Summary
 
-Architectural issue found by `/ll:audit-architecture`. The three core classes in `parallel/` average 1,174 lines each, with each class handling multiple distinct responsibilities.
+Architectural issue found by `/ll:audit-architecture`. The three core classes in `parallel/` average 1,181 lines each, with each class handling multiple distinct responsibilities.
 
 ## Current Behavior
 
 The `parallel/` package contains three god classes:
 
-**MergeCoordinator** (`merge_coordinator.py`, 1,226 lines):
+**MergeCoordinator** (`merge_coordinator.py`, 1,236 lines):
 - Core merge queue management
 - Git stash handling
 - Conflict detection and resolution
@@ -139,6 +139,7 @@ Extract cross-cutting concerns into focused helper modules:
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; comprehensive caller/importer list and thread safety notes remain current
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/ARCHITECTURE.md` (lines 428, 417) to Related Key Documentation
+- `/ll:verify-issues` - 2026-03-03 - Corrected `merge_coordinator.py` line count from 1,226 to 1,236 (actual); average updated from 1,174 to 1,181
 
 ---
 
