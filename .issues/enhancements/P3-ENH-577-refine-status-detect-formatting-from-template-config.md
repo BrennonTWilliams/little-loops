@@ -34,13 +34,36 @@ Session log entries record *process*, not *state*. Coupling a structural quality
 3. Replace the session-log-based format check in `refine_status.py` with a call to `is_formatted(...)`.
 4. Update `test_refine_status.py` with fixtures covering: a hand-written v2.0 file (expect ✓), a v1.x file missing required sections (expect ✗), and a file that has the session log entry but missing sections (expect ✗).
 
-## Related
+## Related Key Documentation
 
 - ENH-561: Add column key section to `ll-issues refine-status` output (separate concern)
-- `scripts/little_loops/cli/issues/refine_status.py` lines 35, 46 — current `/ll:format-issue` references
-- `templates/bug-sections.json`, `templates/feat-sections.json`, `templates/enh-sections.json` — template definitions
+- `scripts/little_loops/cli/issues/refine_status.py` — current `/ll:format-issue` session-log check
+- `templates/bug-sections.json`, `templates/feat-sections.json`, `templates/enh-sections.json` — template definitions to read from
+
+## Scope Boundaries
+
+- No changes to template JSON files (`templates/bug-sections.json`, etc.) — detection reads from templates, does not modify them
+- No new columns added to `ll-issues refine-status` output — only changes how the existing `format` column is populated
+- Scoped to `refine-status` subcommand only — no changes to `ll-issues show` or other subcommands
+- No UI/display format changes — `✓`/`✗` rendering is unchanged, only the detection logic changes
+
+## Impact
+
+- **Priority**: P3 — Non-critical enhancement; current behavior is confusing but doesn't block workflows
+- **Effort**: Small — Changes isolated to ~3 files (`refine_status.py`, `issue_parser.py`, `test_refine_status.py`); reuses existing template-loading infrastructure
+- **Risk**: Low — Replaces one session-log check with a structural check; no API or output format changes; well-tested path
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `cli`, `issue-management`, `refine-status`
+
+## Status
+
+**Open** | Created: 2026-03-04 | Priority: P3
 
 ---
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c867334-8723-481e-ab0c-6699be487fb7.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7eb1c0c-cf36-4cd9-b49f-3ccc1518217f.jsonl`
