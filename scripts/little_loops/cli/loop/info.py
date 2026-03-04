@@ -536,6 +536,16 @@ def cmd_show(
         print(f"Context variables: {', '.join(fsm.context.keys())}")
     if fsm.scope:
         print(f"Scope: {', '.join(fsm.scope)}")
+    llm = fsm.llm
+    llm_parts = []
+    if llm.model != "sonnet":
+        llm_parts.append(f"model={llm.model}")
+    if llm.max_tokens != 256:
+        llm_parts.append(f"max_tokens={llm.max_tokens}")
+    if llm.timeout != 30:
+        llm_parts.append(f"timeout={llm.timeout}s")
+    if llm_parts:
+        print(f"LLM config: {', '.join(llm_parts)}")
     print(f"Source: {path}")
 
     # --- States & Transitions ---
@@ -561,9 +571,24 @@ def cmd_show(
         if state.action_type:
             print(f"    type: {state.action_type}")
         if state.evaluate:
-            print(f"    evaluate: {state.evaluate.type}")
-            if getattr(args, "verbose", False) and state.evaluate.prompt:
-                print(f"    evaluate_prompt: |\n      {state.evaluate.prompt.strip()}")
+            ev = state.evaluate
+            print(f"    evaluate: {ev.type}")
+            verbose = getattr(args, "verbose", False)
+            if ev.prompt:
+                if verbose:
+                    print("      prompt: |")
+                    for line in ev.prompt.strip().splitlines():
+                        print(f"        {line}")
+                else:
+                    lines = ev.prompt.strip().splitlines()
+                    preview = lines[0][:100] + (" ..." if len(lines) > 1 or len(lines[0]) > 100 else "")
+                    print(f"      prompt: {preview}")
+            if ev.min_confidence != 0.5:
+                print(f"      min_confidence: {ev.min_confidence}")
+            if ev.operator:
+                print(f"      operator: {ev.operator} {ev.target}")
+            if ev.pattern:
+                print(f"      pattern: {ev.pattern}")
         if state.on_success:
             print(f"    on_success \u2500\u2500\u2192 {state.on_success}")
         if state.on_failure:
@@ -574,6 +599,12 @@ def cmd_show(
             print(f"    on_partial \u2500\u2500\u2192 {state.on_partial}")
         if state.next:
             print(f"    next \u2500\u2500\u2192 {state.next}")
+        if state.capture:
+            print(f"    capture: {state.capture}")
+        if state.timeout:
+            print(f"    timeout: {state.timeout}s")
+        if state.on_maintain:
+            print(f"    on_maintain \u2500\u2500\u2192 {state.on_maintain}")
         if state.route:
             print("    route:")
             for verdict, target in state.route.routes.items():

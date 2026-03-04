@@ -550,5 +550,332 @@ class TestCmdShow:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "evaluate_prompt" in out
+        assert "prompt:" in out
         assert "Did the command succeed" in out
+
+    def test_show_evaluate_prompt_preview(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Non-verbose show displays truncated evaluate prompt preview."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    evaluate:\n"
+            "      type: llm_structured\n"
+            "      prompt: |\n"
+            "        Examine the output carefully.\n"
+            "        Second line detail.\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "evaluate: llm_structured" in out
+        assert "prompt: Examine the output carefully." in out
+        assert " ..." in out  # truncated because multiple lines
+        assert "Second line detail" not in out
+
+    def test_show_evaluate_prompt_truncated_at_100_chars(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Evaluate prompt preview truncates long single lines at 100 chars."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        long_prompt = "x" * 120
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    evaluate:\n"
+            "      type: llm_structured\n"
+            f"      prompt: {long_prompt}\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert " ..." in out
+        assert long_prompt not in out
+
+    def test_show_evaluate_min_confidence_non_default(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Non-default min_confidence is shown in evaluate block."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    evaluate:\n"
+            "      type: llm_structured\n"
+            "      min_confidence: 0.8\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "min_confidence: 0.8" in out
+
+    def test_show_evaluate_min_confidence_default_hidden(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Default min_confidence (0.5) is not shown."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    evaluate:\n"
+            "      type: llm_structured\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "min_confidence" not in out
+
+    def test_show_evaluate_operator_and_target(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """operator and target shown for numeric evaluators."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo 5"\n'
+            "    evaluate:\n"
+            "      type: output_numeric\n"
+            "      operator: gt\n"
+            "      target: 3\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "operator: gt 3" in out
+
+    def test_show_evaluate_pattern(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """pattern shown for output_contains evaluator."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    evaluate:\n"
+            "      type: output_contains\n"
+            "      pattern: ERROR\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "pattern: ERROR" in out
+
+    def test_show_state_capture_timeout_on_maintain(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """State-level capture, timeout, and on_maintain are displayed."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    capture: result\n"
+            "    timeout: 60\n"
+            "    on_maintain: check\n"
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "capture: result" in out
+        assert "timeout: 60s" in out
+        assert "on_maintain \u2500\u2500\u2192 check" in out
+
+    def test_show_state_optional_fields_absent_when_unset(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """capture, timeout, on_maintain not shown when not configured."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "capture:" not in out
+        assert "timeout:" not in out
+        assert "on_maintain" not in out
+
+    def test_show_llm_config_block_non_default(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """LLM config block shown when non-default values are set."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "llm:\n"
+            "  model: opus\n"
+            "  max_tokens: 512\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "LLM config:" in out
+        assert "model=opus" in out
+        assert "max_tokens=512" in out
+
+    def test_show_llm_config_block_hidden_when_default(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """LLM config block not shown when all values are default."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_success: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "LLM config" not in out
