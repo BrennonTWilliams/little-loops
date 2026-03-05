@@ -224,13 +224,13 @@ class TestHistoryTail:
         captured = capsys.readouterr()
 
         # Verify only last 3 events appear (state7, state8, state9)
-        assert "'from': 'state7'" in captured.out
-        assert "'from': 'state8'" in captured.out
-        assert "'from': 'state9'" in captured.out
+        assert "from=state7" in captured.out
+        assert "from=state8" in captured.out
+        assert "from=state9" in captured.out
         # First events should NOT appear (use exact match to avoid state10 matching state1)
-        assert "'from': 'state0'" not in captured.out
-        assert "'from': 'state1'" not in captured.out
-        assert "'from': 'state5'" not in captured.out
+        assert "from=state0" not in captured.out
+        assert "from=state1" not in captured.out
+        assert "from=state5" not in captured.out
 
     def test_history_tail_zero_shows_all(
         self,
@@ -252,7 +252,7 @@ class TestHistoryTail:
         # Due to Python slicing behavior, list[-0:] returns all items
         # All 10 events should appear
         for i in range(10):
-            assert f"'from': 'state{i}'" in captured.out
+            assert f"from=state{i}" in captured.out
 
     def test_history_tail_exceeds_events_shows_all(
         self,
@@ -273,7 +273,7 @@ class TestHistoryTail:
 
         # All 10 events should appear
         for i in range(10):
-            assert f"'from': 'state{i}'" in captured.out
+            assert f"from=state{i}" in captured.out
 
     def test_history_default_tail_shows_all_small(
         self,
@@ -294,7 +294,7 @@ class TestHistoryTail:
 
         # All 10 events should appear (10 < 50 default)
         for i in range(10):
-            assert f"'from': 'state{i}'" in captured.out
+            assert f"from=state{i}" in captured.out
 
     def test_history_tail_preserves_chronological_order(
         self,
