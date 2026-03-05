@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -278,7 +279,9 @@ class MockActionRunner:
         action: str,
         timeout: int,
         is_slash_command: bool,
+        on_output_line: Any = None,
     ) -> ActionResult:
+        del on_output_line
         self.calls.append(action)
         if self._index < len(self.results):
             result = self.results[self._index]
@@ -1153,8 +1156,9 @@ class TestSignalHandlingPersistence:
                 action: str,
                 timeout: int,
                 is_slash_command: bool,
+                on_output_line: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command
+                del timeout, is_slash_command, on_output_line
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -1209,8 +1213,9 @@ class TestSignalHandlingPersistence:
                 action: str,
                 timeout: int,
                 is_slash_command: bool,
+                on_output_line: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command
+                del timeout, is_slash_command, on_output_line
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -1295,8 +1300,9 @@ class TestSignalHandlingPersistence:
                 action: str,
                 timeout: int,
                 is_slash_command: bool,
+                on_output_line: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command
+                del timeout, is_slash_command, on_output_line
                 self.calls.append(action)
                 call_count[0] += 1
 

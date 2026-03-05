@@ -242,10 +242,17 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
                 action_display = action[:120] + "..." if len(action) > 120 else action
                 print(f" -> {action_display}", flush=True)
 
+        elif event_type == "action_output":
+            line = event.get("line", "")
+            if line.strip():
+                display = line[:120] + "..." if len(line) > 120 else line
+                print(f"       {display}", flush=True)
+
         elif event_type == "action_complete":
             duration_ms = event.get("duration_ms", 0)
             exit_code = event.get("exit_code", 0)
             output_preview = event.get("output_preview")
+            is_prompt = event.get("is_prompt", False)
             duration_sec = duration_ms / 1000
             if duration_sec < 60:
                 duration_str = f"{duration_sec:.1f}s"
@@ -259,16 +266,11 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             elif exit_code != 0:
                 parts.append(f"exit: {exit_code}")
             print("  ".join(parts), flush=True)
-            if output_preview:
-                is_prompt = event.get("is_prompt", False)
+            # Skip output preview for prompt states — output was already streamed line by line.
+            # For shell states, show a tail summary as before.
+            if output_preview and not is_prompt:
                 lines = [ln for ln in output_preview.splitlines() if ln.strip()]
-                # Show last N lines: verbose=20, prompts=10, shell=8
-                if verbose:
-                    n_lines = 20
-                elif is_prompt:
-                    n_lines = 10
-                else:
-                    n_lines = 8
+                n_lines = 20 if verbose else 8
                 show_lines = lines[-n_lines:] if lines else []
                 for line in show_lines:
                     display = line[:120] + "..." if len(line) > 120 else line

@@ -39,10 +39,11 @@ class MockActionRunner:
         action: str,
         timeout: int,
         is_slash_command: bool,
+        on_output_line: Any = None,
     ) -> ActionResult:
         """Return configured result for action."""
         # Suppress unused variable warnings - these match the Protocol signature
-        del timeout, is_slash_command
+        del timeout, is_slash_command, on_output_line
         self.calls.append(action)
 
         # Use indexed results in order (when results were set as a list)
@@ -1507,8 +1508,8 @@ class TestErrorHandling:
         )
 
         class FailingRunner:
-            def run(self, action: str, timeout: int, is_slash_command: bool) -> ActionResult:
-                del action, timeout, is_slash_command
+            def run(self, action: str, timeout: int, is_slash_command: bool, on_output_line: Any = None) -> ActionResult:
+                del action, timeout, is_slash_command, on_output_line
                 raise RuntimeError("Connection failed")
 
         executor = FSMExecutor(fsm, action_runner=FailingRunner())  # type: ignore[arg-type]
@@ -1784,8 +1785,9 @@ class TestSignalHandling:
                 action: str,
                 timeout: int,
                 is_slash_command: bool,
+                on_output_line: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command
+                del timeout, is_slash_command, on_output_line
                 self.calls.append(action)
                 call_count[0] += 1
 
@@ -1864,8 +1866,9 @@ class TestSignalHandling:
                 action: str,
                 timeout: int,
                 is_slash_command: bool,
+                on_output_line: Any = None,
             ) -> ActionResult:
-                del timeout, is_slash_command
+                del timeout, is_slash_command, on_output_line
                 self.calls.append(action)
                 call_count[0] += 1
 

@@ -101,6 +101,7 @@ class ActionRunner(Protocol):
         action: str,
         timeout: int,
         is_slash_command: bool,
+        on_output_line: Callable[[str], None] | None = None,
     ) -> ActionResult:
         """Execute an action and return the result.
 
@@ -108,6 +109,7 @@ class ActionRunner(Protocol):
             action: The command to execute
             timeout: Timeout in seconds
             is_slash_command: True if this is a slash command (starts with /)
+            on_output_line: Optional callback invoked for each output line
 
         Returns:
             ActionResult with output, stderr, exit_code, duration_ms
@@ -123,13 +125,15 @@ class DefaultActionRunner:
         action: str,
         timeout: int,
         is_slash_command: bool,
+        on_output_line: Callable[[str], None] | None = None,
     ) -> ActionResult:
-        """Execute action and return result.
+        """Execute action and return result, streaming output line by line.
 
         Args:
             action: The command to execute
             timeout: Timeout in seconds
             is_slash_command: True if action starts with /
+            on_output_line: Optional callback invoked for each stdout line
 
         Returns:
             ActionResult with execution details
@@ -141,6 +145,7 @@ class DefaultActionRunner:
             cmd = [
                 "claude",
                 "--dangerously-skip-permissions",
+                "--verbose",
                 "-p",
                 action,
             ]
@@ -148,26 +153,35 @@ class DefaultActionRunner:
             # Shell command
             cmd = ["bash", "-c", action]
 
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        output_chunks: list[str] = []
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=timeout,
-            )
-            return ActionResult(
-                output=result.stdout,
-                stderr=result.stderr,
-                exit_code=result.returncode,
-                duration_ms=_now_ms() - start,
-            )
+            for line in process.stdout:  # type: ignore[union-attr]
+                output_chunks.append(line)
+                if on_output_line:
+                    on_output_line(line.rstrip())
+            process.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
             return ActionResult(
-                output="",
+                output="".join(output_chunks),
                 stderr="Action timed out",
-                exit_code=124,  # Standard timeout exit code
+                exit_code=124,
                 duration_ms=timeout * 1000,
             )
+        stderr = process.stderr.read()  # type: ignore[union-attr]
+        return ActionResult(
+            output="".join(output_chunks),
+            stderr=stderr,
+            exit_code=process.returncode,
+            duration_ms=_now_ms() - start,
+        )
 
 
 @dataclass
@@ -193,6 +207,7 @@ class SimulationActionRunner:
         action: str,
         timeout: int,
         is_slash_command: bool,
+        on_output_line: Callable[[str], None] | None = None,
     ) -> ActionResult:
         """Prompt user for simulated result instead of executing.
 
@@ -200,11 +215,12 @@ class SimulationActionRunner:
             action: The command that would be executed
             timeout: Timeout (ignored in simulation)
             is_slash_command: Whether this is a slash command
+            on_output_line: Ignored in simulation
 
         Returns:
             ActionResult with simulated exit code
         """
-        del timeout  # unused in simulation
+        del timeout, on_output_line  # unused in simulation
         self.calls.append(action)
         self.call_count += 1
 
@@ -523,10 +539,14 @@ class FSMExecutor:
 
         self._emit("action_start", {"action": action, "is_prompt": is_slash_command})
 
+        def _on_line(line: str) -> None:
+            self._emit("action_output", {"line": line})
+
         result = self.action_runner.run(
             action,
             timeout=state.timeout or 120,
             is_slash_command=is_slash_command,
+            on_output_line=_on_line,
         )
 
         preview = result.output[-2000:].strip() if result.output else None

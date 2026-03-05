@@ -8,7 +8,7 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 import yaml
@@ -22,6 +22,24 @@ from little_loops.fsm.schema import (
 
 if TYPE_CHECKING:
     pass
+
+
+def _make_mock_popen_factory(
+    returncode: int = 0, stdout: str = "", stderr: str = ""
+) -> Callable[..., Any]:
+    """Return a side_effect factory for mocking subprocess.Popen in executor tests."""
+
+    def factory(*args: Any, **kwargs: Any) -> Any:
+        mock_proc = MagicMock()
+        lines = stdout.splitlines(keepends=True) if stdout else []
+        mock_proc.stdout = iter(lines)
+        mock_proc.stderr.read.return_value = stderr
+        mock_proc.returncode = returncode
+        mock_proc.wait.return_value = None
+        mock_proc.kill.return_value = None
+        return mock_proc
+
+    return factory
 
 
 def make_test_state(
@@ -333,20 +351,15 @@ states:
         (loops_dir / "test-exec.yaml").write_text(loop_content)
 
         monkeypatch.chdir(tmp_path)
-        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(
-                args=["bash", "-c", "echo test"],
-                returncode=0,
-                stdout="test",
-                stderr="",
-            )
+        with patch("little_loops.fsm.executor.subprocess.Popen") as mock_popen:
+            mock_popen.side_effect = _make_mock_popen_factory(returncode=0, stdout="test\n")
             with patch.object(sys, "argv", ["ll-loop", "run", "test-exec"]):
                 from little_loops.cli import main_loop
 
                 result = main_loop()
 
         assert result == 0
-        assert mock_run.called
+        assert mock_popen.called
 
         captured = capsys.readouterr()
         # Verify loop header displayed
@@ -382,21 +395,16 @@ states:
         (loops_dir / "test-max.yaml").write_text(loop_content)
 
         monkeypatch.chdir(tmp_path)
-        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
+        with patch("little_loops.fsm.executor.subprocess.Popen") as mock_popen:
             # Always return failure so loop keeps iterating
-            mock_run.return_value = subprocess.CompletedProcess(
-                args=["bash", "-c", "echo fail"],
-                returncode=1,
-                stdout="",
-                stderr="error",
-            )
+            mock_popen.side_effect = _make_mock_popen_factory(returncode=1, stderr="error")
             with patch.object(sys, "argv", ["ll-loop", "run", "test-max"]):
                 from little_loops.cli import main_loop
 
                 result = main_loop()
 
         assert result == 1  # Non-terminal exit
-        assert mock_run.call_count == 2  # Ran exactly max_iterations times
+        assert mock_popen.call_count == 2  # Ran exactly max_iterations times
 
         captured = capsys.readouterr()
         # Verify loop header and completion message
@@ -432,13 +440,8 @@ states:
         (loops_dir / "test-fail.yaml").write_text(loop_content)
 
         monkeypatch.chdir(tmp_path)
-        with patch("little_loops.fsm.executor.subprocess.run") as mock_run:
-            mock_run.return_value = subprocess.CompletedProcess(
-                args=["bash", "-c", "echo fail"],
-                returncode=1,
-                stdout="",
-                stderr="",
-            )
+        with patch("little_loops.fsm.executor.subprocess.Popen") as mock_popen:
+            mock_popen.side_effect = _make_mock_popen_factory(returncode=1)
             with patch.object(sys, "argv", ["ll-loop", "run", "test-fail"]):
                 from little_loops.cli import main_loop
 
