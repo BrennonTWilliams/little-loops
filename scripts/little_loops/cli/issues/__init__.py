@@ -107,6 +107,9 @@ Examples:
     project_root = args.config or Path.cwd()
     config = BRConfig(project_root)
 
+    from little_loops.cli.output import configure_output
+    configure_output(config.cli)
+
     if args.command == "next-id":
         return cmd_next_id(config)
     if args.command == "list":

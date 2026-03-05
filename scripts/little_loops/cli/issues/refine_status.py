@@ -4,8 +4,9 @@ from __future__ import annotations
 
 import argparse
 import json
-import shutil
 from typing import TYPE_CHECKING
+
+from little_loops.cli.output import terminal_width
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -189,7 +190,7 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
         return 0
 
     # --- Table rendering ---
-    term_cols = shutil.get_terminal_size().columns
+    term_cols = terminal_width()
 
     # Determine active static columns from config (empty list = use defaults)
     config_cols = config.refine_status.columns

@@ -4,6 +4,7 @@ allowed-tools:
   - Read
   - Glob
   - Bash(git:*)
+
 ---
 
 # Prioritize Issues

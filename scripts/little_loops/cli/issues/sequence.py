@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from typing import TYPE_CHECKING
 
+from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize
+
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
@@ -46,7 +48,10 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
             rationale = f"blocked by: {', '.join(sorted(blockers))}"
         else:
             rationale = "no blockers"
-        print(f"  [{issue.priority}, {rationale}] {issue.issue_id}: {issue.title}")
+        issue_prefix = issue.issue_id.split("-", 1)[0]
+        colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_prefix, "0"))
+        colored_pri = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
+        print(f"  [{colored_pri}, {rationale}] {colored_id}: {issue.title}")
 
     if len(ordered) > limit:
         remaining = len(ordered) - limit
