@@ -380,9 +380,9 @@ class TestCmdShow:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "On handoff: pause" in out
-        assert "[check]" in out
-        assert "[done]" in out
+        assert "handoff: pause" in out
+        assert "check" in out
+        assert "done" in out
         assert "ll-loop run my-loop" in out
 
     def test_show_displays_on_handoff(
@@ -414,7 +414,7 @@ class TestCmdShow:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "On handoff: spawn" in out
+        assert "handoff: spawn" in out
 
     def test_show_displays_diagram(
         self,
@@ -433,8 +433,8 @@ class TestCmdShow:
         assert result == 0
         out = capsys.readouterr().out
         assert "Diagram:" in out
-        assert "[check]" in out
-        assert "[done]" in out
+        assert "check" in out
+        assert "done" in out
 
     def test_show_nonexistent_loop(
         self,
@@ -880,7 +880,7 @@ class TestCmdShow:
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "LLM config:" in out
+        assert "llm:" in out
         assert "model=opus" in out
         assert "max_tokens=512" in out
 
@@ -1023,8 +1023,8 @@ class TestCmdShow:
 
         assert result == 0
         out = capsys.readouterr().out
-        # The state header for an initial state shows "[run] [INITIAL] (shell)"
-        assert "(shell)" in out
+        # The state header for an initial state shows "── run ── INITIAL · shell ──"
+        assert "shell" in out
         assert "    type: shell" not in out
 
     def test_show_commands_section_lists_all_subcommands(

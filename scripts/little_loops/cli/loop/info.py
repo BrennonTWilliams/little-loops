@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 from collections import deque
 from datetime import datetime
 from pathlib import Path
@@ -12,8 +13,8 @@ from little_loops.cli.loop._helpers import (
     load_loop_with_spec,
     resolve_loop_path,
 )
-from little_loops.cli.output import terminal_width
-from little_loops.fsm.schema import FSMLoop
+from little_loops.cli.output import colorize, terminal_width
+from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.logger import Logger
 
 
@@ -90,7 +91,123 @@ def cmd_history(
     return 0
 
 
-def _render_fsm_diagram(fsm: FSMLoop) -> str:
+# ---------------------------------------------------------------------------
+# Edge label colors (ANSI codes)
+# ---------------------------------------------------------------------------
+
+_EDGE_LABEL_COLORS: dict[str, str] = {
+    "success": "32",
+    "fail": "38;5;208",
+    "error": "31",
+    "partial": "33",
+    "next": "2",
+    "_": "2",
+}
+
+
+def _colorize_label(label: str) -> str:
+    """Colorize a (possibly compound) edge label like 'fail/error'."""
+    parts = label.split("/")
+    code = ""
+    for part in parts:
+        if part in ("fail", "error"):
+            code = _EDGE_LABEL_COLORS["fail"]
+            break
+        if part == "partial" and not code:
+            code = _EDGE_LABEL_COLORS["partial"]
+        elif part == "success" and not code:
+            code = _EDGE_LABEL_COLORS["success"]
+        elif part in ("next", "_") and not code:
+            code = _EDGE_LABEL_COLORS["next"]
+    return colorize(label, code) if code else label
+
+
+def _colorize_diagram_labels(diagram: str) -> str:
+    """Apply ANSI color to known edge labels in a rendered diagram string.
+
+    Labels are colorized only when bounded by box-drawing or whitespace chars
+    to avoid coloring partial matches inside state names.
+    """
+    for label, code in _EDGE_LABEL_COLORS.items():
+        colored = colorize(label, code)
+        diagram = re.sub(
+            r"(?<=[─ │▶\n])" + re.escape(label) + r"(?=[─ │▶\n])",
+            colored,
+            diagram,
+        )
+    return diagram
+
+
+# ---------------------------------------------------------------------------
+# Box content helpers for multi-row diagram boxes
+# ---------------------------------------------------------------------------
+
+
+def _box_inner_lines(
+    state: StateConfig | None,
+    display_label: str,
+    verbose: bool,
+    inner_width: int,
+) -> list[str]:
+    """Return interior lines for a state box (between top and bottom borders).
+
+    The first line is always ``display_label`` + type badge (if any).
+    Subsequent lines are action content lines.  All lines fit within
+    ``inner_width`` characters (content is truncated or wrapped accordingly).
+    """
+    # Determine type badge
+    badge = ""
+    if state and state.action_type:
+        badge = f"[{state.action_type}]"
+    elif state and state.action:
+        badge = "[shell]"
+
+    # Name + badge on first line
+    if badge:
+        candidate = f"{display_label}  {badge}"
+        if len(candidate) <= inner_width:
+            name_line = candidate
+        else:
+            # Fit badge at the expense of name truncation
+            avail = inner_width - len(badge) - 2
+            name_line = (
+                (display_label[:avail] + "  " + badge) if avail > 0 else candidate[:inner_width]
+            )
+    else:
+        name_line = display_label[:inner_width]
+
+    lines: list[str] = [name_line]
+
+    # Action lines
+    if state and state.action:
+        action_src = [ln.rstrip() for ln in state.action.strip().splitlines()]
+        if verbose:
+            for src in action_src:
+                if not src:
+                    continue
+                # Wrap long lines to inner_width
+                while len(src) > inner_width:
+                    lines.append(src[:inner_width])
+                    src = src[inner_width:]
+                if src:
+                    lines.append(src)
+        else:
+            # Show first non-empty line, truncated
+            first = next((ln for ln in action_src if ln), "")
+            if len(first) > inner_width:
+                first = first[: inner_width - 1] + "\u2026"
+            if first:
+                lines.append(first)
+
+    return lines
+
+
+# ---------------------------------------------------------------------------
+# FSM diagram renderer
+# ---------------------------------------------------------------------------
+
+
+def _render_fsm_diagram(fsm: FSMLoop, verbose: bool = False) -> str:
     """Render an improved text diagram of the FSM graph.
 
     Produces three sections:
@@ -150,8 +267,6 @@ def _render_fsm_diagram(fsm: FSMLoop) -> str:
             break
 
     # Classify remaining edges as branches or back-edges.
-    # Only consume one edge per main-path (src, dst) pair so that duplicate
-    # edges (e.g. route_state→done via "pass" AND "skip") are not all dropped.
     main_consumed: set[int] = set()
     for src, dst in main_edge_set:
         for i, (s, d, _) in enumerate(edges):
@@ -181,6 +296,8 @@ def _render_fsm_diagram(fsm: FSMLoop) -> str:
         bfs_order,
         initial=fsm.initial,
         terminal_states=terminal_states,
+        fsm_states=fsm.states,
+        verbose=verbose,
     )
 
 
@@ -193,6 +310,8 @@ def _render_2d_diagram(
     bfs_order: list[str],
     initial: str = "",
     terminal_states: set[str] | None = None,
+    fsm_states: dict[str, StateConfig] | None = None,
+    verbose: bool = False,
 ) -> str:
     """Render a 2D box-drawing diagram of the FSM graph."""
     if not main_path:
@@ -212,19 +331,56 @@ def _render_2d_diagram(
     for s in all_states:
         label = s
         if s == initial:
-            label = "→ " + label
+            label = "\u2192 " + label
         if terminal_states and s in terminal_states:
-            label = label + " ◉"
+            label = label + " \u25c9"
         display_label[s] = label
 
-    # Box dimensions: 1 char padding each side
+    # Compute box inner content and widths
+    tw = terminal_width()
+    if verbose and fsm_states and main_path:
+        # In verbose mode, allow wider boxes to show more content
+        num_main = max(1, len(main_path))
+        max_box_inner = max(20, min(60, (tw - 4) // num_main - 6))
+    else:
+        max_box_inner = 0  # Will be set per-state from name+badge
+
+    box_inner: dict[str, list[str]] = {}
     box_width: dict[str, int] = {}
+
     for s in all_states:
-        box_width[s] = len(display_label[s]) + 4  # "│ label │"
+        state_obj = fsm_states.get(s) if fsm_states else None
+
+        # Compute base inner width from name+badge line
+        badge = ""
+        if state_obj and state_obj.action_type:
+            badge = f"[{state_obj.action_type}]"
+        elif state_obj and state_obj.action:
+            badge = "[shell]"
+
+        base_w = len(f"{display_label[s]}  {badge}") if badge else len(display_label[s])
+        base_w = max(base_w, len(display_label[s]))
+
+        # In verbose mode, allow wider if action content is longer
+        inner_w = base_w
+        if verbose and state_obj and state_obj.action and max_box_inner > 0:
+            action_lines = state_obj.action.strip().splitlines()
+            max_action_w = max((len(ln.rstrip()) for ln in action_lines if ln.rstrip()), default=0)
+            inner_w = max(base_w, min(max_action_w, max_box_inner))
+
+        content = _box_inner_lines(state_obj, display_label[s], verbose, inner_w)
+        actual_w = max(len(ln) for ln in content)
+        inner_w = max(inner_w, actual_w)
+        box_inner[s] = content
+        box_width[s] = inner_w + 4  # "│ " + content + " │"
+
+    # Box heights
+    box_height: dict[str, int] = {s: len(box_inner[s]) + 2 for s in all_states}
+    main_height = max((box_height[s] for s in main_path), default=3)
 
     # Compute column positions for main path boxes
-    col_start: dict[str, int] = {}  # left edge of each box
-    col_center: dict[str, int] = {}  # center column of each box
+    col_start: dict[str, int] = {}
+    col_center: dict[str, int] = {}
     x = 2  # left margin
     for i, sname in enumerate(main_path):
         col_start[sname] = x
@@ -242,7 +398,6 @@ def _render_2d_diagram(
 
     # Place off-path states below, centered under their first neighbor
     for s in off_path:
-        # Find a neighbor on the main path
         neighbor = None
         for src, dst, _ in branches + back_edges:
             if dst == s and src in col_start:
@@ -258,39 +413,48 @@ def _render_2d_diagram(
             col_start[s] = 2
         col_center[s] = col_start[s] + box_width[s] // 2
 
-    total_width = x + 4  # some right margin
-    # Ensure off-path boxes fit within total_width
+    total_width = x + 4
     for s in off_path:
         right_edge = col_start[s] + box_width[s] + 4
         if right_edge > total_width:
             total_width = right_edge
 
-    # --- Build main flow rows (3 rows: top border, name, bottom border) ---
-    row_top = [" "] * total_width
-    row_mid = [" "] * total_width
-    row_bot = [" "] * total_width
+    # --- Build main flow rows (uniform height for all main-path boxes) ---
+    rows: list[list[str]] = [[" "] * total_width for _ in range(main_height)]
 
     for sname in main_path:
         cx = col_start[sname]
         w = box_width[sname]
-        # Top border: ┌──...──┐
-        row_top[cx] = "\u250c"
-        for j in range(1, w - 1):
-            row_top[cx + j] = "\u2500"
-        row_top[cx + w - 1] = "\u2510"
-        # Middle: │ label │
-        row_mid[cx] = "\u2502"
-        row_mid[cx + w - 1] = "\u2502"
-        name_start = cx + 2
-        for j, ch in enumerate(display_label[sname]):
-            row_mid[name_start + j] = ch
-        # Bottom border: └──...──┘
-        row_bot[cx] = "\u2514"
-        for j in range(1, w - 1):
-            row_bot[cx + j] = "\u2500"
-        row_bot[cx + w - 1] = "\u2518"
+        content = box_inner[sname]
 
-    # Draw main-path edge labels on the middle row between boxes
+        # Top border: rows[0]
+        rows[0][cx] = "\u250c"
+        for j in range(1, w - 1):
+            rows[0][cx + j] = "\u2500"
+        rows[0][cx + w - 1] = "\u2510"
+
+        # Content rows: rows[1..len(content)]
+        for i, line in enumerate(content):
+            r = i + 1
+            rows[r][cx] = "\u2502"
+            rows[r][cx + w - 1] = "\u2502"
+            for j, ch in enumerate(line):
+                if cx + 2 + j < cx + w - 1:
+                    rows[r][cx + 2 + j] = ch
+
+        # Padding rows between content and bottom border
+        for r in range(len(content) + 1, main_height - 1):
+            rows[r][cx] = "\u2502"
+            rows[r][cx + w - 1] = "\u2502"
+
+        # Bottom border: rows[main_height - 1]
+        brow = main_height - 1
+        rows[brow][cx] = "\u2514"
+        for j in range(1, w - 1):
+            rows[brow][cx + j] = "\u2500"
+        rows[brow][cx + w - 1] = "\u2518"
+
+    # Draw main-path edge labels on the name row (index 1) between boxes
     for i in range(len(main_path) - 1):
         src_name = main_path[i]
         dst_name = main_path[i + 1]
@@ -300,21 +464,15 @@ def _render_2d_diagram(
         )
         start = col_start[src_name] + box_width[src_name]
         end = col_start[dst_name]
-        # Fill: ──label──▶
         edge_text = "\u2500" + label + "\u2500\u2500\u25b6"
-        # Right-align the edge_text, fill left side with ─
         available = end - start
         left_dashes = available - len(edge_text)
         for j in range(left_dashes):
-            row_mid[start + j] = "\u2500"
+            rows[1][start + j] = "\u2500"
         for j, ch in enumerate(edge_text):
-            row_mid[start + left_dashes + j] = ch
+            rows[1][start + left_dashes + j] = ch
 
-    lines = [
-        "".join(row_top).rstrip(),
-        "".join(row_mid).rstrip(),
-        "".join(row_bot).rstrip(),
-    ]
+    lines = ["".join(row).rstrip() for row in rows]
 
     # --- Self-loops: add ↺ marker below the box ---
     self_loops = [(s, d, lbl) for s, d, lbl in back_edges if s == d]
@@ -335,12 +493,11 @@ def _render_2d_diagram(
     all_extra = non_self_branches + non_self_back
 
     if not all_extra:
-        return "\n".join(lines)
+        return _colorize_diagram_labels("\n".join(lines))
 
     off_path_set = set(off_path)
     main_path_set = set(main_path)
 
-    # Categorize: main-to-main edges vs edges involving off-path states
     main_extra: list[tuple[str, str, str]] = []
     off_state_edges: dict[str, list[tuple[str, str, str]]] = {s: [] for s in off_path}
 
@@ -359,24 +516,21 @@ def _render_2d_diagram(
         left = min(src_col, dst_col)
         right = max(src_col, dst_col)
 
-        # Connector row: \u25b2 at destination, \u2502 at source
         row = [" "] * total_width
         if 0 <= dst_col < total_width:
-            row[dst_col] = "\u25b2"  # \u25b2
+            row[dst_col] = "\u25b2"
         if 0 <= src_col < total_width:
-            row[src_col] = "\u2502"  # \u2502
+            row[src_col] = "\u2502"
         lines.append("".join(row).rstrip())
 
-        # Horizontal route: \u2514\u2500\u2500\u2500label\u2500\u2500\u2500\u2518
         row = [" "] * total_width
         if left < total_width:
-            row[left] = "\u2514"  # \u2514
+            row[left] = "\u2514"
         if right < total_width:
-            row[right] = "\u2518"  # \u2518
+            row[right] = "\u2518"
         for j in range(left + 1, right):
             if j < total_width:
-                row[j] = "\u2500"  # \u2500
-        # Center the label on the horizontal segment
+                row[j] = "\u2500"
         label_padded = f" {label} "
         lstart = (left + right) // 2 - len(label_padded) // 2
         for j, ch in enumerate(label_padded):
@@ -385,7 +539,7 @@ def _render_2d_diagram(
                 row[pos] = ch
         lines.append("".join(row).rstrip())
 
-    # --- Off-path states: render as boxes with vertical connectors ---
+    # --- Off-path states: render as multi-row boxes with vertical connectors ---
     for off_s in off_path:
         state_edges = off_state_edges.get(off_s, [])
         if not state_edges:
@@ -402,9 +556,9 @@ def _render_2d_diagram(
             anchor = main_path[0]
 
         # Classify edges relative to anchor
-        down_labels: list[str] = []  # anchor \u2192 off_s
-        up_labels: list[str] = []  # off_s \u2192 anchor
-        outgoing: list[tuple[str, str, str]] = []  # edges to/from non-anchor states
+        down_labels: list[str] = []  # anchor → off_s
+        up_labels: list[str] = []  # off_s → anchor
+        outgoing: list[tuple[str, str, str]] = []
 
         for src, dst, label in state_edges:
             if src == anchor and dst == off_s:
@@ -434,66 +588,82 @@ def _render_2d_diagram(
             down_col = -1
             up_col = -1
 
-        # Vertical connector rows
+        # Vertical connector rows (fixed label collision bug: separate rows per direction)
         if has_down or has_up:
-            # Row 1: vertical drops / rise arrow
+            # Row 1: vertical drop (│) and rise arrow (▲)
             row = [" "] * total_width
             if has_down and 0 <= down_col < total_width:
-                row[down_col] = "\u2502"  # \u2502
+                row[down_col] = "\u2502"
             if has_up and 0 <= up_col < total_width:
-                row[up_col] = "\u25b2"  # \u25b2
+                row[up_col] = "\u25b2"
             lines.append("".join(row).rstrip())
 
-            # Row 2: labels alongside vertical lines
+            # Label rows: one row per direction to prevent overlap
+            if has_down:
+                row = [" "] * total_width
+                if 0 <= down_col < total_width:
+                    row[down_col] = "\u2502"
+                    dlabel = "/".join(down_labels)
+                    dstart = max(0, down_col - len(dlabel) - 1)
+                    for j, ch in enumerate(dlabel):
+                        if 0 <= dstart + j < total_width:
+                            row[dstart + j] = ch
+                lines.append("".join(row).rstrip())
+
+            if has_up:
+                row = [" "] * total_width
+                if 0 <= up_col < total_width:
+                    row[up_col] = "\u2502"
+                    ulabel = "/".join(up_labels)
+                    ustart = up_col + 2
+                    for j, ch in enumerate(ulabel):
+                        if 0 <= ustart + j < total_width:
+                            row[ustart + j] = ch
+                lines.append("".join(row).rstrip())
+
+            # Arrow tips row
             row = [" "] * total_width
             if has_down and 0 <= down_col < total_width:
-                row[down_col] = "\u2502"  # \u2502
-                dlabel = "/".join(down_labels)
-                dstart = max(0, down_col - len(dlabel) - 1)
-                for j, ch in enumerate(dlabel):
-                    if 0 <= dstart + j < total_width:
-                        row[dstart + j] = ch
+                row[down_col] = "\u25bc"
             if has_up and 0 <= up_col < total_width:
-                row[up_col] = "\u2502"  # \u2502
-                ulabel = "/".join(up_labels)
-                ustart = up_col + 2
-                for j, ch in enumerate(ulabel):
-                    if 0 <= ustart + j < total_width:
-                        row[ustart + j] = ch
+                row[up_col] = "\u2502"
             lines.append("".join(row).rstrip())
 
-            # Row 3: arrow tips
-            row = [" "] * total_width
-            if has_down and 0 <= down_col < total_width:
-                row[down_col] = "\u25bc"  # \u25bc
-            if has_up and 0 <= up_col < total_width:
-                row[up_col] = "\u2502"  # \u2502
-            lines.append("".join(row).rstrip())
-
-        # Render off-path state box
+        # Render off-path state box (multi-row)
+        off_content = box_inner[off_s]
+        h = box_height[off_s]
         bx = off_cs
         bw = off_w
-        box_top_r = [" "] * total_width
-        box_mid_r = [" "] * total_width
-        box_bot_r = [" "] * total_width
+        box_rows_r: list[list[str]] = [[" "] * total_width for _ in range(h)]
 
         if bx + bw <= total_width:
-            box_top_r[bx] = "\u250c"
+            # Top border
+            box_rows_r[0][bx] = "\u250c"
             for j in range(1, bw - 1):
-                box_top_r[bx + j] = "\u2500"
-            box_top_r[bx + bw - 1] = "\u2510"
+                box_rows_r[0][bx + j] = "\u2500"
+            box_rows_r[0][bx + bw - 1] = "\u2510"
 
-            box_mid_r[bx] = "\u2502"
-            box_mid_r[bx + bw - 1] = "\u2502"
-            for j, ch in enumerate(display_label[off_s]):
-                box_mid_r[bx + 2 + j] = ch
+            # Content rows
+            for i, line in enumerate(off_content):
+                r = i + 1
+                box_rows_r[r][bx] = "\u2502"
+                box_rows_r[r][bx + bw - 1] = "\u2502"
+                for j, ch in enumerate(line):
+                    if bx + 2 + j < bx + bw - 1:
+                        box_rows_r[r][bx + 2 + j] = ch
 
-            box_bot_r[bx] = "\u2514"
+            # Padding rows
+            for r in range(len(off_content) + 1, h - 1):
+                box_rows_r[r][bx] = "\u2502"
+                box_rows_r[r][bx + bw - 1] = "\u2502"
+
+            # Bottom border
+            box_rows_r[h - 1][bx] = "\u2514"
             for j in range(1, bw - 1):
-                box_bot_r[bx + j] = "\u2500"
-            box_bot_r[bx + bw - 1] = "\u2518"
+                box_rows_r[h - 1][bx + j] = "\u2500"
+            box_rows_r[h - 1][bx + bw - 1] = "\u2518"
 
-        # Draw outgoing edges from off-path box on its middle row
+        # Draw outgoing edges from off-path box on its name row (index 1)
         for src, dst, label in outgoing:
             if src == off_s:
                 start_col = bx + bw
@@ -504,22 +674,119 @@ def _render_2d_diagram(
                     left_dashes = available - len(edge_text)
                     for j in range(left_dashes):
                         if start_col + j < total_width:
-                            box_mid_r[start_col + j] = "\u2500"
+                            box_rows_r[1][start_col + j] = "\u2500"
                     for j, ch in enumerate(edge_text):
                         pos = start_col + left_dashes + j
                         if pos < total_width:
-                            box_mid_r[pos] = ch
+                            box_rows_r[1][pos] = ch
                 else:
                     for j, ch in enumerate(edge_text):
                         if start_col + j < total_width:
-                            box_mid_r[start_col + j] = ch
+                            box_rows_r[1][start_col + j] = ch
 
-        lines.append("".join(box_top_r).rstrip())
-        lines.append("".join(box_mid_r).rstrip())
-        lines.append("".join(box_bot_r).rstrip())
+        for row in box_rows_r:
+            lines.append("".join(row).rstrip())
 
-    return "\n".join(lines)
+    return _colorize_diagram_labels("\n".join(lines))
 
+
+# ---------------------------------------------------------------------------
+# State overview table
+# ---------------------------------------------------------------------------
+
+
+def _compact_transitions(state: StateConfig) -> str:
+    """Return a compact transition string for the overview table."""
+    raw: list[tuple[str, str]] = []
+    for label, target in [
+        ("success", state.on_success),
+        ("fail", state.on_failure),
+        ("error", state.on_error),
+        ("partial", state.on_partial),
+        ("next", state.next),
+    ]:
+        if target:
+            raw.append((label, target))
+    if state.route:
+        for verdict, target in state.route.routes.items():
+            raw.append((verdict, target))
+        if state.route.default:
+            raw.append(("_", state.route.default))
+    if not raw:
+        return "\u2014"
+    # Group by target, preserving first-seen order
+    seen: list[str] = []
+    by_target: dict[str, list[str]] = {}
+    for label, target in raw:
+        if target not in by_target:
+            seen.append(target)
+            by_target[target] = []
+        by_target[target].append(label)
+    return ", ".join(f"{'/'.join(by_target[t])}\u2192{t}" for t in seen)
+
+
+def _print_state_overview_table(fsm: FSMLoop) -> None:
+    """Print a compact summary table of all states."""
+    rows: list[tuple[str, str, str, str]] = []
+    for name, state in fsm.states.items():
+        # State name column
+        state_col = f"\u2192 {name}" if name == fsm.initial else f"  {name}"
+
+        # Type column
+        if state.terminal:
+            type_col = "\u2014"
+        elif state.action_type:
+            type_col = state.action_type
+        elif state.action:
+            type_col = "shell"
+        else:
+            type_col = "\u2014"
+
+        # Action preview column
+        if state.terminal:
+            action_col = "(terminal)"
+        elif state.action:
+            src_lines = [ln.rstrip() for ln in state.action.strip().splitlines() if ln.rstrip()]
+            action_col = src_lines[0] if src_lines else "\u2014"
+        else:
+            action_col = "\u2014"
+
+        # Transitions column
+        trans_col = _compact_transitions(state)
+        rows.append((state_col, type_col, action_col, trans_col))
+
+    if not rows:
+        return
+
+    tw = terminal_width()
+    headers = ("State", "Type", "Action Preview", "Transitions")
+    col0_w = max(len(headers[0]), max(len(r[0]) for r in rows))
+    col1_w = max(len(headers[1]), max(len(r[1]) for r in rows))
+    # Remaining width split between action preview and transitions
+    fixed = col0_w + col1_w + 10  # margins + separators
+    remaining = max(20, tw - fixed)
+    col2_w = min(35, max(len(headers[2]), max(len(r[2]) for r in rows)), remaining // 2)
+    col2_w = max(10, col2_w)
+    col3_w = max(10, remaining - col2_w)
+
+    print(f"  {headers[0]:<{col0_w}}  {headers[1]:<{col1_w}}  {headers[2]:<{col2_w}}  {headers[3]}")
+    dash = "\u2500"
+    print(f"  {dash * col0_w}  {dash * col1_w}  {dash * col2_w}  {dash * col3_w}")
+    for state_col, type_col, action_col, trans_col in rows:
+        if len(action_col) > col2_w:
+            action_col = action_col[: col2_w - 1] + "\u2026"
+        if len(trans_col) > col3_w:
+            trans_col = trans_col[: col3_w - 1] + "\u2026"
+        colored_type = colorize(type_col, "2") if type_col == "\u2014" else type_col
+        print(
+            f"  {state_col:<{col0_w}}  {colored_type:<{col1_w}}  "
+            f"{action_col:<{col2_w}}  {trans_col}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# cmd_show
+# ---------------------------------------------------------------------------
 
 _EVALUATE_TYPE_DISPLAY: dict[str, str] = {
     "llm": "LLM",
@@ -553,34 +820,9 @@ def cmd_show(
         logger.error(f"Invalid loop: {e}")
         return 1
 
-    # --- Metadata header ---
-    separator_dashes = "─" * max(0, terminal_width() - len(loop_name) - 4)
-    print(f"── {loop_name} {separator_dashes}")
-    if fsm.paradigm:
-        print(f"Paradigm: {fsm.paradigm}")
-    print(f"Max iterations: {fsm.max_iterations}")
-    print(f"On handoff: {fsm.on_handoff}")
-    if fsm.timeout:
-        print(f"Timeout: {fsm.timeout}s")
-    if fsm.backoff:
-        print(f"Backoff: {fsm.backoff}s")
-    if fsm.maintain:
-        print("Maintain: yes (restarts after completion)")
-    if fsm.context:
-        print(f"Context variables: {', '.join(fsm.context.keys())}")
-    if fsm.scope:
-        print(f"Scope: {', '.join(fsm.scope)}")
-    llm = fsm.llm
-    llm_parts = []
-    if llm.model != "sonnet":
-        llm_parts.append(f"model={llm.model}")
-    if llm.max_tokens != 256:
-        llm_parts.append(f"max_tokens={llm.max_tokens}")
-    if llm.timeout != 30:
-        llm_parts.append(f"timeout={llm.timeout}s")
-    if llm_parts:
-        print(f"LLM config: {', '.join(llm_parts)}")
-    print(f"Source: {path}")
+    tw = terminal_width()
+
+    # Compute stats for header
     n_states = len(fsm.states)
     n_transitions = sum(
         bool(s.on_success)
@@ -592,8 +834,45 @@ def cmd_show(
         + (len(s.route.routes) + bool(s.route.default) if s.route else 0)
         for s in fsm.states.values()
     )
-    paradigm_str = f" · {fsm.paradigm} paradigm" if fsm.paradigm else ""
-    print(f"  {n_states} states · {n_transitions} transitions{paradigm_str}")
+
+    # --- Compact metadata header ---
+    # Line 1: ── name ───────── paradigm · N states · M transitions ──
+    stats_parts = []
+    if fsm.paradigm:
+        stats_parts.append(fsm.paradigm)
+    stats_parts.append(f"{n_states} states")
+    stats_parts.append(f"{n_transitions} transitions")
+    stats_str = " \u00b7 ".join(stats_parts)
+
+    header_left = f"\u2500\u2500 {loop_name} "
+    header_right = f" {stats_str} \u2500\u2500"
+    dashes = "\u2500" * max(0, tw - len(header_left) - len(header_right))
+    print(f"{header_left}{dashes}{header_right}")
+
+    # Line 2: source · max: N iter · handoff: X [· optional fields]
+    config_parts: list[str] = [str(path), f"max: {fsm.max_iterations} iter"]
+    config_parts.append(f"handoff: {fsm.on_handoff}")
+    if fsm.timeout:
+        config_parts.append(f"timeout: {fsm.timeout}s")
+    if fsm.backoff:
+        config_parts.append(f"backoff: {fsm.backoff}s")
+    if fsm.maintain:
+        config_parts.append("maintain: yes")
+    if fsm.context:
+        config_parts.append(f"context: {', '.join(fsm.context.keys())}")
+    if fsm.scope:
+        config_parts.append(f"scope: {', '.join(fsm.scope)}")
+    llm = fsm.llm
+    llm_parts = []
+    if llm.model != "sonnet":
+        llm_parts.append(f"model={llm.model}")
+    if llm.max_tokens != 256:
+        llm_parts.append(f"max_tokens={llm.max_tokens}")
+    if llm.timeout != 30:
+        llm_parts.append(f"timeout={llm.timeout}s")
+    if llm_parts:
+        config_parts.append(f"llm: {', '.join(llm_parts)}")
+    print("   " + " \u00b7 ".join(config_parts))
 
     # --- Description ---
     description = spec.get("description", "").strip()
@@ -604,33 +883,48 @@ def cmd_show(
             print(f"  {line}")
 
     # --- ASCII FSM Diagram ---
+    verbose = getattr(args, "verbose", False)
     print()
     print("Diagram:")
-    diagram = _render_fsm_diagram(fsm)
+    diagram = _render_fsm_diagram(fsm, verbose=verbose)
     if diagram:
         print(diagram)
+
+    # --- State overview table ---
+    print()
+    _print_state_overview_table(fsm)
 
     # --- States & Transitions ---
     print()
     print("States:")
-    verbose = getattr(args, "verbose", False)
     first_state = True
     for name, state in fsm.states.items():
         if not first_state:
             print()
         first_state = False
-        terminal_marker = " [TERMINAL]" if state.terminal else ""
-        initial_marker = " [INITIAL]" if name == fsm.initial else ""
-        type_badge = f" ({state.action_type})" if state.action_type else ""
-        print(f"  [{name}]{initial_marker}{terminal_marker}{type_badge}")
+
+        # Improved state section header: ── name ──── MARKERS · type ──
+        right_parts = []
+        if name == fsm.initial:
+            right_parts.append("INITIAL")
+        if state.terminal:
+            right_parts.append("TERMINAL")
+        if state.action_type:
+            right_parts.append(state.action_type)
+        right_info = " \u00b7 ".join(right_parts)
+        inner_left = f"\u2500\u2500 {name} "
+        inner_right = f" {right_info} \u2500\u2500" if right_info else " \u2500\u2500"
+        fill = "\u2500" * max(0, tw - 2 - len(inner_left) - len(inner_right))
+        print(f"  {inner_left}{fill}{inner_right}")
+
         if state.action:
             if verbose:
                 indented = "\n      ".join(state.action.strip().splitlines())
                 print(f"    action:\n      {indented}")
             elif state.action_type == "prompt":
-                lines = state.action.strip().splitlines()
-                preview = "\n      ".join(lines[:3])
-                if len(lines) > 3 or len(state.action) > 200:
+                lines_act = state.action.strip().splitlines()
+                preview = "\n      ".join(lines_act[:3])
+                if len(lines_act) > 3 or len(state.action) > 200:
                     preview += " ..."
                 print(f"    action:\n      {preview}")
             else:  # shell, slash_command, or None
@@ -647,9 +941,9 @@ def cmd_show(
                     for line in ev.prompt.strip().splitlines():
                         print(f"    \u2502 {line}")
                 else:
-                    lines = ev.prompt.strip().splitlines()
-                    preview = lines[0][:100] + (
-                        " ..." if len(lines) > 1 or len(lines[0]) > 100 else ""
+                    ev_lines = ev.prompt.strip().splitlines()
+                    preview = ev_lines[0][:100] + (
+                        " ..." if len(ev_lines) > 1 or len(ev_lines[0]) > 100 else ""
                     )
                     print(f"      prompt: {preview}")
             if ev.min_confidence != 0.5:
@@ -662,7 +956,7 @@ def cmd_show(
             print(f"    capture: {state.capture}")
         if state.timeout:
             print(f"    timeout: {state.timeout}s")
-        # Collect (label, target) pairs with on_ prefix stripped
+        # Collect (label, target) pairs
         raw_transitions: list[tuple[str, str]] = []
         for label, target in [
             ("success", state.on_success),
@@ -688,7 +982,8 @@ def cmd_show(
                 seen_targets.append(target)
             target_labels[target].append(label)
         transitions = [
-            f"{'/'.join(target_labels[t])} \u2500\u2500\u2192 {t}" for t in seen_targets
+            f"{_colorize_label('/'.join(target_labels[t]))} \u2500\u2500\u2192 {t}"
+            for t in seen_targets
         ]
         if transitions:
             print("    Transitions:")
