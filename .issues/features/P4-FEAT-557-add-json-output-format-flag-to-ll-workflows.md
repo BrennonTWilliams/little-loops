@@ -3,6 +3,8 @@ discovered_commit: a574ea0ec555811db2490fece9aaf0819b3e3065
 discovered_branch: main
 discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
+confidence_score: 95
+outcome_confidence: 100
 ---
 
 # FEAT-557: Add `--format json` output option to `ll-workflows` — currently only YAML supported
@@ -163,6 +165,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c64533ad-d9a7-4549-a6c9-769dec39827e.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c64533ad-d9a7-4549-a6c9-769dec39827e.jsonl`
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b997cd88-ad10-4335-bb5e-e4a3a37b1f72.jsonl`
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b997cd88-ad10-4335-bb5e-e4a3a37b1f72.jsonl`
 
 ## Status
 

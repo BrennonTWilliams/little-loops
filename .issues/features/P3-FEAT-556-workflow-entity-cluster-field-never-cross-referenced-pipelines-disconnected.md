@@ -3,6 +3,8 @@ discovered_commit: a574ea0ec555811db2490fece9aaf0819b3e3065
 discovered_branch: main
 discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
+confidence_score: 95
+outcome_confidence: 93
 ---
 
 # FEAT-556: `Workflow.entity_cluster` / `semantic_cluster` never cross-referenced — entity and workflow pipelines are fully disconnected
@@ -14,7 +16,7 @@ The `Workflow` dataclass has `entity_cluster` and `semantic_cluster` fields inte
 ## Location
 
 - **File**: `scripts/little_loops/workflow_sequence_analyzer.py`
-- **Line(s)**: 158–175 (`Workflow` dataclass), 695–712 (`_detect_workflows` Workflow construction), 752–758 (`analyze_workflows` pipeline) (at scan commit: a574ea0)
+- **Line(s)**: 149–178 (`Workflow` dataclass), 621–700 (`_detect_workflows`), 770–772 (`analyze_workflows` pipeline calls) (at verification: 2026-03-05; scan commit: a574ea0)
 - **Anchor**: `class Workflow`, `in function _detect_workflows`, `in function analyze_workflows`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a574ea0ec555811db2490fece9aaf0819b3e3065/scripts/little_loops/workflow_sequence_analyzer.py#L158-L175)
 - **Code**:
@@ -40,6 +42,10 @@ Each `Workflow` in the output YAML has `entity_cluster: null` and `semantic_clus
 ## Expected Behavior
 
 After both pipelines complete, a cross-reference step in `analyze_workflows` links each `Workflow` to the `EntityCluster` with the highest entity overlap. `workflow.entity_cluster` is populated with the matching cluster's `cluster_id` (or `null` if no cluster reaches the overlap threshold). Similarly, `workflow.handoff_points` is populated by calling `_detect_handoff` on workflow messages (currently only called from `_link_sessions`).
+
+## Motivation
+
+The `Workflow` dataclass was designed with `entity_cluster` and `semantic_cluster` fields to provide a unified view linking template-based workflow detection with entity-based clustering. These fields have never been populated, leaving users with two disconnected analysis perspectives in the output YAML. Anyone consulting `ll-workflows` output to understand session relationships cannot correlate which entity cluster (e.g., `["fsm", "loop", "yaml"]`) was associated with a detected workflow — the two pipelines tell parallel stories with no bridge. The complementary issue FEAT-555 (populating `EntityCluster.inferred_workflow`) confirms this cross-reference was a planned design intent, not an accident.
 
 ## Use Case
 
@@ -126,6 +132,10 @@ No schema breaking change.
 - **Risk**: Low - Additive change; no existing logic modified, only new assignments to always-null fields
 - **Breaking Change**: No
 
+## Verification Notes
+
+- **2026-03-05** — VALID. Core claims confirmed accurate: `entity_cluster` and `semantic_cluster` are always `None`; `analyze_workflows` has no cross-reference step (lines 770–772 confirm three independent pipeline calls with no linkage after). `_detect_handoff` exists (line 374) but is only called from `_link_sessions`, not from `_detect_workflows`. Line numbers updated from scan-commit values to current HEAD positions. Dependency: FEAT-558 correctly has `Blocked By: FEAT-556`.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -134,6 +144,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Blocks
 
 - FEAT-558
+- ENH-549
+- ENH-550
+- ENH-551
+
+## Blocked By
+
+- ENH-553
 
 ## Labels
 
@@ -143,7 +160,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/077cb097-03ba-4238-821d-bce751e9786d.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/077cb097-03ba-4238-821d-bce751e9786d.jsonl`
+- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/077cb097-03ba-4238-821d-bce751e9786d.jsonl`
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/077cb097-03ba-4238-821d-bce751e9786d.jsonl`
 
----
+## Status
 
 **Open** | Created: 2026-03-04 | Priority: P3

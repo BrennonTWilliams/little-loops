@@ -115,6 +115,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 - FEAT-558
 
+## Blocked By
+
+- FEAT-556
+
 ## Labels
 
 `enhancement`, `performance`, `workflow-analyzer`, `captured`

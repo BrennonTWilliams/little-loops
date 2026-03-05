@@ -121,6 +121,10 @@ class TestGetMessageCategory:
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+## Blocks
+
+- FEAT-556
+
 ## Labels
 
 `enhancement`, `testing`, `workflow-analyzer`, `captured`
