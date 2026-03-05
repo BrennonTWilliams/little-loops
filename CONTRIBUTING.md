@@ -129,6 +129,7 @@ little-loops/
 │   ├── pre-pr-checks.yaml
 │   ├── quality-gate.yaml
 │   ├── sprint-execution.yaml
+│   ├── issue-refinement.yaml
 │   └── workflow-analysis.yaml
 ├── skills/               # 15 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
@@ -185,6 +186,7 @@ little-loops/
         │   ├── messages.py
         │   ├── parallel.py
         │   ├── sync.py
+        │   ├── output.py        # Shared CLI output utilities (colors, terminal width)
         │   ├── loop/            # ll-loop subcommands
         │   ├── sprint/          # ll-sprint subcommands
         │   └── issues/          # ll-issues subcommands
@@ -306,7 +308,7 @@ Issues are tracked in `.issues/` with structured Markdown files following the v2
 
 ### Issue Template (v2.0)
 
-The issue template has been optimized for AI implementation with **19 sections** across BUG, FEAT, and ENH types.
+The issue template has been optimized for AI implementation with **20 sections** across BUG, FEAT, and ENH types.
 
 **Key Features**:
 - Anchor-based code references (function/class names, not line numbers)

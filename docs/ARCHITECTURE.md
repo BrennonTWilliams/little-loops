@@ -103,6 +103,7 @@ little-loops/
 │   ├── pre-pr-checks.yaml
 │   ├── quality-gate.yaml
 │   ├── sprint-execution.yaml
+│   ├── issue-refinement.yaml
 │   └── workflow-analysis.yaml
 ├── skills/                  # 15 skill definitions (5 proactive, 10 user-invoked)
 │   ├── analyze-history/     # Proactive
@@ -172,6 +173,7 @@ little-loops/
         │   ├── docs.py
         │   ├── history.py
         │   ├── deps.py              # ll-deps entry point
+        │   ├── output.py            # Shared CLI output utilities (colors, terminal width)
         │   ├── sprint/
         │   │   ├── __init__.py      # Entry point (main_sprint) + argparse
         │   │   ├── _helpers.py      # Shared utilities

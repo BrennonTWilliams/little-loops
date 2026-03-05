@@ -290,6 +290,7 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `codebase-scan` | imperative | Scan, verify, and prioritize issues |
 | `issue-readiness-cycle` | imperative | Validate and process issues through readiness |
 | `sprint-execution` | imperative | Execute a sprint with resume support |
+| `issue-refinement` | fsm | Progressively refine all active issues through format, verify, and confidence scoring |
 | `workflow-analysis` | imperative | Extract and analyze workflow patterns |
 
 ## Beyond the Basics
