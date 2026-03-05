@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from little_loops.cli.output import terminal_width
 from little_loops.cli.sprint._helpers import (
     _build_issue_contents,
     _render_dependency_analysis,
@@ -42,11 +43,12 @@ def _render_dependency_graph(
     if not has_edges:
         return ""
 
+    width = terminal_width()
     lines: list[str] = []
     lines.append("")
-    lines.append("=" * 70)
+    lines.append("=" * width)
     lines.append("DEPENDENCY GRAPH")
-    lines.append("=" * 70)
+    lines.append("=" * width)
     lines.append("")
 
     # Build chains: track which issues block what

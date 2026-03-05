@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 from collections import deque
+from datetime import datetime
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import (
@@ -11,6 +12,7 @@ from little_loops.cli.loop._helpers import (
     load_loop_with_spec,
     resolve_loop_path,
 )
+from little_loops.cli.output import terminal_width
 from little_loops.fsm.schema import FSMLoop
 from little_loops.logger import Logger
 
@@ -76,7 +78,11 @@ def cmd_history(
     # Show last N events
     tail = getattr(args, "tail", 50)
     for event in events[-tail:]:
-        ts = event.get("ts", "")[:19]  # Truncate to seconds
+        raw_ts = event.get("ts", "")
+        try:
+            ts = datetime.fromisoformat(raw_ts).strftime("%Y-%m-%d %H:%M:%S")
+        except (ValueError, TypeError):
+            ts = raw_ts[:19]
         event_type = event.get("event", "")
         details = {k: v for k, v in event.items() if k not in ("event", "ts")}
         print(f"{ts} {event_type}: {details}")
@@ -548,7 +554,7 @@ def cmd_show(
         return 1
 
     # --- Metadata header ---
-    separator_dashes = "─" * max(0, 52 - len(loop_name))
+    separator_dashes = "─" * max(0, terminal_width() - len(loop_name) - 4)
     print(f"── {loop_name} {separator_dashes}")
     if fsm.paradigm:
         print(f"Paradigm: {fsm.paradigm}")

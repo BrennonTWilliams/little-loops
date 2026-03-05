@@ -2,7 +2,7 @@
 id: ENH-582
 type: ENH
 priority: P4
-status: open
+status: completed
 discovered_date: 2026-03-04
 discovered_by: capture-issue
 ---
@@ -162,11 +162,30 @@ except ValueError:
 
 `enhancement`, `cli`, `dx`, `captured`
 
+## Resolution
+
+### Changes Made
+1. Created `scripts/little_loops/cli/output.py` — shared `terminal_width()`, `wrap_text()`, and `colorize()` utilities with `NO_COLOR`/non-TTY guard
+2. Updated `scripts/little_loops/cli/loop/info.py`:
+   - Separator line in `cmd_show` now uses `terminal_width()` instead of hardcoded `52`
+   - `cmd_history` timestamps formatted via `datetime.fromisoformat().strftime("%Y-%m-%d %H:%M:%S")`
+3. Updated `scripts/little_loops/cli/issues/list_cmd.py` — type/priority color coding in `cmd_list` (BUG=red, FEAT=green, ENH=blue, P0/P1=red, P4/P5=dim)
+4. Updated `scripts/little_loops/cli/sprint/_helpers.py` — `"=" * terminal_width()` in `_render_execution_plan`
+5. Updated `scripts/little_loops/cli/sprint/show.py` — `"=" * terminal_width()` in `_render_dependency_graph`
+6. Added `scripts/tests/test_cli_output.py` with 10 tests covering terminal_width, colorize, timestamp formatting, and NO_COLOR suppression
+
+### Verification
+- All 3230 tests pass (0 failures)
+- Lint: all checks passed
+- NO_COLOR guard confirmed by `sys.stdout.isatty()` check at import time
+
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7d8e8d6d-db5b-43f2-a487-44ffa85ddfb7.jsonl`
 - `/ll:format-issue` - 2026-03-04T00:00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44683e3b-a335-4530-95b2-8a6c8506e507.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:manage-issue` - 2026-03-04T00:00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1edc06fa-5b2e-4f5c-bf9e-95af499acdcc.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-04 | Priority: P4
+**Completed** | Created: 2026-03-04 | Priority: P4

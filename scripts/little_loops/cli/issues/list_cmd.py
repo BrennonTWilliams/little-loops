@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from typing import TYPE_CHECKING
 
+from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize
+
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
@@ -47,9 +49,13 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     lines: list[str] = []
     for prefix, label in type_labels.items():
         group = buckets[prefix]
-        lines.append(f"{label} ({len(group)})")
+        header = colorize(f"{label} ({len(group)})", f"{TYPE_COLOR.get(prefix, '0')};1")
+        lines.append(header)
         for issue in group:
-            lines.append(f"  {issue.priority}  {issue.issue_id}  {issue.title}")
+            issue_type = issue.issue_id.split("-", 1)[0]
+            colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
+            colored_priority = colorize(issue.priority, PRIORITY_COLOR.get(issue.priority, "0"))
+            lines.append(f"  {colored_priority}  {colored_id}  {issue.title}")
         lines.append("")
     lines.append(f"Total: {len(issues)} active issues")
     print("\n".join(lines))

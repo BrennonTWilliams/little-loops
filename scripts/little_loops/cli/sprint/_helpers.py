@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+from little_loops.cli.output import terminal_width
+
 if TYPE_CHECKING:
     from little_loops.config import DependencyMappingConfig
     from little_loops.dependency_graph import DependencyGraph, WaveContentionNote
@@ -51,11 +53,12 @@ def _render_execution_plan(
     num_logical = len(logical_waves)
     lines: list[str] = []
 
+    width = terminal_width()
     lines.append("")
-    lines.append("=" * 70)
+    lines.append("=" * width)
     wave_word = "wave" if num_logical == 1 else "waves"
     lines.append(f"EXECUTION PLAN ({total_issues} issues, {num_logical} {wave_word})")
-    lines.append("=" * 70)
+    lines.append("=" * width)
 
     for logical_idx, group in enumerate(logical_waves):
         lines.append("")
