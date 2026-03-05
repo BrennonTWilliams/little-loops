@@ -3,6 +3,8 @@ discovered_commit: a574ea0ec555811db2490fece9aaf0819b3e3065
 discovered_branch: main
 discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
+confidence_score: 90
+outcome_confidence: 100
 ---
 
 # ENH-552: `--verbose` flag only gates path echo — add per-stage progress output during analysis
@@ -115,10 +117,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Blocked By
 
 - FEAT-558
+- FEAT-555 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; FEAT-555 has higher priority and should be completed first
+- BUG-547 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; BUG-547 has higher priority (P3) and should be completed first
 
 ## Blocks
 
 - FEAT-557 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; same priority but lower ID should land first
+- FEAT-559 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; ENH-552 should land before FEAT-559
 
 ## Labels
 
@@ -128,7 +133,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/auto`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/auto`
+- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/auto`
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/auto`
 
 ---
+
+## Status
 
 **Open** | Created: 2026-03-04 | Priority: P4

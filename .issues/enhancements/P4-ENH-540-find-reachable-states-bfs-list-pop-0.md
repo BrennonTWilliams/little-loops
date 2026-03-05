@@ -110,4 +110,10 @@ def _find_reachable_states(fsm: FSMLoop) -> set[str]:
 
 ---
 
+## Blocks
+
+- ENH-542
+
+---
+
 **Open** | Created: 2026-03-03 | Priority: P4

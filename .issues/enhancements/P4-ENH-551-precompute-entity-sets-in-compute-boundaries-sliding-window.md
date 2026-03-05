@@ -3,6 +3,8 @@ discovered_commit: a574ea0ec555811db2490fece9aaf0819b3e3065
 discovered_branch: main
 discovered_date: 2026-03-04T02:11:48Z
 discovered_by: scan-codebase
+confidence_score: 90
+outcome_confidence: 100
 ---
 
 # ENH-551: Pre-compute entity sets in `_compute_boundaries` to avoid re-extracting per sliding-window pair
@@ -101,10 +103,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Blocks
 
 - FEAT-558
+- ENH-554
 
 ## Blocked By
 
 - FEAT-556
+- ENH-549
+- ENH-550
 
 ## Labels
 
@@ -114,7 +119,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
+- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
 
 ---
+
+## Status
 
 **Open** | Created: 2026-03-04 | Priority: P4

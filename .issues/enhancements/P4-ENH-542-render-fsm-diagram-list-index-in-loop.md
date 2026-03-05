@@ -3,6 +3,8 @@ discovered_commit: 47c81c895baaac1acac69d105ed75ff1ec82ed2c
 discovered_branch: main
 discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
+confidence_score: 90
+outcome_confidence: 100
 ---
 
 # ENH-542: `_render_fsm_diagram` Uses O(n) `list.index()` Inside Edge-Classification Loop
@@ -14,7 +16,7 @@ discovered_by: scan-codebase
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/info.py`
-- **Line(s)**: 155–164 (at scan commit: 47c81c8)
+- **Line(s)**: 279–287 (current; 155–164 at scan commit: 47c81c8)
 - **Anchor**: `in function _render_fsm_diagram()`, edge-classification loop
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/cli/loop/info.py#L155-L164)
 - **Code**:
@@ -46,17 +48,21 @@ Minor performance improvement. The fix also removes the redundant `if src in bfs
 
 ## Proposed Solution
 
+Build a `bfs_pos` position-lookup dict from `bfs_order` after the BFS loop, then use it in the edge-classification loop:
+
 ```python
-for i, (src, dst, label) in enumerate(edges):
-    if i in main_consumed:
-        continue
-    src_pos = bfs_depth.get(src, len(bfs_order))   # O(1), was O(n) × 2
-    dst_pos = bfs_depth.get(dst, len(bfs_order))   # O(1), was O(n) × 2
-    if dst == src or dst_pos < src_pos:
-        back_edges.append((src, dst, label))
-    else:
-        branches.append((src, dst, label))
+# After BFS loop (line ~247), add:
+bfs_pos: dict[str, int] = {node: i for i, node in enumerate(bfs_order)}
+
+# In edge-classification loop (lines 282–283), replace:
+#   src_pos = bfs_order.index(src) if src in bfs_order else len(bfs_order)
+#   dst_pos = bfs_order.index(dst) if dst in bfs_order else len(bfs_order)
+# With:
+src_pos = bfs_pos.get(src, len(bfs_order))   # O(1), was O(n)
+dst_pos = bfs_pos.get(dst, len(bfs_order))   # O(1), was O(n)
 ```
+
+**Note**: `bfs_depth` cannot substitute for `bfs_order.index()`. `bfs_depth` records depth levels, not list positions — two sibling nodes at the same depth have equal `bfs_depth` values but distinct `bfs_order` positions. Using `bfs_depth` would misclassify sibling-to-sibling edges (e.g., edge C→B where both are at depth 1 would be classified as a branch instead of a back-edge).
 
 ## Scope Boundaries
 
@@ -86,15 +92,16 @@ for i, (src, dst, label) in enumerate(edges):
 
 ## Implementation Steps
 
-1. Replace `bfs_order.index(src) if src in bfs_order else len(bfs_order)` with `bfs_depth.get(src, len(bfs_order))`
-2. Apply same replacement for `dst`
-3. Confirm `ll-loop show` diagram output is visually identical
+1. After the BFS loop in `_render_fsm_diagram()` (~line 247), add: `bfs_pos: dict[str, int] = {node: i for i, node in enumerate(bfs_order)}`
+2. Replace `bfs_order.index(src) if src in bfs_order else len(bfs_order)` with `bfs_pos.get(src, len(bfs_order))`
+3. Apply same replacement for `dst`
+4. Confirm `ll-loop show` diagram output is visually identical
 
 ## Impact
 
 - **Priority**: P4 — Minor performance; primarily code clarity (using the right data structure)
-- **Effort**: Small — 2-line change
-- **Risk**: Low — Semantically identical; `bfs_depth` and `bfs_order.index` return the same position values
+- **Effort**: Small — 3-line change (add `bfs_pos` dict after BFS loop, replace 2 `index()` calls)
+- **Risk**: Low — `bfs_pos` dict built from `bfs_order` is semantically identical to `bfs_order.index()`; existing diagram tests cover this path
 - **Breaking Change**: No
 
 ## Related Key Documentation
@@ -108,19 +115,32 @@ for i, (src, dst, label) in enumerate(edges):
 
 `enhancement`, `ll-loop`, `performance`, `scan-codebase`
 
+## Verification Notes
+
+- **Verdict**: NEEDS_UPDATE (2026-03-05)
+- **Code verified**: `bfs_order.index()` calls at lines 282–283 confirmed present (moved from 155–164 at scan commit)
+- **Proposed solution corrected**: Original proposed fix used `bfs_depth.get()` which is semantically incorrect — `bfs_depth` records depth levels while `bfs_order.index()` returns list positions; these differ for sibling nodes at the same depth. The correct fix uses a `bfs_pos` position-lookup dict built from `bfs_order`.
+- **Dependencies**: BUG-530 is satisfied (completed); ENH-541 is active with correct backlink
+- **Tests**: `scripts/tests/test_ll_loop_display.py` covers `_render_fsm_diagram()`; no new tests needed
+
 ## Session Log
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; noted `info.py:155` `bfs_order.index()` as fix target
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl`
+- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl`
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl`
 
 ---
 
 ## Blocked By
 
-- BUG-530
+- ENH-540
 - ENH-541
 
 ---
+
+## Status
 
 **Open** | Created: 2026-03-03 | Priority: P4

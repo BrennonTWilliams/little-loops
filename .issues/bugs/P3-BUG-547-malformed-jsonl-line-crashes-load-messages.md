@@ -126,13 +126,16 @@ def _load_messages(messages_file: Path) -> list[dict[str, Any]]:
 
 - FEAT-557 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; higher priority bug should land first
 - FEAT-559 — both modify `scripts/little_loops/workflow_sequence_analyzer.py`
+- ENH-552 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; BUG-547 has higher priority (P3) and should be completed first
 
 ## Session Log
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:refine-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a020aaf9-77a1-4304-b1e8-283c2006ae91.jsonl` — Confirmed `TestLoadMessages` does NOT exist; updated Tests section with class creation guidance and required test cases
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b079933-cc72-4603-9eee-cdd2265f10b7.jsonl` — VALID: bug still present at workflow_sequence_analyzer.py:353, TestLoadMessages absent, all Blocks refs (FEAT-557, FEAT-559, ENH-552) exist with backlinks
+- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b079933-cc72-4603-9eee-cdd2265f10b7.jsonl` — No new deps proposed; existing Blocks (FEAT-557, FEAT-559, ENH-552) validated; parallel-safe with ENH-549, ENH-550, ENH-551, ENH-553, ENH-554
 
----
+## Status
 
 **Open** | Created: 2026-03-04 | Priority: P3

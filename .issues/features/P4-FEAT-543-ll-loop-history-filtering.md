@@ -3,6 +3,8 @@ discovered_commit: 47c81c895baaac1acac69d105ed75ff1ec82ed2c
 discovered_branch: main
 discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
+confidence_score: 93
+outcome_confidence: 93
 ---
 
 # FEAT-543: `ll-loop history` Has No Event-Type Filter, State Filter, or Structured Output Mode
@@ -107,8 +109,8 @@ In `cmd_history()`:
 - `ll-history` (`scripts/little_loops/cli/history.py`) — filtering patterns
 
 ### Tests
-- `scripts/tests/test_ll_loop_commands.py:101` (`TestCmdHistory` class) — add: `--event evaluate` filters to only evaluate events
-- `scripts/tests/test_ll_loop_commands.py:148` (`TestHistoryTail` class) — add: `--json` emits valid JSON lines; `--state check` filters to check-state events
+- `scripts/tests/test_ll_loop_commands.py:135` (`TestCmdHistory` class) — add: `--event evaluate` filters to only evaluate events
+- `scripts/tests/test_ll_loop_commands.py:182` (`TestHistoryTail` class) — add: `--json` emits valid JSON lines; `--state check` filters to check-state events
 - Pattern: `many_events_file` fixture at `conftest.py:296` provides 10-event JSONL file; follow `TestHistoryTail` pattern for filter tests
 
 ### Documentation
@@ -143,22 +145,20 @@ In `cmd_history()`:
 
 `feature`, `ll-loop`, `ux`, `cli`, `scan-codebase`
 
-## Session Log
+## Blocked By
 
-- `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
-- `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test refs to `test_ll_loop_commands.py:101` (TestCmdHistory) and `:148` (TestHistoryTail)
-- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- ENH-539 — `docs/generalized-fsm-loop.md` overlap (higher priority; complete first)
+- ENH-537 — `docs/generalized-fsm-loop.md` overlap (higher priority; complete first)
+- ENH-538 — `docs/generalized-fsm-loop.md` overlap (higher priority; complete first)
 
----
+## Verification Notes
 
----
+**Verdict**: VALID — 2026-03-05
 
-**Open** | Created: 2026-03-03 | Priority: P4
-
-## Session Log
-- `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl` — Removed BUG-529 from Blocked By (completed/satisfied)
-
----
+- `scripts/little_loops/cli/loop/info.py` exists; `cmd_history()` at lines 65–91 (shifted from issue's 62–84 since scan commit)
+- `scripts/little_loops/cli/loop/__init__.py` `history_parser` confirms only `loop` and `--tail` args — no `--event`, `--state`, `--json`, `--since`
+- `TestCmdHistory` and `TestHistoryTail` classes confirmed in `test_ll_loop_commands.py` at lines 135 and 182 (updated from 101/148)
+- Issue accurately describes the missing filtering capability
 
 ## Tradeoff Review Note
 
@@ -175,3 +175,20 @@ In `cmd_history()`:
 
 ### Recommendation
 Update first — HIGH utility (debugging 200+ event logs is a real pain point), but the `--since` duration parser is a non-trivial utility that will also be needed by `ll-messages` and `ll-history`. Before implementing, extract the duration string parser (`"1h"` → seconds, `"30m"` → seconds, `"2d"` → seconds) as a shared utility in `little_loops/text_utils.py` or a new `time_utils.py`. This reduces maintenance overhead (one implementation vs three) and makes the feature scope cleaner. Once that utility exists, the filtering implementation is straightforward.
+
+## Session Log
+
+- `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
+- `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test refs to `test_ll_loop_commands.py:101` (TestCmdHistory) and `:148` (TestHistoryTail)
+- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl` — Removed BUG-529 from Blocked By (completed/satisfied)
+- `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — Merged duplicate Session Log sections, fixed malformed footer structure
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — VALID; updated test line numbers 101→135 and 148→182
+- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — Added Blocked By ENH-537, ENH-538, ENH-539 (docs/generalized-fsm-loop.md overlap)
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — readiness: 93/100 PROCEED, outcome: 93/100 HIGH CONFIDENCE
+
+---
+
+## Status
+
+**Open** | Created: 2026-03-03 | Priority: P4

@@ -129,6 +129,7 @@ No changes to `analyze_workflows()` public API. Change is only in `main()` CLI a
 - FEAT-555 — overlapping file `scripts/little_loops/workflow_sequence_analyzer.py`; higher priority feature should land first
 - FEAT-557 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; higher priority feature should land first
 - FEAT-558
+- ENH-552 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; ENH-552 should land before FEAT-559
 
 ## Verification Notes
 
