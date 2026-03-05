@@ -1548,9 +1548,7 @@ issues:
             "BUG-002 should be executed after BUG-001 succeeds"
         )
 
-    def test_completed_issues_excluded_from_waves(
-        self, tmp_path: Path, monkeypatch: Any
-    ) -> None:
+    def test_completed_issues_excluded_from_waves(self, tmp_path: Path, monkeypatch: Any) -> None:
         """Test that issues in completed/ are skipped before wave dispatch (ENH-581).
 
         When a sprint contains issues that have already been moved to completed/,
@@ -1635,9 +1633,7 @@ issues:
         # BUG-002 (active) must be executed
         assert "BUG-002" in executed_issues
 
-    def test_all_completed_issues_returns_zero(
-        self, tmp_path: Path, monkeypatch: Any
-    ) -> None:
+    def test_all_completed_issues_returns_zero(self, tmp_path: Path, monkeypatch: Any) -> None:
         """Test that a sprint where all issues are already completed exits cleanly (ENH-581).
 
         When every issue in a sprint has been moved to completed/, the sprint

@@ -320,7 +320,9 @@ def _cmd_sprint_run(
                     failed_waves += 1
                     logger.warning(f"Wave {wave_num}/{total_waves} had failures")
                 else:
-                    logger.success(f"Wave {wave_num}/{total_waves} completed: {', '.join(wave_ids)}")
+                    logger.success(
+                        f"Wave {wave_num}/{total_waves} completed: {', '.join(wave_ids)}"
+                    )
                 _save_sprint_state(state, logger)
                 if wave_num < total_waves:
                     logger.info(f"Continuing to wave {wave_num + 1}/{total_waves}...")

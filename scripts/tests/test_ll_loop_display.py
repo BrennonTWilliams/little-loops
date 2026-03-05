@@ -822,9 +822,7 @@ class TestDisplayProgressEvents:
         assert "exit: 1" in captured.out
         assert "timed out" not in captured.out
 
-    def test_evaluate_error_shows_raw_preview(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_evaluate_error_shows_raw_preview(self, capsys: pytest.CaptureFixture[str]) -> None:
         """raw_preview is shown below error verdict line."""
         events = [
             {
@@ -840,9 +838,7 @@ class TestDisplayProgressEvents:
         assert "raw:" in captured.out
         assert '{"is_error": false' in captured.out
 
-    def test_evaluate_success_no_raw_preview(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_evaluate_success_no_raw_preview(self, capsys: pytest.CaptureFixture[str]) -> None:
         """raw_preview is not shown for successful verdicts."""
         events = [
             {

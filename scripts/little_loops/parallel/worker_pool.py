@@ -1230,9 +1230,7 @@ class WorkerPool:
                 timeout=30,
             )
             if reset_result.returncode == 0:
-                self.logger.info(
-                    f"[{issue_id}] Reset main to baseline {baseline_head_sha[:8]}"
-                )
+                self.logger.info(f"[{issue_id}] Reset main to baseline {baseline_head_sha[:8]}")
             else:
                 self.logger.warning(
                     f"[{issue_id}] Cherry-pick succeeded but failed to reset main: "

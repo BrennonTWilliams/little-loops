@@ -244,9 +244,7 @@ class ParallelOrchestrator:
                         owned_by_live = True  # Process exists, no permission to signal
                         break
                 if owned_by_live:
-                    self.logger.info(
-                        f"Skipping {item.name}: owned by running process"
-                    )
+                    self.logger.info(f"Skipping {item.name}: owned by running process")
                     continue
                 orphaned.append(item)
 

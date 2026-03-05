@@ -90,9 +90,7 @@ class TestLoopHistoryTimestamp:
         ]
 
         args = argparse.Namespace(tail=50)
-        with patch(
-            "little_loops.fsm.persistence.get_loop_history", return_value=events
-        ):
+        with patch("little_loops.fsm.persistence.get_loop_history", return_value=events):
             result = cmd_history("my-loop", args, loops_dir)
 
         assert result == 0
@@ -115,9 +113,7 @@ class TestLoopHistoryTimestamp:
         ]
 
         args = argparse.Namespace(tail=50)
-        with patch(
-            "little_loops.fsm.persistence.get_loop_history", return_value=events
-        ):
+        with patch("little_loops.fsm.persistence.get_loop_history", return_value=events):
             result = cmd_history("my-loop", args, loops_dir)
 
         assert result == 0
@@ -136,9 +132,7 @@ class TestLoopHistoryTimestamp:
         events = [{"event": "start", "loop": "my-loop"}]
 
         args = argparse.Namespace(tail=50)
-        with patch(
-            "little_loops.fsm.persistence.get_loop_history", return_value=events
-        ):
+        with patch("little_loops.fsm.persistence.get_loop_history", return_value=events):
             result = cmd_history("my-loop", args, loops_dir)
 
         assert result == 0
@@ -149,15 +143,18 @@ class TestOrangeDefaultColors:
 
     def test_priority_p0_is_orange_not_red(self) -> None:
         from little_loops.cli.output import PRIORITY_COLOR
+
         assert "31" not in PRIORITY_COLOR["P0"]
         assert "208" in PRIORITY_COLOR["P0"]
 
     def test_priority_p1_is_orange_not_red(self) -> None:
         from little_loops.cli.output import PRIORITY_COLOR
+
         assert PRIORITY_COLOR["P1"] == "38;5;208"
 
     def test_type_bug_is_orange_not_red(self) -> None:
         from little_loops.cli.output import TYPE_COLOR
+
         assert TYPE_COLOR["BUG"] == "38;5;208"
 
 
@@ -167,20 +164,27 @@ class TestConfigureOutput:
     def setup_method(self) -> None:
         """Reset output module state before each test."""
         import little_loops.cli.output as m
+
         m._USE_COLOR = False
-        m.PRIORITY_COLOR.update({"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2"})
+        m.PRIORITY_COLOR.update(
+            {"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2"}
+        )
         m.TYPE_COLOR.update({"BUG": "38;5;208", "FEAT": "32", "ENH": "34"})
 
     def teardown_method(self) -> None:
         """Restore defaults after each test."""
         import little_loops.cli.output as m
+
         m._USE_COLOR = False
-        m.PRIORITY_COLOR.update({"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2"})
+        m.PRIORITY_COLOR.update(
+            {"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2"}
+        )
         m.TYPE_COLOR.update({"BUG": "38;5;208", "FEAT": "32", "ENH": "34"})
 
     def test_configure_none_uses_tty_and_no_color_check(self) -> None:
         """configure_output(None) sets _USE_COLOR based on TTY and NO_COLOR."""
         from little_loops.cli.output import configure_output
+
         with patch.dict("os.environ", {}, clear=False) as env:
             env.pop("NO_COLOR", None)
             with patch("sys.stdout") as mock_stdout:
@@ -258,7 +262,9 @@ class TestIssueListNoColor:
         bugs_dir.mkdir(parents=True)
         (bugs_dir / "P1-BUG-001-test.md").write_text("# BUG-001: Test bug\n")
 
-        config = type("C", (), {"project_root": tmp_path, "issues": type("I", (), {"base_dir": ".issues"})()})()  # type: ignore[misc]
+        config = type(
+            "C", (), {"project_root": tmp_path, "issues": type("I", (), {"base_dir": ".issues"})()}
+        )()  # type: ignore[misc]
         args = argparse.Namespace(type=None, priority=None, flat=False)
 
         with patch.object(output_mod, "_USE_COLOR", False):

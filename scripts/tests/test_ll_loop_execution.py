@@ -1075,9 +1075,8 @@ states:
 
     def test_no_llm_prevents_explicit_llm_structured_evaluation(self) -> None:
         """llm.enabled=False blocks evaluate_llm_structured for explicit llm_structured config."""
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import patch
 
-        from little_loops.fsm.evaluators import EvaluationResult
         from little_loops.fsm.executor import ActionResult, FSMExecutor
         from little_loops.fsm.interpolation import InterpolationContext
         from little_loops.fsm.schema import EvaluateConfig, LLMConfig
@@ -1207,7 +1206,9 @@ class TestEvaluateSource:
 
         fsm = make_test_fsm()
         executor = FSMExecutor(fsm)
-        executor.captured = {"scan": {"output": "All checks passed", "exit_code": 0, "duration_ms": 0}}
+        executor.captured = {
+            "scan": {"output": "All checks passed", "exit_code": 0, "duration_ms": 0}
+        }
 
         state = make_test_state(
             action="echo irrelevant",
@@ -1263,9 +1264,7 @@ class TestEvaluateSource:
             on_failure="done",
         )
         # Action output DOES contain "hello"
-        action_result = ActionResult(
-            output="hello world", stderr="", exit_code=0, duration_ms=10
-        )
+        action_result = ActionResult(output="hello world", stderr="", exit_code=0, duration_ms=10)
         ctx = InterpolationContext(
             context={},
             captured={},

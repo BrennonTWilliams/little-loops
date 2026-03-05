@@ -199,6 +199,7 @@ Examples:
     project_root = args.config if hasattr(args, "config") and args.config else Path.cwd()
     config = BRConfig(project_root)
     from little_loops.cli.output import configure_output
+
     configure_output(config.cli)
     manager = SprintManager(config=config)
 

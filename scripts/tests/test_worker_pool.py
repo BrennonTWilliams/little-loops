@@ -1452,9 +1452,7 @@ class TestWorkerPoolHelpers:
                 return subprocess.CompletedProcess(args, 0, current_sha + "\n", "")
             if args[:2] == ["log", "--format=%H"]:
                 # Return two leaked commits (newest first)
-                return subprocess.CompletedProcess(
-                    args, 0, f"{leaked_sha2}\n{leaked_sha1}\n", ""
-                )
+                return subprocess.CompletedProcess(args, 0, f"{leaked_sha2}\n{leaked_sha1}\n", "")
             return subprocess.CompletedProcess(args, 0, "", "")
 
         with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
@@ -1474,9 +1472,7 @@ class TestWorkerPoolHelpers:
 
         cherry_pick_calls: list[list[str]] = []
 
-        def mock_subprocess_run(
-            args: list[str], **kwargs: Any
-        ) -> subprocess.CompletedProcess[str]:
+        def mock_subprocess_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             if args[:2] == ["git", "cherry-pick"]:
                 cherry_pick_calls.append(args)
                 return subprocess.CompletedProcess(args, 0, "", "")
@@ -1513,9 +1509,7 @@ class TestWorkerPoolHelpers:
         leaked_commits = ["sha_newest"]
         baseline_sha = "baseline_sha"
 
-        def mock_subprocess_run(
-            args: list[str], **kwargs: Any
-        ) -> subprocess.CompletedProcess[str]:
+        def mock_subprocess_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             if args[:2] == ["git", "cherry-pick"] and "--abort" not in args:
                 return subprocess.CompletedProcess(args, 1, "", "CONFLICT: merge conflict")
             return subprocess.CompletedProcess(args, 0, "", "")
@@ -1539,9 +1533,7 @@ class TestWorkerPoolHelpers:
 
         reset_called = [False]
 
-        def mock_subprocess_run(
-            args: list[str], **kwargs: Any
-        ) -> subprocess.CompletedProcess[str]:
+        def mock_subprocess_run(args: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
             if args[:2] == ["git", "cherry-pick"]:
                 return subprocess.CompletedProcess(args, 0, "", "")
             return subprocess.CompletedProcess(args, 0, "", "")
@@ -1922,9 +1914,7 @@ CORRECTED
 
         recover_called = [False]
 
-        def mock_recover(
-            commits: list[str], worktree: Path, baseline: str, issue_id: str
-        ) -> bool:
+        def mock_recover(commits: list[str], worktree: Path, baseline: str, issue_id: str) -> bool:
             recover_called[0] = True
             return True  # Recovery succeeds
 

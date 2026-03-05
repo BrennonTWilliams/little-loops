@@ -27,6 +27,7 @@ def main_loop() -> int:
     # Load config for loops_dir
     config = BRConfig(Path.cwd())
     from little_loops.cli.output import configure_output
+
     configure_output(config.cli)
     loops_dir = Path(config.loops.loops_dir)
 

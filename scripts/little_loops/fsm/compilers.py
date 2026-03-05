@@ -26,14 +26,14 @@ import logging
 import re
 from typing import Any, Literal
 
-logger = logging.getLogger(__name__)
-
 from little_loops.fsm.schema import (
     EvaluateConfig,
     FSMLoop,
     RouteConfig,
     StateConfig,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _slugify(text: str, max_length: int = 50) -> str:

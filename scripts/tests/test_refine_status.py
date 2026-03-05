@@ -338,7 +338,9 @@ class TestRefineStatusTable:
         (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
 
         # Use a fully-formatted BUG so both norm and fmt show ✓ (no ✗ in output)
-        _make_fully_formatted_bug(bugs_dir, "P2-BUG-080-normalized.md", "BUG-080: Normalized filename")
+        _make_fully_formatted_bug(
+            bugs_dir, "P2-BUG-080-normalized.md", "BUG-080: Normalized filename"
+        )
 
         with patch.object(
             sys, "argv", ["ll-issues", "refine-status", "--config", str(temp_project_dir)]
@@ -798,37 +800,39 @@ class TestRefineStatusJson:
 
 def _make_fully_formatted_bug(directory: Path, filename: str, title: str) -> None:
     """Write a BUG issue file with all required v2.0 sections."""
-    content = "\n".join([
-        "---",
-        "discovered_by: capture-issue",
-        "---",
-        "",
-        f"# {title}",
-        "",
-        "## Summary",
-        "Test issue.",
-        "",
-        "## Current Behavior",
-        "It does X.",
-        "",
-        "## Expected Behavior",
-        "It should do Y.",
-        "",
-        "## Steps to Reproduce",
-        "1. Do the thing.",
-        "",
-        "## Impact",
-        "- **Priority**: P2 - Medium priority",
-        "- **Effort**: Small",
-        "- **Risk**: Low",
-        "- **Breaking Change**: No",
-        "",
-        "## Labels",
-        "`bug`",
-        "",
-        "## Status",
-        "**Open** | Created: 2026-01-01 | Priority: P2",
-    ])
+    content = "\n".join(
+        [
+            "---",
+            "discovered_by: capture-issue",
+            "---",
+            "",
+            f"# {title}",
+            "",
+            "## Summary",
+            "Test issue.",
+            "",
+            "## Current Behavior",
+            "It does X.",
+            "",
+            "## Expected Behavior",
+            "It should do Y.",
+            "",
+            "## Steps to Reproduce",
+            "1. Do the thing.",
+            "",
+            "## Impact",
+            "- **Priority**: P2 - Medium priority",
+            "- **Effort**: Small",
+            "- **Risk**: Low",
+            "- **Breaking Change**: No",
+            "",
+            "## Labels",
+            "`bug`",
+            "",
+            "## Status",
+            "**Open** | Created: 2026-01-01 | Priority: P2",
+        ]
+    )
     (directory / filename).write_text(content)
 
 
@@ -850,9 +854,7 @@ class TestRefineStatusFormatColumn:
         (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
         (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
 
-        _make_fully_formatted_bug(
-            bugs_dir, "P2-BUG-300-formatted.md", "BUG-300: Fully formatted"
-        )
+        _make_fully_formatted_bug(bugs_dir, "P2-BUG-300-formatted.md", "BUG-300: Fully formatted")
 
         with patch.object(
             sys,
@@ -973,9 +975,7 @@ class TestRefineStatusFormatColumn:
 
         assert result == 0
         out = capsys.readouterr().out
-        header_line = next(
-            (ln for ln in out.splitlines() if "ID" in ln and "Pri" in ln), None
-        )
+        header_line = next((ln for ln in out.splitlines() if "ID" in ln and "Pri" in ln), None)
         assert header_line is not None
         # "fmt" is the static column; "format" as a standalone dynamic header must not appear
         # The header contains "fmt" (static), not "format" as a dynamic command alias

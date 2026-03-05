@@ -649,13 +649,11 @@ class TestLoggerColorOverrides:
         colors = CliColorsConfig.from_dict({"logger": {"error": "91"}})
         log = Logger(colors=colors)
         assert log.ORANGE == "\033[91m"
-        assert log.CYAN == "\033[36m"   # default info
+        assert log.CYAN == "\033[36m"  # default info
         assert log.GREEN == "\033[32m"  # default success
         assert log.YELLOW == "\033[33m"  # default warning
 
-    def test_custom_colors_appear_in_output(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_custom_colors_appear_in_output(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Custom ANSI code appears in info() output."""
         from little_loops.config import CliColorsConfig
 

@@ -1508,7 +1508,9 @@ class TestErrorHandling:
         )
 
         class FailingRunner:
-            def run(self, action: str, timeout: int, is_slash_command: bool, on_output_line: Any = None) -> ActionResult:
+            def run(
+                self, action: str, timeout: int, is_slash_command: bool, on_output_line: Any = None
+            ) -> ActionResult:
                 del action, timeout, is_slash_command, on_output_line
                 raise RuntimeError("Connection failed")
 
