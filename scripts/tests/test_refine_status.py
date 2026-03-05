@@ -982,3 +982,119 @@ class TestRefineStatusFormatColumn:
         assert "format" not in header_line.split(), (
             "/ll:format-issue must not create a dynamic 'format' column header"
         )
+
+
+class TestRefineStatusConfigColumns:
+    """Tests for refine-status configurable columns via refine_status.columns config."""
+
+    def test_custom_columns_only_renders_specified(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Only configured columns appear in the table header."""
+        custom_config = dict(sample_config)
+        custom_config["refine_status"] = {"columns": ["id", "priority", "title", "ready"]}
+        _write_config(temp_project_dir, custom_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-400-col-test.md",
+            "BUG-400: Column config test",
+            confidence_score=77,
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        header_line = next((ln for ln in out.splitlines() if "ID" in ln and "Pri" in ln), None)
+        assert header_line is not None
+        assert "ID" in header_line
+        assert "Pri" in header_line
+        assert "Title" in header_line
+        assert "ready" in header_line
+        assert "source" not in header_line
+        assert "norm" not in header_line
+        assert "fmt" not in header_line
+        assert "confidence" not in header_line
+        assert "total" not in header_line
+
+    def test_empty_columns_uses_defaults(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Empty columns list falls back to the default column set."""
+        custom_config = dict(sample_config)
+        custom_config["refine_status"] = {"columns": []}
+        _write_config(temp_project_dir, custom_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(bugs_dir, "P2-BUG-401-default-cols.md", "BUG-401: Default columns test")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "source" in out
+        assert "norm" in out
+        assert "fmt" in out
+
+    def test_unknown_column_renders_em_dash(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Unknown column names render as em-dash in data rows without crashing."""
+        custom_config = dict(sample_config)
+        custom_config["refine_status"] = {
+            "columns": ["id", "priority", "nonexistent_col", "total"]
+        }
+        _write_config(temp_project_dir, custom_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(bugs_dir, "P2-BUG-402-unknown-col.md", "BUG-402: Unknown column test")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        lines = out.splitlines()
+        data_line = next((ln for ln in lines if "BUG-402" in ln), None)
+        assert data_line is not None
+        assert "\u2014" in data_line  # em-dash in the unknown column cell

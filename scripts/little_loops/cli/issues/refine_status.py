@@ -56,6 +56,28 @@ _CMD_ALIASES: dict[str, str] = {
     "/ll:map-dependencies": "map",
 }
 
+# Static column metadata: name -> (fixed_width, header_text, right_justify)
+# width=0 is a sentinel meaning the column width is computed dynamically (title only)
+_STATIC_COLUMN_SPECS: dict[str, tuple[int, str, bool]] = {
+    "id": (_ID_WIDTH, "ID", False),
+    "priority": (_PRI_WIDTH, "Pri", False),
+    "title": (0, "Title", False),
+    "source": (_SOURCE_WIDTH, "source", False),
+    "norm": (_NORM_WIDTH, "norm", False),
+    "fmt": (_FMT_WIDTH, "fmt", False),
+    "ready": (_SCORE_WIDTH, "ready", True),
+    "confidence": (_CONF_WIDTH, "confidence", True),
+    "total": (_TOTAL_WIDTH, "total", True),
+}
+
+# Default column order when no config is provided
+_DEFAULT_STATIC_COLUMNS: list[str] = [
+    "id", "priority", "title", "source", "norm", "fmt", "ready", "confidence", "total"
+]
+
+# Columns that belong after the dynamic command block (all others go before)
+_POST_CMD_STATIC: frozenset[str] = frozenset(["ready", "confidence", "total"])
+
 
 def _cmd_label(cmd: str) -> str:
     """Return display label for a command column header."""
@@ -161,97 +183,112 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     # --- Table rendering ---
     term_cols = shutil.get_terminal_size().columns
 
-    # Compute how much space is consumed by fixed columns + command columns.
-    # Layout: ID | Pri | Title | source | norm | fmt | [cmd cols...] | ready | confidence | total
-    # _row uses "  ".join(parts) — 2-char separator between each part.
-    # Each "+2" below accounts for the 2-char separator that follows that column.
-    # The final "- 2" accounts for the separator between Title and the next column (source).
-    fixed_width = (
-        _ID_WIDTH
-        + 2
-        + _PRI_WIDTH
-        + 2
-        + _SOURCE_WIDTH
-        + 2  # source (before norm)
-        + _NORM_WIDTH
-        + 2  # norm
-        + _FMT_WIDTH
-        + 2  # fmt
-        + _SCORE_WIDTH
-        + 2  # ready
-        + _CONF_WIDTH
-        + 2  # confidence
-        + _TOTAL_WIDTH
-    )
-    cmd_cols_width = len(all_cmds) * (_CMD_WIDTH + 2)
-    title_width = max(_MIN_TITLE_WIDTH, term_cols - fixed_width - cmd_cols_width - 2)
+    # Determine active static columns from config (empty list = use defaults)
+    config_cols = config.refine_status.columns
+    active_static = list(config_cols) if config_cols else list(_DEFAULT_STATIC_COLUMNS)
 
-    def _row(
-        issue_id: str,
-        pri: str,
-        title: str,
-        source: str,
-        norm: str,
-        fmt: str,
-        cmd_cells: list[str],
-        ready: str,
-        conf: str,
-        total: str,
-    ) -> str:
-        parts = [
-            _col(issue_id, _ID_WIDTH),
-            _col(pri, _PRI_WIDTH),
-            _col(title, title_width),
-            _col(source, _SOURCE_WIDTH),
-            _col(norm, _NORM_WIDTH),
-            _col(fmt, _FMT_WIDTH),
-        ]
-        for cell in cmd_cells:
-            parts.append(_col(cell, _CMD_WIDTH))
-        parts.append(_rcol(ready, _SCORE_WIDTH))
-        parts.append(_rcol(conf, _CONF_WIDTH))
-        parts.append(_rcol(total, _TOTAL_WIDTH))
+    # Split active columns: pre-cmd (before dynamic command block) and post-cmd (after)
+    pre_cmd = [c for c in active_static if c not in _POST_CMD_STATIC]
+    post_cmd = [c for c in active_static if c in _POST_CMD_STATIC]
+
+    # Compute title column width based on active columns and terminal size
+    has_title = "title" in pre_cmd
+    title_w = _MIN_TITLE_WIDTH
+    if has_title:
+        n_parts = len(pre_cmd) + len(all_cmds) + len(post_cmd)
+        non_title_sum = (
+            sum(
+                _STATIC_COLUMN_SPECS[c][0] if c in _STATIC_COLUMN_SPECS else _CMD_WIDTH
+                for c in pre_cmd
+                if c != "title"
+            )
+            + len(all_cmds) * _CMD_WIDTH
+            + sum(
+                _STATIC_COLUMN_SPECS[c][0] if c in _STATIC_COLUMN_SPECS else _CMD_WIDTH
+                for c in post_cmd
+            )
+        )
+        title_w = max(_MIN_TITLE_WIDTH, term_cols - non_title_sum - 2 * (n_parts - 1))
+
+    def _get_col_display_width(col: str) -> int:
+        if col == "title":
+            return title_w
+        if col in _STATIC_COLUMN_SPECS:
+            return _STATIC_COLUMN_SPECS[col][0]
+        return _CMD_WIDTH
+
+    def _render_cell(col: str, value: str) -> str:
+        w = _get_col_display_width(col)
+        if col in _STATIC_COLUMN_SPECS:
+            rjust = _STATIC_COLUMN_SPECS[col][2]
+            return _rcol(value, w) if rjust else _col(value, w)
+        return _col(value, w)
+
+    def _header_cell(col: str) -> str:
+        if col in _STATIC_COLUMN_SPECS:
+            hdr = _STATIC_COLUMN_SPECS[col][1]
+        else:
+            hdr = _truncate(col, _get_col_display_width(col))
+        return _render_cell(col, hdr)
+
+    def _cell_value(col: str, issue: IssueInfo) -> str:
+        if col == "id":
+            return issue.issue_id
+        if col == "priority":
+            return issue.priority
+        if col == "title":
+            return _truncate(issue.title, title_w)
+        if col == "source":
+            return _source_label(issue.discovered_by)
+        if col == "norm":
+            return "\u2713" if is_normalized(issue.path.name) else "\u2717"
+        if col == "fmt":
+            return "\u2713" if is_formatted(issue.path) else "\u2717"
+        if col == "ready":
+            return str(issue.confidence_score) if issue.confidence_score is not None else "\u2014"
+        if col == "confidence":
+            return (
+                str(issue.outcome_confidence) if issue.outcome_confidence is not None else "\u2014"
+            )
+        if col == "total":
+            return str(len(issue.session_commands))
+        return "\u2014"  # unknown column: em-dash
+
+    def _build_row(issue: IssueInfo | None) -> str:
+        parts: list[str] = []
+        cmd_set = set(issue.session_commands) if issue is not None else set()
+
+        for c in pre_cmd:
+            if issue is None:
+                parts.append(_header_cell(c))
+            else:
+                parts.append(_render_cell(c, _cell_value(c, issue)))
+
+        for c in all_cmds:
+            if issue is None:
+                parts.append(_col(_cmd_label(c), _CMD_WIDTH))
+            else:
+                if c == "/ll:refine-issue":
+                    cell = str(issue.session_command_counts.get(c, 0))
+                else:
+                    cell = "\u2713" if c in cmd_set else "\u2014"
+                parts.append(_col(cell, _CMD_WIDTH))
+
+        for c in post_cmd:
+            if issue is None:
+                parts.append(_header_cell(c))
+            else:
+                parts.append(_render_cell(c, _cell_value(c, issue)))
+
         return "  ".join(parts)
 
-    # Header row
-    cmd_headers = [_col(_cmd_label(c), _CMD_WIDTH) for c in all_cmds]
-    header = _row(
-        "ID", "Pri", "Title", "source", "norm", "fmt", cmd_headers, "ready", "confidence", "total"
-    )
+    header = _build_row(None)
     separator = "-" * len(header)
 
     rows: list[str] = [header, separator]
 
     for issue in sorted_issues:
-        cmd_set = set(issue.session_commands)
-        cmd_cells = []
-        for c in all_cmds:
-            if c == "/ll:refine-issue":
-                cmd_cells.append(str(issue.session_command_counts.get(c, 0)))
-            else:
-                cmd_cells.append("\u2713" if c in cmd_set else "\u2014")
-        source_cell = _source_label(issue.discovered_by)
-        norm_cell = "\u2713" if is_normalized(issue.path.name) else "\u2717"
-        fmt_cell = "\u2713" if is_formatted(issue.path) else "\u2717"
-        ready = str(issue.confidence_score) if issue.confidence_score is not None else "\u2014"
-        out_conf = (
-            str(issue.outcome_confidence) if issue.outcome_confidence is not None else "\u2014"
-        )
-        total = str(len(issue.session_commands))
-        rows.append(
-            _row(
-                issue.issue_id,
-                issue.priority,
-                _truncate(issue.title, title_width),
-                source_cell,
-                norm_cell,
-                fmt_cell,
-                cmd_cells,
-                ready,
-                out_conf,
-                total,
-            )
-        )
+        rows.append(_build_row(issue))
 
     print("\n".join(rows))
 

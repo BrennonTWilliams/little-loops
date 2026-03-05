@@ -598,6 +598,19 @@
       },
       "additionalProperties": false
     },
+    "refine_status": {
+      "type": "object",
+      "description": "Display settings for the ll-issues refine-status command",
+      "properties": {
+        "columns": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Ordered list of columns to display in refine-status table output. Valid names: id, priority, title, source, norm, fmt, ready, confidence, total. Unknown names render as \u2014. Omit or leave empty to use the default column set.",
+          "default": []
+        }
+      },
+      "additionalProperties": false
+    },
     "dependency_mapping": {
       "type": "object",
       "description": "Dependency mapping threshold configuration for overlap detection and conflict scoring",

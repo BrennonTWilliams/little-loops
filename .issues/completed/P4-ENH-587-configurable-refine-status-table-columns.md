@@ -126,10 +126,10 @@ No new CLI flags. No new Python public API.
 
 ## Acceptance Criteria
 
-- [ ] `refine_status.columns` in `ll-config.json` controls which columns appear in the table.
-- [ ] Default behavior (no config key) is unchanged.
-- [ ] Unknown column names render as blank/`—` without crashing.
-- [ ] Config schema updated and documented.
+- [x] `refine_status.columns` in `ll-config.json` controls which columns appear in the table.
+- [x] Default behavior (no config key) is unchanged.
+- [x] Unknown column names render as blank/`—` without crashing.
+- [x] Config schema updated and documented.
 
 ## Verification Notes
 
@@ -164,8 +164,20 @@ _None identified._
 
 - `/ll:format-issue` - 2026-03-05T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01471175-2814-49cb-8d28-d70874526382.jsonl`
 - `/ll:ready-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/efde53d8-3a4c-4bc4-ac38-1a7c7e7cf6e3.jsonl`
+- `/ll:manage-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+
+## Resolution
+
+**Status**: Completed
+**Implemented**: 2026-03-05
+
+### Changes Made
+- `scripts/little_loops/config.py` — Added `RefineStatusConfig` dataclass with `columns: list[str]` field; wired into `BRConfig._parse_config` and exposed via `refine_status` property
+- `scripts/little_loops/cli/issues/refine_status.py` — Added `_STATIC_COLUMN_SPECS`, `_DEFAULT_STATIC_COLUMNS`, `_POST_CMD_STATIC` constants; replaced hardcoded `_row` closure with data-driven `_build_row`, `_header_cell`, `_cell_value`, `_render_cell` helpers that respect the configured column list
+- `config-schema.json` — Added `refine_status.columns` array property with description
+- `scripts/tests/test_refine_status.py` — Added `TestRefineStatusConfigColumns` with 3 tests: custom columns render only specified, empty list falls back to defaults, unknown column renders `—`
 
 ---
 ## Status
 
-**Open** | Created: 2026-03-05 | Priority: P4
+**Completed** | Created: 2026-03-05 | Priority: P4

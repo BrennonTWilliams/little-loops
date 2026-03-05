@@ -36,6 +36,7 @@ __all__ = [
     "CliColorsTypeConfig",
     "CliColorsConfig",
     "CliConfig",
+    "RefineStatusConfig",
     "REQUIRED_CATEGORIES",
     "DEFAULT_CATEGORIES",
 ]
@@ -571,6 +572,18 @@ class CliColorsConfig:
 
 
 @dataclass
+class RefineStatusConfig:
+    """refine-status display configuration."""
+
+    columns: list[str] = field(default_factory=list)
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> RefineStatusConfig:
+        """Create RefineStatusConfig from dictionary."""
+        return cls(columns=data.get("columns", []))
+
+
+@dataclass
 class CliConfig:
     """CLI output configuration."""
 
@@ -638,6 +651,9 @@ class BRConfig:
             self._raw_config.get("dependency_mapping", {})
         )
         self._cli = CliConfig.from_dict(self._raw_config.get("cli", {}))
+        self._refine_status = RefineStatusConfig.from_dict(
+            self._raw_config.get("refine_status", {})
+        )
 
     @property
     def project(self) -> ProjectConfig:
@@ -693,6 +709,11 @@ class BRConfig:
     def cli(self) -> CliConfig:
         """Get CLI output configuration."""
         return self._cli
+
+    @property
+    def refine_status(self) -> RefineStatusConfig:
+        """Get refine-status display configuration."""
+        return self._refine_status
 
     @property
     def repo_path(self) -> Path:
