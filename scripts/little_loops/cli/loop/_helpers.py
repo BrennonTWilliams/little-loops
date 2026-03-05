@@ -9,6 +9,8 @@ import time
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
+from little_loops.cli.output import colorize, terminal_width
+
 if TYPE_CHECKING:
     from little_loops.fsm.schema import FSMLoop
     from little_loops.logger import Logger
@@ -100,12 +102,13 @@ def load_loop_with_spec(
 
 def print_execution_plan(fsm: FSMLoop) -> None:
     """Print dry-run execution plan."""
-    print(f"Execution plan for: {fsm.name}")
+    tw = terminal_width()
+    print(colorize(f"Execution plan for: {fsm.name}", "1"))
     print()
     print("States:")
     for name, state in fsm.states.items():
-        terminal_marker = " [TERMINAL]" if state.terminal else ""
-        print(f"  [{name}]{terminal_marker}")
+        terminal_marker = colorize(" [TERMINAL]", "32") if state.terminal else ""
+        print(f"  {colorize(f'[{name}]', '1')}{terminal_marker}")
         if state.action:
             if state.action_type == "prompt":
                 lines = state.action.strip().splitlines()
@@ -114,26 +117,27 @@ def print_execution_plan(fsm: FSMLoop) -> None:
                     preview += " ..."
                 print(f"    action: |\n      {preview}")
             else:
+                max_action = tw - 16
                 action_display = (
-                    state.action[:70] + "..." if len(state.action) > 70 else state.action
+                    state.action[:max_action] + "..." if len(state.action) > max_action else state.action
                 )
                 print(f"    action: {action_display}")
         if state.evaluate:
             print(f"    evaluate: {state.evaluate.type}")
         if state.on_success:
-            print(f"    on_success -> {state.on_success}")
+            print(f"    on_success {colorize('->', '2')} {colorize(state.on_success, '2')}")
         if state.on_failure:
-            print(f"    on_failure -> {state.on_failure}")
+            print(f"    on_failure {colorize('->', '2')} {colorize(state.on_failure, '2')}")
         if state.on_error:
-            print(f"    on_error -> {state.on_error}")
+            print(f"    on_error {colorize('->', '2')} {colorize(state.on_error, '2')}")
         if state.next:
-            print(f"    next -> {state.next}")
+            print(f"    next {colorize('->', '2')} {colorize(state.next, '2')}")
         if state.route:
             print("    route:")
             for verdict, target in state.route.routes.items():
-                print(f"      {verdict} -> {target}")
+                print(f"      {verdict} {colorize('->', '2')} {colorize(target, '2')}")
             if state.route.default:
-                print(f"      _ -> {state.route.default}")
+                print(f"      _ {colorize('->', '2')} {colorize(state.route.default, '2')}")
     print()
     print(f"Initial state: {fsm.initial}")
     print(f"Max iterations: {fsm.max_iterations}")
@@ -184,10 +188,10 @@ def run_background(loop_name: str, args: argparse.Namespace, loops_dir: Path) ->
         )
 
     pid_file.write_text(str(process.pid))
-    print(f"Loop '{loop_name}' started in background (PID: {process.pid})")
-    print(f"  Log: {log_file}")
-    print(f"  Status: ll-loop status {loop_name}")
-    print(f"  Stop: ll-loop stop {loop_name}")
+    print(f"Loop {colorize(loop_name, '1')} started in background (PID: {colorize(str(process.pid), '2')})")
+    print(f"  Log: {colorize(str(log_file), '2')}")
+    print(f"  Status: {colorize(f'll-loop status {loop_name}', '2')}")
+    print(f"  Stop:   {colorize(f'll-loop stop {loop_name}', '2')}")
     return 0
 
 
@@ -200,8 +204,8 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
     quiet = getattr(args, "quiet", False)
     verbose = getattr(args, "verbose", False)
     if not quiet:
-        print(f"Running loop: {fsm.name}")
-        print(f"Max iterations: {fsm.max_iterations}")
+        print(f"Running loop: {colorize(fsm.name, '1')}")
+        print(f"Max iterations: {colorize(str(fsm.max_iterations), '2')}")
         print()
 
     current_iteration = [0]  # Use list to allow mutation in closure
@@ -210,6 +214,8 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
     def display_progress(event: dict) -> None:
         """Display progress for events."""
         event_type = event.get("event")
+        tw = terminal_width()
+        max_line = tw - 8  # 8 chars for "       " indent prefix
 
         if event_type == "state_enter":
             current_iteration[0] = event.get("iteration", 0)
@@ -220,7 +226,7 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             else:
                 elapsed_str = f"{elapsed_int // 60}m {elapsed_int % 60}s"
             print(
-                f"[{current_iteration[0]}/{fsm.max_iterations}] {state} ({elapsed_str})",
+                f"[{current_iteration[0]}/{fsm.max_iterations}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",
                 end="",
                 flush=True,
             )
@@ -231,21 +237,21 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             if is_prompt:
                 lines = action.strip().splitlines()
                 line_count = len(lines)
-                print(f" -> [prompt] ({line_count} lines)", flush=True)
+                print(f" -> {colorize('[prompt]', '2')} {colorize(f'({line_count} lines)', '2')}", flush=True)
                 show_count = line_count if verbose else min(5, line_count)
                 for line in lines[:show_count]:
-                    display = line[:100] + "..." if len(line) > 100 else line
+                    display = line[:max_line] + "..." if len(line) > max_line else line
                     print(f"       {display}", flush=True)
                 if line_count > show_count:
                     print(f"       ... ({line_count - show_count} more lines)", flush=True)
             else:
-                action_display = action[:120] + "..." if len(action) > 120 else action
-                print(f" -> {action_display}", flush=True)
+                action_display = action[:max_line] + "..." if len(action) > max_line else action
+                print(f" -> {colorize(action_display, '2')}", flush=True)
 
         elif event_type == "action_output":
             line = event.get("line", "")
             if line.strip():
-                display = line[:120] + "..." if len(line) > 120 else line
+                display = line[:max_line] + "..." if len(line) > max_line else line
                 print(f"       {display}", flush=True)
 
         elif event_type == "action_complete":
@@ -260,11 +266,11 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
                 minutes = int(duration_sec // 60)
                 seconds = duration_sec % 60
                 duration_str = f"{minutes}m {seconds:.0f}s"
-            parts = [f"       ({duration_str})"]
+            parts = [f"       ({colorize(duration_str, '2')})"]
             if exit_code == 124:
-                parts.append("timed out")
+                parts.append(colorize("timed out", "38;5;208"))
             elif exit_code != 0:
-                parts.append(f"exit: {exit_code}")
+                parts.append(colorize(f"exit: {exit_code}", "38;5;208"))
             print("  ".join(parts), flush=True)
             # Skip output preview for prompt states — output was already streamed line by line.
             # For shell states, show a tail summary as before.
@@ -273,7 +279,7 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
                 n_lines = 20 if verbose else 8
                 show_lines = lines[-n_lines:] if lines else []
                 for line in show_lines:
-                    display = line[:120] + "..." if len(line) > 120 else line
+                    display = line[:max_line] + "..." if len(line) > max_line else line
                     print(f"       {display}", flush=True)
 
         elif event_type == "evaluate":
@@ -282,16 +288,18 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             reason = event.get("reason", "")
             error = event.get("error", "")
             if verdict in ("success", "target", "progress"):
-                symbol = "\u2713"  # checkmark
+                symbol = colorize("\u2713", "32")  # green checkmark
+                verdict_colored = colorize(verdict, "32")
             else:
-                symbol = "\u2717"  # x mark
+                symbol = colorize("\u2717", "38;5;208")  # orange x mark
+                verdict_colored = colorize(verdict, "38;5;208") if verdict in ("fail", "error") else colorize(verdict, "2")
             # Build verdict line
             if error and verdict == "error":
-                verdict_line = f"{symbol} {verdict}: {error}"
+                verdict_line = f"{symbol} {verdict_colored}: {error}"
             elif confidence is not None:
-                verdict_line = f"{symbol} {verdict} ({confidence:.2f})"
+                verdict_line = f"{symbol} {verdict_colored} {colorize(f'({confidence:.2f})', '2')}"
             else:
-                verdict_line = f"{symbol} {verdict}"
+                verdict_line = f"{symbol} {verdict_colored}"
             print(f"       {verdict_line}", flush=True)
             # Show raw_preview for error verdicts to aid diagnosis
             raw_preview = event.get("raw_preview", "")
@@ -304,7 +312,7 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
 
         elif event_type == "route":
             to_state = event.get("to", "")
-            print(f"       -> {to_state}", flush=True)
+            print(f"       {colorize('->', '2')} {colorize(to_state, '1')}", flush=True)
 
     # Wire progress display via the proper observer slot on PersistentExecutor
     if not quiet:
@@ -321,8 +329,12 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             minutes = int(duration_sec // 60)
             seconds = duration_sec % 60
             duration_str = f"{minutes}m {seconds:.0f}s"
+        if result.terminated_by == "terminal":
+            state_colored = colorize(result.final_state, "32")
+        else:
+            state_colored = colorize(result.final_state, "38;5;208")
         print(
-            f"Loop completed: {result.final_state} ({result.iterations} iterations, {duration_str})"
+            f"Loop completed: {state_colored} ({result.iterations} iterations, {duration_str})"
         )
 
     return 0 if result.terminated_by == "terminal" else 1

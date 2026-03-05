@@ -135,6 +135,9 @@ Examples:
     history_parser.add_argument(
         "--tail", "-n", type=int, default=50, help="Last N events (default: 50)"
     )
+    history_parser.add_argument(
+        "--verbose", "-v", action="store_true", help="Show action output lines and full prompts"
+    )
 
     # Test subcommand
     test_parser = subparsers.add_parser(

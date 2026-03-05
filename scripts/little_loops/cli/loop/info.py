@@ -7,6 +7,7 @@ import re
 from collections import deque
 from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from little_loops.cli.loop._helpers import (
     get_builtin_loops_dir,
@@ -62,6 +63,123 @@ def cmd_list(
     return 0
 
 
+_EVENT_TYPE_WIDTH = 16  # width of "handoff_detected"
+
+
+def _truncate(text: str, max_len: int) -> str:
+    """Truncate text to max_len with ellipsis."""
+    if max_len < 1:
+        return ""
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "\u2026"
+
+
+def _format_history_event(
+    event: dict[str, Any], verbose: bool, width: int
+) -> str | None:
+    """Format a single history event. Returns None to skip the event."""
+    raw_ts = event.get("ts", "")
+    try:
+        ts = datetime.fromisoformat(raw_ts).strftime("%H:%M:%S")
+    except (ValueError, TypeError):
+        ts = raw_ts[:8] if len(raw_ts) >= 8 else raw_ts.ljust(8)
+
+    event_type = event.get("event", "unknown")
+
+    if event_type == "action_output" and not verbose:
+        return None
+
+    ts_str = colorize(ts, "2")
+    etype_padded = event_type.ljust(_EVENT_TYPE_WIDTH)
+    etype_color = "0"
+    detail = ""
+
+    if event_type == "loop_start":
+        etype_color = "1"
+        detail = event.get("loop", "")
+
+    elif event_type == "loop_complete":
+        etype_color = "1"
+        final_state = event.get("final_state", "")
+        iterations = event.get("iterations", "")
+        terminated_by = event.get("terminated_by", "")
+        detail = f"{final_state}  {iterations} iter  [{terminated_by}]"
+
+    elif event_type == "loop_resume":
+        etype_color = "1"
+        from_state = event.get("from_state", "")
+        iteration = event.get("iteration", "")
+        detail = f"from={from_state}  iter={iteration}"
+
+    elif event_type == "state_enter":
+        etype_color = "34"
+        state = event.get("state", "")
+        iteration = event.get("iteration", "")
+        detail = f"{colorize(state, '1')}  (iter {iteration})"
+
+    elif event_type == "action_start":
+        action = event.get("action", "")
+        is_prompt = event.get("is_prompt", False)
+        kind_label = "prompt" if is_prompt else "shell"
+        kind_str = colorize(f"[{kind_label}]", "2")
+        first_line = (
+            next((ln.strip() for ln in action.splitlines() if ln.strip()), "")
+            if is_prompt
+            else action
+        )
+        avail = width - 8 - 2 - _EVENT_TYPE_WIDTH - 2 - len(kind_label) - 2 - 2
+        detail = f"{_truncate(first_line, max(avail, 20))}  {kind_str}"
+
+    elif event_type == "action_output":
+        # Only reached in verbose mode
+        etype_color = "2"
+        detail = colorize("\u2502 " + event.get("line", ""), "2")
+
+    elif event_type == "action_complete":
+        exit_code = event.get("exit_code", 0)
+        duration_ms = event.get("duration_ms", 0)
+        if exit_code == 0:
+            etype_color = "2"
+            status_str = colorize("\u2713", "32")
+        else:
+            etype_color = "38;5;208"
+            status_str = colorize(f"\u2717 exit={exit_code}", "38;5;208")
+        detail = f"{status_str}  {duration_ms}ms"
+
+    elif event_type == "evaluate":
+        verdict = event.get("verdict", "")
+        confidence = event.get("confidence", "")
+        reason = event.get("reason", "")
+        if verdict == "success":
+            etype_color = "32"
+            verdict_str = colorize("\u2713 success", "32")
+        else:
+            etype_color = "38;5;208"
+            verdict_str = colorize(f"\u2717 {verdict}", "38;5;208")
+        conf_part = f"  confidence={confidence}" if confidence != "" else ""
+        avail = width - 8 - 2 - _EVENT_TYPE_WIDTH - 2 - len("\u2713 success") - len(conf_part) - 2
+        reason_part = f"  {_truncate(reason, max(avail, 20))}" if reason else ""
+        detail = f"{verdict_str}{conf_part}{reason_part}"
+
+    elif event_type == "route":
+        etype_color = "2"
+        from_state = event.get("from", "")
+        to_state = event.get("to", "")
+        detail = f"{from_state} \u2192 {colorize(to_state, '34')}"
+
+    elif event_type == "handoff_detected":
+        etype_color = "33"
+        detail = f"state={event.get('state', '')}  iter={event.get('iteration', '')}"
+
+    else:
+        details = {k: v for k, v in event.items() if k not in ("event", "ts")}
+        detail = "  ".join(f"{k}={v}" for k, v in details.items())
+
+    etype_str = colorize(etype_padded, etype_color)
+    return f"{ts_str}  {etype_str}  {detail}"
+
+
 def cmd_history(
     loop_name: str,
     args: argparse.Namespace,
@@ -76,17 +194,13 @@ def cmd_history(
         print(f"No history for: {loop_name}")
         return 0
 
-    # Show last N events
     tail = getattr(args, "tail", 50)
+    verbose = getattr(args, "verbose", False)
+    w = terminal_width()
     for event in events[-tail:]:
-        raw_ts = event.get("ts", "")
-        try:
-            ts = datetime.fromisoformat(raw_ts).strftime("%Y-%m-%d %H:%M:%S")
-        except (ValueError, TypeError):
-            ts = raw_ts[:19]
-        event_type = event.get("event", "")
-        details = {k: v for k, v in event.items() if k not in ("event", "ts")}
-        print(f"{ts} {event_type}: {details}")
+        line = _format_history_event(event, verbose, w)
+        if line is not None:
+            print(line)
 
     return 0
 

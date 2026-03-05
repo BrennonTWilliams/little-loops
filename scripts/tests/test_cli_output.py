@@ -79,7 +79,7 @@ class TestLoopHistoryTimestamp:
     def test_iso_timestamp_formatted_as_readable(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """cmd_history formats ISO timestamps as YYYY-MM-DD HH:MM:SS."""
+        """cmd_history formats ISO timestamps as HH:MM:SS."""
         from little_loops.cli.loop.info import cmd_history
 
         loops_dir = tmp_path / ".ll-loops"
@@ -89,20 +89,20 @@ class TestLoopHistoryTimestamp:
             {"ts": "2026-03-04T14:30:00.123456", "event": "start", "loop": "my-loop"},
         ]
 
-        args = argparse.Namespace(tail=50)
+        args = argparse.Namespace(tail=50, verbose=False)
         with patch("little_loops.fsm.persistence.get_loop_history", return_value=events):
             result = cmd_history("my-loop", args, loops_dir)
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "2026-03-04 14:30:00" in captured.out
+        assert "14:30:00" in captured.out
         # Should not contain the raw ISO format with T separator
         assert "2026-03-04T14:30:00" not in captured.out
 
     def test_invalid_timestamp_falls_back_to_truncated(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """cmd_history falls back to [:19] slice for non-ISO timestamps."""
+        """cmd_history falls back to 8-char slice for non-ISO timestamps."""
         from little_loops.cli.loop.info import cmd_history
 
         loops_dir = tmp_path / ".ll-loops"
@@ -112,13 +112,13 @@ class TestLoopHistoryTimestamp:
             {"ts": "not-a-timestamp", "event": "start"},
         ]
 
-        args = argparse.Namespace(tail=50)
+        args = argparse.Namespace(tail=50, verbose=False)
         with patch("little_loops.fsm.persistence.get_loop_history", return_value=events):
             result = cmd_history("my-loop", args, loops_dir)
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "not-a-timestamp" in captured.out
+        assert "not-a-ti" in captured.out
 
     def test_missing_timestamp_handled_gracefully(
         self, tmp_path: Path, capsys: pytest.CaptureFixture[str]
@@ -131,7 +131,7 @@ class TestLoopHistoryTimestamp:
 
         events = [{"event": "start", "loop": "my-loop"}]
 
-        args = argparse.Namespace(tail=50)
+        args = argparse.Namespace(tail=50, verbose=False)
         with patch("little_loops.fsm.persistence.get_loop_history", return_value=events):
             result = cmd_history("my-loop", args, loops_dir)
 
