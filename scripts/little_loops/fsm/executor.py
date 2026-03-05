@@ -145,7 +145,7 @@ class DefaultActionRunner:
             cmd = [
                 "claude",
                 "--dangerously-skip-permissions",
-                "--verbose",
+                "--no-session-persistence",
                 "-p",
                 action,
             ]
