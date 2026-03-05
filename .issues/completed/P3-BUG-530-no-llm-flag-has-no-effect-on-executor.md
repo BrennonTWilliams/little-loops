@@ -85,7 +85,7 @@ if eval_config.type == "llm_structured":
 - `scripts/little_loops/cli/loop/run.py` — sets `llm.enabled`; no change needed
 
 ### Similar Patterns
-- `scripts/little_loops/fsm/schema.py:300-301` — `LLMConfig.enabled` field definition
+- `scripts/little_loops/fsm/schema.py:308` — `LLMConfig.enabled` field definition
 
 ### Tests
 - `scripts/tests/test_ll_loop_execution.py:746` (`TestLLMFlags` class) — add test: `llm.enabled=False` → `_evaluate()` returns error verdict without calling `evaluate_llm_structured`
@@ -120,11 +120,29 @@ if eval_config.type == "llm_structured":
 
 `bug`, `ll-loop`, `llm`, `scan-codebase`
 
+## Resolution
+
+**Status**: Fixed
+**Date**: 2026-03-04
+**Commit**: (see git log)
+
+Added `llm.enabled` guard in `FSMExecutor._evaluate()` for both evaluation paths:
+1. **Default path** (prompt/slash command with no explicit evaluate config): checks `self.fsm.llm.enabled` before calling `evaluate_llm_structured`; returns `verdict="error"` with `"LLM evaluation disabled via --no-llm"` if disabled
+2. **Explicit path** (`state.evaluate.type == "llm_structured"`): same guard before dispatching to `evaluate_llm_structured`
+
+Added two unit tests to `TestLLMFlags`:
+- `test_no_llm_prevents_explicit_llm_structured_evaluation` — verifies explicit `llm_structured` config with `llm.enabled=False` returns error without calling `evaluate_llm_structured`
+- `test_no_llm_prevents_default_prompt_evaluation` — verifies default prompt evaluation with `llm.enabled=False` returns error without calling `evaluate_llm_structured`
+
+All 42 tests pass.
+
 ## Session Log
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test ref to `test_ll_loop_execution.py:746` (TestLLMFlags)
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:ready-issue` — 2026-03-04T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/483ea015-0ad0-4661-a36d-84e6187e35e9.jsonl`
+- `/ll:manage-issue` — 2026-03-04T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/` — Fixed: added llm.enabled guard in FSMExecutor._evaluate(); added 2 tests
 
 ## Blocks
 
@@ -133,4 +151,4 @@ if eval_config.type == "llm_structured":
 
 ---
 
-**Open** | Created: 2026-03-03 | Priority: P3
+**Completed** | Created: 2026-03-03 | Priority: P3

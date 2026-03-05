@@ -584,12 +584,18 @@ class FSMExecutor:
 
                 if is_prompt:
                     # Slash command or prompt: use LLM evaluation
-                    result = evaluate_llm_structured(
-                        action_result.output,
-                        model=self.fsm.llm.model,
-                        max_tokens=self.fsm.llm.max_tokens,
-                        timeout=self.fsm.llm.timeout,
-                    )
+                    if not self.fsm.llm.enabled:
+                        result = EvaluationResult(
+                            verdict="error",
+                            details={"error": "LLM evaluation disabled via --no-llm"},
+                        )
+                    else:
+                        result = evaluate_llm_structured(
+                            action_result.output,
+                            model=self.fsm.llm.model,
+                            max_tokens=self.fsm.llm.max_tokens,
+                            timeout=self.fsm.llm.timeout,
+                        )
                 else:
                     # Shell command: use exit code
                     result = evaluate_exit_code(action_result.exit_code)
@@ -605,12 +611,18 @@ class FSMExecutor:
             return None
 
         # Explicit evaluation config
-        result = evaluate(
-            config=state.evaluate,
-            output=action_result.output if action_result else "",
-            exit_code=action_result.exit_code if action_result else 0,
-            context=ctx,
-        )
+        if state.evaluate.type == "llm_structured" and not self.fsm.llm.enabled:
+            result = EvaluationResult(
+                verdict="error",
+                details={"error": "LLM evaluation disabled via --no-llm"},
+            )
+        else:
+            result = evaluate(
+                config=state.evaluate,
+                output=action_result.output if action_result else "",
+                exit_code=action_result.exit_code if action_result else 0,
+                context=ctx,
+            )
 
         self._emit(
             "evaluate",

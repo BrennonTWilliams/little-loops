@@ -1070,6 +1070,85 @@ states:
         assert captured_fsm.llm.max_tokens == 512
         assert captured_fsm.llm.timeout == 60
 
+    def test_no_llm_prevents_explicit_llm_structured_evaluation(self) -> None:
+        """llm.enabled=False blocks evaluate_llm_structured for explicit llm_structured config."""
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.fsm.evaluators import EvaluationResult
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+        from little_loops.fsm.interpolation import InterpolationContext
+        from little_loops.fsm.schema import EvaluateConfig, LLMConfig
+
+        fsm = make_test_fsm()
+        fsm.llm = LLMConfig(enabled=False)
+
+        executor = FSMExecutor(fsm)
+        state = make_test_state(
+            action="echo test",
+            evaluate=EvaluateConfig(type="llm_structured"),
+            on_success="done",
+            on_error="done",
+        )
+        action_result = ActionResult(output="some output", stderr="", exit_code=0, duration_ms=10)
+        ctx = InterpolationContext(
+            context={},
+            captured={},
+            prev=None,
+            result=None,
+            state_name="start",
+            iteration=1,
+            loop_name="test",
+            started_at="",
+            elapsed_ms=0,
+        )
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured") as mock_llm:
+            result = executor._evaluate(state, action_result, ctx)
+
+        mock_llm.assert_not_called()
+        assert result is not None
+        assert result.verdict == "error"
+        assert "disabled" in result.details["error"]
+
+    def test_no_llm_prevents_default_prompt_evaluation(self) -> None:
+        """llm.enabled=False blocks evaluate_llm_structured for default prompt evaluation."""
+        from unittest.mock import patch
+
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+        from little_loops.fsm.interpolation import InterpolationContext
+        from little_loops.fsm.schema import LLMConfig
+
+        fsm = make_test_fsm()
+        fsm.llm = LLMConfig(enabled=False)
+
+        executor = FSMExecutor(fsm)
+        # No explicit evaluate config — slash command triggers default LLM evaluation
+        state = make_test_state(
+            action="/some-slash-command",
+            on_success="done",
+            on_error="done",
+        )
+        action_result = ActionResult(output="some output", stderr="", exit_code=0, duration_ms=10)
+        ctx = InterpolationContext(
+            context={},
+            captured={},
+            prev=None,
+            result=None,
+            state_name="start",
+            iteration=1,
+            loop_name="test",
+            started_at="",
+            elapsed_ms=0,
+        )
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured") as mock_llm:
+            result = executor._evaluate(state, action_result, ctx)
+
+        mock_llm.assert_not_called()
+        assert result is not None
+        assert result.verdict == "error"
+        assert "disabled" in result.details["error"]
+
 
 class TestCmdTest:
     """Tests for ll-loop test subcommand."""
