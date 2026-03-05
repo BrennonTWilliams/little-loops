@@ -12,6 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.33.0] - 2026-03-05
+
+### Added
+
+- **fix-quality-and-tests FSM loop** - Sequential quality gate loop: lint/format/types must pass before tests are checked; auto-fixes violations and loops back after fixing test failures to catch regressions (b6eb5a9)
+
+### Fixed
+
+- **`ll-loop stop` process termination** - Kill running subprocess on SIGTERM and escalate to SIGKILL; `ll-loop stop` now terminates active processes immediately (BUG-592)
+- **ISSUE_TEMPLATE.md section count** - Correct internally inconsistent section count claim in issue template documentation (BUG-597)
+
+### Changed
+
+- **`ll-loop history` colored output** - Structured, colored output for `ll-loop history` command (ENH-566)
+- **`ll-issues show` card colorization** - Colorize `ll-issues show` card output for improved readability (ENH-593)
+- **`ll-issues impact-effort` color and layout** - ANSI color, dynamic layout, and summary count for `ll-issues impact-effort` (ENH-594)
+- **`ll-loop run` colored output** - Colorize `ll-loop run` output for improved readability (ENH-595)
+- **`ll-issues refine-status` colorization** - Colorize `ll-issues refine-status` output (ENH-596)
+- **Built-in loops cleanup** - Remove built-in loops except issue-refinement; simplify loops directory (84e26ad)
+
 ## [1.32.1] - 2026-03-05
 
 ### Changed
@@ -62,6 +82,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Hooks worktree cleanup** - Skip worktree cleanup when session runs inside a worktree (fix(hooks): 12ea54c)
 - **FSM --no-llm flag** - Honor --no-llm flag in FSMExecutor._evaluate() (fix(fsm): 2f8ded0)
 
+[1.33.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.32.1...v1.33.0
 [1.32.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.32.0...v1.32.1
 [1.32.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.31.0...v1.32.0
 [1.31.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.30.0...v1.31.0
