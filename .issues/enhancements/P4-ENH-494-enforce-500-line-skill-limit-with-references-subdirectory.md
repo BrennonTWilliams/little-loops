@@ -150,6 +150,7 @@ Update first - Only 2 skills exceed the 500-line limit (audit-claude-config: 708
 ## Blocked By
 
 - ENH-493
+- FEAT-565
 
 ---
 

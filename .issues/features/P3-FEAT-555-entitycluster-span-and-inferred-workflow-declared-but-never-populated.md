@@ -127,6 +127,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `feature`, `workflow-analyzer`, `captured`
 
+## Blocks
+
+- FEAT-557 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; higher priority feature should land first
+- FEAT-559 — both modify `scripts/little_loops/workflow_sequence_analyzer.py`
+
 ## Session Log
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`

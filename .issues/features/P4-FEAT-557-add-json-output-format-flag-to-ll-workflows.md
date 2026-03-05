@@ -137,11 +137,33 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `feature`, `workflow-analyzer`, `cli`, `captured`
 
+## Blocked By
+
+- BUG-547 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; higher priority bug should land first
+- FEAT-555 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; higher priority feature should land first
+- ENH-552 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; same priority but lower ID should land first
+
+## Blocks
+
+- FEAT-559 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; higher priority feature should land first
+
+## Verification Notes
+
+- **Verified**: 2026-03-05 — VALID (minor line drift)
+- File `scripts/little_loops/workflow_sequence_analyzer.py` exists ✓
+- `yaml.dump` output block found at lines 806–810 (issue cites 789–794; ~16-line drift since scan commit `a574ea0`)
+- `def analyze_workflows` at line 738 ✓
+- `json` imported at line 25 ✓
+- 5 dataclasses with `to_dict()` confirmed ✓
+- Core claims and proposed solution remain accurate
+
 ## Session Log
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
-- `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c64533ad-d9a7-4549-a6c9-769dec39827e.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c64533ad-d9a7-4549-a6c9-769dec39827e.jsonl`
+- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b997cd88-ad10-4335-bb5e-e4a3a37b1f72.jsonl`
 
----
+## Status
 
 **Open** | Created: 2026-03-04 | Priority: P4

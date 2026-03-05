@@ -98,6 +98,11 @@ timestamps = _parse_timestamps(segment)                  # _detect_workflows
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+
+## Blocks
+
+- FEAT-558
+
 ## Labels
 
 `enhancement`, `refactor`, `workflow-analyzer`, `captured`

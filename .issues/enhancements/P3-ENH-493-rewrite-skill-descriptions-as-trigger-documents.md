@@ -120,6 +120,10 @@ _Added by `/ll:refine-issue` — Skill description audit:_
 
 **Open** | Created: 2026-02-24 | Priority: P3
 
+## Blocked By
+
+- FEAT-565
+
 ## Blocks
 
 - ENH-494

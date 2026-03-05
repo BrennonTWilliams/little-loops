@@ -97,6 +97,11 @@ for i in range(len(sorted_msgs) - 1):
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+
+## Blocks
+
+- FEAT-558
+
 ## Labels
 
 `enhancement`, `performance`, `workflow-analyzer`, `captured`

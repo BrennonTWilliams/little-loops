@@ -163,6 +163,7 @@ _None identified._
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5aa134b-94a2-43de-99e6-3c792a77ca23.jsonl`
 
 - `/ll:format-issue` - 2026-03-05T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01471175-2814-49cb-8d28-d70874526382.jsonl`
+- `/ll:ready-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/efde53d8-3a4c-4bc4-ac38-1a7c7e7cf6e3.jsonl`
 
 ---
 ## Status

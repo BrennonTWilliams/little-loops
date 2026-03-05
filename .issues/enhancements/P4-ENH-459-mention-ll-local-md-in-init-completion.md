@@ -101,3 +101,4 @@ Also consider adding `.claude/ll.local.md` to the `.gitignore` entries in Step 9
 ## Blocks
 
 - FEAT-488
+- ENH-587

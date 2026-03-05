@@ -130,6 +130,11 @@ No schema breaking change.
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+
+## Blocks
+
+- FEAT-558
+
 ## Labels
 
 `feature`, `workflow-analyzer`, `captured`

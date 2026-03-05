@@ -3,6 +3,8 @@ discovered_commit: ce1f6277bf5cf527716a37cb7d0bb8a3bc22a638
 discovered_branch: main
 discovered_date: 2026-03-04T17:00:33Z
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 75
 ---
 
 # FEAT-565: Add skill-based alignment option to `align-issues`
@@ -47,7 +49,7 @@ The command loads `skills/capture-issue/SKILL.md`, extracts the skill's purpose,
 4. Reuse or adapt existing document-based alignment scoring logic with skill content as the reference
 5. Emit alignment report in the existing format
 
-## API / Interface
+## API/Interface
 
 ```
 /ll:align-issues skill <skill-name>                   # align all active issues
@@ -64,5 +66,29 @@ The `skill` subcommand is mutually exclusive with category-based alignment (e.g.
 - [ ] Works for both individual issues and batch (all active issues)
 - [ ] Fallback to `commands/<name>.md` when `skills/<name>/SKILL.md` is absent
 
+## Impact
+
+- **Priority**: P3 - Useful quality-of-life improvement for issue readiness workflows; does not block other work
+- **Effort**: Small - Extends existing `align-issues` command with a new `skill` subcommand; reuses existing document-based alignment scoring logic
+- **Risk**: Low - Additive change with no modifications to existing alignment paths; existing behavior unchanged
+- **Breaking Change**: No
+
+## Labels
+
+`feature`, `align-issues`, `captured`
+
+## Status
+
+**Open** | Created: 2026-03-04 | Priority: P3
+
+## Blocks
+
+- ENH-493
+- ENH-494
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T17:00:33Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6acf223f-9180-496e-98d5-4870ad746dc8.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6acf223f-9180-496e-98d5-4870ad746dc8.jsonl`
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6acf223f-9180-496e-98d5-4870ad746dc8.jsonl`
+- `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`

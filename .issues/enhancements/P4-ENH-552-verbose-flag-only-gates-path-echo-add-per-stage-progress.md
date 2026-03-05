@@ -111,6 +111,15 @@ if verbose:
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+
+## Blocked By
+
+- FEAT-558
+
+## Blocks
+
+- FEAT-557 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; same priority but lower ID should land first
+
 ## Labels
 
 `enhancement`, `ux`, `workflow-analyzer`, `captured`

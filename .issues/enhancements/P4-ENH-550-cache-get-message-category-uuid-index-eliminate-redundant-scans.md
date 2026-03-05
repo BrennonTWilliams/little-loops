@@ -110,6 +110,11 @@ def _detect_workflows(...):
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
 
+
+## Blocks
+
+- FEAT-558
+
 ## Labels
 
 `enhancement`, `performance`, `workflow-analyzer`, `captured`
