@@ -285,27 +285,42 @@ def _cmd_sprint_run(
             state.current_wave = wave_num
             logger.info(f"\nProcessing wave {wave_num}/{total_waves}: {', '.join(wave_ids)}")
 
-            if len(wave) == 1:
-                # Single issue — process in-place (no worktree overhead)
+            wave_note = (
+                contention_notes[wave_num - 1]
+                if contention_notes and wave_num - 1 < len(contention_notes)
+                else None
+            )
+            is_contention_subwave = wave_note is not None
+
+            if len(wave) == 1 or is_contention_subwave:
+                # Single issue OR contention sub-wave — process in-place sequentially
+                # (contention sub-waves are displayed as "serialized steps" so must run that way)
                 from little_loops.issue_manager import process_issue_inplace
 
-                issue_result = process_issue_inplace(
-                    info=wave[0],
-                    config=config,
-                    logger=logger,
-                    dry_run=args.dry_run,
-                )
-                total_duration += issue_result.duration
-                if issue_result.success:
-                    completed.update(wave_ids)
-                    state.completed_issues.extend(wave_ids)
-                    state.timing[wave_ids[0]] = {"total": issue_result.duration}
-                    logger.success(f"Wave {wave_num}/{total_waves} completed: {wave_ids[0]}")
-                else:
+                wave_failed = False
+                for issue in wave:
+                    issue_result = process_issue_inplace(
+                        info=issue,
+                        config=config,
+                        logger=logger,
+                        dry_run=args.dry_run,
+                    )
+                    total_duration += issue_result.duration
+                    if issue_result.success:
+                        completed.add(issue.issue_id)
+                        state.completed_issues.append(issue.issue_id)
+                        state.timing[issue.issue_id] = {"total": issue_result.duration}
+                        logger.success(f"  {issue.issue_id}: completed")
+                    else:
+                        wave_failed = True
+                        completed.add(issue.issue_id)
+                        state.failed_issues[issue.issue_id] = "Issue processing failed"
+                        logger.warning(f"  {issue.issue_id}: failed")
+                if wave_failed:
                     failed_waves += 1
-                    completed.update(wave_ids)
-                    state.failed_issues[wave_ids[0]] = "Issue processing failed"
                     logger.warning(f"Wave {wave_num}/{total_waves} had failures")
+                else:
+                    logger.success(f"Wave {wave_num}/{total_waves} completed: {', '.join(wave_ids)}")
                 _save_sprint_state(state, logger)
                 if wave_num < total_waves:
                     logger.info(f"Continuing to wave {wave_num + 1}/{total_waves}...")
