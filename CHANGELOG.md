@@ -12,6 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.32.0] - 2026-03-05
+
+### Added
+
+- **FSM live output streaming** - Stream live output from prompt and shell states in real-time (feat(fsm): 9b785ae)
+
+### Fixed
+
+- **FSM JSON schema** - Embed JSON schema in prompt instead of using --json-schema flag (fix(fsm): a12a570)
+- **Executor session flag** - Replace --verbose with --no-session-persistence in claude CLI call (fix(executor): 65939d0)
+- **Code quality** - Fix lint errors and reformat codebase (fix(code-quality): 90bb731)
+
+### Changed
+
+- **Refine-status columns configurable** - Make refine-status table columns configurable via ll-config.json (improve(issues): 3df3707)
+- **ll-loop verbose polish** - Visual polish for ll-loop show --verbose output (improve(cli): a13e68d)
+
 ## [1.31.0] - 2026-03-04
 
 ### Added
@@ -36,6 +53,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Hooks worktree cleanup** - Skip worktree cleanup when session runs inside a worktree (fix(hooks): 12ea54c)
 - **FSM --no-llm flag** - Honor --no-llm flag in FSMExecutor._evaluate() (fix(fsm): 2f8ded0)
 
+[1.32.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.31.0...v1.32.0
 [1.31.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.30.0...v1.31.0
 
 ## [1.30.0] - 2026-03-04
