@@ -478,6 +478,7 @@ def _link_sessions(sessions: dict[str, list[dict[str, Any]]]) -> list[SessionLin
                             "name": f"Linked workflow {link_counter}",
                             "total_messages": len(session_a) + len(session_b),
                             "span_hours": round(span_hours, 1),
+                            "evidence": evidence,
                         },
                         confidence=min(score, 1.0),
                     )
@@ -773,7 +774,7 @@ def analyze_workflows(
     handoff_count = sum(
         1
         for link in session_links
-        if any(s.get("link_evidence") == "handoff_detected" for s in link.sessions)
+        if "handoff_detected" in link.unified_workflow.get("evidence", [])
     )
 
     handoff_analysis: dict[str, Any] = {

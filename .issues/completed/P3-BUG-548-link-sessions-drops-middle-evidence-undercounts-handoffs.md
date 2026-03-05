@@ -96,12 +96,12 @@ Change both per-session `link_evidence` values to the full `evidence` list. Upda
 
 ### Files to Modify
 - `scripts/little_loops/workflow_sequence_analyzer.py:387` — `_link_sessions`: preserve full evidence list in `SessionLink`
-- `scripts/little_loops/workflow_sequence_analyzer.py:759-763` — `analyze_workflows` `handoff_count` logic: `sum(1 for link in session_links if any(s.get("link_evidence") == "handoff_detected" for s in link.sessions))` — update to check `unified_workflow.get("evidence", [])` instead
+- `scripts/little_loops/workflow_sequence_analyzer.py:773-777` — `analyze_workflows` `handoff_count` logic: `sum(1 for link in session_links if any(s.get("link_evidence") == "handoff_detected" for s in link.sessions))` — update to check `unified_workflow.get("evidence", [])` instead
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/workflow_sequence_analyzer.py:428` — `"handoff_detected"` is appended to `evidence` list inside `_link_sessions` here
-- `scripts/little_loops/workflow_sequence_analyzer.py:762` — predicate: `any(s.get("link_evidence") == "handoff_detected" for s in link.sessions)` — this is the consumer that needs updating
-- `scripts/little_loops/workflow_sequence_analyzer.py:774` — `if len(session_links) > handoff_count:` — recommendation branch uses the count
+- `scripts/little_loops/workflow_sequence_analyzer.py:776` — predicate: `any(s.get("link_evidence") == "handoff_detected" for s in link.sessions)` — this is the consumer that needs updating
+- `scripts/little_loops/workflow_sequence_analyzer.py:788` — `if len(session_links) > handoff_count:` — recommendation branch uses the count
 
 ### Similar Patterns
 - N/A
@@ -132,12 +132,26 @@ Change both per-session `link_evidence` values to the full `evidence` list. Upda
 
 `bug`, `workflow-analyzer`, `data-correctness`, `captured`
 
+## Resolution
+
+**Status**: Fixed
+**Date**: 2026-03-04
+**Approach**: Option A — added `"evidence": evidence` to `unified_workflow` dict in `_link_sessions`, updated `handoff_count` in `analyze_workflows` to check `link.unified_workflow.get("evidence", [])` for `"handoff_detected"`.
+
+**Changes**:
+- `scripts/little_loops/workflow_sequence_analyzer.py`: Added `"evidence"` field to `unified_workflow` in `SessionLink` construction; updated `handoff_count` predicate to check `unified_workflow["evidence"]`
+- `scripts/tests/test_workflow_sequence_analyzer.py`: Added `test_three_evidence_all_preserved_in_unified_workflow` regression test
+
+**Verification**: All 77 tests pass, lint clean.
+
 ## Session Log
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:refine-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a020aaf9-77a1-4304-b1e8-283c2006ae91.jsonl` — Added exact line refs for `_link_sessions:387`, evidence append at `:428`, `handoff_count` sum at `:759-763`, predicate at `:762`; confirmed `TestLinkSessions:653` as existing test target
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f6adf0d-6067-4c75-9095-ec0406748646.jsonl`
+- `/ll:manage-issue` - 2026-03-04T00:00:00Z - Fixed and completed
 
 ---
 
-**Open** | Created: 2026-03-04 | Priority: P3
+**Completed** | Created: 2026-03-04 | Priority: P3

@@ -790,6 +790,44 @@ class TestLinkSessions:
         assert len(result) == 1
         assert result[0].unified_workflow["span_hours"] == 2.0
 
+    def test_three_evidence_all_preserved_in_unified_workflow(self) -> None:
+        """All three evidence signals are stored in unified_workflow['evidence'] (BUG-548).
+
+        When shared_branch + handoff_detected + entity_overlap are all present, the
+        middle entry (handoff_detected) must not be silently dropped.
+        """
+        # Session A: shared branch, handoff marker, and many overlapping entities
+        session_a_content = (
+            "Working on checkout.py, config.json, auth.py, utils.py, models.py. "
+            "/ll:handoff continue in next session"
+        )
+        sessions = {
+            "session-1": [
+                {
+                    "content": session_a_content,
+                    "uuid": "msg-1",
+                    "git_branch": "feat-123",
+                    "timestamp": "2026-01-15T10:00:00",
+                }
+            ],
+            "session-2": [
+                {
+                    "content": "Continue work on checkout.py, config.json, auth.py, utils.py, models.py",
+                    "uuid": "msg-2",
+                    "git_branch": "feat-123",
+                    "timestamp": "2026-01-15T12:00:00",
+                }
+            ],
+        }
+        result = _link_sessions(sessions)
+        assert len(result) == 1
+        link = result[0]
+        evidence = link.unified_workflow.get("evidence", [])
+        assert "shared_branch" in evidence
+        assert "handoff_detected" in evidence
+        assert "entity_overlap" in evidence
+        assert len(evidence) == 3
+
 
 class TestClusterByEntities:
     """Tests for _cluster_by_entities internal function."""
