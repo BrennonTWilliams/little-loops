@@ -12,6 +12,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.32.1] - 2026-03-05
+
+### Changed
+
+- **`ll-loop show` box rendering** - Fix box truncation and add diagram centering in `ll-loop show` output (ENH-589)
+- **Issue-refinement loop** - Audit and fix issue-refinement loop configuration, move to canonical `loops/` directory (ENH-590)
+- **`ll-issues` output styling** - Fix output styling consistency and colorize `ll-issues` CLI commands (ENH-591)
+- **CLI output styling reference** - Add reference documentation for CLI output styling (284a2d7)
+
 ## [1.32.0] - 2026-03-05
 
 ### Added
@@ -53,6 +62,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Hooks worktree cleanup** - Skip worktree cleanup when session runs inside a worktree (fix(hooks): 12ea54c)
 - **FSM --no-llm flag** - Honor --no-llm flag in FSMExecutor._evaluate() (fix(fsm): 2f8ded0)
 
+[1.32.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.32.0...v1.32.1
 [1.32.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.31.0...v1.32.0
 [1.31.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.30.0...v1.31.0
 
