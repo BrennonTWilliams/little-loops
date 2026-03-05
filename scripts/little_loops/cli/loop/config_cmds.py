@@ -72,7 +72,7 @@ def cmd_validate(
     import yaml
 
     from little_loops.fsm.compilers import compile_paradigm
-    from little_loops.fsm.validation import load_and_validate
+    from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
 
     try:
         path = resolve_loop_path(loop_name, loops_dir)
@@ -88,10 +88,16 @@ def cmd_validate(
         else:
             fsm = load_and_validate(path)
 
+        # Surface warnings that load_and_validate only sends to Python logging
+        all_results = validate_fsm(fsm)
+        warnings = [r for r in all_results if r.severity == ValidationSeverity.WARNING]
+
         logger.success(f"{loop_name} is valid")
         print(f"  States: {', '.join(fsm.states.keys())}")
         print(f"  Initial: {fsm.initial}")
         print(f"  Max iterations: {fsm.max_iterations}")
+        for w in warnings:
+            print(f"  ⚠ {w}")
         return 0
     except FileNotFoundError as e:
         logger.error(str(e))

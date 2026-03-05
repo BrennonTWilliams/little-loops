@@ -120,11 +120,22 @@ Option A requires a signature change to `load_and_validate`; Option B is simpler
 
 `enhancement`, `ll-loop`, `validation`, `ux`, `scan-codebase`
 
+## Resolution
+
+Implemented Option B: call `validate_fsm(fsm)` in `cmd_validate` after `load_and_validate`, filter for `WARNING`-severity results, and print each with `⚠` prefix. No signature changes to `load_and_validate`; `cmd_run` behavior is unaffected.
+
+**Files changed:**
+- `scripts/little_loops/cli/loop/config_cmds.py` — imported `validate_fsm` and `ValidationSeverity`; added warning-print loop after success line
+- `scripts/tests/test_ll_loop_commands.py` — added `test_validate_with_unreachable_state_prints_warning` to `TestCmdValidate`
+
+All 3207 tests pass.
+
 ## Session Log
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test ref to `test_ll_loop_commands.py:18` (TestCmdValidate) + noted `fixtures/fsm/loop-with-unreachable-state.yaml` fixture
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:manage-issue` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/worker-enh-535-session.jsonl`
 
 ---
 
@@ -134,4 +145,4 @@ Option A requires a signature change to `load_and_validate`; Option B is simpler
 
 ---
 
-**Open** | Created: 2026-03-03 | Priority: P3
+**Completed** | Created: 2026-03-03 | Priority: P3

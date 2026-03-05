@@ -71,6 +71,40 @@ states:
 
         assert data["initial"] not in data["states"]
 
+    def test_validate_with_unreachable_state_prints_warning(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Loop with unreachable state is valid but prints ⚠ warning to stdout."""
+        from little_loops.cli.loop.config_cmds import cmd_validate
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_file = loops_dir / "test-loop.yaml"
+        loop_file.write_text(
+            "name: test-loop\n"
+            "initial: start\n"
+            "states:\n"
+            "  start:\n"
+            "    action: test\n"
+            "    on_success: done\n"
+            "    on_failure: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+            "  orphan:\n"
+            "    action: unreachable\n"
+            "    next: done\n"
+        )
+
+        logger = Logger(use_color=False)
+        result = cmd_validate("test-loop", loops_dir, logger)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "⚠" in captured.out
+
 
 class TestCmdList:
     """Tests for list command logic."""
