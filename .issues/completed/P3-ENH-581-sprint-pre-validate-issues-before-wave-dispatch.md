@@ -92,7 +92,7 @@ This check costs a few filesystem stat calls and prevents potentially hours of w
 - `issue_lifecycle.py:558` — `close_issue()` has a similar "already in completed/" fast-path check pattern
 
 ### Tests
-- `scripts/tests/test_sprint_run.py` — add test verifying completed issues are excluded from dispatch waves
+- `scripts/tests/test_sprint.py` or `scripts/tests/test_sprint_integration.py` — add test verifying completed issues are excluded from dispatch waves (no `test_sprint_run.py` exists; use existing sprint test files)
 
 ### Documentation
 - N/A
@@ -114,7 +114,33 @@ This check costs a few filesystem stat calls and prevents potentially hours of w
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a470e022-6e78-4989-a376-3d78b8dd783e.jsonl`
 - `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37b64e69-b5e1-4c21-bd8a-b097cc3e9648.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ee9b94f-78e9-4f21-b7c3-3f05a94e1b37.jsonl`
+
+---
+## Resolution
+
+**Status**: Completed
+**Completed**: 2026-03-04
+
+### Changes Made
+
+- `scripts/little_loops/cli/sprint/run.py` — Added pre-dispatch validation block in `_cmd_sprint_run()` after the type/skip filters, before `validate_issues()`. Globs `completed/` for each issue ID; completed ones are logged and removed from `issues_to_process`. If all issues are already completed, returns 0 immediately. Updated final summary line to include a "N already completed (skipped)" note when applicable.
+- `scripts/tests/test_sprint_integration.py` — Added two tests to `TestEdgeCases`:
+  - `test_completed_issues_excluded_from_waves`: verifies that a completed issue is not dispatched while an active co-sprint issue is still executed.
+  - `test_all_completed_issues_returns_zero`: verifies that a sprint where every issue is already completed exits cleanly with return code 0.
+
+### Verification
+
+- `python -m pytest scripts/tests/test_sprint_integration.py` — 24/24 passed (2 new)
+- `ruff check scripts/little_loops/cli/sprint/run.py` — no issues
+- `python -m mypy scripts/little_loops/cli/sprint/run.py` — no issues
+
+## Session Log
+- `/ll:capture-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a470e022-6e78-4989-a376-3d78b8dd783e.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37b64e69-b5e1-4c21-bd8a-b097cc3e9648.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ee9b94f-78e9-4f21-b7c3-3f05a94e1b37.jsonl`
+- `/ll:manage-issue enh fix ENH-581` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 
 ---
 ## Status
-**Open** | Priority: P3
+**Completed** | Priority: P3

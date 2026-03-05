@@ -1547,3 +1547,173 @@ issues:
         assert call_count.get("BUG-002", 0) >= 1, (
             "BUG-002 should be executed after BUG-001 succeeds"
         )
+
+    def test_completed_issues_excluded_from_waves(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Test that issues in completed/ are skipped before wave dispatch (ENH-581).
+
+        When a sprint contains issues that have already been moved to completed/,
+        they should be silently skipped (not dispatched to a worker slot).
+        Active issues in the same sprint should still be executed normally.
+        """
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        for category in ["bugs", "completed"]:
+            (issues_dir / category).mkdir()
+
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_data = {
+            "project": {"name": "test"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                },
+                "completed_dir": "completed",
+            },
+        }
+        with open(config_dir / "ll-config.json", "w") as f:
+            json.dump(config_data, f)
+
+        # BUG-001 already completed — lives in completed/
+        (issues_dir / "completed" / "P1-BUG-001-done.md").write_text(
+            "# BUG-001: Done\n\n## Summary\nAlready completed."
+        )
+        # BUG-002 still active — lives in bugs/
+        (issues_dir / "bugs" / "P1-BUG-002-active.md").write_text(
+            "# BUG-002: Active\n\n## Summary\nNeeds fixing."
+        )
+
+        sprints_dir = tmp_path / ".sprints"
+        sprints_dir.mkdir()
+        (sprints_dir / "stale.yaml").write_text(
+            """name: stale
+issues:
+  - BUG-001
+  - BUG-002
+"""
+        )
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=sprints_dir, config=config)
+
+        executed_issues: list[str] = []
+
+        def mock_process_inplace(info: Any, **kwargs: Any) -> Any:
+            executed_issues.append(info.issue_id)
+            from little_loops.issue_manager import IssueProcessingResult
+
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            mock_process_inplace,
+        )
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="stale",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=1,
+            quiet=False,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 0
+
+        # BUG-001 (already completed) must NOT be dispatched
+        assert "BUG-001" not in executed_issues
+        # BUG-002 (active) must be executed
+        assert "BUG-002" in executed_issues
+
+    def test_all_completed_issues_returns_zero(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Test that a sprint where all issues are already completed exits cleanly (ENH-581).
+
+        When every issue in a sprint has been moved to completed/, the sprint
+        should log a message and return 0 without entering the wave dispatch loop.
+        """
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        issues_dir = tmp_path / ".issues"
+        issues_dir.mkdir()
+        for category in ["bugs", "completed"]:
+            (issues_dir / category).mkdir()
+
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_data = {
+            "project": {"name": "test"},
+            "issues": {
+                "base_dir": ".issues",
+                "categories": {
+                    "bugs": {"prefix": "BUG", "dir": "bugs", "action": "fix"},
+                },
+                "completed_dir": "completed",
+            },
+        }
+        with open(config_dir / "ll-config.json", "w") as f:
+            json.dump(config_data, f)
+
+        # Both issues already in completed/
+        (issues_dir / "completed" / "P1-BUG-001-done.md").write_text(
+            "# BUG-001: Done\n\n## Summary\nAlready completed."
+        )
+        (issues_dir / "completed" / "P2-BUG-002-done.md").write_text(
+            "# BUG-002: Done\n\n## Summary\nAlso already completed."
+        )
+
+        sprints_dir = tmp_path / ".sprints"
+        sprints_dir.mkdir()
+        (sprints_dir / "all-done.yaml").write_text(
+            """name: all-done
+issues:
+  - BUG-001
+  - BUG-002
+"""
+        )
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=sprints_dir, config=config)
+
+        executed_issues: list[str] = []
+
+        def mock_process_inplace(info: Any, **kwargs: Any) -> Any:
+            executed_issues.append(info.issue_id)
+            from little_loops.issue_manager import IssueProcessingResult
+
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            mock_process_inplace,
+        )
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="all-done",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=1,
+            quiet=False,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 0
+
+        # No issue should have been dispatched
+        assert len(executed_issues) == 0

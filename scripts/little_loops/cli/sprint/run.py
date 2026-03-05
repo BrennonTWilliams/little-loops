@@ -121,6 +121,29 @@ def _cmd_sprint_run(
         if filtered > 0:
             logger.info(f"Filtered {filtered} issue(s) by type: {', '.join(sorted(type_prefixes))}")
 
+    # Pre-validate: skip issues already moved to completed/ (ENH-581)
+    pre_completed_skipped: list[str] = []
+    if config is not None:
+        completed_dir = config.get_completed_dir()
+        if completed_dir.exists():
+            still_active: list[str] = []
+            for issue_id in issues_to_process:
+                if list(completed_dir.glob(f"*-{issue_id}-*.md")):
+                    logger.info(f"  {issue_id}: already in completed/, skipping")
+                    pre_completed_skipped.append(issue_id)
+                else:
+                    still_active.append(issue_id)
+            if pre_completed_skipped:
+                logger.info(
+                    f"Pre-validation: {len(pre_completed_skipped)} issue(s) already completed, "
+                    f"{len(still_active)} active"
+                )
+                issues_to_process = still_active
+
+    if pre_completed_skipped and not issues_to_process:
+        logger.info("All sprint issues already completed - nothing to process")
+        return 0
+
     # Validate issues exist
     valid = manager.validate_issues(issues_to_process)
     invalid = set(issues_to_process) - set(valid.keys())
@@ -386,8 +409,13 @@ def _cmd_sprint_run(
                         return exit_code
 
         wave_word = "wave" if len(waves) == 1 else "waves"
+        skip_msg = (
+            f", {len(pre_completed_skipped)} already completed (skipped)"
+            if pre_completed_skipped
+            else ""
+        )
         logger.info(
-            f"\nSprint completed: {len(completed)} issues processed ({len(waves)} {wave_word})"
+            f"\nSprint completed: {len(completed)} issues processed ({len(waves)} {wave_word}){skip_msg}"
         )
         logger.timing(f"Total execution time: {format_duration(total_duration)}")
         if failed_waves > 0:
