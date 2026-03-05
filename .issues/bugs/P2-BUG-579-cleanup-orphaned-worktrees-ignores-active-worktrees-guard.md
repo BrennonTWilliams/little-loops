@@ -1,0 +1,73 @@
+---
+discovered_date: 2026-03-04
+discovered_by: capture-issue
+---
+
+# BUG-579: `_cleanup_orphaned_worktrees()` Ignores Worker Pool's `_active_worktrees` Guard
+
+## Summary
+
+`ParallelOrchestrator._cleanup_orphaned_worktrees()` (orchestrator.py:217) removes **all** `worker-*` directories in the worktree base without consulting `WorkerPool._active_worktrees`. This means the BUG-142 fix (which added the `_active_worktrees` set to `_cleanup_worktree` in the worker pool) does **not** protect against the orchestrator's own orphan cleanup path.
+
+## Context
+
+Discovered during analysis of `ll-sprint-run-debug.txt`. The worker pool's `_cleanup_worktree()` correctly guards against deleting active worktrees, but `_cleanup_orphaned_worktrees()` in the orchestrator is a separate code path that bypasses this guard entirely:
+
+```python
+# orchestrator.py:217 — no check against _active_worktrees
+def _cleanup_orphaned_worktrees(self) -> None:
+    for item in worktree_base.iterdir():
+        if item.is_dir() and item.name.startswith("worker-"):
+            orphaned.append(item)  # ALL worker dirs, no guard
+
+    for worktree_path in orphaned:
+        self._git_lock.run(["worktree", "remove", "--force", str(worktree_path)], ...)
+```
+
+Currently this runs at the **start** of `orchestrator.run()` (before any workers start), so it is safe in the normal flow. However, the lack of guard creates a latent bug:
+
+- If a sprint creates a second orchestrator while the first is still processing (bug, restart, or race condition)
+- If `_cleanup_orphaned_worktrees` is called at an unexpected point due to refactoring
+- If two `ll-parallel` invocations run concurrently
+
+## Current Behavior
+
+`_cleanup_orphaned_worktrees()` removes ALL directories matching `worker-*` pattern with no session ID, timestamp check, or `_active_worktrees` coordination.
+
+## Root Cause
+
+- **File**: `scripts/little_loops/parallel/orchestrator.py:217`
+- **Issue**: The orchestrator doesn't have a reference to the worker pool's `_active_worktrees` set when cleanup runs. There is no cross-component coordination for worktree liveness.
+- **Risk**: Latent bug that would cause data loss if cleanup timing ever shifts.
+
+## Expected Behavior
+
+`_cleanup_orphaned_worktrees()` should only remove worktrees that are genuinely from a **previous** session (e.g., different timestamp, no corresponding running process, or confirmed stale via lockfile).
+
+## Proposed Solution
+
+Add session-based worktree naming or a per-session lock file:
+
+1. **Option A** (preferred): Add a `.ll-session-<timestamp>` marker file to each worktree on creation. `_cleanup_orphaned_worktrees()` only removes worktrees whose marker is from a different session (older than N minutes or different session ID).
+
+2. **Option B**: Pass `worker_pool._active_worktrees` reference to `_cleanup_orphaned_worktrees()` so it can skip active ones.
+
+3. **Option C**: Use `git worktree list --porcelain` to check whether a worktree is registered and recently accessed before removing it.
+
+## Similar Patterns
+
+- `worker_pool.py:601` — `_cleanup_worktree()` has `_active_worktrees` guard (BUG-142 fix), but this is only called from within the worker pool
+- `orchestrator.py:145` — calls `_cleanup_orphaned_worktrees()` at startup, before workers start
+
+## Steps to Reproduce
+
+1. Start `ll-parallel` with 4 workers
+2. While workers are running, create a second `ParallelOrchestrator` instance (or run `ll-parallel` in a second terminal)
+3. The second orchestrator's `_cleanup_orphaned_worktrees()` will destroy the first orchestrator's active worktrees
+
+## Session Log
+- `/ll:capture-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a470e022-6e78-4989-a376-3d78b8dd783e.jsonl`
+
+---
+## Status
+**Open** | Priority: P2
