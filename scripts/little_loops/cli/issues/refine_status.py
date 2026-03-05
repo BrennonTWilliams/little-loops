@@ -132,10 +132,10 @@ def _apply_cell_color(col: str, padded: str, plain: str) -> str:
     elif col == "priority":
         code = PRIORITY_COLOR.get(plain, "")
     elif col in ("norm", "fmt"):
-        if plain == "\u2713":   # ✓
-            code = "32"         # green
-        elif plain == "\u2717": # ✗
-            code = "31"         # red
+        if plain == "\u2713":  # ✓
+            code = "32"  # green
+        elif plain == "\u2717":  # ✗
+            code = "31"  # red
         else:
             code = ""
     else:
@@ -148,7 +148,7 @@ def _apply_cell_color(col: str, padded: str, plain: str) -> str:
     lstripped = padded.lstrip()
     leading = padded[: len(padded) - len(lstripped)]
     content = lstripped.rstrip()
-    trailing = lstripped[len(content):]
+    trailing = lstripped[len(content) :]
     return leading + colorize(content, code) + trailing
 
 
@@ -314,9 +314,9 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
                     raw = "\u2713" if hit else "\u2014"
                     padded = _col(raw, _CMD_WIDTH)
                     parts.append(
-                        colorize(raw, "32") + padded[len(raw):]
+                        colorize(raw, "32") + padded[len(raw) :]
                         if hit
-                        else colorize(raw, "2") + padded[len(raw):]
+                        else colorize(raw, "2") + padded[len(raw) :]
                     )
 
         for c in post_cmd:

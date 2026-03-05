@@ -317,7 +317,9 @@ def _render_card(fields: dict[str, str | None]) -> str:
     # Build colorized meta line
     colored_meta_parts: list[str] = []
     if priority:
-        colored_meta_parts.append(f"Priority: {colorize(priority, PRIORITY_COLOR.get(priority, '0'))}")
+        colored_meta_parts.append(
+            f"Priority: {colorize(priority, PRIORITY_COLOR.get(priority, '0'))}"
+        )
     if status:
         colored_status = colorize("Completed", "32") if status == "Completed" else status
         colored_meta_parts.append(f"Status: {colored_status}")

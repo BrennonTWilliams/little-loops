@@ -119,7 +119,9 @@ def print_execution_plan(fsm: FSMLoop) -> None:
             else:
                 max_action = tw - 16
                 action_display = (
-                    state.action[:max_action] + "..." if len(state.action) > max_action else state.action
+                    state.action[:max_action] + "..."
+                    if len(state.action) > max_action
+                    else state.action
                 )
                 print(f"    action: {action_display}")
         if state.evaluate:
@@ -188,7 +190,9 @@ def run_background(loop_name: str, args: argparse.Namespace, loops_dir: Path) ->
         )
 
     pid_file.write_text(str(process.pid))
-    print(f"Loop {colorize(loop_name, '1')} started in background (PID: {colorize(str(process.pid), '2')})")
+    print(
+        f"Loop {colorize(loop_name, '1')} started in background (PID: {colorize(str(process.pid), '2')})"
+    )
     print(f"  Log: {colorize(str(log_file), '2')}")
     print(f"  Status: {colorize(f'll-loop status {loop_name}', '2')}")
     print(f"  Stop:   {colorize(f'll-loop stop {loop_name}', '2')}")
@@ -237,7 +241,10 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             if is_prompt:
                 lines = action.strip().splitlines()
                 line_count = len(lines)
-                print(f" -> {colorize('[prompt]', '2')} {colorize(f'({line_count} lines)', '2')}", flush=True)
+                print(
+                    f" -> {colorize('[prompt]', '2')} {colorize(f'({line_count} lines)', '2')}",
+                    flush=True,
+                )
                 show_count = line_count if verbose else min(5, line_count)
                 for line in lines[:show_count]:
                     display = line[:max_line] + "..." if len(line) > max_line else line
@@ -292,7 +299,11 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
                 verdict_colored = colorize(verdict, "32")
             else:
                 symbol = colorize("\u2717", "38;5;208")  # orange x mark
-                verdict_colored = colorize(verdict, "38;5;208") if verdict in ("fail", "error") else colorize(verdict, "2")
+                verdict_colored = (
+                    colorize(verdict, "38;5;208")
+                    if verdict in ("fail", "error")
+                    else colorize(verdict, "2")
+                )
             # Build verdict line
             if error and verdict == "error":
                 verdict_line = f"{symbol} {verdict_colored}: {error}"
@@ -333,8 +344,6 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             state_colored = colorize(result.final_state, "32")
         else:
             state_colored = colorize(result.final_state, "38;5;208")
-        print(
-            f"Loop completed: {state_colored} ({result.iterations} iterations, {duration_str})"
-        )
+        print(f"Loop completed: {state_colored} ({result.iterations} iterations, {duration_str})")
 
     return 0 if result.terminated_by == "terminal" else 1

@@ -108,6 +108,7 @@ Examples:
     config = BRConfig(project_root)
 
     from little_loops.cli.output import configure_output
+
     configure_output(config.cli)
 
     if args.command == "next-id":

@@ -75,9 +75,7 @@ def _truncate(text: str, max_len: int) -> str:
     return text[: max_len - 1] + "\u2026"
 
 
-def _format_history_event(
-    event: dict[str, Any], verbose: bool, width: int
-) -> str | None:
+def _format_history_event(event: dict[str, Any], verbose: bool, width: int) -> str | None:
     """Format a single history event. Returns None to skip the event."""
     raw_ts = event.get("ts", "")
     try:
@@ -480,7 +478,9 @@ def _render_2d_diagram(
         if state_obj and state_obj.action and max_box_inner > 0:
             action_lines = state_obj.action.strip().splitlines()
             if verbose:
-                max_action_w = max((len(ln.rstrip()) for ln in action_lines if ln.rstrip()), default=0)
+                max_action_w = max(
+                    (len(ln.rstrip()) for ln in action_lines if ln.rstrip()), default=0
+                )
                 inner_w = max(base_w, min(max_action_w, max_box_inner))
             else:
                 first_action = next((ln.rstrip() for ln in action_lines if ln.rstrip()), "")
@@ -731,12 +731,12 @@ def _render_2d_diagram(
                     # Label can't fit left without overlapping a pipe; place right of all pipes
                     rightmost_pipe = max(down_col, up_col if has_up else down_col)
                     dstart = rightmost_pipe + 2
-                for j, ch in enumerate(dlabel):          # write label first
+                for j, ch in enumerate(dlabel):  # write label first
                     if 0 <= dstart + j < total_width:
                         row[dstart + j] = ch
-                if 0 <= down_col < total_width:          # then down pipe (never overwritten)
+                if 0 <= down_col < total_width:  # then down pipe (never overwritten)
                     row[down_col] = "\u2502"
-                if has_up and 0 <= up_col < total_width: # also draw the up pipe for continuity
+                if has_up and 0 <= up_col < total_width:  # also draw the up pipe for continuity
                     row[up_col] = "\u2502"
                 lines.append("".join(row).rstrip())
 
@@ -744,12 +744,14 @@ def _render_2d_diagram(
                 row = [" "] * total_width
                 ulabel = "/".join(up_labels)
                 ustart = up_col + 2
-                for j, ch in enumerate(ulabel):          # write label first
+                for j, ch in enumerate(ulabel):  # write label first
                     if 0 <= ustart + j < total_width:
                         row[ustart + j] = ch
-                if 0 <= up_col < total_width:            # then up pipe
+                if 0 <= up_col < total_width:  # then up pipe
                     row[up_col] = "\u2502"
-                if has_down and 0 <= down_col < total_width: # also draw the down pipe for continuity
+                if (
+                    has_down and 0 <= down_col < total_width
+                ):  # also draw the down pipe for continuity
                     row[down_col] = "\u2502"
                 lines.append("".join(row).rstrip())
 
