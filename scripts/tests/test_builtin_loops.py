@@ -60,6 +60,7 @@ class TestBuiltinLoopFiles:
         """The expected set of built-in loops exists."""
         expected = {
             "issue-readiness-cycle",
+            "issue-refinement",
             "pre-pr-checks",
             "issue-verification",
             "codebase-scan",
