@@ -12,6 +12,32 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.31.0] - 2026-03-04
+
+### Added
+
+- **FSM evaluate.source field** - FSMExecutor._evaluate() now supports evaluate.source field for dynamic source configuration (feat(fsm): 63f8fd1)
+- **FSM multiline fix auto-detect** - Auto-detect multiline fix tool as prompt in compile_goal (feat(fsm): ad2b8d9)
+- **CLI color output configurable** - CLI color output now configurable via ll-config.json (feat(cli): 2d0310c)
+- **Responsive terminal output** - Responsive terminal output using stdlib utilities (feat(cli): 6b08081)
+- **Sprint pre-validation** - `ll-sprint run` pre-validates issues are still active before wave dispatch (ENH-581)
+- **ll-loop validation warnings** - Surface validation warnings in cmd_validate output (feat(ll-loop): 3b2e206)
+- **refine-status template detection** - Detect issue formatting from template config instead of session log (feat(refine-status): 7a1398d)
+
+### Fixed
+
+- **Sprint contention sub-waves** - Route contention sub-waves through sequential in-place execution (fix(sprint): b30a3aa)
+- **Parallel orphan cleanup** - Guard orphan cleanup against concurrent session worktrees (fix(parallel): 7e86ba3)
+- **Workflow-analyzer entities_matched** - Compute entities_matched before all_entities mutation (fix(workflow-analyzer): de0d0a9)
+- **FSM prev_result capture** - Capture prev_result in next-routed state action (fix(fsm): 6d00499)
+- **Workflow-analyzer evidence list** - Preserve full evidence list in SessionLink (fix(workflow-analyzer): ccbcfce)
+- **ll-loop stuck in evaluate** - Fix ll-loop stuck in evaluate state and improve timeout output clarity (fix(fsm): a2a2e08)
+- **Parallel committed leaks** - Detect and recover committed leaks to main repo (fix(parallel): 56b62ba)
+- **Hooks worktree cleanup** - Skip worktree cleanup when session runs inside a worktree (fix(hooks): 12ea54c)
+- **FSM --no-llm flag** - Honor --no-llm flag in FSMExecutor._evaluate() (fix(fsm): 2f8ded0)
+
+[1.31.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.30.0...v1.31.0
+
 ## [1.30.0] - 2026-03-04
 
 ### Added
