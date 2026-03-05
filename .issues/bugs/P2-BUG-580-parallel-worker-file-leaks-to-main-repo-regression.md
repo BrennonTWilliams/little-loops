@@ -30,9 +30,10 @@ From `ll-sprint-run-debug.txt` analysis:
 
 ## Root Cause
 
-- **Env var**: `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` is passed to `subprocess.Popen` in `subprocess_utils.py:93`
-- **Failure mode**: The env var may not propagate to all subshells Claude spawns, or Claude may use absolute paths that bypass CWD enforcement
-- **Effect chain**: Changes in main repo → worktree has no diff → `_get_changed_files(worktree_path)` returns `[]` → `_verify_work_was_done` returns False → worker fails with "No files were changed during implementation"
+- **File**: `scripts/little_loops/subprocess_utils.py`
+- **Anchor**: `in run_claude_command()`
+- **Cause**: `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` is set in the env passed to `subprocess.Popen`, but the env var may not propagate to all subshells Claude spawns internally, or Claude may resolve absolute paths that bypass CWD enforcement. A duplicate env var set also exists in `worker_pool.py` `_detect_worktree_model_via_api()`.
+- **Effect chain**: Changes land in main repo → worktree has no diff → `_get_changed_files(worktree_path)` returns `[]` → `_verify_work_was_done()` returns False → worker fails with "No files were changed during implementation"
 - **Secondary effect**: Leaked commits and unstaged changes in main repo need manual cleanup after sprint
 
 ## Expected Behavior
@@ -64,8 +65,54 @@ All file writes and git operations performed by a parallel worker's Claude sessi
 - Unstaged/staged modifications in main repo after sprint
 - `_verify_work_was_done` fails → workers fall to sequential retry
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/subprocess_utils.py` — `run_claude_command()`: primary env var set location; investigate if additional CWD enforcement is needed
+- `scripts/little_loops/parallel/worker_pool.py` — `_run_claude_command()`: wrapper that calls `_run_claude_base`; investigate `--project-dir` flag support
+- `scripts/little_loops/parallel/worker_pool.py` — `_detect_main_repo_leaks()`: currently detects unstaged leaks only; extend to detect committed leaks (compare `git log` against worktree branch)
+- `scripts/little_loops/parallel/worker_pool.py` — `_setup_worktree()`: add post-setup validation step
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/issue_manager.py` — wraps `run_claude_command` from subprocess_utils; any fix must be compatible
+- `scripts/little_loops/parallel/worker_pool.py` — primary caller of `run_claude_command` for parallel workers
+
+### Similar Patterns
+- `scripts/little_loops/parallel/worker_pool.py:574` — duplicate env var set in `_detect_worktree_model_via_api()`: keep in sync
+
+### Tests
+- `scripts/tests/test_worker_pool.py` — add test for commit-leak detection in `_detect_main_repo_leaks()`
+- `scripts/tests/test_subprocess_utils.py` — verify `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR` is always set
+- `scripts/tests/test_subprocess_mocks.py` — may need mock updates for new validation behavior
+
+### Documentation
+- N/A — internal infrastructure change
+
+### Configuration
+- N/A — no config file changes
+
+## Implementation Steps
+
+1. Investigate if Claude CLI supports `--project-dir <path>` flag; if so, pass it from `_run_claude_command()` in addition to `cwd`
+2. Extend `_detect_main_repo_leaks()` to detect committed leaks: compare `git log --oneline main` before and after worker execution
+3. Add post-worker main-repo validation in the worker execution loop (Step 8 area in `worker_pool.py`) — log warning if unexpected commits appear on main
+4. Optionally add a write-lock or advisory lock on the main repo index during parallel runs to detect unintended writes early
+5. Add regression test reproducing the leak scenario (mock Claude subprocess that writes to main repo path)
+
+## Impact
+
+- **Priority**: P2 — Regression of fixed bug BUG-007; corrupts main repo state during parallel sprints, requiring manual cleanup; blocks reliable sprint automation
+- **Effort**: Medium — Root cause is unclear (env var vs absolute path vs Claude CLI behavior); investigation needed before fix; `_detect_main_repo_leaks()` extension is well-bounded
+- **Risk**: Medium — Changes touch core parallel execution path; risk of breaking worktree isolation in the other direction; needs careful testing
+- **Breaking Change**: No
+
+## Labels
+
+`bug`, `parallel`, `worktree`, `regression`
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a470e022-6e78-4989-a376-3d78b8dd783e.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7c88523-a3c9-4dde-9eb7-a055993ac4ef.jsonl`
 
 ---
 ## Status
