@@ -44,6 +44,11 @@ Currently this runs at the **start** of `orchestrator.run()` (before any workers
 
 `_cleanup_orphaned_worktrees()` should only remove worktrees that are genuinely from a **previous** session (e.g., different timestamp, no corresponding running process, or confirmed stale via lockfile).
 
+## Acceptance Criteria
+
+- [ ] A second `ll-parallel` invocation running concurrently does **not** remove worktrees owned by the first (active session's worktrees are preserved)
+- [ ] Worktrees from a previous interrupted session are still removed by `_cleanup_orphaned_worktrees()` (no regression in orphan cleanup behavior)
+
 ## Proposed Solution
 
 Add session-based worktree naming or a per-session lock file:
@@ -53,6 +58,13 @@ Add session-based worktree naming or a per-session lock file:
 2. **Option B**: Pass `worker_pool._active_worktrees` reference to `_cleanup_orphaned_worktrees()` so it can skip active ones.
 
 3. **Option C**: Use `git worktree list --porcelain` to check whether a worktree is registered and recently accessed before removing it.
+
+## Implementation Steps
+
+1. Write session marker file (`.ll-session-<session_id>`) into each worktree directory on creation in `worker_pool.py:_create_worktree()`
+2. Modify `_cleanup_orphaned_worktrees()` in `orchestrator.py` to read the marker file from each `worker-*` directory and skip those whose session ID matches the current session
+3. Add/update test in `scripts/tests/test_parallel_types.py` covering the concurrent-orchestrator scenario (two orchestrators; first's worktrees survive second's cleanup)
+4. Run existing parallel tests to confirm no regression in orphan cleanup for worktrees without a valid marker
 
 ## Similar Patterns
 
@@ -65,8 +77,30 @@ Add session-based worktree naming or a per-session lock file:
 2. While workers are running, create a second `ParallelOrchestrator` instance (or run `ll-parallel` in a second terminal)
 3. The second orchestrator's `_cleanup_orphaned_worktrees()` will destroy the first orchestrator's active worktrees
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/parallel/orchestrator.py` — `_cleanup_orphaned_worktrees()` at line 217 (add session marker check)
+- `scripts/little_loops/parallel/worker_pool.py` — `_create_worktree()` or worktree setup path (write `.ll-session-<id>` marker)
+
+### Dependent Files (Callers/Importers)
+- `orchestrator.py:145` — calls `_cleanup_orphaned_worktrees()` at startup; no call-site changes needed
+
+### Similar Patterns
+- `worker_pool.py:601` — `_cleanup_worktree()` BUG-142 guard (reference implementation for active-worktree protection)
+
+### Tests
+- `scripts/tests/test_parallel_types.py` — add concurrent-orchestrator test case
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a470e022-6e78-4989-a376-3d78b8dd783e.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7c88523-a3c9-4dde-9eb7-a055993ac4ef.jsonl`
 
 ---
 ## Status
