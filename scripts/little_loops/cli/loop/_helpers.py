@@ -254,7 +254,9 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
                 seconds = duration_sec % 60
                 duration_str = f"{minutes}m {seconds:.0f}s"
             parts = [f"       ({duration_str})"]
-            if exit_code != 0:
+            if exit_code == 124:
+                parts.append("timed out")
+            elif exit_code != 0:
                 parts.append(f"exit: {exit_code}")
             print("  ".join(parts), flush=True)
             if output_preview:
@@ -289,6 +291,10 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             else:
                 verdict_line = f"{symbol} {verdict}"
             print(f"       {verdict_line}", flush=True)
+            # Show raw_preview for error verdicts to aid diagnosis
+            raw_preview = event.get("raw_preview", "")
+            if raw_preview and verdict == "error":
+                print(f"         raw: {raw_preview[:200]}", flush=True)
             # Show reason on a second line if present (and not already shown as error)
             if reason and not (error and verdict == "error"):
                 reason_display = reason[:300] + "..." if len(reason) > 300 else reason

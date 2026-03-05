@@ -9,7 +9,7 @@ description: |
 initial: evaluate
 states:
   evaluate:
-    action: "ll-issues refine-status"
+    action: "ll-issues refine-status --no-key"
     action_type: shell
     evaluate:
       type: llm_structured
@@ -32,6 +32,7 @@ states:
     on_error: fix
   fix:
     action_type: prompt
+    timeout: 1200
     action: |
       Run `ll-issues refine-status` to see the current refinement state of all
       active issues. Thresholds: readiness=85, outcome=70.

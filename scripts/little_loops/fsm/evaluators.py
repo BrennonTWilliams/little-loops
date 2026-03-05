@@ -461,8 +461,19 @@ def evaluate_llm_structured(
     # Parse the CLI JSON envelope and extract structured result.
     # The envelope format is {"result": "<json-string>", "is_error": false, ...}.
     # Some CLI versions set is_error=true with exit 0, or return result as a dict.
+    # Some CLI versions (with --json-schema) return the structured object directly
+    # at the top level without a "result" wrapper.
+    # If stdout is JSONL (multiple JSON objects), use the last non-empty line.
     try:
-        envelope = json.loads(proc.stdout)
+        stdout = proc.stdout.strip()
+        try:
+            envelope = json.loads(stdout)
+        except json.JSONDecodeError:
+            # Try JSONL: take the last non-empty line
+            lines = [line for line in stdout.split("\n") if line.strip()]
+            if not lines:
+                raise
+            envelope = json.loads(lines[-1])
 
         # Check is_error flag (some CLI versions exit 0 but report error in envelope)
         if envelope.get("is_error", False):
@@ -479,14 +490,19 @@ def evaluate_llm_structured(
         elif raw_result:
             llm_result = json.loads(raw_result)
         else:
-            raw_preview = proc.stdout[:300]
-            return EvaluationResult(
-                verdict="error",
-                details={
-                    "error": "Empty result field in Claude CLI response",
-                    "raw_preview": raw_preview,
-                },
-            )
+            # Fallback: some CLI versions (with --json-schema) return the structured
+            # JSON directly at the top level without a "result" wrapper.
+            if "verdict" in envelope:
+                llm_result = envelope
+            else:
+                raw_preview = proc.stdout[:300]
+                return EvaluationResult(
+                    verdict="error",
+                    details={
+                        "error": "Empty result field in Claude CLI response",
+                        "raw_preview": raw_preview,
+                    },
+                )
     except (json.JSONDecodeError, TypeError, ValueError) as e:
         raw_preview = proc.stdout[:300] if proc.stdout else "(empty)"
         return EvaluationResult(

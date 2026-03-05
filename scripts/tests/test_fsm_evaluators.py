@@ -760,6 +760,39 @@ class TestLLMStructuredEvaluator:
         schema_idx = call_args.index("--json-schema")
         assert json.loads(call_args[schema_idx + 1]) == DEFAULT_LLM_SCHEMA
 
+    def test_envelope_as_direct_result(self, mock_cli) -> None:
+        """Envelope itself is the structured result when result field is absent."""
+        mock_run, mock_result = mock_cli
+        # Some CLI versions return JSON directly without a "result" wrapper
+        mock_result.stdout = json.dumps(
+            {"verdict": "success", "confidence": 0.9, "reason": "All checks passed"}
+        )
+
+        result = evaluate_llm_structured("test output")
+
+        assert result.verdict == "success"
+        assert result.details["confidence"] == 0.9
+        assert result.details["reason"] == "All checks passed"
+
+    def test_jsonl_output_uses_last_line(self, mock_cli) -> None:
+        """JSONL output (multiple JSON lines) uses the last non-empty line."""
+        mock_run, mock_result = mock_cli
+        # Simulate JSONL: event lines followed by final result line
+        event_line = json.dumps({"type": "progress", "text": "thinking..."})
+        final_line = json.dumps(
+            {
+                "result": json.dumps(
+                    {"verdict": "failure", "confidence": 0.8, "reason": "Tests failed"}
+                )
+            }
+        )
+        mock_result.stdout = f"{event_line}\n{final_line}\n"
+
+        result = evaluate_llm_structured("output")
+
+        assert result.verdict == "failure"
+        assert result.details["confidence"] == 0.8
+
 
 class TestEvaluateDispatcherLLM:
     """Tests for evaluate() dispatcher with llm_structured type."""

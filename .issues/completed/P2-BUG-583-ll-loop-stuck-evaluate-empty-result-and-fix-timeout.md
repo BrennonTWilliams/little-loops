@@ -2,9 +2,11 @@
 id: BUG-583
 type: BUG
 priority: P2
-status: open
+status: resolved
 discovered_date: 2026-03-05
 discovered_by: capture-issue
+confidence_score: 90
+outcome_confidence: 79
 ---
 
 # BUG-583: ll-loop Stuck — evaluate "Empty result field" + fix State Timeout
@@ -81,9 +83,9 @@ Three output clarity gaps compound the debugging difficulty:
 - Exit code 124 is the standard `timeout` exit code but is printed as `exit: 124` with no human-readable label.
 
 ### Gap 5: Repeated legend
-- **File**: `scripts/little_loops/cli/issues/refine_status.py` (outputs legend unconditionally)
+- **File**: `scripts/little_loops/cli/issues/refine_status.py` (outputs legend unless `--no-key` flag is passed)
 - **Caller**: `_helpers.py` `display_progress` action_complete handler prints all `output_preview` lines
-- Every `evaluate` iteration reprints the full legend (9 lines). No mechanism to suppress after first print.
+- Every `evaluate` iteration reprints the full legend (9 lines). The `--no-key` flag exists and suppresses the legend, but the loop YAML doesn't pass it.
 
 ## Proposed Solution
 
@@ -120,8 +122,11 @@ elif exit_code != 0:
 ```
 
 ### Fix Gap 5 — suppress repeated legend
-Option A: Pass `--no-legend` flag to `ll-issues refine-status` if supported (add the flag to `refine_status.py`).
-Option B: In `display_progress`, track whether the legend has been printed and strip it from subsequent iterations using a state flag in the closure.
+Pass `--no-key` flag to `ll-issues refine-status` in `.loops/issue-refinement.yaml` (the flag already exists in `ll-issues refine-status`):
+```yaml
+action: "ll-issues refine-status --no-key"
+```
+Alternatively: In `display_progress`, track whether the legend has been printed and strip it from subsequent iterations using a state flag in the closure.
 
 ## Implementation Steps
 
@@ -130,7 +135,7 @@ Option B: In `display_progress`, track whether the legend has been printed and s
 3. Add `timeout: 1200` to `fix` state in `.loops/issue-refinement.yaml`
 4. Show `raw_preview` in `_helpers.py` evaluate error display
 5. Translate exit code 124 to "timed out" in `_helpers.py` action_complete display
-6. Add `--no-legend` flag to `ll-issues refine-status` and pass it from the loop yaml (or implement closure-based suppression in `display_progress`)
+6. Update `.loops/issue-refinement.yaml` evaluate action to `ll-issues refine-status --no-key` (the flag already exists)
 7. Verify loop makes progress end-to-end with `ll-loop run issue-refinement --verbose`
 
 ## Integration Map
@@ -139,7 +144,7 @@ Option B: In `display_progress`, track whether the legend has been printed and s
 - `scripts/little_loops/fsm/evaluators.py` — `evaluate_llm_structured` envelope parsing
 - `scripts/little_loops/cli/loop/_helpers.py` — `display_progress` action_complete + evaluate handlers
 - `.loops/issue-refinement.yaml` — add `timeout: 1200` to fix state
-- `scripts/little_loops/cli/issues/refine_status.py` — add `--no-legend` flag (optional)
+- `.loops/issue-refinement.yaml` evaluate action — pass `--no-key` to suppress legend (flag already supported)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py` — applies `state.timeout or 120` default; calls `evaluate_llm_structured`
@@ -171,11 +176,32 @@ Option B: In `display_progress`, track whether the legend has been printed and s
 
 `bug`, `ll-loop`, `fsm`
 
+## Resolution
+
+**Status**: Resolved
+**Date**: 2026-03-04
+**Implemented by**: `/ll:manage-issue`
+
+### Changes Made
+
+1. **`scripts/little_loops/fsm/evaluators.py`** — `evaluate_llm_structured`: Added fallback to use envelope itself as structured result when `result` field is absent and envelope has a `verdict` key. Added JSONL support (try last non-empty line when full stdout fails to parse).
+2. **`.loops/issue-refinement.yaml`** — Added `timeout: 1200` (20min) to `fix` state; changed `evaluate` action to `ll-issues refine-status --no-key`.
+3. **`scripts/little_loops/cli/loop/_helpers.py`** — Exit code 124 now displays as `timed out`; `raw_preview` shown below evaluate error messages.
+4. **`scripts/tests/test_fsm_evaluators.py`** — Added regression tests for envelope-as-direct-result and JSONL output cases.
+5. **`scripts/tests/test_ll_loop_display.py`** — Added tests for exit 124 display and raw_preview on evaluate errors.
+
+### Verification
+
+All 3236 tests pass. Lint clean.
+
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-05T03:36:22Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 - `/ll:format-issue` - 2026-03-05T03:50:49Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1edc06fa-5b2e-4f5c-bf9e-95af499acdcc.jsonl`
+- `/ll:confidence-check` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d1b61e9b-5498-4fe4-9f8c-9e3d2dd5ded4.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e86c0a4-911d-4fdf-98b9-331634d2ea79.jsonl`
+- `/ll:manage-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-05 | Priority: P2
+**Resolved** | Created: 2026-03-05 | Priority: P2

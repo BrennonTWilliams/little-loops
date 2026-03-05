@@ -2,14 +2,17 @@
 
 from __future__ import annotations
 
+import argparse
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 from unittest.mock import patch
 
 import pytest
 
+from little_loops.cli.loop._helpers import run_foreground
 from little_loops.cli.loop.info import _render_fsm_diagram
+from little_loops.fsm.executor import ExecutionResult
 from little_loops.fsm.schema import (
     EvaluateConfig,
     FSMLoop,
@@ -19,6 +22,26 @@ from little_loops.fsm.schema import (
 
 if TYPE_CHECKING:
     pass
+
+
+class MockExecutor:
+    """Mock executor that emits a fixed sequence of events then returns a result."""
+
+    def __init__(self, events: list[dict[str, Any]]) -> None:
+        self._events = events
+        self._on_event: Any = None
+
+    def run(self) -> ExecutionResult:
+        for event in self._events:
+            if self._on_event:
+                self._on_event(event)
+        return ExecutionResult(
+            final_state="done",
+            iterations=1,
+            terminated_by="terminal",
+            duration_ms=100,
+            captured={},
+        )
 
 
 def make_test_state(
@@ -762,3 +785,75 @@ class TestRenderFsmDiagram:
         pos_second = name_line.index("second")
         pos_third = name_line.index("third")
         assert pos_first < pos_second < pos_third
+
+
+class TestDisplayProgressEvents:
+    """Tests for display_progress event formatting in run_foreground."""
+
+    def _make_args(self, quiet: bool = False, verbose: bool = False) -> argparse.Namespace:
+        return argparse.Namespace(quiet=quiet, verbose=verbose)
+
+    def _make_fsm(self) -> FSMLoop:
+        return make_test_fsm()
+
+    def test_action_complete_exit_124_shown_as_timed_out(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Exit code 124 is displayed as 'timed out' not 'exit: 124'."""
+        events = [
+            {"event": "action_complete", "duration_ms": 120000, "exit_code": 124},
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args())
+        captured = capsys.readouterr()
+        assert "timed out" in captured.out
+        assert "exit: 124" not in captured.out
+
+    def test_action_complete_nonzero_exit_shown_as_exit_code(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Non-124 non-zero exit codes are displayed as 'exit: N'."""
+        events = [
+            {"event": "action_complete", "duration_ms": 1000, "exit_code": 1},
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args())
+        captured = capsys.readouterr()
+        assert "exit: 1" in captured.out
+        assert "timed out" not in captured.out
+
+    def test_evaluate_error_shows_raw_preview(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """raw_preview is shown below error verdict line."""
+        events = [
+            {
+                "event": "evaluate",
+                "verdict": "error",
+                "error": "Empty result field in Claude CLI response",
+                "raw_preview": '{"is_error": false, "result": ""}',
+            },
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args())
+        captured = capsys.readouterr()
+        assert "raw:" in captured.out
+        assert '{"is_error": false' in captured.out
+
+    def test_evaluate_success_no_raw_preview(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """raw_preview is not shown for successful verdicts."""
+        events = [
+            {
+                "event": "evaluate",
+                "verdict": "success",
+                "confidence": 0.9,
+                "raw_preview": "should not appear",
+            },
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args())
+        captured = capsys.readouterr()
+        assert "should not appear" not in captured.out
+        assert "raw:" not in captured.out
