@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-04
 discovered_by: capture-issue
+confidence_score: 98
+outcome_confidence: 68
 ---
 
 # BUG-578: `session-cleanup.sh` Stop Hook Destroys Active Parallel Worktrees
@@ -26,8 +28,8 @@ BUG-142 added `_active_worktrees` guard to `worker_pool._cleanup_worktree()`, bu
 ```bash
 if [ -d "$WORKTREE_BASE" ] && command -v git >/dev/null 2>&1; then
     WORKTREE_PATTERN=$(basename "$WORKTREE_BASE")
-    git worktree list 2>/dev/null | grep "$WORKTREE_PATTERN" | awk '{print $1}' | while read -r w; do
-        git worktree remove --force "$w" 2>/dev/null || true
+    git worktree list 2>/dev/null | grep "$WORKTREE_PATTERN" 2>/dev/null | awk '{print $1}' | while read -r w; do
+        [ -n "$w" ] && git worktree remove --force "$w" 2>/dev/null || true
     done || true
 fi
 ```
@@ -66,7 +68,7 @@ Alternatively: the hook should only remove worktrees with a specific session mar
 ## Similar Patterns
 
 - `BUG-142` (completed): added `_active_worktrees` Python guard — but that doesn't protect against bash-level cleanup
-- `worker_pool.py:601` — `_cleanup_worktree` skips if `worktree_path in self._active_worktrees`
+- `worker_pool.py:612` — `_cleanup_worktree` skips if `worktree_path in self._active_worktrees`
 
 ## Steps to Reproduce
 
@@ -121,7 +123,19 @@ Workers fail mid-execution with missing worktree errors. The parallel run falls 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a470e022-6e78-4989-a376-3d78b8dd783e.jsonl`
 - `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7a2ad1fa-f48d-4711-8455-c6f62218b4bc.jsonl`
+- `/ll:confidence-check` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8e35d8b7-568c-4518-868e-3fe343f4568c.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ee9b94f-78e9-4f21-b7c3-3f05a94e1b37.jsonl`
+
+---
+## Resolution
+
+**Fixed** | 2026-03-04
+
+Added a `git rev-parse` guard to `hooks/scripts/session-cleanup.sh` inside the worktree removal block. Before removing any worktrees, the script now detects whether the current session is itself running inside a worktree by comparing `--git-dir` and `--git-common-dir`. When they differ (i.e., we're in a worktree), it returns early and skips all worktree removal — preserving sibling parallel workers' worktrees. Main-repo sessions (where `git-dir == git-common-dir`) proceed with cleanup unchanged.
+
+**Files Changed**:
+- `hooks/scripts/session-cleanup.sh` — added 5-line guard before the `git worktree remove` loop
 
 ---
 ## Status
-**Open** | Priority: P2
+**Completed** | Priority: P2

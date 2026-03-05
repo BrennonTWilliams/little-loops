@@ -25,6 +25,15 @@ cleanup() {
 
     # Clean up git worktrees if present
     if [ -d "$WORKTREE_BASE" ] && command -v git >/dev/null 2>&1; then
+        # Skip worktree cleanup if this session is running inside a worktree.
+        # In a worktree: git-dir != git-common-dir. Removing all worktrees from
+        # inside a worktree would destroy sibling parallel workers still in progress.
+        GIT_DIR=$(git rev-parse --git-dir 2>/dev/null || echo "")
+        GIT_COMMON=$(git rev-parse --git-common-dir 2>/dev/null || echo "")
+        if [ -n "$GIT_DIR" ] && [ "$GIT_DIR" != "$GIT_COMMON" ]; then
+            return 0
+        fi
+
         # Get list of worktrees, filter for worktree base, remove each
         # All errors are suppressed and ignored
         WORKTREE_PATTERN=$(basename "$WORKTREE_BASE")
