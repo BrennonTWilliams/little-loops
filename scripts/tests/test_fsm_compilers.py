@@ -200,6 +200,39 @@ class TestGoalCompiler:
         errors = validate_fsm(fsm)
         assert not any(e.severity.value == "error" for e in errors)
 
+    def test_multiline_fix_tool_infers_prompt_action_type(self) -> None:
+        """Multiline fix tool string produces action_type='prompt' on fix state."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Issues refined",
+            "tools": [
+                "ll-issues list",
+                "Refine all open issues:\n- Check each issue\n- Update status\n- Close stale ones",
+            ],
+        }
+        fsm = compile_goal(spec)
+        assert fsm.states["fix"].action_type == "prompt"
+
+    def test_slash_command_fix_tool_preserves_none_action_type(self) -> None:
+        """Single-line slash command fix tool leaves action_type as None."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "No bugs",
+            "tools": ["/ll:check-code types", "/ll:manage-issue bug fix"],
+        }
+        fsm = compile_goal(spec)
+        assert fsm.states["fix"].action_type is None
+
+    def test_shell_command_fix_tool_preserves_none_action_type(self) -> None:
+        """Single-line shell command fix tool leaves action_type as None."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Lint clean",
+            "tools": ["ruff check scripts/", "ruff check --fix scripts/"],
+        }
+        fsm = compile_goal(spec)
+        assert fsm.states["fix"].action_type is None
+
 
 class TestParseToolEntry:
     """Tests for _parse_tool_entry helper."""

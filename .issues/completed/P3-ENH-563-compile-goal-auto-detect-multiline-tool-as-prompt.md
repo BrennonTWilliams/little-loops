@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-03-04
 discovered_by: capture-issue
-confidence_score: ~
-outcome_confidence: ~
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # ENH-563: `compile_goal` silently runs multiline tool text via bash instead of Claude prompt
@@ -13,7 +13,7 @@ When a tool in the `goal` paradigm `tools:` list is multi-line text (contains `\
 
 ## Current Behavior
 
-`compile_goal` in `compilers.py:174-175` assigns `fix_tool = tools[1]`. Since the multiline text doesn't start with `/`, `executor.py:519` (`is_slash_command = action.startswith("/")`) treats it as a shell command and runs it via `bash -c`. Bash fails immediately. The `fix` state has `next="evaluate"` (unconditional), so the error is silently swallowed and the loop cycles forever.
+`compile_goal` in `compilers.py:202-203` assigns `fix_entry = tools[1]` and then `fix_action, fix_type = _parse_tool_entry(fix_entry)`. For plain string entries, `_parse_tool_entry` always returns `action_type=None` regardless of content — including multiline strings. Since `action_type` is `None`, `executor.py:519-522` falls back to `is_slash_command = action.startswith("/")` (else branch at line 522), which is `False` for multiline text. The action is run via `bash -c`. Bash fails immediately. The `fix` state has `next="evaluate"` (unconditional), so the error is silently swallowed and the loop cycles forever.
 
 ## Expected Behavior
 
@@ -60,26 +60,30 @@ if fix_action_type == "prompt":
 
 ### Files to Modify
 
-- `scripts/little_loops/fsm/compilers.py:174-195` — add `_infer_action_type()` helper and pass result into `StateConfig` for the fix state:
+- `scripts/little_loops/fsm/compilers.py:~160,201-223` — add `_infer_action_type()` helper between `_parse_tool_entry` (134-158) and `compile_goal` (161+), then apply result after the `_parse_tool_entry` call for the fix tool in `compile_goal`:
   ```python
   def _infer_action_type(tool: str) -> str | None:
       if "\n" in tool:
           return "prompt"
       return None
 
-  fix_action_type = _infer_action_type(fix_tool)
+  # in compile_goal, after fix_action, fix_type = _parse_tool_entry(fix_entry):
+  if fix_type is None:
+      fix_type = _infer_action_type(fix_action)
+      if fix_type == "prompt":
+          logger.warning("compile_goal: multiline fix tool detected, using action_type='prompt'")
   "fix": StateConfig(
-      action=fix_tool,
-      action_type=fix_action_type,
+      action=fix_action,
+      action_type=fix_type,
       next="evaluate",
   )
   ```
 
 ### Dependent Files (Reference Only)
 
-- `scripts/little_loops/fsm/executor.py:515-525` — `_run_action()` / `is_slash_command` dispatch — no change needed; `action_type="prompt"` is already handled
-- `scripts/little_loops/fsm/executor.py:576-592` — `_evaluate()` default evaluator selection — **side effect**: setting `action_type="prompt"` here will also cause the fix state to use LLM evaluation (via `evaluate_llm_structured`) instead of exit-code evaluation; this is the correct and desired behavior
-- `scripts/little_loops/fsm/schema.py:191` — `action_type: Literal["prompt", "slash_command", "shell"] | None = None` — reference for valid values
+- `scripts/little_loops/fsm/executor.py:515-529` — `_run_action()` / `is_slash_command` dispatch — no change needed; `action_type="prompt"` is already handled (lines 519-522 check `action_type` first, then fall back to `action.startswith("/")`)
+- `scripts/little_loops/fsm/executor.py:581-598` — `_evaluate()` default evaluator selection — **side effect**: setting `action_type="prompt"` here will also cause the fix state to use LLM evaluation (via `evaluate_llm_structured`) instead of exit-code evaluation; this is the correct and desired behavior
+- `scripts/little_loops/fsm/schema.py:192` — `action_type: Literal["prompt", "slash_command", "shell"] | None = None` — reference for valid values
 - `scripts/little_loops/fsm/validation.py:16-26` — logger pattern to follow: `import logging; logger = logging.getLogger(__name__)`
 - `scripts/tests/test_fsm_compilers.py` — add new test cases; assertion style: `fsm.states["fix"].action_type == "prompt"` using inline spec dicts, no fixtures
 
@@ -102,8 +106,8 @@ if fix_action_type == "prompt":
 ## Implementation Steps
 
 1. Add `import logging` and `logger = logging.getLogger(__name__)` at the top of `compilers.py` (currently has no logger; follow `validation.py:16-26` pattern)
-2. Add `_infer_action_type()` helper in `compilers.py` above `compile_goal` (around line 134)
-3. Wire result into fix `StateConfig` with `logger.warning(...)` in `compile_goal` (around lines 173-195)
+2. Add `_infer_action_type()` helper in `compilers.py` between `_parse_tool_entry` (ends ~158) and `compile_goal` (starts ~161), around line 160
+3. In `compile_goal` (~lines 201-223), after `fix_action, fix_type = _parse_tool_entry(fix_entry)`, apply `_infer_action_type` when `fix_type is None` and wire into fix `StateConfig` with `logger.warning(...)`
 4. Add test cases in `scripts/tests/test_fsm_compilers.py` inside `TestGoalCompiler`:
    - Multiline fix tool → `fsm.states["fix"].action_type == "prompt"`
    - Single-line `/ll:cmd` fix tool → `fsm.states["fix"].action_type is None`
@@ -140,11 +144,15 @@ if fix_action_type == "prompt":
 
 ## Blocked By
 
-- BUG-530
+- ~~BUG-530~~ (completed)
 
 ## Status
 
-Open
+Completed
+
+## Resolution
+
+Implemented `_infer_action_type()` helper in `compilers.py` that detects multiline fix tools and sets `action_type="prompt"`. Added `import logging` and `logger = logging.getLogger(__name__)`. Wired into `compile_goal` after `_parse_tool_entry` for the fix tool when `fix_type is None`. Added 3 new test cases in `TestGoalCompiler` covering multiline→prompt, slash-command→None, and shell-command→None.
 
 ---
 
@@ -164,3 +172,6 @@ Open
 - `/ll:verify-issues` - 2026-03-04 - VALID; all core claims confirmed against codebase
 - `/ll:refine-issue` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/037c8035-cf2b-4bea-8dab-6337898b38c5.jsonl`
 - `/ll:map-dependencies` - 2026-03-04 - validated existing `Blocked By: BUG-530`; added missing backlink `Blocks: ENH-563` to BUG-530
+- `/ll:confidence-check` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4fe1bb50-6ffc-4098-85cf-90c128e2c1bd.jsonl`
+- `/ll:ready-issue` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3f426a7-b4b0-4650-ac6e-d2f8947b185c.jsonl`
+- `/ll:manage-issue enh fix ENH-563` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`

@@ -22,8 +22,11 @@ Example usage:
 
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Literal
+
+logger = logging.getLogger(__name__)
 
 from little_loops.fsm.schema import (
     EvaluateConfig,
@@ -158,6 +161,13 @@ def _parse_tool_entry(
     return entry["tool"], action_type
 
 
+def _infer_action_type(tool: str) -> str | None:
+    """Infer action_type from tool string. Multiline text → 'prompt'."""
+    if "\n" in tool:
+        return "prompt"
+    return None
+
+
 def compile_goal(spec: dict[str, Any]) -> FSMLoop:
     """Compile goal paradigm to FSM.
 
@@ -201,6 +211,10 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
     check_action, check_type = _parse_tool_entry(tools[0])
     fix_entry = tools[1] if len(tools) > 1 else tools[0]
     fix_action, fix_type = _parse_tool_entry(fix_entry)
+    if fix_type is None:
+        fix_type = _infer_action_type(fix_action)  # type: ignore[assignment]
+        if fix_type == "prompt":
+            logger.warning("compile_goal: multiline fix tool detected, using action_type='prompt'")
 
     name = spec.get("name", f"goal-{_slugify(goal)}")
 
