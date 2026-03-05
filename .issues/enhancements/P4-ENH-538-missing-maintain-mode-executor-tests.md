@@ -14,16 +14,24 @@ discovered_by: scan-codebase
 ## Location
 
 - **File**: `scripts/little_loops/fsm/executor.py`
-- **Line(s)**: 380–393 (at scan commit: 47c81c8)
+- **Line(s)**: 385–400 (at scan commit: 47c81c8)
 - **Anchor**: `in method FSMExecutor.run()`, terminal-state maintain branch
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/fsm/executor.py#L380-L393)
 - **Code**:
 ```python
 if state_config.terminal:
+    # Handle maintain mode - restart loop instead of terminating
     if self.fsm.maintain:
         self.iteration += 1
         maintain_target = state_config.on_maintain or self.fsm.initial
-        self._emit("route", {"from": self.current_state, "to": maintain_target, "reason": "maintain"})
+        self._emit(
+            "route",
+            {
+                "from": self.current_state,
+                "to": maintain_target,
+                "reason": "maintain",
+            },
+        )
         self.current_state = maintain_target
         continue
     return self._finish("terminal")
@@ -62,7 +70,7 @@ def test_maintain_route_event_emitted(self, mock_runner):
 ## Integration Map
 
 ### Files to Modify
-- `scripts/tests/test_fsm_executor.py` — add `test_maintain_route_event_emitted` to `TestMaintainMode` (line 840)
+- `scripts/tests/test_fsm_executor.py` — add `test_maintain_route_event_emitted` to `TestMaintainMode` (line 934)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/executor.py` — code under test; no changes
@@ -80,8 +88,8 @@ def test_maintain_route_event_emitted(self, mock_runner):
 _Added by `/ll:refine-issue` — Existing maintain mode test coverage:_
 
 **Partial coverage confirmed (verified 2026-03-03):**
-- `scripts/tests/test_fsm_executor.py:840` — `TestMaintainMode` class exists and covers: (1) terminal state with `maintain=True` causes restart (`test_maintain_restarts_after_terminal`), (2) `on_maintain` target overrides `initial` (`test_maintain_uses_on_maintain_target`), (3) `max_iterations` still terminates (`test_maintain_max_iterations_terminates`)
-- `scripts/tests/test_fsm_executor.py:2249` — `TestMaintainModeExecutor` class also exists
+- `scripts/tests/test_fsm_executor.py:934` — `TestMaintainMode` class exists and covers: (1) terminal state with `maintain=True` causes restart (`test_maintain_restarts_after_terminal`), (2) `on_maintain` target overrides `initial` (`test_maintain_uses_on_maintain_target`)
+- `scripts/tests/test_fsm_executor.py:2341` — `TestMaintainModeExecutor` class also exists with `test_maintain_mode_restarts_on_null_transition` covering (3) `max_iterations` still terminates
 
 **Only scenario 4 is missing**: the emitted `route` event with `reason: "maintain"` (`test_maintain_route_event_emitted`). Scope is now a single test case, not a full class.
 
@@ -121,6 +129,7 @@ _Added by `/ll:refine-issue` — Existing maintain mode test coverage:_
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — CRITICAL: Found `TestMaintainMode:840` and `TestMaintainModeExecutor:2133` already exist in `test_fsm_executor.py`; issue may be stale
 - `/ll:verify-issues` — 2026-03-03 — Confirmed 3/4 scenarios covered by `TestMaintainMode:840` and `TestMaintainModeExecutor:2249` (not 2133); corrected line ref. Narrowed scope to single missing test: `test_maintain_route_event_emitted`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 
 ---
 

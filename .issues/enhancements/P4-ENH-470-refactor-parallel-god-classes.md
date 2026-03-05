@@ -25,14 +25,14 @@ The `parallel/` package contains three god classes:
 - Rebase/retry logic
 - Worktree cleanup
 
-**WorkerPool** (`worker_pool.py`, 1,164 lines):
+**WorkerPool** (`worker_pool.py`, 1,316 lines):
 - Thread pool management
 - Git worktree creation/cleanup
 - Claude CLI subprocess execution
 - Output parsing integration
 - Work verification
 
-**ParallelOrchestrator** (`orchestrator.py`, 1,141 lines):
+**ParallelOrchestrator** (`orchestrator.py`, 1,143 lines):
 - Issue scanning and prioritization
 - Worker dispatch logic
 - State persistence for resume
@@ -42,6 +42,8 @@ The `parallel/` package contains three god classes:
 ## Expected Behavior
 
 Cross-cutting concerns are extracted into focused helper modules. Each core class delegates specific responsibilities to helpers, reducing class size to ~600-800 lines while maintaining the same public API.
+
+_Current average: ~1,232 lines each (MergeCoordinator: 1,236, WorkerPool: 1,316, ParallelOrchestrator: 1,143)._
 
 ## Motivation
 
@@ -141,6 +143,7 @@ Extract cross-cutting concerns into focused helper modules:
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/ARCHITECTURE.md` (lines 428, 417) to Related Key Documentation
 - `/ll:verify-issues` - 2026-03-03 - Corrected `merge_coordinator.py` line count from 1,226 to 1,236 (actual); average updated from 1,174 to 1,181
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl` — Updated `worker_pool.py` 1,164→1,316; `orchestrator.py` 1,141→1,143; average updated to 1,232
 
 ---
 

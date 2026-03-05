@@ -97,12 +97,6 @@ The `refine-status` table truncates command column headers (e.g., `scan-cod…`,
 - `scripts/tests/test_refine_status.py` — test patterns to follow
 - `docs/reference/CLI.md` — documents `ll-issues refine-status`; mention the Key section
 
-## Status
-
-Open
-
----
-
 ## Verification Notes
 
 **Verdict: RESOLVED** (verified 2026-03-04)
@@ -114,9 +108,14 @@ The feature described in this issue has already been implemented:
 - Running `ll-issues refine-status` produces a Key section with all expected mappings (`source`, `norm`, `format`, `verify`, `refine`, `ready`, `confidence`, `total`)
 - The Key is omitted from `--format json` output (confirmed by inspecting the JSON code path)
 
-All acceptance criteria from the issue are satisfied. This issue can be closed/moved to completed.
+All acceptance criteria from the issue are satisfied.
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T03:38:39Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/57effe1c-b988-485d-9160-c576120a0097.jsonl`
 - `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3d7dfca8-2373-4003-a4ba-595ff38e7842.jsonl`
 - `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/825dce99-8053-4c78-9dca-cfe8a45bcd07.jsonl`
+- `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl`
+
+---
+## Status
+**Resolved** | Priority: P4

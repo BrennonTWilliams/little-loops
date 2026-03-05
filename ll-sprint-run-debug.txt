@@ -282,3 +282,57 @@ Processing: ENH-535 - `cmd_validate` Silently Discards Validation Warnings to th
 ============================================================
 [18:26:09] Phase 1: Verifying issue ENH-535...
 [18:26:09] Running: claude --dangerously-skip-permissions -p '/ll:ready-issue ENH-535'
+  ENH-535 is not in any active issue category — it's already in the completed directory as an untracked new file. The implementation was committed as `3b2e206 feat(ll-loop): surface validation warnings in cmd_validate output`.
+
+  ## VERDICT
+  CLOSE
+
+  ## VALIDATED_FILE
+  /Users/brennon/AIProjects/brenentech/little-loops/.issues/completed/P3-ENH-535-cmd-validate-discards-warnings.md
+
+  ## CLOSE_REASON
+  - Reason: already_fixed
+  - Evidence: ENH-535 was implemented in commit `3b2e206` ("feat(ll-loop): surface validation warnings in cmd_validate output"). The issue file was moved to `.issues/completed/` and contains a full Resolution section confirming Option B was implemented — `validate_fsm()` is called in `cmd_validate` after `load_and_validate`, warnings are filtered and printed with `⚠` prefix. All 3207 tests pass per the resolution notes.
+
+  ## CLOSE_STATUS
+  Closed - Already Fixed
+
+  ## VALIDATION
+
+  | Check | Status | Details |
+  |-------|--------|---------|
+  | Issue location | N/A | Found only in `.issues/completed/` — not an active issue |
+  | Implementation | PASS | Commit `3b2e206` on `main` |
+  | Resolution section | PASS | Complete — describes Option B, files changed, test added |
+  | Test coverage | PASS | `test_validate_with_unreachable_state_prints_warning` added |
+
+  ## CONCERNS
+  - None
+
+  ## CORRECTIONS_MADE
+  - None
+
+  ## READY_FOR
+  - Implementation: No (already completed)
+  - Automated processing: No
+
+  ## NEXT_STEPS
+  - Issue is already done. No action needed.
+  - If you're seeing a regression (warnings no longer surfaced in `cmd_validate`), run `/ll:ready-issue` on a newly-captured regression issue instead, or investigate `scripts/little_loops/cli/loop/config_cmds.py` directly.
+[18:27:39] ready-issue verdict: CLOSE
+[18:27:39] Issue file renamed: 'P3-ENH-535-cmd-validate-discards-warnings.md' -> 'P3-ENH-535-cmd-validate-discards-warnings.md'
+[18:27:39] Issue ENH-535 should be closed (reason: already_fixed)
+[18:27:39] ENH-535 already in completed/ - cleaning up source
+[18:27:39] Phase 1 (ready-issue) completed in 1.5 minutes
+[18:27:39]   Retry succeeded: ENH-535
+[18:27:39] Sequential retry recovered 4/4 issue(s)
+[18:27:39] Wave 1/7 completed: BUG-528, BUG-529, BUG-530, ENH-535
+[18:27:39] State saved to /Users/brennon/AIProjects/brenentech/little-loops/.sprint-state.json
+[18:27:39] Continuing to wave 2/7...
+[18:27:39]
+Processing wave 2/7: ENH-536
+============================================================
+Processing: ENH-536 - `EvaluateConfig.source` Field Parsed and Serialized But Never Consumed During Evaluation
+============================================================
+[18:27:39] Phase 1: Verifying issue ENH-536...
+[18:27:39] Running: claude --dangerously-skip-permissions -p '/ll:ready-issue ENH-536'

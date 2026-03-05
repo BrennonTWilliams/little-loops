@@ -125,9 +125,11 @@ Deferred - Good utility-to-cost ratio (MEDIUM utility, LOW effort) but blocked b
 
 - FEAT-490
 
-- FEAT-441
-
 - ENH-459
+
 ## Blocks
 
 - ENH-507
+
+## Session Log
+- `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl` — Removed FEAT-441 from Blocked By (completed/satisfied)
