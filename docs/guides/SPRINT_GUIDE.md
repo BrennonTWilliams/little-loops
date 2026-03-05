@@ -391,7 +391,7 @@ ll-sprint run sprint-name --resume
 Run code quality loops before opening a PR, then address any issues found:
 
 ```
-1. ll-loop run quality-gate          ← built-in invariants loop (lint/types/format/tests)
+1. /ll:check-code all                ← run lint, types, and format checks
 2. /ll:scan-codebase                 ← capture any issues found
 3. /ll:create-sprint                 ← sprint the findings
 4. ll-sprint run quality-fixes
@@ -424,7 +424,7 @@ The complete workflow from empty backlog to executed sprint (also in the Issue M
 ## See Also
 
 - [Issue Management Guide](ISSUE_MANAGEMENT_GUIDE.md) — refinement pipeline to run before sprint creation
-- [Loops Guide](LOOPS_GUIDE.md) — the `sprint-execution` built-in loop for loop-driven sprint workflows
+- [Loops Guide](LOOPS_GUIDE.md) — create custom FSM loops for recurring sprint workflows
 - `/ll:map-dependencies` — discover and validate cross-issue dependencies before building a sprint
 - `/ll:issue-size-review` — decompose oversized issues before adding them to a sprint
 - `/ll:review-sprint` — health check an existing sprint before running

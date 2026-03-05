@@ -122,15 +122,7 @@ little-loops/
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
 ├── loops/                # Built-in FSM loop definitions
-│   ├── codebase-scan.yaml
-│   ├── history-reporting.yaml
-│   ├── issue-readiness-cycle.yaml
-│   ├── issue-verification.yaml
-│   ├── pre-pr-checks.yaml
-│   ├── quality-gate.yaml
-│   ├── sprint-execution.yaml
-│   ├── issue-refinement.yaml
-│   └── workflow-analysis.yaml
+│   └── issue-refinement.yaml
 ├── skills/               # 15 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── audit-claude-config/          # Audit plugin configuration

@@ -96,15 +96,7 @@ little-loops/
 │       └── lib/
 │           └── common.sh    # Shared shell functions
 ├── loops/                   # Built-in FSM loop definitions
-│   ├── codebase-scan.yaml
-│   ├── history-reporting.yaml
-│   ├── issue-readiness-cycle.yaml
-│   ├── issue-verification.yaml
-│   ├── pre-pr-checks.yaml
-│   ├── quality-gate.yaml
-│   ├── sprint-execution.yaml
-│   ├── issue-refinement.yaml
-│   └── workflow-analysis.yaml
+│   └── issue-refinement.yaml
 ├── skills/                  # 15 skill definitions (5 proactive, 10 user-invoked)
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md

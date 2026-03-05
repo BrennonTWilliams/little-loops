@@ -96,7 +96,7 @@ progress │ next
 
 Use when multiple independent conditions must all be true — lint, types, formatting, tests.
 
-**Example** — the built-in `quality-gate` loop:
+**Example** — an invariants loop that maintains code quality:
 
 ```yaml
 paradigm: invariants
@@ -138,7 +138,7 @@ Set `maintain: true` to restart from the first constraint after all pass (daemon
 
 Use when you have a specific sequence of steps plus an exit condition.
 
-**Example** — the built-in `codebase-scan` loop:
+**Example** — an imperative loop that scans and triages issues:
 
 ```yaml
 paradigm: imperative
@@ -283,15 +283,7 @@ ll-loop install <name>       # Copies to .loops/ for editing
 
 | Loop | Paradigm | Description |
 |------|----------|-------------|
-| `quality-gate` | invariants | Lint, types, format, and tests must all pass |
-| `pre-pr-checks` | invariants | Code quality + tests before PR creation |
-| `issue-verification` | invariants | Verify and normalize issue files |
-| `history-reporting` | invariants | Generate issue history analysis reports |
-| `codebase-scan` | imperative | Scan, verify, and prioritize issues |
-| `issue-readiness-cycle` | imperative | Validate and process issues through readiness |
-| `sprint-execution` | imperative | Execute a sprint with resume support |
 | `issue-refinement` | fsm | Progressively refine all active issues through format, verify, and confidence scoring |
-| `workflow-analysis` | imperative | Extract and analyze workflow patterns |
 
 ## Beyond the Basics
 
