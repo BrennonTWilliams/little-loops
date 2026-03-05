@@ -409,7 +409,12 @@ def evaluate_llm_structured(
     # Truncate output to avoid context limits (keep last 4000 chars)
     truncated = output[-4000:] if len(output) > 4000 else output
 
-    user_prompt = f"{effective_prompt}\n\n<action_output>\n{truncated}\n</action_output>"
+    user_prompt = (
+        f"{effective_prompt}\n\n"
+        f"<action_output>\n{truncated}\n</action_output>\n\n"
+        f"Respond with ONLY valid JSON (no markdown fences, no explanation) "
+        f"matching this schema:\n{json.dumps(effective_schema)}"
+    )
 
     cmd = [
         "claude",
@@ -419,8 +424,6 @@ def evaluate_llm_structured(
         "json",
         "--model",
         model,
-        "--json-schema",
-        json.dumps(effective_schema),
         "--dangerously-skip-permissions",
         "--no-session-persistence",
     ]
@@ -461,8 +464,6 @@ def evaluate_llm_structured(
     # Parse the CLI JSON envelope and extract structured result.
     # The envelope format is {"result": "<json-string>", "is_error": false, ...}.
     # Some CLI versions set is_error=true with exit 0, or return result as a dict.
-    # Some CLI versions (with --json-schema) return the structured object directly
-    # at the top level without a "result" wrapper.
     # If stdout is JSONL (multiple JSON objects), use the last non-empty line.
     try:
         stdout = proc.stdout.strip()
@@ -490,8 +491,8 @@ def evaluate_llm_structured(
         elif raw_result:
             llm_result = json.loads(raw_result)
         else:
-            # Fallback: some CLI versions (with --json-schema) return the structured
-            # JSON directly at the top level without a "result" wrapper.
+            # Fallback: some CLI versions return the structured JSON directly at
+            # the top level without a "result" wrapper.
             if "verdict" in envelope:
                 llm_result = envelope
             else:

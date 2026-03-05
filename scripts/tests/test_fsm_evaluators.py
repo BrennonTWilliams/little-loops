@@ -612,10 +612,11 @@ class TestLLMStructuredEvaluator:
 
         assert result.verdict == "found"
         assert result.details["confidence"] == 0.95
-        # Verify custom schema was passed to CLI
+        # Verify custom schema was embedded in the prompt
         call_args = mock_run.call_args[0][0]
-        schema_idx = call_args.index("--json-schema")
-        assert json.loads(call_args[schema_idx + 1]) == custom_schema
+        prompt_idx = call_args.index("-p")
+        assert json.dumps(custom_schema) in call_args[prompt_idx + 1]
+        assert "--json-schema" not in call_args
 
     def test_custom_prompt(self, mock_cli) -> None:
         """Custom prompt is passed to CLI."""
@@ -708,6 +709,29 @@ class TestLLMStructuredEvaluator:
         assert "raw_preview" in result.details
         assert "Empty result field" in result.details["error"]
 
+    def test_empty_result_with_tool_turns_regression(self, mock_cli) -> None:
+        """Regression: --json-schema multi-turn response has empty result field."""
+        mock_run, mock_result = mock_cli
+        # Simulate what CLI v2.1.69 returns when --json-schema triggers tool calls:
+        # num_turns > 1 and result="" because output was captured via tool calls.
+        mock_result.stdout = json.dumps(
+            {
+                "type": "result",
+                "subtype": "success",
+                "is_error": False,
+                "duration_ms": 17849,
+                "num_turns": 4,
+                "result": "",
+                "stop_reason": "end_turn",
+            }
+        )
+
+        result = evaluate_llm_structured("...")
+
+        assert result.verdict == "error"
+        assert "Empty result field" in result.details["error"]
+        assert "raw_preview" in result.details
+
     def test_invalid_json_response(self, mock_cli) -> None:
         """Unparseable JSON from CLI returns error with raw_preview."""
         mock_run, mock_result = mock_cli
@@ -753,12 +777,12 @@ class TestLLMStructuredEvaluator:
         evaluate_llm_structured("test output")
 
         call_args = mock_run.call_args[0][0]
-        # Check prompt
+        # Check prompt and schema embedded together
         prompt_idx = call_args.index("-p")
-        assert DEFAULT_LLM_PROMPT in call_args[prompt_idx + 1]
-        # Check schema
-        schema_idx = call_args.index("--json-schema")
-        assert json.loads(call_args[schema_idx + 1]) == DEFAULT_LLM_SCHEMA
+        prompt_content = call_args[prompt_idx + 1]
+        assert DEFAULT_LLM_PROMPT in prompt_content
+        assert json.dumps(DEFAULT_LLM_SCHEMA) in prompt_content
+        assert "--json-schema" not in call_args
 
     def test_envelope_as_direct_result(self, mock_cli) -> None:
         """Envelope itself is the structured result when result field is absent."""
