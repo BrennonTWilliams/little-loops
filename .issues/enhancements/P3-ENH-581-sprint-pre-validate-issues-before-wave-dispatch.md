@@ -32,6 +32,15 @@ Before building waves (or at least before dispatching each wave), the sprint run
 2. Excluded from the wave without consuming a worker slot
 3. Counted as "skipped" (not "failed") in the summary
 
+## Scope Boundaries
+
+- **In scope**: File-existence check for each issue ID in the active issues directories (`bugs/`, `features/`, `enhancements/`) before wave dispatch
+- **Out of scope**:
+  - Validating issue content or readiness (`ready-issue` validation stays inside the worktree — this check is pre-dispatch only)
+  - Issues in a `deferred/` directory (not covered by this check)
+  - Sprint definition YAML validation (only runtime issue file existence is verified)
+  - Wave dependency graph re-evaluation after issues are filtered out (waves are built from the filtered `active_infos` list; dependency re-computation is out of scope)
+
 ## Proposed Solution
 
 Add a pre-dispatch validation step in `_cmd_sprint_run()` (cli/sprint/run.py) after loading `issue_infos`:
@@ -70,13 +79,41 @@ This check costs a few filesystem stat calls and prevents potentially hours of w
 5. Include `skipped_infos` in the final summary with "already completed" status
 6. Add a test to `tests/test_sprint_run.py` verifying that completed issues are excluded from waves
 
-## Similar Patterns
+## Integration Map
 
+### Files to Modify
+- `scripts/little_loops/cli/sprint/run.py` — `_cmd_sprint_run()`: add pre-dispatch validation loop after `manager.load_issue_infos()`
+
+### Dependent Files (Callers/Importers)
+- N/A — `_cmd_sprint_run()` is the CLI entry point; no external callers
+
+### Similar Patterns
 - `orchestrator.py:693` — `_scan_issues()` skips `completed_issues` from state, but only knows about issues it previously tracked
-- `issue_lifecycle.py:558` — `close_issue()` has a similar "already in completed/" fast-path check
+- `issue_lifecycle.py:558` — `close_issue()` has a similar "already in completed/" fast-path check pattern
+
+### Tests
+- `scripts/tests/test_sprint_run.py` — add test verifying completed issues are excluded from dispatch waves
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Impact
+
+- **Priority**: P3 — Quality-of-life improvement; sprint runs are functional but wasteful when stale issues slip through
+- **Effort**: Small — A few-line file-existence loop in `run.py`; no new infrastructure needed
+- **Risk**: Low — Purely additive check; valid issues are unaffected; only stale/completed ones are filtered
+- **Breaking Change**: No
+
+## Labels
+
+`sprint`, `validation`, `cli`, `parallel`
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a470e022-6e78-4989-a376-3d78b8dd783e.jsonl`
+- `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/37b64e69-b5e1-4c21-bd8a-b097cc3e9648.jsonl`
 
 ---
 ## Status
