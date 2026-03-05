@@ -1072,9 +1072,7 @@ class TestRefineStatusConfigColumns:
     ) -> None:
         """Unknown column names render as em-dash in data rows without crashing."""
         custom_config = dict(sample_config)
-        custom_config["refine_status"] = {
-            "columns": ["id", "priority", "nonexistent_col", "total"]
-        }
+        custom_config["refine_status"] = {"columns": ["id", "priority", "nonexistent_col", "total"]}
         _write_config(temp_project_dir, custom_config)
         bugs_dir = temp_project_dir / ".issues" / "bugs"
         bugs_dir.mkdir(parents=True, exist_ok=True)

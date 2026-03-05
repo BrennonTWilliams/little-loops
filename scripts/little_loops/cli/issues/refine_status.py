@@ -72,7 +72,15 @@ _STATIC_COLUMN_SPECS: dict[str, tuple[int, str, bool]] = {
 
 # Default column order when no config is provided
 _DEFAULT_STATIC_COLUMNS: list[str] = [
-    "id", "priority", "title", "source", "norm", "fmt", "ready", "confidence", "total"
+    "id",
+    "priority",
+    "title",
+    "source",
+    "norm",
+    "fmt",
+    "ready",
+    "confidence",
+    "total",
 ]
 
 # Columns that belong after the dynamic command block (all others go before)
