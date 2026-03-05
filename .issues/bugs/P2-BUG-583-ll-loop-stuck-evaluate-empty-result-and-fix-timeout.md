@@ -22,6 +22,15 @@ Three output clarity gaps compound the debugging difficulty:
 4. Exit code 124 is displayed as `exit: 124` — opaque; should read "timed out".
 5. `ll-issues refine-status` prints its full legend block on every evaluate iteration, drowning signal in noise.
 
+## Motivation
+
+`ll-loop run issue-refinement` is the primary automated issue-refinement workflow:
+
+- **ll-loop is completely broken**: the issue-refinement loop produces zero useful output and runs indefinitely
+- **Debugging is painful**: opaque error messages ("Empty result field", "exit: 124") force reading source code to diagnose the root cause
+- **Wastes compute / API credits**: every 120s iteration burns API tokens while performing no refinement work
+- **Blocks automation use case**: the core intended use case — automated issue refinement — is totally blocked until these bugs are fixed
+
 ## Current Behavior
 
 - `evaluate` state calls `evaluate_llm_structured` → Claude CLI returns envelope with empty `result` field → returns `verdict="error"` → routes via `on_error: fix` every iteration
@@ -38,6 +47,15 @@ Three output clarity gaps compound the debugging difficulty:
 - `raw_preview` is shown below evaluate error messages to aid diagnosis
 - Timeout is displayed as `timed out` not `exit: 124`
 - Legend printed only on first iteration (or suppressed in verbose loops via a flag)
+
+## Steps to Reproduce
+
+1. Ensure `.loops/issue-refinement.yaml` exists with an `evaluate` state using `evaluate_llm_structured` and a `fix` state with no `timeout:` key
+2. Have at least one active issue in `.issues/`
+3. Run `ll-loop run issue-refinement --verbose`
+4. Observe: `evaluate` errors every iteration with "Empty result field in Claude CLI response", routes to `fix` via `on_error: fix`
+5. Observe: `fix` state is killed after exactly 120s (exit 124, displayed as `exit: 124`)
+6. Observe: loop cycles indefinitely — never reaches `done` state
 
 ## Root Cause
 
@@ -115,12 +133,32 @@ Option B: In `display_progress`, track whether the legend has been printed and s
 6. Add `--no-legend` flag to `ll-issues refine-status` and pass it from the loop yaml (or implement closure-based suppression in `display_progress`)
 7. Verify loop makes progress end-to-end with `ll-loop run issue-refinement --verbose`
 
-## Files to Modify
+## Integration Map
 
+### Files to Modify
 - `scripts/little_loops/fsm/evaluators.py` — `evaluate_llm_structured` envelope parsing
 - `scripts/little_loops/cli/loop/_helpers.py` — `display_progress` action_complete + evaluate handlers
 - `.loops/issue-refinement.yaml` — add `timeout: 1200` to fix state
 - `scripts/little_loops/cli/issues/refine_status.py` — add `--no-legend` flag (optional)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/executor.py` — applies `state.timeout or 120` default; calls `evaluate_llm_structured`
+- `scripts/little_loops/cli/loop/run.py` — calls `display_progress` via hook mechanism
+- TBD — run `grep -r "evaluate_llm_structured" scripts/` to find other callers
+
+### Similar Patterns
+- Other evaluator functions in `evaluators.py` — ensure consistent Claude CLI envelope parsing across all evaluator types
+- Other `display_progress` event handlers — keep exit code humanization consistent
+
+### Tests
+- `scripts/tests/` — add regression test for `evaluate_llm_structured` with empty `result` field
+- TBD — identify existing evaluator tests to update for envelope format change
+
+### Documentation
+- N/A
+
+### Configuration
+- `.loops/issue-refinement.yaml` — `fix` state `timeout:` field
 
 ## Impact
 
@@ -129,9 +167,14 @@ Option B: In `display_progress`, track whether the legend has been printed and s
 - **Risk**: Low — changes are isolated to display and loop config; no schema or API changes
 - **Breaking Change**: No
 
+## Labels
+
+`bug`, `ll-loop`, `fsm`
+
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-05T03:36:22Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:format-issue` - 2026-03-05T03:50:49Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1edc06fa-5b2e-4f5c-bf9e-95af499acdcc.jsonl`
 
 ---
 
