@@ -16,7 +16,7 @@ In `_cluster_by_entities`, `matched_cluster.all_entities.update(msg_entities)` r
 ## Location
 
 - **File**: `scripts/little_loops/workflow_sequence_analyzer.py`
-- **Line(s)**: 509–514 (at scan commit: a574ea0)
+- **Line(s)**: 515–522 (at scan commit: a574ea0; current HEAD: line-drifted to 515–522)
 - **Anchor**: `in function _cluster_by_entities`, `if matched_cluster:` block
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a574ea0ec555811db2490fece9aaf0819b3e3065/scripts/little_loops/workflow_sequence_analyzer.py#L509-L514)
 - **Code**:
@@ -82,13 +82,13 @@ matched_cluster.messages.append(
 - `scripts/little_loops/workflow_sequence_analyzer.py` — swap mutation/intersection order in `_cluster_by_entities`
 
 ### Dependent Files (Callers/Importers)
-- `scripts/tests/test_workflow_sequence_analyzer.py:770` — `TestClusterByEntities` class (callers test `_cluster_by_entities` indirectly via `analyze_workflows`)
+- `scripts/tests/test_workflow_sequence_analyzer.py:832` — `TestClusterByEntities` class (callers test `_cluster_by_entities` indirectly via `analyze_workflows`)
 
 ### Similar Patterns
 - N/A
 
 ### Tests
-- `scripts/tests/test_workflow_sequence_analyzer.py:770` — `TestClusterByEntities` EXISTS — add assertion checking `entities_matched` only contains pre-existing cluster entities (entities that were in `all_entities` before the incoming message was appended)
+- `scripts/tests/test_workflow_sequence_analyzer.py:832` — `TestClusterByEntities` EXISTS — add assertion checking `entities_matched` only contains pre-existing cluster entities (entities that were in `all_entities` before the incoming message was appended)
 
 ### Documentation
 - N/A
@@ -113,12 +113,23 @@ matched_cluster.messages.append(
 
 `bug`, `workflow-analyzer`, `data-correctness`, `captured`
 
+## Resolution
+
+- **Status**: Fixed
+- **Commit**: TBD
+- **Fixed in**: `scripts/little_loops/workflow_sequence_analyzer.py`
+- **Changes**:
+  - Computed `entities_matched = sorted(msg_entities & matched_cluster.all_entities)` before calling `matched_cluster.all_entities.update(msg_entities)`
+  - Added regression test `test_entities_matched_uses_pre_mutation_snapshot` in `TestClusterByEntities`
+
 ## Session Log
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:refine-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a020aaf9-77a1-4304-b1e8-283c2006ae91.jsonl` — Confirmed source at `workflow_sequence_analyzer.py:484`; updated `TestClusterByEntities:770` as existing test class target
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f17b114-2f56-460a-ad29-5184e3ad148f.jsonl`
+- `/ll:manage-issue` - 2026-03-04 - Fixed: swapped mutation/intersection order; added regression test
 
 ---
 
-**Open** | Created: 2026-03-04 | Priority: P3
+**Completed** | Created: 2026-03-04 | Priority: P3

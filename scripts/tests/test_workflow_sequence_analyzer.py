@@ -899,6 +899,25 @@ class TestClusterByEntities:
         assert len(result) == 1
         assert 0.0 <= result[0].cohesion_score <= 1.0
 
+    def test_entities_matched_uses_pre_mutation_snapshot(self) -> None:
+        """entities_matched only contains entities that existed in the cluster before the message was added."""
+        # msg-1 establishes cluster with checkout.py
+        # msg-2 matches on checkout.py (shared) but also introduces config.json (new)
+        # entities_matched for msg-2 must only contain checkout.py, not config.json
+        messages = [
+            {"content": "Fix checkout.py bug", "uuid": "msg-1"},
+            {"content": "Test checkout.py and config.json", "uuid": "msg-2"},
+        ]
+        result = _cluster_by_entities(messages, overlap_threshold=0.0)
+        assert len(result) == 1
+        cluster = result[0]
+        assert len(cluster.messages) == 2
+        second_msg = cluster.messages[1]
+        # checkout.py was already in the cluster at match time — should be present
+        assert "checkout.py" in second_msg["entities_matched"]
+        # config.json was not in the cluster before msg-2 joined — must be absent
+        assert "config.json" not in second_msg["entities_matched"]
+
 
 class TestComputeBoundaries:
     """Tests for _compute_boundaries internal function."""

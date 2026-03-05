@@ -512,12 +512,13 @@ def _cluster_by_entities(
                 matched_cluster = cluster
 
         if matched_cluster:
+            entities_matched = sorted(msg_entities & matched_cluster.all_entities)
             matched_cluster.all_entities.update(msg_entities)
             matched_cluster.messages.append(
                 {
                     "uuid": msg.get("uuid", ""),
                     "content": content[:80] + "..." if len(content) > 80 else content,
-                    "entities_matched": sorted(msg_entities & matched_cluster.all_entities),
+                    "entities_matched": entities_matched,
                 }
             )
             # Update cohesion score (average overlap of messages)
