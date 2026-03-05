@@ -6,6 +6,10 @@ import os
 import shutil
 import sys
 import textwrap
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from little_loops.config import CliConfig
 
 
 def terminal_width(default: int = 80) -> int:
@@ -26,18 +30,60 @@ def wrap_text(text: str, indent: str = "  ", width: int | None = None) -> str:
 _USE_COLOR: bool = sys.stdout.isatty() and os.environ.get("NO_COLOR", "") == ""
 
 PRIORITY_COLOR: dict[str, str] = {
-    "P0": "31;1",
-    "P1": "31",
+    "P0": "38;5;208;1",
+    "P1": "38;5;208",
     "P2": "33",
     "P3": "0",
     "P4": "2",
     "P5": "2",
 }
 TYPE_COLOR: dict[str, str] = {
-    "BUG": "31",
+    "BUG": "38;5;208",
     "FEAT": "32",
     "ENH": "34",
 }
+
+
+def configure_output(config: CliConfig | None = None) -> None:
+    """Apply CLI color configuration to module-level color state.
+
+    Call this once at startup after loading BRConfig. Updates _USE_COLOR,
+    PRIORITY_COLOR, and TYPE_COLOR based on config and NO_COLOR env var.
+
+    Args:
+        config: CliConfig from BRConfig.cli, or None for defaults.
+    """
+    global _USE_COLOR, PRIORITY_COLOR, TYPE_COLOR
+
+    # NO_COLOR env var always takes precedence (industry convention)
+    no_color_env = os.environ.get("NO_COLOR", "") != ""
+
+    if config is None:
+        _USE_COLOR = sys.stdout.isatty() and not no_color_env
+        return
+
+    _USE_COLOR = config.color and sys.stdout.isatty() and not no_color_env
+
+    # Merge custom priority colors
+    PRIORITY_COLOR.update(
+        {
+            "P0": config.colors.priority.P0,
+            "P1": config.colors.priority.P1,
+            "P2": config.colors.priority.P2,
+            "P3": config.colors.priority.P3,
+            "P4": config.colors.priority.P4,
+            "P5": config.colors.priority.P5,
+        }
+    )
+
+    # Merge custom type colors
+    TYPE_COLOR.update(
+        {
+            "BUG": config.colors.type.BUG,
+            "FEAT": config.colors.type.FEAT,
+            "ENH": config.colors.type.ENH,
+        }
+    )
 
 
 def colorize(text: str, code: str) -> str:

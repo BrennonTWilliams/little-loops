@@ -12,6 +12,11 @@ from little_loops.config import (
     AutomationConfig,
     BRConfig,
     CategoryConfig,
+    CliColorsConfig,
+    CliColorsLoggerConfig,
+    CliColorsPriorityConfig,
+    CliColorsTypeConfig,
+    CliConfig,
     CommandsConfig,
     ConfidenceGateConfig,
     DependencyMappingConfig,
@@ -986,3 +991,153 @@ class TestDependencyMappingConfig:
         config = BRConfig(temp_project_dir)
         assert config.resolve_variable("dependency_mapping.conflict_threshold") == "0.4"
         assert config.resolve_variable("dependency_mapping.overlap_min_files") == "2"
+
+
+class TestCliColorsLoggerConfig:
+    """Tests for CliColorsLoggerConfig dataclass."""
+
+    def test_defaults(self) -> None:
+        config = CliColorsLoggerConfig()
+        assert config.info == "36"
+        assert config.success == "32"
+        assert config.warning == "33"
+        assert config.error == "38;5;208"
+
+    def test_from_dict_full(self) -> None:
+        config = CliColorsLoggerConfig.from_dict(
+            {"info": "34", "success": "35", "warning": "31", "error": "91"}
+        )
+        assert config.info == "34"
+        assert config.success == "35"
+        assert config.warning == "31"
+        assert config.error == "91"
+
+    def test_from_dict_partial(self) -> None:
+        """Unspecified keys retain defaults."""
+        config = CliColorsLoggerConfig.from_dict({"info": "34"})
+        assert config.info == "34"
+        assert config.success == "32"  # default
+
+
+class TestCliColorsPriorityConfig:
+    """Tests for CliColorsPriorityConfig dataclass."""
+
+    def test_defaults(self) -> None:
+        config = CliColorsPriorityConfig()
+        assert config.P0 == "38;5;208;1"
+        assert config.P1 == "38;5;208"
+        assert config.P2 == "33"
+        assert config.P3 == "0"
+        assert config.P4 == "2"
+        assert config.P5 == "2"
+
+    def test_from_dict_partial(self) -> None:
+        config = CliColorsPriorityConfig.from_dict({"P0": "31;1", "P2": "91"})
+        assert config.P0 == "31;1"
+        assert config.P2 == "91"
+        assert config.P1 == "38;5;208"  # default
+
+
+class TestCliColorsTypeConfig:
+    """Tests for CliColorsTypeConfig dataclass."""
+
+    def test_defaults(self) -> None:
+        config = CliColorsTypeConfig()
+        assert config.BUG == "38;5;208"
+        assert config.FEAT == "32"
+        assert config.ENH == "34"
+
+    def test_from_dict_override(self) -> None:
+        config = CliColorsTypeConfig.from_dict({"BUG": "31"})
+        assert config.BUG == "31"
+        assert config.FEAT == "32"  # default
+
+
+class TestCliColorsConfig:
+    """Tests for CliColorsConfig dataclass."""
+
+    def test_defaults(self) -> None:
+        config = CliColorsConfig()
+        assert config.logger.info == "36"
+        assert config.priority.P0 == "38;5;208;1"
+        assert config.type.BUG == "38;5;208"
+
+    def test_from_dict_empty(self) -> None:
+        config = CliColorsConfig.from_dict({})
+        assert config.logger.info == "36"
+        assert config.priority.P0 == "38;5;208;1"
+
+    def test_from_dict_nested_partial(self) -> None:
+        config = CliColorsConfig.from_dict({"logger": {"info": "34"}, "type": {"BUG": "31"}})
+        assert config.logger.info == "34"
+        assert config.logger.success == "32"  # default
+        assert config.type.BUG == "31"
+        assert config.type.FEAT == "32"  # default
+        assert config.priority.P0 == "38;5;208;1"  # untouched default
+
+
+class TestCliConfig:
+    """Tests for CliConfig dataclass."""
+
+    def test_defaults(self) -> None:
+        config = CliConfig()
+        assert config.color is True
+        assert config.colors.logger.info == "36"
+
+    def test_from_dict_empty(self) -> None:
+        config = CliConfig.from_dict({})
+        assert config.color is True
+
+    def test_from_dict_color_false(self) -> None:
+        config = CliConfig.from_dict({"color": False})
+        assert config.color is False
+
+    def test_from_dict_with_colors(self) -> None:
+        config = CliConfig.from_dict(
+            {"color": True, "colors": {"logger": {"error": "91"}, "priority": {"P0": "31;1"}}}
+        )
+        assert config.color is True
+        assert config.colors.logger.error == "91"
+        assert config.colors.priority.P0 == "31;1"
+        assert config.colors.type.BUG == "38;5;208"  # default
+
+
+class TestBRConfigCli:
+    """Tests for BRConfig.cli property."""
+
+    def test_cli_defaults_when_absent(self, temp_project_dir: Path) -> None:
+        """BRConfig.cli returns defaults when 'cli' key is absent from config."""
+        config = BRConfig(temp_project_dir)
+        assert config.cli.color is True
+        assert config.cli.colors.logger.info == "36"
+
+    def test_cli_color_false_from_config(self, temp_project_dir: Path) -> None:
+        """BRConfig.cli.color is False when configured."""
+        sample_config: dict[str, Any] = {"cli": {"color": False}}
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.cli.color is False
+
+    def test_cli_colors_override_from_config(self, temp_project_dir: Path) -> None:
+        """Custom cli.colors values are loaded from config."""
+        sample_config: dict[str, Any] = {
+            "cli": {
+                "colors": {
+                    "logger": {"error": "91"},
+                    "priority": {"P0": "31;1"},
+                    "type": {"BUG": "31"},
+                }
+            }
+        }
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        config = BRConfig(temp_project_dir)
+        assert config.cli.colors.logger.error == "91"
+        assert config.cli.colors.priority.P0 == "31;1"
+        assert config.cli.colors.type.BUG == "31"
+        # Unspecified keys retain defaults
+        assert config.cli.colors.logger.info == "36"
+        assert config.cli.colors.priority.P1 == "38;5;208"

@@ -6,6 +6,7 @@ import argparse
 import subprocess
 from pathlib import Path
 
+from little_loops.cli.output import configure_output
 from little_loops.cli_args import (
     add_dry_run_arg,
     add_max_issues_arg,
@@ -133,6 +134,7 @@ Examples:
 
     project_root = args.config or Path.cwd()
     config = BRConfig(project_root)
+    configure_output(config.cli)
 
     logger = Logger(verbose=not args.quiet)
 

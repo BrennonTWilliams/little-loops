@@ -10,6 +10,7 @@ Tests cover:
 from __future__ import annotations
 
 import re
+from unittest.mock import patch
 
 import pytest
 
@@ -58,8 +59,10 @@ class TestLoggerInit:
         assert log.verbose is True
 
     def test_default_use_color_true(self) -> None:
-        """Default use_color=True."""
-        log = Logger()
+        """Default use_color=True when NO_COLOR is not set."""
+        with patch.dict("os.environ", {}, clear=False) as env:
+            env.pop("NO_COLOR", None)
+            log = Logger()
         assert log.use_color is True
 
     def test_accepts_verbose_false(self) -> None:
@@ -100,8 +103,13 @@ class TestLoggerColorConstants:
         assert Logger.YELLOW == "\033[33m"
 
     def test_red_defined(self) -> None:
-        """RED color code is defined."""
-        assert Logger.RED == "\033[31m"
+        """RED color code is defined as orange (256-color)."""
+        assert Logger.RED == "\033[38;5;208m"
+
+    def test_orange_defined(self) -> None:
+        """ORANGE color code is defined and matches RED alias."""
+        assert Logger.ORANGE == "\033[38;5;208m"
+        assert Logger.RED == Logger.ORANGE
 
     def test_magenta_defined(self) -> None:
         """MAGENTA color code is defined."""
@@ -571,3 +579,94 @@ class TestFormatDurationEdgeCases:
         # 59.99 -> "60.0 seconds" due to rounding, OR might stay under
         # Actual behavior: 59.99 < 60, so seconds
         assert "seconds" in result
+
+
+# =============================================================================
+# NO_COLOR environment variable support
+# =============================================================================
+
+
+class TestLoggerNoColorEnv:
+    """Tests for Logger NO_COLOR environment variable support."""
+
+    def test_no_color_env_disables_color(self) -> None:
+        """Logger sets use_color=False when NO_COLOR env var is set."""
+        with patch.dict("os.environ", {"NO_COLOR": "1"}):
+            log = Logger()
+        assert log.use_color is False
+
+    def test_no_color_env_any_value_disables_color(self) -> None:
+        """NO_COLOR set to any non-empty value disables color."""
+        with patch.dict("os.environ", {"NO_COLOR": "true"}):
+            log = Logger()
+        assert log.use_color is False
+
+    def test_no_color_env_suppresses_ansi_in_output(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Output has no ANSI codes when NO_COLOR is set."""
+        with patch.dict("os.environ", {"NO_COLOR": "1"}):
+            log = Logger()
+        log.info("test message")
+        captured = capsys.readouterr()
+        assert "\033[" not in captured.out
+        assert "test message" in captured.out
+
+    def test_explicit_use_color_false_not_affected_by_env(self) -> None:
+        """Explicit use_color=False stays False regardless of NO_COLOR."""
+        with patch.dict("os.environ", {}, clear=False) as env:
+            env.pop("NO_COLOR", None)
+            log = Logger(use_color=False)
+        assert log.use_color is False
+
+
+# =============================================================================
+# CliColorsConfig override support
+# =============================================================================
+
+
+class TestLoggerColorOverrides:
+    """Tests for Logger custom color overrides via CliColorsConfig."""
+
+    def test_custom_colors_override_instance_attributes(self) -> None:
+        """CliColorsConfig values are applied as instance-level ANSI codes."""
+        from little_loops.config import CliColorsConfig
+
+        colors = CliColorsConfig.from_dict(
+            {"logger": {"info": "34", "success": "35", "warning": "91", "error": "31"}}
+        )
+        log = Logger(colors=colors)
+        assert log.CYAN == "\033[34m"
+        assert log.GREEN == "\033[35m"
+        assert log.YELLOW == "\033[91m"
+        assert log.ORANGE == "\033[31m"
+        assert log.RED == log.ORANGE  # alias kept in sync
+
+    def test_partial_color_override_uses_config_defaults(self) -> None:
+        """Overriding only 'error' leaves others at CliColorsConfig defaults."""
+        from little_loops.config import CliColorsConfig
+
+        colors = CliColorsConfig.from_dict({"logger": {"error": "91"}})
+        log = Logger(colors=colors)
+        assert log.ORANGE == "\033[91m"
+        assert log.CYAN == "\033[36m"   # default info
+        assert log.GREEN == "\033[32m"  # default success
+        assert log.YELLOW == "\033[33m"  # default warning
+
+    def test_custom_colors_appear_in_output(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Custom ANSI code appears in info() output."""
+        from little_loops.config import CliColorsConfig
+
+        colors = CliColorsConfig.from_dict({"logger": {"info": "34"}})
+        log = Logger(use_color=True, colors=colors)
+        log.info("test")
+        captured = capsys.readouterr()
+        assert "\033[34m" in captured.out  # custom blue info color
+
+    def test_no_colors_param_uses_class_defaults(self) -> None:
+        """When colors=None, class-level constants are used."""
+        log = Logger(colors=None)
+        assert log.CYAN == Logger.CYAN
+        assert log.GREEN == Logger.GREEN

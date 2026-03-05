@@ -89,8 +89,54 @@ BRConfig(project_root: Path)
 | `parallel` | `ParallelAutomationConfig` | Parallel automation settings |
 | `commands` | `CommandsConfig` | Command customization (includes `confidence_gate: ConfidenceGateConfig`, `tdd_mode: bool`) |
 | `scan` | `ScanConfig` | Codebase scanning settings |
+| `cli` | `CliConfig` | CLI output settings (color toggle and color overrides) |
 | `issue_categories` | `list[str]` | List of category names |
 | `issue_priorities` | `list[str]` | List of priority prefixes |
+
+#### CliConfig
+
+Controls ANSI color output across all `ll-*` CLI tools.
+
+```json
+{
+  "cli": {
+    "color": true,
+    "colors": {
+      "logger": {
+        "info": "36",
+        "success": "32",
+        "warning": "33",
+        "error": "38;5;208"
+      },
+      "priority": {
+        "P0": "38;5;208;1",
+        "P1": "38;5;208",
+        "P2": "33",
+        "P3": "0",
+        "P4": "2",
+        "P5": "2"
+      },
+      "type": {
+        "BUG": "38;5;208",
+        "FEAT": "32",
+        "ENH": "34"
+      }
+    }
+  }
+}
+```
+
+| Key | Type | Default | Description |
+|-----|------|---------|-------------|
+| `cli.color` | `bool` | `true` | Enable ANSI color output. Set to `false` for CI or plain-text terminals. |
+| `cli.colors.logger.*` | `str` | see above | Raw ANSI SGR codes for each log level (e.g. `"38;5;208"` for orange). |
+| `cli.colors.priority.*` | `str` | see above | Raw ANSI SGR codes for priority labels P0–P5. |
+| `cli.colors.type.*` | `str` | see above | Raw ANSI SGR codes for issue type labels BUG, FEAT, ENH. |
+
+**Notes:**
+- Setting `NO_COLOR=1` in the environment disables color regardless of `cli.color`.
+- Unspecified `cli.colors` sub-keys retain their defaults.
+- Color values are raw SGR parameter strings (e.g. `"32"`, `"38;5;208"`, `"1;34"`).
 
 #### Methods
 
@@ -1673,12 +1719,13 @@ logger.header("SUMMARY")
 #### Constructor
 
 ```python
-Logger(verbose: bool = True, use_color: bool = True)
+Logger(verbose: bool = True, use_color: bool | None = None, colors: CliColorsConfig | None = None)
 ```
 
 **Parameters:**
 - `verbose` - Whether to output messages (False silences all output)
-- `use_color` - Whether to use ANSI color codes
+- `use_color` - Whether to use ANSI color codes. Defaults to `True` unless the `NO_COLOR` environment variable is set.
+- `colors` - Optional `CliColorsConfig` to override default ANSI color codes per log level.
 
 #### Methods
 
@@ -1688,7 +1735,7 @@ Logger(verbose: bool = True, use_color: bool = True)
 | `debug(msg)` | Gray | Debug messages |
 | `success(msg)` | Green | Success messages |
 | `warning(msg)` | Yellow | Warnings |
-| `error(msg)` | Red | Errors (to stderr) |
+| `error(msg)` | Orange | Errors (to stderr) |
 | `timing(msg)` | Magenta | Timing information |
 | `header(msg, char="=", width=60)` | - | Header with separators |
 

@@ -5,8 +5,13 @@ Provides colorized console output with timestamps for automation tools.
 
 from __future__ import annotations
 
+import os
 import sys
 from datetime import datetime
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from little_loops.config import CliColorsConfig
 
 
 class Logger:
@@ -20,24 +25,42 @@ class Logger:
         use_color: Whether to use ANSI color codes
     """
 
-    # ANSI color codes
+    # ANSI color codes (defaults; may be overridden per-instance via colors param)
     CYAN = "\033[36m"
     GREEN = "\033[32m"
     YELLOW = "\033[33m"
-    RED = "\033[31m"
+    ORANGE = "\033[38;5;208m"  # 256-color orange (replaces red for errors)
+    RED = "\033[38;5;208m"  # alias kept for backwards compatibility
     MAGENTA = "\033[35m"
     GRAY = "\033[90m"
     RESET = "\033[0m"
 
-    def __init__(self, verbose: bool = True, use_color: bool = True) -> None:
+    def __init__(
+        self,
+        verbose: bool = True,
+        use_color: bool | None = None,
+        colors: CliColorsConfig | None = None,
+    ) -> None:
         """Initialize logger.
 
         Args:
             verbose: Whether to output messages
-            use_color: Whether to use ANSI color codes
+            use_color: Whether to use ANSI color codes. Defaults to True unless
+                the NO_COLOR environment variable is set.
+            colors: Optional CliColorsConfig to override default color codes.
         """
         self.verbose = verbose
+        if use_color is None:
+            use_color = os.environ.get("NO_COLOR", "") == ""
         self.use_color = use_color
+
+        # Apply color overrides from config
+        if colors is not None:
+            self.CYAN = f"\033[{colors.logger.info}m"
+            self.GREEN = f"\033[{colors.logger.success}m"
+            self.YELLOW = f"\033[{colors.logger.warning}m"
+            self.ORANGE = f"\033[{colors.logger.error}m"
+            self.RED = self.ORANGE  # keep alias in sync
 
     def _timestamp(self) -> str:
         """Get current timestamp string."""

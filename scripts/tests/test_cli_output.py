@@ -8,6 +8,8 @@ from unittest.mock import patch
 
 import pytest
 
+import little_loops.cli.output as output_mod
+
 
 class TestTerminalWidth:
     """Tests for terminal_width()."""
@@ -140,6 +142,106 @@ class TestLoopHistoryTimestamp:
             result = cmd_history("my-loop", args, loops_dir)
 
         assert result == 0
+
+
+class TestOrangeDefaultColors:
+    """Tests that red codes were replaced with orange in default dicts."""
+
+    def test_priority_p0_is_orange_not_red(self) -> None:
+        from little_loops.cli.output import PRIORITY_COLOR
+        assert "31" not in PRIORITY_COLOR["P0"]
+        assert "208" in PRIORITY_COLOR["P0"]
+
+    def test_priority_p1_is_orange_not_red(self) -> None:
+        from little_loops.cli.output import PRIORITY_COLOR
+        assert PRIORITY_COLOR["P1"] == "38;5;208"
+
+    def test_type_bug_is_orange_not_red(self) -> None:
+        from little_loops.cli.output import TYPE_COLOR
+        assert TYPE_COLOR["BUG"] == "38;5;208"
+
+
+class TestConfigureOutput:
+    """Tests for configure_output() function."""
+
+    def setup_method(self) -> None:
+        """Reset output module state before each test."""
+        import little_loops.cli.output as m
+        m._USE_COLOR = False
+        m.PRIORITY_COLOR.update({"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2"})
+        m.TYPE_COLOR.update({"BUG": "38;5;208", "FEAT": "32", "ENH": "34"})
+
+    def teardown_method(self) -> None:
+        """Restore defaults after each test."""
+        import little_loops.cli.output as m
+        m._USE_COLOR = False
+        m.PRIORITY_COLOR.update({"P0": "38;5;208;1", "P1": "38;5;208", "P2": "33", "P3": "0", "P4": "2", "P5": "2"})
+        m.TYPE_COLOR.update({"BUG": "38;5;208", "FEAT": "32", "ENH": "34"})
+
+    def test_configure_none_uses_tty_and_no_color_check(self) -> None:
+        """configure_output(None) sets _USE_COLOR based on TTY and NO_COLOR."""
+        from little_loops.cli.output import configure_output
+        with patch.dict("os.environ", {}, clear=False) as env:
+            env.pop("NO_COLOR", None)
+            with patch("sys.stdout") as mock_stdout:
+                mock_stdout.isatty.return_value = True
+                configure_output(None)
+        assert output_mod._USE_COLOR is True
+
+    def test_configure_color_false_disables_ansi(self) -> None:
+        """configure_output with cli.color=False sets _USE_COLOR=False."""
+        from little_loops.cli.output import configure_output
+        from little_loops.config import CliConfig
+
+        cli_config = CliConfig.from_dict({"color": False})
+        with patch("sys.stdout") as mock_stdout:
+            mock_stdout.isatty.return_value = True
+            configure_output(cli_config)
+        assert output_mod._USE_COLOR is False
+
+    def test_configure_no_color_env_overrides_color_true(self) -> None:
+        """NO_COLOR env var disables color even when cli.color=True."""
+        from little_loops.cli.output import configure_output
+        from little_loops.config import CliConfig
+
+        cli_config = CliConfig.from_dict({"color": True})
+        with patch.dict("os.environ", {"NO_COLOR": "1"}):
+            with patch("sys.stdout") as mock_stdout:
+                mock_stdout.isatty.return_value = True
+                configure_output(cli_config)
+        assert output_mod._USE_COLOR is False
+
+    def test_configure_custom_priority_colors(self) -> None:
+        """configure_output merges custom priority colors into PRIORITY_COLOR."""
+        from little_loops.cli.output import PRIORITY_COLOR, configure_output
+        from little_loops.config import CliConfig
+
+        cli_config = CliConfig.from_dict({"colors": {"priority": {"P0": "31;1", "P1": "31"}}})
+        configure_output(cli_config)
+        assert PRIORITY_COLOR["P0"] == "31;1"
+        assert PRIORITY_COLOR["P1"] == "31"
+        assert PRIORITY_COLOR["P2"] == "33"  # unchanged default
+
+    def test_configure_custom_type_colors(self) -> None:
+        """configure_output merges custom type colors into TYPE_COLOR."""
+        from little_loops.cli.output import TYPE_COLOR, configure_output
+        from little_loops.config import CliConfig
+
+        cli_config = CliConfig.from_dict({"colors": {"type": {"BUG": "31"}}})
+        configure_output(cli_config)
+        assert TYPE_COLOR["BUG"] == "31"
+        assert TYPE_COLOR["FEAT"] == "32"  # unchanged default
+
+    def test_colorize_uses_updated_use_color(self) -> None:
+        """colorize() respects _USE_COLOR after configure_output call."""
+        from little_loops.cli.output import colorize, configure_output
+        from little_loops.config import CliConfig
+
+        cli_config = CliConfig.from_dict({"color": False})
+        configure_output(cli_config)
+        result = colorize("hello", "31")
+        assert result == "hello"
+        assert "\033[" not in result
 
 
 class TestIssueListNoColor:

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from little_loops.cli.output import configure_output
 from little_loops.cli_args import add_common_auto_args, parse_issue_ids, parse_issue_types
 from little_loops.config import BRConfig
 from little_loops.issue_manager import AutoManager
@@ -51,6 +52,7 @@ Examples:
 
     project_root = args.config or Path.cwd()
     config = BRConfig(project_root)
+    configure_output(config.cli)
 
     # Parse issue ID filters
     only_ids = parse_issue_ids(args.only)
