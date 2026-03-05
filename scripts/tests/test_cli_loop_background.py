@@ -57,6 +57,31 @@ class TestLoopSignalHandler:
 
         assert exc_info.value.code == 1
 
+    def test_signal_handler_kills_current_process(self) -> None:
+        """Signal handler kills _current_process on the action runner (BUG-592)."""
+        mock_process = MagicMock()
+        mock_inner = MagicMock()
+        mock_inner.action_runner._current_process = mock_process
+        mock_executor = MagicMock()
+        mock_executor._executor = mock_inner
+        self.run_module._loop_executor = mock_executor
+
+        self.run_module._loop_signal_handler(signal.SIGTERM, None)
+
+        mock_process.kill.assert_called_once()
+
+    def test_signal_handler_no_current_process_is_safe(self) -> None:
+        """Signal handler doesn't crash when _current_process is None (BUG-592)."""
+        mock_inner = MagicMock()
+        mock_inner.action_runner._current_process = None
+        mock_executor = MagicMock()
+        mock_executor._executor = mock_inner
+        self.run_module._loop_executor = mock_executor
+
+        # Should not raise
+        self.run_module._loop_signal_handler(signal.SIGTERM, None)
+        assert self.run_module._loop_shutdown_requested is True
+
     def test_second_signal_cleans_pid_file(self, tmp_path: Path) -> None:
         """Second signal cleans up PID file before exiting."""
         pid_file = tmp_path / "test.pid"
@@ -221,7 +246,7 @@ class TestCmdStopWithPid:
     """Tests for cmd_stop with PID-based process termination."""
 
     def test_stop_sends_sigterm_to_background(self, tmp_path: Path) -> None:
-        """Sends SIGTERM when PID file exists and process is alive."""
+        """Sends SIGTERM when PID file exists and process exits gracefully (BUG-592)."""
         logger = MagicMock()
         mock_state = MagicMock()
         mock_state.status = "running"
@@ -231,10 +256,14 @@ class TestCmdStopWithPid:
         pid_file = running_dir / "test-loop.pid"
         pid_file.write_text("12345")
 
+        # Alive on initial check, exits after SIGTERM on first poll
+        alive_seq = [True, False]
+
         with (
             patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
-            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=True),
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
             patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
         ):
             mock_persistence = mock_cls.return_value
             mock_persistence.load_state.return_value = mock_state

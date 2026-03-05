@@ -120,6 +120,9 @@ class ActionRunner(Protocol):
 class DefaultActionRunner:
     """Execute actions via subprocess or Claude CLI."""
 
+    def __init__(self) -> None:
+        self._current_process: subprocess.Popen[str] | None = None
+
     def run(
         self,
         action: str,
@@ -159,6 +162,7 @@ class DefaultActionRunner:
             stderr=subprocess.PIPE,
             text=True,
         )
+        self._current_process = process
         output_chunks: list[str] = []
         try:
             for line in process.stdout:  # type: ignore[union-attr]
@@ -175,6 +179,8 @@ class DefaultActionRunner:
                 exit_code=124,
                 duration_ms=timeout * 1000,
             )
+        finally:
+            self._current_process = None
         stderr = process.stderr.read()  # type: ignore[union-attr]
         return ActionResult(
             output="".join(output_chunks),

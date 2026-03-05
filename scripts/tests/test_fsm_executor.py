@@ -9,6 +9,7 @@ from unittest.mock import MagicMock, patch
 
 from little_loops.fsm.executor import (
     ActionResult,
+    DefaultActionRunner,
     ExecutionResult,
     FSMExecutor,
     SimulationActionRunner,
@@ -2533,3 +2534,47 @@ class TestBackoff:
                 result = executor.run()
 
         assert result.terminated_by == "signal"
+
+
+class TestDefaultActionRunnerProcessTracking:
+    """Tests for DefaultActionRunner._current_process tracking (BUG-592)."""
+
+    def _make_mock_process(self, output_lines: list[str], exit_code: int = 0) -> MagicMock:
+        """Build a mock Popen process with the given stdout lines."""
+        mock_process = MagicMock()
+        mock_process.stdout = iter(output_lines)
+        mock_process.returncode = exit_code
+        mock_process.stderr.read.return_value = ""
+        return mock_process
+
+    def test_current_process_cleared_after_successful_run(self) -> None:
+        """_current_process is None after run() completes normally."""
+        runner = DefaultActionRunner()
+        mock_process = self._make_mock_process(["output\n"])
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            runner.run("echo hello", timeout=10, is_slash_command=False)
+
+        assert runner._current_process is None
+
+    def test_current_process_cleared_after_timeout(self) -> None:
+        """_current_process is None even when action times out."""
+        import subprocess as sp
+
+        runner = DefaultActionRunner()
+        mock_process = MagicMock()
+        mock_process.stdout = iter([])
+        mock_process.returncode = -9
+        # First wait (with timeout) raises TimeoutExpired; second wait (bare) succeeds
+        mock_process.wait.side_effect = [sp.TimeoutExpired("cmd", 1), None]
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            result = runner.run("slow-cmd", timeout=1, is_slash_command=False)
+
+        assert runner._current_process is None
+        assert result.exit_code == 124
+
+    def test_current_process_initially_none(self) -> None:
+        """_current_process is None before any action is run."""
+        runner = DefaultActionRunner()
+        assert runner._current_process is None

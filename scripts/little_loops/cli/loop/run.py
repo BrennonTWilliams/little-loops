@@ -40,6 +40,14 @@ def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
     print("\nShutdown requested, will exit after current state...", file=sys.stderr)
     if _loop_executor is not None:
         _loop_executor.request_shutdown()
+        # Kill any child subprocess currently blocking in the action runner
+        inner = getattr(_loop_executor, "_executor", None)
+        if inner is not None:
+            runner = getattr(inner, "action_runner", None)
+            if runner is not None:
+                proc = getattr(runner, "_current_process", None)
+                if proc is not None:
+                    proc.kill()
 
 
 def cmd_run(

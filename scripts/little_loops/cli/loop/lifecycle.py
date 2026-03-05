@@ -6,6 +6,7 @@ import argparse
 import errno
 import os
 import signal
+import time
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import load_loop
@@ -105,11 +106,22 @@ def cmd_stop(
     pid = _read_pid_file(pid_file)
     if pid is not None:
         if _process_alive(pid):
-            # Process confirmed alive: send SIGTERM, then record interrupted state
+            # Process confirmed alive: send SIGTERM, then wait for exit
             os.kill(pid, signal.SIGTERM)
+            for _ in range(10):
+                time.sleep(1)
+                if not _process_alive(pid):
+                    break
+            else:
+                # Still alive after grace period: force kill
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                    logger.warning(f"Sent SIGKILL to {loop_name} (PID: {pid})")
+                except OSError:
+                    pass  # Process exited between poll and kill
             state.status = "interrupted"
             persistence.save_state(state)
-            logger.success(f"Sent SIGTERM to {loop_name} (PID: {pid})")
+            logger.success(f"Stopped {loop_name} (PID: {pid})")
         else:
             # Process already exited: preserve its final status, only clean up PID file
             logger.info(f"Process {pid} not running, cleaning up PID file")

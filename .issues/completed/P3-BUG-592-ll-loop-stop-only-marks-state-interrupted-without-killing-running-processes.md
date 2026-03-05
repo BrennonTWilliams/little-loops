@@ -165,7 +165,26 @@ _Added by `/ll:refine-issue` — corrections and clarifications from code analys
 
 ---
 
+## Resolution
+
+**Fixed in commit**: (see git log)
+**Resolved**: 2026-03-05
+
+### Changes Made
+
+1. **`scripts/little_loops/fsm/executor.py`** — Added `__init__` to `DefaultActionRunner` with `_current_process: subprocess.Popen[str] | None = None`; set it before the blocking stdout loop and cleared it in `finally` so signal handlers can access the active subprocess.
+
+2. **`scripts/little_loops/cli/loop/run.py`** — Extended `_loop_signal_handler` to kill the currently-running child subprocess immediately after calling `request_shutdown()`, navigating through `_loop_executor._executor.action_runner._current_process`.
+
+3. **`scripts/little_loops/cli/loop/lifecycle.py`** — Added escalating SIGKILL backstop in `cmd_stop`: after sending SIGTERM, polls `_process_alive(pid)` for up to 10s; if the process hasn't exited, sends SIGKILL (with OSError guard for race condition). State is now written after confirmed exit.
+
+### Tests Added
+
+- `TestDefaultActionRunnerProcessTracking` in `test_fsm_executor.py` — verifies `_current_process` is cleared after normal run and timeout
+- `test_signal_handler_kills_current_process` / `test_signal_handler_no_current_process_is_safe` in `test_cli_loop_background.py` — verifies signal handler kills subprocess and handles None safely
+- `test_stop_with_pid_sends_sigterm_and_waits`, `test_stop_sends_sigkill_if_process_does_not_exit`, `test_stop_sigkill_handles_race_if_process_exits_between_poll_and_kill` in `test_cli_loop_lifecycle.py`
+
 ## Status
 
-**State**: Open
+**State**: Completed
 **Priority**: P3

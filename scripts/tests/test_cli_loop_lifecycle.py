@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import signal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -113,6 +114,94 @@ class TestCmdStop:
         assert result == 0
         assert mock_state.status == "interrupted"
         mock_persistence.save_state.assert_called_once_with(mock_state)
+
+    def test_stop_with_pid_sends_sigterm_and_waits(self, tmp_path: Path) -> None:
+        """Sends SIGTERM and polls for exit when PID file exists (BUG-592)."""
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "running"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("12345")
+
+        # Process alive on first check, dead after SIGTERM poll
+        alive_seq = [True, True, False]
+
+        with (
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
+        ):
+            mock_cls.return_value.load_state.return_value = mock_state
+            result = cmd_stop("test-loop", tmp_path, logger)
+
+        assert result == 0
+        mock_kill.assert_any_call(12345, signal.SIGTERM)
+        assert mock_state.status == "interrupted"
+        mock_cls.return_value.save_state.assert_called_once_with(mock_state)
+
+    def test_stop_sends_sigkill_if_process_does_not_exit(self, tmp_path: Path) -> None:
+        """Escalates to SIGKILL after grace period if process does not exit (BUG-592)."""
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "running"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("12345")
+
+        # Process stays alive through all polls: first check (alive) + 10 poll iterations
+        alive_seq = [True] + [True] * 10
+
+        with (
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.cli.loop.lifecycle.os.kill") as mock_kill,
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
+        ):
+            mock_cls.return_value.load_state.return_value = mock_state
+            result = cmd_stop("test-loop", tmp_path, logger)
+
+        assert result == 0
+        mock_kill.assert_any_call(12345, signal.SIGTERM)
+        mock_kill.assert_any_call(12345, signal.SIGKILL)
+        logger.warning.assert_called_once()
+        assert mock_state.status == "interrupted"
+
+    def test_stop_sigkill_handles_race_if_process_exits_between_poll_and_kill(
+        self, tmp_path: Path
+    ) -> None:
+        """OSError on SIGKILL is swallowed when process exits just before the kill (BUG-592)."""
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "running"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir()
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("12345")
+
+        alive_seq = [True] + [True] * 10
+
+        def kill_side_effect(pid: int, sig: int) -> None:
+            if sig == signal.SIGKILL:
+                raise OSError("No such process")
+
+        with (
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._process_alive", side_effect=alive_seq),
+            patch("little_loops.cli.loop.lifecycle.os.kill", side_effect=kill_side_effect),
+            patch("little_loops.cli.loop.lifecycle.time.sleep"),
+        ):
+            mock_cls.return_value.load_state.return_value = mock_state
+            result = cmd_stop("test-loop", tmp_path, logger)
+
+        assert result == 0  # No exception propagated
+        assert mock_state.status == "interrupted"
 
 
 class TestCmdResume:
