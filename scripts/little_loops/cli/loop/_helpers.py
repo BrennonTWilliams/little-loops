@@ -174,14 +174,14 @@ def run_background(loop_name: str, args: argparse.Namespace, loops_dir: Path) ->
     if getattr(args, "queue", False):
         cmd.append("--queue")
 
-    log_fh = open(log_file, "w")  # noqa: SIM115
-    process = subprocess.Popen(
-        cmd,
-        start_new_session=True,
-        stdout=log_fh,
-        stderr=log_fh,
-        stdin=subprocess.DEVNULL,
-    )
+    with open(log_file, "w") as log_fh:
+        process = subprocess.Popen(
+            cmd,
+            start_new_session=True,
+            stdout=log_fh,
+            stderr=log_fh,
+            stdin=subprocess.DEVNULL,
+        )
 
     pid_file.write_text(str(process.pid))
     print(f"Loop '{loop_name}' started in background (PID: {process.pid})")

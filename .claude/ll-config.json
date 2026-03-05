@@ -41,6 +41,7 @@
       "outcome_threshold": 70
     }
   },
+  "worktree_copy_files": [".claude/settings.local.json"],
   "sprints": {
     "sprints_dir": ".sprints",
     "default_timeout": 3600,

@@ -125,12 +125,33 @@ Or use a context manager — `Popen` with `close_fds=True` (default on POSIX) en
 
 `bug`, `ll-loop`, `resource-leak`, `scan-codebase`
 
+## Resolution
+
+**Fixed** in `scripts/little_loops/cli/loop/_helpers.py:177`.
+
+Replaced bare `open()` + `# noqa: SIM115` suppression with a context manager:
+
+```python
+with open(log_file, "w") as log_fh:
+    process = subprocess.Popen(
+        cmd,
+        start_new_session=True,
+        stdout=log_fh,
+        stderr=log_fh,
+        stdin=subprocess.DEVNULL,
+    )
+```
+
+`log_fh` is closed automatically when the `with` block exits. The child process retains its inherited copy of the file descriptor, so background logging continues unaffected. The `# noqa: SIM115` suppression is removed — the linter warning is now addressed rather than bypassed. No test changes required; existing `TestRunBackground` tests pass.
+
 ## Session Log
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; `test_cli_loop_background.py:74` (TestRunBackground) as test pattern for Popen mocking
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:manage-issue` — 2026-03-04T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/` — Fixed: replaced `open()` + `# noqa` with context manager in `run_background()`
+- `/ll:ready-issue` — 2026-03-04T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e66b3cd9-fc56-462c-8b60-91f1384d56c2.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-03 | Priority: P3
+**Fixed** | Created: 2026-03-03 | Resolved: 2026-03-04 | Priority: P3

@@ -143,7 +143,29 @@ os.kill(pid, signal.SIGTERM)
 
 ---
 
-**Open** | Created: 2026-03-03 | Priority: P3
+**Completed** | Created: 2026-03-03 | Resolved: 2026-03-04 | Priority: P3
+
+---
+
+## Resolution
+
+**Status**: Fixed
+
+### Changes Made
+
+- **`scripts/little_loops/cli/loop/lifecycle.py`** — Restructured `cmd_stop()` to check PID liveness *before* writing state:
+  - If process is alive: send SIGTERM, then write `"interrupted"` to state
+  - If process is dead (stale PID): clean up PID file only — do **not** overwrite state
+  - If no PID file: write `"interrupted"` to state (no background process tracked)
+
+- **`scripts/tests/test_cli_loop_background.py`** — Added `test_stop_dead_process_preserves_state` to `TestCmdStopWithPid`: verifies `save_state` is NOT called when a stale PID is found
+
+---
+
+## Session Log (continued)
+
+- `/ll:manage-issue` — 2026-03-04 — fix applied
+- `/ll:ready-issue` — 2026-03-04T00:00:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a084cb6b-96ce-430d-8850-1332de4f08a2.jsonl` — Fix confirmed in code; moving to completed/
 
 ---
 

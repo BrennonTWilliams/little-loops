@@ -97,21 +97,27 @@ def cmd_stop(
         logger.error(f"Loop not running: {loop_name} (status: {state.status})")
         return 1
 
-    state.status = "interrupted"
-    persistence.save_state(state)
-
-    # Send SIGTERM to background process if PID file exists
+    # Check PID before modifying state to avoid overwriting the process's own final status.
+    # Race condition: process may finish and write its terminal status between
+    # cmd_stop's state read and a premature state write.
     running_dir = loops_dir / ".running"
     pid_file = running_dir / f"{loop_name}.pid"
     pid = _read_pid_file(pid_file)
     if pid is not None:
         if _process_alive(pid):
+            # Process confirmed alive: send SIGTERM, then record interrupted state
             os.kill(pid, signal.SIGTERM)
+            state.status = "interrupted"
+            persistence.save_state(state)
             logger.success(f"Sent SIGTERM to {loop_name} (PID: {pid})")
         else:
+            # Process already exited: preserve its final status, only clean up PID file
             logger.info(f"Process {pid} not running, cleaning up PID file")
             pid_file.unlink(missing_ok=True)
     else:
+        # No PID file: no background process tracked, update state only
+        state.status = "interrupted"
+        persistence.save_state(state)
         logger.success(f"Marked {loop_name} as interrupted")
 
     return 0

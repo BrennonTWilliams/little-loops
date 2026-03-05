@@ -287,6 +287,35 @@ class TestCmdStopWithPid:
         assert mock_state.status == "interrupted"
         logger.success.assert_called_once()
 
+    def test_stop_dead_process_preserves_state(self, tmp_path: Path) -> None:
+        """Does not overwrite state when process already exited (stale PID).
+
+        Regression test for BUG-529: cmd_stop previously wrote 'interrupted'
+        before checking liveness, overwriting the process's own final status.
+        """
+        logger = MagicMock()
+        mock_state = MagicMock()
+        mock_state.status = "running"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("99999")
+
+        with (
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_cls,
+            patch("little_loops.cli.loop.lifecycle._process_alive", return_value=False),
+        ):
+            mock_persistence = mock_cls.return_value
+            mock_persistence.load_state.return_value = mock_state
+            from little_loops.cli.loop.lifecycle import cmd_stop
+
+            result = cmd_stop("test-loop", tmp_path, logger)
+
+        assert result == 0
+        assert not pid_file.exists()
+        mock_persistence.save_state.assert_not_called()
+
 
 class TestCmdStatusWithPid:
     """Tests for cmd_status with PID liveness display."""
