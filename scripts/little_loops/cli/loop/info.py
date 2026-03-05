@@ -601,24 +601,28 @@ def _render_2d_diagram(
             # Label rows: one row per direction to prevent overlap
             if has_down:
                 row = [" "] * total_width
-                if 0 <= down_col < total_width:
+                dlabel = "/".join(down_labels)
+                dstart = max(0, down_col - len(dlabel) - 1)
+                for j, ch in enumerate(dlabel):          # write label first
+                    if 0 <= dstart + j < total_width:
+                        row[dstart + j] = ch
+                if 0 <= down_col < total_width:          # then down pipe (never overwritten)
                     row[down_col] = "\u2502"
-                    dlabel = "/".join(down_labels)
-                    dstart = max(0, down_col - len(dlabel) - 1)
-                    for j, ch in enumerate(dlabel):
-                        if 0 <= dstart + j < total_width:
-                            row[dstart + j] = ch
+                if has_up and 0 <= up_col < total_width: # also draw the up pipe for continuity
+                    row[up_col] = "\u2502"
                 lines.append("".join(row).rstrip())
 
             if has_up:
                 row = [" "] * total_width
-                if 0 <= up_col < total_width:
+                ulabel = "/".join(up_labels)
+                ustart = up_col + 2
+                for j, ch in enumerate(ulabel):          # write label first
+                    if 0 <= ustart + j < total_width:
+                        row[ustart + j] = ch
+                if 0 <= up_col < total_width:            # then up pipe
                     row[up_col] = "\u2502"
-                    ulabel = "/".join(up_labels)
-                    ustart = up_col + 2
-                    for j, ch in enumerate(ulabel):
-                        if 0 <= ustart + j < total_width:
-                            row[ustart + j] = ch
+                if has_down and 0 <= down_col < total_width: # also draw the down pipe for continuity
+                    row[down_col] = "\u2502"
                 lines.append("".join(row).rstrip())
 
             # Arrow tips row

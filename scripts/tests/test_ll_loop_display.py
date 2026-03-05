@@ -786,6 +786,30 @@ class TestRenderFsmDiagram:
         pos_third = name_line.index("third")
         assert pos_first < pos_second < pos_third
 
+    def test_bidirectional_back_edge_both_pipes_on_label_rows(self) -> None:
+        """Both │ pipes appear on each label row when connector has up+down edges."""
+        fsm = self._make_fsm(
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="check",
+                    on_success="done",
+                    on_failure="fix",
+                    on_error="fix",
+                ),
+                "fix": StateConfig(action="fix.sh", next="evaluate"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        lines = result.split("\n")
+        # Find rows that contain a label (fail or next)
+        fail_rows = [ln for ln in lines if "fail" in ln]
+        next_rows = [ln for ln in lines if "next" in ln and "\u2502" in ln]
+        # Each label row must contain both │ characters (two pipe chars)
+        for row in fail_rows + next_rows:
+            assert row.count("\u2502") >= 2, f"Expected both pipes on label row: {row!r}"
+
 
 class TestDisplayProgressEvents:
     """Tests for display_progress event formatting in run_foreground."""
