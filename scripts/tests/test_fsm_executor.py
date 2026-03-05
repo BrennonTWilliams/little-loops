@@ -187,6 +187,27 @@ class TestFSMExecutorBasic:
         assert result.iterations == 2
         assert len(mock_runner.calls) == 2
 
+    def test_next_routed_state_updates_prev_result(self) -> None:
+        """Action output from a next-routed state is captured in prev_result."""
+        # fix (next-routed) → done (terminal, no action)
+        # prev_result should reflect fix.sh's output, not be left stale/None.
+        fsm = FSMLoop(
+            name="test",
+            initial="fix",
+            states={
+                "fix": StateConfig(action="fix.sh", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("fix.sh", output="fix output", exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        executor.run()
+
+        assert executor.prev_result is not None
+        assert executor.prev_result["output"] == "fix output"
+
     def test_no_action_state(self) -> None:
         """State without action proceeds to routing."""
         fsm = FSMLoop(

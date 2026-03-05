@@ -16,7 +16,7 @@ When a state has an unconditional `next` transition, `_execute_state` calls `_ru
 ## Location
 
 - **File**: `scripts/little_loops/fsm/executor.py`
-- **Line(s)**: 447–451 (at scan commit: 47c81c8)
+- **Line(s)**: 466–469 (at scan commit: 47c81c8; updated from 447–451 due to line drift)
 - **Anchor**: `in method FSMExecutor._execute_state()`, unconditional-transition branch
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/fsm/executor.py#L447-L451)
 - **Code**:
@@ -115,18 +115,34 @@ if state.next:
 
 `bug`, `ll-loop`, `executor`, `scan-codebase`
 
-## Session Log
+## Verification Notes
 
+**Verdict: DEP_ISSUES** (verified 2026-03-04)
+
+- Core bug confirmed: `executor.py:466-469` — `self._run_action(state.action, state, ctx)` return value is discarded; `self.prev_result` is NOT updated in the `state.next` branch.
+- **BROKEN_REF**: `Blocked By: ENH-535` — ENH-535 does not exist anywhere in active or completed issues. Removed.
+
+## Resolution
+
+**Status**: Fixed (2026-03-04)
+
+### Changes Made
+
+- `scripts/little_loops/fsm/executor.py:466-473` — Captured `_run_action` return value and updated `self.prev_result` in the `state.next` branch (was silently discarded before)
+- `scripts/tests/test_fsm_executor.py` — Added `test_next_routed_state_updates_prev_result` to `TestFSMExecutorBasic`
+
+### Verification
+
+- 88 tests pass in `test_fsm_executor.py` with no regressions
+
+## Session Log
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; noted `test_fsm_executor.py:23` (MockActionRunner) for test pattern
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dcfd97c7-3b28-464c-bd57-3842ae342d48.jsonl`
+- `/ll:manage-issue bug fix BUG-532` - 2026-03-04 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 
 ---
 
-## Blocked By
-
-- ENH-535
-
----
-
-**Open** | Created: 2026-03-03 | Priority: P4
+**Completed** | Created: 2026-03-03 | Priority: P4

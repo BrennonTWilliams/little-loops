@@ -465,7 +465,12 @@ class FSMExecutor:
         # Handle unconditional transition
         if state.next:
             if state.action:
-                self._run_action(state.action, state, ctx)
+                result = self._run_action(state.action, state, ctx)
+                self.prev_result = {
+                    "output": result.output,
+                    "exit_code": result.exit_code,
+                    "state": self.current_state,
+                }
             return interpolate(state.next, ctx)
 
         # Execute action if present
