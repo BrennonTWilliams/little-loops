@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 from typing import TYPE_CHECKING
 
+from little_loops.cli.output import TYPE_COLOR, colorize, terminal_width
+
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
     from little_loops.issue_parser import IssueInfo
@@ -16,8 +18,12 @@ _PRIORITY_TO_IMPACT = {0: 3, 1: 3, 2: 2, 3: 2, 4: 1, 5: 1}
 # Max issues to show per quadrant before truncating
 _MAX_PER_QUADRANT = 6
 
-# Column width for each quadrant (content area, excluding border chars)
-_COL_WIDTH = 20
+_QUADRANT_HEADER_COLOR = {
+    "quick_wins": "32;1",  # bold green   — desirable
+    "major_projects": "33",  # yellow       — important, costly
+    "fill_ins": "2",  # dim          — low priority
+    "thankless": "38;5;208",  # orange       — avoid
+}
 
 
 def _infer_effort(issue: IssueInfo) -> int:
@@ -34,7 +40,7 @@ def _infer_impact(issue: IssueInfo) -> int:
     return _PRIORITY_TO_IMPACT.get(issue.priority_int, 2)
 
 
-def _issue_slug(issue: IssueInfo) -> str:
+def _issue_slug(issue: IssueInfo, col_width: int) -> str:
     """Extract short slug from filename: description segment with hyphens→spaces, truncated."""
     name = issue.path.stem  # e.g. "P3-FEAT-505-ll-issues-cli-command"
     parts = name.split("-", 3)  # ['P3', 'FEAT', '505', 'll-issues-cli-command']
@@ -42,24 +48,30 @@ def _issue_slug(issue: IssueInfo) -> str:
         slug = parts[3].replace("-", " ")
     else:
         slug = issue.title
-    max_len = _COL_WIDTH - len(issue.issue_id) - 2
+    max_len = col_width - len(issue.issue_id) - 2
     return slug[:max_len] if len(slug) > max_len else slug
 
 
-def _render_quadrant_lines(issues: list[IssueInfo], header: str) -> list[str]:
-    """Render lines for a single quadrant (no borders, fixed _COL_WIDTH)."""
+def _render_quadrant_lines(
+    issues: list[IssueInfo], header: str, header_color: str, col_width: int
+) -> list[str]:
+    """Render lines for a single quadrant (no borders, fixed col_width)."""
     lines: list[str] = []
-    lines.append(header.ljust(_COL_WIDTH))
+    padded = colorize(header, header_color) + " " * (col_width - len(header))
+    lines.append(padded)
     shown = issues[:_MAX_PER_QUADRANT]
     for issue in shown:
-        slug = _issue_slug(issue)
-        line = f"{issue.issue_id}  {slug}"
-        lines.append(line.ljust(_COL_WIDTH))
+        slug = _issue_slug(issue, col_width)
+        raw = f"{issue.issue_id}  {slug}"
+        padding = " " * (col_width - len(raw))
+        issue_type = issue.issue_id.split("-", 1)[0]
+        colored_id = colorize(issue.issue_id, TYPE_COLOR.get(issue_type, "0"))
+        lines.append(f"{colored_id}  {slug}{padding}")
     if len(issues) > _MAX_PER_QUADRANT:
         extra = len(issues) - _MAX_PER_QUADRANT
-        lines.append(f"  \u2026 +{extra} more".ljust(_COL_WIDTH))
+        lines.append(f"  \u2026 +{extra} more".ljust(col_width))
     if not shown:
-        lines.append("(none)".ljust(_COL_WIDTH))
+        lines.append("(none)".ljust(col_width))
     return lines
 
 
@@ -70,10 +82,20 @@ def _render_grid(
     q_low_high: list[IssueInfo],  # low impact, high effort  = thankless tasks
 ) -> str:
     """Render the 2x2 ASCII grid and return as a string."""
-    lines_tl = _render_quadrant_lines(q_high_low, "\u2605 QUICK WINS")
-    lines_tr = _render_quadrant_lines(q_high_high, "\u25b2 MAJOR PROJECTS")
-    lines_bl = _render_quadrant_lines(q_low_low, "\u00b7 FILL-INS")
-    lines_br = _render_quadrant_lines(q_low_high, "\u2717 THANKLESS")
+    col_width = max(18, min(38, (terminal_width() - 19) // 2))
+
+    lines_tl = _render_quadrant_lines(
+        q_high_low, "\u2605 QUICK WINS", _QUADRANT_HEADER_COLOR["quick_wins"], col_width
+    )
+    lines_tr = _render_quadrant_lines(
+        q_high_high, "\u25b2 MAJOR PROJECTS", _QUADRANT_HEADER_COLOR["major_projects"], col_width
+    )
+    lines_bl = _render_quadrant_lines(
+        q_low_low, "\u00b7 FILL-INS", _QUADRANT_HEADER_COLOR["fill_ins"], col_width
+    )
+    lines_br = _render_quadrant_lines(
+        q_low_high, "\u2717 THANKLESS", _QUADRANT_HEADER_COLOR["thankless"], col_width
+    )
 
     # Pad all quadrant line lists to the same height
     top_height = max(len(lines_tl), len(lines_tr))
@@ -81,7 +103,7 @@ def _render_grid(
 
     def pad(lst: list[str], height: int) -> list[str]:
         while len(lst) < height:
-            lst.append(" " * _COL_WIDTH)
+            lst.append(" " * col_width)
         return lst
 
     lines_tl = pad(lines_tl, top_height)
@@ -102,23 +124,31 @@ def _render_grid(
     mr = "\u2524"
     mid = "\u253c"
 
-    bar = h * (_COL_WIDTH + 2)
+    bar = h * (col_width + 2)
     top_border = f"{tl}{bar}{tm}{bar}{tr}"
     mid_border = f"{ml}{bar}{mid}{bar}{mr}"
     bot_border = f"{bl}{bar}{bm}{bar}{br}"
 
     label_width = 12  # len("High IMPACT ") == len("Low  IMPACT ") == len(" " * 12)
-    grid_width = len(top_border)  # 1 + (_COL_WIDTH+2) + 1 + (_COL_WIDTH+2) + 1 = 47
-    col_section = _COL_WIDTH + 2  # 22 — one column's width including surrounding spaces
+    grid_width = len(top_border)  # 1 + (col_width+2) + 1 + (col_width+2) + 1
+    col_section = col_width + 2  # one column's width including surrounding spaces
 
     out: list[str] = []
 
     # Axis labels: "← EFFORT →" centered over grid; "Low"/"High" over each column
-    effort_label = "\u2190 EFFORT \u2192"
-    out.append(" " * label_width + effort_label.center(grid_width))
-    out.append(
-        " " * (label_width + 1) + "Low".center(col_section) + " " + "High".center(col_section)
-    )
+    effort_plain = "\u2190 EFFORT \u2192"
+    effort_pad_total = grid_width - len(effort_plain)
+    effort_left = " " * (effort_pad_total // 2)
+    effort_right = " " * (effort_pad_total - effort_pad_total // 2)
+    out.append(" " * label_width + effort_left + colorize(effort_plain, "1") + effort_right)
+
+    low_centered = "Low".center(col_section)
+    high_plain = "High"
+    high_pad_total = col_section - len(high_plain)
+    high_left = " " * (high_pad_total // 2)
+    high_right = " " * (high_pad_total - high_pad_total // 2)
+    high_centered = high_left + colorize(high_plain, "1") + high_right
+    out.append(" " * (label_width + 1) + low_centered + " " + high_centered)
 
     out.append(" " * label_width + top_border)
     for i, (tl_line, tr_line) in enumerate(zip(lines_tl, lines_tr, strict=True)):
@@ -180,4 +210,7 @@ def cmd_impact_effort(config: BRConfig, args: argparse.Namespace) -> int:
             q_low_high.append(issue)
 
     print(_render_grid(q_high_low, q_high_high, q_low_low, q_low_high))
+
+    total = len(issues)
+    print(f"\n  {total} issue{'s' if total != 1 else ''} plotted")
     return 0

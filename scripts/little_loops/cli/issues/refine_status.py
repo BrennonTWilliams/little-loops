@@ -6,7 +6,7 @@ import argparse
 import json
 from typing import TYPE_CHECKING
 
-from little_loops.cli.output import terminal_width
+from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, terminal_width
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -122,6 +122,34 @@ def _col(text: str, width: int) -> str:
 def _rcol(text: str, width: int) -> str:
     """Right-justify text in a fixed-width column."""
     return text.rjust(width)[:width]
+
+
+def _apply_cell_color(col: str, padded: str, plain: str) -> str:
+    """Colorize the visible content of a padded cell, preserving surrounding whitespace."""
+    if col == "id":
+        issue_type = plain.split("-")[0]
+        code = TYPE_COLOR.get(issue_type, "")
+    elif col == "priority":
+        code = PRIORITY_COLOR.get(plain, "")
+    elif col in ("norm", "fmt"):
+        if plain == "\u2713":   # ✓
+            code = "32"         # green
+        elif plain == "\u2717": # ✗
+            code = "31"         # red
+        else:
+            code = ""
+    else:
+        return padded
+
+    if not code:
+        return padded
+
+    # Preserve leading spaces (rjust cells) and trailing spaces (ljust cells)
+    lstripped = padded.lstrip()
+    leading = padded[: len(padded) - len(lstripped)]
+    content = lstripped.rstrip()
+    trailing = lstripped[len(content):]
+    return leading + colorize(content, code) + trailing
 
 
 def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
@@ -271,7 +299,8 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
             if issue is None:
                 parts.append(_header_cell(c))
             else:
-                parts.append(_render_cell(c, _cell_value(c, issue)))
+                plain = _cell_value(c, issue)
+                parts.append(_apply_cell_color(c, _render_cell(c, plain), plain))
 
         for c in all_cmds:
             if issue is None:
@@ -279,15 +308,23 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
             else:
                 if c == "/ll:refine-issue":
                     cell = str(issue.session_command_counts.get(c, 0))
+                    parts.append(_col(cell, _CMD_WIDTH))
                 else:
-                    cell = "\u2713" if c in cmd_set else "\u2014"
-                parts.append(_col(cell, _CMD_WIDTH))
+                    hit = c in cmd_set
+                    raw = "\u2713" if hit else "\u2014"
+                    padded = _col(raw, _CMD_WIDTH)
+                    parts.append(
+                        colorize(raw, "32") + padded[len(raw):]
+                        if hit
+                        else colorize(raw, "2") + padded[len(raw):]
+                    )
 
         for c in post_cmd:
             if issue is None:
                 parts.append(_header_cell(c))
             else:
-                parts.append(_render_cell(c, _cell_value(c, issue)))
+                plain = _cell_value(c, issue)
+                parts.append(_apply_cell_color(c, _render_cell(c, plain), plain))
 
         return "  ".join(parts)
 

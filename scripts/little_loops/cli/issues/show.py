@@ -9,6 +9,8 @@ from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, terminal_width
+
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
 
@@ -203,6 +205,19 @@ def _parse_card_fields(path: Path, config: BRConfig) -> dict[str, str | None]:
     }
 
 
+_ANSI_RE = re.compile(r"\033\[[0-9;]*m")
+
+
+def _strip_ansi(text: str) -> str:
+    return _ANSI_RE.sub("", text)
+
+
+def _ljust(text: str, width: int) -> str:
+    """Left-justify text accounting for invisible ANSI escape codes."""
+    pad = max(0, width - len(_strip_ansi(text)))
+    return text + " " * pad
+
+
 def _render_card(fields: dict[str, str | None]) -> str:
     """Render a summary card using box-drawing characters.
 
@@ -226,16 +241,21 @@ def _render_card(fields: dict[str, str | None]) -> str:
     title = fields.get("title") or "Untitled"
     header = f"{issue_id}: {title}"
 
-    # Build metadata line
+    # Build metadata line (plain, for width calculation)
+    priority = fields.get("priority")
+    status = fields.get("status")
+    effort = fields.get("effort")
+    risk = fields.get("risk")
+
     meta_parts: list[str] = []
-    if fields.get("priority"):
-        meta_parts.append(f"Priority: {fields['priority']}")
-    if fields.get("status"):
-        meta_parts.append(f"Status: {fields['status']}")
-    if fields.get("effort"):
-        meta_parts.append(f"Effort: {fields['effort']}")
-    if fields.get("risk"):
-        meta_parts.append(f"Risk: {fields['risk']}")
+    if priority:
+        meta_parts.append(f"Priority: {priority}")
+    if status:
+        meta_parts.append(f"Status: {status}")
+    if effort:
+        meta_parts.append(f"Effort: {effort}")
+    if risk:
+        meta_parts.append(f"Risk: {risk}")
     meta_line = "  \u2502  ".join(meta_parts)
 
     # Build scores line (only if at least one score present)
@@ -283,6 +303,31 @@ def _render_card(fields: dict[str, str | None]) -> str:
     all_lines = structural_lines + summary_lines
     width = max(len(line) for line in all_lines) + 2  # +2 for padding
 
+    # Cap width to terminal to prevent overflow
+    width = min(width, terminal_width() - 4)
+
+    # Build colorized header
+    if issue_id and "-" in issue_id:
+        itype = issue_id.split("-")[0]
+        colored_id = colorize(issue_id, TYPE_COLOR.get(itype, "0"))
+    else:
+        colored_id = issue_id
+    colored_header = f"{colored_id}: {title}"
+
+    # Build colorized meta line
+    colored_meta_parts: list[str] = []
+    if priority:
+        colored_meta_parts.append(f"Priority: {colorize(priority, PRIORITY_COLOR.get(priority, '0'))}")
+    if status:
+        colored_status = colorize("Completed", "32") if status == "Completed" else status
+        colored_meta_parts.append(f"Status: {colored_status}")
+    if effort:
+        colored_meta_parts.append(f"Effort: {effort}")
+    if risk:
+        risk_code = {"High": "38;5;208", "Medium": "33", "Low": "2"}.get(risk, "0")
+        colored_meta_parts.append(f"Risk: {colorize(risk, risk_code)}")
+    colored_meta_line = "  \u2502  ".join(colored_meta_parts)
+
     # Build card
     lines: list[str] = []
     top_border = f"{tl}{h * width}{tr}"
@@ -290,9 +335,9 @@ def _render_card(fields: dict[str, str | None]) -> str:
     bot_border = f"{bl}{h * width}{br}"
 
     lines.append(top_border)
-    lines.append(f"{v} {header:<{width - 1}}{v}")
+    lines.append(f"{v} {_ljust(colored_header, width - 1)}{v}")
     lines.append(mid_border)
-    lines.append(f"{v} {meta_line:<{width - 1}}{v}")
+    lines.append(f"{v} {_ljust(colored_meta_line, width - 1)}{v}")
     if scores_line:
         lines.append(f"{v} {scores_line:<{width - 1}}{v}")
     if summary_lines:

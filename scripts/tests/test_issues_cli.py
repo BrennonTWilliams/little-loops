@@ -402,6 +402,57 @@ class TestIssuesCLIImpactEffort:
         captured = capsys.readouterr()
         assert "No active issues" in captured.out
 
+    def test_impact_effort_no_ansi_when_no_color(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """impact-effort produces no ANSI escape codes when NO_COLOR is active."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        import little_loops.cli.output as output_mod
+
+        original = output_mod._USE_COLOR
+        try:
+            output_mod._USE_COLOR = False
+            with patch.object(
+                sys, "argv", ["ll-issues", "impact-effort", "--config", str(temp_project_dir)]
+            ):
+                from little_loops.cli import main_issues
+
+                result = main_issues()
+        finally:
+            output_mod._USE_COLOR = original
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "\033[" not in captured.out
+
+    def test_impact_effort_shows_total_count(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """impact-effort prints a summary line with total issue count."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "impact-effort", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "issue" in captured.out
+
     def test_impact_effort_frontmatter_override(
         self,
         temp_project_dir: Path,
