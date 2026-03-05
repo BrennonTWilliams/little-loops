@@ -1,0 +1,79 @@
+paradigm: fsm
+name: fix-quality-and-tests
+description: |
+  Sequential quality gate: lint + format + types must be clean before tests are
+  checked. Auto-fixes lint/format violations; investigates type errors manually.
+  After fixing test failures, loops back to check-quality to catch regressions.
+initial: check-quality
+states:
+  check-quality:
+    action: "Run `/ll:check-code lint,format,types` and report results."
+    action_type: prompt
+    evaluate:
+      type: llm_structured
+      prompt: |
+        Did ALL three checks (lint, format, types) pass with zero errors?
+        Return "success" only if all three are clean.
+        Return "failure" if any check found errors.
+        Return "partial" if the output is ambiguous or incomplete.
+    on_success: check-tests
+    on_failure: fix-quality
+    on_partial: check-quality
+    on_error: fix-quality
+  fix-quality:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Run `/ll:check-code all` to see current lint, format, and type errors.
+
+      Step 1 — Auto-fix lint and format:
+      Run `/ll:check-code fix` to auto-fix lint and format violations.
+
+      Step 2 — Fix remaining type errors manually:
+      If type errors remain, investigate each one: read the error and the
+      affected file, apply a targeted fix. Do NOT suppress with `# type: ignore`
+      unless genuinely unavoidable and documented why.
+    next: check-quality
+  check-tests:
+    action: "Run `/ll:run-tests all` and report whether all tests passed."
+    action_type: prompt
+    evaluate:
+      type: llm_structured
+      prompt: |
+        Did ALL tests pass?
+        Return "success" if all tests passed with no failures or errors.
+        Return "failure" if any test failed or errored.
+        Return "partial" if output is ambiguous, truncated, or tests were
+        skipped unexpectedly.
+    on_success: done
+    on_failure: fix-tests
+    on_partial: check-tests
+    on_error: fix-tests
+  fix-tests:
+    action_type: prompt
+    timeout: 1800
+    action: |
+      Run `/ll:run-tests all` to see current failures with full output.
+
+      For each failing test, diagnose BEFORE making any changes:
+
+      Ask: "Is the test assertion correct given the intended behavior?"
+
+      → If the TEST is wrong (outdated assertion, stale expected value,
+        testing implementation details that legitimately changed):
+        fix the test to reflect the correct expected behavior.
+
+      → If the IMPLEMENTATION is wrong (genuine bug, regression, broken
+        contract): fix the implementation, not the test.
+
+      Rules:
+      - Never delete a test to make it pass
+      - Never mock away a real failure
+      - Fix one failure at a time; re-run that test before moving on
+      - If ambiguous, prefer fixing the implementation over the test
+    next: check-quality
+  done:
+    terminal: true
+max_iterations: 30
+timeout: 7200
+on_handoff: spawn
