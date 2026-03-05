@@ -1380,6 +1380,191 @@ class TestWorkerPoolHelpers:
         assert count == 1
         assert not gitignored_file.exists()
 
+    def test_get_main_head_sha_returns_sha(
+        self,
+        worker_pool: WorkerPool,
+    ) -> None:
+        """_get_main_head_sha() returns the HEAD SHA on success."""
+        sha = "abc123def456abc123def456abc123def456abc123"
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["rev-parse", "HEAD"]:
+                return subprocess.CompletedProcess(args, 0, sha + "\n", "")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            result = worker_pool._get_main_head_sha()
+
+        assert result == sha
+
+    def test_get_main_head_sha_returns_empty_on_failure(
+        self,
+        worker_pool: WorkerPool,
+    ) -> None:
+        """_get_main_head_sha() returns empty string when git fails."""
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            return subprocess.CompletedProcess(args, 128, "", "not a git repository")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            result = worker_pool._get_main_head_sha()
+
+        assert result == ""
+
+    def test_detect_committed_leaks_no_leaks_same_sha(
+        self,
+        worker_pool: WorkerPool,
+    ) -> None:
+        """_detect_committed_leaks() returns empty list when HEAD is unchanged."""
+        sha = "abc123def456"
+
+        with patch.object(worker_pool, "_get_main_head_sha", return_value=sha):
+            result = worker_pool._detect_committed_leaks(sha)
+
+        assert result == []
+
+    def test_detect_committed_leaks_empty_baseline(
+        self,
+        worker_pool: WorkerPool,
+    ) -> None:
+        """_detect_committed_leaks() returns empty list when baseline is empty."""
+        result = worker_pool._detect_committed_leaks("")
+        assert result == []
+
+    def test_detect_committed_leaks_finds_new_commits(
+        self,
+        worker_pool: WorkerPool,
+    ) -> None:
+        """_detect_committed_leaks() returns list of new commit SHAs."""
+        baseline_sha = "aaa111"
+        current_sha = "ccc333"
+        leaked_sha1 = "bbb222"
+        leaked_sha2 = "ccc333"
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["rev-parse", "HEAD"]:
+                return subprocess.CompletedProcess(args, 0, current_sha + "\n", "")
+            if args[:2] == ["log", "--format=%H"]:
+                # Return two leaked commits (newest first)
+                return subprocess.CompletedProcess(
+                    args, 0, f"{leaked_sha2}\n{leaked_sha1}\n", ""
+                )
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+            result = worker_pool._detect_committed_leaks(baseline_sha)
+
+        assert result == [leaked_sha2, leaked_sha1]
+
+    def test_recover_committed_leaks_cherry_pick_success(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_recover_committed_leaks() cherry-picks commits and resets main."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker"
+        leaked_commits = ["sha_newest", "sha_oldest"]  # newest first
+        baseline_sha = "baseline_sha"
+
+        cherry_pick_calls: list[list[str]] = []
+
+        def mock_subprocess_run(
+            args: list[str], **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["git", "cherry-pick"]:
+                cherry_pick_calls.append(args)
+                return subprocess.CompletedProcess(args, 0, "", "")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["rev-parse", "HEAD"]:
+                return subprocess.CompletedProcess(args, 0, "sha_newest\n", "")
+            if args[:2] == ["reset", "--hard"]:
+                return subprocess.CompletedProcess(args, 0, "", "")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch("subprocess.run", side_effect=mock_subprocess_run):
+            with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+                result = worker_pool._recover_committed_leaks(
+                    leaked_commits, worktree_path, baseline_sha, "ENH-535"
+                )
+
+        assert result is True
+        # Cherry-picks should be in chronological order (oldest first)
+        assert len(cherry_pick_calls) == 2
+        assert cherry_pick_calls[0] == ["git", "cherry-pick", "sha_oldest"]
+        assert cherry_pick_calls[1] == ["git", "cherry-pick", "sha_newest"]
+
+    def test_recover_committed_leaks_cherry_pick_fails(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_recover_committed_leaks() returns False when cherry-pick fails."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker"
+        leaked_commits = ["sha_newest"]
+        baseline_sha = "baseline_sha"
+
+        def mock_subprocess_run(
+            args: list[str], **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["git", "cherry-pick"] and "--abort" not in args:
+                return subprocess.CompletedProcess(args, 1, "", "CONFLICT: merge conflict")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch("subprocess.run", side_effect=mock_subprocess_run):
+            result = worker_pool._recover_committed_leaks(
+                leaked_commits, worktree_path, baseline_sha, "ENH-535"
+            )
+
+        assert result is False
+
+    def test_recover_committed_leaks_skips_reset_when_main_advanced(
+        self,
+        worker_pool: WorkerPool,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_recover_committed_leaks() skips main reset when extra commits exist."""
+        worktree_path = temp_repo_with_config / ".worktrees" / "worker"
+        leaked_commits = ["sha_leaked"]
+        baseline_sha = "baseline_sha"
+
+        reset_called = [False]
+
+        def mock_subprocess_run(
+            args: list[str], **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["git", "cherry-pick"]:
+                return subprocess.CompletedProcess(args, 0, "", "")
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        def mock_git_run(
+            args: list[str], cwd: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            if args[:2] == ["rev-parse", "HEAD"]:
+                # Main has advanced further than the leaked commit
+                return subprocess.CompletedProcess(args, 0, "sha_even_newer\n", "")
+            if args[:2] == ["reset", "--hard"]:
+                reset_called[0] = True
+            return subprocess.CompletedProcess(args, 0, "", "")
+
+        with patch("subprocess.run", side_effect=mock_subprocess_run):
+            with patch.object(worker_pool._git_lock, "run", side_effect=mock_git_run):
+                result = worker_pool._recover_committed_leaks(
+                    leaked_commits, worktree_path, baseline_sha, "ENH-535"
+                )
+
+        assert result is True
+        assert not reset_called[0]  # Reset should be skipped
+
 
 class TestWorkerPoolModelDetection:
     """Tests for _detect_worktree_model_via_api()."""
@@ -1700,6 +1885,82 @@ CORRECTED
         assert len(result.corrections) == 2
         assert "Updated line 42 -> 45 in src/module.py reference" in result.corrections
         assert "Added missing ## Expected Behavior section" in result.corrections
+
+    def test_process_issue_recovers_committed_leaks(
+        self,
+        worker_pool: WorkerPool,
+        mock_issue: MagicMock,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_process_issue() recovers when Claude commits to main instead of worktree.
+
+        Regression test for BUG-580: when committed_leaks are detected and
+        the worktree has no changed files, recovery should be attempted.
+        After recovery, changed_files should be re-fetched for verification.
+        """
+        ready_output = "## VERDICT: **READY**"
+        manage_output = "Issue resolved"
+
+        call_count = [0]
+
+        def mock_run_command(
+            cmd: str, path: Path, **kwargs: Any
+        ) -> subprocess.CompletedProcess[str]:
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return subprocess.CompletedProcess([], 0, ready_output, "")
+            return subprocess.CompletedProcess([], 0, manage_output, "")
+
+        # Simulate: worktree has no changes (committed to main instead)
+        get_changed_files_calls = [0]
+
+        def mock_get_changed_files(path: Path) -> list[str]:
+            get_changed_files_calls[0] += 1
+            if get_changed_files_calls[0] == 1:
+                return []  # First call: worktree empty (committed to main)
+            return ["scripts/fix.py"]  # Second call: after recovery
+
+        recover_called = [False]
+
+        def mock_recover(
+            commits: list[str], worktree: Path, baseline: str, issue_id: str
+        ) -> bool:
+            recover_called[0] = True
+            return True  # Recovery succeeds
+
+        with patch.object(worker_pool, "_setup_worktree"):
+            with patch.object(worker_pool, "_get_main_repo_baseline", return_value=set()):
+                with patch.object(worker_pool, "_get_main_head_sha", return_value="baseline"):
+                    with patch.object(
+                        worker_pool, "_run_claude_command", side_effect=mock_run_command
+                    ):
+                        with patch.object(
+                            worker_pool, "_get_changed_files", side_effect=mock_get_changed_files
+                        ):
+                            with patch.object(
+                                worker_pool, "_detect_main_repo_leaks", return_value=[]
+                            ):
+                                with patch.object(
+                                    worker_pool,
+                                    "_detect_committed_leaks",
+                                    return_value=["abc1234"],
+                                ):
+                                    with patch.object(
+                                        worker_pool,
+                                        "_recover_committed_leaks",
+                                        side_effect=mock_recover,
+                                    ):
+                                        with patch.object(
+                                            worker_pool,
+                                            "_update_branch_base",
+                                            return_value=(True, ""),
+                                        ):
+                                            result = worker_pool._process_issue(mock_issue)
+
+        assert recover_called[0] is True
+        assert get_changed_files_calls[0] == 2  # Called twice: initial + after recovery
+        assert result.success is True
+        assert result.changed_files == ["scripts/fix.py"]
 
 
 class TestWorkerPoolRunClaudeCommand:

@@ -250,6 +250,8 @@ class WorkerPool:
         # Capture baseline of main repo status before worker starts
         # Used to detect files incorrectly written to main repo
         baseline_status = self._get_main_repo_baseline()
+        # Capture main HEAD SHA before worker starts to detect committed leaks
+        baseline_head_sha = self._get_main_head_sha()
 
         try:
             # Step 1: Create worktree with new branch
@@ -379,17 +381,10 @@ class WorkerPool:
                     stderr=manage_result.stderr,
                 )
 
-            # Step 6: Get list of changed files
+            # Step 6: Get list of changed files in worktree
             changed_files = self._get_changed_files(worktree_path)
 
-            # Step 7: Verify actual work was done
-            # Pass full filename for better doc-only keyword matching
-            issue_filename = issue.path.stem if issue.path else ""
-            work_verified, verification_error = self._verify_work_was_done(
-                changed_files, issue.issue_id, issue_filename
-            )
-
-            # Step 8: Detect files leaked to main repo instead of worktree
+            # Step 8: Detect files leaked to main repo instead of worktree (unstaged)
             leaked_files = self._detect_main_repo_leaks(issue.issue_id, baseline_status)
             if leaked_files:
                 self.logger.warning(
@@ -399,6 +394,30 @@ class WorkerPool:
                 # Clean up leaked files to prevent stash conflicts during merge.
                 # The actual work is preserved in the worktree branch.
                 self._cleanup_leaked_files(leaked_files)
+
+            # Step 8b: Detect commits made directly to main instead of worktree branch.
+            # If Claude committed to main (not the worktree), worktree will have no diff,
+            # causing work verification to fail. Attempt to recover by cherry-picking
+            # the leaked commits to the worktree and resetting main. (BUG-580)
+            committed_leaks = self._detect_committed_leaks(baseline_head_sha)
+            if committed_leaks:
+                self.logger.warning(
+                    f"{issue.issue_id} committed {len(committed_leaks)} commit(s) directly "
+                    f"to main instead of worktree: {[sha[:8] for sha in committed_leaks]}"
+                )
+                if not changed_files:
+                    recovered = self._recover_committed_leaks(
+                        committed_leaks, worktree_path, baseline_head_sha, issue.issue_id
+                    )
+                    if recovered:
+                        changed_files = self._get_changed_files(worktree_path)
+
+            # Step 7: Verify actual work was done (after potential committed-leak recovery)
+            # Pass full filename for better doc-only keyword matching
+            issue_filename = issue.path.stem if issue.path else ""
+            work_verified, verification_error = self._verify_work_was_done(
+                changed_files, issue.issue_id, issue_filename
+            )
 
             if manage_result.returncode != 0:
                 return WorkerResult(
@@ -1092,6 +1111,139 @@ class WorkerPool:
             files.add(file_path)
 
         return files
+
+    def _get_main_head_sha(self) -> str:
+        """Get the current HEAD SHA of the main repo.
+
+        Returns:
+            HEAD SHA string, or empty string if unavailable
+        """
+        result = self._git_lock.run(
+            ["rev-parse", "HEAD"],
+            cwd=self.repo_path,
+            timeout=10,
+        )
+        if result.returncode == 0:
+            return result.stdout.strip()
+        return ""
+
+    def _detect_committed_leaks(self, baseline_head_sha: str) -> list[str]:
+        """Detect commits made directly to main repo during worker execution.
+
+        When Claude commits to the main repo instead of the worktree branch,
+        the commits appear on main's history but the worktree has no changes.
+        This method detects such leaked commits by comparing main's HEAD SHA
+        before and after worker execution.
+
+        Args:
+            baseline_head_sha: HEAD SHA captured before worker started
+
+        Returns:
+            List of commit SHAs committed to main during worker execution,
+            newest first. Empty list if no committed leaks detected.
+        """
+        if not baseline_head_sha:
+            return []
+
+        current_sha = self._get_main_head_sha()
+        if not current_sha or current_sha == baseline_head_sha:
+            return []
+
+        # Get list of new commits on main since baseline
+        result = self._git_lock.run(
+            ["log", "--format=%H", f"{baseline_head_sha}..HEAD"],
+            cwd=self.repo_path,
+            timeout=30,
+        )
+        if result.returncode != 0:
+            return []
+
+        commits = [sha.strip() for sha in result.stdout.strip().split("\n") if sha.strip()]
+        return commits
+
+    def _recover_committed_leaks(
+        self,
+        leaked_commits: list[str],
+        worktree_path: Path,
+        baseline_head_sha: str,
+        issue_id: str,
+    ) -> bool:
+        """Attempt to recover committed leaks by cherry-picking to worktree.
+
+        When Claude commits directly to main instead of the worktree branch,
+        we attempt to:
+          1. Cherry-pick the leaked commits onto the worktree branch
+          2. Reset main back to the baseline SHA (if safe to do so)
+
+        This preserves the implementation work in the worktree while
+        cleaning up the incorrect commits on main.
+
+        Args:
+            leaked_commits: Commit SHAs that leaked to main (newest first)
+            worktree_path: Path to the worker's worktree
+            baseline_head_sha: Main HEAD SHA before worker started
+            issue_id: Issue ID for logging
+
+        Returns:
+            True if cherry-pick succeeded (main reset is attempted but
+            not required for a True return value)
+        """
+        self.logger.info(
+            f"[{issue_id}] Attempting recovery: cherry-picking {len(leaked_commits)} "
+            f"commit(s) to worktree"
+        )
+
+        # Cherry-pick in chronological order (oldest first = reverse of log output)
+        for sha in reversed(leaked_commits):
+            result = subprocess.run(
+                ["git", "cherry-pick", sha],
+                cwd=worktree_path,
+                capture_output=True,
+                text=True,
+                timeout=60,
+            )
+            if result.returncode != 0:
+                subprocess.run(
+                    ["git", "cherry-pick", "--abort"],
+                    cwd=worktree_path,
+                    capture_output=True,
+                    timeout=10,
+                )
+                self.logger.warning(
+                    f"[{issue_id}] Cherry-pick of {sha[:8]} failed: {result.stderr.strip()}"
+                )
+                return False
+
+        # Attempt to reset main to baseline (only if main hasn't advanced further)
+        current_main_sha = self._get_main_head_sha()
+        most_recent_leaked = leaked_commits[0]  # Newest first
+        if current_main_sha == most_recent_leaked:
+            reset_result = self._git_lock.run(
+                ["reset", "--hard", baseline_head_sha],
+                cwd=self.repo_path,
+                timeout=30,
+            )
+            if reset_result.returncode == 0:
+                self.logger.info(
+                    f"[{issue_id}] Reset main to baseline {baseline_head_sha[:8]}"
+                )
+            else:
+                self.logger.warning(
+                    f"[{issue_id}] Cherry-pick succeeded but failed to reset main: "
+                    f"{reset_result.stderr.strip()}"
+                )
+        else:
+            self.logger.warning(
+                f"[{issue_id}] Main has additional commits beyond leaked ones "
+                f"({current_main_sha[:8]} != {most_recent_leaked[:8]}) — "
+                f"skipping main reset, manual cleanup may be needed"
+            )
+
+        self.logger.info(
+            f"[{issue_id}] Recovered {len(leaked_commits)} commit(s): "
+            f"cherry-picked to worktree branch"
+        )
+        return True
 
     @property
     def active_count(self) -> int:

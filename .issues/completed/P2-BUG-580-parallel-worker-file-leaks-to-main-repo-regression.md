@@ -51,7 +51,7 @@ All file writes and git operations performed by a parallel worker's Claude sessi
 
 - `BUG-007` (completed): original worktree file leak bug — fix was `_setup_worktree` copies `.claude/` and sets `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1`
 - `BUG-038` (completed): leaked files causing cascading merge failures
-- `worker_pool.py:392` — `_detect_main_repo_leaks()` detects UNSTAGED leaks but not committed leaks
+- `worker_pool.py:910` — `_detect_main_repo_leaks()` detects UNSTAGED leaks but not committed leaks
 
 ## Steps to Reproduce
 
@@ -110,10 +110,41 @@ All file writes and git operations performed by a parallel worker's Claude sessi
 
 `bug`, `parallel`, `worktree`, `regression`
 
+## Resolution
+
+**Status**: Fixed | Resolved: 2026-03-05
+
+### Changes Made
+
+**`scripts/little_loops/parallel/worker_pool.py`**:
+- Added `_get_main_head_sha()` — captures the current HEAD SHA of the main repo via `git rev-parse HEAD` using the git lock
+- Added `_detect_committed_leaks(baseline_head_sha)` — compares main's HEAD after worker execution against the baseline SHA captured before; if HEAD advanced, retrieves leaked commit SHAs via `git log --format=%H baseline..HEAD`
+- Added `_recover_committed_leaks(leaked_commits, worktree_path, baseline_head_sha, issue_id)` — cherry-picks leaked commits (oldest-first) onto the worktree branch, then resets main to baseline if main hasn't advanced further
+- Modified `_process_issue()`: captures `baseline_head_sha` before the try block; reorders steps so detection (8) and committed-leak recovery (8b) happen before work verification (7), giving recovery a chance to populate `changed_files` before the "No files were changed" check
+
+**`scripts/tests/test_worker_pool.py`**:
+- `test_get_main_head_sha_returns_sha` — verifies SHA is extracted from git output
+- `test_get_main_head_sha_returns_empty_on_failure` — verifies graceful fallback
+- `test_detect_committed_leaks_no_leaks_same_sha` — no-op when HEAD is unchanged
+- `test_detect_committed_leaks_empty_baseline` — no-op when baseline is empty string
+- `test_detect_committed_leaks_finds_new_commits` — detects commits added to main
+- `test_recover_committed_leaks_cherry_pick_success` — cherry-picks in chronological order and resets main
+- `test_recover_committed_leaks_cherry_pick_fails` — returns False on cherry-pick conflict
+- `test_recover_committed_leaks_skips_reset_when_main_advanced` — skips reset if main has diverged
+- `test_process_issue_recovers_committed_leaks` — integration test for the full recovery flow
+
+### Root Cause Confirmed
+`_detect_main_repo_leaks()` only checks `git status --porcelain` (unstaged changes). When Claude commits directly to `main` (as happened with ENH-535 commit `3b2e206`), committed changes are "clean" in git status and invisible to the existing detection. `_get_changed_files(worktree_path)` then returned `[]` because the worktree branch had no new commits, causing `_verify_work_was_done` to fail.
+
+### Note on Prevention
+`--project-dir` does not exist in the Claude CLI (confirmed). The existing `CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR=1` + `.claude/` copy approach (BUG-007 fix) remains the prevention layer. This fix adds detection and recovery for when prevention fails.
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a470e022-6e78-4989-a376-3d78b8dd783e.jsonl`
 - `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c7c88523-a3c9-4dde-9eb7-a055993ac4ef.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8fe19332-ebe5-498a-8fd2-9f987738f4b9.jsonl`
+- `/ll:manage-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/700c60f0-215c-43c7-af34-5e23b90ff029.jsonl`
 
 ---
 ## Status
-**Open** | Priority: P2
+**Fixed** | Resolved: 2026-03-05
