@@ -6,8 +6,8 @@ status: open
 title: "Make ll-issues refine-status table columns configurable via ll-config.json"
 discovered_date: 2026-03-05
 discovered_by: capture-issue
-confidence_score: 85
-outcome_confidence: 79
+confidence_score: 95
+outcome_confidence: 86
 ---
 
 # ENH-587: Make ll-issues refine-status table columns configurable via ll-config.json
@@ -53,6 +53,25 @@ Load a `refine_status.columns` list from `ll-config.json` in the `refine-status`
 config_columns = config.get("refine_status", {}).get("columns", None)
 columns = config_columns if config_columns else DEFAULT_COLUMNS
 ```
+
+## API/Interface
+
+### Config Schema (`config-schema.json`)
+
+```json
+{
+  "refine_status": {
+    "columns": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Ordered list of columns to display in refine-status output. Omit or leave empty to use defaults.",
+      "default": []
+    }
+  }
+}
+```
+
+No new CLI flags. No new Python public API.
 
 ## Integration Map
 
@@ -141,8 +160,11 @@ _None identified._
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/355f2ad5-857c-4db2-9529-3e1ed4f84d7e.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5aa134b-94a2-43de-99e6-3c792a77ca23.jsonl`
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5aa134b-94a2-43de-99e6-3c792a77ca23.jsonl`
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c5aa134b-94a2-43de-99e6-3c792a77ca23.jsonl`
+
+- `/ll:format-issue` - 2026-03-05T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01471175-2814-49cb-8d28-d70874526382.jsonl`
 
 ---
 ## Status
 
-open
+**Open** | Created: 2026-03-05 | Priority: P4
