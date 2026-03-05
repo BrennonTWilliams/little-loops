@@ -98,7 +98,7 @@ For interactive editing, use `/ll:configure`.
   },
 
   "context_monitor": {
-    "enabled": true,
+    "enabled": false,
     "auto_handoff_threshold": 80,
     "context_limit_estimate": 150000
   },

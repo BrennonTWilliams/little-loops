@@ -8,7 +8,7 @@
 The little-loops issue template has been optimized to maximize value for both AI agents during implementation and human reviewers. Version 2.0 reduces cognitive overhead by **removing 8 low-value sections** and **adding 4 high-impact sections** that appear in best-practice issues.
 
 **Key Changes**:
-- 21 sections → 20 sections (-5%)
+- 21 sections → 17 sections (-19%)
 - Enhanced AI implementation guidance
 - Anchor-based code references (no more line number drift)
 - Integration Map to identify all affected files/components
