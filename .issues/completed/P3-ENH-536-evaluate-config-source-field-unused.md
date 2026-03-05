@@ -3,6 +3,8 @@ discovered_commit: 47c81c895baaac1acac69d105ed75ff1ec82ed2c
 discovered_branch: main
 discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-536: `EvaluateConfig.source` Field Parsed and Serialized But Never Consumed During Evaluation
@@ -120,7 +122,26 @@ This keeps evaluators themselves source-agnostic; only the executor resolves the
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; noted `test_fsm_evaluators.py:341` (TestConvergenceEvaluator) as test pattern
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9069608d-0525-49f4-a10b-7e5f58d28718.jsonl`
+- `/ll:confidence-check` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:manage-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/` — Implemented `evaluate.source` resolution in `FSMExecutor._evaluate()`; added `InterpolationError` import; added 3 tests in `TestEvaluateSource`
+
+## Resolution
+
+**Status**: Completed
+**Resolved**: 2026-03-04
+
+### Changes Made
+
+- `scripts/little_loops/fsm/executor.py`: Added `InterpolationError` to interpolation import; in `_evaluate()`, resolve `config.source` via `interpolate()` before passing to `evaluate()`, falling back to raw action output on `InterpolationError`
+- `scripts/little_loops/tests/test_ll_loop_execution.py`: Added `TestEvaluateSource` class with 3 tests covering source redirect, valid match, and invalid-source fallback
+
+### Verification
+
+- 3 new tests pass: `TestEvaluateSource`
+- 143 FSM-related tests pass (no regressions)
+- `ruff check` and `mypy` clean on executor.py
 
 ---
 
-**Open** | Created: 2026-03-03 | Priority: P3
+**Completed** | Created: 2026-03-03 | Priority: P3

@@ -25,7 +25,7 @@ from little_loops.fsm.evaluators import (
     evaluate_llm_structured,
 )
 from little_loops.fsm.handoff_handler import HandoffHandler
-from little_loops.fsm.interpolation import InterpolationContext, interpolate
+from little_loops.fsm.interpolation import InterpolationContext, InterpolationError, interpolate
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
 
@@ -616,6 +616,15 @@ class FSMExecutor:
             return None
 
         # Explicit evaluation config
+        raw_output = action_result.output if action_result else ""
+        if state.evaluate.source:
+            try:
+                eval_input = interpolate(state.evaluate.source, ctx)
+            except InterpolationError:
+                eval_input = raw_output
+        else:
+            eval_input = raw_output
+
         if state.evaluate.type == "llm_structured" and not self.fsm.llm.enabled:
             result = EvaluationResult(
                 verdict="error",
@@ -624,7 +633,7 @@ class FSMExecutor:
         else:
             result = evaluate(
                 config=state.evaluate,
-                output=action_result.output if action_result else "",
+                output=eval_input,
                 exit_code=action_result.exit_code if action_result else 0,
                 context=ctx,
             )

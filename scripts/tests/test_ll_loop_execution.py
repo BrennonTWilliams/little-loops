@@ -1150,6 +1150,138 @@ states:
         assert "disabled" in result.details["error"]
 
 
+class TestEvaluateSource:
+    """Tests for EvaluateConfig.source field redirecting evaluation input."""
+
+    def test_source_redirects_evaluation_to_captured_variable(self) -> None:
+        """When source is set, evaluator receives the resolved source value, not action output."""
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+        from little_loops.fsm.interpolation import InterpolationContext
+        from little_loops.fsm.schema import EvaluateConfig
+
+        fsm = make_test_fsm()
+        executor = FSMExecutor(fsm)
+        # Captured variable holds "0" (which exit_code evaluator would see as success)
+        executor.captured = {"prev_run": {"output": "0", "exit_code": 0, "duration_ms": 0}}
+
+        state = make_test_state(
+            action="echo ignored",
+            evaluate=EvaluateConfig(
+                type="output_contains",
+                pattern="captured-value",
+                source="${captured.prev_run.output}",
+            ),
+            on_success="done",
+            on_failure="done",
+        )
+        # Action output does NOT contain "captured-value"
+        action_result = ActionResult(
+            output="current action output", stderr="", exit_code=0, duration_ms=10
+        )
+        ctx = InterpolationContext(
+            context={},
+            captured=executor.captured,
+            prev=None,
+            result=None,
+            state_name="start",
+            iteration=1,
+            loop_name="test",
+            started_at="",
+            elapsed_ms=0,
+        )
+
+        result = executor._evaluate(state, action_result, ctx)
+
+        # The captured value "0" does not contain "captured-value", so failure
+        assert result is not None
+        assert result.verdict == "failure"
+
+    def test_source_with_valid_captured_value_matches_pattern(self) -> None:
+        """When source resolves to a value matching the pattern, verdict is success."""
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+        from little_loops.fsm.interpolation import InterpolationContext
+        from little_loops.fsm.schema import EvaluateConfig
+
+        fsm = make_test_fsm()
+        executor = FSMExecutor(fsm)
+        executor.captured = {"scan": {"output": "All checks passed", "exit_code": 0, "duration_ms": 0}}
+
+        state = make_test_state(
+            action="echo irrelevant",
+            evaluate=EvaluateConfig(
+                type="output_contains",
+                pattern="All checks passed",
+                source="${captured.scan.output}",
+            ),
+            on_success="done",
+            on_failure="done",
+        )
+        # Action output does NOT contain the pattern
+        action_result = ActionResult(
+            output="completely different", stderr="", exit_code=0, duration_ms=10
+        )
+        ctx = InterpolationContext(
+            context={},
+            captured=executor.captured,
+            prev=None,
+            result=None,
+            state_name="start",
+            iteration=1,
+            loop_name="test",
+            started_at="",
+            elapsed_ms=0,
+        )
+
+        result = executor._evaluate(state, action_result, ctx)
+
+        # source resolves to captured value which contains the pattern -> success
+        assert result is not None
+        assert result.verdict == "success"
+
+    def test_invalid_source_expression_falls_back_to_action_output(self) -> None:
+        """When source interpolation fails, evaluator falls back to current action output."""
+        from little_loops.fsm.executor import ActionResult, FSMExecutor
+        from little_loops.fsm.interpolation import InterpolationContext
+        from little_loops.fsm.schema import EvaluateConfig
+
+        fsm = make_test_fsm()
+        executor = FSMExecutor(fsm)
+        # captured is empty — reference will fail to resolve
+        executor.captured = {}
+
+        state = make_test_state(
+            action="echo hello",
+            evaluate=EvaluateConfig(
+                type="output_contains",
+                pattern="hello",
+                source="${captured.nonexistent.output}",
+            ),
+            on_success="done",
+            on_failure="done",
+        )
+        # Action output DOES contain "hello"
+        action_result = ActionResult(
+            output="hello world", stderr="", exit_code=0, duration_ms=10
+        )
+        ctx = InterpolationContext(
+            context={},
+            captured={},
+            prev=None,
+            result=None,
+            state_name="start",
+            iteration=1,
+            loop_name="test",
+            started_at="",
+            elapsed_ms=0,
+        )
+
+        result = executor._evaluate(state, action_result, ctx)
+
+        # source fails -> falls back to action output "hello world" -> pattern "hello" matches
+        assert result is not None
+        assert result.verdict == "success"
+
+
 class TestCmdTest:
     """Tests for ll-loop test subcommand."""
 
