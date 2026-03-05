@@ -338,12 +338,12 @@ def _render_2d_diagram(
 
     # Compute box inner content and widths
     tw = terminal_width()
+    num_main = max(1, len(main_path))
     if verbose and fsm_states and main_path:
         # In verbose mode, allow wider boxes to show more content
-        num_main = max(1, len(main_path))
         max_box_inner = max(20, min(60, (tw - 4) // num_main - 6))
     else:
-        max_box_inner = 0  # Will be set per-state from name+badge
+        max_box_inner = max(20, min(40, (tw - 4) // num_main - 6))
 
     box_inner: dict[str, list[str]] = {}
     box_width: dict[str, int] = {}
@@ -361,12 +361,16 @@ def _render_2d_diagram(
         base_w = len(f"{display_label[s]}  {badge}") if badge else len(display_label[s])
         base_w = max(base_w, len(display_label[s]))
 
-        # In verbose mode, allow wider if action content is longer
+        # Allow wider boxes if action content is longer
         inner_w = base_w
-        if verbose and state_obj and state_obj.action and max_box_inner > 0:
+        if state_obj and state_obj.action and max_box_inner > 0:
             action_lines = state_obj.action.strip().splitlines()
-            max_action_w = max((len(ln.rstrip()) for ln in action_lines if ln.rstrip()), default=0)
-            inner_w = max(base_w, min(max_action_w, max_box_inner))
+            if verbose:
+                max_action_w = max((len(ln.rstrip()) for ln in action_lines if ln.rstrip()), default=0)
+                inner_w = max(base_w, min(max_action_w, max_box_inner))
+            else:
+                first_action = next((ln.rstrip() for ln in action_lines if ln.rstrip()), "")
+                inner_w = max(base_w, min(len(first_action), max_box_inner))
 
         content = _box_inner_lines(state_obj, display_label[s], verbose, inner_w)
         actual_w = max(len(ln) for ln in content)
@@ -418,6 +422,8 @@ def _render_2d_diagram(
         right_edge = col_start[s] + box_width[s] + 4
         if right_edge > total_width:
             total_width = right_edge
+
+    diagram_indent = max(0, (tw - total_width) // 2)
 
     # --- Build main flow rows (uniform height for all main-path boxes) ---
     rows: list[list[str]] = [[" "] * total_width for _ in range(main_height)]
@@ -493,6 +499,8 @@ def _render_2d_diagram(
     all_extra = non_self_branches + non_self_back
 
     if not all_extra:
+        if diagram_indent > 0:
+            lines = [" " * diagram_indent + ln if ln.strip() else ln for ln in lines]
         return _colorize_diagram_labels("\n".join(lines))
 
     off_path_set = set(off_path)
@@ -602,7 +610,13 @@ def _render_2d_diagram(
             if has_down:
                 row = [" "] * total_width
                 dlabel = "/".join(down_labels)
-                dstart = max(0, down_col - len(dlabel) - 1)
+                dstart_ideal = down_col - len(dlabel) - 1
+                if dstart_ideal >= 0:
+                    dstart = dstart_ideal
+                else:
+                    # Label can't fit left without overlapping a pipe; place right of all pipes
+                    rightmost_pipe = max(down_col, up_col if has_up else down_col)
+                    dstart = rightmost_pipe + 2
                 for j, ch in enumerate(dlabel):          # write label first
                     if 0 <= dstart + j < total_width:
                         row[dstart + j] = ch
@@ -691,6 +705,8 @@ def _render_2d_diagram(
         for row in box_rows_r:
             lines.append("".join(row).rstrip())
 
+    if diagram_indent > 0:
+        lines = [" " * diagram_indent + ln if ln.strip() else ln for ln in lines]
     return _colorize_diagram_labels("\n".join(lines))
 
 
@@ -769,7 +785,7 @@ def _print_state_overview_table(fsm: FSMLoop) -> None:
     # Remaining width split between action preview and transitions
     fixed = col0_w + col1_w + 10  # margins + separators
     remaining = max(20, tw - fixed)
-    col2_w = min(35, max(len(headers[2]), max(len(r[2]) for r in rows)), remaining // 2)
+    col2_w = min(50, max(len(headers[2]), max(len(r[2]) for r in rows)), remaining * 3 // 5)
     col2_w = max(10, col2_w)
     col3_w = max(10, remaining - col2_w)
 
