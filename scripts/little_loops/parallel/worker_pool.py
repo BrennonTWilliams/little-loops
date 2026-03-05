@@ -565,6 +565,12 @@ class WorkerPool:
 
         self.logger.info(f"Created worktree at {worktree_path} on branch {branch_name}")
 
+        # Write session marker so concurrent orchestrators can identify this process's
+        # worktrees and skip them during orphan cleanup (BUG-579)
+        if worktree_path.exists():
+            marker_path = worktree_path / f".ll-session-{os.getpid()}"
+            marker_path.write_text(str(os.getpid()))
+
         # Verify model if --show-model flag is set (requires API call)
         if self.parallel_config.show_model:
             model = self._detect_worktree_model_via_api(worktree_path)

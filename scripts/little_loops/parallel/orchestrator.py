@@ -7,6 +7,7 @@ multiple issues concurrently.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import signal
@@ -225,10 +226,28 @@ class ParallelOrchestrator:
         if not worktree_base.exists():
             return
 
-        # Get list of worktree directories
+        # Get list of worktree directories, skipping those owned by live processes (BUG-579)
         orphaned = []
         for item in worktree_base.iterdir():
             if item.is_dir() and item.name.startswith("worker-"):
+                # Check for a .ll-session-<pid> marker left by an active orchestrator
+                owned_by_live = False
+                for marker in item.glob(".ll-session-*"):
+                    try:
+                        pid = int(marker.name.split("-")[-1])
+                        os.kill(pid, 0)  # Signal 0: check if process exists
+                        owned_by_live = True
+                        break
+                    except (ProcessLookupError, ValueError):
+                        pass
+                    except PermissionError:
+                        owned_by_live = True  # Process exists, no permission to signal
+                        break
+                if owned_by_live:
+                    self.logger.info(
+                        f"Skipping {item.name}: owned by running process"
+                    )
+                    continue
                 orphaned.append(item)
 
         if not orphaned:

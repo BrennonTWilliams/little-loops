@@ -400,6 +400,63 @@ class TestOrphanedWorktreeCleanup:
 
         assert other_dir.exists()
 
+    def test_skips_worktree_owned_by_live_process(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Does not remove a worktree whose session marker PID is alive (BUG-579)."""
+        import os
+
+        worktree_base = temp_repo_with_config / ".worktrees"
+        active_dir = worktree_base / "worker-bug-active"
+        active_dir.mkdir()
+        # Write marker for the current process (guaranteed alive)
+        (active_dir / f".ll-session-{os.getpid()}").write_text(str(os.getpid()))
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        orchestrator._cleanup_orphaned_worktrees()
+
+        assert active_dir.exists(), "Active worktree should not be removed"
+
+    def test_removes_worktree_with_dead_process_marker(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """Removes a worktree whose session marker PID is no longer running (BUG-579)."""
+        worktree_base = temp_repo_with_config / ".worktrees"
+        stale_dir = worktree_base / "worker-bug-stale"
+        stale_dir.mkdir()
+        # Use PID 0 — sending signal 0 to PID 0 raises PermissionError on POSIX
+        # (affects all processes in group), so use a clearly dead PID via mock instead.
+        (stale_dir / ".ll-session-99999").write_text("99999")
+
+        removed: list[str] = []
+
+        def mock_git_run(args: list[str], cwd: Path, **kwargs: Any) -> MagicMock:
+            if args[:2] == ["worktree", "remove"]:
+                removed.append(str(cwd))
+            result = MagicMock()
+            result.returncode = 0
+            return result
+
+        orchestrator._git_lock.run = mock_git_run  # type: ignore[method-assign,assignment]
+
+        with patch("os.kill", side_effect=ProcessLookupError):
+            orchestrator._cleanup_orphaned_worktrees()
+
+        # The stale worktree should have been targeted for cleanup
+        assert any("worker-bug-stale" in r or str(stale_dir) in r for r in removed) or (
+            not stale_dir.exists()
+        ), "Stale worktree with dead PID marker should be removed"
+
 
 class TestCheckPendingWorktrees:
     """Tests for _check_pending_worktrees method."""
