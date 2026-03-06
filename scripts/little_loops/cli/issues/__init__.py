@@ -51,9 +51,11 @@ Examples:
     subs = parser.add_subparsers(dest="command", help="Available commands")
 
     nid = subs.add_parser("next-id", aliases=["ni"], help="Print next globally unique issue number")
+    nid.set_defaults(command="next-id")
     add_config_arg(nid)
 
     ls = subs.add_parser("list", aliases=["l"], help="List active issues")
+    ls.set_defaults(command="list")
     ls.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
     ls.add_argument(
         "--priority",
@@ -68,21 +70,25 @@ Examples:
     add_config_arg(ls)
 
     seq = subs.add_parser("sequence", aliases=["seq"], help="Suggest implementation order based on dependencies")
+    seq.set_defaults(command="sequence")
     seq.add_argument(
         "--limit", type=int, default=10, help="Maximum number of issues to show (default: 10)"
     )
     add_config_arg(seq)
 
     show = subs.add_parser("show", aliases=["s"], help="Show summary card for an issue")
+    show.set_defaults(command="show")
     show.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
     add_config_arg(show)
 
     ie = subs.add_parser("impact-effort", aliases=["ie"], help="Display impact vs effort matrix")
+    ie.set_defaults(command="impact-effort")
     add_config_arg(ie)
 
     refine_s = subs.add_parser(
         "refine-status", aliases=["rs"], help="Show refinement depth table sorted by commands touched"
     )
+    refine_s.set_defaults(command="refine-status")
     refine_s.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
     refine_s.add_argument(
         "--format",

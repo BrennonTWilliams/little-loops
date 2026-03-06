@@ -92,6 +92,7 @@ Examples:
 
     # Run subcommand
     run_parser = subparsers.add_parser("run", aliases=["r"], help="Run a loop")
+    run_parser.set_defaults(command="run")
     run_parser.add_argument("loop", help="Loop name or path")
     run_parser.add_argument("--max-iterations", "-n", type=int, help="Override iteration limit")
     run_parser.add_argument("--no-llm", action="store_true", help="Disable LLM evaluation")
@@ -117,19 +118,23 @@ Examples:
 
     # Compile subcommand
     compile_parser = subparsers.add_parser("compile", aliases=["c"], help="Compile paradigm to FSM")
+    compile_parser.set_defaults(command="compile")
     compile_parser.add_argument("input", help="Input paradigm YAML file")
     compile_parser.add_argument("-o", "--output", help="Output FSM YAML file")
 
     # Validate subcommand
     validate_parser = subparsers.add_parser("validate", aliases=["val"], help="Validate loop definition")
+    validate_parser.set_defaults(command="validate")
     validate_parser.add_argument("loop", help="Loop name or path")
 
     # List subcommand
     list_parser = subparsers.add_parser("list", aliases=["l"], help="List loops")
+    list_parser.set_defaults(command="list")
     list_parser.add_argument("--running", action="store_true", help="Only show running loops")
 
     # Status subcommand
     status_parser = subparsers.add_parser("status", aliases=["st"], help="Show loop status")
+    status_parser.set_defaults(command="status")
     status_parser.add_argument("loop", help="Loop name")
 
     # Stop subcommand
@@ -138,10 +143,12 @@ Examples:
 
     # Resume subcommand
     resume_parser = subparsers.add_parser("resume", aliases=["res"], help="Resume an interrupted loop")
+    resume_parser.set_defaults(command="resume")
     resume_parser.add_argument("loop", help="Loop name or path")
 
     # History subcommand
     history_parser = subparsers.add_parser("history", aliases=["h"], help="Show loop execution history")
+    history_parser.set_defaults(command="history")
     history_parser.add_argument("loop", help="Loop name")
     history_parser.add_argument(
         "--tail", "-n", type=int, default=50, help="Last N events (default: 50)"
@@ -154,6 +161,7 @@ Examples:
     test_parser = subparsers.add_parser(
         "test", aliases=["t"], help="Run a single test iteration to verify loop configuration"
     )
+    test_parser.set_defaults(command="test")
     test_parser.add_argument("loop", help="Loop name")
 
     # Simulate subcommand
@@ -162,6 +170,7 @@ Examples:
         aliases=["sim"],
         help="Trace loop execution interactively without running commands",
     )
+    simulate_parser.set_defaults(command="simulate")
     simulate_parser.add_argument("loop", help="Loop name or path")
     simulate_parser.add_argument(
         "--scenario",
@@ -184,6 +193,7 @@ Examples:
 
     # Show subcommand
     show_parser = subparsers.add_parser("show", aliases=["s"], help="Show loop details and structure")
+    show_parser.set_defaults(command="show")
     show_parser.add_argument("loop", help="Loop name or path")
     show_parser.add_argument(
         "--verbose", "-v", action="store_true", help="Show full action text and evaluate prompt"
