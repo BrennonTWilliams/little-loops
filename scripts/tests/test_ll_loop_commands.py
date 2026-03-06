@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -1059,3 +1060,47 @@ class TestCmdShow:
         assert "ll-loop test my-loop" in out
         assert "ll-loop status my-loop" in out
         assert "ll-loop history my-loop" in out
+
+
+class TestCmdCompile:
+    """Tests for cmd_compile round-trip serialization (BUG-601)."""
+
+    def test_compile_preserves_llm_scope_on_handoff(self, tmp_path: Path) -> None:
+        """Compiled .fsm.yaml retains llm, scope, and on_handoff fields (BUG-601)."""
+        from little_loops.cli.loop.config_cmds import cmd_compile
+        from little_loops.logger import Logger
+
+        input_file = tmp_path / "my-loop.yaml"
+        input_file.write_text(
+            "name: my-loop\n"
+            "initial: check\n"
+            "on_handoff: spawn\n"
+            "scope:\n"
+            "  - src/\n"
+            "llm:\n"
+            "  model: claude-opus-4-6\n"
+            "  max_tokens: 1024\n"
+            "states:\n"
+            "  check:\n"
+            '    action: "echo hello"\n'
+            "    on_success: done\n"
+            "    on_failure: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        output_file = tmp_path / "my-loop.fsm.yaml"
+        args = argparse.Namespace(input=str(input_file), output=str(output_file))
+        logger = Logger(use_color=False)
+
+        result = cmd_compile(args, logger)
+
+        assert result == 0
+        assert output_file.exists()
+        with open(output_file) as f:
+            compiled = yaml.safe_load(f)
+
+        assert compiled.get("on_handoff") == "spawn", "on_handoff dropped during compilation"
+        assert compiled.get("scope") == ["src/"], "scope dropped during compilation"
+        assert "llm" in compiled, "llm block dropped during compilation"
+        assert compiled["llm"].get("model") == "claude-opus-4-6"
+        assert compiled["llm"].get("max_tokens") == 1024

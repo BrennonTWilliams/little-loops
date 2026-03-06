@@ -4,8 +4,6 @@ from __future__ import annotations
 
 import argparse
 from pathlib import Path
-from typing import Any
-
 from little_loops.cli.loop._helpers import get_builtin_loops_dir, resolve_loop_path
 from little_loops.logger import Logger
 
@@ -40,21 +38,7 @@ def cmd_compile(
     )
 
     # Convert FSMLoop to dict for YAML output
-    fsm_dict: dict[str, Any] = {
-        "name": fsm.name,
-        "paradigm": fsm.paradigm,
-        "initial": fsm.initial,
-        "states": {name: state.to_dict() for name, state in fsm.states.items()},
-        "max_iterations": fsm.max_iterations,
-    }
-    if fsm.context:
-        fsm_dict["context"] = fsm.context
-    if fsm.maintain:
-        fsm_dict["maintain"] = fsm.maintain
-    if fsm.backoff:
-        fsm_dict["backoff"] = fsm.backoff
-    if fsm.timeout:
-        fsm_dict["timeout"] = fsm.timeout
+    fsm_dict = fsm.to_dict()
 
     with open(output_path, "w") as f:
         yaml.dump(fsm_dict, f, default_flow_style=False, sort_keys=False)

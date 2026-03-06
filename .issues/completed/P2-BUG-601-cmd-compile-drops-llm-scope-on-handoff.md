@@ -75,24 +75,19 @@ Silent data loss during compilation means users who customize `llm`, `scope`, or
 
 ## Proposed Solution
 
-Add conditional serialization for the missing fields after the existing `if fsm.timeout:` block:
+Replace the entire manual dict construction block in `cmd_compile` with a call to `fsm.to_dict()`, which already exists on `FSMLoop` (`schema.py:374`) and correctly serializes all fields including `llm`, `scope`, and `on_handoff` with proper default-value exclusion:
 
 ```python
-if fsm.llm:
-    fsm_dict["llm"] = fsm.llm.to_dict()  # or dataclasses.asdict(fsm.llm)
-if fsm.scope:
-    fsm_dict["scope"] = fsm.scope
-if fsm.on_handoff:
-    fsm_dict["on_handoff"] = fsm.on_handoff
+# Replace lines 43-57 in config_cmds.py with:
+fsm_dict = fsm.to_dict()
 ```
 
-Verify that `LLMConfig` has a `to_dict()` method or use `dataclasses.asdict()`.
+This is simpler, complete, and stays in sync with `FSMLoop` as new fields are added.
 
 ## Implementation Steps
 
-1. Add `llm`, `scope`, and `on_handoff` to the serialization block in `cmd_compile`
-2. Add a round-trip test: compile a paradigm with custom llm/scope, load the output, verify fields match
-3. Verify `LLMConfig` serialization produces valid YAML
+1. Replace the manual dict construction block (lines 43–57) in `cmd_compile` with `fsm_dict = fsm.to_dict()`
+2. Add a round-trip test: compile a paradigm with custom `llm`/`scope`/`on_handoff`, load the output, verify fields match
 
 ## Integration Map
 
@@ -131,9 +126,20 @@ Verify that `LLMConfig` has a `to_dict()` method or use `dataclasses.asdict()`.
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/30c0642f-bc3d-4a06-8802-42e5b1e42a67.jsonl` — Added Motivation, Integration Map sections (v2.0 alignment)
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: serialization dict at `config_cmds.py:43-57` confirmed; `llm`, `scope`, `on_handoff` absent; `context`, `maintain`, `backoff`, `timeout` present
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — Added missing `## Status` heading (v2.0 structural alignment)
+- `/ll:ready-issue` - 2026-03-06T05:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a3fa65e-b4d5-4fdd-b4ab-fb1661adbe2f.jsonl` — READY: all claims verified against HEAD; `LLMConfig.to_dict()` confirmed at schema.py:313; note: `FSMLoop.to_dict()` already exists and handles all fields — simpler fix than proposed
+- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad2ed1f4-598e-4a9b-a16a-4a875a5d7ce8.jsonl` — readiness: 100/100 PROCEED, outcome: 93/100 HIGH CONFIDENCE (re-verified current HEAD; bug unchanged, FSMLoop.to_dict() confirmed)
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7dba1fb-b83f-48ff-8b2c-40a92214ed45.jsonl` — READY: all claims re-verified; serialization dict at config_cmds.py:43-57 confirmed missing llm/scope/on_handoff; FSMLoop.to_dict() at schema.py:374 confirmed handles all three fields
 
 ---
 
+## Resolution
+
+**Fixed** | Completed: 2026-03-06
+
+Replaced the manual dict construction block in `cmd_compile` (lines 43–57) with `fsm_dict = fsm.to_dict()`. The existing `FSMLoop.to_dict()` method correctly serializes all fields including `llm`, `scope`, and `on_handoff` with proper default-value exclusion. Also removed the now-unused `from typing import Any` import.
+
+Added a round-trip test `TestCmdCompile::test_compile_preserves_llm_scope_on_handoff` to `test_ll_loop_commands.py` that verifies `llm`, `scope`, and `on_handoff` survive compilation.
+
 ## Status
 
-**Open** | Created: 2026-03-06 | Priority: P2
+**Closed** | Created: 2026-03-06 | Completed: 2026-03-06 | Priority: P2
