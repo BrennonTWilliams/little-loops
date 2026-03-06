@@ -126,7 +126,7 @@ Create a new sprint.
 | `--skip` | | Issue IDs to exclude |
 | `--type` | | Filter by type: `BUG`, `FEAT`, `ENH` |
 
-#### `ll-sprint run <sprint>`
+#### `ll-sprint run <sprint>` / `ll-sprint r <sprint>`
 
 Execute a sprint.
 
@@ -143,7 +143,7 @@ Execute a sprint.
 | `--skip-analysis` | | Skip dependency analysis |
 | `--type` | | Filter by type |
 
-#### `ll-sprint list`
+#### `ll-sprint list` / `ll-sprint l`
 
 List all sprints.
 
@@ -151,7 +151,7 @@ List all sprints.
 |------|-------|-------------|
 | `--verbose` | `-v` | Show detailed information |
 
-#### `ll-sprint show <sprint>`
+#### `ll-sprint show <sprint>` / `ll-sprint s <sprint>`
 
 Show sprint details, dependency graph, and health summary.
 
@@ -161,7 +161,7 @@ Show sprint details, dependency graph, and health summary.
 | `--config` | Path to project root |
 | `--skip-analysis` | Skip dependency analysis |
 
-#### `ll-sprint edit <sprint>`
+#### `ll-sprint edit <sprint>` / `ll-sprint e <sprint>`
 
 Edit a sprint's issue list.
 
@@ -174,11 +174,11 @@ Edit a sprint's issue list.
 | `--revalidate` | Re-run dependency analysis after edits |
 | `--config` | Path to project root |
 
-#### `ll-sprint delete <sprint>`
+#### `ll-sprint delete <sprint>` / `ll-sprint del <sprint>`
 
 Delete a sprint definition.
 
-#### `ll-sprint analyze <sprint>`
+#### `ll-sprint analyze <sprint>` / `ll-sprint a <sprint>`
 
 Analyze sprint for file conflicts between issues.
 
@@ -212,7 +212,7 @@ Execute FSM-based automation loops. If the first argument is a loop name (not a 
 
 **Subcommands:**
 
-#### `ll-loop run <loop>`
+#### `ll-loop run <loop>` / `ll-loop r <loop>`
 
 Run a loop.
 
@@ -227,7 +227,7 @@ Run a loop.
 | `--quiet` | `-q` | Suppress progress output |
 | `--queue` | | Wait for conflicting loops to finish |
 
-#### `ll-loop compile <input>`
+#### `ll-loop compile <input>` / `ll-loop c <input>`
 
 Compile a paradigm YAML file to an FSM definition.
 
@@ -236,11 +236,11 @@ Compile a paradigm YAML file to an FSM definition.
 | `input` | | Input paradigm YAML file |
 | `--output` | `-o` | Output FSM YAML file |
 
-#### `ll-loop validate <loop>`
+#### `ll-loop validate <loop>` / `ll-loop val <loop>`
 
 Validate a loop definition file.
 
-#### `ll-loop list`
+#### `ll-loop list` / `ll-loop l`
 
 List available loops.
 
@@ -248,7 +248,7 @@ List available loops.
 |------|-------------|
 | `--running` | Only show currently running loops |
 
-#### `ll-loop status <loop>`
+#### `ll-loop status <loop>` / `ll-loop st <loop>`
 
 Show current status of a loop.
 
@@ -256,11 +256,11 @@ Show current status of a loop.
 
 Stop a running loop.
 
-#### `ll-loop resume <loop>`
+#### `ll-loop resume <loop>` / `ll-loop res <loop>`
 
 Resume an interrupted loop.
 
-#### `ll-loop history <loop>`
+#### `ll-loop history <loop>` / `ll-loop h <loop>`
 
 Show execution history for a loop.
 
@@ -268,11 +268,11 @@ Show execution history for a loop.
 |------|-------|-------------|
 | `--tail` | `-n` | Last N events to show (default: 50) |
 
-#### `ll-loop test <loop>`
+#### `ll-loop test <loop>` / `ll-loop t <loop>`
 
 Run a single test iteration to verify loop configuration.
 
-#### `ll-loop simulate <loop>`
+#### `ll-loop simulate <loop>` / `ll-loop sim <loop>`
 
 Trace loop execution interactively without running commands.
 
@@ -285,7 +285,7 @@ Trace loop execution interactively without running commands.
 
 Copy a built-in loop to `.loops/` for customization.
 
-#### `ll-loop show <loop>`
+#### `ll-loop show <loop>` / `ll-loop s <loop>`
 
 Show loop details and FSM structure.
 
@@ -321,11 +321,11 @@ Issue management and visualization utilities.
 
 **Subcommands:**
 
-#### `ll-issues next-id`
+#### `ll-issues next-id` / `ll-issues ni`
 
 Print the next globally unique issue number across all types.
 
-#### `ll-issues list`
+#### `ll-issues list` / `ll-issues l`
 
 List active issues with optional filters.
 
@@ -336,11 +336,11 @@ List active issues with optional filters.
 | `--flat` | Output flat list for scripting |
 | `--config` | Path to project root |
 
-#### `ll-issues show <issue_id>`
+#### `ll-issues show <issue_id>` / `ll-issues s <issue_id>`
 
 Show summary card for a single issue. Accepts short form (`518`), type-prefixed (`FEAT-518`), or full (`P3-FEAT-518`).
 
-#### `ll-issues sequence`
+#### `ll-issues sequence` / `ll-issues seq`
 
 Suggest a dependency-ordered implementation sequence.
 
@@ -349,11 +349,11 @@ Suggest a dependency-ordered implementation sequence.
 | `--limit` | Maximum issues to show (default: 10) |
 | `--config` | Path to project root |
 
-#### `ll-issues impact-effort`
+#### `ll-issues impact-effort` / `ll-issues ie`
 
 Display an impact vs. effort matrix for active issues.
 
-#### `ll-issues refine-status`
+#### `ll-issues refine-status` / `ll-issues rs`
 
 Show refinement depth table sorted by commands touched. Columns: ID, Pri, Title, per-command session indicators (✓/—), Norm (✓ = filename matches naming convention, ✗ = non-conformant), Ready (confidence score), OutConf (outcome confidence), Total.
 
