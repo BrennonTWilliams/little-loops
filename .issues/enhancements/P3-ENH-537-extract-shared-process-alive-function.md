@@ -33,7 +33,11 @@ A single `process_alive(pid: int) -> bool` utility function exists in one locati
 
 ## Motivation
 
-Code duplication is a maintenance burden. The EPERM/ESRCH bug (BUG-526) exists in both copies and was introduced at the same time — the duplication is the reason the bug will persist if only one copy is fixed. Any future improvements (e.g., Windows compatibility, logging, timeout) must also be applied in both places.
+~6 lines of byte-for-byte duplicate code across 2 files:
+
+- **Maintenance burden**: The EPERM/ESRCH bug (BUG-526) was introduced identically in both copies — any fix must be applied manually in both places; missing one means the bug persists
+- **Future-proofing**: Any improvement (Windows compatibility, logging, timeout handling) must be duplicated across both files
+- **Technical debt**: Two files share identical logic with no enforced contract; behavioral drift is inevitable over time
 
 ## Proposed Solution
 
@@ -61,11 +65,39 @@ from little_loops.fsm.concurrency import _process_alive as _process_alive
 
 Alternatively, make `LockManager._process_alive` a static method and import it in `lifecycle.py`.
 
+## API/Interface
+
+```python
+def _process_alive(pid: int) -> bool:
+    """Check if process is running.
+    Returns True if alive (or alive but unreadable),
+    False only if process does not exist (ESRCH).
+    """
+```
+
+Shared via import in `lifecycle.py`:
+```python
+from little_loops.fsm.concurrency import _process_alive
+```
+
 ## Scope Boundaries
 
-- Only affects code sharing; no behavioral changes beyond BUG-526 fix (which should be applied simultaneously)
+**In scope:**
+- Extract `_process_alive` to a module-level function in `concurrency.py`
+- Apply BUG-526 EPERM/ESRCH fix in the single canonical implementation
+- Update `lifecycle.py` to import from `concurrency.py`
+
+**Out of scope:**
+- No behavioral changes beyond the BUG-526 fix
 - Does not add new public API
-- Does not change how `LockManager` or `lifecycle.py` call the function
+- Does not change call sites in `cleanup_stale()` or `cmd_stop()`
+
+## Success Metrics
+
+- [ ] Existing tests in `scripts/tests/test_ll_loop_execution.py` pass unchanged
+- [ ] `grep -r "_process_alive" scripts/` returns exactly one function body (in `concurrency.py`); `lifecycle.py` contains only an import
+- [ ] BUG-526 EPERM/ESRCH fix applied in single location — no manual sync needed between files
+- [ ] `from little_loops.fsm.concurrency import _process_alive` resolves without error and without creating a circular import
 
 ## Integration Map
 
@@ -120,6 +152,7 @@ Alternatively, make `LockManager._process_alive` a static method and import it i
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — Added Blocks FEAT-543 (docs overlap, auto)
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: both `_process_alive` functions confirmed present (`concurrency.py:256`, `lifecycle.py:30`); line numbers updated from scan-commit values
+- `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/780b1de5-df56-457c-b885-0bae03760fd7.jsonl` — Added API/Interface (shared signature), Success Metrics (4 criteria), restructured Scope Boundaries (in/out framing), quantified Motivation
 
 ## Blocks
 
