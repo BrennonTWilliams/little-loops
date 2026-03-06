@@ -17,6 +17,15 @@ if TYPE_CHECKING:
     from little_loops.fsm.schema import FSMLoop
     from little_loops.logger import Logger
 
+# Exit code mapping for terminated_by values
+EXIT_CODES: dict[str, int] = {
+    "terminal": 0,
+    "signal": 0,
+    "handoff": 0,
+    "max_iterations": 1,
+    "timeout": 1,
+}
+
 # Module-level shutdown state for signal handling
 _loop_shutdown_requested: bool = False
 _loop_executor: Any = None
@@ -400,4 +409,4 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             state_colored = colorize(result.final_state, "38;5;208")
         print(f"Loop completed: {state_colored} ({result.iterations} iterations, {duration_str})")
 
-    return 0 if result.terminated_by == "terminal" else 1
+    return EXIT_CODES.get(result.terminated_by, 1)

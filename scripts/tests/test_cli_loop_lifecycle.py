@@ -7,6 +7,8 @@ import signal
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from little_loops.cli.loop.lifecycle import cmd_resume, cmd_status, cmd_stop
 
 
@@ -420,3 +422,41 @@ class TestCmdResume:
         _loop_signal_handler(signal.SIGINT, None)
 
         mock_executor.request_shutdown.assert_called_once()
+
+
+class TestCmdResumeExitCodes:
+    """Tests for cmd_resume exit code mapping per terminated_by value (BUG-605)."""
+
+    def _resume_with_terminated_by(self, tmp_path: Path, terminated_by: str) -> int:
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = terminated_by
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            return cmd_resume("test-loop", args, tmp_path, logger)
+
+    @pytest.mark.parametrize("terminated_by", ["terminal", "signal", "handoff"])
+    def test_zero_exit_for_graceful_termination(self, tmp_path: Path, terminated_by: str) -> None:
+        """terminal, signal, and handoff all return exit code 0."""
+        assert self._resume_with_terminated_by(tmp_path, terminated_by) == 0
+
+    @pytest.mark.parametrize("terminated_by", ["max_iterations", "timeout"])
+    def test_nonzero_exit_for_limit_termination(self, tmp_path: Path, terminated_by: str) -> None:
+        """max_iterations and timeout return exit code 1."""
+        assert self._resume_with_terminated_by(tmp_path, terminated_by) == 1
+
+    def test_unknown_terminated_by_returns_1(self, tmp_path: Path) -> None:
+        """Unknown terminated_by values fall back to exit code 1."""
+        assert self._resume_with_terminated_by(tmp_path, "unexpected") == 1

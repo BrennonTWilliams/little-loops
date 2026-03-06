@@ -10,7 +10,7 @@ from unittest.mock import patch
 
 import pytest
 
-from little_loops.cli.loop._helpers import run_foreground
+from little_loops.cli.loop._helpers import EXIT_CODES, run_foreground
 from little_loops.cli.loop.info import _render_fsm_diagram
 from little_loops.fsm.executor import ExecutionResult
 from little_loops.fsm.schema import (
@@ -957,3 +957,55 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert "preview line" in out
         assert "streamed line" not in out
+
+
+class TestRunForegroundExitCodes:
+    """Tests for run_foreground exit code mapping (BUG-605)."""
+
+    def _make_args(self) -> argparse.Namespace:
+        return argparse.Namespace(quiet=False, verbose=False)
+
+    def _make_fsm(self) -> FSMLoop:
+        return make_test_fsm()
+
+    def _run_with_terminated_by(self, terminated_by: str) -> int:
+        """Run run_foreground with a mock executor returning given terminated_by."""
+
+        class _Executor:
+            def __init__(self, tb: str) -> None:
+                self._tb = tb
+                self._on_event: Any = None
+
+            def run(self) -> ExecutionResult:
+                return ExecutionResult(
+                    final_state="done",
+                    iterations=1,
+                    terminated_by=self._tb,
+                    duration_ms=100,
+                    captured={},
+                )
+
+        with patch("builtins.print"):
+            return run_foreground(_Executor(terminated_by), self._make_fsm(), self._make_args())
+
+    @pytest.mark.parametrize("terminated_by", ["terminal", "signal", "handoff"])
+    def test_zero_exit_code_for_graceful_termination(self, terminated_by: str) -> None:
+        """terminal, signal, and handoff all return exit code 0."""
+        assert self._run_with_terminated_by(terminated_by) == 0
+
+    @pytest.mark.parametrize("terminated_by", ["max_iterations", "timeout"])
+    def test_nonzero_exit_code_for_limit_termination(self, terminated_by: str) -> None:
+        """max_iterations and timeout return exit code 1."""
+        assert self._run_with_terminated_by(terminated_by) == 1
+
+    def test_unknown_terminated_by_returns_1(self) -> None:
+        """Unknown terminated_by values fall back to exit code 1."""
+        assert self._run_with_terminated_by("unexpected_value") == 1
+
+    def test_exit_codes_dict_matches_expected_mapping(self) -> None:
+        """EXIT_CODES dict has the expected keys and values."""
+        assert EXIT_CODES["terminal"] == 0
+        assert EXIT_CODES["signal"] == 0
+        assert EXIT_CODES["handoff"] == 0
+        assert EXIT_CODES["max_iterations"] == 1
+        assert EXIT_CODES["timeout"] == 1

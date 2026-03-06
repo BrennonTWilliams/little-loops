@@ -16,7 +16,7 @@ outcome_confidence: 87
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/_helpers.py`
-- **Line(s)**: 350 (at scan commit: c010880)
+- **Line(s)**: 403 (updated from 350 at scan commit: c010880)
 - **Anchor**: `in function run_foreground()`, final return
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/c010880ecfc0941e7a5a59cc071248a4b1cbc557/scripts/little_loops/cli/loop/_helpers.py#L350)
 - **Code**:
@@ -24,7 +24,7 @@ outcome_confidence: 87
 return 0 if result.terminated_by == "terminal" else 1
 ```
 
-Same pattern at `lifecycle.py:188` in `cmd_resume`.
+Same pattern at `lifecycle.py:193` in `cmd_resume`.
 
 ## Current Behavior
 
@@ -67,8 +67,8 @@ return EXIT_CODES.get(result.terminated_by, 1)
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/_helpers.py` — replace binary exit code at line 350 with `EXIT_CODES` mapping
-- `scripts/little_loops/cli/loop/lifecycle.py` — replace binary exit code at line 188 in `cmd_resume` with same mapping
+- `scripts/little_loops/cli/loop/_helpers.py` — replace binary exit code at line 403 with `EXIT_CODES` mapping
+- `scripts/little_loops/cli/loop/lifecycle.py` — replace binary exit code at line 193 in `cmd_resume` with same mapping
 
 ### Dependent Files (Callers/Importers)
 - Any shell scripts or CI configs calling `ll-loop run` or `ll-loop resume` — will observe changed exit code for `"signal"` termination (0 instead of 1)
@@ -89,7 +89,7 @@ return EXIT_CODES.get(result.terminated_by, 1)
 
 1. Define `EXIT_CODES` dict in `_helpers.py` near `run_foreground`
 2. Replace `return 0 if result.terminated_by == "terminal" else 1` at line 350 with `return EXIT_CODES.get(result.terminated_by, 1)`
-3. Apply the same mapping at `lifecycle.py:188` in `cmd_resume`
+3. Apply the same mapping at `lifecycle.py:193` in `cmd_resume`
 4. Add tests for each `terminated_by` value
 
 ## Impact
@@ -106,10 +106,22 @@ return EXIT_CODES.get(result.terminated_by, 1)
 ## Session Log
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: `return 0 if result.terminated_by == "terminal" else 1` confirmed at `_helpers.py:350` and `lifecycle.py:188`
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — v2.0 format: added Steps to Reproduce, Root Cause, Motivation, Integration Map, Implementation Steps; added confidence_score and outcome_confidence to frontmatter; added Status footer
-- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — Readiness: 96/100 PROCEED; Outcome: 87/100 HIGH CONFIDENCE
+- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb28e4a35.jsonl` — Readiness: 96/100 PROCEED; Outcome: 87/100 HIGH CONFIDENCE
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c43e18f-ee84-4109-9f86-77e479f07065.jsonl` — CORRECTED: line drift updated (_helpers.py:350→403, lifecycle.py:188→193)
+
+- `/ll:manage-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/` — FIXED: Defined EXIT_CODES dict in _helpers.py; updated run_foreground and cmd_resume to use EXIT_CODES.get(result.terminated_by, 1); added 13 tests covering all terminated_by values for both functions
 
 ---
 
+## Resolution
+
+**Fixed** in commit pending.
+
+- Defined `EXIT_CODES = {"terminal": 0, "signal": 0, "handoff": 0, "max_iterations": 1, "timeout": 1}` in `_helpers.py`
+- Replaced binary `return 0 if result.terminated_by == "terminal" else 1` with `return EXIT_CODES.get(result.terminated_by, 1)` in both `run_foreground` (_helpers.py:403) and `cmd_resume` (lifecycle.py:193)
+- Added `TestRunForegroundExitCodes` (8 tests) in `test_ll_loop_display.py`
+- Added `TestCmdResumeExitCodes` (5 tests) in `test_cli_loop_lifecycle.py`
+
 ## Status
 
-**Open** | Created: 2026-03-06 | Priority: P4
+**Completed** | Created: 2026-03-06 | Resolved: 2026-03-06 | Priority: P4

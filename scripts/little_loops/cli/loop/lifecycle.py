@@ -9,7 +9,7 @@ import signal
 import time
 from pathlib import Path
 
-from little_loops.cli.loop._helpers import load_loop, register_loop_signal_handlers
+from little_loops.cli.loop._helpers import EXIT_CODES, load_loop, register_loop_signal_handlers
 from little_loops.logger import Logger
 
 
@@ -190,4 +190,4 @@ def cmd_resume(
         f"Resumed and completed: {result.final_state} "
         f"({result.iterations} iterations, {duration_str})"
     )
-    return 0 if result.terminated_by == "terminal" else 1
+    return EXIT_CODES.get(result.terminated_by, 1)
