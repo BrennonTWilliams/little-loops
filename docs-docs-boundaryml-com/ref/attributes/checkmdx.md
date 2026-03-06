@@ -1,0 +1,38 @@
+---
+url: https://docs.boundaryml.com/ref/attributes/check.mdx
+scraped_at: 2026-03-06T01:00:35.020171
+filepath: docs-docs-boundaryml-com/ref/attributes/checkmdx.md
+---
+
+
+The `@check` attribute in BAML adds validations without raising exceptions if they fail. This allows the validations to be inspected at runtime.
+
+## Usage
+
+### Field Check
+
+```baml BAML
+class Foo {
+  bar int @check(less_than_zero, {{ this < 0 }})
+}
+```
+
+### Block check
+
+```baml
+class Bar {
+  baz int
+  quux string
+  @@check(quux_limit, {{ this.quux|length < this.baz }})
+}
+```
+
+See [Jinja in Attributes](/ref/attributes/jinja-in-attributes) for a longer description of the Jinja syntax
+available in checks.
+
+## Benefits
+
+* **Non-Intrusive Validation**: Allows for validation checks without interrupting the flow of data processing.
+* **Runtime Inspection**: Enables inspection of validation results at runtime.
+
+See more in [validations guide](/guide/baml-advanced/checks-and-asserts).

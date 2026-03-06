@@ -1,0 +1,110 @@
+---
+url: https://docs.boundaryml.com/guide/development/deploying/docker.mdx
+scraped_at: 2026-03-06T01:00:27.689185
+filepath: docs-docs-boundaryml-com/guide/development/deploying/dockermdx.md
+---
+
+
+***
+
+## title: Docker
+
+When you develop with BAML, the BAML VScode extension generates a `baml_client` directory (on every save) with all the generated code you need to use your AI functions in your application.
+
+We recommend you add `baml_client` to your `.gitignore` file to avoid committing generated code to your repository, and re-generate the client code when you build and deploy your application.
+
+You *could* commit the generated code if you're starting out to not deal with this, just make sure the VSCode extension version matches your baml package dependency version (e.g. `baml-py` for python and `@boundaryml/baml` for TS) so there are no compatibility issues.
+
+To build your client you can use the following command. See also [baml-cli generate](/ref/baml-cli/generate):```dockerfile python Dockerfile
+  RUN baml-cli generate --from path-to-baml_src
+  ```
+
+  ```dockerfile TypeScript Dockerfile
+  # Do this early on in the dockerfile script before transpiling to JS
+  RUN npx baml-cli generate --from path-to-baml_src
+  ```
+
+  ```dockerfile Ruby Dockerfile
+  RUN bundle add baml
+  RUN bundle exec baml-cli generate --from path/to/baml_src
+  ```
+
+  ```dockerfile Go Dockerfile
+  # Install BAML CLI
+  RUN go install github.com/boundaryml/baml/baml-cli@latest
+  # Generate BAML client
+  RUN baml-cli generate --from path-to-baml_src
+  ```For production builds, add the `--no-tests` flag to reduce the generated client size by excluding test blocks:
+
+  ```bash
+  baml-cli generate --from path-to-baml_src --no-tests
+  ```## Go: Multi-stage Docker builds
+
+When using Go, the `baml-cli generate` command downloads the `libbaml-cffi` native library that BAML needs at runtime. This library is cached to avoid downloading it every time your container runs.
+
+### Single-stage builds
+
+For single-stage builds, running `baml-cli generate` (as shown above) will automatically download and cache `libbaml-cffi` in your Docker image.
+
+### Multi-stage builds
+
+For multi-stage Docker builds, you need to ensure `libbaml-cffi` is available in your final image. You have two options:
+
+**Option 1: Copy the cache directory**
+
+Set the `BAML_CACHE_DIR` environment variable in both stages and copy it to your final image:
+
+```dockerfile
+# Build stage
+FROM golang:1.21 AS builder
+ENV BAML_CACHE_DIR=/baml-cache
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go install github.com/boundaryml/baml/baml-cli@latest
+RUN baml-cli generate --from baml_src
+RUN go build -o myapp
+
+# Runtime stage
+FROM debian:bookworm-slim
+ENV BAML_CACHE_DIR=/baml-cache
+COPY --from=builder /app/myapp /myapp
+COPY --from=builder /baml-cache /baml-cache
+CMD ["/myapp"]
+```
+
+**Option 2: Regenerate in the final stage**
+
+Install `baml-cli` in your final image and run `baml-cli --version` (or `baml-cli generate`) to download `libbaml-cffi`:
+
+```dockerfile
+# Build stage
+FROM golang:1.21 AS builder
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN go install github.com/boundaryml/baml/baml-cli@latest
+RUN baml-cli generate --from baml_src
+RUN go build -o myapp
+
+# Runtime stage
+FROM debian:bookworm-slim
+WORKDIR /app
+COPY --from=builder /app/myapp /myapp
+COPY --from=builder /go/bin/baml-cli /usr/local/bin/baml-cli
+# Download libbaml-cffi into the runtime image
+RUN baml-cli --version
+CMD ["/myapp"]
+```
+
+### Customizing the cache directory
+
+By default, BAML downloads `libbaml-cffi` to a system-specific cache directory. You can control this location using the `BAML_CACHE_DIR` environment variable:
+
+```dockerfile
+ENV BAML_CACHE_DIR=/custom/cache/path
+```
+
+This is particularly useful when you want to explicitly control where the native library is stored in your container.

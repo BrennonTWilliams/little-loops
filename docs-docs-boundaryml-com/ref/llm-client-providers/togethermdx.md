@@ -1,0 +1,27 @@
+---
+url: https://docs.boundaryml.com/ref/llm-client-providers/together.mdx
+scraped_at: 2026-03-06T01:00:49.349171
+filepath: docs-docs-boundaryml-com/ref/llm-client-providers/togethermdx.md
+---
+
+
+***
+
+## title: Together AI
+
+[Together AI](https://www.together.ai/) supports the OpenAI client, allowing you
+to use the [`openai-generic`](/docs/snippets/clients/providers/openai) provider
+with an overridden `base_url`.
+
+See [https://docs.together.ai/docs/openai-api-compatibility](https://docs.together.ai/docs/openai-api-compatibility) for more information.
+
+```baml BAML
+clientMyClient {
+  provider "openai-generic"
+  options {
+    base_url "https://api.together.ai/v1"
+    api_key env.TOGETHER_API_KEY
+    model "meta-llama/Llama-3-70b-chat-hf"
+  }
+}
+```

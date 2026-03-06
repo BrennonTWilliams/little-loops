@@ -1,0 +1,27 @@
+---
+url: https://docs.boundaryml.com/ref/llm-client-providers/vercel-ai-gateway.mdx
+scraped_at: 2026-03-06T01:00:49.767497
+filepath: docs-docs-boundaryml-com/ref/llm-client-providers/vercel-ai-gatewaymdx.md
+---
+
+
+***
+
+## title: vercel-ai-gateway
+
+[Vercel AI Gateway](https://vercel.com/docs/ai-gateway/openai-compat) supports the OpenAI-compatible API, so you can use the [`openai-generic`](/docs/snippets/clients/providers/openai) provider with an overridden `base_url`.
+
+```baml BAML
+clientVercelClient {
+  provider "openai-generic"
+  options {
+    base_url "https://ai-gateway.vercel.sh/v1"
+    api_key env.VERCEL_AI_GATEWAY_TOKEN
+    // Example models routed via the gateway
+    // model "anthropic/claude-3-5-sonnet-latest"
+    // model "openai/gpt-5-mini"
+  }
+}
+```
+
+See the Vercel docs for details on configuring providers and models behind your gateway: [Vercel AI Gateway (OpenAI compatible)](https://vercel.com/docs/ai-gateway/openai-compat).

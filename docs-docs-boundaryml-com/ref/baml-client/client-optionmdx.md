@@ -1,0 +1,171 @@
+---
+url: https://docs.boundaryml.com/ref/baml_client/client-option.mdx
+scraped_at: 2026-03-06T01:00:40.964078
+filepath: docs-docs-boundaryml-com/ref/baml-client/client-optionmdx.md
+---
+
+
+***
+
+## title: client OptionAdded in 0.216.0The `client` option provides a simple way to override which LLM client a function uses at runtime.
+It's a shorthand for creating a `ClientRegistry` and calling [`set_primary()`](/ref/baml_client/client-registry#the-set_primary-method).
+
+## Quick Start```python
+    from baml_client import b
+
+    # Use shorthand provider/model syntax
+    result = await b.ExtractResume("...", baml_options={"client": "openai/gpt-4o-mini"})
+
+    # Use OpenRouter for open-source models
+    result = await b.ExtractResume("...", baml_options={"client": "openrouter/meta-llama/llama-3.1-70b-instruct"})
+
+    # Or reference a client defined in your .baml files
+    result = await b.ExtractResume("...", baml_options={"client": "MyCustomClient"})
+
+    # Use with_options to set for multiple calls
+    my_b = b.with_options(client="openai/gpt-4o-mini")
+    result1 = await my_b.ExtractResume("...")
+    result2 = await my_b.ExtractInvoice("...")
+    ``````typescript
+    import { b } from "baml_client"
+
+    // Use shorthand provider/model syntax
+    const result = await b.ExtractResume("...", { client: "openai/gpt-4o-mini" })
+
+    // Use OpenRouter for open-source models
+    const result2 = await b.ExtractResume("...", { client: "openrouter/meta-llama/llama-3.1-70b-instruct" })
+
+    // Or reference a client defined in your .baml files
+    const result3 = await b.ExtractResume("...", { client: "MyCustomClient" })
+
+    // Use withOptions to set for multiple calls
+    const myB = b.withOptions({ client: "openai/gpt-4o-mini" })
+    const res1 = await myB.ExtractResume("...")
+    const res2 = await myB.ExtractInvoice("...")
+    ``````go
+    package main
+
+    import (
+        "context"
+        b "example.com/myproject/baml_client"
+    )
+
+    func main() {
+        ctx := context.Background()
+
+        // Use shorthand provider/model syntax
+        result, err := b.ExtractResume(ctx, "...", b.WithClient("openai/gpt-4o-mini"))
+
+        // Use OpenRouter for open-source models
+        result, err = b.ExtractResume(ctx, "...", b.WithClient("openrouter/meta-llama/llama-3.1-70b-instruct"))
+
+        // Or reference a client defined in your .baml files
+        result, err = b.ExtractResume(ctx, "...", b.WithClient("MyCustomClient"))
+    }
+    ``````rust
+    use myproject::baml_client::sync_client::B;
+
+    fn main() {
+        // Use shorthand provider/model syntax
+        let result = B.ExtractResume
+            .with_client("openai/gpt-4o-mini")
+            .call("...")
+            .unwrap();
+
+        // Use OpenRouter for open-source models
+        let result = B.ExtractResume
+            .with_client("openrouter/meta-llama/llama-3.1-70b-instruct")
+            .call("...")
+            .unwrap();
+
+        // Or reference a client defined in your .baml files
+        let result = B.ExtractResume
+            .with_client("MyCustomClient")
+            .call("...")
+            .unwrap();
+    }
+    ```## When to Use
+
+Use the `client` option when you want to:
+
+* Quickly switch between different LLM providers or models
+* A/B test different models
+* Use different clients for different environments (dev vs prod)
+* Override the default client defined in your `.baml` files
+
+## Precedence
+
+If you provide both `client` and `client_registry`, the `client` option takes precedence:```python
+    from baml_py import ClientRegistry
+
+    cr = ClientRegistry()
+    cr.set_primary("ModelA")
+
+    # "ModelB" will be used, not "ModelA"
+    result = await b.ExtractResume("...", baml_options={
+        "client": "ModelB",
+        "client_registry": cr
+    })
+    ``````typescript
+    import { ClientRegistry } from "@boundaryml/baml"
+
+    const cr = new ClientRegistry()
+    cr.setPrimary("ModelA")
+
+    // "ModelB" will be used, not "ModelA"
+    const result = await b.ExtractResume("...", {
+        client: "ModelB",
+        clientRegistry: cr
+    })
+    ``````go
+    import baml "github.com/boundaryml/baml/engine/language_client_go/pkg"
+
+    cr := baml.NewClientRegistry()
+    cr.SetPrimaryClient("ModelA")
+
+    // "ModelB" will be used, not "ModelA"
+    result, err := b.ExtractResume(ctx, "...",
+        b.WithClient("ModelB"),
+        b.WithClientRegistry(cr))
+    ``````rust
+    use baml::ClientRegistry;
+    use myproject::baml_client::sync_client::B;
+
+    let mut registry = ClientRegistry::new();
+    registry.set_primary_client("ModelA");
+
+    // "ModelB" will be used, not "ModelA"
+    let result = B.ExtractResume
+        .with_client("ModelB")
+        .with_client_registry(&registry)
+        .call("...")
+        .unwrap();
+    ```## Valid Client Names
+
+The `client` value can be:
+
+1. **Shorthand provider/model syntax** - Use `provider/model` format for quick access:
+   * `"openai/gpt-4o-mini"` - OpenAI models
+   * `"anthropic/claude-sonnet-4-20250514"` - Anthropic models
+   * `"openrouter/meta-llama/llama-3.1-70b-instruct"` - OpenRouter models
+   * `"google-ai/gemini-2.0-flash"` - Google AI models
+
+2. **Client defined in `.baml` files** - Reference by name (e.g., `"MyCustomClient"`)
+
+If the client name is not found, you'll get a runtime error when the function is called.
+
+## Comparison with ClientRegistry
+
+| Feature                 | `client` option | `ClientRegistry`       |
+| ----------------------- | --------------- | ---------------------- |
+| Set primary client      | Yes             | Yes (`set_primary`)    |
+| Add custom clients      | No              | Yes (`add_llm_client`) |
+| Override client options | No              | Yes                    |
+| Simplicity              | Simple string   | More complex           |
+
+Use `client` for simple overrides. Use `ClientRegistry` when you need to add new clients or customize client options at runtime.
+
+## Related Topics
+
+* [ClientRegistry](/guide/baml-advanced/llm-client-registry) - For advanced client configuration
+* [with\_options](/ref/baml_client/with-options) - Set default options for a client

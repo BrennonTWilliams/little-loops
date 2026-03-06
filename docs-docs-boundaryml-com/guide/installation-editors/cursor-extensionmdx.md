@@ -1,0 +1,18 @@
+---
+url: https://docs.boundaryml.com/guide/installation-editors/cursor-extension.mdx
+scraped_at: 2026-03-06T01:00:30.106075
+filepath: docs-docs-boundaryml-com/guide/installation-editors/cursor-extensionmdx.md
+---
+
+
+***
+
+## title: Cursor
+
+To install on Cursor, try searching "bam" or "baml" (note the latter search term may cause an error due to a bug with Cursor).
+
+If you can't find it, you can download the right extension .vsix file from [Open-VSX](https://open-vsx.org/extension/Boundary/baml-extension), and drag it to the extensions panel:
+
+### Cursor Rules to write BAML
+
+We created a [.cursorrules file for BAML](https://gist.github.com/aaronvg/75596a0063588440d47f5db1361c8a5f), to aid Cursor in writing BAML prompts. Feel free to edit this however you like!

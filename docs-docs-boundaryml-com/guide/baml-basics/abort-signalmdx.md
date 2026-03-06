@@ -1,0 +1,536 @@
+---
+url: https://docs.boundaryml.com/guide/baml-basics/abort-signal.mdx
+scraped_at: 2026-03-06T01:00:22.277217
+filepath: docs-docs-boundaryml-com/guide/baml-basics/abort-signalmdx.md
+---
+
+
+***
+
+title: AbortSignal / Timeouts
+description: Cancel in-flight LLM operations to save time and resources
+-----------------------------------------------------------------------
+
+## Overview
+
+Abort controllers allow you to cancel ongoing LLM operations, which is essential for:
+
+* User-initiated cancellations (e.g., "Stop generating" buttons)
+* Implementing timeouts for long-running operations
+* Cleaning up resources when components unmount
+* Managing multiple parallel requests
+
+## Quick Start```typescript
+    import { b } from '@/baml_client'
+
+    // TypeScript uses AbortSignal for cancellation
+    // No additional imports needed - it's built into the runtime
+
+    // Modern approach: Use AbortSignal.timeout() for automatic timeout
+    try {
+      const result = await b.ExtractResume(text, {
+        signal: AbortSignal.timeout(5000) // 5 second timeout
+      })
+    } catch (error) {
+      if (error.name === 'BamlAbortError') {
+        console.log('Operation was cancelled')
+      }
+    }
+
+    // Manual approach: Create controller and cancel later
+    const controller = new AbortController()
+    const promise = b.ExtractResume(text, {
+      signal: controller.signal
+    })
+
+    // Cancel after 5 seconds
+    setTimeout(() => controller.abort(), 5000)
+
+    try {
+      const result = await promise
+    } catch (error) {
+      if (error.name === 'BamlAbortError') {
+        console.log('Operation was cancelled')
+      }
+    }
+    ``````python
+    from baml_client import b
+    # Python doesn't have a native abort controller construct,
+    # so BAML provides a custom implementation
+    from baml_py import AbortController
+    import asyncio
+
+    # Will cancel after 5 seconds, once its used.
+    controller = AbortController(timeout_ms=5000)
+    # one can also manually call abort:
+    controller.abort()
+    # once aborted, the controller will forever remain in an an aborted state.
+
+    async def run_with_timeout():        
+        try:
+            result = await b.ExtractResume(
+                text,
+                baml_options={"abort_controller": controller}
+            )
+        except BamlAbortError:
+            print("Operation was cancelled")
+    ``````go
+    import (
+        "context"
+        "time"
+    )
+
+    // Go uses the standard context.Context for cancellation
+    // This is the idiomatic Go way to handle cancellation and timeouts
+    // Create context with 5 second timeout
+    ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+    defer cancel()
+
+    result, err := b.ExtractResume(ctx, text)
+    if err != nil {
+        if errors.Is(err, context.DeadlineExceeded) {
+            fmt.Println("Operation timed out")
+        } else if errors.Is(err, context.Canceled) {
+            fmt.Println("Operation was cancelled")
+        }
+    }
+    ``````rust
+    use baml::CancellationToken;
+    use myproject::baml_client::sync_client::B;
+    use std::time::Duration;
+
+    // Rust uses CancellationToken for cancellation and timeouts
+    // Create token with 5 second timeout
+    let token = CancellationToken::new_with_timeout(Duration::from_secs(5));
+
+    let result = B.ExtractResume
+        .with_cancellation_token(Some(token))
+        .call(text);
+
+    match result {
+        Ok(resume) => println!("Result: {:?}", resume),
+        Err(e) => {
+            let err = format!("{:?}", e).to_lowercase();
+            if err.contains("cancel") || err.contains("timeout") {
+                println!("Operation was cancelled or timed out");
+            }
+        }
+    }
+
+    // Manual cancellation
+    let token = CancellationToken::new();
+    let token_clone = token.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_secs(5));
+        token_clone.cancel();
+    });
+
+    let result = B.ExtractResume
+        .with_cancellation_token(Some(token))
+        .call(text);
+    ```## Basic Examples
+
+### Implementing Timeouts
+
+Automatically cancel operations that take too long:```typescript
+    // Modern approach using AbortSignal.timeout()
+    async function extractWithTimeout(text: string, timeoutMs: number = 30000) {
+      try {
+        const result = await b.ExtractResume(text, {
+          signal: AbortSignal.timeout(timeoutMs)
+        })
+        return result
+      } catch (error) {
+        if (error.name === 'BamlAbortError') {
+          throw new Error(`Operation timed out after ${timeoutMs}ms`)
+        }
+        throw error
+      }
+    }
+
+    // Manual implementation (for when you need more control)
+    async function extractWithManualTimeout(text: string, timeoutMs: number = 30000) {
+      const controller = new AbortController()
+      
+      // Set up automatic timeout
+      const timeoutId = setTimeout(() => {
+        controller.abort('timeout')
+      }, timeoutMs)
+
+      try {
+        const result = await b.ExtractResume(text, {
+          signal: controller.signal
+        })
+        clearTimeout(timeoutId)
+        return result
+      } catch (error) {
+        clearTimeout(timeoutId)
+        if (error.name === 'BamlAbortError') {
+          throw new Error(`Operation timed out after ${timeoutMs}ms`)
+        }
+        throw error
+      }
+    }
+    ``````python
+    import asyncio
+    from baml_py import AbortController
+
+    async def extract_with_timeout(text: str, timeout_seconds: float = 30):
+        controller = AbortController()
+        
+        async def timeout_task():
+            await asyncio.sleep(timeout_seconds)
+            controller.abort()
+        
+        # Start timeout
+        timeout = asyncio.create_task(timeout_task())
+        
+        try:
+            result = await b.ExtractResume(
+                text,
+                baml_options={"abort_controller": controller}
+            )
+            timeout.cancel()
+            return result
+        except BamlAbortError:
+            raise TimeoutError(f"Operation timed out after {timeout_seconds}s")
+        except Exception:
+            timeout.cancel()
+            raise
+    ``````go
+    func extractWithTimeout(text string, timeout time.Duration) (Result, error) {
+        ctx, cancel := context.WithTimeout(context.Background(), timeout)
+        defer cancel()
+
+        result, err := b.ExtractResume(ctx, text)
+        if err != nil {
+            if errors.Is(err, context.DeadlineExceeded) {
+                return nil, fmt.Errorf("operation timed out after %v", timeout)
+            }
+            return nil, err
+        }
+
+        return result, nil
+    }
+    ``````rust
+    use baml::CancellationToken;
+    use myproject::baml_client::sync_client::B;
+    use std::time::Duration;
+
+    fn extract_with_timeout(text: &str, timeout: Duration) -> Result{
+        let token = CancellationToken::new_with_timeout(timeout);
+
+        B.ExtractResume
+            .with_cancellation_token(Some(token))
+            .call(text)
+            .map_err(|e| format!("Operation failed: {}", e))
+    }
+    ```### User-Initiated Cancellation
+
+Build responsive backend services that allow users to cancel long-running operations:```typescript
+    import express from 'express'
+    import { b } from '@/baml_client'
+
+    const app = express()
+    const activeControllers = new Map()
+
+    app.post('/extract/:requestId', async (req, res) => {
+      const { requestId } = req.params
+      const { text } = req.body
+      
+      const controller = new AbortController()
+      activeControllers.set(requestId, controller)
+      
+      try {
+        const result = await b.ExtractResume(text, {
+          signal: controller.signal
+        })
+        res.json({ result })
+      } catch (error) {
+        if (error.name === 'BamlAbortError') {
+          res.json({ status: 'cancelled' })
+        } else {
+          res.status(500).json({ error: error.message })
+        }
+      } finally {
+        activeControllers.delete(requestId)
+      }
+    })
+
+    app.post('/cancel/:requestId', (req, res) => {
+      const { requestId } = req.params
+      const controller = activeControllers.get(requestId)
+      
+      if (controller) {
+        controller.abort()
+        res.json({ status: 'cancellation requested' })
+      } else {
+        res.status(404).json({ status: 'request not found' })
+      }
+    })
+    ``````python
+    from fastapi import FastAPI, BackgroundTasks
+    from baml_py import AbortController
+    import asyncio
+
+    app = FastAPI()
+    active_controllers = {}
+
+    @app.post("/extract/{request_id}")
+    async def extract_resume(request_id: str, text: str):
+        controller = AbortController()
+        active_controllers[request_id] = controller
+        
+        try:
+            result = await b.ExtractResume(
+                text,
+                baml_options={"abort_controller": controller}
+            )
+            return {"result": result}
+        except BamlAbortError:
+            return {"status": "cancelled"}
+        finally:
+            active_controllers.pop(request_id, None)
+
+    @app.post("/cancel/{request_id}")
+    async def cancel_extraction(request_id: str):
+        if controller := active_controllers.get(request_id):
+            controller.abort()
+            return {"status": "cancellation requested"}
+        return {"status": "request not found"}
+    ```## Streaming with Abort Controllers
+
+Abort controllers work seamlessly with streaming responses:```typescript
+    const controller = new AbortController()
+
+    const stream = b.stream.GenerateStory(prompt, {
+      signal: controller.signal
+    })
+
+    let wordCount = 0
+    try {
+      for await (const chunk of stream) {
+        wordCount += chunk.split(' ').length
+        
+        // Stop if we've generated enough
+        if (wordCount > 1000) {
+          controller.abort('word limit reached')
+          break
+        }
+        
+        // Process chunk
+        console.log(chunk)
+      }
+    } catch (error) {
+      if (error instanceof BamlAbortError) {
+        console.log('Stream cancelled:', error.reason)
+      }
+    }
+    ``````python
+    controller = AbortController()
+
+    stream = b.stream.GenerateStory(
+        prompt,
+        baml_options={"abort_controller": controller}
+    )
+
+    word_count = 0
+    async for chunk in stream:
+        word_count += len(chunk.split())
+        
+        # Stop if we've generated enough
+        if word_count > 1000:
+            controller.abort()
+            break
+        
+        # Process chunk
+        print(chunk)
+    ``````go
+    ctx, cancel := context.WithCancel(context.Background())
+    defer cancel()
+
+    stream := b.StreamGenerateStory(ctx, prompt)
+
+    wordCount := 0
+    for chunk := range stream {
+        wordCount += len(strings.Fields(chunk))
+
+        // Stop if we've generated enough
+        if wordCount > 1000 {
+            cancel()
+            break
+        }
+
+        // Process chunk
+        fmt.Println(chunk)
+    }
+    ``````rust
+    use baml::CancellationToken;
+    use myproject::baml_client::sync_client::B;
+
+    let token = CancellationToken::new();
+    let token_clone = token.clone();
+
+    let mut stream = B.GenerateStory
+        .with_cancellation_token(Some(token))
+        .stream(prompt)
+        .unwrap();
+
+    let mut word_count = 0;
+    for partial in stream.partials() {
+        if let Ok(chunk) = partial {
+            word_count += chunk.split_whitespace().count();
+
+            // Stop if we've generated enough
+            if word_count > 1000 {
+                token_clone.cancel();
+                break;
+            }
+
+            println!("{}", chunk);
+        }
+    }
+    ```## Error Handling
+
+Properly handle abort errors to distinguish cancellations from other failures:```typescript
+    import { BamlAbortError } from '@/baml_client'
+
+    try {
+      const result = await b.ExtractResume(text, {
+        signal: controller.signal
+      })
+      return { success: true, data: result }
+    } catch (error) {
+      if (error instanceof BamlAbortError) {
+        // User cancelled - this is expected
+        return { success: false, cancelled: true }
+      }
+      
+      if (error.name === 'BamlValidationError') {
+        // Schema validation failed
+        return { success: false, validationError: error.message }
+      }
+      
+      // Unexpected error
+      console.error('Extraction failed:', error)
+      throw error
+    }
+    ``````python
+    from baml_py import BamlAbortError, BamlValidationError
+
+    try:
+        result = await b.ExtractResume(
+            text,
+            baml_options={"abort_controller": controller}
+        )
+        return {"success": True, "data": result}
+        
+    except BamlAbortError:
+        # User cancelled - this is expected
+        return {"success": False, "cancelled": True}
+        
+    except BamlValidationError as e:
+        # Schema validation failed
+        return {"success": False, "validation_error": str(e)}
+        
+    except Exception as e:
+        # Unexpected error
+        logger.error(f"Extraction failed: {e}")
+        raise
+    ``````go
+    result, err := b.ExtractResume(ctx, text)
+    if err != nil {
+        if errors.Is(err, context.Canceled) {
+            // User cancelled - this is expected
+            return Result{Success: false, Cancelled: true}, nil
+        }
+
+        if errors.Is(err, context.DeadlineExceeded) {
+            // Timeout occurred
+            return Result{Success: false, TimedOut: true}, nil
+        }
+
+        // Other error
+        return Result{}, fmt.Errorf("extraction failed: %w", err)
+    }
+
+    return Result{Success: true, Data: result}, nil
+    ``````rust
+    use baml::CancellationToken;
+    use myproject::baml_client::sync_client::B;
+
+    let result = B.ExtractResume
+        .with_cancellation_token(Some(token))
+        .call(text);
+
+    match result {
+        Ok(data) => {
+            // Success
+            println!("Extracted: {:?}", data);
+        }
+        Err(e) => {
+            let err_str = format!("{:?}", e).to_lowercase();
+            if err_str.contains("cancel") || err_str.contains("abort") {
+                // User cancelled - this is expected
+                println!("Operation was cancelled");
+            } else if err_str.contains("timeout") || err_str.contains("deadline") {
+                // Timeout occurred
+                println!("Operation timed out");
+            } else {
+                // Unexpected error
+                eprintln!("Extraction failed: {}", e);
+            }
+        }
+    }
+    ```## Best Practices
+
+### When to Use Each Pattern```typescript
+    // ✅ Use AbortSignal.timeout() for simple timeouts
+    const result = await b.ExtractResume(text, {
+      signal: AbortSignal.timeout(30000)
+    })
+
+    // ✅ Use manual AbortController when you need to cancel conditionally
+    const controller = new AbortController()
+    const promise = b.ExtractResume(text, {
+      signal: controller.signal
+    })
+
+    // Cancel based on user action or business logic
+    if (shouldCancel) {
+      controller.abort('cancelled by user')
+    }
+
+    // ✅ Combine both patterns for timeout + manual control
+    const controller = new AbortController()
+    const timeoutId = setTimeout(() => controller.abort('timeout'), 30000)
+
+    const result = await b.ExtractResume(text, {
+      signal: controller.signal
+    })
+
+    clearTimeout(timeoutId)
+    ```### Key Benefits
+
+* **AbortSignal.timeout()**: Cleaner code for simple timeout scenarios
+* **Manual AbortController**: More control over cancellation logic and reasons
+* **Better Error Handling**: Clear distinction between timeouts and user cancellations
+* **Standards Compliance**: Uses modern web standards that work across different environments
+
+## Advanced Patterns
+
+For more advanced abort controller patterns including:
+
+* **Cancelling parallel operations** - Cancel multiple concurrent calls at once or individually
+* **Fastest request wins** - Race multiple LLM providers and cancel slower ones
+* **Implementing timeouts for parallel operations** - Set automatic timeouts for batches of operations
+* **Batching with cancellation support** - Process items in batches with cancellation
+
+See the [Concurrent Calls guide](/guide/baml-basics/concurrent-calls#cancelling-parallel-operations) for detailed examples and implementations.
+
+## Related Topics
+
+* [Error Handling](/guide/baml-basics/error-handling) - Learn about all error types including BamlAbortError
+* [Streaming](/guide/baml-basics/streaming#cancelling-streams) - Stream responses with cancellation support
+* [Concurrent Calls](/guide/baml-basics/concurrent-calls) - Advanced cancellation patterns for parallel operations
+* [API Reference](/ref/baml_client/abort-signal) - Detailed API documentation

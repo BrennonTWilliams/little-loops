@@ -1,0 +1,189 @@
+---
+url: https://docs.boundaryml.com/guide/framework-integration/react-next-js/building-a-chatbot.mdx
+scraped_at: 2026-03-06T01:00:28.916037
+filepath: docs-docs-boundaryml-com/guide/framework-integration/react-next-js/building-a-chatbotmdx.md
+---
+
+
+***
+
+title: Building a Chatbot with BAML React Hooks
+description: Learn to build a streaming chatbot using BAML React hooks and Next.js
+----------------------------------------------------------------------------------
+
+In this tutorial, you'll build a real-time streaming chatbot using BAML React hooks. By following along, you'll learn how to:
+
+* Create a BAML function for chat completions
+* Use BAML's React hooks for streaming responses
+* Build a modern chat interface
+* Handle loading states and errors
+
+## Prerequisites
+
+Before starting, ensure you have:
+
+* Completed the [Quick Start Guide](/guide/framework-integration/react-next-js/quick-start)
+* A Next.js project (version 15 or higher) with BAML set up
+* An OpenAI API key
+
+## Step 1: Define the Chat Function
+
+First, create a new BAML function for the chat completion:```baml title="baml_src/chat.baml"
+  class Message {
+    role "user" | "assistant"
+    content string
+  }
+
+  function Chat(messages: Message[]) -> string {
+    client "openai/gpt-5-mini"
+    prompt #"
+      You are a helpful and knowledgeable AI assistant engaging in a conversation.
+      Your responses should be:
+      - Clear and concise
+      - Accurate and informative
+      - Natural and conversational in tone
+      - Focused on addressing the user's needs
+
+      {{ ctx.output_format }}
+
+      {% for m in messages %}
+      {{ _.role(m.role)}}
+      {{m.content}}
+      {% endfor %}
+    "#
+  }
+
+  test TestName {
+    functions [Chat]
+    args {
+      messages [
+        {
+          role "user"
+          content "help me understand Chobani's success"
+        }
+      ]
+    }
+  }
+  ```Generate the BAML client to create the React hooks:
+
+```bash
+baml-cli generate
+```
+
+## Step 2: Implement the Chat Interface
+
+The `useChat` hook's `data` property contains the assistant's streaming response (a `string`), not the messages array. You need to maintain your own message state:```tsx title="app/components/chat-interface.tsx"
+  'use client'
+
+  import { useChat } from "@/baml_client/react/hooks";
+  import { useState, useEffect } from "react";
+  import type { Message } from "@/baml_client/types";
+
+  export function ChatInterface() {
+    const [messages, setMessages] = useState([]);
+    const [input, setInput] = useState("");
+
+    const chat = useChat();
+
+    // When the assistant responds, add the response to the message history
+    useEffect(() => {
+      if (chat.isSuccess && chat.finalData) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: chat.finalData! }
+        ]);
+      }
+    }, [chat.isSuccess, chat.finalData]);
+
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!input.trim() || chat.isLoading) return;
+
+      const userMessage: Message = { role: "user", content: input };
+      const newMessages = [...messages, userMessage];
+
+      // Update local state immediately
+      setMessages(newMessages);
+      setInput("");
+
+      // Send the full message history to the Chat function
+      await chat.mutate(newMessages);
+    };
+
+    return ({messages.map((message, i) => ({message.role}:{message.content}))}
+          {chat.isLoading && (assistant:{chat.data ?? "Generating..."})}setInput(e.target.value)}
+            placeholder="Type your message..."
+          />Send);
+  }
+  ```### Using Callbacks for Fine-Grained Control
+
+You can use the hook's callbacks for more control over streaming events. This is useful for logging, analytics, or custom state management. The highlighted lines show the additions to the base example:```tsx {9, 12-29, 54} title="app/components/chat-interface.tsx"
+  'use client'
+
+  import { useChat } from "@/baml_client/react/hooks";
+  import { useState } from "react";
+  import type { Message } from "@/baml_client/types";
+
+  export function ChatInterface() {
+    const [messages, setMessages] = useState([]);
+    const [streamingContent, setStreamingContent] = useState("");
+    const [input, setInput] = useState("");
+
+    const chat = useChat({
+      // Called on each streaming partial update
+      onStreamData: (partial) => {
+        if (partial) {
+          setStreamingContent(partial);
+        }
+      },
+      // Called when streaming completes with the final response
+      onFinalData: (final) => {
+        if (final) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: final }
+          ]);
+          setStreamingContent("");
+        }
+      },
+    });
+
+    const handleSubmit = async (e: React.FormEvent) => {
+      e.preventDefault();
+      if (!input.trim() || chat.isLoading) return;
+
+      const userMessage: Message = { role: "user", content: input };
+      const newMessages = [...messages, userMessage];
+
+      setMessages(newMessages);
+      setInput("");
+
+      await chat.mutate(newMessages);
+    };
+
+    return ({messages.map((message, i) => ({message.role}:{message.content}))}
+          {chat.isLoading && (assistant:{streamingContent || "Generating..."})}setInput(e.target.value)}
+            placeholder="Type your message..."
+          />Send);
+  }
+  ```With callbacks, you can:
+
+* Track streaming progress with `onStreamData`
+* Handle completion with `onFinalData`
+* Add error handling with `onError`
+* Integrate analytics or logging on each event
+
+## Next Steps
+
+To enhance your chatbot, you could:
+
+* Add [error handling](/ref/baml_client/errors/overview) for different types of errors
+* Add chat history persistence
+* Implement different chat models or configurations
+
+For more information, check out:
+
+* [Generated Hooks](/ref/baml_client/react-next-js/use-function-name-hook)
+* [HookInput](/ref/baml_client/react-next-js/hook-input)
+* [HookOutput](/ref/baml_client/react-next-js/hook-output)
+* [Error Handling](/ref/baml_client/errors/overview)
