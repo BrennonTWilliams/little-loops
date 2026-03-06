@@ -41,7 +41,7 @@ Every in-progress state transition triggers two I/O operations where one suffice
 
 ## Proposed Solution
 
-Change the trigger condition in `_handle_event` at `persistence.py:284-287`:
+Change the trigger condition in `_handle_event` at `persistence.py:291-294`:
 
 ```python
 # Before:
@@ -64,7 +64,7 @@ The crash window between `route` and `state_enter` is extremely narrow (microsec
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/persistence.py` — remove `"route"` from trigger set in `_handle_event` at line 286
+- `scripts/little_loops/fsm/persistence.py` — remove `"route"` from trigger set in `_handle_event` at line 293
 
 ### Dependent Files (Callers/Importers)
 - N/A — `_handle_event` is called internally by `PersistentExecutor`; no external callers affected
@@ -83,7 +83,7 @@ The crash window between `route` and `state_enter` is extremely narrow (microsec
 
 ## Implementation Steps
 
-1. Open `scripts/little_loops/fsm/persistence.py` at line 286
+1. Open `scripts/little_loops/fsm/persistence.py` at line 293
 2. Change `("state_enter", "route", "loop_complete")` to `("state_enter", "loop_complete")`
 3. Run existing tests to confirm no regressions
 
@@ -102,9 +102,16 @@ The crash window between `route` and `state_enter` is extremely narrow (microsec
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: `if event_type in ("state_enter", "route", "loop_complete"):` confirmed at `persistence.py:286`
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — v2.0 format: added Motivation, Scope Boundaries restructure, Success Metrics, Integration Map, Implementation Steps; added confidence_score and outcome_confidence to frontmatter
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — Readiness: 97/100 PROCEED; Outcome: 90/100 HIGH CONFIDENCE
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9f479c6f-a33a-4b1d-95d1-cd657a4bbc0b.jsonl` — CORRECTED: [line_drift] Updated line refs 284-287 -> 291-294 (trigger at line 293); code claim confirmed
+
+- `/ll:manage-issue` - 2026-03-06T00:00:00Z - Removed `"route"` from `_handle_event` trigger set; 3316 tests pass, 5 pre-existing failures unrelated.
 
 ---
 
+## Resolution
+
+Removed `"route"` from the `_handle_event` trigger condition in `persistence.py:293`. Halves state file writes per transition with no behavioral impact or crash safety regression.
+
 ## Status
 
-**Open** | Created: 2026-03-06 | Priority: P4
+**Completed** | Created: 2026-03-06 | Priority: P4

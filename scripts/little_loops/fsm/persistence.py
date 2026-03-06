@@ -290,7 +290,7 @@ class PersistentExecutor:
 
         # Save state after state transitions
         event_type = event.get("event")
-        if event_type in ("state_enter", "route", "loop_complete"):
+        if event_type in ("state_enter", "loop_complete"):
             self._save_state()
 
         # Track evaluation results for state persistence
