@@ -1004,13 +1004,19 @@ class TestCorruptedStateFiles:
 
     # Field validation tests
     def test_missing_required_field_in_state(self, tmp_loops_dir: Path) -> None:
-        """State JSON missing required field should return None."""
+        """State JSON missing required field should return None and log a warning."""
+        from unittest.mock import patch
+
         persistence = StatePersistence("test-loop", tmp_loops_dir)
         persistence.initialize()
         persistence.state_file.write_text('{"loop_name": "test"}')
 
-        result = persistence.load_state()
-        assert result is None  # KeyError caught
+        with patch("little_loops.fsm.persistence.logger") as mock_logger:
+            result = persistence.load_state()
+
+        assert result is None
+        mock_logger.warning.assert_called_once()
+        assert "Corrupted state file" in mock_logger.warning.call_args[0][0]
 
     def test_wrong_type_for_field_in_state(self, tmp_loops_dir: Path) -> None:
         """Wrong type for field should be accepted (no validation)."""

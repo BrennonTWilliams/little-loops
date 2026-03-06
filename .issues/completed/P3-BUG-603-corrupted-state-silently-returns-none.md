@@ -16,7 +16,7 @@ outcome_confidence: 86
 ## Location
 
 - **File**: `scripts/little_loops/fsm/persistence.py`
-- **Line(s)**: 168-173 (at scan commit: c010880)
+- **Line(s)**: 169-173 (at scan commit: c010880)
 - **Anchor**: `in method StatePersistence.load_state()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/c010880ecfc0941e7a5a59cc071248a4b1cbc557/scripts/little_loops/fsm/persistence.py#L168-L173)
 - **Code**:
@@ -85,9 +85,20 @@ except KeyError as e:
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: `except (json.JSONDecodeError, KeyError): return None` confirmed at `persistence.py:172`
 - `/ll:format-issue` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — added ## Status heading
 - `/ll:confidence-check` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — readiness: 100/100 PROCEED, outcome: 86/100 HIGH CONFIDENCE
+- `/ll:ready-issue` - 2026-03-06T15:48:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/68b0ec44-3243-4aca-9797-af2c985bb340.jsonl` — CORRECTED: line drift 168->169; code confirmed at persistence.py:169-173
+
+- `/ll:manage-issue` - 2026-03-06T16:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl` — FIXED: split except clause in `load_state`, added `logging` import and module logger, updated `test_missing_required_field_in_state` to assert warning emitted; 59 tests pass
 
 ---
 
+## Resolution
+
+**Fixed** in `scripts/little_loops/fsm/persistence.py`:
+- Added `import logging` and `logger = logging.getLogger(__name__)`
+- Split `except (json.JSONDecodeError, KeyError): return None` into two separate try/except blocks
+- `KeyError` path now calls `logger.warning("Corrupted state file %s: missing key %s", ...)` before returning `None`
+- Updated `test_missing_required_field_in_state` to assert the warning is logged
+
 ## Status
 
-**Open** | Created: 2026-03-06 | Priority: P3
+**Completed** | Created: 2026-03-06 | Resolved: 2026-03-06 | Priority: P3

@@ -17,6 +17,7 @@ File structure:
 from __future__ import annotations
 
 import json
+import logging
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -27,6 +28,8 @@ from little_loops.fsm.executor import EventCallback, ExecutionResult, FSMExecuto
 from little_loops.fsm.schema import FSMLoop
 
 RUNNING_DIR = ".running"
+
+logger = logging.getLogger(__name__)
 
 
 def _iso_now() -> str:
@@ -168,8 +171,12 @@ class StatePersistence:
             return None
         try:
             data = json.loads(self.state_file.read_text())
+        except json.JSONDecodeError:
+            return None
+        try:
             return LoopState.from_dict(data)
-        except (json.JSONDecodeError, KeyError):
+        except KeyError as e:
+            logger.warning("Corrupted state file %s: missing key %s", self.state_file, e)
             return None
 
     def clear_state(self) -> None:
