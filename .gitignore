@@ -74,3 +74,6 @@ scripts/.parallel-manage-state.json
 docs/demo
 .loops/.running/
 *.Cast
+
+# Debug output files
+deepcodebase-*.txt
