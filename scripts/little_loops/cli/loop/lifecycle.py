@@ -9,7 +9,7 @@ import signal
 import time
 from pathlib import Path
 
-from little_loops.cli.loop._helpers import load_loop
+from little_loops.cli.loop._helpers import load_loop, register_loop_signal_handlers
 from little_loops.logger import Logger
 
 
@@ -167,6 +167,10 @@ def cmd_resume(
             print()
 
     executor = PersistentExecutor(fsm, loops_dir=loops_dir)
+
+    # Register signal handlers for graceful shutdown (same as cmd_run)
+    register_loop_signal_handlers(executor)
+
     result = executor.resume()
 
     if result is None:

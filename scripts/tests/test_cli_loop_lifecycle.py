@@ -370,3 +370,50 @@ class TestCmdResume:
             result = cmd_resume("test-loop", args, tmp_path, logger)
 
         assert result == 1
+
+    def test_resume_registers_signal_handlers(self, tmp_path: Path) -> None:
+        """cmd_resume registers SIGINT/SIGTERM handlers before calling resume (BUG-600)."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 3
+        mock_result.duration_ms = 5000
+        mock_result.terminated_by = "terminal"
+
+        with (
+            patch(
+                "little_loops.cli.loop.lifecycle.load_loop",
+                return_value=mock_fsm,
+            ),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch(
+                "little_loops.cli.loop.lifecycle.register_loop_signal_handlers"
+            ) as mock_register,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        mock_register.assert_called_once_with(mock_exec_cls.return_value)
+
+    def test_resume_signal_handler_triggers_graceful_shutdown(self, tmp_path: Path) -> None:
+        """Ctrl-C during resume calls request_shutdown() instead of raising KeyboardInterrupt."""
+        from little_loops.cli.loop._helpers import _loop_signal_handler
+
+        mock_executor = MagicMock()
+
+        import little_loops.cli.loop._helpers as _h
+
+        _h._loop_shutdown_requested = False
+        _h._loop_executor = mock_executor
+        _h._loop_pid_file = None
+
+        # Simulate first Ctrl-C (SIGINT)
+        _loop_signal_handler(signal.SIGINT, None)
+
+        mock_executor.request_shutdown.assert_called_once()

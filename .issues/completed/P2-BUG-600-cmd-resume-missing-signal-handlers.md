@@ -101,13 +101,26 @@ Import or replicate the signal handler registration pattern from `cmd_run` into 
 
 `bug`, `ll-loop`, `lifecycle`
 
+## Resolution
+
+**Completed**: 2026-03-06
+
+- Extracted signal handler state (`_loop_shutdown_requested`, `_loop_executor`, `_loop_pid_file`) and `_loop_signal_handler` from `run.py` into `_helpers.py`
+- Added `register_loop_signal_handlers(executor, pid_file=None)` shared helper to `_helpers.py`
+- Updated `cmd_run` in `run.py` to use the shared helper (removed manual globals/signal setup)
+- Added `register_loop_signal_handlers(executor)` to `cmd_resume` in `lifecycle.py` before `executor.resume()`
+- Updated `test_cli_loop_background.py` signal handler tests to reference `_helpers` module
+- Added 2 new tests to `test_cli_loop_lifecycle.py`: signal handler registration assertion and graceful shutdown behavior
+
 ## Session Log
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96debe7befc6b.jsonl` — readiness: 100/100 PROCEED, outcome: 86/100 HIGH CONFIDENCE
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96debe7befc6b.jsonl` — Added Motivation, Integration Map sections (v2.0 alignment); added confidence_score and outcome_confidence to frontmatter
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: `cmd_resume` at `lifecycle.py:138-188` confirmed; no signal handler registration before `executor.resume()`; `_loop_signal_handler` confirmed in `run.py:150-151`
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db12866e-001c-4b9a-a6da-038e0a497d6c.jsonl` — READY: all code references verified against current code; bug confirmed; no corrections needed
+- `/ll:manage-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/` — FIXED: extracted signal handler to _helpers.py, added register_loop_signal_handlers(), called from cmd_resume
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-03-06 | Priority: P2
+**Completed** | Created: 2026-03-06 | Resolved: 2026-03-06 | Priority: P2

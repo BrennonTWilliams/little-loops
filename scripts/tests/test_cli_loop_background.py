@@ -11,49 +11,49 @@ import pytest
 
 
 class TestLoopSignalHandler:
-    """Tests for loop signal handler."""
+    """Tests for loop signal handler (state lives in _helpers since BUG-600)."""
 
     @classmethod
     def setup_class(cls) -> None:
         """Import module for signal handler access."""
-        import little_loops.cli.loop.run as run_module
+        import little_loops.cli.loop._helpers as helpers_module
 
-        cls.run_module = run_module
+        cls.helpers = helpers_module
 
     def setup_method(self) -> None:
         """Reset global state before each test."""
-        self.run_module._loop_shutdown_requested = False
-        self.run_module._loop_executor = None
-        self.run_module._loop_pid_file = None
+        self.helpers._loop_shutdown_requested = False
+        self.helpers._loop_executor = None
+        self.helpers._loop_pid_file = None
 
     def teardown_method(self) -> None:
         """Reset global state after each test."""
-        self.run_module._loop_shutdown_requested = False
-        self.run_module._loop_executor = None
-        self.run_module._loop_pid_file = None
+        self.helpers._loop_shutdown_requested = False
+        self.helpers._loop_executor = None
+        self.helpers._loop_pid_file = None
 
     def test_first_signal_sets_flag(self) -> None:
         """First signal sets shutdown flag without exiting."""
-        self.run_module._loop_signal_handler(signal.SIGINT, None)
-        assert self.run_module._loop_shutdown_requested is True
+        self.helpers._loop_signal_handler(signal.SIGINT, None)
+        assert self.helpers._loop_shutdown_requested is True
 
     def test_first_signal_calls_request_shutdown(self) -> None:
         """First signal calls executor.request_shutdown() if set."""
         mock_executor = MagicMock()
-        self.run_module._loop_executor = mock_executor
+        self.helpers._loop_executor = mock_executor
 
-        self.run_module._loop_signal_handler(signal.SIGTERM, None)
+        self.helpers._loop_signal_handler(signal.SIGTERM, None)
 
-        assert self.run_module._loop_shutdown_requested is True
+        assert self.helpers._loop_shutdown_requested is True
         mock_executor.request_shutdown.assert_called_once()
 
     def test_second_signal_forces_exit(self) -> None:
         """Second signal forces immediate exit with code 1."""
-        self.run_module._loop_signal_handler(signal.SIGINT, None)
-        assert self.run_module._loop_shutdown_requested is True
+        self.helpers._loop_signal_handler(signal.SIGINT, None)
+        assert self.helpers._loop_shutdown_requested is True
 
         with pytest.raises(SystemExit) as exc_info:
-            self.run_module._loop_signal_handler(signal.SIGTERM, None)
+            self.helpers._loop_signal_handler(signal.SIGTERM, None)
 
         assert exc_info.value.code == 1
 
@@ -64,9 +64,9 @@ class TestLoopSignalHandler:
         mock_inner.action_runner._current_process = mock_process
         mock_executor = MagicMock()
         mock_executor._executor = mock_inner
-        self.run_module._loop_executor = mock_executor
+        self.helpers._loop_executor = mock_executor
 
-        self.run_module._loop_signal_handler(signal.SIGTERM, None)
+        self.helpers._loop_signal_handler(signal.SIGTERM, None)
 
         mock_process.kill.assert_called_once()
 
@@ -76,22 +76,22 @@ class TestLoopSignalHandler:
         mock_inner.action_runner._current_process = None
         mock_executor = MagicMock()
         mock_executor._executor = mock_inner
-        self.run_module._loop_executor = mock_executor
+        self.helpers._loop_executor = mock_executor
 
         # Should not raise
-        self.run_module._loop_signal_handler(signal.SIGTERM, None)
-        assert self.run_module._loop_shutdown_requested is True
+        self.helpers._loop_signal_handler(signal.SIGTERM, None)
+        assert self.helpers._loop_shutdown_requested is True
 
     def test_second_signal_cleans_pid_file(self, tmp_path: Path) -> None:
         """Second signal cleans up PID file before exiting."""
         pid_file = tmp_path / "test.pid"
         pid_file.write_text("12345")
-        self.run_module._loop_pid_file = pid_file
+        self.helpers._loop_pid_file = pid_file
 
-        self.run_module._loop_signal_handler(signal.SIGINT, None)
+        self.helpers._loop_signal_handler(signal.SIGINT, None)
 
         with pytest.raises(SystemExit):
-            self.run_module._loop_signal_handler(signal.SIGINT, None)
+            self.helpers._loop_signal_handler(signal.SIGINT, None)
 
         assert not pid_file.exists()
 

@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import argparse
+import signal
 import subprocess
 import sys
 import time
 from pathlib import Path
+from types import FrameType
 from typing import TYPE_CHECKING, Any
 
 from little_loops.cli.output import colorize, terminal_width
@@ -14,6 +16,57 @@ from little_loops.cli.output import colorize, terminal_width
 if TYPE_CHECKING:
     from little_loops.fsm.schema import FSMLoop
     from little_loops.logger import Logger
+
+# Module-level shutdown state for signal handling
+_loop_shutdown_requested: bool = False
+_loop_executor: Any = None
+_loop_pid_file: Path | None = None
+
+
+def _loop_signal_handler(signum: int, frame: FrameType | None) -> None:
+    """Handle shutdown signals gracefully for ll-loop.
+
+    First signal: Set shutdown flag for graceful exit after current state.
+    Second signal: Force immediate exit.
+    """
+    global _loop_shutdown_requested
+    if _loop_shutdown_requested:
+        # Second signal - force exit
+        if _loop_pid_file is not None:
+            _loop_pid_file.unlink(missing_ok=True)
+        print("\nForce shutdown requested", file=sys.stderr)
+        sys.exit(1)
+    _loop_shutdown_requested = True
+    print("\nShutdown requested, will exit after current state...", file=sys.stderr)
+    if _loop_executor is not None:
+        _loop_executor.request_shutdown()
+        # Kill any child subprocess currently blocking in the action runner
+        inner = getattr(_loop_executor, "_executor", None)
+        if inner is not None:
+            runner = getattr(inner, "action_runner", None)
+            if runner is not None:
+                proc = getattr(runner, "_current_process", None)
+                if proc is not None:
+                    proc.kill()
+
+
+def register_loop_signal_handlers(executor: Any, pid_file: Path | None = None) -> None:
+    """Register SIGINT/SIGTERM handlers for graceful loop shutdown.
+
+    Sets up signal handling so that Ctrl-C triggers a graceful shutdown
+    (calls executor.request_shutdown()) rather than raising KeyboardInterrupt.
+    A second Ctrl-C forces immediate exit with PID file cleanup.
+
+    Args:
+        executor: The PersistentExecutor instance to request shutdown on.
+        pid_file: Optional path to PID file to clean up on forced exit.
+    """
+    global _loop_shutdown_requested, _loop_executor, _loop_pid_file
+    _loop_shutdown_requested = False
+    _loop_executor = executor
+    _loop_pid_file = pid_file
+    signal.signal(signal.SIGINT, _loop_signal_handler)
+    signal.signal(signal.SIGTERM, _loop_signal_handler)
 
 
 def get_builtin_loops_dir() -> Path:
