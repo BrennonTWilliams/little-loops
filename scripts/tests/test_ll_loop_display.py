@@ -810,6 +810,50 @@ class TestRenderFsmDiagram:
         for row in fail_rows + next_rows:
             assert row.count("\u2502") >= 2, f"Expected both pipes on label row: {row!r}"
 
+    def test_multiple_off_path_states_same_depth(self) -> None:
+        """Two off-path states appear at the same vertical depth (side-by-side)."""
+        # Mirrors fix-quality-and-tests: two check→fix pairs with fix-tests→check-quality cross-edge
+        fsm = self._make_fsm(
+            initial="check-quality",
+            states={
+                "check-quality": StateConfig(
+                    action="lint",
+                    on_success="check-tests",
+                    on_failure="fix-quality",
+                ),
+                "fix-quality": StateConfig(action="fix lint", next="check-quality"),
+                "check-tests": StateConfig(
+                    action="pytest",
+                    on_success="done",
+                    on_failure="fix-tests",
+                ),
+                "fix-tests": StateConfig(action="fix tests", next="check-quality"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        lines = result.split("\n")
+
+        # Both off-path box name rows must appear on the SAME line index
+        fix_quality_row = next(
+            (i for i, ln in enumerate(lines) if "fix-quality" in ln and "\u2502" in ln), None
+        )
+        fix_tests_row = next(
+            (i for i, ln in enumerate(lines) if "fix-tests" in ln and "\u2502" in ln), None
+        )
+        assert fix_quality_row is not None, "fix-quality box not found"
+        assert fix_tests_row is not None, "fix-tests box not found"
+        assert fix_quality_row == fix_tests_row, (
+            f"fix-quality at row {fix_quality_row}, fix-tests at row {fix_tests_row}; "
+            "expected same row (side-by-side layout)"
+        )
+
+        # fix-tests should show a left-going arrow (◄) for its cross-edge to check-quality
+        fix_tests_name_line = lines[fix_tests_row]
+        assert "\u25c4" in fix_tests_name_line, (
+            f"Expected ◄ left-going arrow on fix-tests name row: {fix_tests_name_line!r}"
+        )
+
 
 class TestDisplayProgressEvents:
     """Tests for display_progress event formatting in run_foreground."""

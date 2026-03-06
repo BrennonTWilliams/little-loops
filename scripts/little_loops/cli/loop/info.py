@@ -662,6 +662,8 @@ def _render_2d_diagram(
         lines.append("".join(row).rstrip())
 
     # --- Off-path states: render as multi-row boxes with vertical connectors ---
+    # Phase 1: Pre-compute specs for all off-path states (no rendering yet)
+    off_spec: dict[str, dict] = {}
     for off_s in off_path:
         state_edges = off_state_edges.get(off_s, [])
         if not state_edges:
@@ -691,9 +693,6 @@ def _render_2d_diagram(
                 outgoing.append((src, dst, label))
 
         anchor_cc = col_center[anchor]
-        off_cs = col_start[off_s]
-        off_w = box_width[off_s]
-
         has_down = bool(down_labels)
         has_up = bool(up_labels)
 
@@ -710,115 +709,159 @@ def _render_2d_diagram(
             down_col = -1
             up_col = -1
 
-        # Vertical connector rows (fixed label collision bug: separate rows per direction)
+        # Count connector rows needed for this state
+        n_conn = 0
         if has_down or has_up:
-            # Row 1: vertical drop (│) and rise arrow (▲)
-            row = [" "] * total_width
-            if has_down and 0 <= down_col < total_width:
-                row[down_col] = "\u2502"
-            if has_up and 0 <= up_col < total_width:
-                row[up_col] = "\u25b2"
-            lines.append("".join(row).rstrip())
-
-            # Label rows: one row per direction to prevent overlap
+            n_conn = 2  # initial pipe/arrow row + arrow tips row
             if has_down:
-                row = [" "] * total_width
-                dlabel = "/".join(down_labels)
-                dstart_ideal = down_col - len(dlabel) - 1
-                if dstart_ideal >= 0:
-                    dstart = dstart_ideal
-                else:
-                    # Label can't fit left without overlapping a pipe; place right of all pipes
-                    rightmost_pipe = max(down_col, up_col if has_up else down_col)
-                    dstart = rightmost_pipe + 2
-                for j, ch in enumerate(dlabel):  # write label first
-                    if 0 <= dstart + j < total_width:
-                        row[dstart + j] = ch
-                if 0 <= down_col < total_width:  # then down pipe (never overwritten)
-                    row[down_col] = "\u2502"
-                if has_up and 0 <= up_col < total_width:  # also draw the up pipe for continuity
-                    row[up_col] = "\u2502"
-                lines.append("".join(row).rstrip())
-
+                n_conn += 1  # down label row
             if has_up:
-                row = [" "] * total_width
-                ulabel = "/".join(up_labels)
-                ustart = up_col + 2
-                for j, ch in enumerate(ulabel):  # write label first
-                    if 0 <= ustart + j < total_width:
-                        row[ustart + j] = ch
-                if 0 <= up_col < total_width:  # then up pipe
-                    row[up_col] = "\u2502"
-                if (
-                    has_down and 0 <= down_col < total_width
-                ):  # also draw the down pipe for continuity
-                    row[down_col] = "\u2502"
-                lines.append("".join(row).rstrip())
+                n_conn += 1  # up label row
 
-            # Arrow tips row
-            row = [" "] * total_width
-            if has_down and 0 <= down_col < total_width:
-                row[down_col] = "\u25bc"
-            if has_up and 0 <= up_col < total_width:
-                row[up_col] = "\u2502"
-            lines.append("".join(row).rstrip())
+        off_spec[off_s] = dict(
+            anchor=anchor,
+            down_labels=down_labels,
+            up_labels=up_labels,
+            outgoing=outgoing,
+            has_down=has_down,
+            has_up=has_up,
+            down_col=down_col,
+            up_col=up_col,
+            n_conn=n_conn,
+        )
 
-        # Render off-path state box (multi-row)
-        off_content = box_inner[off_s]
-        h = box_height[off_s]
-        bx = off_cs
-        bw = off_w
-        box_rows_r: list[list[str]] = [[" "] * total_width for _ in range(h)]
+    # Phase 2: Render all off-path states into a shared grid (side-by-side layout)
+    if off_spec:
+        max_conn_h = max(s["n_conn"] for s in off_spec.values())
+        max_box_h = max(box_height[s] for s in off_spec)
+        total_off_h = max_conn_h + max_box_h
 
-        if bx + bw <= total_width:
-            # Top border
-            box_rows_r[0][bx] = "\u250c"
-            for j in range(1, bw - 1):
-                box_rows_r[0][bx + j] = "\u2500"
-            box_rows_r[0][bx + bw - 1] = "\u2510"
+        off_grid: list[list[str]] = [[" "] * total_width for _ in range(total_off_h)]
 
-            # Content rows
-            for i, line in enumerate(off_content):
-                r = i + 1
-                box_rows_r[r][bx] = "\u2502"
-                box_rows_r[r][bx + bw - 1] = "\u2502"
-                for j, ch in enumerate(line):
-                    if bx + 2 + j < bx + bw - 1:
-                        box_rows_r[r][bx + 2 + j] = ch
+        for off_s, spec in off_spec.items():
+            has_down = spec["has_down"]
+            has_up = spec["has_up"]
+            down_col = spec["down_col"]
+            up_col = spec["up_col"]
+            down_labels = spec["down_labels"]
+            up_labels = spec["up_labels"]
+            n_conn = spec["n_conn"]
+            outgoing = spec["outgoing"]
 
-            # Padding rows
-            for r in range(len(off_content) + 1, h - 1):
-                box_rows_r[r][bx] = "\u2502"
-                box_rows_r[r][bx + bw - 1] = "\u2502"
+            # Bottom-align connectors so ▼ always lands on the row just above the box top
+            conn_offset = max_conn_h - n_conn
 
-            # Bottom border
-            box_rows_r[h - 1][bx] = "\u2514"
-            for j in range(1, bw - 1):
-                box_rows_r[h - 1][bx + j] = "\u2500"
-            box_rows_r[h - 1][bx + bw - 1] = "\u2518"
+            if has_down or has_up:
+                r = conn_offset
+                # Row: vertical drop (│) and rise arrow (▲)
+                if has_down and 0 <= down_col < total_width:
+                    off_grid[r][down_col] = "\u2502"
+                if has_up and 0 <= up_col < total_width:
+                    off_grid[r][up_col] = "\u25b2"
+                r += 1
 
-        # Draw outgoing edges from off-path box on its name row (index 1)
-        for src, dst, label in outgoing:
-            if src == off_s:
-                start_col = bx + bw
-                target_col = col_center.get(dst, start_col + len(label) + 4)
-                edge_text = "\u2500" + label + "\u2500\u2500\u25b6"
-                available = target_col - start_col
-                if available > len(edge_text):
-                    left_dashes = available - len(edge_text)
-                    for j in range(left_dashes):
-                        if start_col + j < total_width:
-                            box_rows_r[1][start_col + j] = "\u2500"
-                    for j, ch in enumerate(edge_text):
-                        pos = start_col + left_dashes + j
-                        if pos < total_width:
-                            box_rows_r[1][pos] = ch
-                else:
-                    for j, ch in enumerate(edge_text):
-                        if start_col + j < total_width:
-                            box_rows_r[1][start_col + j] = ch
+                # Down label row
+                if has_down:
+                    dlabel = "/".join(down_labels)
+                    dstart_ideal = down_col - len(dlabel) - 1
+                    if dstart_ideal >= 0:
+                        dstart = dstart_ideal
+                    else:
+                        rightmost_pipe = max(down_col, up_col if has_up else down_col)
+                        dstart = rightmost_pipe + 2
+                    for j, ch in enumerate(dlabel):
+                        if 0 <= dstart + j < total_width:
+                            off_grid[r][dstart + j] = ch
+                    if 0 <= down_col < total_width:
+                        off_grid[r][down_col] = "\u2502"
+                    if has_up and 0 <= up_col < total_width:
+                        off_grid[r][up_col] = "\u2502"
+                    r += 1
 
-        for row in box_rows_r:
+                # Up label row
+                if has_up:
+                    ulabel = "/".join(up_labels)
+                    ustart = up_col + 2
+                    for j, ch in enumerate(ulabel):
+                        if 0 <= ustart + j < total_width:
+                            off_grid[r][ustart + j] = ch
+                    if 0 <= up_col < total_width:
+                        off_grid[r][up_col] = "\u2502"
+                    if has_down and 0 <= down_col < total_width:
+                        off_grid[r][down_col] = "\u2502"
+                    r += 1
+
+                # Arrow tips row
+                if has_down and 0 <= down_col < total_width:
+                    off_grid[r][down_col] = "\u25bc"
+                if has_up and 0 <= up_col < total_width:
+                    off_grid[r][up_col] = "\u2502"
+
+            # Box rows start at max_conn_h (same for all off-path states)
+            bx = col_start[off_s]
+            bw = box_width[off_s]
+            off_content = box_inner[off_s]
+            h = box_height[off_s]
+            box_base = max_conn_h
+
+            if bx + bw <= total_width:
+                # Top border
+                off_grid[box_base][bx] = "\u250c"
+                for j in range(1, bw - 1):
+                    off_grid[box_base][bx + j] = "\u2500"
+                off_grid[box_base][bx + bw - 1] = "\u2510"
+
+                # Content rows
+                for i, line in enumerate(off_content):
+                    br = box_base + i + 1
+                    off_grid[br][bx] = "\u2502"
+                    off_grid[br][bx + bw - 1] = "\u2502"
+                    for j, ch in enumerate(line):
+                        if bx + 2 + j < bx + bw - 1:
+                            off_grid[br][bx + 2 + j] = ch
+
+                # Padding rows
+                for i in range(len(off_content) + 1, h - 1):
+                    br = box_base + i
+                    off_grid[br][bx] = "\u2502"
+                    off_grid[br][bx + bw - 1] = "\u2502"
+
+                # Bottom border
+                off_grid[box_base + h - 1][bx] = "\u2514"
+                for j in range(1, bw - 1):
+                    off_grid[box_base + h - 1][bx + j] = "\u2500"
+                off_grid[box_base + h - 1][bx + bw - 1] = "\u2518"
+
+            # Draw outgoing edges on the name row (box_base + 1)
+            name_row = box_base + 1
+            for src, dst, label in outgoing:
+                if src == off_s:
+                    start_col = bx + bw
+                    target_col = col_center.get(dst, start_col + len(label) + 4)
+                    edge_text = "\u2500" + label + "\u2500\u2500\u25b6"
+                    available = target_col - start_col
+                    if available > len(edge_text):
+                        left_dashes = available - len(edge_text)
+                        for j in range(left_dashes):
+                            if start_col + j < total_width:
+                                off_grid[name_row][start_col + j] = "\u2500"
+                        for j, ch in enumerate(edge_text):
+                            pos = start_col + left_dashes + j
+                            if pos < total_width:
+                                off_grid[name_row][pos] = ch
+                    elif target_col < start_col:
+                        # Left-going edge: target is LEFT of this box; draw ◀──label─ at left
+                        left_edge_text = "\u25c4\u2500\u2500" + label + "\u2500"
+                        left_start = max(0, bx - len(left_edge_text))
+                        for j, ch in enumerate(left_edge_text):
+                            if left_start + j < total_width:
+                                off_grid[name_row][left_start + j] = ch
+                    else:
+                        for j, ch in enumerate(edge_text):
+                            if start_col + j < total_width:
+                                off_grid[name_row][start_col + j] = ch
+
+        for row in off_grid:
             lines.append("".join(row).rstrip())
 
     if diagram_indent > 0:
