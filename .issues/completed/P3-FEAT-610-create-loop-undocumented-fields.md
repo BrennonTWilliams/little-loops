@@ -69,10 +69,10 @@ A user creating a loop via `/ll:create-loop` wants to run it safely alongside ot
 
 ## Acceptance Criteria
 
-- [ ] `reference.md` documents `scope` with usage example
-- [ ] `reference.md` documents `on_partial` with usage example
-- [ ] `reference.md` documents `capture` with usage example
-- [ ] `paradigms.md` mentions scope in relevant wizard presets (if applicable)
+- [x] `reference.md` documents `scope` with usage example
+- [x] `reference.md` documents `on_partial` with usage example
+- [x] `reference.md` documents `capture` with usage example
+- [x] `paradigms.md` mentions scope in relevant wizard presets (if applicable)
 
 ## Implementation Steps
 
@@ -98,14 +98,27 @@ A user creating a loop via `/ll:create-loop` wants to run it safely alongside ot
 
 `feature`, `ll-loop`, `documentation`
 
+## Resolution
+
+**Status**: Completed 2026-03-06
+
+**Changes made:**
+- `skills/create-loop/reference.md`: Added three new subsections under "Advanced State Configuration":
+  - `scope` — loop-level field for `ll-parallel` concurrency control, with path overlap explanation and two YAML examples
+  - `on_partial` — state-level shorthand for routing partial verdicts from `llm_structured` evaluators, with compiled FSM example
+  - `capture` — state-level field for storing action output in named variables accessible via `${captured.<name>.output}`, with two YAML examples
+- `skills/create-loop/paradigms.md`: Added `scope` as an optional commented field in all four paradigm YAML templates (goal, invariants, convergence, imperative)
+
 ## Session Log
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: `scope`, `on_partial`, `capture` absent from `skills/create-loop/reference.md` and `skills/create-loop/paradigms.md`
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — Added Scope Boundaries, Proposed Solution, API/Interface, Implementation Steps sections
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — confidence_score: 100, outcome_confidence: 78
 - `/ll:format-issue` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — added missing ## Status heading (required section per feat-sections.json)
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5eaf79ae-e2f2-4831-88c6-160ccc90e8da.jsonl` — READY: all required sections present, file paths verified, undocumented fields confirmed absent from reference.md and paradigms.md
+- `/ll:manage-issue feat add FEAT-610` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/` — COMPLETED: documented scope, on_partial, capture in reference.md; added scope comment to all paradigm YAML templates in paradigms.md
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-03-06 | Priority: P3
+**Completed** | Created: 2026-03-06 | Completed: 2026-03-06 | Priority: P3

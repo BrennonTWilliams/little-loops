@@ -159,6 +159,7 @@ tools:
   - "<check-command>"      # First tool is the check (plain string)
   - "<fix-command>"        # Second tool is the fix (plain string)
 max_iterations: <selected-max>
+# scope: ["src/"]          # Optional: declare paths for ll-parallel concurrency control
 # Include evaluator only if not using default (exit_code):
 evaluator:                 # Optional - omit for exit_code default
   type: "<output_contains|output_numeric|llm_structured>"
@@ -291,6 +292,7 @@ constraints:
     fix: "<fix-command>"
 maintain: <true|false>
 max_iterations: 50
+# scope: ["src/"]            # Optional: declare paths for ll-parallel concurrency control
 ```
 
 **Example for "Tests + Types + Lint":**
@@ -376,6 +378,7 @@ toward: <target-value>
 using: "<fix-action>"
 tolerance: 0
 max_iterations: 50
+# scope: ["src/"]  # Optional: declare paths for ll-parallel concurrency control
 ```
 
 **Example for "Reduce lint errors to 0":**
@@ -469,6 +472,7 @@ until:
     target: <number>         # For output_numeric only
 max_iterations: 50  # Default if omitted
 backoff: 2
+# scope: ["src/"]            # Optional: declare paths for ll-parallel concurrency control
 ```
 
 **Example for "Fix -> Test -> Check until clean":**

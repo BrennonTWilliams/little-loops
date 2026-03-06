@@ -331,3 +331,156 @@ on_handoff: "terminate"  # Stop if we run out of context
 ```
 
 **Most users can omit this field** - the default `pause` behavior is appropriate for most interactive use cases.
+
+#### scope (Optional)
+
+The `scope` field declares which files or directories a loop operates on. It is a **loop-level** field (not per-state) used by `ll-parallel` to prevent concurrent loops from conflicting over the same resources.
+
+**Type:** `list[str]` — file or directory paths relative to the project root
+
+**How it works:**
+- When `ll-parallel` starts a loop, it acquires a lock for the declared scope paths
+- If another loop's scope overlaps, the second loop waits until the first releases its lock
+- An empty `scope` (or omitting it) is treated as the whole project — it will conflict with any other scoped loop
+- Paths are compared by prefix overlap, so `scope: ["src/"]` conflicts with `scope: ["src/utils/"]`
+
+**When to use:**
+- You run multiple loops concurrently via `ll-parallel` and each loop touches distinct areas of the codebase
+- A loop modifies specific directories and you want to prevent file conflicts with sibling loops
+- You are building a loop that should be safely parallelizable
+
+**Example - Loop scoped to a subdirectory:**
+```yaml
+paradigm: goal
+name: "fix-api-types"
+goal: "Type errors in src/api/ are resolved"
+tools:
+  - "mypy src/api/"
+  - "/ll:manage-issue bug fix"
+max_iterations: 10
+scope:
+  - "src/api/"
+```
+
+**Example - Multiple paths:**
+```yaml
+paradigm: invariants
+name: "frontend-quality"
+constraints:
+  - name: "lint"
+    check: "npx eslint src/frontend/"
+    fix: "npx eslint --fix src/frontend/"
+  - name: "types"
+    check: "npx tsc --noEmit"
+    fix: "/ll:manage-issue bug fix"
+maintain: false
+max_iterations: 20
+scope:
+  - "src/frontend/"
+  - "tests/frontend/"
+```
+
+**Most users can omit this field** — it is only needed when running loops in parallel via `ll-parallel`. Single-loop use cases do not require scope declaration.
+
+#### on_partial (Optional)
+
+The `on_partial` field is a **state-level** shorthand for routing when an action returns a `partial` verdict. It works alongside `on_success`, `on_failure`, and `on_error` as a one-line alternative to a full `route:` block.
+
+**Type:** `str` — name of the state to transition to on a `partial` verdict
+
+**When is `partial` returned?**
+
+The `partial` verdict is returned by the `llm_structured` evaluator when Claude reports that progress was made but the goal is not yet complete. It is distinct from `failure` (no progress) and `success` (goal met).
+
+**When to use:**
+- Your loop uses `llm_structured` evaluation and you want different behavior for partial progress vs. outright failure
+- You want to route partial progress to a different fix state than full failure (e.g., a lighter-weight fix action)
+- You want to count partial iterations separately or transition to a reporting state
+
+**Example - Different actions for partial vs. failure:**
+```yaml
+paradigm: goal
+name: "refine-issues"
+goal: "All issues have complete implementation plans"
+tools:
+  - "/ll:verify-issues"
+  - "/ll:refine-issue"
+max_iterations: 15
+evaluator:
+  type: llm_structured
+```
+
+Compiled FSM with `on_partial`:
+```yaml
+states:
+  evaluate:
+    action: "/ll:verify-issues"
+    on_success: done
+    on_failure: deep_fix
+    on_partial: quick_fix   # partial progress → lighter fix
+  quick_fix:
+    action: "/ll:refine-issue"
+    next: evaluate
+  deep_fix:
+    action: "/ll:manage-issue feature implement"
+    next: evaluate
+  done:
+    terminal: true
+initial: evaluate
+max_iterations: 15
+```
+
+**Most users can omit this field** — if you do not need distinct routing for partial progress, use `on_failure` to handle both failure and partial outcomes, or use a full `route:` block for fine-grained control.
+
+#### capture (Optional)
+
+The `capture` field stores a state's action output in a named variable that later states can reference via `${captured.<name>.output}` interpolation. It is a **state-level** field that enables data passing between states without external files.
+
+**Type:** `str` — variable name to store the output under
+
+**What is captured:**
+
+When `capture: <varname>` is set on a state, the following are stored after the action runs:
+- `${captured.<varname>.output}` — stdout from the action
+- `${captured.<varname>.stderr}` — stderr from the action
+- `${captured.<varname>.exit_code}` — exit code as a string
+- `${captured.<varname>.duration_ms}` — execution time in milliseconds
+
+**When to use:**
+- A later state's action needs the output of an earlier state (e.g., pass a list of files, an error summary, or a computed value)
+- You want to pass dynamic data between states without writing to temp files
+- Your loop has a measure → act → report flow where the act and report states need the measure output
+
+**Example - Capture metric output and use it in the fix action:**
+```yaml
+states:
+  measure:
+    action: "ruff check src/ 2>&1 | grep -c 'error' || echo 0"
+    capture: lint_result
+    on_success: done
+    on_failure: fix
+  fix:
+    action: "echo 'Found ${captured.lint_result.output} errors, fixing...' && ruff check --fix src/"
+    next: measure
+  done:
+    terminal: true
+initial: measure
+max_iterations: 20
+```
+
+**Example - Capture issue list for targeted fix:**
+```yaml
+states:
+  scan:
+    action: "ll-issues list --status open --format ids"
+    capture: open_issues
+  apply:
+    action: "/ll:manage-issue feature implement ${captured.open_issues.output}"
+    next: scan
+  done:
+    terminal: true
+initial: scan
+max_iterations: 10
+```
+
+**Most users can omit this field** — capture is needed only when states must share dynamic data. For static configuration, use the `context:` block at the loop level instead.
