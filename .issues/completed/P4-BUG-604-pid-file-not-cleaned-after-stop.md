@@ -113,9 +113,17 @@ Add `pid_file.unlink(missing_ok=True)` after `persistence.save_state(state)` in 
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: SIGTERM path at `lifecycle.py:110-124` confirmed; no `pid_file.unlink()` after `persistence.save_state(state)`; unlink only in "process already dead" branch at line 128
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — v2.0 format: added Root Cause, Motivation, Integration Map, Implementation Steps; added confidence_score and outcome_confidence to frontmatter; added Status footer
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — Readiness: 98/100 PROCEED; Outcome: 92/100 HIGH CONFIDENCE
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6c29739-1f4b-46d2-ba9e-1bee0795872a.jsonl` — READY: Bug confirmed at lifecycle.py:110-128; SIGTERM path missing pid_file.unlink(); "process already dead" branch at line 128 has correct cleanup; line numbers accurate
 
 ---
 
+## Resolution
+
+**Fixed** on 2026-03-06.
+
+- Added `pid_file.unlink(missing_ok=True)` after `persistence.save_state(state)` in the SIGTERM/SIGKILL path of `cmd_stop()` (`lifecycle.py:124`)
+- Added `assert not pid_file.exists()` assertions to three existing `cmd_stop` tests to prevent regression
+
 ## Status
 
-**Open** | Created: 2026-03-06 | Priority: P4
+**Completed** | Created: 2026-03-06 | Resolved: 2026-03-06 | Priority: P4

@@ -142,6 +142,7 @@ class TestCmdStop:
         mock_kill.assert_any_call(12345, signal.SIGTERM)
         assert mock_state.status == "interrupted"
         mock_cls.return_value.save_state.assert_called_once_with(mock_state)
+        assert not pid_file.exists(), "PID file should be removed after SIGTERM stop"
 
     def test_stop_sends_sigkill_if_process_does_not_exit(self, tmp_path: Path) -> None:
         """Escalates to SIGKILL after grace period if process does not exit (BUG-592)."""
@@ -171,6 +172,7 @@ class TestCmdStop:
         mock_kill.assert_any_call(12345, signal.SIGKILL)
         logger.warning.assert_called_once()
         assert mock_state.status == "interrupted"
+        assert not pid_file.exists(), "PID file should be removed after SIGKILL stop"
 
     def test_stop_sigkill_handles_race_if_process_exits_between_poll_and_kill(
         self, tmp_path: Path
@@ -202,6 +204,7 @@ class TestCmdStop:
 
         assert result == 0  # No exception propagated
         assert mock_state.status == "interrupted"
+        assert not pid_file.exists(), "PID file should be removed even when SIGKILL raises OSError"
 
 
 class TestCmdResume:

@@ -121,6 +121,7 @@ def cmd_stop(
                     pass  # Process exited between poll and kill
             state.status = "interrupted"
             persistence.save_state(state)
+            pid_file.unlink(missing_ok=True)
             logger.success(f"Stopped {loop_name} (PID: {pid})")
         else:
             # Process already exited: preserve its final status, only clean up PID file
