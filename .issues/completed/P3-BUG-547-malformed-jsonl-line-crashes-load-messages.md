@@ -97,7 +97,7 @@ def _load_messages(messages_file: Path) -> list[dict[str, Any]]:
 - N/A — no other JSONL loaders in the module
 
 ### Tests
-- `scripts/tests/test_workflow_sequence_analyzer.py` — `TestLoadMessages` does NOT currently exist; create new class after existing test classes (last class `TestDetectWorkflows` starts at line 931). Add cases: empty file, all-valid, one bad line in middle, all-bad lines, empty-line-only file.
+- `scripts/tests/test_workflow_sequence_analyzer.py` — `TestLoadMessages` does NOT currently exist; create new class after existing test classes (last class `TestDetectWorkflows` starts at line 1022). Add cases: empty file, all-valid, one bad line in middle, all-bad lines, empty-line-only file.
 
 ### Documentation
 - N/A
@@ -136,7 +136,23 @@ def _load_messages(messages_file: Path) -> list[dict[str, Any]]:
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b079933-cc72-4603-9eee-cdd2265f10b7.jsonl` — VALID: bug still present at workflow_sequence_analyzer.py:353, TestLoadMessages absent, all Blocks refs (FEAT-557, FEAT-559, ENH-552) exist with backlinks
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b079933-cc72-4603-9eee-cdd2265f10b7.jsonl` — No new deps proposed; existing Blocks (FEAT-557, FEAT-559, ENH-552) validated; parallel-safe with ENH-549, ENH-550, ENH-551, ENH-553, ENH-554
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:ready-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3a2fc576-ec25-49da-95dd-dd7a0a54f2a5.jsonl` — CORRECTED: updated TestDetectWorkflows line ref 931 → 1022
+
+## Resolution
+
+**Fixed** in `scripts/little_loops/workflow_sequence_analyzer.py`:
+- Added `import sys` to top-level imports
+- Wrapped `json.loads(line)` in `try/except json.JSONDecodeError` inside `_load_messages`
+- Reports each skipped line number (1-based) to stderr; reports total count at end
+- Valid lines before/after a bad line are preserved in results
+
+**Tests added** in `scripts/tests/test_workflow_sequence_analyzer.py`:
+- New `TestLoadMessages` class: empty file, all-valid, one bad line in middle, all-bad lines, empty-lines-only
+
+## Session Log (continued)
+
+- `/ll:manage-issue` - 2026-03-05 - fix applied, 5 new tests pass, lint/mypy clean
 
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P3
+**Completed** | Created: 2026-03-04 | Resolved: 2026-03-05 | Priority: P3

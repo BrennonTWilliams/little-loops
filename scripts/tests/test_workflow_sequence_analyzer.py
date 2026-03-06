@@ -21,6 +21,7 @@ from little_loops.workflow_sequence_analyzer import (
     _compute_boundaries,
     _detect_workflows,
     _link_sessions,
+    _load_messages,
     analyze_workflows,
     calculate_boundary_weight,
     entity_overlap,
@@ -1256,3 +1257,43 @@ class TestDetectWorkflows:
         result = _detect_workflows(messages, [], patterns)
         assert len(result) == 1
         assert result[0].duration_minutes == 60
+
+
+class TestLoadMessages:
+    def test_empty_file(self) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write("")
+            path = Path(f.name)
+        assert _load_messages(path) == []
+
+    def test_all_valid_lines(self) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write('{"a": 1}\n{"b": 2}\n')
+            path = Path(f.name)
+        result = _load_messages(path)
+        assert result == [{"a": 1}, {"b": 2}]
+
+    def test_one_bad_line_in_middle(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write('{"a": 1}\n# session break\n{"b": 2}\n')
+            path = Path(f.name)
+        result = _load_messages(path)
+        assert result == [{"a": 1}, {"b": 2}]
+        err = capsys.readouterr().err
+        assert "line 2" in err
+        assert "skipped 1 malformed" in err
+
+    def test_all_bad_lines(self, capsys: pytest.CaptureFixture[str]) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write("not json\nalso not json\n")
+            path = Path(f.name)
+        result = _load_messages(path)
+        assert result == []
+        err = capsys.readouterr().err
+        assert "skipped 2 malformed" in err
+
+    def test_empty_lines_only(self) -> None:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".jsonl", delete=False) as f:
+            f.write("\n\n\n")
+            path = Path(f.name)
+        assert _load_messages(path) == []
