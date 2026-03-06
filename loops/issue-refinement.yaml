@@ -3,9 +3,9 @@ name: issue-refinement
 description: |
   Progressively refine all active issues to ensure complete coverage.
   For each incomplete issue (starting from highest ID), runs all missing
-  refinement commands (format, verify, map-dependencies), scores with
-  confidence-check, and iterates with refine-issue until both confidence
-  scores meet thresholds (readiness>=85, outcome>=70).
+  refinement commands (format, verify), scores with confidence-check,
+  and iterates with refine-issue until both confidence scores meet
+  thresholds (readiness>=85, outcome>=70).
   Repeats until all active issues are fully refined.
 initial: evaluate
 states:
@@ -19,12 +19,10 @@ states:
         Thresholds: readiness=85, outcome=70
 
         Return verdict "success" ONLY if every issue row satisfies ALL of the following:
-          1. All boolean columns (fmt, verify, map) show ✓ (not — em-dash).
-             Note: map column is dynamic — if it is absent from the table entirely,
-             treat it as incomplete (not yet run for any issue).
+          1. All boolean columns (fmt, verify) show ✓ (not — em-dash).
           2. Both the ready (readiness score) and confidence (outcome confidence) columns
              show integer values (not —) that meet or exceed thresholds (ready>=85, confidence>=70).
-        Return "failure" if any issue still has — or ✗ in a fmt, verify, or map column, or if any issue
+        Return "failure" if any issue still has — or ✗ in a fmt or verify column, or if any issue
         has unscored or below-threshold ready/confidence values.
         Return "partial" if the output is ambiguous or truncated.
     on_success: done
@@ -41,7 +39,6 @@ states:
       Find the highest-priority issue that still needs refinement work (lowest P number first,
       then highest Issue ID as tiebreaker), where:
       - Any boolean column shows — or ✗ for format or verify
-      - OR the map column is absent from the table entirely, or shows — or ✗
       - OR the ready (confidence_score) column shows — or is below 85
       - OR the confidence (outcome_confidence) column shows — or is below 70
 
@@ -51,7 +48,6 @@ states:
       whether it has been run for this issue (column present and showing ✓). If not, run it:
       - format incomplete (column shows —, ✗, or absent): /ll:format-issue [ISSUE_ID] --auto
       - verify incomplete (column shows —, ✗, or absent): /ll:verify-issues [ISSUE_ID] --auto
-      - map not done (column shows —, ✗, or absent): /ll:map-dependencies [ISSUE_ID] --auto
 
       Step B — Score if unscored:
       - If ready or confidence shows — (not yet scored): /ll:confidence-check [ISSUE_ID] --auto
