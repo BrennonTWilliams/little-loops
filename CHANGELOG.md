@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.34.0] - 2026-03-06
+
+### Added
+
+- **Fix `ll-loop show` box truncation and add diagram centering** (ENH-589)
+- **Colorize ll-issues show card output** (ENH-593)
+- **Colorize ll-loop run output** (ENH-595)
+- **Colorize ll-issues refine-status output** (ENH-596)
+- feat(doc-scraper): add BoundaryML docs scraper and scraped output (5dcbb2c)
+- feat(cli): add subcommand aliases to ll-issues, ll-loop, and ll-sprint (e5d428e)
+
+### Fixed
+
+- fix(persistence): remove redundant route-event state save (f284a1c)
+- fix(loop): map terminated_by to distinct exit codes (83de39f)
+- fix(loop): remove PID file after SIGTERM/SIGKILL stop (7f9fead)
+- fix(persistence): warn on corrupted state file instead of silently returning None (ebf96f5)
+- fix(loop): use FSMLoop.to_dict() in cmd_compile to preserve all fields (31140c8)
+- fix(loop): extract signal handler to _helpers and register in cmd_resume (32e2f1c)
+- fix(cli): normalize args.command to canonical name for subcommand aliases (89078d8)
+- fix(workflow-analyzer): handle malformed JSONL lines in _load_messages (9090819)
+
 ## [1.33.1] - 2026-03-05
 
 ### Fixed
@@ -970,5 +992,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
 [1.33.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.0...v1.33.1
 [1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
