@@ -108,7 +108,7 @@ Examples:
     add_type_arg(create_parser)
 
     # run subcommand
-    run_parser = subparsers.add_parser("run", help="Execute a sprint")
+    run_parser = subparsers.add_parser("run", aliases=["r"], help="Execute a sprint")
     run_parser.add_argument("sprint", help="Sprint name to execute")
     add_dry_run_arg(run_parser)
     add_max_workers_arg(run_parser)
@@ -126,19 +126,19 @@ Examples:
     add_type_arg(run_parser)
 
     # list subcommand
-    list_parser = subparsers.add_parser("list", help="List all sprints")
+    list_parser = subparsers.add_parser("list", aliases=["l"], help="List all sprints")
     list_parser.add_argument(
         "--verbose", "-v", action="store_true", help="Show detailed information"
     )
 
     # show subcommand
-    show_parser = subparsers.add_parser("show", help="Show sprint details")
+    show_parser = subparsers.add_parser("show", aliases=["s"], help="Show sprint details")
     show_parser.add_argument("sprint", help="Sprint name to show")
     add_config_arg(show_parser)
     add_skip_analysis_arg(show_parser)
 
     # edit subcommand
-    edit_parser = subparsers.add_parser("edit", help="Edit a sprint's issue list")
+    edit_parser = subparsers.add_parser("edit", aliases=["e"], help="Edit a sprint's issue list")
     edit_parser.add_argument("sprint", help="Sprint name to edit")
     edit_parser.add_argument(
         "--add",
@@ -163,12 +163,12 @@ Examples:
     add_config_arg(edit_parser)
 
     # delete subcommand
-    delete_parser = subparsers.add_parser("delete", help="Delete a sprint")
+    delete_parser = subparsers.add_parser("delete", aliases=["del"], help="Delete a sprint")
     delete_parser.add_argument("sprint", help="Sprint name to delete")
 
     # analyze subcommand
     analyze_parser = subparsers.add_parser(
-        "analyze", help="Analyze sprint for file conflicts between issues"
+        "analyze", aliases=["a"], help="Analyze sprint for file conflicts between issues"
     )
     analyze_parser.add_argument("sprint", help="Sprint name to analyze")
     analyze_parser.add_argument(

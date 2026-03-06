@@ -75,16 +75,19 @@ Short aliases work identically to their full subcommand names:
 ```
 # Before
 ll-issues list
+ll-issues impact-effort
 ll-loop run my-loop
-ll-sprint impact-effort
+ll-sprint list
 
 # After (both forms work identically)
 ll-issues l
 ll-issues list
+ll-issues ie
+ll-issues impact-effort
 ll-loop r my-loop
 ll-loop run my-loop
-ll-sprint ie
-ll-sprint impact-effort
+ll-sprint l
+ll-sprint list
 ```
 
 Argparse native support:
@@ -151,7 +154,16 @@ subparsers.add_parser("list", aliases=["l"], help="List issues")
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: no `aliases=` in subcommand parsers for ll-issues, ll-loop, or ll-sprint
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - Reformatted to v2.0 ENH template; removed v1.0 "Scope" heading, added Current Behavior, Expected Behavior, Impact, API/Interface, Success Metrics, Integration Map, Labels; identified known_subcommands as key non-trivial change; verified exact file paths and line numbers against codebase
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - Readiness: 91/100 PROCEED; Outcome: 88/100 HIGH CONFIDENCE
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a17ccb9d-9868-40e3-a073-09a98d00ef8e.jsonl` — CORRECTED: fixed API/Interface example (ll-sprint impact-effort → ll-issues impact-effort)
+- `/ll:manage-issue` - 2026-03-06T00:00:00Z - IMPLEMENTED: added `aliases=[...]` to all 6 ll-issues subcommands, 10 ll-loop subcommands + updated `known_subcommands` set with 10 alias strings, 6 ll-sprint subcommands; 116 tests pass; smoke-tested aliases via `--help` invocations
+
+## Resolution
+
+- Added `aliases=["l"]` / `["ni"]` / `["seq"]` / `["s"]` / `["ie"]` / `["rs"]` to all 6 `subs.add_parser(...)` calls in `scripts/little_loops/cli/issues/__init__.py`
+- Added `aliases=["r"]` / `["c"]` / `["val"]` / `["l"]` / `["st"]` / `["res"]` / `["h"]` / `["t"]` / `["sim"]` / `["s"]` to 10 `subparsers.add_parser(...)` calls in `scripts/little_loops/cli/loop/__init__.py`; also added all 10 alias strings to `known_subcommands` set
+- Added `aliases=["r"]` / `["l"]` / `["s"]` / `["e"]` / `["del"]` / `["a"]` to all 6 `subparsers.add_parser(...)` calls in `scripts/little_loops/cli/sprint/__init__.py`
+- All 116 existing tests pass unchanged; aliases verified via `--help` smoke tests
 
 ## Status
 
-**Open** | Created: 2026-03-05 | Priority: P4
+**Completed** | Created: 2026-03-05 | Completed: 2026-03-06 | Priority: P4
