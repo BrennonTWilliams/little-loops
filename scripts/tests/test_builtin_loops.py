@@ -59,15 +59,8 @@ class TestBuiltinLoopFiles:
     def test_expected_loops_exist(self) -> None:
         """The expected set of built-in loops exists."""
         expected = {
-            "issue-readiness-cycle",
+            "fix-quality-and-tests",
             "issue-refinement",
-            "pre-pr-checks",
-            "issue-verification",
-            "codebase-scan",
-            "quality-gate",
-            "sprint-execution",
-            "workflow-analysis",
-            "history-reporting",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
@@ -79,11 +72,11 @@ class TestBuiltinLoopResolution:
     def test_builtin_fallback(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
         """resolve_loop_path falls back to built-in loops."""
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "validate", "pre-pr-checks"]):
+        with patch.object(sys, "argv", ["ll-loop", "validate", "fix-quality-and-tests"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
-        # Should succeed because pre-pr-checks is a built-in
+        # Should succeed because fix-quality-and-tests is a built-in
         assert result == 0
 
     def test_project_overrides_builtin(
@@ -93,12 +86,12 @@ class TestBuiltinLoopResolution:
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         # Create a project-local loop with the same name but different content
-        (loops_dir / "pre-pr-checks.yaml").write_text(
-            "name: pre-pr-checks\ninitial: start\nstates:\n  start:\n    terminal: true\n"
+        (loops_dir / "fix-quality-and-tests.yaml").write_text(
+            "name: fix-quality-and-tests\ninitial: start\nstates:\n  start:\n    terminal: true\n"
         )
 
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "validate", "pre-pr-checks"]):
+        with patch.object(sys, "argv", ["ll-loop", "validate", "fix-quality-and-tests"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -124,7 +117,7 @@ class TestBuiltinLoopList:
         assert result == 0
         captured = capsys.readouterr()
         assert "[built-in]" in captured.out
-        assert "pre-pr-checks" in captured.out
+        assert "fix-quality-and-tests" in captured.out
 
     def test_list_hides_overridden_builtin(
         self,
@@ -135,7 +128,7 @@ class TestBuiltinLoopList:
         """Project loop with same name hides built-in from list."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
-        (loops_dir / "pre-pr-checks.yaml").write_text("name: pre-pr-checks")
+        (loops_dir / "fix-quality-and-tests.yaml").write_text("name: fix-quality-and-tests")
 
         monkeypatch.chdir(tmp_path)
         with patch.object(sys, "argv", ["ll-loop", "list"]):
@@ -145,8 +138,8 @@ class TestBuiltinLoopList:
         assert result == 0
         captured = capsys.readouterr()
         lines = captured.out.strip().split("\n")
-        # pre-pr-checks should appear without [built-in] tag (project version)
-        pr_lines = [line for line in lines if "pre-pr-checks" in line]
+        # fix-quality-and-tests should appear without [built-in] tag (project version)
+        pr_lines = [line for line in lines if "fix-quality-and-tests" in line]
         assert len(pr_lines) == 1
         assert "[built-in]" not in pr_lines[0]
 
@@ -162,12 +155,12 @@ class TestBuiltinLoopInstall:
     ) -> None:
         """install copies built-in loop to .loops/."""
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "install", "pre-pr-checks"]):
+        with patch.object(sys, "argv", ["ll-loop", "install", "fix-quality-and-tests"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
         assert result == 0
-        dest = tmp_path / ".loops" / "pre-pr-checks.yaml"
+        dest = tmp_path / ".loops" / "fix-quality-and-tests.yaml"
         assert dest.exists()
         captured = capsys.readouterr()
         assert "Installed" in captured.out
@@ -180,12 +173,12 @@ class TestBuiltinLoopInstall:
         """install creates .loops/ directory if it doesn't exist."""
         monkeypatch.chdir(tmp_path)
         assert not (tmp_path / ".loops").exists()
-        with patch.object(sys, "argv", ["ll-loop", "install", "quality-gate"]):
+        with patch.object(sys, "argv", ["ll-loop", "install", "issue-refinement"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
         assert result == 0
-        assert (tmp_path / ".loops" / "quality-gate.yaml").exists()
+        assert (tmp_path / ".loops" / "issue-refinement.yaml").exists()
 
     def test_install_rejects_existing(
         self,
@@ -195,10 +188,10 @@ class TestBuiltinLoopInstall:
         """install refuses to overwrite existing project loop."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
-        (loops_dir / "pre-pr-checks.yaml").write_text("existing content")
+        (loops_dir / "fix-quality-and-tests.yaml").write_text("existing content")
 
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "install", "pre-pr-checks"]):
+        with patch.object(sys, "argv", ["ll-loop", "install", "fix-quality-and-tests"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
