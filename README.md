@@ -239,6 +239,7 @@ ll-parallel                      # Process with default workers
 ll-parallel --workers 3          # Use 3 parallel workers
 ll-parallel --dry-run            # Preview what would be processed
 ll-parallel --resume             # Resume from previous state
+ll-parallel --cleanup            # Clean up orphaned worktrees and exit
 ```
 
 Run `ll-parallel --help` for all options.

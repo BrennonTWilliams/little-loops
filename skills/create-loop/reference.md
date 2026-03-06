@@ -21,7 +21,8 @@ Each paradigm compiles to a specific FSM structure. Use this reference when gene
 >    route:
 >      target: "done"
 >      progress: "apply"
->      _: "done"  # default
+>      _: "done"      # default for unmatched verdicts
+>      _error: "error" # fallback for evaluation errors
 >    ```
 
 ### Goal Paradigm -> FSM
@@ -397,7 +398,7 @@ The `partial` verdict is returned by the `llm_structured` evaluator when Claude 
 - You want to route partial progress to a different fix state than full failure (e.g., a lighter-weight fix action)
 - You want to count partial iterations separately or transition to a reporting state
 
-**Example - Different actions for partial vs. failure:**
+**Example A — Goal-paradigm YAML (no `on_partial`; paradigm level does not support it):**
 ```yaml
 paradigm: goal
 name: "refine-issues"
@@ -410,7 +411,9 @@ evaluator:
   type: llm_structured
 ```
 
-Compiled FSM with `on_partial`:
+**Example B — Raw FSM YAML with `on_partial` (requires hand-authored FSM, not a paradigm shorthand):**
+> **Note:** `on_partial` is a state-level field available only in raw FSM YAML.
+> It cannot be specified in paradigm-level YAML such as Example A above.
 ```yaml
 states:
   evaluate:

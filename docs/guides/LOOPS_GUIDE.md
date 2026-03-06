@@ -80,16 +80,15 @@ max_iterations: 50
 This compiles to three states: `measure` runs the metric command, `apply` runs the fix action, and `done` is the terminal. The evaluator produces one of three verdicts: **target** (metric reached the goal), **progress** (metric improved, keep going), or **stall** (no improvement, stop).
 
 ```
-  ┌─────────┐              ┌──────┐
-  │ measure │───target────▶│ done │
-  └─────────┘              └──────┘
+  ┌─────────┐──target────▶┌──────┐
+  │ measure │──stall─────▶│ done │
+  └─────────┘             └──────┘
        │ ▲
 progress │ next
        ▼ │
     ┌───────┐
     │ apply │
     └───────┘
-       stall ─────────────▶ done
 ```
 
 ### Invariants — "Maintain multiple quality gates"
@@ -338,7 +337,7 @@ states:
     next: apply
 ```
 
-The captured value is accessible as `${captured.lint_count.output}`, `${captured.lint_count.exit_code}`, and `${captured.lint_count.duration_ms}`.
+The captured value is accessible as `${captured.lint_count.output}`, `${captured.lint_count.stderr}`, `${captured.lint_count.exit_code}`, and `${captured.lint_count.duration_ms}`.
 
 ### Routing
 
