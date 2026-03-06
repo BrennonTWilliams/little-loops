@@ -4,11 +4,11 @@ discovered_branch: main
 discovered_date: 2026-02-25
 discovered_by: audit-architecture
 focus_area: organization
-confidence_score: 85
-outcome_confidence: 56
+confidence_score: 92
+outcome_confidence: 88
 ---
 
-# ENH-507: Add `__all__` exports to 19 public root-level modules
+# ENH-507: Add `__all__` exports to 20 public root-level modules
 
 ## Summary
 
@@ -87,26 +87,125 @@ Add `__all__` to each module listing only its intended public exports.
 
 ### Suggested Approach
 
-1. For each of the 19 modules, identify public functions, classes, and constants (those not prefixed with `_`)
-2. Add `__all__ = [...]` after the module docstring and imports
-3. Exclude:
+1. For each of the 20 modules listed below, add `__all__ = [...]` after the module docstring and imports
+2. Exclude:
    - Private helpers (`_prefixed`)
-   - Names imported from other modules (unless intentionally re-exported)
+   - Names imported from other modules (unless intentionally re-exported via `noqa: F401`)
    - Implementation-only dataclasses used only internally
 
-### Example
+### Public Names Per Module (Enumerated)
+
+Researched 2026-03-06 by reading each module. Names are non-underscore-prefixed and defined in that module, except where noted as intentional re-exports.
 
 ```python
-# git_operations.py - before
-# (no __all__)
+# dependency_graph.py
+__all__ = ["WaveContentionNote", "DependencyGraph", "refine_waves_for_contention"]
 
-# git_operations.py - after
+# doc_counts.py
 __all__ = [
-    "commit_all",
-    "get_current_branch",
-    "stage_files",
-    "GitOperationError",
+    "DOC_FILES", "COUNT_TARGETS",
+    "CountResult", "VerificationResult", "FixResult",
+    "count_files", "extract_count_from_line", "verify_documentation",
+    "format_result_text", "format_result_json", "format_result_markdown", "fix_counts",
 ]
+
+# frontmatter.py
+__all__ = ["parse_frontmatter", "strip_frontmatter"]
+
+# git_operations.py
+# Note: EXCLUDED_DIRECTORIES, filter_excluded_files, verify_work_was_done are imported
+# from work_verification with `noqa: F401` — they are intentional re-exports.
+__all__ = [
+    "COMMON_GITIGNORE_PATTERNS", "GitignorePattern", "GitignoreSuggestion",
+    "check_git_status", "get_untracked_files", "suggest_gitignore_patterns",
+    "add_patterns_to_gitignore",
+    # intentional re-exports from work_verification:
+    "EXCLUDED_DIRECTORIES", "filter_excluded_files", "verify_work_was_done",
+]
+
+# goals_parser.py
+__all__ = ["Persona", "Priority", "ProductGoals", "validate_goals"]
+
+# issue_lifecycle.py
+__all__ = [
+    "FailureType", "classify_failure",
+    "verify_issue_completed", "create_issue_from_failure",
+    "close_issue", "complete_issue_lifecycle",
+    "defer_issue", "undefer_issue",
+]
+
+# issue_manager.py
+__all__ = [
+    "timed_phase", "run_claude_command", "run_with_continuation",
+    "detect_plan_creation", "check_content_markers",
+    "IssueProcessingResult", "process_issue_inplace", "AutoManager",
+]
+
+# issue_parser.py
+__all__ = [
+    "ISSUE_ID_PATTERN",
+    "is_normalized", "is_formatted", "slugify", "get_next_issue_number",
+    "ProductImpact", "IssueInfo", "IssueParser",
+    "find_issues", "find_highest_priority_issue",
+]
+
+# issue_template.py
+__all__ = ["load_issue_sections", "assemble_issue_markdown"]
+
+# link_checker.py
+__all__ = [
+    "MARKDOWN_LINK_PATTERN", "BARE_URL_PATTERN",
+    "DEFAULT_IGNORE_PATTERNS", "DEFAULT_DOC_FILES",
+    "LinkResult", "LinkCheckResult",
+    "extract_links_from_markdown", "is_internal_reference",
+    "should_ignore_url", "check_url", "check_markdown_links",
+    "load_ignore_patterns",
+    "format_result_text", "format_result_json", "format_result_markdown",
+]
+
+# logger.py
+__all__ = ["Logger", "format_duration"]
+
+# logo.py
+__all__ = ["get_logo", "print_logo"]
+
+# output_parsing.py
+__all__ = [
+    "SECTION_PATTERN", "TABLE_ROW_PATTERN", "STATUS_PATTERN", "VALID_VERDICTS",
+    "parse_sections", "parse_validation_table", "parse_status_lines",
+    "parse_ready_issue_output", "parse_manage_issue_output",
+]
+
+# session_log.py
+__all__ = [
+    "parse_session_log", "count_session_commands",
+    "get_current_session_jsonl", "append_session_log_entry",
+]
+
+# sprint.py
+__all__ = ["SprintOptions", "SprintState", "Sprint", "SprintManager"]
+
+# state.py
+__all__ = ["ProcessingState", "StateManager"]
+
+# subprocess_utils.py
+__all__ = [
+    "OutputCallback", "ProcessCallback",
+    "CONTEXT_HANDOFF_PATTERN", "CONTINUATION_PROMPT_PATH",
+    "detect_context_handoff", "read_continuation_prompt", "run_claude_command",
+]
+
+# sync.py
+__all__ = ["SyncedIssue", "SyncResult", "SyncStatus", "GitHubSyncManager"]
+
+# text_utils.py
+__all__ = [
+    "SOURCE_EXTENSIONS",
+    "extract_file_paths", "extract_words", "calculate_word_overlap", "score_bm25",
+]
+
+# work_verification.py
+__all__ = ["EXCLUDED_DIRECTORIES", "filter_excluded_files", "verify_work_was_done"]
 ```
 
 ## Scope Boundaries
@@ -120,8 +219,12 @@ __all__ = [
 - 20 modules in `scripts/little_loops/`: `dependency_graph.py`, `doc_counts.py`, `frontmatter.py`, `git_operations.py`, `goals_parser.py`, `issue_lifecycle.py`, `issue_manager.py`, `issue_parser.py`, `issue_template.py`, `link_checker.py`, `logger.py`, `logo.py`, `output_parsing.py`, `session_log.py`, `sprint.py`, `state.py`, `subprocess_utils.py`, `sync.py`, `text_utils.py`, `work_verification.py`
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/__init__.py` — check for star imports; `__all__` changes affect star import behavior
-- TBD — use `grep -r "from little_loops\." scripts/` to verify no unintended callers
+- `scripts/little_loops/__init__.py` — uses named imports only (no star imports); already defines its own `__all__`. Adding `__all__` to individual modules does not affect this file's behavior.
+
+### Star Import Consumer Analysis (Researched 2026-03-06)
+- **`from little_loops.X import *`**: Zero occurrences found across the entire `scripts/` tree. No consumer of star imports exists.
+- **`from little_loops import *`**: Zero occurrences found anywhere in the repository.
+- **Conclusion**: Adding `__all__` is purely a documentation and tooling hygiene improvement. There are no existing star-import consumers whose behavior would change.
 
 ### Similar Patterns
 - 4 modules already define `__all__`: `config.py`, `cli_args.py`, `user_messages.py`, `workflow_sequence_analyzer.py`
@@ -135,16 +238,27 @@ __all__ = [
 ### Configuration
 - N/A
 
+## Success Criteria
+
+The implementation is complete when ALL of the following are true:
+
+1. **Coverage**: `grep -r "^__all__" scripts/little_loops/*.py` returns exactly 24 matches (all root-level `.py` files including the 4 that already have `__all__`).
+2. **Content correct**: Each of the 20 modules lists the public names enumerated in the "Public Names Per Module" table above (no underscore-prefixed names, no silently leaked imports).
+3. **Tests pass**: `python -m pytest scripts/tests/` exits 0 — no regressions introduced.
+4. **Mypy clean**: `python -m mypy scripts/little_loops/` reports no new errors related to `__all__`.
+5. **No behavior change**: `from little_loops.X import *` in a test shell resolves only the declared names (verifiable via `dir()` on the module after star import).
+
 ## Implementation Steps
 
-1. For each of the 19 modules, identify public names (non-underscore-prefixed, defined in module, not re-imported from elsewhere)
-2. Add `__all__ = [...]` after module docstring and imports in each module
-3. Verify mypy passes and no existing tests break
+1. Add `__all__ = [...]` to each of the 20 modules using the names enumerated in "Proposed Solution" above — no further research needed.
+2. For `git_operations.py`: include the three intentional re-exports from `work_verification` (marked with `noqa: F401`) in its `__all__`.
+3. Run `python -m pytest scripts/tests/` and `python -m mypy scripts/little_loops/` to confirm no regressions.
+4. Verify coverage with `grep -c "^__all__" scripts/little_loops/*.py | grep -v ":0"` — should show 24 files.
 
 ## Impact
 
 - **Priority**: P5 — Low severity; additive change with no behavior impact
-- **Effort**: Small — Text editing only across 19 files
+- **Effort**: Small — Text editing only across 20 files
 - **Risk**: Low — Additive change, no behavior change
 - **Breaking Change**: No
 
@@ -176,9 +290,16 @@ __all__ = [
 ### Recommendation
 Update first - Clean hygiene improvement but LOW utility for a CLI/plugin project where star imports and IDE auto-complete accuracy are not pressing concerns. Blocked by FEAT-488. Consider batching with other cleanup work when the blocker resolves rather than tracking as a standalone priority.
 
+## Refinement Notes
+
+- **2026-03-06** — `/ll:refine-issue --auto` cycle 2: Researched all 20 modules by reading source files. Enumerated exact `__all__` contents for every module in Proposed Solution. Confirmed zero `from little_loops.X import *` or `from little_loops import *` consumers anywhere in the repo — adding `__all__` has no behavioral impact on existing callers. Added explicit, machine-verifiable Success Criteria section (grep count, pytest, mypy, dir() check). Updated Integration Map with star-import consumer analysis. Re-scored: confidence_score=92 (was 81, +11 from enumerating public names and explicit criteria), outcome_confidence=88 (was 73, +15 from measurable success criteria and confirmed zero star-import consumers).
+
+- **2026-03-06** — `/ll:refine-issue --auto` cycle 1: Fixed "19 modules" in Suggested Approach step 1 (was inconsistent with "20 modules" stated throughout rest of document). Flagged knowledge gap: the "Blocked By: FEAT-488" dependency is spurious — adding `__all__` to modules is a pure text-editing task with no logical dependency on the `--idle-timeout` CLI flag (FEAT-488). The blocker was likely set by workflow convention rather than technical dependency. The FEAT-488 → ENH-507 relationship in FEAT-488's "Blocks" section is also questionable. Implementer should confirm whether the block is intentional (e.g., batch-in-same-PR preference) or can be removed. No additional knowledge gaps found; implementation path is clear and self-contained. Re-scored: confidence_score=81, outcome_confidence=73 (above 70 threshold).
+
 ## Verification Notes
 
 - **2026-03-05** — VALID. 20 modules in `scripts/little_loops/` still missing `__all__`; only `config.py`, `cli_args.py`, `user_messages.py`, `workflow_sequence_analyzer.py` have it. Module list unchanged from prior audit.
+- **2026-03-06** — VALID. Counts confirmed: 25 total `.py` files, 5 with `__all__` (including `__init__.py`, excluded from scope as package init), 20 without. Title corrected from "19" to "20" to match body text.
 
 ## Session Log
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is comprehensive with full list of 19 modules needing __all__; no knowledge gaps identified
@@ -188,6 +309,9 @@ Update first - Clean hygiene improvement but LOW utility for a CLI/plugin projec
 - `/ll:verify-issues` - 2026-03-03 - Corrected module list: removed `dependency_mapper.py` (it's a package), added `issue_template.py`, `output_parsing.py`, `text_utils.py` (which does NOT have `__all__`). Count updated from 19→20 missing, 5→4 with `__all__`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:verify-issues` - 2026-03-06T07:14:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7a87dd5-a8d5-4b8f-9271-78a1114bf527.jsonl` — Title corrected 19→20 to match body counts
+- `/ll:refine-issue` - 2026-03-06 - cycle 2: Read all 20 modules, enumerated exact __all__ lists, confirmed zero star-import consumers, added explicit Success Criteria; re-scored confidence_score=92, outcome_confidence=88
+- `/ll:refine-issue` - 2026-03-06 - Fixed "19 modules" inconsistency in Suggested Approach; flagged spurious FEAT-488 blocker dependency; re-scored confidence_score=81, outcome_confidence=73 (now above 70 threshold)
 
 ## Status
 

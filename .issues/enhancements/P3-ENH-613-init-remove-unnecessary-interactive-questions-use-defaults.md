@@ -1,13 +1,15 @@
 ---
-id: ENH-598
+id: ENH-613
 type: ENH
 priority: P3
 status: active
 discovered_date: 2026-03-05
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 75
 ---
 
-# ENH-598: Remove Unnecessary Interactive Questions from /ll:init and Use Defaults
+# ENH-613: Remove Unnecessary Interactive Questions from /ll:init and Use Defaults
 
 ## Summary
 
@@ -16,6 +18,14 @@ Refactor `/ll:init` to silently set sensible defaults for configuration options 
 ## Motivation
 
 The current `/ll:init` wizard asks too many questions, many of which have obvious "recommended" defaults and don't benefit from interactive prompting. This creates unnecessary friction during setup. Reducing the question count speeds up initialization and improves UX.
+
+## Current Behavior
+
+Running `/ll:init` presents 11 optional `AskUserQuestion` prompts (across Rounds 3b, 2, 5a, 5b, and 7 in `interactive.md`) for settings that have well-established recommended defaults — e.g. automation tools to enable, completed issues directory name, sprint parallel workers, context handoff threshold, GitHub sync labels, and an "advanced settings" gate. Each of these prompts blocks progress until the user responds, even when accepting the recommended value.
+
+## Expected Behavior
+
+Running `/ll:init` silently writes all 11 currently-prompted settings to `.claude/ll-config.json` using their recommended defaults, without pausing for user input. The resulting config is identical to a user who accepted all recommendations. Users can override any value afterwards via `/ll:configure` or by editing `.claude/ll-config.json` directly.
 
 ## Scope
 
@@ -146,7 +156,9 @@ Removing the "Configure additional advanced settings?" gate (`interactive.md:797
 - `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/72d6d2c3-8058-4ace-9531-afaf02c4d8af.jsonl`
 - `/ll:refine-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5ab8beb-daac-4b0a-bbba-56295f1d683b.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl`
+- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl`
 
----
+## Status
 
 **Open** | Created: 2026-03-05 | Priority: P3

@@ -3,8 +3,8 @@ discovered_commit: 95d4139206f3659159b727db57578ffb2930085b
 discovered_branch: main
 discovered_date: 2026-02-24T20:18:21Z
 discovered_by: scan-codebase
-confidence_score: 80
-outcome_confidence: 93
+confidence_score: 86
+outcome_confidence: 87
 ---
 
 # ENH-485: Rate-limit state file writes in orchestrator main loop
@@ -92,6 +92,14 @@ Or alternatively, call `_save_state()` only when state actually changes (issue c
 
 - **2026-03-05** — VALID. `_save_state()` at `orchestrator.py:494`; called unconditionally at line 683 in the main loop tick (100ms interval) with no throttle. `_maybe_report_status()` already throttled to 5s — the fix pattern is established. No `_last_save_time` attribute exists.
 
+- **2026-03-06** — REFINEMENT COMPLETE. Codebase-driven research confirms:
+  - **Problem verified**: Loop runs every 100ms (0.1s sleep at line 689) → ~10 writes/sec during merge wait
+  - **Pattern confirmed**: `_maybe_report_status()` (line 558) uses identical throttle pattern with `_last_status_time` (initialized line 113)
+  - **Implementation straightforward**: Add throttle guard to `_save_state()` following _maybe_report_status pattern
+  - **Shutdown safety verified**: Explicit `_save_state()` calls in signal handlers preserve state on shutdown
+  - **No dependencies**: No callers outside orchestrator, no configuration needed
+  - **Test coverage sufficient**: Existing `test_save_state_writes_file()` and `test_concurrent_state_checkpoint()` tests cover state persistence
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
@@ -101,6 +109,7 @@ Or alternatively, call `_save_state()` only when state actually changes (issue c
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/ARCHITECTURE.md` (lines 320, 763) to Related Key Documentation
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `agent:refine-issue` - 2026-03-06T21:30:00Z - Comprehensive codebase-driven refinement. Verified problem (100ms loop = ~10 writes/sec), confirmed pattern from `_maybe_report_status` (lines 558-569), checked shutdown safety, verified no external dependencies. Issue ready for implementation. Ready score: 86/100 → outcome confidence: 87/100. Both exceed thresholds; no additional cycles needed.
 
 ---
 

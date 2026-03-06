@@ -3,6 +3,8 @@ discovered_commit: c010880ecfc0941e7a5a59cc071248a4b1cbc557
 discovered_branch: main
 discovered_date: 2026-03-06T04:46:40Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # BUG-601: `cmd_compile` drops `llm`, `scope`, and `on_handoff` fields from YAML output
@@ -67,6 +69,10 @@ All non-default fields on the `FSMLoop` should be serialized, including `llm`, `
 - **Anchor**: `in function cmd_compile()`
 - **Cause**: The serialization dict construction manually enumerates fields to include. The `llm`, `scope`, and `on_handoff` fields were never added to the enumeration.
 
+## Motivation
+
+Silent data loss during compilation means users who customize `llm`, `scope`, or `on_handoff` get unexpected behavior when running compiled `.fsm.yaml` files. The compiled output appears valid but silently reverts to defaults, making debugging difficult and eroding trust in the compile workflow.
+
 ## Proposed Solution
 
 Add conditional serialization for the missing fields after the existing `if fsm.timeout:` block:
@@ -88,6 +94,27 @@ Verify that `LLMConfig` has a `to_dict()` method or use `dataclasses.asdict()`.
 2. Add a round-trip test: compile a paradigm with custom llm/scope, load the output, verify fields match
 3. Verify `LLMConfig` serialization produces valid YAML
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/loop/config_cmds.py` — add `llm`, `scope`, `on_handoff` to serialization dict in `cmd_compile()`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/loop/run_cmds.py` — loads compiled `.fsm.yaml`; will now receive complete config
+- `scripts/little_loops/cli/loop/loader.py` — YAML loader that parses FSMLoop from dict
+
+### Similar Patterns
+- N/A — serialization is centralized in `cmd_compile()`
+
+### Tests
+- `scripts/tests/` — add round-trip compile test verifying `llm`, `scope`, `on_handoff` survive serialization
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Impact
 
 - **Priority**: P2 - Silent data loss during compilation; compiled output behaves differently from source
@@ -99,6 +126,14 @@ Verify that `LLMConfig` has a `to_dict()` method or use `dataclasses.asdict()`.
 
 `bug`, `ll-loop`, `config`
 
+## Session Log
+- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/30c0642f-bc3d-4a06-8802-42e5b1e42a67.jsonl` — readiness: 100/100 PROCEED, outcome: 86/100 HIGH CONFIDENCE
+- `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/30c0642f-bc3d-4a06-8802-42e5b1e42a67.jsonl` — Added Motivation, Integration Map sections (v2.0 alignment)
+- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: serialization dict at `config_cmds.py:43-57` confirmed; `llm`, `scope`, `on_handoff` absent; `context`, `maintain`, `backoff`, `timeout` present
+- `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — Added missing `## Status` heading (v2.0 structural alignment)
+
 ---
+
+## Status
 
 **Open** | Created: 2026-03-06 | Priority: P2

@@ -3,6 +3,8 @@ discovered_commit: c010880ecfc0941e7a5a59cc071248a4b1cbc557
 discovered_branch: main
 discovered_date: 2026-03-06T04:46:40Z
 discovered_by: scan-codebase
+confidence_score: 95
+outcome_confidence: 88
 ---
 
 # ENH-606: Deduplicate paradigm auto-compile logic across 4 call sites
@@ -23,16 +25,66 @@ The same file-open + paradigm-detect + compile/validate pattern exists in:
 
 All callers route through `load_loop()` or `load_loop_with_spec()`. `load_loop` delegates to `load_loop_with_spec` with `fsm, _ = load_loop_with_spec(...)`. Single source of truth for paradigm detection.
 
+## Motivation
+
+Four copy-paste instances of identical paradigm detection logic create a compounding maintenance risk:
+
+- **Bug multiplication**: A fix to the detection condition (`"paradigm" in spec and "initial" not in spec`) must be applied in 4 places; missing one leaves a latent inconsistency
+- **False confidence**: `_helpers.py` provides `load_loop()` and `load_loop_with_spec()` as canonical entrypoints, but `cmd_run` and `cmd_validate` bypass them — callers cannot rely on the helpers to be authoritative
+- **`load_loop` redundancy**: `load_loop` duplicates the full body of `load_loop_with_spec` and discards the `spec` return value; it should be a one-liner delegation
+
 ## Scope Boundaries
 
-- **In scope**: Consolidating the 4 copy-pasted blocks into shared helpers
-- **Out of scope**: Refactoring the paradigm compilation pipeline itself
+**In scope:**
+- Making `load_loop` delegate to `load_loop_with_spec`
+- Routing `cmd_run` and `cmd_validate` through the shared helpers
+- Consolidating the 4 copy-pasted blocks into a single source of truth
+
+**Out of scope:**
+- Refactoring the paradigm compilation pipeline itself
+- Changing the public signatures of `load_loop` or `load_loop_with_spec`
 
 ## Proposed Solution
 
 1. Replace `load_loop` body with: `fsm, _ = load_loop_with_spec(name_or_path, loops_dir, logger); return fsm`
-2. Replace `cmd_run` lines 70-81 with `load_loop()` or `load_loop_with_spec()` call
+2. Replace `cmd_run` lines 70-81 with a `load_loop()` or `load_loop_with_spec()` call
 3. Replace `cmd_validate` lines 78-89 similarly
+
+## Success Metrics
+
+- [ ] `grep -n '"paradigm" in spec' scripts/` returns exactly 1 match (in `load_loop_with_spec`)
+- [ ] `load_loop` body is a single delegation call to `load_loop_with_spec`
+- [ ] All existing tests in `scripts/tests/` pass unchanged
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/loop/_helpers.py` — make `load_loop` delegate to `load_loop_with_spec`; remove duplicate body (lines 60-70)
+- `scripts/little_loops/cli/loop/run.py` — replace inline paradigm detection (lines 70-81) with `load_loop_with_spec()` call
+- `scripts/little_loops/cli/loop/config_cmds.py` — replace inline paradigm detection (lines 78-89) with `load_loop_with_spec()` call
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/loop/run.py` — `cmd_run()` calls `load_loop` (will now route through canonical helper)
+- `scripts/little_loops/cli/loop/config_cmds.py` — `cmd_validate()` calls inline detection (will be replaced)
+
+### Similar Patterns
+- N/A
+
+### Tests
+- `scripts/tests/` — existing tests cover both `cmd_run` and `cmd_validate`; no new tests required; verify all pass after refactor
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
+## Implementation Steps
+
+1. Update `_helpers.py`: replace `load_loop` body with `fsm, _ = load_loop_with_spec(name_or_path, loops_dir, logger); return fsm`
+2. Update `run.py` `cmd_run`: replace inline paradigm detection block (lines 70-81) with call to `load_loop()` or `load_loop_with_spec()`
+3. Update `config_cmds.py` `cmd_validate`: replace inline paradigm detection block (lines 78-89) similarly
+4. Run full test suite to confirm no regressions
 
 ## Impact
 
@@ -45,6 +97,13 @@ All callers route through `load_loop()` or `load_loop_with_spec()`. `load_loop` 
 
 `enhancement`, `ll-loop`, `refactor`
 
+## Session Log
+- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: 4 sites confirmed — `_helpers.py:60-70` (load_loop), `_helpers.py:89-98` (load_loop_with_spec), `run.py:70-81` (cmd_run), `config_cmds.py:78-89` (cmd_validate); load_loop does not delegate to load_loop_with_spec
+- `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — v2.0 format: added Motivation, restructured Scope Boundaries, Success Metrics, Integration Map, Implementation Steps; added confidence_score and outcome_confidence to frontmatter
+- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — Readiness: 95/100 PROCEED; Outcome: 88/100 HIGH CONFIDENCE
+
 ---
+
+## Status
 
 **Open** | Created: 2026-03-06 | Priority: P4

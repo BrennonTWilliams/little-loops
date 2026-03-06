@@ -3,6 +3,8 @@ discovered_commit: 47c81c895baaac1acac69d105ed75ff1ec82ed2c
 discovered_branch: main
 discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # ENH-538: Missing Executor-Level Tests for `maintain` Mode Restart Behavior
@@ -10,32 +12,6 @@ discovered_by: scan-codebase
 ## Summary
 
 `FSMExecutor.run()` has a `maintain` mode code path that restarts the loop when a terminal state is reached instead of terminating. The path has two sub-cases: `on_maintain` target (when set) and `initial` fallback. Compiler-level tests exist but no executor-level test verifies that hitting a terminal state with `maintain=True` restarts the loop, that `on_maintain` overrides `initial`, or that `max_iterations` still terminates a `maintain` loop.
-
-## Location
-
-- **File**: `scripts/little_loops/fsm/executor.py`
-- **Line(s)**: 385–400 (at scan commit: 47c81c8)
-- **Anchor**: `in method FSMExecutor.run()`, terminal-state maintain branch
-- **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/fsm/executor.py#L380-L393)
-- **Code**:
-```python
-if state_config.terminal:
-    # Handle maintain mode - restart loop instead of terminating
-    if self.fsm.maintain:
-        self.iteration += 1
-        maintain_target = state_config.on_maintain or self.fsm.initial
-        self._emit(
-            "route",
-            {
-                "from": self.current_state,
-                "to": maintain_target,
-                "reason": "maintain",
-            },
-        )
-        self.current_state = maintain_target
-        continue
-    return self._finish("terminal")
-```
 
 ## Current Behavior
 
@@ -132,11 +108,14 @@ _Added by `/ll:refine-issue` — Existing maintain mode test coverage:_
 - `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — Added Blocks FEAT-543 (docs overlap, auto)
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: `executor.py:385–400` maintain branch confirmed; `TestMaintainMode:934` and `TestMaintainModeExecutor:2341` confirmed present; `test_maintain_route_event_emitted` still absent
+- `/ll:confidence-check` - 2026-03-06T00:00:00Z - Manual assessment per v2.0 ENH framework — Readiness: 100/100 (PROCEED), Outcome Confidence: 100/100 (HIGH CONFIDENCE)
 
 ## Blocks
 
 - FEAT-543 — `docs/generalized-fsm-loop.md` overlap (higher priority; complete first)
 
 ---
+
+## Status
 
 **Open** | Created: 2026-03-03 | Priority: P4

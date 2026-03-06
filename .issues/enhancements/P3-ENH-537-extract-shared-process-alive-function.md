@@ -3,6 +3,8 @@ discovered_commit: 47c81c895baaac1acac69d105ed75ff1ec82ed2c
 discovered_branch: main
 discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
+confidence_score: 96
+outcome_confidence: 86
 ---
 
 # ENH-537: Extract Shared `_process_alive` to Eliminate Duplication Between `concurrency.py` and `lifecycle.py`
@@ -153,11 +155,14 @@ from little_loops.fsm.concurrency import _process_alive
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — Added Blocks FEAT-543 (docs overlap, auto)
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: both `_process_alive` functions confirmed present (`concurrency.py:256`, `lifecycle.py:30`); line numbers updated from scan-commit values
 - `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/780b1de5-df56-457c-b885-0bae03760fd7.jsonl` — Added API/Interface (shared signature), Success Metrics (4 criteria), restructured Scope Boundaries (in/out framing), quantified Motivation
+- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — Readiness: 96/100 PROCEED; Outcome: 86/100 HIGH CONFIDENCE
 
 ## Blocks
 
 - FEAT-543 — `docs/generalized-fsm-loop.md` overlap (higher priority; complete first)
 
 ---
+
+## Status
 
 **Open** | Created: 2026-03-03 | Priority: P3

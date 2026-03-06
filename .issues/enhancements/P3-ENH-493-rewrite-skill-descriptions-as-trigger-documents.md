@@ -3,7 +3,7 @@ discovered_date: 2026-02-24
 discovered_by: context-engineering-analysis
 source: https://github.com/muratcankoylan/Agent-Skills-for-Context-Engineering
 confidence_score: 100
-outcome_confidence: 68
+outcome_confidence: 71
 ---
 
 # ENH-493: Rewrite Skill Descriptions as Trigger Documents
@@ -78,6 +78,20 @@ _Added by `/ll:refine-issue` — Skill description audit:_
 
 **No `references/` subdirectories exist** — supplemental content uses flat filenames (`templates.md`, `paradigms.md`, etc.) alongside `SKILL.md`
 
+### Proposed Trigger Phrase Drafts (7 Skills)
+
+_Added by `/ll:refine-issue` — reduces implementation ambiguity:_
+
+| Skill | Current Description (Summary Style) | Proposed Trigger Phrases |
+|-------|-------------------------------------|--------------------------|
+| `audit-claude-config` | "Comprehensive audit of Claude Code plugin configuration with parallel sub-agents" | "When the user asks to audit config, check plugin settings, review claude config, diagnose plugin issues, or 'is my config valid?'" |
+| `audit-docs` | "Audit documentation for accuracy and completeness" | "When the user asks to audit docs, check documentation accuracy, verify docs are up to date, or 'are the docs correct?'" |
+| `configure` | "Interactively configure specific areas in ll-config.json" | "When the user asks to configure ll, change settings, set up options, update ll-config, or 'how do I set X?'" |
+| `create-loop` | "Create a new FSM loop configuration interactively..." | "When the user asks to create a loop, make a new loop, add an automation loop, set up FSM, or 'I want to automate X with a loop'" |
+| `format-issue` | "Format issue files to align with template v2.0 structure..." | "When the user asks to format an issue, fix issue template, align issue to v2.0, or 'format this issue'" |
+| `init` | "Initialize little-loops configuration for a project" | "When the user asks to initialize little-loops, set up ll for a project, bootstrap config, or 'how do I get started with ll?'" |
+| `manage-issue` | "Autonomously manage issues - plan, implement, verify, and complete" | "When the user asks to implement an issue, work on a bug/feature, manage an issue end to end, or 'start implementing FEAT-NNN'" |
+
 ### Similar Patterns
 - `agents/*.md` — agent description fields follow a similar convention worth checking
 
@@ -114,6 +128,8 @@ _Added by `/ll:refine-issue` — Skill description audit:_
 - `/ll:verify-issues` - 2026-03-03 - `workflow-automation-proposer/SKILL.md` already has trigger keywords; scope corrected from 8 → 7 skills needing rewrites
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: 7 skills still need description rewrites; removed stale Blocks ref ENH-502 (completed)
+- `/ll:refine-issue` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — added proposed trigger phrase drafts for all 7 skills to reduce implementation ambiguity
+- `/ll:confidence-check` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — readiness: 100/100 PROCEED, outcome: 71/100 MODERATE (up from 68 — ambiguity reduced by trigger phrase table; 7 files single subsystem shallow edits = 18/25 complexity)
 
 ---
 

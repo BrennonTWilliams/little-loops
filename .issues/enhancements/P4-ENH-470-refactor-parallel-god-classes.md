@@ -4,8 +4,8 @@ discovered_branch: main
 discovered_date: 2026-02-24
 discovered_by: audit-architecture
 focus_area: large-files
-confidence_score: 55
-outcome_confidence: 45
+confidence_score: 88
+outcome_confidence: 71
 ---
 
 # ENH-470: Refactor parallel/ god classes to extract shared concerns
@@ -62,6 +62,75 @@ Extract cross-cutting concerns into focused helper modules:
 4. Keep core coordination logic in existing classes but delegate to helpers
 5. Target: reduce each class to ~600-800 lines
 
+### Method-Level Extraction Plan
+
+| Method | Current Class | Target Helper | Notes |
+|--------|--------------|---------------|-------|
+| `_setup_worktree` | `WorkerPool` | `worktree_manager.py` | Creates branch+worktree, copies `.claude/`, writes session marker; calls `_git_lock` and registers `_active_worktrees` under `_process_lock` — lock stays in `WorkerPool`, helper receives path/lock/git_lock as args |
+| `_cleanup_worktree` | `WorkerPool` | `worktree_manager.py` | Removes worktree+branch via `_git_lock`; guards `_active_worktrees` check under `_process_lock` — same ownership pattern as `_setup_worktree` |
+| `cleanup_all_worktrees` | `WorkerPool` | `worktree_manager.py` | Iterates worktree base dir and delegates to `_cleanup_worktree`; no lock of its own |
+| `_detect_worktree_model_via_api` | `WorkerPool` | `worktree_manager.py` | Stateless API probe; no lock involved — pure helper |
+| `_cleanup_worktree` | `MergeCoordinator` | `worktree_manager.py` | Near-duplicate of `WorkerPool._cleanup_worktree`; merge the two implementations into a single `remove_worktree(path, branch, git_lock, repo_path)` free function |
+| `_stash_local_changes` | `MergeCoordinator` | `conflict_resolver.py` | Sets `self._stash_active`; state flag must move with this method or be passed back as return value |
+| `_pop_stash` | `MergeCoordinator` | `conflict_resolver.py` | Reads/clears `self._stash_active`; tightly coupled to `_stash_local_changes` |
+| `_mark_state_file_assume_unchanged` | `MergeCoordinator` | `conflict_resolver.py` | Sets `self._assume_unchanged_active`; git hygiene helper |
+| `_restore_state_file_tracking` | `MergeCoordinator` | `conflict_resolver.py` | Reads/clears `self._assume_unchanged_active` |
+| `_is_lifecycle_file_move` | `MergeCoordinator` | `conflict_resolver.py` | Pure predicate; no state |
+| `_commit_pending_lifecycle_moves` | `MergeCoordinator` | `conflict_resolver.py` | Git operations only; no lock needed |
+| `_is_local_changes_error` | `MergeCoordinator` | `conflict_resolver.py` | Pure string predicate |
+| `_is_untracked_files_error` | `MergeCoordinator` | `conflict_resolver.py` | Pure string predicate |
+| `_is_index_error` | `MergeCoordinator` | `conflict_resolver.py` | Pure string predicate |
+| `_is_rebase_in_progress` | `MergeCoordinator` | `conflict_resolver.py` | Stateless git query |
+| `_abort_rebase_if_in_progress` | `MergeCoordinator` | `conflict_resolver.py` | Stateless git operation |
+| `_is_unmerged_files_error` | `MergeCoordinator` | `conflict_resolver.py` | Pure string predicate |
+| `_detect_conflict_commit` | `MergeCoordinator` | `conflict_resolver.py` | Pure string parse |
+| `_check_and_recover_index` | `MergeCoordinator` | `conflict_resolver.py` | Git health-check; no lock; uses `_git_lock` — pass as arg |
+| `_attempt_hard_reset` | `MergeCoordinator` | `conflict_resolver.py` | Git operation; no lock |
+| `_handle_conflict` | `MergeCoordinator` | `conflict_resolver.py` | Rebase/retry orchestration; references `self._problematic_commits` — move set with this method or pass as mutable arg |
+| `_handle_untracked_conflict` | `MergeCoordinator` | `conflict_resolver.py` | Variant conflict handler; stateless beyond git ops |
+| `_load_state` | `ParallelOrchestrator` | `state_persistence.py` | Reads JSON file; populates `self.state` and calls `self.queue.load_completed/load_failed`; helper can return `OrchestratorState` and let orchestrator assign |
+| `_save_state` | `ParallelOrchestrator` | `state_persistence.py` | Reads `self.queue` fields to build snapshot; writes JSON; helper receives `state + queue + path` |
+| `_cleanup_state` | `ParallelOrchestrator` | `state_persistence.py` | Deletes state file; trivial but belongs with save/load |
+
+### Thread-Safety Checklist
+
+**`WorkerPool` — locks to audit during extraction:**
+
+| Lock | Protected State | Methods Using It | Move With Methods? |
+|------|----------------|-----------------|-------------------|
+| `_process_lock` (threading.Lock) | `_active_processes`, `_active_worktrees`, `_worker_stages`, `_terminated_during_shutdown` | `terminate_all_processes`, `_cleanup_worktree`, `_process_issue` (worktree registration), `on_start`/`on_end` closures inside `_run_claude_command`, `set_worker_stage`, `get_worker_stage`, `get_active_stages`, `remove_worker_stage` | **Stay in WorkerPool.** `_process_lock` guards 4 distinct dictionaries/sets that are all used by the core dispatch loop. Extracted worktree helpers should receive `_process_lock` and `_active_worktrees` as constructor arguments to the helper class (or as call-site parameters for free functions). |
+| `_callback_lock` (threading.Lock) | `_pending_callbacks` | `_handle_completion`, `active_count` | **Stay in WorkerPool.** Callback lifecycle is internal to pool dispatch; not part of worktree management. |
+
+**`MergeCoordinator` — locks to audit during extraction:**
+
+| Lock | Protected State | Methods Using It | Move With Methods? |
+|------|----------------|-----------------|-------------------|
+| `_lock` (threading.Lock) | `_merged` (list), `_failed` (dict), `_stash_pop_failures` (dict) | `_finalize_merge`, `_handle_failure`, `merged_ids` property, `failed_merges` property, `stash_pop_failures` property | **Stay in MergeCoordinator.** These are result-accumulation state, not conflict-resolver state. `conflict_resolver.py` helpers do not acquire `_lock`. |
+| `_shutdown_event` (threading.Event) | merge loop termination | `_merge_loop`, `shutdown` | **Stay in MergeCoordinator.** Loop control is not a conflict-resolver concern. |
+| `_stash_active`, `_assume_unchanged_active` (bool flags) | stash/index state within a single merge operation | `_stash_local_changes`, `_pop_stash`, `_mark_state_file_assume_unchanged`, `_restore_state_file_tracking` | **Move with conflict_resolver.py** if those methods are extracted as a class (e.g., `ConflictResolver`). If extracted as free functions, pass flags as explicit in/out parameters. Recommended: make `ConflictResolver` a lightweight class with `stash_active` and `assume_unchanged_active` as instance attributes, called from `MergeCoordinator._process_merge`. |
+| `_problematic_commits` (set) | rebase conflict circuit-breaker | `_handle_conflict` | **Move with conflict_resolver.py** — this set belongs logically to conflict handling and has no interaction with `_lock`. |
+| `_consecutive_failures`, `_paused` (circuit breaker) | merge coordinator circuit breaker | `_process_merge`, `_finalize_merge` | **Stay in MergeCoordinator.** These guard the overall merge loop behavior, not individual conflict resolution steps. |
+
+**`ParallelOrchestrator` — locks to audit during extraction:**
+
+| Lock | Protected State | Methods Using It | Move With Methods? |
+|------|----------------|-----------------|-------------------|
+| (none — no `threading.Lock` in orchestrator) | orchestrator is single-threaded; `_shutdown_requested` is written by signal handler and read by main loop | `_signal_handler`, `_execute` | No lock contention to preserve. `state_persistence.py` helpers are pure I/O and require no lock. |
+
+### Extraction Pattern to Follow
+
+The `issue_history/` sub-package (introduced to decompose `issue_history/formatting.py` and `analysis.py`) provides the established pattern for this codebase:
+
+1. **Extract to module-level free functions or lightweight classes** — `issue_history/` modules export functions that accept data objects as arguments rather than holding shared mutable state. Prefer the same approach for stateless helpers (`conflict_resolver.py` predicates, `state_persistence.py` load/save, `worktree_manager.py` git operations).
+2. **Re-export from the package `__init__.py`** — `issue_history/__init__.py` re-exports everything from sub-modules so callers do not change their import paths. Apply the same to `parallel/__init__.py`: existing public names (`MergeCoordinator`, `WorkerPool`, `ParallelOrchestrator`) must remain importable from `little_loops.parallel`.
+3. **No circular imports** — helpers import only from `little_loops.parallel.types`, `little_loops.parallel.git_lock`, and stdlib. Core classes import helpers. This mirrors `issue_history/` where `models.py` is the only shared dependency between sub-modules.
+4. **Tests patch at the module where the name is used** — `test_merge_coordinator.py` currently patches `little_loops.parallel.merge_coordinator.subprocess.run`. After extraction, new test files should patch `little_loops.parallel.conflict_resolver.subprocess.run` etc. Existing tests need no changes because `MergeCoordinator` public API is unchanged.
+
+**Recommended extraction order** (lowest risk first):
+1. `state_persistence.py` — pure I/O, no locks, no circular deps, easy to test in isolation
+2. `worktree_manager.py` — git operations only, lock passed as argument, clear interface boundary
+3. `conflict_resolver.py` — most complex; introduce `ConflictResolver` class to own `stash_active`, `assume_unchanged_active`, and `_problematic_commits` state; called from `MergeCoordinator._process_merge`
+
 ## Scope Boundaries
 
 - **In scope**: Extracting cross-cutting concerns into helper modules; delegating from existing classes to helpers
@@ -103,7 +172,7 @@ Extract cross-cutting concerns into focused helper modules:
 **Thread safety note:** Extracted helpers from `worker_pool.py` will be called from multiple worker threads; extracted helpers from `merge_coordinator.py` run in the merge background thread. Lock objects currently managed inside the god classes must move with the logic they protect.
 
 ### Similar Patterns
-- N/A — novel extraction, not following an existing codebase pattern
+- `scripts/little_loops/issue_history/` — decomposed a large analysis module into per-concern sub-modules (`hotspots.py`, `coupling.py`, `quality.py`, `regressions.py`, `debt.py`, `doc_synthesis.py`) with re-exports from `__init__.py`. Free functions accept data objects as arguments; no shared mutable state between modules. This is the established pattern to follow.
 
 ### Tests
 - `scripts/tests/` — existing parallel tests should pass unchanged after refactor
@@ -145,6 +214,9 @@ Extract cross-cutting concerns into focused helper modules:
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl` — Updated `worker_pool.py` 1,164→1,316; `orchestrator.py` 1,141→1,143; average updated to 1,232
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — NEEDS_UPDATE: `worker_pool.py` 1,316→1,320; `orchestrator.py` 1,143→1,160; average updated to 1,239
+- `/ll:verify-issues` - 2026-03-06T07:14:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7a87dd5-a8d5-4b8f-9271-78a1114bf527.jsonl` — VALID: line counts unchanged (MergeCoordinator: 1,236, WorkerPool: 1,320, Orchestrator: 1,160; avg 1,239)
+- `/ll:refine-issue` - 2026-03-06T00:00:00Z - Codebase scan of `merge_coordinator.py`, `worker_pool.py`, `orchestrator.py`: added method-level extraction table (23 methods mapped to 3 helper modules), thread-safety checklist for all lock objects (`_lock`, `_process_lock`, `_callback_lock`, `_shutdown_event`, stash/index flags, `_problematic_commits`), extraction pattern based on `issue_history/` sub-package precedent, and recommended extraction order (state_persistence → worktree_manager → conflict_resolver). Replaced "novel extraction" with concrete pattern reference. Refine count: 6.
+- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — Readiness: 88/100 (PROCEED WITH CAUTION); Outcome: 71/100 (MODERATE). Both thresholds met. Complexity 18/25 (all within parallel/ subsystem), coverage 18/25, ambiguity 25/25 (method table fully specifies every method, order, and lock), change surface 10/25 (6 test files + 3 production callers).
 
 ---
 

@@ -3,6 +3,8 @@ discovered_commit: c010880ecfc0941e7a5a59cc071248a4b1cbc557
 discovered_branch: main
 discovered_date: 2026-03-06T04:46:40Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # BUG-600: `cmd_resume` does not register signal handlers — Ctrl-C skips graceful shutdown
@@ -39,6 +41,10 @@ When a user resumes a loop and presses Ctrl-C, Python's default `KeyboardInterru
 
 `cmd_resume` should install the same signal handlers as `cmd_run` so that Ctrl-C triggers graceful shutdown, saves state as `"interrupted"`, and a second Ctrl-C forces immediate exit with PID cleanup.
 
+## Motivation
+
+Unhandled Ctrl-C during resumed loops bypasses graceful shutdown, leaving state unsaved as "interrupted" and leaving subprocesses running. This inconsistency between `cmd_run` and `cmd_resume` erodes user trust in the lifecycle management system and makes cleanup harder for long-running loops.
+
 ## Steps to Reproduce
 
 1. Run a long-running loop that saves `"running"` state
@@ -63,6 +69,27 @@ Import or replicate the signal handler registration pattern from `cmd_run` into 
 2. Call the shared helper in both `cmd_run` and `cmd_resume` before executing
 3. Add test coverage for Ctrl-C during resumed loops
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/loop/lifecycle.py` — add signal handler registration to `cmd_resume()`
+- `scripts/little_loops/cli/loop/run.py` — optionally extract `_loop_signal_handler` into shared helper
+
+### Dependent Files (Callers/Importers)
+- N/A — signal handler registration is internal to command execution
+
+### Similar Patterns
+- `scripts/little_loops/cli/loop/run.py:148-151` — `cmd_run` signal handler registration pattern
+
+### Tests
+- `scripts/tests/` — add test for graceful shutdown during resumed loops
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Impact
 
 - **Priority**: P2 - User-facing bug affecting loop lifecycle reliability during resume
@@ -74,6 +101,13 @@ Import or replicate the signal handler registration pattern from `cmd_run` into 
 
 `bug`, `ll-loop`, `lifecycle`
 
+## Session Log
+- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96debe7befc6b.jsonl` — readiness: 100/100 PROCEED, outcome: 86/100 HIGH CONFIDENCE
+- `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96debe7befc6b.jsonl` — Added Motivation, Integration Map sections (v2.0 alignment); added confidence_score and outcome_confidence to frontmatter
+- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: `cmd_resume` at `lifecycle.py:138-188` confirmed; no signal handler registration before `executor.resume()`; `_loop_signal_handler` confirmed in `run.py:150-151`
+
 ---
+
+## Status
 
 **Open** | Created: 2026-03-06 | Priority: P2

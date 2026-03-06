@@ -3,6 +3,8 @@ discovered_commit: 47c81c895baaac1acac69d105ed75ff1ec82ed2c
 discovered_branch: main
 discovered_date: 2026-03-03T21:56:26Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # ENH-541: `cmd_show` Resolves Loop File Path Twice (Double Disk I/O)
@@ -53,10 +55,35 @@ fsm, spec, path = load_loop_with_spec(loop_name, loops_dir, logger)
 
 Option A is simpler and doesn't change function signatures.
 
+## API/Interface
+
+No new API; the change is internal to `cmd_show()`:
+```python
+# Before (double resolution):
+fsm, spec = load_loop_with_spec(loop_name, loops_dir, logger)
+path = resolve_loop_path(loop_name, loops_dir)
+
+# After (single resolution):
+path = resolve_loop_path(loop_name, loops_dir)
+fsm, spec = load_loop_with_spec(loop_name, loops_dir, logger)
+```
+
+## Success Metrics
+
+- [ ] `ll-loop show` command completes successfully with identical output
+- [ ] `resolve_loop_path` is called exactly once in `cmd_show()`
+- [ ] Existing tests in `scripts/tests/test_ll_loop_execution.py` pass unchanged
+- [ ] No functional behavior change — paths resolved and loop data loaded identically
+
 ## Scope Boundaries
 
-- Only `cmd_show` in `info.py`; does not affect other subcommands
+**In scope:**
+- Reorder function calls in `cmd_show()` to call `resolve_loop_path()` once
+- Remove duplicate call to `resolve_loop_path()`
+
+**Out of scope:**
 - Does not change `load_loop_with_spec` or `resolve_loop_path` behavior
+- Does not affect other `cmd_*` functions in `info.py`
 
 ## Integration Map
 
@@ -108,6 +135,8 @@ Option A is simpler and doesn't change function signatures.
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; noted `info.py:507` double `resolve_loop_path()` call
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: `cmd_show` at `info.py:985`; double `resolve_loop_path()` call confirmed at lines 993–994; line numbers updated
+- `/ll:format-issue` - 2026-03-06T08:42:00Z - Agent task — Formatted to v2.0 template; added API/Interface, Success Metrics, restructured Scope Boundaries
+- `/ll:confidence-check` - 2026-03-06T08:42:49Z - Agent task — Readiness: 100/100 PROCEED; Outcome: 100/100 HIGH CONFIDENCE
 
 ---
 
@@ -116,5 +145,7 @@ Option A is simpler and doesn't change function signatures.
 - ENH-542
 
 ---
+
+## Status
 
 **Open** | Created: 2026-03-03 | Priority: P4

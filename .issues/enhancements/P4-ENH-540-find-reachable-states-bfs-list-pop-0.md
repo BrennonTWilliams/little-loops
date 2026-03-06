@@ -139,4 +139,6 @@ Internal implementation detail only — no external impact.
 
 ---
 
+## Status
+
 **Open** | Created: 2026-03-03 | Priority: P4
