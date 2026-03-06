@@ -35,25 +35,28 @@ states:
       unless genuinely unavoidable and documented why.
     next: check-quality
   check-tests:
-    action: "Run `/ll:run-tests all` and report whether all tests passed."
-    action_type: prompt
+    action_type: shell
+    timeout: 600
+    action: |
+      CMD=$(python3 -c "
+      import json, pathlib
+      p = pathlib.Path('.claude/ll-config.json')
+      cfg = json.loads(p.read_text()) if p.exists() else {}
+      print(cfg.get('project', {}).get('test_cmd', 'pytest'))
+      ")
+      set -o pipefail
+      eval "$CMD" 2>&1 | tee /tmp/ll-test-results.txt
     evaluate:
-      type: llm_structured
-      prompt: |
-        Did ALL tests pass?
-        Return "success" if all tests passed with no failures or errors.
-        Return "failure" if any test failed or errored.
-        Return "partial" if output is ambiguous, truncated, or tests were
-        skipped unexpectedly.
+      type: exit_code
     on_success: done
     on_failure: fix-tests
-    on_partial: check-tests
     on_error: fix-tests
   fix-tests:
     action_type: prompt
     timeout: 1800
     action: |
-      Run `/ll:run-tests all` to see current failures with full output.
+      Read /tmp/ll-test-results.txt to see the current test failures captured
+      from the last test run.
 
       For each failing test, diagnose BEFORE making any changes:
 
