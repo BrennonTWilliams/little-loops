@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.33.1] - 2026-03-05
+
+### Fixed
+
+- **FSM diagram off-path states side-by-side** - Off-path FSM states now render side-by-side instead of stacking vertically (BUG-598)
+- **issue-refinement loop infinite cycle** - Resolve 5 infinite cycle bugs caused by fmt/priority issues in the loop configuration (BUG-599)
+
+### Changed
+
+- **fix-quality-and-tests loop** - Run tests via shell for improved test execution in the quality gate loop (ea06153)
+- **issue-refinement loop** - Remove map-dependencies step and tests-until-passing loop from issue-refinement configuration (b7ab12e, ba52386)
+
 ## [1.33.0] - 2026-03-05
 
 ### Added
@@ -958,4 +970,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.33.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.0...v1.33.1
 [1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
