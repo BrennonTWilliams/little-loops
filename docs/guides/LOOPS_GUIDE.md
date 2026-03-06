@@ -282,6 +282,7 @@ ll-loop install <name>       # Copies to .loops/ for editing
 
 | Loop | Paradigm | Description |
 |------|----------|-------------|
+| `fix-quality-and-tests` | fsm | Sequential quality gate: fix lint, format, and types before running tests; loops back after test fixes to catch regressions |
 | `issue-refinement` | fsm | Progressively refine all active issues through format, verify, and confidence scoring |
 
 ## Beyond the Basics
@@ -416,6 +417,7 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 | `-n <N>` | Override `max_iterations` |
 | `--queue` | Wait for conflicting scoped loops instead of erroring |
 | `-q` / `--quiet` | Suppress progress output |
+| `-v` / `--verbose` | Show full prompt text and more output lines |
 | `-b` / `--background` | Run as a background daemon |
 
 ### Simulate Scenarios

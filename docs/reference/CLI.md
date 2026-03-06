@@ -225,6 +225,7 @@ Run a loop.
 | `--dry-run` | | Show execution plan without running |
 | `--background` | `-b` | Run as background daemon |
 | `--quiet` | `-q` | Suppress progress output |
+| `--verbose` | `-v` | Show full prompt text and more output lines |
 | `--queue` | | Wait for conflicting loops to finish |
 
 #### `ll-loop compile <input>` / `ll-loop c <input>`
@@ -267,6 +268,7 @@ Show execution history for a loop.
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--tail` | `-n` | Last N events to show (default: 50) |
+| `--verbose` | `-v` | Show action output lines and full prompts |
 
 #### `ll-loop test <loop>` / `ll-loop t <loop>`
 
@@ -361,6 +363,7 @@ Show refinement depth table sorted by commands touched. Columns: ID, Pri, Title,
 |------|-------------|
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
 | `--format` | Output format: `table` (default), `json` |
+| `--no-key` | Suppress the key/legend section at the bottom of output |
 | `--config` | Path to project root |
 
 The `Norm` column checks filenames against `^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$`. JSON output includes a `"normalized": true/false` boolean field per record.
