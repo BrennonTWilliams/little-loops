@@ -86,9 +86,14 @@ The `skill` subcommand is mutually exclusive with category-based alignment (e.g.
 - ENH-493
 - ENH-494
 
+## Verification Notes
+
+- **2026-03-05** — VALID. `commands/align-issues.md` exists; no `skill` subcommand present. `skills/*/SKILL.md` files exist and are resolvable at the paths described.
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T17:00:33Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6acf223f-9180-496e-98d5-4870ad746dc8.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6acf223f-9180-496e-98d5-4870ad746dc8.jsonl`
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6acf223f-9180-496e-98d5-4870ad746dc8.jsonl`
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`

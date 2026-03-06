@@ -88,6 +88,10 @@ Add `add_idle_timeout_arg(parser)` to `cli_args.py` following the `add_timeout_a
 
 `feature`, `cli`, `automation`, `auto-generated`
 
+## Verification Notes
+
+- **2026-03-05** — VALID. `config.py:181` `idle_timeout_seconds` confirmed; `parallel/types.py` `idle_timeout_per_issue` confirmed; no `--idle-timeout` argument in `cli/auto.py` or `cli/parallel.py`. `add_timeout_arg` pattern in `cli_args.py` confirmed for reference.
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
@@ -133,3 +137,4 @@ Deferred - Good utility-to-cost ratio (MEDIUM utility, LOW effort) but blocked b
 
 ## Session Log
 - `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl` — Removed FEAT-441 from Blocked By (completed/satisfied)
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`

@@ -82,6 +82,10 @@ Add `add_only_arg(run_parser)` to `cli/sprint.py` and wire `args.only` into the 
 
 `feature`, `cli`, `sprint`, `auto-generated`
 
+## Verification Notes
+
+- **2026-03-05** — VALID. `add_only_arg` in `cli_args.py` confirmed; not called in `cli/sprint/__init__.py` run parser setup. `cli/parallel.py:119` has `add_only_arg(parser)` as the model to follow.
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a32a1e4-137e-4580-a6db-a31be30ec313.jsonl`
@@ -104,3 +108,4 @@ Add `add_only_arg(run_parser)` to `cli/sprint.py` and wire `args.only` into the 
 
 ## Session Log
 - `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl` — Removed FEAT-441 from Blocked By (completed/satisfied)
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`

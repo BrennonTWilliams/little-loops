@@ -88,6 +88,10 @@ Or alternatively, call `_save_state()` only when state actually changes (issue c
 
 `enhancement`, `performance`, `parallel`, `auto-generated`
 
+## Verification Notes
+
+- **2026-03-05** — VALID. `_save_state()` at `orchestrator.py:494`; called unconditionally at line 683 in the main loop tick (100ms interval) with no throttle. `_maybe_report_status()` already throttled to 5s — the fix pattern is established. No `_last_save_time` attribute exists.
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-02-24T20:18:21Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa9f831f-f3b0-4da5-b93f-5e81ab16ac12.jsonl`
 - `/ll:format-issue` - 2026-02-24 - auto-format batch
@@ -96,6 +100,7 @@ Or alternatively, call `_save_state()` only when state actually changes (issue c
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/ARCHITECTURE.md` (lines 320, 763) to Related Key Documentation
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 
 ---
 

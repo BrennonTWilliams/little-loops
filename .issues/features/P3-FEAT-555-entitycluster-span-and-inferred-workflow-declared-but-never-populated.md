@@ -228,6 +228,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5880f51-7be9-45bd-acc9-e01380324f20.jsonl`
 - `/ll:refine-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5880f51-7be9-45bd-acc9-e01380324f20.jsonl`
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b5880f51-7be9-45bd-acc9-e01380324f20.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 
 ## Status
 

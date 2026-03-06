@@ -176,6 +176,10 @@ __all__ = [
 ### Recommendation
 Update first - Clean hygiene improvement but LOW utility for a CLI/plugin project where star imports and IDE auto-complete accuracy are not pressing concerns. Blocked by FEAT-488. Consider batching with other cleanup work when the blocker resolves rather than tracking as a standalone priority.
 
+## Verification Notes
+
+- **2026-03-05** — VALID. 20 modules in `scripts/little_loops/` still missing `__all__`; only `config.py`, `cli_args.py`, `user_messages.py`, `workflow_sequence_analyzer.py` have it. Module list unchanged from prior audit.
+
 ## Session Log
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Issue is comprehensive with full list of 19 modules needing __all__; no knowledge gaps identified
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; still blocked by FEAT-488
@@ -183,6 +187,7 @@ Update first - Clean hygiene improvement but LOW utility for a CLI/plugin projec
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `docs/reference/API.md` (line 45) to Related Key Documentation
 - `/ll:verify-issues` - 2026-03-03 - Corrected module list: removed `dependency_mapper.py` (it's a package), added `issue_template.py`, `output_parsing.py`, `text_utils.py` (which does NOT have `__all__`). Count updated from 19→20 missing, 5→4 with `__all__`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 
 ## Status
 

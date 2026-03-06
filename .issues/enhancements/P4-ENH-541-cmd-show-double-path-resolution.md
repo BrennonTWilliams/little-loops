@@ -14,9 +14,9 @@ discovered_by: scan-codebase
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/info.py`
-- **Line(s)**: 507–509 (at scan commit: 47c81c8)
+- **Line(s)**: 993–994 (at scan commit: 47c81c8; current HEAD)
 - **Anchor**: `in function cmd_show()`
-- **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/cli/loop/info.py#L507-L509)
+- **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/cli/loop/info.py#L507-L509) _(line 993–994 at current HEAD)_
 - **Code**:
 ```python
 fsm, spec = load_loop_with_spec(loop_name, loops_dir, logger)   # resolves path internally
@@ -107,6 +107,7 @@ Option A is simpler and doesn't change function signatures.
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; noted `info.py:507` double `resolve_loop_path()` call
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: `cmd_show` at `info.py:985`; double `resolve_loop_path()` call confirmed at lines 993–994; line numbers updated
 
 ---
 

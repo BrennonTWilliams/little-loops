@@ -67,16 +67,18 @@ The `issue-refinement` loop is a key component of automated issue prep workflows
 
 ### Files to Modify
 - `loops/issue-refinement.yaml` — Bugs 1, 2, 3, 4 (fix prompt and evaluate routing)
-- `scripts/little_loops/cli/loop/info.py` — Bug 5 (verbose output duplication)
+- `scripts/little_loops/cli/loop/_helpers.py` — Bug 5 (`display_progress` closure: `action_output` branch at line 258, `output_preview` branch at lines 284–290)
 
 ### Dependent Files (Callers/Importers)
 - `scripts/tests/test_ll_loop_display.py` — Tests for display behavior; add regression test for Bug 5
+- `scripts/little_loops/fsm/executor.py` — emits `action_output` per line (line 549) and `action_complete` with `output_preview` (lines 559–567); no changes needed but explains the dual-emission root cause
+- `scripts/little_loops/cli/loop/info.py` — reference only: `_format_history_event` at line 88 correctly gates `action_output` on verbose (`if event_type == "action_output" and not verbose: return None`); the live run fix in `_helpers.py` should mirror this pattern
 
 ### Similar Patterns
-- Other loop YAML files in `loops/` that use fix prompts with column-check logic should be audited for the same `✗` vs `—` mismatch pattern
+- `loops/fix-quality-and-tests.yaml` — both `check-quality` (line 22) and `check-tests` (line 51) also use `on_error: fix-*`; same routing-to-fix-on-error pattern; audit candidate for Bug 4 equivalent
 
 ### Tests
-- `scripts/tests/test_ll_loop_display.py` — Add test asserting verbose mode emits each shell action output exactly once
+- `scripts/tests/test_ll_loop_display.py` — Add test asserting verbose mode emits each shell action output exactly once; use `MockExecutor` (lines 27–44) + `_make_args(verbose=True)` (line 861) + `capsys.readouterr()` pattern from `TestDisplayProgressEvents` (lines 858–924)
 
 ### Documentation
 - N/A
@@ -90,8 +92,8 @@ The `issue-refinement` loop is a key component of automated issue prep workflows
 2. Fix `loops/issue-refinement.yaml` fix prompt Step A: add `✗` to column-check conditions for `fmt` and `verify`
 3. Fix `loops/issue-refinement.yaml` fix prompt: change issue selection from "highest ID" to "highest priority then highest ID"
 4. Fix `loops/issue-refinement.yaml` fix prompt Step C: add ceiling-acceptance logic (after 5 refinements with readiness>=85, skip to next issue)
-5. Investigate and fix double-output in `scripts/little_loops/cli/loop/info.py` verbose mode
-6. Add regression test to `scripts/tests/test_ll_loop_display.py`
+5. Fix `scripts/little_loops/cli/loop/_helpers.py`: in `display_progress` closure, gate the `action_output` branch (line 258) on `verbose` (mirror `info.py:88` history pattern); then suppress `output_preview` printing in `action_complete` (lines 284–290) when `verbose=True` since lines were already streamed — net effect: non-verbose shows tail summary only; verbose shows streaming lines only
+6. Add regression test to `scripts/tests/test_ll_loop_display.py` using `MockExecutor` + `_make_args(verbose=True)` + `capsys`: send `action_output` + `action_complete` events for a shell state and assert output lines appear exactly once
 
 ## Impact
 
@@ -111,10 +113,72 @@ The `issue-refinement` loop is a key component of automated issue prep workflows
 
 `bug`, `loops`, `fsm`, `issue-refinement`, `captured`
 
+## Verification Notes
+
+- **2026-03-05** — VALID. All 5 bugs confirmed in current codebase:
+  - Bug 1: `loops/issue-refinement.yaml` evaluate state has `on_error: fix` (line 33); fix prompt Step A only checks `—` (not `✗`) for `fmt`/`verify` ✓
+  - Bug 2: No ceiling-acceptance path in fix Step C ✓
+  - Bug 3: Fix prompt selects "highest Issue ID" — priority-unaware ✓
+  - Bug 4: `on_error: fix` confirmed in evaluate state (should be `on_error: evaluate`) ✓
+  - Bug 5: `scripts/little_loops/cli/loop/info.py` exists; verbose display code at `cmd_run` path present; duplication not yet fixed ✓
+
+## Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis (2026-03-05):_
+
+### Precise Bug Locations
+
+| Bug | File | Line(s) | Current Value | Required Change |
+|-----|------|---------|---------------|-----------------|
+| 1 (fmt=✗ mismatch) | `loops/issue-refinement.yaml` | 51–52 | `"— or absent"` | Add `or ✗` for `fmt` and `verify` conditions in Step A |
+| 2 (no ceiling path) | `loops/issue-refinement.yaml` | 58 | Soft "max 5" in prompt only | Add hard ceiling-acceptance rule to Step C prompt |
+| 3 (wrong selection) | `loops/issue-refinement.yaml` | 44 | `"Find the highest Issue ID"` | Change to priority-first (lowest P number, then highest ID) |
+| 4 (on_error routing) | `loops/issue-refinement.yaml` | 33 | `on_error: fix` | `on_error: evaluate` |
+| 5 (double output) | `scripts/little_loops/cli/loop/_helpers.py` | 258–262, 284–290 | No verbose guard on `action_output`; `output_preview` also prints for shell | Gate `action_output` on verbose; suppress `output_preview` in verbose |
+
+### Bug 1 — `fmt`/`verify` Column Values Are Never `—`
+
+`refine_status.py:282–283` shows `fmt` and `verify` (norm) emit **only** `✓` (`\u2713`) or `✗` (`\u2717`) — never `—` (`\u2014`). The em-dash is reserved for unscored numeric fields (`ready`, `confidence`) and unknown columns. Therefore, Step A's `"— or absent"` condition for `fmt`/`verify` can never trigger for a previously-attempted-but-failed format run that produced `✗`.
+
+The evaluate prompt at lines 12–25 says `"Return 'success' ONLY if all boolean columns show ✓"` and `"Return 'failure' if any issue has — in fmt/verify"`. Because `✓` is required for success, `✗` will correctly fail the evaluate verdict — but since the explicit failure condition only mentions `—`, the evaluate prompt could be clarified to also mention `✗` to prevent LLM ambiguity.
+
+### Bug 5 — Dual Emission Architecture
+
+The double-print comes from two independent paths in `_helpers.py` `display_progress` closure:
+- **Path 1** (`_helpers.py:258–262`): `action_output` event handler — fires once per output line as the shell command streams; no `verbose` guard
+- **Path 2** (`_helpers.py:284–290`): `action_complete` `output_preview` block — fires after shell completes, prints tail (8 lines non-verbose, 20 lines verbose); guarded by `not is_prompt` only
+
+Both paths are driven by `executor.py`: `_on_line` callback emits `action_output` at line 549; `output_preview = result.output[-2000:]` is sent in `action_complete` at lines 559–567.
+
+The correct fix mirrors `info.py:88` (history display): gate `action_output` on `verbose`, and suppress `output_preview` when `verbose=True`. This produces exactly-once output in both modes:
+- **Non-verbose**: `output_preview` tail shown after completion (up to 8 lines)
+- **Verbose**: streaming lines shown via `action_output`; `output_preview` suppressed
+
+### Regression Test Pattern (Bug 5)
+
+Model the new test after `TestDisplayProgressEvents` in `test_ll_loop_display.py:858–924`:
+```python
+def test_verbose_shell_output_printed_once(self, capsys):
+    """In verbose mode, shell action output appears exactly once."""
+    events = [
+        {"event": "action_output", "line": "  fmt  | verify"},
+        {"event": "action_output", "line": "   ✓   |   ✓  "},
+        {"event": "action_complete", "exit_code": 0, "duration_ms": 100,
+         "output_preview": "  fmt  | verify\n   ✓   |   ✓  ", "is_prompt": False},
+    ]
+    executor = MockExecutor(events)
+    run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+    out = capsys.readouterr().out
+    # Count occurrences of a distinctive line
+    assert out.count("fmt") == 1
+```
+
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5ab8beb-daac-4b0a-bbba-56295f1d683b.jsonl`
 - `/ll:format-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/605b9148-691d-487e-9661-b1d6c6c35f7b.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:refine-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc2e2b2-799c-46fe-a53f-709ef6712993.jsonl`
 
 ---
 

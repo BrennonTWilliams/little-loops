@@ -14,12 +14,12 @@ An identical 6-line `os.kill(pid, 0)` / `except OSError` function exists in two 
 ## Location
 
 - **File**: `scripts/little_loops/fsm/concurrency.py`
-- **Line(s)**: 252–258 (at scan commit: 47c81c8)
+- **Line(s)**: 256–264 (at scan commit: 47c81c8; current HEAD)
 - **Anchor**: `in method LockManager._process_alive()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/fsm/concurrency.py#L252-L258)
 
 - **File**: `scripts/little_loops/cli/loop/lifecycle.py`
-- **Line(s)**: 28–34 (at scan commit: 47c81c8)
+- **Line(s)**: 30–38 (at scan commit: 47c81c8; current HEAD)
 - **Anchor**: `module-level function _process_alive()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/cli/loop/lifecycle.py#L28-L34)
 
@@ -119,6 +119,7 @@ Alternatively, make `LockManager._process_alive` a static method and import it i
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; noted duplication in `concurrency.py:252` and `lifecycle.py:28`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — Added Blocks FEAT-543 (docs overlap, auto)
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: both `_process_alive` functions confirmed present (`concurrency.py:256`, `lifecycle.py:30`); line numbers updated from scan-commit values
 
 ## Blocks
 

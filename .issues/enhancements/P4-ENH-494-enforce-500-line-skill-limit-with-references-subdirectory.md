@@ -122,6 +122,7 @@ Note: `manage-issue/SKILL.md` has grown to exactly 500 lines — at the boundary
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `CONTRIBUTING.md` to Related Key Documentation
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: audit-claude-config (708 lines) and confidence-check (533 lines) still exceed 500; removed stale Blocks refs ENH-502 and ENH-496 (both completed)
 
 ---
 
@@ -170,7 +171,3 @@ Update first - Only 2 skills exceed the 500-line limit (audit-claude-config: 708
 ### Recommendation
 Update first — Implement ENH-493 (rewrite skill descriptions as trigger documents) first. Only after trigger descriptions are finalized should content be split into `references/` directories, so that reorganized reference material matches the new description style. Scope remains well-bounded (only 2 skills exceed 500 lines). Implementation is straightforward once ENH-493 resolves.
 ## Blocks
-
-- ENH-502
-
-- ENH-496

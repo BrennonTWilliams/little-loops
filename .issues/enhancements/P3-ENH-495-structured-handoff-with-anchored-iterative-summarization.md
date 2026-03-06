@@ -122,6 +122,10 @@ The existing template has these sections: `## Conversation Summary` (with subsec
 
 `enhancement`, `handoff`, `context-engineering`, `session-management`
 
+## Verification Notes
+
+- **2026-03-05** — VALID. `commands/handoff.md` and `commands/resume.md` both exist; current 3-section prose schema (Conversation Summary / Resume Point / Important Context) confirmed at `handoff.md:124–174`; 4-section schema not yet implemented. `ll-session-state.json` structured fields confirmed in `resume.md:47–56`, `106–120`.
+
 ## Session Log
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 - `/ll:verify-issues` - 2026-02-25 - Corrected file paths: `skills/handoff/SKILL.md` → `commands/handoff.md`; `skills/resume/SKILL.md` → `commands/resume.md` (handoff/resume are commands, not skills)
@@ -130,6 +134,7 @@ The existing template has these sections: `## Conversation Summary` (with subsec
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9c629849-3bc7-41ac-bef7-db62aeeb8917.jsonl`
 - `/ll:refine-issue` - 2026-03-03T23:10:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` - Linked `commands/handoff.md` (lines 124–174) and `commands/resume.md` (lines 47–56, 106–120)
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 
 ---
 
