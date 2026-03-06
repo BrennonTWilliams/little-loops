@@ -256,10 +256,11 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
                 print(f" -> {colorize(action_display, '2')}", flush=True)
 
         elif event_type == "action_output":
-            line = event.get("line", "")
-            if line.strip():
-                display = line[:max_line] + "..." if len(line) > max_line else line
-                print(f"       {display}", flush=True)
+            if verbose:
+                line = event.get("line", "")
+                if line.strip():
+                    display = line[:max_line] + "..." if len(line) > max_line else line
+                    print(f"       {display}", flush=True)
 
         elif event_type == "action_complete":
             duration_ms = event.get("duration_ms", 0)
@@ -279,12 +280,12 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
             elif exit_code != 0:
                 parts.append(colorize(f"exit: {exit_code}", "38;5;208"))
             print("  ".join(parts), flush=True)
-            # Skip output preview for prompt states — output was already streamed line by line.
-            # For shell states, show a tail summary as before.
-            if output_preview and not is_prompt:
+            # Skip output preview for prompt states (already streamed) and in verbose mode
+            # (lines already shown via action_output events). In non-verbose mode, show
+            # a tail summary for shell states.
+            if output_preview and not is_prompt and not verbose:
                 lines = [ln for ln in output_preview.splitlines() if ln.strip()]
-                n_lines = 20 if verbose else 8
-                show_lines = lines[-n_lines:] if lines else []
+                show_lines = lines[-8:] if lines else []
                 for line in show_lines:
                     display = line[:max_line] + "..." if len(line) > max_line else line
                     print(f"       {display}", flush=True)

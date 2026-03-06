@@ -921,3 +921,39 @@ class TestDisplayProgressEvents:
         captured = capsys.readouterr()
         assert "should not appear" not in captured.out
         assert "raw:" not in captured.out
+
+    def test_verbose_shell_output_printed_once(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """In verbose mode, shell action output appears exactly once (not via both action_output and output_preview)."""
+        events = [
+            {"event": "action_output", "line": "  fmt  | verify"},
+            {"event": "action_output", "line": "   \u2713   |   \u2713  "},
+            {
+                "event": "action_complete",
+                "exit_code": 0,
+                "duration_ms": 100,
+                "output_preview": "  fmt  | verify\n   \u2713   |   \u2713  ",
+                "is_prompt": False,
+            },
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+        out = capsys.readouterr().out
+        assert out.count("fmt") == 1
+
+    def test_nonverbose_shell_output_shows_preview(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """In non-verbose mode, shell output_preview is shown (action_output events are suppressed)."""
+        events = [
+            {"event": "action_output", "line": "streamed line"},
+            {
+                "event": "action_complete",
+                "exit_code": 0,
+                "duration_ms": 100,
+                "output_preview": "preview line",
+                "is_prompt": False,
+            },
+        ]
+        executor = MockExecutor(events)
+        run_foreground(executor, self._make_fsm(), self._make_args(verbose=False))
+        out = capsys.readouterr().out
+        assert "preview line" in out
+        assert "streamed line" not in out

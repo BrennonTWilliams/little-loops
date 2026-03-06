@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-05
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # BUG-599: issue-refinement loop stuck in infinite cycle due to fmt/priority bugs
@@ -179,9 +181,33 @@ def test_verbose_shell_output_printed_once(self, capsys):
 - `/ll:format-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/605b9148-691d-487e-9661-b1d6c6c35f7b.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 - `/ll:refine-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc2e2b2-799c-46fe-a53f-709ef6712993.jsonl`
+- `/ll:ready-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e23a3407-5485-4fd8-b07d-89ff0ab68583.jsonl`
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5d13788-6974-4244-a10b-8a4718c5ecd1.jsonl`
+
+---
+
+## Resolution
+
+**Fixed** on 2026-03-05.
+
+- **Bug 1**: Updated `loops/issue-refinement.yaml` fix prompt Step A to treat `—`, `✗`, and absent as incomplete for `fmt`, `verify`, and `map` columns
+- **Bug 2**: Added ceiling-acceptance rule to Step C: after 5 refinements with `readiness>=85`, issue treated as refined-to-ceiling and loop moves on
+- **Bug 3**: Changed fix prompt issue selection from "highest Issue ID" to "highest-priority issue (lowest P number first, then highest ID as tiebreaker)"
+- **Bug 4**: Changed `on_error: fix` → `on_error: evaluate` in the evaluate state; also clarified failure condition to mention both `—` and `✗`
+- **Bug 5**: Gated `action_output` event handler on `verbose=True`; suppressed `output_preview` in verbose mode — net effect: exactly-once output in both modes; added two regression tests to `test_ll_loop_display.py`
+
+## Session Log
+
+- `/ll:capture-issue` - 2026-03-05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5ab8beb-daac-4b0a-bbba-56295f1d683b.jsonl`
+- `/ll:format-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/605b9148-691d-487e-9661-b1d6c6c35f7b.jsonl`
+- `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:refine-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc2e2b2-799c-46fe-a53f-709ef6712993.jsonl`
+- `/ll:ready-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e23a3407-5485-4fd8-b07d-89ff0ab68583.jsonl`
+- `/ll:confidence-check` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a5d13788-6974-4244-a10b-8a4718c5ecd1.jsonl`
+- `/ll:manage-issue` - 2026-03-05T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4d5ce6a1-7c0e-4bf1-8804-4441c82e69cd.jsonl`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-03-05 | Priority: P2
+**Completed** | Created: 2026-03-05 | Closed: 2026-03-05 | Priority: P2

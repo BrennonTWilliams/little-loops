@@ -24,13 +24,13 @@ states:
              treat it as incomplete (not yet run for any issue).
           2. Both the ready (readiness score) and confidence (outcome confidence) columns
              show integer values (not —) that meet or exceed thresholds (ready>=85, confidence>=70).
-        Return "failure" if any issue still has — in a fmt, verify, or map column, or if any issue
+        Return "failure" if any issue still has — or ✗ in a fmt, verify, or map column, or if any issue
         has unscored or below-threshold ready/confidence values.
         Return "partial" if the output is ambiguous or truncated.
     on_success: done
     on_failure: fix
     on_partial: evaluate
-    on_error: fix
+    on_error: evaluate
   fix:
     action_type: prompt
     timeout: 1200
@@ -38,9 +38,10 @@ states:
       Run `ll-issues refine-status` to see the current refinement state of all
       active issues. Thresholds: readiness=85, outcome=70.
 
-      Find the highest Issue ID that still needs refinement work, where:
-      - Any boolean column shows — (em-dash) for format or verify
-      - OR the map column is absent from the table entirely, or shows —
+      Find the highest-priority issue that still needs refinement work (lowest P number first,
+      then highest Issue ID as tiebreaker), where:
+      - Any boolean column shows — or ✗ for format or verify
+      - OR the map column is absent from the table entirely, or shows — or ✗
       - OR the ready (confidence_score) column shows — or is below 85
       - OR the confidence (outcome_confidence) column shows — or is below 70
 
@@ -48,9 +49,9 @@ states:
 
       Step A — Complete all missing refinement commands. For each command below, check
       whether it has been run for this issue (column present and showing ✓). If not, run it:
-      - format not done (column shows — or absent): /ll:format-issue [ISSUE_ID] --auto
-      - verify not done (column shows — or absent): /ll:verify-issues [ISSUE_ID] --auto
-      - map not done (column shows — or absent): /ll:map-dependencies [ISSUE_ID] --auto
+      - format incomplete (column shows —, ✗, or absent): /ll:format-issue [ISSUE_ID] --auto
+      - verify incomplete (column shows —, ✗, or absent): /ll:verify-issues [ISSUE_ID] --auto
+      - map not done (column shows —, ✗, or absent): /ll:map-dependencies [ISSUE_ID] --auto
 
       Step B — Score if unscored:
       - If ready or confidence shows — (not yet scored): /ll:confidence-check [ISSUE_ID] --auto
@@ -60,6 +61,8 @@ states:
         1. /ll:refine-issue [ISSUE_ID] --auto
         2. /ll:confidence-check [ISSUE_ID] --auto
         3. Check updated scores; stop if both thresholds met (ready>=85, confidence>=70) or 5 refinements reached
+      - Ceiling-acceptance: if 5 refinements have been reached and ready >= 85 (even if confidence < 70),
+        treat the issue as refined-to-ceiling and move on — do not loop further on this issue.
     next: evaluate
   done:
     terminal: true
