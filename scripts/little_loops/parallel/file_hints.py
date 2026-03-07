@@ -31,7 +31,7 @@ DIR_PATH_PATTERN = re.compile(
 # Component/scope patterns from issue content
 # Matches: "scope: sidebar", "Component: auth", "module: api"
 SCOPE_PATTERN = re.compile(
-    r"(?:scope|component|module|directory|folder)[:\s]+[`\"']?([a-zA-Z0-9_./\-]+)[`\"']?",
+    r"(?:scope|component|module|directory|folder):\s*[`\"']?([a-zA-Z0-9_./\-]+)[`\"']?",
     re.IGNORECASE,
 )
 

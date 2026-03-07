@@ -69,6 +69,25 @@ class TestFileHintExtraction:
         hints = extract_file_hints(content)
         assert "parallel-processing" in hints.scopes
 
+    def test_scope_boundaries_header_not_extracted(self) -> None:
+        """Section header '## Scope Boundaries' must not extract 'boundaries' as a scope."""
+        content = "## Scope Boundaries\n- In scope: add tests\n- Out of scope: impl changes"
+        hints = extract_file_hints(content)
+        assert "boundaries" not in hints.scopes
+
+    def test_module_prose_not_extracted(self) -> None:
+        """Natural prose 'module boundaries' must not extract 'boundaries' as a scope."""
+        content = "This change stays within module boundaries and does not affect the API."
+        hints = extract_file_hints(content)
+        assert "boundaries" not in hints.scopes
+
+    def test_scope_keyword_no_colon_not_extracted(self) -> None:
+        """Keywords followed by space but no colon must not match."""
+        content = "Narrowed scope to single missing test: test_maintain_route_event_emitted"
+        hints = extract_file_hints(content)
+        assert "to" not in hints.scopes
+        assert "single" not in hints.scopes
+
     def test_filters_urls(self) -> None:
         """Should filter out URLs."""
         content = "See https://example.com/path/file.py for details"
