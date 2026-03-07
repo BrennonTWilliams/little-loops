@@ -124,6 +124,7 @@ dst_pos = bfs_pos.get(dst, len(bfs_order))   # O(1), was O(n)
 - **Tests**: `scripts/tests/test_ll_loop_display.py` covers `_render_fsm_diagram()`; no new tests needed
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: O(n) index() calls at info.py:394-395
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; noted `info.py:155` `bfs_order.index()` as fix target

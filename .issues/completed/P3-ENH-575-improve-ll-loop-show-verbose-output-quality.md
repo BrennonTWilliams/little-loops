@@ -13,7 +13,7 @@ discovered_by: capture-issue
 
 Running `ll-loop show <loop> --verbose` produces output with the following problems (all in `scripts/little_loops/cli/loop/info.py`):
 
-1. **Label clipping bug in diagram** (line 432) — `dstart = down_col - len(dlabel) - 1` can go negative when the anchor column is small, silently clipping the leading characters of labels (e.g., `"partial"` renders as `"artial"`).
+1. **Label clipping bug in diagram** (line 431) — `dstart = down_col - len(dlabel) - 1` can go negative when the anchor column is small, silently clipping the leading characters of labels (e.g., `"partial"` renders as `"artial"`).
 
 2. **Redundant "Loop: name" line** (line 523) — The separator header already shows the loop name (`── issue-refinement ────`); printing `Loop: issue-refinement` immediately after is pure noise.
 
@@ -159,3 +159,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 - `/ll:capture-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45f5e92b-9ceb-436a-99d3-42f60acd8906.jsonl`
 - `/ll:format-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/476e3b5a-af7b-4364-a392-08cb347c2f45.jsonl`
+- `/ll:ready-issue` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db07a7ee-8fdd-440e-b873-825c8ffe2049.jsonl`

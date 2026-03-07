@@ -82,12 +82,26 @@ if max_iter is not None:
 
 ## Status
 
-**Open** | Created: 2026-03-06 | Priority: P3
+**Resolved** | Created: 2026-03-06 | Resolved: 2026-03-06 | Priority: P3
+
+## Resolution
+
+Fixed all 3 truthiness checks to use `is not None`:
+
+- `scripts/little_loops/cli/loop/run.py:53` — `cmd_run`: `if args.max_iterations:` → `if args.max_iterations is not None:`
+- `scripts/little_loops/cli/loop/testing.py:180` — `cmd_simulate`: same change
+- `scripts/little_loops/cli/loop/_helpers.py:233` — `run_background`: `if max_iter:` → `if max_iter is not None:`
+
+Added regression tests:
+- `test_cli_loop_background.py::TestRunBackground::test_forwards_max_iterations_zero`
+- `test_cli.py::TestMainLoopAdditionalCoverage::test_max_iterations_zero_override`
+- `test_cli.py::TestMaxIterationsZeroBug602::test_cmd_simulate_max_iterations_zero`
 
 ## Session Log
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: `if args.max_iterations:` confirmed at `run.py:90`, `_helpers.py:171` (`if max_iter:`), `testing.py:180`
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - added `## Status` section to satisfy v2.0 template requirements
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - Readiness: 100/100 PROCEED, Outcome: 79/100 MODERATE
-- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: all 3 truthiness checks confirmed (run.py:53, testing.py:184, _helpers.py:238)
+- `/ll:manage-issue` - 2026-03-06T00:00:00Z - Fixed 3 truthiness checks, added 3 regression tests
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/905734ff-ad8b-4a71-9f6f-99ce62be19d7.jsonl` — CLOSE (already_fixed): all 3 `is not None` fixes confirmed in code, all 3 regression tests present
 
 ---

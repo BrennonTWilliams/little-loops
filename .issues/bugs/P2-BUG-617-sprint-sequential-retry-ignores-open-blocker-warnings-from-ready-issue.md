@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-06
 discovered_by: capture-issue
+confidence_score: 70
+outcome_confidence: 72
 ---
 
 # BUG-617: Sprint sequential retry proceeds to Phase 2 implementation despite open blocker warnings from `ready-issue`
@@ -19,7 +21,13 @@ During `ll-sprint run` sequential retry, after `ready-issue` completes Phase 1, 
 
 ## Current Behavior
 
-Sequential retry logic (in `scripts/little_loops/cli/sprint/run.py` or equivalent orchestrator) branches only on `CLOSE` verdict to skip implementation. Any other verdict (`PASS`, `CORRECTED`, and eventually `BLOCKED`) falls through to Phase 2.
+The verdict dispatch in `process_issue_inplace` (`issue_manager.py:416-494`) has two gates:
+1. `should_close` (line 417) → CLOSE branch, returns early
+2. `not is_ready` (line 474) → NOT_READY gate, returns `success=False`
+
+A `BLOCKED` verdict would currently hit the `not is_ready` gate (since `"BLOCKED"` is not in `("READY", "CORRECTED")`), returning `success=False` with `failure_reason="NOT READY: BLOCKED"`. This means blocked issues are **indistinguishable from genuinely failed issues** — they get added to `state.failed_issues`, increment `failed_waves`, and set `exit_code = 1`.
+
+Additionally, `BLOCKED` is not in `VALID_VERDICTS` (`output_parsing.py:23`), so `parse_ready_issue_output` would return `verdict = "UNKNOWN"` rather than `"BLOCKED"`.
 
 Observed in `ll-sprint-cli-polish.log` at lines 421–424:
 ```
@@ -47,18 +55,16 @@ This bug causes incorrect automation behavior during sprint runs:
 
 ## Root Cause
 
-**File**: `scripts/little_loops/cli/sprint/run.py`
-**Anchor**: sequential retry loop / Phase 1 verdict dispatch
+**File**: `scripts/little_loops/issue_manager.py`
+**Anchor**: `process_issue_inplace()` verdict dispatch at lines 416–494
 
-The verdict dispatch only handles `CLOSE`:
-```python
-if verdict == "CLOSE":
-    # skip implementation
-else:
-    # proceed to Phase 2  ← no BLOCKED branch
-```
+Three interacting gaps:
 
-There is no `BLOCKED` branch because `ready-issue` never emitted that verdict (see BUG-616).
+1. **`output_parsing.py:23`** — `VALID_VERDICTS` tuple does not include `"BLOCKED"`, so `parse_ready_issue_output` cannot recognize the verdict (returns `"UNKNOWN"` instead)
+2. **`output_parsing.py:369-371`** — No `is_blocked` derived flag (only `is_ready`, `should_close`, `was_corrected`)
+3. **`issue_manager.py:416-494`** — No `BLOCKED` branch in the verdict dispatch; blocked issues fall through to the `not is_ready` gate and are returned as `success=False` with a generic failure reason, indistinguishable from real failures
+4. **`sprint.py:59-86`** — `SprintState` has only `completed_issues` and `failed_issues` buckets; no `skipped_blocked_issues` field
+5. **`cli/sprint/run.py:322-339, 395-426`** — Sprint run loops only branch on `success` boolean; no inspection of `was_blocked` or `failure_reason` to route blocked issues to a separate bucket
 
 ## Proposed Solution
 
@@ -74,25 +80,68 @@ There is no `BLOCKED` branch because `ready-issue` never emitted that verdict (s
 
 ## Implementation Steps
 
-1. Add `BLOCKED` verdict branch to the sequential retry verdict dispatch in `run.py`
-2. Add `skipped_blocked` state to the sprint state schema
-3. Update wave summary reporting to distinguish blocked issues from failed issues
-4. Add tests for the new verdict branch and state transitions
+1. **Add `BLOCKED` to verdict parsing** (`output_parsing.py`):
+   - Add `"BLOCKED"` to `VALID_VERDICTS` tuple (line 23)
+   - Add `"BLOCKED"` to the search order in `_extract_verdict_from_text` (lines 66-82)
+   - Add `is_blocked = verdict == "BLOCKED"` flag alongside `is_ready`/`should_close` (line 369-371)
+
+2. **Add `was_blocked` to `IssueProcessingResult`** (`issue_manager.py:264-276`):
+   - Add `was_blocked: bool = False` field (following `was_closed` pattern)
+
+3. **Add `BLOCKED` branch to `process_issue_inplace`** (`issue_manager.py:416-494`):
+   - Insert between `should_close` (line 417) and `not is_ready` (line 474):
+     ```python
+     if parsed.get("is_blocked"):
+         logger.warning(f"Issue {info.issue_id} blocked — open dependency detected")
+         return IssueProcessingResult(
+             success=False, was_blocked=True, duration=...,
+             issue_id=info.issue_id, failure_reason=f"BLOCKED: {parsed.get('concerns', [])}"
+         )
+     ```
+
+4. **Add `skipped_blocked_issues` to `SprintState`** (`sprint.py:59-111`):
+   - Add `skipped_blocked_issues: dict[str, str] = field(default_factory=dict)` field
+   - Update `to_dict()` and `from_dict()` methods
+
+5. **Route blocked results in sprint run loops** (`cli/sprint/run.py`):
+   - Single-issue path (lines 322-339): check `issue_result.was_blocked`, route to `state.skipped_blocked_issues`, do NOT increment `failed_waves`
+   - Retry path (lines 395-426): check `retry_result.was_blocked`, route to `state.skipped_blocked_issues`
+
+6. **Update parallel worker** (`parallel/worker_pool.py:305-344`):
+   - Add `BLOCKED` branch mirroring the `should_close` branch pattern
+
+7. **Update wave summary** (`cli/sprint/run.py:443-458`):
+   - Add blocked count to `skip_msg` (following `pre_completed_skipped` pattern)
+   - Follow `_interrupted_issues` precedent in `orchestrator.py:940-980` for reporting
+
+8. **Add tests**:
+   - `test_output_parsing.py`: `test_blocked_verdict` method (following `test_close_verdict` pattern at line 247)
+   - `test_sprint_integration.py`: mock `process_issue_inplace` returning `was_blocked=True` (following pattern at line 608)
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/sprint/run.py` — verdict dispatch in sequential retry loop
+- `scripts/little_loops/output_parsing.py:23,66-82,369-371` — add `BLOCKED` to `VALID_VERDICTS`, extraction logic, and derived flags
+- `scripts/little_loops/issue_manager.py:264-276` — add `was_blocked` field to `IssueProcessingResult`
+- `scripts/little_loops/issue_manager.py:416-494` — add `BLOCKED` branch in `process_issue_inplace` verdict dispatch
+- `scripts/little_loops/sprint.py:59-111` — add `skipped_blocked_issues` to `SprintState`, `to_dict`, `from_dict`
+- `scripts/little_loops/cli/sprint/run.py:322-339,395-426,443-458` — route blocked results, update summary
+- `scripts/little_loops/parallel/worker_pool.py:305-344` — add `BLOCKED` branch in parallel worker verdict dispatch
 
 ### Dependent Files (Callers/Importers)
-- Sprint state schema (wherever `skipped_blocked` needs to be added)
-- Wave summary renderer (to report blocked issues separately)
+- `scripts/little_loops/issue_manager.py:911-928` — `AutoManager._process_issue` dispatches on `was_closed`; may need `was_blocked` dispatch
+- `scripts/little_loops/parallel/types.py:52-132` — `WorkerResult` may need `blocked` field
+- `scripts/little_loops/cli/sprint/show.py` — may want to display blocked issues in `ll-sprint show`
 
 ### Similar Patterns
-- Existing `CLOSE` verdict branch in the same dispatch block
+- `CLOSE` verdict branch in `process_issue_inplace` at `issue_manager.py:417-471` — exact pattern to replicate
+- `_interrupted_issues` in `orchestrator.py:940-980` — precedent for a third outcome category beyond completed/failed
+- `pre_completed_skipped` in `run.py:139,444-451` — precedent for skip reporting in sprint summary
+- `plan_created` branch in `AutoManager._process_issue` at `issue_manager.py:921-927` — precedent for "neither success nor failure" outcome
 
 ### Tests
-- `scripts/tests/test_cli_sprint_run.py` or equivalent — add test for `BLOCKED` verdict handling
+- `scripts/tests/test_output_parsing.py:247-319` — add `test_blocked_verdict` following `test_close_verdict` pattern
+- `scripts/tests/test_sprint_integration.py:608-654` — add blocked outcome test using `monkeypatch.setattr("little_loops.issue_manager.process_issue_inplace", mock_blocked)`
 
 ### Documentation
 - N/A
@@ -103,7 +152,7 @@ There is no `BLOCKED` branch because `ready-issue` never emitted that verdict (s
 ## Impact
 
 - **Priority**: P2 — causes incorrect automation behavior; depends on BUG-616 being fixed first for the full fix, but the branch should be added proactively
-- **Effort**: Low — one new `elif` branch + state schema update
+- **Effort**: Medium — touches 6 files across parsing, dispatch, state, and reporting layers
 - **Risk**: Low — additive; existing behavior unchanged for `PASS` / `CORRECTED` / `CLOSE`
 - **Breaking Change**: No
 
@@ -127,3 +176,5 @@ Open
 - `/ll:capture-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec3d1ef8-aeec-4ccb-bd08-ffee1f74e5ef.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID, DEP_ISSUES: added missing Blocks backlink for BUG-616
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd27d8a7-ef12-4ceb-87ee-8fff7613ffb7.jsonl`
+- `/ll:confidence-check` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:refine-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84d93c18-f729-4cd9-b9c3-7999ecffeae1.jsonl`

@@ -101,6 +101,7 @@ Four copy-paste instances of identical paradigm detection logic create a compoun
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: 4 sites confirmed — `_helpers.py:60-70` (load_loop), `_helpers.py:89-98` (load_loop_with_spec), `run.py:70-81` (cmd_run), `config_cmds.py:78-89` (cmd_validate); load_loop does not delegate to load_loop_with_spec
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — v2.0 format: added Motivation, restructured Scope Boundaries, Success Metrics, Integration Map, Implementation Steps; added confidence_score and outcome_confidence to frontmatter
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — Readiness: 95/100 PROCEED; Outcome: 88/100 HIGH CONFIDENCE
+- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: 4 copy-paste sites confirmed
 
 ---
 

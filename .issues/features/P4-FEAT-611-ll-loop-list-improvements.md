@@ -87,15 +87,15 @@ Elapsed time should be computed from `state.accumulated_ms` (in milliseconds) us
 
 ### Files to Modify
 - `scripts/little_loops/cli/loop/info.py:22-63` — update `cmd_list` to load YAML spec for paradigm/description in available-loops block; add status/elapsed display and `--status` filter in `--running` block
-- `scripts/little_loops/cli/loop/__init__.py:117-118` — add `--status` argument to `list_parser` (e.g., `list_parser.add_argument("--status", help="Filter by status")`)
+- `scripts/little_loops/cli/loop/__init__.py:133-135` — add `--status` argument to `list_parser` (e.g., `list_parser.add_argument("--status", help="Filter by status")`)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/__init__.py:192` — sole caller of `cmd_list`
-- `scripts/little_loops/fsm/persistence.py:417` — `list_running_loops()` returns `list[LoopState]`; `LoopState.status` and `LoopState.accumulated_ms` are the fields consumed by the new display
+- `scripts/little_loops/cli/loop/__init__.py:231` — sole caller of `cmd_list`
+- `scripts/little_loops/fsm/persistence.py:424` — `list_running_loops()` returns `list[LoopState]`; `LoopState.status` and `LoopState.accumulated_ms` are the fields consumed by the new display
 
 ### Similar Patterns
-- `scripts/little_loops/cli/loop/_helpers.py:73-100` — `load_loop_with_spec` shows how to get both `FSMLoop` and raw spec dict from a YAML file
-- `scripts/little_loops/cli/loop/_helpers.py:270-276` — elapsed seconds/minutes formatting pattern to reuse
+- `scripts/little_loops/cli/loop/_helpers.py:135-162` — `load_loop_with_spec` shows how to get both `FSMLoop` and raw spec dict from a YAML file
+- `scripts/little_loops/cli/loop/_helpers.py:301-307` — elapsed seconds/minutes formatting pattern to reuse
 - `scripts/little_loops/cli/loop/info.py:59-62` — existing `[built-in]` label shows the column alignment approach to extend
 
 ### Tests
@@ -126,6 +126,8 @@ Elapsed time should be computed from `state.accumulated_ms` (in milliseconds) us
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: `ll-loop list` displays only loop names; no paradigm/description/status shown; no `--status` filter
 - `/ll:format-issue` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe94482e-9372-4143-bed0-d453aad43004.jsonl` — reformatted to v2.0 FEAT template; added Motivation, Scope Boundaries, Proposed Solution, Integration Map, Implementation Steps; confirmed `LoopState.status`, `accumulated_ms` available in `persistence.py`; confirmed `FSMLoop.paradigm` in `schema.py`; confirmed description field in `loops/*.yaml`
 - `/ll:confidence-check` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe94482e-9372-4143-bed0-d453aad43004.jsonl` — readiness: 96/100 PROCEED, outcome: 88/100 HIGH CONFIDENCE
+- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: minimal display, no status filter
+- `/ll:ready-issue` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2089b015-11be-4a21-8755-bb4e28055f84.jsonl` — CORRECTED: fixed 5 drifted line references in Integration Map
 
 ---
 

@@ -7,11 +7,11 @@ confidence_score: 98
 outcome_confidence: 97
 ---
 
-# ENH-553: 5 internal `workflow_sequence_analyzer` functions lack direct unit tests
+# ENH-553: 4 internal `workflow_sequence_analyzer` functions lack direct unit tests
 
 ## Summary
 
-Five internal functions in `workflow_sequence_analyzer` — `_detect_handoff`, `_group_by_session`, `_load_messages`, `_load_patterns`, and `_get_message_category` — are not imported or tested directly in `test_workflow_sequence_analyzer.py`. Their edge cases (missing keys, empty inputs, malformed data, non-string values) are only exercised indirectly through end-to-end `analyze_workflows` tests, if at all.
+Four internal functions in `workflow_sequence_analyzer` — `_detect_handoff`, `_group_by_session`, `_load_patterns`, and `_get_message_category` — are not imported or tested directly in `test_workflow_sequence_analyzer.py`. Their edge cases (missing keys, empty inputs, malformed data, non-string values) are only exercised indirectly through end-to-end `analyze_workflows` tests, if at all. (`_load_messages` was added to the import block and is no longer missing.)
 
 ## Location
 
@@ -122,6 +122,7 @@ class TestGetMessageCategory:
 ## Verification Notes
 
 - **2026-03-05** — VALID. All five functions (`_detect_handoff` L374, `_group_by_session` L363, `_load_messages` L346, `_load_patterns` L357, `_get_message_category` L611) confirmed present in `workflow_sequence_analyzer.py` at current HEAD. Import block in `test_workflow_sequence_analyzer.py` (L14–30) confirmed: none of the five functions appear. Dependency: FEAT-556 has `Blocked By: ENH-553` ✓ and ENH-553 has `Blocks: FEAT-556` ✓.
+- **2026-03-06** — NEEDS_UPDATE. `_load_messages` is now imported in test file (L24). Scope reduced from 5 to 4 functions. Remaining untested: `_detect_handoff`, `_group_by_session`, `_load_patterns`, `_get_message_category`.
 
 ## Related Key Documentation
 
@@ -136,7 +137,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 `enhancement`, `testing`, `workflow-analyzer`, `captured`
 
 ## Session Log
-
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
 - `/ll:format-issue` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
@@ -144,6 +144,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — NEEDS_UPDATE: _load_messages now imported; scope reduced to 4 functions
 
 ## Status
 
