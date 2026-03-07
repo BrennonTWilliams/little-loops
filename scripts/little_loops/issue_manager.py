@@ -269,6 +269,7 @@ class IssueProcessingResult:
     duration: float
     issue_id: str
     was_closed: bool = False
+    was_blocked: bool = False
     failure_reason: str = ""
     corrections: list[str] = field(default_factory=list)
     plan_created: bool = False
@@ -469,6 +470,20 @@ def process_issue_inplace(
                             failure_reason=f"CLOSE failed: {parsed.get('close_status', 'unknown')}",
                             corrections=corrections,
                         )
+
+                # Handle BLOCKED verdict - issue has open dependencies
+                if parsed.get("is_blocked"):
+                    logger.warning(
+                        f"Issue {info.issue_id} blocked — open dependency detected by ready-issue"
+                    )
+                    return IssueProcessingResult(
+                        success=False,
+                        was_blocked=True,
+                        duration=time.time() - issue_start_time,
+                        issue_id=info.issue_id,
+                        failure_reason=f"BLOCKED: {parsed.get('concerns', [])}",
+                        corrections=corrections,
+                    )
 
                 # Check if issue is NOT READY (and not closeable)
                 if not parsed["is_ready"]:
@@ -911,6 +926,11 @@ class AutoManager:
         # Map result back to state tracking
         if result.was_closed:
             self.state_manager.mark_completed(info.issue_id)
+        elif result.was_blocked:
+            # Blocked issues are skipped, not failed — leave in pending state
+            self.logger.info(
+                f"{info.issue_id} skipped — blocked by open dependency"
+            )
         elif result.success:
             self.state_manager.mark_completed(info.issue_id, {"total": result.duration})
         elif result.plan_created:

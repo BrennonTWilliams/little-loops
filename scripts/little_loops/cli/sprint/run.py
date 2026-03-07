@@ -325,6 +325,10 @@ def _cmd_sprint_run(
                         state.completed_issues.append(issue.issue_id)
                         state.timing[issue.issue_id] = {"total": issue_result.duration}
                         logger.success(f"  {issue.issue_id}: completed")
+                    elif issue_result.was_blocked:
+                        completed.add(issue.issue_id)
+                        state.skipped_blocked_issues[issue.issue_id] = issue_result.failure_reason
+                        logger.warning(f"  {issue.issue_id}: skipped (blocked by open dependency)")
                     else:
                         wave_failed = True
                         completed.add(issue.issue_id)
@@ -415,6 +419,15 @@ def _cmd_sprint_run(
                             state.completed_issues.append(issue.issue_id)
                             state.timing[issue.issue_id] = {"total": retry_result.duration}
                             logger.success(f"  Retry succeeded: {issue.issue_id}")
+                        elif retry_result.was_blocked:
+                            state.failed_issues.pop(issue.issue_id, None)
+                            state.skipped_blocked_issues[issue.issue_id] = (
+                                retry_result.failure_reason
+                            )
+                            logger.warning(
+                                f"  Retry skipped: {issue.issue_id} "
+                                "(blocked by open dependency)"
+                            )
                         else:
                             logger.warning(f"  Retry failed: {issue.issue_id}")
                     if retried_ok > 0:
@@ -446,8 +459,14 @@ def _cmd_sprint_run(
             if pre_completed_skipped
             else ""
         )
+        blocked_msg = (
+            f", {len(state.skipped_blocked_issues)} skipped (blocked)"
+            if state.skipped_blocked_issues
+            else ""
+        )
         logger.info(
-            f"\nSprint completed: {len(completed)} issues processed ({len(waves)} {wave_word}){skip_msg}"
+            f"\nSprint completed: {len(completed)} issues processed "
+            f"({len(waves)} {wave_word}){skip_msg}{blocked_msg}"
         )
         logger.timing(f"Total execution time: {format_duration(total_duration)}")
         if failed_waves > 0:

@@ -317,6 +317,20 @@ class WorkerPool:
                     stderr=ready_result.stderr,
                 )
 
+            # Handle BLOCKED verdict - issue has open dependencies
+            if ready_parsed.get("is_blocked"):
+                return WorkerResult(
+                    issue_id=issue.issue_id,
+                    success=False,
+                    was_blocked=True,
+                    branch_name=branch_name,
+                    worktree_path=worktree_path,
+                    duration=time.time() - start_time,
+                    error="ready-issue verdict: BLOCKED - open dependency detected",
+                    stdout=ready_result.stdout,
+                    stderr=ready_result.stderr,
+                )
+
             # Handle NOT_READY verdict
             if not ready_parsed["is_ready"]:
                 concerns = ready_parsed.get("concerns", [])

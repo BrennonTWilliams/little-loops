@@ -58,10 +58,10 @@ This bug causes incorrect automation behavior during sprint runs:
 **File**: `scripts/little_loops/issue_manager.py`
 **Anchor**: `process_issue_inplace()` verdict dispatch at lines 416–494
 
-Three interacting gaps:
+Three interacting gaps (gaps 1a and 1b partially resolved by BUG-616 fix):
 
-1. **`output_parsing.py:23`** — `VALID_VERDICTS` tuple does not include `"BLOCKED"`, so `parse_ready_issue_output` cannot recognize the verdict (returns `"UNKNOWN"` instead)
-2. **`output_parsing.py:369-371`** — No `is_blocked` derived flag (only `is_ready`, `should_close`, `was_corrected`)
+1. **`output_parsing.py:23`** — ~~`VALID_VERDICTS` tuple does not include `"BLOCKED"`~~ ✓ DONE: `"BLOCKED"` was added to `VALID_VERDICTS` as part of the BUG-616 fix
+2. **`output_parsing.py:369-371`** — No `is_blocked` derived flag (only `is_ready`, `should_close`, `was_corrected`); `is_blocked = verdict == "BLOCKED"` still needs to be added and returned in the dict
 3. **`issue_manager.py:416-494`** — No `BLOCKED` branch in the verdict dispatch; blocked issues fall through to the `not is_ready` gate and are returned as `success=False` with a generic failure reason, indistinguishable from real failures
 4. **`sprint.py:59-86`** — `SprintState` has only `completed_issues` and `failed_issues` buckets; no `skipped_blocked_issues` field
 5. **`cli/sprint/run.py:322-339, 395-426`** — Sprint run loops only branch on `success` boolean; no inspection of `was_blocked` or `failure_reason` to route blocked issues to a separate bucket
@@ -80,10 +80,11 @@ Three interacting gaps:
 
 ## Implementation Steps
 
-1. **Add `BLOCKED` to verdict parsing** (`output_parsing.py`):
-   - Add `"BLOCKED"` to `VALID_VERDICTS` tuple (line 23)
-   - Add `"BLOCKED"` to the search order in `_extract_verdict_from_text` (lines 66-82)
-   - Add `is_blocked = verdict == "BLOCKED"` flag alongside `is_ready`/`should_close` (line 369-371)
+1. **Add `is_blocked` derived flag to verdict parsing** (`output_parsing.py`):
+   - ~~Add `"BLOCKED"` to `VALID_VERDICTS` tuple (line 23)~~ ✓ DONE (BUG-616 fix)
+   - ~~Add `"BLOCKED"` to the search order in `_extract_verdict_from_text` (lines 66-82)~~ ✓ DONE (BUG-616 fix)
+   - ~~Add test `test_blocked_verdict` in `test_output_parsing.py`~~ ✓ DONE (BUG-616 fix)
+   - Add `is_blocked = verdict == "BLOCKED"` flag alongside `is_ready`/`should_close` (line 369-371) and include in return dict
 
 2. **Add `was_blocked` to `IssueProcessingResult`** (`issue_manager.py:264-276`):
    - Add `was_blocked: bool = False` field (following `was_closed` pattern)
@@ -115,7 +116,7 @@ Three interacting gaps:
    - Follow `_interrupted_issues` precedent in `orchestrator.py:940-980` for reporting
 
 8. **Add tests**:
-   - `test_output_parsing.py`: `test_blocked_verdict` method (following `test_close_verdict` pattern at line 247)
+   - ~~`test_output_parsing.py`: `test_blocked_verdict` method~~ ✓ DONE (`test_blocked_verdict` and `test_blocked_verdict_with_corrections` added at lines 340-383)
    - `test_sprint_integration.py`: mock `process_issue_inplace` returning `was_blocked=True` (following pattern at line 608)
 
 ## Integration Map
@@ -140,7 +141,7 @@ Three interacting gaps:
 - `plan_created` branch in `AutoManager._process_issue` at `issue_manager.py:921-927` — precedent for "neither success nor failure" outcome
 
 ### Tests
-- `scripts/tests/test_output_parsing.py:247-319` — add `test_blocked_verdict` following `test_close_verdict` pattern
+- `scripts/tests/test_output_parsing.py:340-383` — ✓ `test_blocked_verdict` and `test_blocked_verdict_with_corrections` already added
 - `scripts/tests/test_sprint_integration.py:608-654` — add blocked outcome test using `monkeypatch.setattr("little_loops.issue_manager.process_issue_inplace", mock_blocked)`
 
 ### Documentation
@@ -162,15 +163,24 @@ Three interacting gaps:
 
 ## Status
 
-Open
+Completed
+
+## Resolution
+
+- Added `is_blocked` derived flag to `output_parsing.py:parse_ready_issue_output()` return dict
+- Added `was_blocked: bool = False` field to `IssueProcessingResult` dataclass (`issue_manager.py`)
+- Added `BLOCKED` branch in `process_issue_inplace()` verdict dispatch between `should_close` and `not is_ready` gates
+- Added `was_blocked` dispatch in `AutoManager._process_issue()` to leave blocked issues in pending state (not failed)
+- Added `skipped_blocked_issues: dict[str, str]` field to `SprintState` with `to_dict`/`from_dict` support (`sprint.py`)
+- Updated single-issue path and sequential retry path in `cli/sprint/run.py` to route blocked results to `skipped_blocked_issues`, not `failed_issues`, and not increment `failed_waves`
+- Updated wave summary to report blocked count separately
+- Added `was_blocked` field to `WorkerResult` in `parallel/types.py` with `to_dict`/`from_dict` support
+- Added `BLOCKED` branch in `parallel/worker_pool.py` verdict dispatch
+- Added `test_sprint_blocked_issue_skipped_not_failed` integration test
 
 ## Blocked By
 
-- BUG-616 (`ready-issue` must emit `BLOCKED` verdict before this fix is meaningful)
-
-## Blocks
-
-- BUG-616
+- ~~BUG-616~~ ✓ RESOLVED — BUG-616 (`ready-issue` BLOCKED verdict) is now in completed/
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec3d1ef8-aeec-4ccb-bd08-ffee1f74e5ef.jsonl`
@@ -178,3 +188,5 @@ Open
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd27d8a7-ef12-4ceb-87ee-8fff7613ffb7.jsonl`
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 - `/ll:refine-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/84d93c18-f729-4cd9-b9c3-7999ecffeae1.jsonl`
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f5de8f91-24b0-4c35-b012-62e09852b76f.jsonl`
+- `/ll:manage-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec3d1ef8-aeec-4ccb-bd08-ffee1f74e5ef.jsonl`

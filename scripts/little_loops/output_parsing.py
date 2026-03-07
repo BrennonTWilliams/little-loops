@@ -369,6 +369,7 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
     is_ready = verdict in ("READY", "CORRECTED")
     was_corrected = verdict == "CORRECTED" or len(corrections) > 0
     should_close = verdict == "CLOSE"
+    is_blocked = verdict == "BLOCKED"
 
     return {
         "verdict": verdict,
@@ -376,6 +377,7 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
         "is_ready": is_ready,
         "was_corrected": was_corrected,
         "should_close": should_close,
+        "is_blocked": is_blocked,
         "close_reason": close_reason,
         "close_status": close_status,
         "corrections": corrections,

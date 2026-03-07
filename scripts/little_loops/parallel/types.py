@@ -86,6 +86,7 @@ class WorkerResult:
     should_close: bool = False
     close_reason: str | None = None
     close_status: str | None = None
+    was_blocked: bool = False
     interrupted: bool = False
 
     def to_dict(self) -> dict[str, Any]:
@@ -106,6 +107,7 @@ class WorkerResult:
             "should_close": self.should_close,
             "close_reason": self.close_reason,
             "close_status": self.close_status,
+            "was_blocked": self.was_blocked,
             "interrupted": self.interrupted,
         }
 
@@ -128,6 +130,7 @@ class WorkerResult:
             should_close=data.get("should_close", False),
             close_reason=data.get("close_reason"),
             close_status=data.get("close_status"),
+            was_blocked=data.get("was_blocked", False),
             interrupted=data.get("interrupted", False),
         )
 

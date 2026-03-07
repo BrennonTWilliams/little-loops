@@ -653,6 +653,66 @@ issues:
         state_data = json.loads(state_file.read_text())
         assert "BUG-001" in state_data["failed_issues"]
 
+    def test_sprint_blocked_issue_skipped_not_failed(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Test blocked issues are routed to skipped_blocked_issues, not failed_issues."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        _, config, manager = self._setup_error_recovery_project(tmp_path)
+
+        def mock_process_blocked(info: Any, **kwargs: Any) -> Any:
+            from little_loops.issue_manager import IssueProcessingResult
+
+            return IssueProcessingResult(
+                success=False,
+                was_blocked=True,
+                duration=1.0,
+                issue_id=info.issue_id,
+                failure_reason="BLOCKED: ['open dependency']",
+            )
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            mock_process_blocked,
+        )
+        # Prevent state cleanup so we can inspect the saved state
+        monkeypatch.setattr("little_loops.cli.sprint.run._cleanup_sprint_state", lambda *a: None)
+
+        # Create a single-issue sprint for simpler testing
+        (tmp_path / ".sprints" / "single-blocked.yaml").write_text(
+            """name: single-blocked
+issues:
+  - BUG-001
+"""
+        )
+
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="single-blocked",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            max_workers=1,
+            quiet=False,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        # Blocked should not cause a non-zero exit (no failed waves)
+        assert result == 0
+
+        # Verify blocked issue is in skipped_blocked_issues, not failed_issues
+        state_file = tmp_path / ".sprint-state.json"
+        assert state_file.exists()
+
+        state_data = json.loads(state_file.read_text())
+        assert "BUG-001" not in state_data.get("failed_issues", {})
+        assert "BUG-001" in state_data.get("skipped_blocked_issues", {})
+
     def test_sprint_resume_skips_completed_waves(self, tmp_path: Path, monkeypatch: Any) -> None:
         """Test resume skips already-completed waves.
 

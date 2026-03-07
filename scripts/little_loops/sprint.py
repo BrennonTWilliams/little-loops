@@ -81,6 +81,7 @@ class SprintState:
     current_wave: int = 0
     completed_issues: list[str] = field(default_factory=list)
     failed_issues: dict[str, str] = field(default_factory=dict)
+    skipped_blocked_issues: dict[str, str] = field(default_factory=dict)
     timing: dict[str, dict[str, float]] = field(default_factory=dict)
     started_at: str = ""
     last_checkpoint: str = ""
@@ -92,6 +93,7 @@ class SprintState:
             "current_wave": self.current_wave,
             "completed_issues": self.completed_issues,
             "failed_issues": self.failed_issues,
+            "skipped_blocked_issues": self.skipped_blocked_issues,
             "timing": self.timing,
             "started_at": self.started_at,
             "last_checkpoint": self.last_checkpoint,
@@ -105,6 +107,7 @@ class SprintState:
             current_wave=data.get("current_wave", 0),
             completed_issues=data.get("completed_issues", []),
             failed_issues=data.get("failed_issues", {}),
+            skipped_blocked_issues=data.get("skipped_blocked_issues", {}),
             timing=data.get("timing", {}),
             started_at=data.get("started_at", ""),
             last_checkpoint=data.get("last_checkpoint", ""),
