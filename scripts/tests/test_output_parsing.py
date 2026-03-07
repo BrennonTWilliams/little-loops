@@ -337,6 +337,51 @@ The issue is ready.
         assert result["verdict"] == "NOT_READY"
         assert result["is_ready"] is False
 
+    def test_blocked_verdict(self) -> None:
+        """Test parsing BLOCKED verdict sets is_ready=False and should_close=False."""
+        output = """
+## VERDICT
+BLOCKED
+
+## VALIDATED_FILE
+/path/to/.issues/bugs/P2-BUG-042-some-bug.md
+
+## BLOCKED_BY
+- FEAT-555: .issues/features/P2-FEAT-555-some-feature.md
+
+## CONCERNS
+- Blocked by FEAT-555 which is still open
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "BLOCKED"
+        assert result["is_ready"] is False
+        assert result["should_close"] is False
+        assert result["was_corrected"] is False
+
+    def test_blocked_verdict_with_corrections(self) -> None:
+        """Test that BLOCKED verdict overrides CORRECTED when blockers exist."""
+        output = """
+## VERDICT
+BLOCKED
+
+## VALIDATED_FILE
+/path/to/.issues/bugs/P2-BUG-042-some-bug.md
+
+## BLOCKED_BY
+- FEAT-555: .issues/features/P2-FEAT-555-some-feature.md
+
+## CORRECTIONS_MADE
+- [line_drift] Updated line 42 -> 45 using anchor 'process_data'
+"""
+        result = parse_ready_issue_output(output)
+
+        assert result["verdict"] == "BLOCKED"
+        assert result["is_ready"] is False
+        assert result["should_close"] is False
+        # Corrections were recorded but verdict is still BLOCKED
+        assert len(result["corrections"]) == 1
+
     def test_unknown_verdict(self) -> None:
         """Test parsing output with no recognizable verdict."""
         output = "Some random output without a verdict."

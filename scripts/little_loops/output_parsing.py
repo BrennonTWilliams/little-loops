@@ -20,7 +20,7 @@ TABLE_ROW_PATTERN = re.compile(r"\|\s*(\w+)\s*\|\s*(\w+)\s*\|\s*(.+?)\s*\|")
 STATUS_PATTERN = re.compile(r"^- (\w+): (\w+)", re.MULTILINE)
 
 # Valid verdicts for ready-issue
-VALID_VERDICTS = ("READY", "CORRECTED", "NOT_READY", "NEEDS_REVIEW", "CLOSE")
+VALID_VERDICTS = ("READY", "CORRECTED", "NOT_READY", "NEEDS_REVIEW", "CLOSE", "BLOCKED")
 
 
 def _clean_verdict_content(content: str) -> str:
@@ -67,7 +67,7 @@ def _extract_verdict_from_text(text: str) -> str | None:
 
     # Check each valid verdict (check NOT_READY before READY to avoid partial match)
     # Order matters: check longer/compound verdicts first
-    for verdict in ("NOT_READY", "NEEDS_REVIEW", "CORRECTED", "READY", "CLOSE"):
+    for verdict in ("NOT_READY", "NEEDS_REVIEW", "CORRECTED", "BLOCKED", "READY", "CLOSE"):
         # Match verdict as a word boundary (not part of another word)
         # Handle both underscore and space variants
         patterns = [
@@ -207,7 +207,7 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
     Returns:
         dict with keys:
         - verdict: str ("READY", "CORRECTED", "NOT_READY", "NEEDS_REVIEW",
-                        "CLOSE", or "UNKNOWN")
+                        "CLOSE", "BLOCKED", or "UNKNOWN")
         - concerns: list[str] of concern messages
         - is_ready: bool indicating if issue is ready for implementation
         - was_corrected: bool indicating if corrections were made
@@ -253,7 +253,7 @@ def parse_ready_issue_output(output: str) -> dict[str, Any]:
     # Strategy 2: Old format (VERDICT: READY) anywhere in output
     if verdict == "UNKNOWN":
         verdict_match = re.search(
-            r"VERDICT:\s*(READY|CORRECTED|NOT[_\s-]?READY|NEEDS[_\s-]?REVIEW|CLOSE)",
+            r"VERDICT:\s*(READY|CORRECTED|NOT[_\s-]?READY|NEEDS[_\s-]?REVIEW|CLOSE|BLOCKED)",
             output,
             re.IGNORECASE,
         )

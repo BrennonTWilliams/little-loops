@@ -149,12 +149,13 @@ If line numbers are outdated but an Anchor field exists:
 - [ ] If `## Blocked By` section exists:
   - Check each referenced issue ID
   - If any blocker is still in an active category (bugs/, features/, enhancements/) and NOT in `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/`:
-    - Flag as WARNING: "Blocked by [ID] which is still open"
+    - Flag as BLOCKED: "Blocked by [ID] which is still open"
+    - **Set verdict to BLOCKED** — this overrides READY and CORRECTED
   - If all blockers are in completed/ or don't exist: PASS
 - [ ] If `## Blocked By` section is empty or absent: PASS (no blockers)
 
-**Note**: Open blockers are a WARNING, not a failure. The issue can still be marked READY
-but the warning should be prominently displayed so the user is aware of open blockers.
+**Note**: Open blockers force the verdict to `BLOCKED`. This overrides any corrections made.
+Record corrections in `CORRECTIONS_MADE` as usual, but the top-level verdict must be `BLOCKED`.
 
 #### Metadata
 - [ ] Priority prefix in filename
@@ -184,6 +185,7 @@ but the warning should be prominently displayed so the user is aware of open blo
 |---------|---------|-------------|
 | READY | Issue is complete and accurate | No changes needed |
 | CORRECTED | Auto-corrections made, now ready | Fixed issues, proceed to implementation |
+| BLOCKED | Issue has unresolved blocking dependencies | Any Blocked By entry resolves to an active issue |
 | NOT_READY | Cannot auto-correct | Needs manual intervention (use sparingly) |
 | CLOSE | Issue should not be implemented | See closure conditions above |
 | REGRESSION_LIKELY | Matches completed issue with evidence | Files modified since original fix |
@@ -191,9 +193,10 @@ but the warning should be prominently displayed so the user is aware of open blo
 
 **Priority order**:
 1. First, try to auto-correct any issues
-2. If issue is invalid/obsolete, use CLOSE
-3. If issue matches completed issue, analyze for regression (see Regression Detection below)
-4. Only use NOT_READY if manual intervention is truly required
+2. If any `## Blocked By` entry resolves to an active issue, use BLOCKED (overrides READY/CORRECTED)
+3. If issue is invalid/obsolete, use CLOSE
+4. If issue matches completed issue, analyze for regression (see Regression Detection below)
+5. Only use NOT_READY if manual intervention is truly required
 
 ### 4.5 Regression Detection (when matching completed issues)
 
@@ -238,10 +241,15 @@ After making corrections, use verdict CORRECTED (not READY or NOT_READY).
 
 ```markdown
 ## VERDICT
-[READY|CORRECTED|NOT_READY|CLOSE|REGRESSION_LIKELY|POSSIBLE_REGRESSION]
+[READY|CORRECTED|BLOCKED|NOT_READY|CLOSE|REGRESSION_LIKELY|POSSIBLE_REGRESSION]
 
 ## VALIDATED_FILE
 [REQUIRED for ALL verdicts - Absolute path to the issue file that was validated, e.g., /path/to/.issues/bugs/P1-BUG-002-description.md]
+
+## BLOCKED_BY
+[Only include this section if verdict is BLOCKED]
+- [ISSUE-ID]: [Path to active issue file, e.g., .issues/features/P2-FEAT-555-description.md]
+- [Repeat for each open blocker]
 
 ## CLOSE_REASON
 [Only include this section if verdict is CLOSE]
@@ -303,7 +311,7 @@ Closed - Already Fixed | Closed - Invalid | Closed - Duplicate | Closed - Won't 
 | Code snippets | PASS | Match current code |
 | Priority | PASS | P2 prefix present |
 | Sections | PASS | All required present |
-| Blockers | PASS/WARN | "All blockers completed" or "Open blockers: FEAT-010, BUG-015" |
+| Blockers | PASS/BLOCKED | "All blockers completed" or "Open blockers: FEAT-010, BUG-015" |
 
 ## CONCERNS
 - [List any issues that couldn't be auto-corrected]
@@ -384,6 +392,7 @@ The automation scripts (`ll-auto`, `ll-parallel`) run this automatically before 
 |---------|-------------------|
 | READY | Proceed to implementation |
 | CORRECTED | Proceed to implementation (corrections saved) |
+| BLOCKED | Skip issue; do not implement until blockers are resolved |
 | NOT_READY | Mark as failed, skip issue |
 | CLOSE | Move to `{{config.issues.base_dir}}/{{config.issues.completed_dir}}/` with closure status |
 | REGRESSION_LIKELY | Reopen completed issue with classification and evidence |
