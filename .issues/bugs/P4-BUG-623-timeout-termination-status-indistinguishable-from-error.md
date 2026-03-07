@@ -35,6 +35,13 @@ Running `ll-loop status` after a timed-out loop shows `status: failed`. This is 
 
 A timed-out loop should produce `status: "timed_out"` (or similar), distinguishable from `status: "failed"`.
 
+## Acceptance Criteria
+
+- [ ] `ll-loop status <loop-name>` shows `Status: timed_out` after a timeout termination
+- [ ] `ll-loop status <loop-name>` still shows `Status: failed` after an error termination (no regression)
+- [ ] Existing state files with `status: "failed"` are unaffected (no migration needed)
+- [ ] `test_fsm_persistence.py` passes with a new test asserting `state.status == "timed_out"` when `terminated_by == "timeout"`
+
 ## Steps to Reproduce
 
 1. Create a loop with a short `timeout` (e.g., 2 seconds) and a long-running action.
@@ -81,9 +88,9 @@ Also update `cmd_status` and `cmd_history` display logic if they have hardcoded 
 
 ## Implementation Steps
 
-1. Add `if result.terminated_by == "timeout": final_status = "timed_out"` in `PersistentExecutor.run()`
-2. Update `cmd_status` display and any `state.status` comparisons to handle `"timed_out"`
-3. Add test
+1. Add `if result.terminated_by == "timeout": final_status = "timed_out"` in `PersistentExecutor.run()` (`persistence.py:351–356`)
+2. Verify callers handle the new value — `lifecycle.py:cmd_status` prints `state.status` directly (line 63, no change needed); `lifecycle.py:cmd_resume` only checks `"awaiting_continuation"` (line 180, no change needed); scan for any other hardcoded `"failed"` comparisons that would incorrectly match `"timed_out"`
+3. Add test in `scripts/tests/test_fsm_persistence.py` verifying `state.status == "timed_out"` when `terminated_by == "timeout"`
 
 ## Impact
 
@@ -98,6 +105,7 @@ Also update `cmd_status` and `cmd_history` display logic if they have hardcoded 
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ca2eb1f-9d78-4680-b741-5613ecbf49b3.jsonl`
 
 ---
 

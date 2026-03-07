@@ -55,10 +55,20 @@ numeric_target = float(config.target)
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/evaluators.py` — `evaluate()` function, `output_numeric` branch
+- `scripts/little_loops/fsm/evaluators.py` — `evaluate()` function, `output_numeric` branch (line ~561)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/executor.py` — `FSMExecutor._evaluate()` calls `evaluate()` (dispatches to this branch)
+- `scripts/little_loops/fsm/__init__.py` — exports `evaluate_output_numeric`; no change needed
+
+### Similar Patterns
+- `scripts/little_loops/fsm/evaluators.py` line ~613 — `convergence` evaluator has the identical `if config.target is not None else 0.0` fallback; consider fixing for consistency
 
 ### Tests
-- `scripts/tests/test_fsm_evaluators.py` — add test verifying error is raised when `target=None`
+- `scripts/tests/test_fsm_evaluators.py` — add test verifying `EvaluationError` is raised when `target=None` in `evaluate()` dispatch (not just `evaluate_output_numeric` directly)
+
+### Documentation
+- N/A — no docs reference `output_numeric` target behavior
 
 ### Configuration
 - N/A
@@ -80,6 +90,7 @@ numeric_target = float(config.target)
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8a0f657-a512-4e80-9946-68695952f105.jsonl`
 
 ---
 
