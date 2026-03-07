@@ -15,6 +15,7 @@ from little_loops.cli_args import (
     add_common_parallel_args,
     add_config_arg,
     add_dry_run_arg,
+    add_idle_timeout_arg,
     add_max_workers_arg,
     add_resume_arg,
     add_skip_arg,
@@ -255,6 +256,31 @@ class TestAddTimeoutArg:
         assert args.timeout == 1800
 
 
+class TestAddIdleTimeoutArg:
+    """Tests for add_idle_timeout_arg() function."""
+
+    def test_default_is_none(self) -> None:
+        """Defaults to None when flag not provided."""
+        parser = argparse.ArgumentParser()
+        add_idle_timeout_arg(parser)
+        args = parser.parse_args([])
+        assert args.idle_timeout is None
+
+    def test_accepts_integer(self) -> None:
+        """Accepts integer value."""
+        parser = argparse.ArgumentParser()
+        add_idle_timeout_arg(parser)
+        args = parser.parse_args(["--idle-timeout", "300"])
+        assert args.idle_timeout == 300
+
+    def test_accepts_zero(self) -> None:
+        """Accepts zero to disable idle timeout."""
+        parser = argparse.ArgumentParser()
+        add_idle_timeout_arg(parser)
+        args = parser.parse_args(["--idle-timeout", "0"])
+        assert args.idle_timeout == 0
+
+
 class TestAddSkipArg:
     """Tests for add_skip_arg() function."""
 
@@ -277,7 +303,7 @@ class TestAddCommonAutoArgs:
     """Tests for add_common_auto_args() function."""
 
     def test_adds_all_expected_arguments(self) -> None:
-        """Adds resume, dry-run, max-issues, only, skip, type, config."""
+        """Adds resume, dry-run, max-issues, only, skip, type, config, idle-timeout."""
         parser = argparse.ArgumentParser()
         add_common_auto_args(parser)
         args = parser.parse_args(
@@ -294,6 +320,8 @@ class TestAddCommonAutoArgs:
                 "BUG",
                 "--config",
                 "/path",
+                "--idle-timeout",
+                "300",
             ]
         )
         assert args.resume is True
@@ -303,13 +331,14 @@ class TestAddCommonAutoArgs:
         assert args.skip == "BUG-002"
         assert args.type == "BUG"
         assert args.config is not None
+        assert args.idle_timeout == 300
 
 
 class TestAddCommonParallelArgs:
     """Tests for add_common_parallel_args() function."""
 
     def test_adds_all_expected_arguments(self) -> None:
-        """Adds dry-run, resume, max-workers, timeout, quiet, only, skip, type, config."""
+        """Adds dry-run, resume, max-workers, timeout, idle-timeout, quiet, only, skip, type, config."""
         parser = argparse.ArgumentParser()
         add_common_parallel_args(parser)
         args = parser.parse_args(
@@ -320,6 +349,8 @@ class TestAddCommonParallelArgs:
                 "3",
                 "--timeout",
                 "1800",
+                "--idle-timeout",
+                "300",
                 "--quiet",
                 "--only",
                 "BUG-001",
@@ -335,6 +366,7 @@ class TestAddCommonParallelArgs:
         assert args.resume is True
         assert args.max_workers == 3
         assert args.timeout == 1800
+        assert args.idle_timeout == 300
         assert args.quiet is True
         assert args.only == "BUG-001"
         assert args.skip == "BUG-002"

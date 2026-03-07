@@ -34,10 +34,10 @@ A developer runs `ll-parallel --idle-timeout 300` to kill any worker that produc
 
 ## Acceptance Criteria
 
-- [ ] `ll-auto --idle-timeout N` sets `idle_timeout_seconds` for that run
-- [ ] `ll-parallel --idle-timeout N` sets `idle_timeout_per_issue` for that run
-- [ ] Default behavior unchanged when flag is not provided (uses config value)
-- [ ] Flag documented in `--help` output
+- [x] `ll-auto --idle-timeout N` sets `idle_timeout_seconds` for that run
+- [x] `ll-parallel --idle-timeout N` sets `idle_timeout_per_issue` for that run
+- [x] Default behavior unchanged when flag is not provided (uses config value)
+- [x] Flag documented in `--help` output
 
 ## Proposed Solution
 
@@ -107,12 +107,30 @@ Add `add_idle_timeout_arg(parser)` to `cli_args.py` following the `add_timeout_a
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 - `/ll:confidence-check` - 2026-03-06 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — confidence_score=90, outcome_confidence=85
 - `/ll:verify-issues` - 2026-03-06 - Corrected two stale line numbers: config.py:181→193, worker_pool.py:688→713. All other facts valid. result: VALID
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/905734ff-ad8b-4a71-9f6f-99ce62be19d7.jsonl`
 
 ---
 
+## Resolution
+
+**Completed**: 2026-03-06
+
+### Changes Made
+
+- `scripts/little_loops/cli_args.py` — Added `add_idle_timeout_arg()` function following the `add_timeout_arg` pattern; added to `add_common_auto_args`, `add_common_parallel_args`, and `__all__`
+- `scripts/little_loops/cli/auto.py` — Wires `args.idle_timeout` into `config.automation.idle_timeout_seconds` override after config load
+- `scripts/little_loops/cli/parallel.py` — Imports and calls `add_idle_timeout_arg`; passes `idle_timeout_per_issue=args.idle_timeout` to `create_parallel_config`
+- `scripts/little_loops/config.py` — Added `idle_timeout_per_issue: int | None = None` parameter to `create_parallel_config`; passes value to `ParallelConfig`
+- `scripts/tests/test_cli_args.py` — Added `TestAddIdleTimeoutArg` class with 3 tests; updated `TestAddCommonAutoArgs` and `TestAddCommonParallelArgs` to include `--idle-timeout`
+
+### Verification
+
+- 3339 tests pass, 4 skipped, 0 failures
+- `ruff check` passes on all modified files
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P4
+**Completed** | Created: 2026-02-24 | Priority: P4
 
 ---
 
@@ -133,8 +151,6 @@ Add `add_idle_timeout_arg(parser)` to `cli_args.py` following the `add_timeout_a
 Deferred - Good utility-to-cost ratio (MEDIUM utility, LOW effort) but blocked by 3 upstream issues (FEAT-490, FEAT-441, ENH-459). This becomes a quick win once blockers resolve. No changes needed to the issue itself.
 
 ## Blocked By
-
-- FEAT-490
 
 - ENH-459
 

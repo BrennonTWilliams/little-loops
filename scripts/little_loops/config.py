@@ -799,6 +799,7 @@ class BRConfig:
         max_issues: int = 0,
         dry_run: bool = False,
         timeout_seconds: int | None = None,
+        idle_timeout_per_issue: int | None = None,
         stream_output: bool | None = None,
         show_model: bool | None = None,
         only_ids: set[str] | None = None,
@@ -819,6 +820,7 @@ class BRConfig:
             max_issues: Maximum issues to process (default: 0 = unlimited)
             dry_run: Preview mode (default: False)
             timeout_seconds: Per-issue timeout (default: from config)
+            idle_timeout_per_issue: Kill worker if no output for N seconds (0 to disable, default: 0)
             stream_output: Stream output (default: from config)
             show_model: Make API call to verify model (default: False)
             only_ids: If provided, only process these issue IDs
@@ -844,6 +846,7 @@ class BRConfig:
             max_issues=max_issues,
             dry_run=dry_run,
             timeout_per_issue=timeout_seconds or self._parallel.base.timeout_seconds,
+            idle_timeout_per_issue=idle_timeout_per_issue if idle_timeout_per_issue is not None else 0,
             stream_subprocess_output=(
                 stream_output if stream_output is not None else self._parallel.base.stream_output
             ),

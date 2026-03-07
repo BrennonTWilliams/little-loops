@@ -54,6 +54,9 @@ Examples:
     config = BRConfig(project_root)
     configure_output(config.cli)
 
+    if args.idle_timeout is not None:
+        config.automation.idle_timeout_seconds = args.idle_timeout
+
     # Parse issue ID filters
     only_ids = parse_issue_ids(args.only)
     skip_ids = parse_issue_ids(args.skip)
