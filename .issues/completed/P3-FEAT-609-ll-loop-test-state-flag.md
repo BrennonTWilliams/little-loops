@@ -111,4 +111,20 @@ state_config = fsm.states[target]
 
 ## Status
 
-**Open** | Created: 2026-03-06 | Priority: P3
+**Completed** | Created: 2026-03-06 | Completed: 2026-03-06 | Priority: P3
+
+## Resolution
+
+**Implemented** `--state` flag for `ll-loop test`.
+
+### Changes
+
+- `scripts/little_loops/cli/loop/__init__.py` — added `--state` optional argument to `test_parser`; updated `cmd_test` call to pass `args` instead of `args.loop`
+- `scripts/little_loops/cli/loop/testing.py` — updated `cmd_test` signature to accept `args: argparse.Namespace`; replaced hardcoded `fsm.initial` with state-aware lookup using `args.state`; added validation with error message for unknown states
+- `scripts/tests/test_ll_loop_commands.py` — added `TestCmdTest` class with 3 tests: default behavior, `--state` targeting a specific state, and `--state` with an invalid state name
+
+### Acceptance Criteria
+
+- [x] `ll-loop test <loop> --state <name>` tests the specified state
+- [x] Error message if `--state` value doesn't exist in the loop's states
+- [x] Without `--state`, behavior unchanged (tests initial state)

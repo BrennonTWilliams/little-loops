@@ -1104,3 +1104,78 @@ class TestCmdCompile:
         assert "llm" in compiled, "llm block dropped during compilation"
         assert compiled["llm"].get("model") == "claude-opus-4-6"
         assert compiled["llm"].get("max_tokens") == 1024
+
+
+class TestCmdTest:
+    """Tests for cmd_test --state flag (FEAT-609)."""
+
+    @pytest.fixture
+    def multi_state_loop(self, tmp_path: Path) -> Path:
+        """Create a multi-state loop with distinct states."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_file = loops_dir / "multi-state.yaml"
+        loop_file.write_text(
+            "name: multi-state\n"
+            "initial: check_types\n"
+            "states:\n"
+            "  check_types:\n"
+            '    action: "echo checking types"\n'
+            "    on_success: done\n"
+            "    on_failure: fix_types\n"
+            "  fix_types:\n"
+            '    action: "echo fixing types"\n'
+            "    on_success: done\n"
+            "    on_failure: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        return loops_dir
+
+    def test_default_behavior_uses_initial_state(
+        self,
+        multi_state_loop: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Without --state, cmd_test uses the initial state."""
+        from little_loops.cli.loop.testing import cmd_test
+        from little_loops.logger import Logger
+
+        args = argparse.Namespace(state=None)
+        logger = Logger(use_color=False)
+        result = cmd_test("multi-state", args, multi_state_loop, logger)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "State: check_types" in captured.out
+
+    def test_state_flag_tests_specified_state(
+        self,
+        multi_state_loop: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--state <name> tests the specified state instead of the initial one."""
+        from little_loops.cli.loop.testing import cmd_test
+        from little_loops.logger import Logger
+
+        args = argparse.Namespace(state="fix_types")
+        logger = Logger(use_color=False)
+        result = cmd_test("multi-state", args, multi_state_loop, logger)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "State: fix_types" in captured.out
+
+    def test_invalid_state_returns_error(
+        self,
+        multi_state_loop: Path,
+    ) -> None:
+        """--state with a nonexistent state logs an error and returns 1."""
+        from little_loops.cli.loop.testing import cmd_test
+        from little_loops.logger import Logger
+
+        args = argparse.Namespace(state="nonexistent_state")
+        logger = Logger(use_color=False)
+        result = cmd_test("multi-state", args, multi_state_loop, logger)
+
+        assert result == 1

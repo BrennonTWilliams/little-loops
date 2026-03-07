@@ -171,6 +171,7 @@ Examples:
     )
     test_parser.set_defaults(command="test")
     test_parser.add_argument("loop", help="Loop name")
+    test_parser.add_argument("--state", help="Test a specific state instead of the initial state")
 
     # Simulate subcommand
     simulate_parser = subparsers.add_parser(
@@ -229,7 +230,7 @@ Examples:
     elif args.command == "history":
         return cmd_history(args.loop, args, loops_dir)
     elif args.command == "test":
-        return cmd_test(args.loop, loops_dir, logger)
+        return cmd_test(args.loop, args, loops_dir, logger)
     elif args.command == "simulate":
         return cmd_simulate(args.loop, args, loops_dir, logger)
     elif args.command == "install":

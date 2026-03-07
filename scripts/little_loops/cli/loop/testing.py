@@ -11,12 +11,13 @@ from little_loops.logger import Logger
 
 def cmd_test(
     loop_name: str,
+    args: argparse.Namespace,
     loops_dir: Path,
     logger: Logger,
 ) -> int:
     """Run a single test iteration to verify loop configuration.
 
-    Executes the initial state's action and evaluation, then reports
+    Executes the target state's action and evaluation, then reports
     what the loop would do without actually transitioning further.
     """
     from little_loops.fsm.evaluators import EvaluationResult, evaluate, evaluate_exit_code
@@ -32,17 +33,20 @@ def cmd_test(
         logger.error(f"Validation error: {e}")
         return 1
 
-    # Get initial state
-    initial = fsm.initial
-    state_config = fsm.states[initial]
+    # Determine target state
+    target = args.state if args.state else fsm.initial
+    if target not in fsm.states:
+        logger.error(f"State '{target}' not found. Available: {', '.join(fsm.states)}")
+        return 1
+    state_config = fsm.states[target]
 
     print(f"## Test Iteration: {loop_name}")
     print()
-    print(f"State: {initial}")
+    print(f"State: {target}")
 
     # If no action, report and exit
     if not state_config.action:
-        print(f"Initial state '{initial}' has no action to test")
+        print(f"State '{target}' has no action to test")
         print()
         print("\u2713 Loop structure is valid (no check action to execute)")
         return 0
@@ -139,9 +143,9 @@ def cmd_test(
 
     print()
     if next_state:
-        print(f"Would transition: {initial} \u2192 {next_state}")
+        print(f"Would transition: {target} \u2192 {next_state}")
     else:
-        print(f"Would transition: {initial} \u2192 (no route for '{verdict}')")
+        print(f"Would transition: {target} \u2192 (no route for '{verdict}')")
 
     # Summary
     print()
