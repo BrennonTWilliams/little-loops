@@ -56,11 +56,11 @@ and get larger, more meaningful clusters without editing source code.
 
 ## Acceptance Criteria
 
-- [ ] `--overlap-threshold <float>` CLI flag controls entity clustering (default: 0.3)
-- [ ] `--boundary-threshold <float>` CLI flag controls boundary detection (default: 0.6)
-- [ ] Both flags validate that the value is in `[0.0, 1.0]` with a clear error for out-of-range input
-- [ ] `analyze_workflows()` accepts `overlap_threshold` and `boundary_threshold` keyword arguments with the same defaults
-- [ ] Existing behavior is unchanged when flags are not provided
+- [x] `--overlap-threshold <float>` CLI flag controls entity clustering (default: 0.3)
+- [x] `--boundary-threshold <float>` CLI flag controls boundary detection (default: 0.6)
+- [x] Both flags validate that the value is in `[0.0, 1.0]` with a clear error for out-of-range input
+- [x] `analyze_workflows()` accepts `overlap_threshold` and `boundary_threshold` keyword arguments with the same defaults
+- [x] Existing behavior is unchanged when flags are not provided
 
 ## Proposed Solution
 
@@ -144,9 +144,9 @@ def analyze_workflows(
 ## Verification Notes
 
 - **Verdict**: VALID — issue accurately describes current codebase state
-- `_cluster_by_entities` at line 490 (was 484 at scan commit) with `overlap_threshold: float = 0.3` ✓
-- `_compute_boundaries` at line 551 (was 544) with `boundary_threshold: float = 0.6` ✓
-- `analyze_workflows` call sites at lines 770–771 still call both with no threshold arguments ✓
+- `_cluster_by_entities` at line 499 (was 484 at scan commit) with `overlap_threshold: float = 0.3` ✓
+- `_compute_boundaries` at line 560 (was 544 at scan commit) with `boundary_threshold: float = 0.6` ✓
+- `analyze_workflows` at line 747; call sites at lines 779–780 still call both with no threshold arguments ✓
 - No dependencies detected
 
 ## Related Key Documentation
@@ -180,9 +180,23 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47b6876a-ac1a-4e7a-a249-39bc456b09d5.jsonl`
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47b6876a-ac1a-4e7a-a249-39bc456b09d5.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd72e0e6-0056-429e-acc1-dfeca54c9cb1.jsonl`
 
 ---
 
+## Resolution
+
+Implemented in `scripts/little_loops/workflow_sequence_analyzer.py`:
+- Added `overlap_threshold` and `boundary_threshold` parameters to `analyze_workflows()` with defaults 0.3 and 0.6
+- Passed both through to `_cluster_by_entities` and `_compute_boundaries` call sites
+- Added `--overlap-threshold` and `--boundary-threshold` CLI flags to `analyze_parser` in `main()`
+- Added `[0.0, 1.0]` range validation for both CLI flags with clear error messages
+- Added 3 integration tests in `test_workflow_sequence_analyzer.py` covering non-default threshold values and regression
+
+## Session Log
+
+- `/ll:manage-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
+
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P4
+**Completed** | Created: 2026-03-04 | Completed: 2026-03-06 | Priority: P4
