@@ -558,7 +558,7 @@ def evaluate(
 
     elif eval_type == "output_numeric":
         if config.target is None:
-            numeric_target = 0.0
+            raise ValueError("output_numeric evaluator requires 'target' to be set")
         elif isinstance(config.target, str):
             try:
                 resolved = interpolate(config.target, context) if context else config.target
@@ -620,7 +620,9 @@ def evaluate(
                     details={"error": f"Cannot resolve target: {e}"},
                 )
         else:
-            convergence_target = float(config.target) if config.target is not None else 0.0
+            if config.target is None:
+                raise ValueError("convergence evaluator requires 'target' to be set")
+            convergence_target = float(config.target)
 
         # Resolve tolerance (may be interpolated string)
         tolerance: float = 0.0

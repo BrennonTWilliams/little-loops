@@ -437,6 +437,13 @@ class TestEvaluateDispatcher:
         with pytest.raises(ValueError, match="output_numeric target must be numeric"):
             evaluate(config, "5", 0, ctx)
 
+    def test_dispatch_output_numeric_none_target_raises(self) -> None:
+        """output_numeric with target=None raises ValueError instead of silently using 0.0."""
+        config = EvaluateConfig(type="output_numeric", operator="eq")  # target defaults to None
+        ctx = InterpolationContext()
+        with pytest.raises(ValueError, match="output_numeric evaluator requires 'target'"):
+            evaluate(config, "5", 0, ctx)
+
     def test_dispatch_output_json(self) -> None:
         """output_json type routes correctly."""
         config = EvaluateConfig(type="output_json", path=".count", operator="eq", target=0)
@@ -501,6 +508,13 @@ class TestEvaluateDispatcher:
         result = evaluate(config, "not a number", 0, ctx)
         assert result.verdict == "error"
         assert "Cannot parse output" in result.details["error"]
+
+    def test_dispatch_convergence_none_target_raises(self) -> None:
+        """convergence with target=None raises ValueError instead of silently using 0.0."""
+        config = EvaluateConfig(type="convergence")  # target defaults to None
+        ctx = InterpolationContext()
+        with pytest.raises(ValueError, match="convergence evaluator requires 'target'"):
+            evaluate(config, "5", 0, ctx)
 
     def test_dispatch_unknown_type_raises(self) -> None:
         """Unknown type raises ValueError."""

@@ -3,6 +3,8 @@ discovered_commit: 12a6af03c58a3b8f355e265a895b3950db89b66c
 discovered_branch: main
 discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
+confidence_score: 93
+outcome_confidence: 95
 ---
 
 # BUG-622: `output_numeric` silently defaults missing `target` to `0.0` when validation bypassed
@@ -14,12 +16,24 @@ The `output_numeric` branch in `evaluate()` treats `config.target is None` as va
 ## Location
 
 - **File**: `scripts/little_loops/fsm/evaluators.py`
-- **Line(s)**: 559–565 (at scan commit: 12a6af0)
+- **Line(s)**: 559–576 (at HEAD; None-default at line 560–561)
 - **Anchor**: `in function evaluate(), eval_type == "output_numeric" branch`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/12a6af03c58a3b8f355e265a895b3950db89b66c/scripts/little_loops/fsm/evaluators.py#L559-L565)
 - **Code**:
 ```python
-numeric_target = float(config.target) if config.target is not None else 0.0
+elif eval_type == "output_numeric":
+    if config.target is None:
+        numeric_target = 0.0          # <-- silent default; bug here
+    elif isinstance(config.target, str):
+        try:
+            resolved = interpolate(config.target, context) if context else config.target
+            numeric_target = float(resolved)
+        except (InterpolationError, ValueError) as e:
+            raise ValueError(
+                f"output_numeric target must be numeric, got: {config.target!r}"
+            ) from e
+    else:
+        numeric_target = float(config.target)
 ```
 
 ## Current Behavior
@@ -44,12 +58,14 @@ When `target` is `None`, the evaluator should raise a clear `EvaluationError` ra
 
 ## Proposed Solution
 
-Replace the silent default with an explicit error:
+Replace the silent default with an explicit error (`EvaluationError` does not exist in the codebase; use `ValueError` consistent with the existing error-raise pattern at line 567):
 
 ```python
-if config.target is None:
-    raise EvaluationError("output_numeric evaluator requires 'target' to be set")
-numeric_target = float(config.target)
+elif eval_type == "output_numeric":
+    if config.target is None:
+        raise ValueError("output_numeric evaluator requires 'target' to be set")
+    elif isinstance(config.target, str):
+        ...
 ```
 
 ## Integration Map
@@ -88,10 +104,35 @@ numeric_target = float(config.target)
 
 `bug`, `fsm`, `evaluator`, `captured`
 
+## Verification Notes
+
+**Verdict**: NEEDS_UPDATE — Verified 2026-03-07
+
+- Commit `4b0de89` restructured the `output_numeric` branch in `evaluators.py` (added a non-numeric string guard with interpolation), but the `config.target is None → 0.0` silent default **still persists** at `evaluators.py:555–576`. Core bug is still valid.
+- Issue code snippet no longer matches current code structure (it shows a single ternary; current code is a multi-branch `if/elif/else`). The proposed fix (raise `EvaluationError` when `target is None`) remains correct and is the same change needed.
+- No other changes to impact or scope required.
+
+## Resolution
+
+**Status**: COMPLETED — 2026-03-07
+
+### Changes Made
+
+- `scripts/little_loops/fsm/evaluators.py`: Replaced silent `0.0` default with `ValueError` in `output_numeric` branch (line ~561). Also fixed identical pattern in `convergence` branch (line ~623).
+- `scripts/tests/test_fsm_evaluators.py`: Added `test_dispatch_output_numeric_none_target_raises` and `test_dispatch_convergence_none_target_raises` to cover the new error paths.
+
+### Verification
+
+- All 104 evaluator tests pass.
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
 - `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8a0f657-a512-4e80-9946-68695952f105.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d11c154b-ec01-40ba-bc51-c1eb3dd6ae2f.jsonl`
+- `/ll:confidence-check` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f1264d4-d8b5-4093-9023-f666be376885.jsonl`
+- `/ll:manage-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-07 | Priority: P4
+**Completed** | Created: 2026-03-07 | Priority: P4
