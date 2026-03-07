@@ -753,7 +753,9 @@ class TestAnalyzeWorkflows:
             )
             assert result.metadata["message_count"] == 2
 
-    def test_verbose_true_emits_progress_to_stderr(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_verbose_true_emits_progress_to_stderr(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """verbose=True emits per-stage progress lines to stderr."""
         with tempfile.TemporaryDirectory() as tmpdir:
             tmpdir_path = Path(tmpdir)
@@ -847,7 +849,10 @@ class TestAnalyzeWorkflows:
             assert "entity_clusters" in output_data
             assert "workflow_boundaries" in output_data
             assert "workflows" in output_data
-            assert output_data["analysis_metadata"]["message_count"] == result.metadata["message_count"]
+            assert (
+                output_data["analysis_metadata"]["message_count"]
+                == result.metadata["message_count"]
+            )
 
     def test_yaml_output_format_default(
         self,

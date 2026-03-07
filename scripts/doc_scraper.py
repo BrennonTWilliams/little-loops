@@ -14,32 +14,30 @@ Example:
 
 import argparse
 import asyncio
-import fnmatch
 import logging
-import os
 import re
 import sys
-import urllib.parse
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 from urllib.parse import urljoin, urlparse
 
 import aiohttp
 from bs4 import BeautifulSoup
 
-
 # =============================================================================
 # Data Structures
 # =============================================================================
 
+
 @dataclass
 class SitemapNode:
     """Represents a node in the documentation sitemap tree."""
+
     url: str
     title: str
-    children: list['SitemapNode'] = field(default_factory=list)
+    children: list["SitemapNode"] = field(default_factory=list)
     depth: int = 0
     is_leaf: bool = True
 
@@ -50,6 +48,7 @@ class SitemapNode:
 @dataclass
 class SiteCapabilities:
     """Capabilities detected for a documentation site."""
+
     has_llms_txt: bool = False
     llms_txt_urls: list[str] = field(default_factory=list)
     supports_md_suffix: bool = False
@@ -59,6 +58,7 @@ class SiteCapabilities:
 @dataclass
 class ScrapedPage:
     """Represents a scraped page with its content and metadata."""
+
     url: str
     title: str
     markdown_content: str
@@ -69,6 +69,7 @@ class ScrapedPage:
 # =============================================================================
 # Error Handler
 # =============================================================================
+
 
 class ScraperErrorHandler:
     """Handles errors during the scraping process."""
@@ -86,8 +87,7 @@ class ScraperErrorHandler:
 
         handler = logging.StreamHandler()
         formatter = logging.Formatter(
-            "%(asctime)s - %(name)s - %(levelname)s - %(message)s",
-            datefmt="%H:%M:%S"
+            "%(asctime)s - %(name)s - %(levelname)s - %(message)s", datefmt="%H:%M:%S"
         )
         handler.setFormatter(formatter)
         logger.addHandler(handler)
@@ -101,7 +101,7 @@ class ScraperErrorHandler:
             "error": str(error),
             "type": type(error).__name__,
             "context": context,
-            "timestamp": datetime.now().isoformat()
+            "timestamp": datetime.now().isoformat(),
         }
         self.errors.append(error_info)
         self.logger.error(f"{context}: {url} - {error}")
@@ -125,7 +125,7 @@ class ScraperErrorHandler:
             for i, error in enumerate(self.errors, 1):
                 print(f"  {i}. {error['url']}")
                 print(f"     {error['type']}: {error['error']}")
-                if error['context']:
+                if error["context"]:
                     print(f"     Context: {error['context']}")
 
         if self.skipped:
@@ -163,6 +163,7 @@ def _create_session(**kwargs) -> aiohttp.ClientSession:
 # =============================================================================
 # Markdown Detection
 # =============================================================================
+
 
 def _is_valid_markdown(content: str) -> bool:
     """Check if content looks like valid markdown rather than HTML."""
@@ -244,12 +245,12 @@ class MarkdownDetector:
         """Extract URLs from llms.txt content."""
         urls = []
         # Match markdown links: [text](url)
-        for match in re.finditer(r'\[.*?\]\((https?://[^\s)]+)\)', content):
+        for match in re.finditer(r"\[.*?\]\((https?://[^\s)]+)\)", content):
             url = match.group(1)
             if urlparse(url).netloc == self.base_domain:
                 urls.append(url)
         # Match bare URLs on their own lines
-        for match in re.finditer(r'^(https?://\S+)$', content, re.MULTILINE):
+        for match in re.finditer(r"^(https?://\S+)$", content, re.MULTILINE):
             url = match.group(1)
             if urlparse(url).netloc == self.base_domain and url not in urls:
                 urls.append(url)
@@ -278,6 +279,7 @@ class MarkdownDetector:
 # Sitemap Discovery
 # =============================================================================
 
+
 class SitemapDiscovery:
     """Discovers the documentation site structure using multiple strategies."""
 
@@ -286,7 +288,7 @@ class SitemapDiscovery:
         base_url: str,
         error_handler: ScraperErrorHandler,
         max_depth: int = 3,
-        capabilities: Optional[SiteCapabilities] = None,
+        capabilities: SiteCapabilities | None = None,
     ):
         self.base_url = base_url
         self.base_domain = urlparse(base_url).netloc
@@ -326,7 +328,7 @@ class SitemapDiscovery:
         )
         return await self._recursive_crawl()
 
-    async def _try_sitemap_xml(self) -> Optional[SitemapNode]:
+    async def _try_sitemap_xml(self) -> SitemapNode | None:
         """Attempt to parse sitemap.xml from the site."""
         sitemap_urls = [
             urljoin(self.base_url, "/sitemap.xml"),
@@ -336,16 +338,18 @@ class SitemapDiscovery:
         for sitemap_url in sitemap_urls:
             try:
                 async with _create_session() as session:
-                    async with session.get(sitemap_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                    async with session.get(
+                        sitemap_url, timeout=aiohttp.ClientTimeout(total=10)
+                    ) as response:
                         if response.status == 200:
                             content = await response.text()
                             return self._parse_sitemap_xml(content, sitemap_url)
-            except Exception as e:
+            except Exception:
                 self.error_handler.logger.debug(f"No sitemap.xml found at {sitemap_url}")
 
         return None
 
-    def _parse_sitemap_xml(self, content: str, sitemap_url: str) -> Optional[SitemapNode]:
+    def _parse_sitemap_xml(self, content: str, sitemap_url: str) -> SitemapNode | None:
         """Parse sitemap.xml content into a SitemapNode tree."""
         try:
             from lxml import etree
@@ -354,13 +358,19 @@ class SitemapDiscovery:
 
             # Handle sitemap index (references other sitemaps)
             if etree.QName(root.tag).localname == "sitemapindex":
-                self.error_handler.logger.info("Found sitemap index (not implemented, using fallback)")
+                self.error_handler.logger.info(
+                    "Found sitemap index (not implemented, using fallback)"
+                )
                 return None
 
             # Handle urlset
             urls = []
-            for url_elem in root.xpath("//ns:url", namespaces={"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}):
-                loc = url_elem.xpath("ns:loc", namespaces={"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"})
+            for url_elem in root.xpath(
+                "//ns:url", namespaces={"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+            ):
+                loc = url_elem.xpath(
+                    "ns:loc", namespaces={"ns": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+                )
                 if loc:
                     urls.append(loc[0].text)
 
@@ -381,7 +391,11 @@ class SitemapDiscovery:
             path_parts = [p for p in parsed.path.split("/") if p]
 
             # Build title from path
-            title = path_parts[-1].replace("-", " ").replace("_", " ").title() if path_parts else "Index"
+            title = (
+                path_parts[-1].replace("-", " ").replace("_", " ").title()
+                if path_parts
+                else "Index"
+            )
 
             current = root
             current_depth = 0
@@ -397,24 +411,28 @@ class SitemapDiscovery:
 
                 if not found:
                     section_title = part.replace("-", " ").replace("_", " ").title()
-                    section_url = urljoin(self.base_url, "/".join(path_parts[:i+1]) + "/")
-                    new_node = SitemapNode(url=section_url, title=section_title, depth=i+1, is_leaf=False)
+                    section_url = urljoin(self.base_url, "/".join(path_parts[: i + 1]) + "/")
+                    new_node = SitemapNode(
+                        url=section_url, title=section_title, depth=i + 1, is_leaf=False
+                    )
                     current.children.append(new_node)
                     current = new_node
 
                 current_depth += 1
 
             # Add leaf node
-            leaf = SitemapNode(url=url, title=title, depth=current_depth+1, is_leaf=True)
+            leaf = SitemapNode(url=url, title=title, depth=current_depth + 1, is_leaf=True)
             current.children.append(leaf)
 
         return root
 
-    async def _try_html_navigation(self) -> Optional[SitemapNode]:
+    async def _try_html_navigation(self) -> SitemapNode | None:
         """Attempt to parse HTML navigation elements."""
         try:
             async with _create_session() as session:
-                async with session.get(self.base_url, timeout=aiohttp.ClientTimeout(total=10)) as response:
+                async with session.get(
+                    self.base_url, timeout=aiohttp.ClientTimeout(total=10)
+                ) as response:
                     if response.status != 200:
                         return None
 
@@ -466,11 +484,27 @@ class SitemapDiscovery:
                 continue
 
             # Skip common non-content links
-            if any(pattern in full_url.lower() for pattern in [
-                "api", "auth", "login", "logout", "account", "search",
-                "feed", "rss", "tag", "category", ".pdf", ".zip",
-                "github", "twitter", "discord", "slack"
-            ]):
+            if any(
+                pattern in full_url.lower()
+                for pattern in [
+                    "api",
+                    "auth",
+                    "login",
+                    "logout",
+                    "account",
+                    "search",
+                    "feed",
+                    "rss",
+                    "tag",
+                    "category",
+                    ".pdf",
+                    ".zip",
+                    "github",
+                    "twitter",
+                    "discord",
+                    "slack",
+                ]
+            ):
                 continue
 
             urls.add(full_url)
@@ -489,7 +523,9 @@ class SitemapDiscovery:
 
         return root
 
-    async def _crawl_page(self, url: str, parent: SitemapNode, session: aiohttp.ClientSession, depth: int):
+    async def _crawl_page(
+        self, url: str, parent: SitemapNode, session: aiohttp.ClientSession, depth: int
+    ):
         """Recursively crawl a page and its links."""
         if url in self.visited_urls or depth >= self.max_depth:
             return
@@ -506,7 +542,9 @@ class SitemapDiscovery:
 
                 # Get page title
                 title_tag = soup.find("title")
-                title = title_tag.get_text() if title_tag else Path(urlparse(url).path).name or "Index"
+                title = (
+                    title_tag.get_text() if title_tag else Path(urlparse(url).path).name or "Index"
+                )
 
                 # Create node
                 node = SitemapNode(url=url, title=title.strip(), depth=depth)
@@ -525,7 +563,9 @@ class SitemapDiscovery:
                         continue
 
                     # Skip anchors and non-content
-                    if full_url.startswith("#") or any(ext in full_url for ext in [".pdf", ".zip", ".jpg", ".png"]):
+                    if full_url.startswith("#") or any(
+                        ext in full_url for ext in [".pdf", ".zip", ".jpg", ".png"]
+                    ):
                         continue
 
                     await self._crawl_page(full_url, node, session, depth + 1)
@@ -537,6 +577,7 @@ class SitemapDiscovery:
 # =============================================================================
 # Folder Structure Builder
 # =============================================================================
+
 
 class FolderStructureBuilder:
     """Builds the mirrored folder structure from the sitemap."""
@@ -616,6 +657,7 @@ class FolderStructureBuilder:
 # Page Processor
 # =============================================================================
 
+
 class PageProcessor:
     """Processes pages: scrapes, converts to Markdown, and writes files."""
 
@@ -624,7 +666,7 @@ class PageProcessor:
         error_handler: ScraperErrorHandler,
         concurrent: int = 3,
         timeout: int = 30,
-        capabilities: Optional[SiteCapabilities] = None,
+        capabilities: SiteCapabilities | None = None,
     ):
         self.error_handler = error_handler
         self.concurrent = concurrent
@@ -638,6 +680,7 @@ class PageProcessor:
         """Initialize MarkItDown converter."""
         try:
             from markitdown import MarkItDown
+
             return MarkItDown()
         except ImportError:
             self.error_handler.logger.warning(
@@ -654,6 +697,7 @@ class PageProcessor:
         # Initialize shared crawler instance for all pages
         try:
             from crawl4ai import AsyncWebCrawler
+
             self.crawler = AsyncWebCrawler(verbose=False)
             await self.crawler.start()
         except ImportError:
@@ -661,8 +705,7 @@ class PageProcessor:
             self.crawler = None
 
         tasks = [
-            self._process_single_page(url, filepath)
-            for url, filepath in url_to_filepath.items()
+            self._process_single_page(url, filepath) for url, filepath in url_to_filepath.items()
         ]
 
         try:
@@ -685,7 +728,7 @@ class PageProcessor:
 
         return pages
 
-    async def _fetch_markdown_direct(self, url: str) -> Optional[str]:
+    async def _fetch_markdown_direct(self, url: str) -> str | None:
         """Fetch raw markdown by appending .md to the URL."""
         md_url = f"{url.rstrip('/')}.md"
         try:
@@ -696,17 +739,13 @@ class PageProcessor:
                     if response.status == 200:
                         content = await response.text()
                         if _is_valid_markdown(content):
-                            self.error_handler.logger.debug(
-                                f"Fetched raw markdown: {md_url}"
-                            )
+                            self.error_handler.logger.debug(f"Fetched raw markdown: {md_url}")
                             return content
         except Exception as e:
-            self.error_handler.logger.debug(
-                f"Direct markdown fetch failed for {md_url}: {e}"
-            )
+            self.error_handler.logger.debug(f"Direct markdown fetch failed for {md_url}: {e}")
         return None
 
-    async def _process_single_page(self, url: str, filepath: Path) -> Optional[ScrapedPage]:
+    async def _process_single_page(self, url: str, filepath: Path) -> ScrapedPage | None:
         """Process a single page."""
         async with self.semaphore:
             try:
@@ -748,17 +787,14 @@ class PageProcessor:
                 title = self._extract_title(markdown, filepath)
 
                 return ScrapedPage(
-                    url=url,
-                    title=title,
-                    markdown_content=markdown,
-                    filepath=filepath
+                    url=url, title=title, markdown_content=markdown, filepath=filepath
                 )
 
             except Exception as e:
                 self.error_handler.log_error(url, e, "during page processing")
                 return None
 
-    async def _scrape_page(self, url: str) -> Optional[str]:
+    async def _scrape_page(self, url: str) -> str | None:
         """Scrape a page using the shared crawler instance."""
         if self.crawler:
             try:
@@ -771,7 +807,9 @@ class PageProcessor:
                 if result.success:
                     return result.html
                 else:
-                    self.error_handler.logger.warning(f"Crawl failed for {url}: {result.error_message}")
+                    self.error_handler.logger.warning(
+                        f"Crawl failed for {url}: {result.error_message}"
+                    )
                     return await self._simple_fetch(url)
 
             except Exception as e:
@@ -781,11 +819,13 @@ class PageProcessor:
         # Fallback to simple HTTP request
         return await self._simple_fetch(url)
 
-    async def _simple_fetch(self, url: str) -> Optional[str]:
+    async def _simple_fetch(self, url: str) -> str | None:
         """Simple HTTP fetch as fallback."""
         try:
             async with _create_session() as session:
-                async with session.get(url, timeout=aiohttp.ClientTimeout(total=self.timeout)) as response:
+                async with session.get(
+                    url, timeout=aiohttp.ClientTimeout(total=self.timeout)
+                ) as response:
                     if response.status == 200:
                         return await response.text()
         except Exception as e:
@@ -859,12 +899,12 @@ filepath: {filepath.relative_to(filepath.anchor)}
     def _merge_frontmatter(self, markdown: str, url: str, filepath: Path) -> str:
         """Merge scraper frontmatter into markdown that already has frontmatter."""
         # Parse existing frontmatter
-        match = re.match(r'^---\s*\n(.*?)\n---\s*\n', markdown, re.DOTALL)
+        match = re.match(r"^---\s*\n(.*?)\n---\s*\n", markdown, re.DOTALL)
         if not match:
             return self._add_frontmatter(markdown, url, filepath)
 
         existing_fm = match.group(1)
-        body = markdown[match.end():]
+        body = markdown[match.end() :]
 
         # Add our fields if not already present
         lines = existing_fm.strip().split("\n")
@@ -893,6 +933,7 @@ filepath: {filepath.relative_to(filepath.anchor)}
 # =============================================================================
 # Main Scraper Class
 # =============================================================================
+
 
 class DocumentationScraper:
     """Main coordinator for the documentation scraping process."""
@@ -1000,6 +1041,7 @@ class DocumentationScraper:
 # CLI Interface
 # =============================================================================
 
+
 def parse_args() -> argparse.Namespace:
     """Parse command line arguments."""
     parser = argparse.ArgumentParser(
@@ -1010,59 +1052,43 @@ Examples:
   %(prog)s https://manual.raycast.com/mac
   %(prog)s https://docs.python.org/3 --verbose --output ./python-docs
   %(prog)s https://manual.raycast.com/mac --sitemap-only
-        """
+        """,
+    )
+
+    parser.add_argument("url", help="Documentation site URL to scrape")
+
+    parser.add_argument(
+        "-v", "--verbose", action="store_true", help="Show sitemap and detailed progress"
     )
 
     parser.add_argument(
-        "url",
-        help="Documentation site URL to scrape"
+        "-o", "--output", type=Path, default=Path("./"), help="Output directory (default: ./)"
     )
 
-    parser.add_argument(
-        "-v", "--verbose",
-        action="store_true",
-        help="Show sitemap and detailed progress"
-    )
-
-    parser.add_argument(
-        "-o", "--output",
-        type=Path,
-        default=Path("./"),
-        help="Output directory (default: ./)"
-    )
-
-    parser.add_argument(
-        "--max-depth",
-        type=int,
-        default=3,
-        help="Maximum crawl depth (default: 3)"
-    )
+    parser.add_argument("--max-depth", type=int, default=3, help="Maximum crawl depth (default: 3)")
 
     parser.add_argument(
         "--concurrent",
         type=int,
         default=3,
-        help="Number of concurrent page processors (default: 3)"
+        help="Number of concurrent page processors (default: 3)",
     )
 
     parser.add_argument(
-        "--timeout",
-        type=int,
-        default=30,
-        help="Page load timeout in seconds (default: 30)"
+        "--timeout", type=int, default=30, help="Page load timeout in seconds (default: 30)"
     )
 
     parser.add_argument(
         "--sitemap-only",
         action="store_true",
-        help="Only discover and display sitemap, don't scrape"
+        help="Only discover and display sitemap, don't scrape",
     )
 
     parser.add_argument(
         "--content-mode",
         choices=["auto", "markdown", "html"],
         default="auto",
-        help="Content fetching mode: auto (detect), markdown (force .md), html (force HTML scraping)"
+        help="Content fetching mode: auto (detect), markdown (force .md), html (force HTML scraping)",
     )
 
     return parser.parse_args()

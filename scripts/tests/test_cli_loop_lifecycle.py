@@ -395,9 +395,7 @@ class TestCmdResume:
             ),
             patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
             patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
-            patch(
-                "little_loops.cli.loop.lifecycle.register_loop_signal_handlers"
-            ) as mock_register,
+            patch("little_loops.cli.loop.lifecycle.register_loop_signal_handlers") as mock_register,
         ):
             mock_persist_cls.return_value.load_state.return_value = None
             mock_exec_cls.return_value.resume.return_value = mock_result
@@ -478,7 +476,6 @@ class TestCmdResumeBackground:
 
     def test_foreground_internal_registers_pid_cleanup(self, tmp_path: Path) -> None:
         """--foreground-internal registers atexit PID cleanup for background-resumed process."""
-        import atexit
 
         logger = MagicMock()
         args = argparse.Namespace(foreground_internal=True)

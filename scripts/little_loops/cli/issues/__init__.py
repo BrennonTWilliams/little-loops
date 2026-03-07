@@ -69,7 +69,9 @@ Examples:
     )
     add_config_arg(ls)
 
-    seq = subs.add_parser("sequence", aliases=["seq"], help="Suggest implementation order based on dependencies")
+    seq = subs.add_parser(
+        "sequence", aliases=["seq"], help="Suggest implementation order based on dependencies"
+    )
     seq.set_defaults(command="sequence")
     seq.add_argument(
         "--limit", type=int, default=10, help="Maximum number of issues to show (default: 10)"
@@ -86,7 +88,9 @@ Examples:
     add_config_arg(ie)
 
     refine_s = subs.add_parser(
-        "refine-status", aliases=["rs"], help="Show refinement depth table sorted by commands touched"
+        "refine-status",
+        aliases=["rs"],
+        help="Show refinement depth table sorted by commands touched",
     )
     refine_s.set_defaults(command="refine-status")
     refine_s.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")

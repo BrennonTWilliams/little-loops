@@ -940,7 +940,9 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert out.count("fmt") == 1
 
-    def test_nonverbose_shell_output_shows_preview(self, capsys: pytest.CaptureFixture[str]) -> None:
+    def test_nonverbose_shell_output_shows_preview(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
         """In non-verbose mode, shell output_preview is shown (action_output events are suppressed)."""
         events = [
             {"event": "action_output", "line": "streamed line"},

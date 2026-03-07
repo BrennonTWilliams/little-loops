@@ -123,7 +123,9 @@ Examples:
     compile_parser.add_argument("-o", "--output", help="Output FSM YAML file")
 
     # Validate subcommand
-    validate_parser = subparsers.add_parser("validate", aliases=["val"], help="Validate loop definition")
+    validate_parser = subparsers.add_parser(
+        "validate", aliases=["val"], help="Validate loop definition"
+    )
     validate_parser.set_defaults(command="validate")
     validate_parser.add_argument("loop", help="Loop name or path")
 
@@ -142,7 +144,9 @@ Examples:
     stop_parser.add_argument("loop", help="Loop name")
 
     # Resume subcommand
-    resume_parser = subparsers.add_parser("resume", aliases=["res"], help="Resume an interrupted loop")
+    resume_parser = subparsers.add_parser(
+        "resume", aliases=["res"], help="Resume an interrupted loop"
+    )
     resume_parser.set_defaults(command="resume")
     resume_parser.add_argument("loop", help="Loop name or path")
     resume_parser.add_argument(
@@ -155,7 +159,9 @@ Examples:
     )
 
     # History subcommand
-    history_parser = subparsers.add_parser("history", aliases=["h"], help="Show loop execution history")
+    history_parser = subparsers.add_parser(
+        "history", aliases=["h"], help="Show loop execution history"
+    )
     history_parser.set_defaults(command="history")
     history_parser.add_argument("loop", help="Loop name")
     history_parser.add_argument(
@@ -201,7 +207,9 @@ Examples:
     install_parser.add_argument("loop", help="Built-in loop name to install")
 
     # Show subcommand
-    show_parser = subparsers.add_parser("show", aliases=["s"], help="Show loop details and structure")
+    show_parser = subparsers.add_parser(
+        "show", aliases=["s"], help="Show loop details and structure"
+    )
     show_parser.set_defaults(command="show")
     show_parser.add_argument("loop", help="Loop name or path")
     show_parser.add_argument(

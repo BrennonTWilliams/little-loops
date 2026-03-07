@@ -846,7 +846,9 @@ class BRConfig:
             max_issues=max_issues,
             dry_run=dry_run,
             timeout_per_issue=timeout_seconds or self._parallel.base.timeout_seconds,
-            idle_timeout_per_issue=idle_timeout_per_issue if idle_timeout_per_issue is not None else 0,
+            idle_timeout_per_issue=idle_timeout_per_issue
+            if idle_timeout_per_issue is not None
+            else 0,
             stream_subprocess_output=(
                 stream_output if stream_output is not None else self._parallel.base.stream_output
             ),

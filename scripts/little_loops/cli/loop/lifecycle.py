@@ -10,7 +10,12 @@ import signal
 import time
 from pathlib import Path
 
-from little_loops.cli.loop._helpers import EXIT_CODES, load_loop, register_loop_signal_handlers, run_background
+from little_loops.cli.loop._helpers import (
+    EXIT_CODES,
+    load_loop,
+    register_loop_signal_handlers,
+    run_background,
+)
 from little_loops.logger import Logger
 
 

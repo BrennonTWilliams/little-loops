@@ -718,17 +718,17 @@ def _render_2d_diagram(
             if has_up:
                 n_conn += 1  # up label row
 
-        off_spec[off_s] = dict(
-            anchor=anchor,
-            down_labels=down_labels,
-            up_labels=up_labels,
-            outgoing=outgoing,
-            has_down=has_down,
-            has_up=has_up,
-            down_col=down_col,
-            up_col=up_col,
-            n_conn=n_conn,
-        )
+        off_spec[off_s] = {
+            "anchor": anchor,
+            "down_labels": down_labels,
+            "up_labels": up_labels,
+            "outgoing": outgoing,
+            "has_down": has_down,
+            "has_up": has_up,
+            "down_col": down_col,
+            "up_col": up_col,
+            "n_conn": n_conn,
+        }
 
     # Phase 2: Render all off-path states into a shared grid (side-by-side layout)
     if off_spec:
