@@ -748,6 +748,8 @@ def analyze_workflows(
     messages_file: Path,
     patterns_file: Path,
     output_file: Path | None = None,
+    overlap_threshold: float = 0.3,
+    boundary_threshold: float = 0.6,
 ) -> WorkflowAnalysis:
     """Main entry point: analyze workflows from messages and patterns.
 
@@ -755,6 +757,8 @@ def analyze_workflows(
         messages_file: Path to JSONL file with extracted user messages
         patterns_file: Path to YAML file from Step 1 (workflow-pattern-analyzer)
         output_file: Output path for step2-workflows.yaml (optional)
+        overlap_threshold: Minimum entity overlap to cluster messages together (default: 0.3)
+        boundary_threshold: Minimum boundary score to split workflow segments (default: 0.6)
 
     Returns:
         WorkflowAnalysis with all analysis results
@@ -776,8 +780,8 @@ def analyze_workflows(
     # Run analysis pipeline
     sessions = _group_by_session(messages)
     session_links = _link_sessions(sessions)
-    entity_clusters = _cluster_by_entities(messages)
-    boundaries = _compute_boundaries(messages)
+    entity_clusters = _cluster_by_entities(messages, overlap_threshold=overlap_threshold)
+    boundaries = _compute_boundaries(messages, boundary_threshold=boundary_threshold)
     workflows = _detect_workflows(messages, boundaries, patterns)
 
     # Compute handoff analysis
@@ -883,6 +887,20 @@ Examples:
         action="store_true",
         help="Print verbose progress information",
     )
+    analyze_parser.add_argument(
+        "--overlap-threshold",
+        type=float,
+        default=0.3,
+        metavar="FLOAT",
+        help="Minimum entity overlap to cluster messages together (default: 0.3)",
+    )
+    analyze_parser.add_argument(
+        "--boundary-threshold",
+        type=float,
+        default=0.6,
+        metavar="FLOAT",
+        help="Minimum boundary score to split workflow segments (default: 0.6)",
+    )
 
     args = parser.parse_args()
 
@@ -900,6 +918,21 @@ Examples:
             print(f"Error: Patterns file not found: {args.patterns}", file=sys.stderr)
             return 1
 
+        # Validate threshold ranges
+        if not (0.0 <= args.overlap_threshold <= 1.0):
+            print(
+                f"Error: --overlap-threshold must be in [0.0, 1.0], got {args.overlap_threshold}",
+                file=sys.stderr,
+            )
+            return 1
+
+        if not (0.0 <= args.boundary_threshold <= 1.0):
+            print(
+                f"Error: --boundary-threshold must be in [0.0, 1.0], got {args.boundary_threshold}",
+                file=sys.stderr,
+            )
+            return 1
+
         # Set default output path
         output_path = args.output
         if output_path is None:
@@ -915,6 +948,8 @@ Examples:
                 messages_file=args.input,
                 patterns_file=args.patterns,
                 output_file=output_path,
+                overlap_threshold=args.overlap_threshold,
+                boundary_threshold=args.boundary_threshold,
             )
 
             # Print summary

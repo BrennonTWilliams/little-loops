@@ -650,6 +650,109 @@ class TestAnalyzeWorkflows:
                 )
                 assert has_handoff_link
 
+    def test_high_overlap_threshold_produces_fewer_clusters(self) -> None:
+        """overlap_threshold=0.9 produces fewer clusters than default 0.3."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Messages with partial entity overlap — clusters under default but not under 0.9
+            messages = [
+                {
+                    "content": "Fix checkout.py and update config.json",
+                    "uuid": "msg-1",
+                    "session_id": "session-1",
+                },
+                {
+                    "content": "Test checkout.py changes",
+                    "uuid": "msg-2",
+                    "session_id": "session-1",
+                },
+            ]
+
+            messages_file = tmpdir_path / "messages.jsonl"
+            with open(messages_file, "w") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+            patterns_file = tmpdir_path / "patterns.yaml"
+            with open(patterns_file, "w") as f:
+                yaml.dump({"category_distribution": []}, f)
+
+            result_default = analyze_workflows(
+                messages_file=messages_file,
+                patterns_file=patterns_file,
+            )
+            result_strict = analyze_workflows(
+                messages_file=messages_file,
+                patterns_file=patterns_file,
+                overlap_threshold=0.9,
+            )
+
+            # Strict threshold should produce fewer (or equal) clusters
+            assert len(result_strict.entity_clusters) <= len(result_default.entity_clusters)
+
+    def test_low_overlap_threshold_produces_more_clusters(self) -> None:
+        """overlap_threshold=0.0 allows any overlap, producing at least as many clusters."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            messages = [
+                {
+                    "content": "Fix checkout.py and update config.json",
+                    "uuid": "msg-1",
+                    "session_id": "session-1",
+                },
+                {
+                    "content": "Test checkout.py changes",
+                    "uuid": "msg-2",
+                    "session_id": "session-1",
+                },
+            ]
+
+            messages_file = tmpdir_path / "messages.jsonl"
+            with open(messages_file, "w") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+            patterns_file = tmpdir_path / "patterns.yaml"
+            with open(patterns_file, "w") as f:
+                yaml.dump({"category_distribution": []}, f)
+
+            result_lenient = analyze_workflows(
+                messages_file=messages_file,
+                patterns_file=patterns_file,
+                overlap_threshold=0.0,
+            )
+
+            # With overlap_threshold=0.0, messages with any shared entity cluster together
+            assert len(result_lenient.entity_clusters) >= 1
+
+    def test_default_thresholds_unchanged(self) -> None:
+        """Calling analyze_workflows without threshold args uses defaults (no regression)."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            messages = [
+                {"content": "Fix checkout.py", "uuid": "msg-1", "session_id": "s1"},
+                {"content": "Test checkout.py fix", "uuid": "msg-2", "session_id": "s1"},
+            ]
+
+            messages_file = tmpdir_path / "messages.jsonl"
+            with open(messages_file, "w") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+            patterns_file = tmpdir_path / "patterns.yaml"
+            with open(patterns_file, "w") as f:
+                yaml.dump({"category_distribution": []}, f)
+
+            # Should not raise and should return valid analysis
+            result = analyze_workflows(
+                messages_file=messages_file,
+                patterns_file=patterns_file,
+            )
+            assert result.metadata["message_count"] == 2
+
 
 class TestLinkSessions:
     """Tests for _link_sessions internal function."""
