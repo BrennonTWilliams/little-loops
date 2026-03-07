@@ -425,8 +425,7 @@ def _cmd_sprint_run(
                                 retry_result.failure_reason
                             )
                             logger.warning(
-                                f"  Retry skipped: {issue.issue_id} "
-                                "(blocked by open dependency)"
+                                f"  Retry skipped: {issue.issue_id} (blocked by open dependency)"
                             )
                         else:
                             logger.warning(f"  Retry failed: {issue.issue_id}")

@@ -148,7 +148,10 @@ class TestCmdList:
         (loops_dir / "bare-loop.yaml").write_text("name: bare\n")
 
         args = argparse.Namespace(running=False, status=None)
-        with patch("little_loops.cli.loop.info.get_builtin_loops_dir", return_value=tmp_path / "nonexistent"):
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
             result = cmd_list(args, loops_dir)
 
         assert result == 0

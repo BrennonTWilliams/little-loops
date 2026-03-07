@@ -55,7 +55,9 @@ def cmd_list(
         print("Running loops:")
         for state in states:
             elapsed_s = (state.accumulated_ms or 0) // 1000
-            elapsed_str = f"{elapsed_s}s" if elapsed_s < 60 else f"{elapsed_s // 60}m {elapsed_s % 60}s"
+            elapsed_str = (
+                f"{elapsed_s}s" if elapsed_s < 60 else f"{elapsed_s // 60}m {elapsed_s % 60}s"
+            )
             print(
                 f"  {state.loop_name}: {state.current_state} (iteration {state.iteration})"
                 f" [{state.status}] {elapsed_str}"

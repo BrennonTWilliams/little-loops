@@ -928,9 +928,7 @@ class AutoManager:
             self.state_manager.mark_completed(info.issue_id)
         elif result.was_blocked:
             # Blocked issues are skipped, not failed — leave in pending state
-            self.logger.info(
-                f"{info.issue_id} skipped — blocked by open dependency"
-            )
+            self.logger.info(f"{info.issue_id} skipped — blocked by open dependency")
         elif result.success:
             self.state_manager.mark_completed(info.issue_id, {"total": result.duration})
         elif result.plan_created:
