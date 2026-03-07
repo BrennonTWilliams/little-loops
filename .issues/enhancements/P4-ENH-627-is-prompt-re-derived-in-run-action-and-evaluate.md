@@ -44,6 +44,12 @@ The `is_prompt` determination should be computed once (ideally from `state.actio
 
 Removing duplication here eliminates the latent inconsistency and reduces the cognitive load of understanding the execution path. A helper function is easy to test in isolation.
 
+## Success Metrics
+
+- Duplicate `is_prompt`/`is_slash_command` inline blocks: 2 → 0
+- All existing `FSMExecutor` tests pass with no behavior change
+- New `_is_prompt_action` helper has direct unit test coverage
+
 ## Proposed Solution
 
 ```python
@@ -55,6 +61,17 @@ def _is_prompt_action(self, state: StateConfig) -> bool:
 
 # Both _run_action and _evaluate call self._is_prompt_action(state)
 ```
+
+## API/Interface
+
+New private method on `FSMExecutor`:
+
+```python
+def _is_prompt_action(self, state: StateConfig) -> bool:
+    """Return True if state's action is a slash-command/prompt type."""
+```
+
+No public API changes.
 
 ## Scope Boundaries
 
@@ -93,6 +110,7 @@ def _is_prompt_action(self, state: StateConfig) -> bool:
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
+- `/ll:format-issue` - 2026-03-07T22:10:34Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 
 ---
 
