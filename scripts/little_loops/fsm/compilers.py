@@ -228,7 +228,6 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
             evaluate=evaluate_config,
             on_success="done",
             on_failure="fix",
-            on_error="fix",
         ),
         "fix": StateConfig(
             action=fix_action,

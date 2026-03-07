@@ -953,6 +953,16 @@ class TestEvaluatorSupport:
 
         assert fsm.states["evaluate"].evaluate is None
 
+    def test_evaluate_state_has_no_on_error(self) -> None:
+        """compile_goal evaluate state must not route evaluator errors to fix."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "No type errors",
+            "tools": ["/ll:check-code types", "/ll:manage-issue bug fix"],
+        }
+        fsm = compile_goal(spec)
+        assert fsm.states["evaluate"].on_error is None
+
     def test_goal_with_evaluator_validates(self) -> None:
         """Goal with evaluator passes validation."""
         spec = {

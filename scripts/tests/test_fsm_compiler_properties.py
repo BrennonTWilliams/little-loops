@@ -225,6 +225,13 @@ class TestGoalCompilerProperties:
         fsm = compile_goal(spec)
         assert fsm.max_iterations == spec["max_iterations"]
 
+    @given(spec=goal_spec())
+    @settings(max_examples=100)
+    def test_evaluate_state_has_no_on_error(self, spec: dict) -> None:
+        """evaluate on_error must be None for all valid goal specs."""
+        fsm = compile_goal(spec)
+        assert fsm.states["evaluate"].on_error is None
+
 
 # =============================================================================
 # Convergence Compiler Properties
