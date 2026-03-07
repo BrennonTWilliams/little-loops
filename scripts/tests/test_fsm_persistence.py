@@ -583,6 +583,32 @@ class TestPersistentExecutor:
         assert state is not None
         assert state.status == "interrupted"
 
+    def test_final_status_timed_out_on_timeout(self, tmp_loops_dir: Path) -> None:
+        """Final status is 'timed_out' when loop timeout is exceeded."""
+        fsm = FSMLoop(
+            name="timeout-loop",
+            initial="check",
+            timeout=1,
+            states={
+                "check": StateConfig(
+                    action="echo 'checking'",
+                    on_success="check",  # Always loop back
+                    on_failure="check",
+                ),
+            },
+        )
+
+        mock_runner = MockActionRunner()
+        executor = PersistentExecutor(fsm, loops_dir=tmp_loops_dir, action_runner=mock_runner)
+        # Simulate elapsed time already exceeding the timeout
+        executor._executor.elapsed_offset_ms = 999_999_999
+        result = executor.run()
+
+        assert result.terminated_by == "timeout"
+        state = executor.persistence.load_state()
+        assert state is not None
+        assert state.status == "timed_out"
+
 
 class TestUtilityFunctions:
     """Tests for utility functions."""

@@ -61,7 +61,7 @@ class LoopState:
         last_result: Last evaluation result (verdict, details)
         started_at: ISO timestamp when loop started
         updated_at: ISO timestamp when state was last saved
-        status: Execution status (running, completed, failed, interrupted, awaiting_continuation)
+        status: Execution status (running, completed, failed, interrupted, awaiting_continuation, timed_out)
         continuation_prompt: Continuation context from handoff signal (if status is awaiting_continuation)
         accumulated_ms: Total milliseconds elapsed across all segments up to this save (used to restore
             elapsed time correctly after resume, so duration_ms and ${loop.elapsed_ms} reflect the
@@ -76,7 +76,7 @@ class LoopState:
     last_result: dict[str, Any] | None
     started_at: str
     updated_at: str
-    status: str  # "running", "completed", "failed", "interrupted", "awaiting_continuation"
+    status: str  # "running", "completed", "failed", "interrupted", "awaiting_continuation", "timed_out"
     continuation_prompt: str | None = None
     accumulated_ms: int = 0  # total elapsed ms across all segments (for resume offset)
 
@@ -354,6 +354,8 @@ class PersistentExecutor:
             final_status = "interrupted"
         if result.terminated_by == "handoff":
             final_status = "awaiting_continuation"
+        if result.terminated_by == "timeout":
+            final_status = "timed_out"
 
         final_state = LoopState(
             loop_name=self.fsm.name,

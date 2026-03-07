@@ -3,6 +3,8 @@ discovered_commit: 12a6af03c58a3b8f355e265a895b3950db89b66c
 discovered_branch: main
 discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # BUG-623: `timeout` termination produces `status: "failed"` indistinguishable from error in state file
@@ -37,10 +39,10 @@ A timed-out loop should produce `status: "timed_out"` (or similar), distinguisha
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop status <loop-name>` shows `Status: timed_out` after a timeout termination
-- [ ] `ll-loop status <loop-name>` still shows `Status: failed` after an error termination (no regression)
-- [ ] Existing state files with `status: "failed"` are unaffected (no migration needed)
-- [ ] `test_fsm_persistence.py` passes with a new test asserting `state.status == "timed_out"` when `terminated_by == "timeout"`
+- [x] `ll-loop status <loop-name>` shows `Status: timed_out` after a timeout termination
+- [x] `ll-loop status <loop-name>` still shows `Status: failed` after an error termination (no regression)
+- [x] Existing state files with `status: "failed"` are unaffected (no migration needed)
+- [x] `test_fsm_persistence.py` passes with a new test asserting `state.status == "timed_out"` when `terminated_by == "timeout"`
 
 ## Steps to Reproduce
 
@@ -103,10 +105,30 @@ Also update `cmd_status` and `cmd_history` display logic if they have hardcoded 
 
 `bug`, `fsm`, `persistence`, `observability`, `captured`
 
+## Verification Notes
+
+- **Verified**: 2026-03-07 — VALID
+- Code at `persistence.py:352–356` matches the quoted snippet exactly; `"timeout"` still falls through to `"failed"`.
+- `cmd_status()` (`lifecycle.py:63`) and `cmd_resume()` (`lifecycle.py:188`) are safe — no hardcoded `"failed"` comparisons that would regress.
+- `test_fsm_persistence.py` exists but has no `"timed_out"` test case (line 895 only covers `"completed"`, `"failed"`).
+- Minor: `persistence.py:64` docstring and `:79` inline comment both omit `"timed_out"` — should be updated alongside the fix.
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
 - `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ca2eb1f-9d78-4680-b741-5613ecbf49b3.jsonl`
+- `/ll:verify-issues BUG-623` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7f1264d4-d8b5-4093-9023-f666be376885.jsonl`
+- `/ll:confidence-check BUG-623` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/960ba0d2-07ee-46e5-849e-e84d12bd490f.jsonl`
+- `/ll:manage-issue bug fix BUG-623` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+
+## Resolution
+
+- **Status**: Completed
+- **Resolved**: 2026-03-07
+- **Changes**:
+  - `scripts/little_loops/fsm/persistence.py`: Added `if result.terminated_by == "timeout": final_status = "timed_out"` mapping in `PersistentExecutor.run()`; updated docstring and inline comment to include `"timed_out"`
+  - `scripts/tests/test_fsm_persistence.py`: Added `test_final_status_timed_out_on_timeout` test verifying `state.status == "timed_out"` when `terminated_by == "timeout"`
+- **Verification**: 3371 tests pass, 0 regressions
 
 ---
 
-**Open** | Created: 2026-03-07 | Priority: P4
+**Completed** | Created: 2026-03-07 | Priority: P4
