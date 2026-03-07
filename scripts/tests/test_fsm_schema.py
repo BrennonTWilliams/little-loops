@@ -642,6 +642,20 @@ class TestFSMValidation:
 
         assert any("no transition defined" in e.message for e in errors)
 
+    def test_on_partial_only_shorthand_is_valid(self) -> None:
+        """State with only on_partial routing passes validation."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(action="evaluate", on_partial="check"),
+                "done": make_state(terminal=True),
+            },
+        )
+        errors = validate_fsm(fsm)
+
+        assert not any("no transition defined" in e.message for e in errors)
+
     def test_on_error_only_shorthand(self) -> None:
         """State with on_error and next is valid."""
         fsm = FSMLoop(

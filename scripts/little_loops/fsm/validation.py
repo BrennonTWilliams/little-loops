@@ -156,7 +156,10 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
     path = f"states.{state_name}"
 
     has_shorthand = (
-        state.on_success is not None or state.on_failure is not None or state.on_error is not None
+        state.on_success is not None
+        or state.on_failure is not None
+        or state.on_error is not None
+        or state.on_partial is not None
     )
     has_route = state.route is not None
 
