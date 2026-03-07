@@ -145,6 +145,14 @@ Examples:
     resume_parser = subparsers.add_parser("resume", aliases=["res"], help="Resume an interrupted loop")
     resume_parser.set_defaults(command="resume")
     resume_parser.add_argument("loop", help="Loop name or path")
+    resume_parser.add_argument(
+        "--background", "-b", action="store_true", help="Resume as a detached background process"
+    )
+    resume_parser.add_argument(
+        "--foreground-internal",
+        action="store_true",
+        help=argparse.SUPPRESS,
+    )
 
     # History subcommand
     history_parser = subparsers.add_parser("history", aliases=["h"], help="Show loop execution history")

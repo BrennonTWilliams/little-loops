@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import atexit
 import errno
 import os
 import signal
 import time
 from pathlib import Path
 
-from little_loops.cli.loop._helpers import EXIT_CODES, load_loop, register_loop_signal_handlers
+from little_loops.cli.loop._helpers import EXIT_CODES, load_loop, register_loop_signal_handlers, run_background
 from little_loops.logger import Logger
 
 
@@ -144,6 +145,20 @@ def cmd_resume(
 ) -> int:
     """Resume an interrupted loop."""
     from little_loops.fsm.persistence import PersistentExecutor, StatePersistence
+
+    # Background mode: spawn detached process and return
+    if getattr(args, "background", False):
+        return run_background(loop_name, args, loops_dir, subcommand="resume")
+
+    # If running as foreground-internal (spawned by --background), register PID cleanup
+    if getattr(args, "foreground_internal", False):
+        running_dir = loops_dir / ".running"
+        pid_file = running_dir / f"{loop_name}.pid"
+
+        def _cleanup_pid() -> None:
+            pid_file.unlink(missing_ok=True)
+
+        atexit.register(_cleanup_pid)
 
     try:
         fsm = load_loop(loop_name, loops_dir, logger)

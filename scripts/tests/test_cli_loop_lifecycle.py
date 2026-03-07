@@ -424,6 +424,92 @@ class TestCmdResume:
         mock_executor.request_shutdown.assert_called_once()
 
 
+class TestCmdResumeBackground:
+    """Tests for cmd_resume --background flag (FEAT-608)."""
+
+    def test_background_flag_calls_run_background(self, tmp_path: Path) -> None:
+        """--background flag delegates to run_background() with subcommand='resume'."""
+        logger = MagicMock()
+        args = argparse.Namespace(background=True)
+
+        with patch("little_loops.cli.loop.lifecycle.run_background") as mock_rb:
+            mock_rb.return_value = 0
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        mock_rb.assert_called_once_with("test-loop", args, tmp_path, subcommand="resume")
+
+    def test_background_skips_foreground_execution(self, tmp_path: Path) -> None:
+        """--background flag returns before calling executor.resume()."""
+        logger = MagicMock()
+        args = argparse.Namespace(background=True)
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.run_background", return_value=0),
+            patch("little_loops.cli.loop.lifecycle.load_loop") as mock_load,
+        ):
+            cmd_resume("test-loop", args, tmp_path, logger)
+
+        mock_load.assert_not_called()
+
+    def test_no_background_flag_runs_foreground(self, tmp_path: Path) -> None:
+        """Without --background, resume runs in foreground (default unchanged)."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.cli.loop.lifecycle.run_background") as mock_rb,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        mock_rb.assert_not_called()
+
+    def test_foreground_internal_registers_pid_cleanup(self, tmp_path: Path) -> None:
+        """--foreground-internal registers atexit PID cleanup for background-resumed process."""
+        import atexit
+
+        logger = MagicMock()
+        args = argparse.Namespace(foreground_internal=True)
+        mock_fsm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("123")
+
+        registered: list = []
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.cli.loop.lifecycle.atexit.register", side_effect=registered.append),
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        assert len(registered) == 1  # PID cleanup was registered
+
+
 class TestCmdResumeExitCodes:
     """Tests for cmd_resume exit code mapping per terminated_by value (BUG-605)."""
 

@@ -209,12 +209,17 @@ def print_execution_plan(fsm: FSMLoop) -> None:
         print(f"Timeout: {fsm.timeout}s")
 
 
-def run_background(loop_name: str, args: argparse.Namespace, loops_dir: Path) -> int:
+def run_background(
+    loop_name: str, args: argparse.Namespace, loops_dir: Path, subcommand: str = "run"
+) -> int:
     """Launch loop as a detached background process.
 
     Spawns a new process with start_new_session=True that re-executes
     the loop with --foreground-internal. The parent writes the PID file
     and returns immediately.
+
+    Args:
+        subcommand: The ll-loop subcommand to spawn ("run" or "resume").
 
     Returns:
         Exit code (0 = launched successfully).
@@ -226,7 +231,7 @@ def run_background(loop_name: str, args: argparse.Namespace, loops_dir: Path) ->
     log_file = running_dir / f"{loop_name}.log"
 
     # Build re-exec command with --foreground-internal instead of --background
-    cmd = [sys.executable, "-m", "little_loops.cli.loop", "run", loop_name, "--foreground-internal"]
+    cmd = [sys.executable, "-m", "little_loops.cli.loop", subcommand, loop_name, "--foreground-internal"]
 
     # Forward relevant args
     max_iter = getattr(args, "max_iterations", None)

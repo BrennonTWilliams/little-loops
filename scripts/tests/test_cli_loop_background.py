@@ -219,6 +219,26 @@ class TestRunBackground:
         assert "--foreground-internal" in cmd
         assert "--background" not in cmd
 
+    def test_resume_subcommand_spawns_resume(self, tmp_path: Path) -> None:
+        """subcommand='resume' spawns ll-loop resume instead of ll-loop run."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        args = argparse.Namespace(
+            max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 7
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir, subcommand="resume")
+
+        cmd = mock_popen.call_args[0][0]
+        assert "resume" in cmd
+        assert "run" not in cmd
+
     def test_prints_confirmation(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """Prints launch confirmation with PID and help commands."""
         import argparse
