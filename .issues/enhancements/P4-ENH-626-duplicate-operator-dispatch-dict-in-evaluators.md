@@ -43,6 +43,19 @@ A single module-level `NUMERIC_OPERATORS` dict is defined once and referenced by
 
 Code duplication here is a maintenance hazard. The `evaluators.py` module is the sole location for evaluation logic, and keeping operator definitions centralized makes it easy to add operators (e.g., `"contains"`, `"startswith"`) in a single place.
 
+## Success Metrics
+
+- Operator dict definitions in `evaluators.py`: 2 → 1 (module-level `_NUMERIC_OPERATORS` constant)
+- Lines of duplicate code eliminated: ~14 lines
+- All existing tests in `test_fsm_evaluators.py` pass unchanged (no behavior change)
+
+## Acceptance Criteria
+
+- [ ] `_NUMERIC_OPERATORS` module-level constant defined once in `evaluators.py`
+- [ ] `evaluate_output_numeric()` references `_NUMERIC_OPERATORS` instead of defining its own dict
+- [ ] `_compare_values()` references `_NUMERIC_OPERATORS` instead of defining its own dict
+- [ ] All existing tests in `scripts/tests/test_fsm_evaluators.py` pass without modification
+
 ## Proposed Solution
 
 ```python
@@ -96,6 +109,7 @@ _NUMERIC_OPERATORS: dict[str, Callable[[float, float], bool]] = {
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5ca2eb1f-9d78-4680-b741-5613ecbf49b3.jsonl`
 
 ---
 

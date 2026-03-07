@@ -38,7 +38,14 @@ if getattr(args, "queue", False):
 
 1. Run `ll-loop run myloop --verbose --background`.
 2. Check the background process log (`ll-loop status` / loop events file).
-3. Observe: action output events are not written at verbose detail level.
+3. Observe: the background process stdout/stderr (visible via `ll-loop status`) contains no DEBUG or verbose-level lines.
+
+## Acceptance Criteria
+
+- [ ] Running `ll-loop run myloop --verbose --background` causes the background process to log at verbose level
+- [ ] The background process stdout/stderr (via `ll-loop status`) includes DEBUG/verbose-level output when `--verbose` is passed
+- [ ] Running without `--verbose` produces no change in behavior
+- [ ] Existing `--quiet` and `--queue` flag forwarding is unaffected
 
 ## Root Cause
 
@@ -72,6 +79,8 @@ if getattr(args, "quiet", False):
 ## Implementation Steps
 
 1. Add `--verbose` forwarding in `run_background()` adjacent to the existing `--quiet` forwarding
+2. Add or update test in `scripts/tests/` for `run_background` verifying `--verbose` is included in the re-exec command when the flag is set
+3. Run tests and verify fix resolves the issue without regressing `--quiet`/`--queue` forwarding
 
 ## Impact
 
@@ -86,6 +95,7 @@ if getattr(args, "quiet", False):
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 
 ---
 
