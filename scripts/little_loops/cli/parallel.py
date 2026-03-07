@@ -9,6 +9,7 @@ from pathlib import Path
 from little_loops.cli.output import configure_output
 from little_loops.cli_args import (
     add_dry_run_arg,
+    add_idle_timeout_arg,
     add_max_issues_arg,
     add_only_arg,
     add_quiet_arg,
@@ -116,6 +117,7 @@ Examples:
     add_dry_run_arg(parser)
     add_resume_arg(parser)
     add_timeout_arg(parser)
+    add_idle_timeout_arg(parser)
     add_quiet_arg(parser)
     add_only_arg(parser)
     add_skip_arg(parser)
@@ -174,6 +176,7 @@ Examples:
         max_issues=args.max_issues,
         dry_run=args.dry_run,
         timeout_seconds=args.timeout,
+        idle_timeout_per_issue=args.idle_timeout,
         stream_output=args.stream_output if args.stream_output else None,
         show_model=args.show_model if args.show_model else None,
         only_ids=only_ids,

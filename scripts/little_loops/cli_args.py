@@ -118,6 +118,20 @@ def add_timeout_arg(parser: argparse.ArgumentParser, default: int | None = None)
         )
 
 
+def add_idle_timeout_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --idle-timeout argument for idle process termination.
+
+    Args:
+        parser: The argument parser to add the argument to
+    """
+    parser.add_argument(
+        "--idle-timeout",
+        type=int,
+        default=None,
+        help="Kill worker if no output for N seconds (0 to disable, default: from config)",
+    )
+
+
 def add_quiet_arg(parser: argparse.ArgumentParser) -> None:
     """Add --quiet/-q argument to suppress output."""
     parser.add_argument(
@@ -218,7 +232,7 @@ def parse_issue_types(value: str | None) -> set[str] | None:
 def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     """Add arguments common to ll-auto command.
 
-    Adds: --resume, --dry-run, --max-issues, --quiet, --only, --skip, --type, --config
+    Adds: --resume, --dry-run, --max-issues, --quiet, --only, --skip, --type, --config, --idle-timeout
     """
     add_resume_arg(parser)
     add_dry_run_arg(parser)
@@ -228,17 +242,19 @@ def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     add_skip_arg(parser)
     add_type_arg(parser)
     add_config_arg(parser)
+    add_idle_timeout_arg(parser)
 
 
 def add_common_parallel_args(parser: argparse.ArgumentParser) -> None:
     """Add arguments common to parallel execution tools.
 
-    Adds: --dry-run, --resume, --max-workers, --timeout, --quiet, --only, --skip, --type, --config
+    Adds: --dry-run, --resume, --max-workers, --timeout, --idle-timeout, --quiet, --only, --skip, --type, --config
     """
     add_dry_run_arg(parser)
     add_resume_arg(parser)
     add_max_workers_arg(parser)
     add_timeout_arg(parser)
+    add_idle_timeout_arg(parser)
     add_quiet_arg(parser)
     add_only_arg(parser)
     add_skip_arg(parser)
@@ -255,6 +271,7 @@ __all__ = [
     "add_type_arg",
     "add_max_workers_arg",
     "add_timeout_arg",
+    "add_idle_timeout_arg",
     "add_quiet_arg",
     "add_skip_analysis_arg",
     "add_max_issues_arg",
