@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.35.0] - 2026-03-06
+
+### Added
+
+- feat(ll-loop): add paradigm/description display and --status filter to list (9549f7a)
+- feat(workflows): add --format json output option to ll-workflows analyze (d6f7c10)
+- feat(workflows): add per-stage verbose progress to analyze_workflows (1e49376)
+- feat(workflows): expose overlap_threshold and boundary_threshold via CLI and API (4a7e87d, 63a7a41)
+- feat(cli): add --idle-timeout flag to ll-auto and ll-parallel (58d9889)
+- feat(sprint): add --only flag to ll-sprint run (7f251e6)
+- feat(ll-loop): add --state flag to ll-loop test (5f67587)
+- feat(ll-loop): add --background flag to resume command (8c5dc4d)
+
+### Fixed
+
+- fix(file-hints): require colon delimiter in scope/component pattern (9de08ed)
+- fix(sprint): route BLOCKED verdict to skipped_blocked_issues, not failed (e789a46)
+- fix(sprint): prevent stale orchestrator state loading on fresh wave run (23cc8a2)
+- fix(ready-issue): add BLOCKED verdict for unresolved blocking dependencies (b295b2e)
+
+[1.35.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.34.0...v1.35.0
+
 ## [1.34.0] - 2026-03-06
 
 ### Added
