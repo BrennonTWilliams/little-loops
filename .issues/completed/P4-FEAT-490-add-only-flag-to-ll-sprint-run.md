@@ -31,10 +31,10 @@ A developer has a sprint with 10 issues but wants to reprocess only 2 specific o
 
 ## Acceptance Criteria
 
-- [ ] `ll-sprint run <name> --only ID1,ID2` processes only specified issues
-- [ ] The `--only` flag is documented in `--help`
-- [ ] Specified IDs must be present in the sprint definition (error if not)
-- [ ] Compatible with `--resume` and other existing flags
+- [x] `ll-sprint run <name> --only ID1,ID2` processes only specified issues
+- [x] The `--only` flag is documented in `--help`
+- [x] Specified IDs must be present in the sprint definition (error if not)
+- [x] Compatible with `--resume` and other existing flags
 
 ## Proposed Solution
 
@@ -55,7 +55,7 @@ Add `add_only_arg(run_parser)` to `cli/sprint.py` and wire `args.only` into the 
 - N/A
 
 ### Similar Patterns
-- `cli/parallel.py:119` — already uses `add_only_arg(parser)`
+- `cli/parallel.py:120` — already uses `add_only_arg(parser)`
 - `cli_args.py:218-230` — `add_common_auto_args` includes `add_only_arg`
 
 ### Tests
@@ -100,9 +100,16 @@ Add `add_only_arg(run_parser)` to `cli/sprint.py` and wire `args.only` into the 
 
 ---
 
+## Resolution
+
+- Added `add_only_arg(run_parser)` to `cli/sprint/__init__.py` run parser setup
+- Added `--only` filter logic in `cli/sprint/run.py` after skip filter: validates IDs against sprint definition and returns error for unknown IDs
+- Added 4 tests in `TestSprintOnlyFlag` covering filter behavior, unknown ID error, no-filter passthrough, and parser registration
+- All 65 sprint tests pass; lint and mypy clean
+
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P4
+**Completed** | Created: 2026-02-24 | Completed: 2026-03-06 | Priority: P4
 
 ## Blocks
 
@@ -112,3 +119,4 @@ Add `add_only_arg(run_parser)` to `cli/sprint.py` and wire `args.only` into the 
 - `/ll:verify-issues` - 2026-03-04T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a018087-87e4-41d0-99de-499289e1e675.jsonl` — Removed FEAT-441 from Blocked By (completed/satisfied)
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl`
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd72e0e6-0056-429e-acc1-dfeca54c9cb1.jsonl`

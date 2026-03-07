@@ -55,6 +55,7 @@ def main_sprint() -> int:
         add_config_arg,
         add_dry_run_arg,
         add_max_workers_arg,
+        add_only_arg,
         add_quiet_arg,
         add_resume_arg,
         add_skip_analysis_arg,
@@ -73,6 +74,7 @@ def main_sprint() -> int:
 Examples:
   %(prog)s create sprint-1 --issues BUG-001,FEAT-010 --description "Q1 fixes"
   %(prog)s run sprint-1
+  %(prog)s run sprint-1 --only BUG-001,FEAT-010
   %(prog)s run sprint-1 --dry-run
   %(prog)s list
   %(prog)s show sprint-1
@@ -123,6 +125,7 @@ Examples:
             "Comma-separated list of issue IDs to skip during execution (e.g., BUG-003,FEAT-004)"
         ),
     )
+    add_only_arg(run_parser)
     add_skip_analysis_arg(run_parser)
     add_type_arg(run_parser)
 

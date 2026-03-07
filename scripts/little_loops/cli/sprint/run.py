@@ -112,6 +112,20 @@ def _cmd_sprint_run(
         if skipped > 0:
             logger.info(f"Skipping {skipped} issue(s): {', '.join(sorted(skip_ids))}")
 
+    # Apply only filter if provided
+    only_ids = parse_issue_ids(getattr(args, "only", None))
+    if only_ids:
+        invalid_only = only_ids - set(sprint.issues)
+        if invalid_only:
+            logger.error(
+                f"Issue(s) not found in sprint definition: {', '.join(sorted(invalid_only))}"
+            )
+            return 1
+        issues_to_process = [i for i in issues_to_process if i in only_ids]
+        logger.info(
+            f"Processing only {len(issues_to_process)} issue(s): {', '.join(sorted(only_ids))}"
+        )
+
     # Apply type filter if provided
     type_prefixes = parse_issue_types(getattr(args, "type", None))
     if type_prefixes:

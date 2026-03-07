@@ -1561,3 +1561,167 @@ class TestSprintAnalyze:
         data = json.loads(captured.out)
         assert data["has_conflicts"] is False
         assert len(data["conflicts"]) == 0
+
+
+class TestSprintOnlyFlag:
+    """Tests for --only flag in ll-sprint run (FEAT-490)."""
+
+    def _setup_multi_issue_sprint(self, tmp_path: Path) -> tuple[Any, Any]:
+        """Create a project with two issues and a sprint containing both."""
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_file = config_dir / "ll-config.json"
+        config_data = {
+            "project": {
+                "name": "test-project",
+                "src_dir": "src/",
+                "test_cmd": "pytest",
+                "lint_cmd": "ruff check",
+            },
+            "issues": {
+                "base_dir": ".issues",
+                "completed_dir": "completed",
+            },
+        }
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "bugs").mkdir(parents=True)
+        (issues_dir / "features").mkdir(parents=True)
+        (issues_dir / "bugs" / "P1-BUG-001-first-bug.md").write_text(
+            "# BUG-001: First Bug\n\n## Summary\nFix this."
+        )
+        (issues_dir / "features" / "P2-FEAT-002-new-feature.md").write_text(
+            "# FEAT-002: New Feature\n\n## Summary\nImplement this."
+        )
+
+        sprints_dir = tmp_path / "sprints"
+        sprints_dir.mkdir()
+        sprint_file = sprints_dir / "multi.yaml"
+        sprint_file.write_text("name: multi\nissues:\n  - BUG-001\n  - FEAT-002\n")
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=sprints_dir, config=config)
+        return config, manager
+
+    def test_only_flag_filters_to_specified_issues(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """--only restricts processing to the specified issue IDs."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+        from little_loops.issue_manager import IssueProcessingResult
+
+        config, manager = self._setup_multi_issue_sprint(tmp_path)
+
+        processed: list[str] = []
+
+        def mock_process_inplace(info: Any, **kwargs: Any) -> IssueProcessingResult:
+            processed.append(info.issue_id)
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace", mock_process_inplace
+        )
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="multi",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            only="BUG-001",
+            max_workers=1,
+            quiet=False,
+            skip_analysis=True,
+            type=None,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 0
+        assert "BUG-001" in processed
+        assert "FEAT-002" not in processed
+
+    def test_only_flag_error_on_unknown_id(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """--only returns error when specified ID is not in the sprint definition."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+
+        config, manager = self._setup_multi_issue_sprint(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="multi",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            only="BUG-999",
+            max_workers=1,
+            quiet=False,
+            skip_analysis=True,
+            type=None,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 1
+
+        captured = capsys.readouterr()
+        assert "BUG-999" in captured.out or "BUG-999" in captured.err
+
+    def test_only_none_processes_all_issues(
+        self, tmp_path: Path, monkeypatch: Any, capsys: Any
+    ) -> None:
+        """Without --only, all sprint issues are processed."""
+        import argparse
+
+        from little_loops.cli import sprint as cli
+        from little_loops.issue_manager import IssueProcessingResult
+
+        config, manager = self._setup_multi_issue_sprint(tmp_path)
+
+        processed: list[str] = []
+
+        def mock_process_inplace(info: Any, **kwargs: Any) -> IssueProcessingResult:
+            processed.append(info.issue_id)
+            return IssueProcessingResult(success=True, duration=1.0, issue_id=info.issue_id)
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace", mock_process_inplace
+        )
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        args = argparse.Namespace(
+            sprint="multi",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            only=None,
+            max_workers=1,
+            quiet=False,
+            skip_analysis=True,
+            type=None,
+        )
+
+        result = cli._cmd_sprint_run(args, manager, config)
+        assert result == 0
+        assert "BUG-001" in processed
+        assert "FEAT-002" in processed
+
+    def test_only_flag_in_help(self) -> None:
+        """--only flag is registered on the sprint run parser."""
+        import argparse
+
+        from little_loops.cli_args import add_only_arg
+
+        parser = argparse.ArgumentParser()
+        add_only_arg(parser)
+        help_text = parser.format_help()
+        assert "--only" in help_text
