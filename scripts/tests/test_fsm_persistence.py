@@ -513,6 +513,36 @@ class TestPersistentExecutor:
         event_types = [e["event"] for e in events]
         assert "loop_resume" in event_types
 
+    def test_resume_clears_pending_signals(self, simple_fsm: FSMLoop, tmp_loops_dir: Path) -> None:
+        """resume() clears both _pending_handoff and _pending_error from the previous run."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+
+        state = LoopState(
+            loop_name="test-loop",
+            current_state="check",
+            iteration=1,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2024-01-15T10:30:00Z",
+            updated_at="",
+            status="running",
+        )
+        persistence.save_state(state)
+
+        executor = PersistentExecutor(
+            simple_fsm, persistence=persistence, action_runner=MockActionRunner()
+        )
+        # Simulate stale signals from a previous run
+        executor._executor._pending_handoff = object()  # type: ignore[assignment]
+        executor._executor._pending_error = "stale error"
+
+        executor.resume()
+
+        assert executor._executor._pending_handoff is None
+        assert executor._executor._pending_error is None
+
     def test_final_status_completed_on_terminal(
         self, simple_fsm: FSMLoop, tmp_loops_dir: Path
     ) -> None:

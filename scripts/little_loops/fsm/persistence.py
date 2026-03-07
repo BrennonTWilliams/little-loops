@@ -401,8 +401,9 @@ class PersistentExecutor:
         # to carry forward the time already spent before this resume.
         self._executor.elapsed_offset_ms = state.accumulated_ms
 
-        # Clear any pending handoff from previous run
+        # Clear any pending signals from previous run
         self._executor._pending_handoff = None
+        self._executor._pending_error = None
 
         # Emit resume event with continuation context if available
         resume_event: dict[str, Any] = {
