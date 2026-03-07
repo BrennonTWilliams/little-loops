@@ -251,6 +251,7 @@ class SimulationActionRunner:
             scenario_label = {
                 "all-pass": "Success (scenario: all-pass)",
                 "all-fail": "Failure (scenario: all-fail)",
+                "all-error": "Error (scenario: all-error)",
                 "first-fail": "Failure" if self.call_count == 1 else "Success",
                 "alternating": "Failure" if self.call_count % 2 == 1 else "Success",
             }.get(self.scenario, "Success")
@@ -269,12 +270,14 @@ class SimulationActionRunner:
         """Return exit code based on scenario pattern.
 
         Returns:
-            0 for success, 1 for failure based on scenario logic
+            0 for success, 1 for failure, 2 for error based on scenario logic
         """
         if self.scenario == "all-pass":
             return 0
         elif self.scenario == "all-fail":
             return 1
+        elif self.scenario == "all-error":
+            return 2
         elif self.scenario == "first-fail":
             # First call fails, rest pass
             return 1 if self.call_count == 1 else 0

@@ -1969,6 +1969,16 @@ class TestSimulationActionRunner:
         ]
         assert results == [1, 1, 1]
 
+    def test_scenario_all_error(self) -> None:
+        """All-error scenario returns exit code 2 for all calls."""
+        runner = SimulationActionRunner(scenario="all-error")
+        results = [
+            runner.run("cmd1", timeout=60, is_slash_command=False).exit_code,
+            runner.run("cmd2", timeout=60, is_slash_command=False).exit_code,
+            runner.run("cmd3", timeout=60, is_slash_command=False).exit_code,
+        ]
+        assert results == [2, 2, 2]
+
     def test_scenario_first_fail(self) -> None:
         """First-fail scenario returns 1 first, then 0."""
         runner = SimulationActionRunner(scenario="first-fail")

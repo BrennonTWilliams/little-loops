@@ -192,8 +192,8 @@ Examples:
     simulate_parser.add_argument("loop", help="Loop name or path")
     simulate_parser.add_argument(
         "--scenario",
-        choices=["all-pass", "all-fail", "first-fail", "alternating"],
-        help="Auto-select results based on pattern instead of prompting",
+        choices=["all-pass", "all-fail", "all-error", "first-fail", "alternating"],
+        help="Auto-select results based on pattern instead of prompting (exit codes: 0=success, 1=failure, 2=error)",
     )
     simulate_parser.add_argument(
         "--max-iterations",
