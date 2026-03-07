@@ -249,6 +249,8 @@ def run_background(
     llm_model = getattr(args, "llm_model", None)
     if llm_model:
         cmd.extend(["--llm-model", llm_model])
+    if getattr(args, "verbose", False):
+        cmd.append("--verbose")
     if getattr(args, "quiet", False):
         cmd.append("--quiet")
     if getattr(args, "queue", False):

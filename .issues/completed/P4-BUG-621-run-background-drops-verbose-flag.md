@@ -14,7 +14,7 @@ discovered_by: scan-codebase
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/_helpers.py`
-- **Line(s)**: 212–273 (at scan commit: 12a6af0)
+- **Line(s)**: 212–275 (at scan commit: 12a6af0)
 - **Anchor**: `in function run_background()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/12a6af03c58a3b8f355e265a895b3950db89b66c/scripts/little_loops/cli/loop/_helpers.py#L212-L273)
 - **Code**:
@@ -93,10 +93,26 @@ if getattr(args, "quiet", False):
 
 `bug`, `cli`, `loop`, `captured`
 
+## Resolution
+
+- Added `--verbose` forwarding in `run_background()` adjacent to `--quiet` forwarding
+- Added two new tests: `test_forwards_verbose` and `test_verbose_not_forwarded_when_false`
+- All 23 tests in `test_cli_loop_background.py` pass
+
+### Acceptance Criteria
+
+- [x] Running `ll-loop run myloop --verbose --background` causes the background process to log at verbose level
+- [x] The background process stdout/stderr (via `ll-loop status`) includes DEBUG/verbose-level output when `--verbose` is passed
+- [x] Running without `--verbose` produces no change in behavior
+- [x] Existing `--quiet` and `--queue` flag forwarding is unaffected
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
 - `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e92f3b7-729f-49fa-923d-832b9db88827.jsonl`
+- `/ll:ready-issue` - 2026-03-07T17:49:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/446dc750-c7fc-41f0-ac3e-edc11cbb7ef4.jsonl`
+- `/ll:manage-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-07 | Priority: P4
+**Completed** | Created: 2026-03-07 | Priority: P4
