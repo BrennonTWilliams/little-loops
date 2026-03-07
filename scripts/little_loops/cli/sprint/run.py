@@ -366,6 +366,7 @@ def _cmd_sprint_run(
                     overlap_detection=False,
                     serialize_overlapping=True,
                     base_branch=_base_branch,
+                    clean_start=True,  # Sprint manages its own state; don't load stale orchestrator state
                 )
 
                 orchestrator = ParallelOrchestrator(

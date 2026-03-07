@@ -469,6 +469,9 @@ class ParallelOrchestrator:
 
     def _load_state(self) -> None:
         """Load state from file for resume capability."""
+        if self.parallel_config.clean_start:
+            self.state.started_at = datetime.now().isoformat()
+            return
         state_file = self.repo_path / self.parallel_config.state_file
         if not state_file.exists():
             self.state.started_at = datetime.now().isoformat()

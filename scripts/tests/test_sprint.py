@@ -1725,3 +1725,99 @@ class TestSprintOnlyFlag:
         add_only_arg(parser)
         help_text = parser.format_help()
         assert "--only" in help_text
+
+
+class TestSprintWaveCleanStart:
+    """Tests that wave parallel config passes clean_start=True (BUG-615)."""
+
+    def _setup_multi_issue_sprint(self, tmp_path: Path) -> tuple[Any, Any]:
+        """Create a project with two issues and a sprint containing both."""
+        config_dir = tmp_path / ".claude"
+        config_dir.mkdir()
+        config_file = config_dir / "ll-config.json"
+        config_data = {
+            "project": {
+                "name": "test-project",
+                "src_dir": "src/",
+                "test_cmd": "pytest",
+                "lint_cmd": "ruff check",
+            },
+            "issues": {
+                "base_dir": ".issues",
+                "completed_dir": "completed",
+            },
+        }
+        with open(config_file, "w") as f:
+            json.dump(config_data, f)
+
+        issues_dir = tmp_path / ".issues"
+        (issues_dir / "bugs").mkdir(parents=True)
+        (issues_dir / "features").mkdir(parents=True)
+        (issues_dir / "bugs" / "P1-BUG-001-first-bug.md").write_text(
+            "# BUG-001: First Bug\n\n## Summary\nFix this."
+        )
+        (issues_dir / "features" / "P2-FEAT-002-new-feature.md").write_text(
+            "# FEAT-002: New Feature\n\n## Summary\nImplement this."
+        )
+
+        sprints_dir = tmp_path / "sprints"
+        sprints_dir.mkdir()
+        sprint_file = sprints_dir / "multi.yaml"
+        sprint_file.write_text("name: multi\nissues:\n  - BUG-001\n  - FEAT-002\n")
+
+        config = BRConfig(tmp_path)
+        manager = SprintManager(sprints_dir=sprints_dir, config=config)
+        return config, manager
+
+    def test_wave_parallel_config_passes_clean_start(
+        self, tmp_path: Path, monkeypatch: Any
+    ) -> None:
+        """Wave create_parallel_config call passes clean_start=True (BUG-615)."""
+        import argparse
+        from unittest.mock import MagicMock, patch
+
+        from little_loops.cli import sprint as cli
+        from little_loops.parallel.types import ParallelConfig
+
+        config, manager = self._setup_multi_issue_sprint(tmp_path)
+        monkeypatch.chdir(tmp_path)
+        cli._sprint_shutdown_requested = False
+
+        captured_kwargs: dict[str, Any] = {}
+
+        original_create = config.create_parallel_config
+
+        def capturing_create(**kwargs: Any) -> ParallelConfig:
+            captured_kwargs.update(kwargs)
+            return original_create(**kwargs)
+
+        mock_orchestrator = MagicMock()
+        mock_orchestrator.run.return_value = 0
+        mock_orchestrator.execution_duration = 0.0
+        mock_orchestrator.queue.completed_ids = ["BUG-001", "FEAT-002"]
+        mock_orchestrator.queue.failed_ids = []
+
+        args = argparse.Namespace(
+            sprint="multi",
+            dry_run=False,
+            resume=False,
+            skip=None,
+            only=None,
+            max_workers=2,
+            quiet=False,
+            skip_analysis=True,
+            type=None,
+        )
+
+        with (
+            patch.object(config, "create_parallel_config", side_effect=capturing_create),
+            patch(
+                "little_loops.cli.sprint.run.ParallelOrchestrator",
+                return_value=mock_orchestrator,
+            ),
+        ):
+            cli._cmd_sprint_run(args, manager, config)
+
+        assert captured_kwargs.get("clean_start") is True, (
+            "Wave create_parallel_config must pass clean_start=True to avoid loading stale orchestrator state"
+        )

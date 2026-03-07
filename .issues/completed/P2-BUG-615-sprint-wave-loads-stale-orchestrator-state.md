@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-06
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-615: Sprint Wave Loads Stale Orchestrator State on Fresh Run
@@ -23,10 +25,10 @@ Fresh sprint wave executions should not load or report stale orchestrator state.
 
 ## Acceptance Criteria
 
-- [ ] Running `ll-sprint run <any-sprint>` on a fresh start produces no "Resumed from previous state" message
-- [ ] `ll-parallel --resume` still loads and reports prior state correctly (`clean_start=False` path unchanged)
-- [ ] Unit test passes: `_load_state()` returns early without reading state file when `clean_start=True`
-- [ ] Unit test passes: wave `create_parallel_config()` call in `sprint/run.py` passes `clean_start=True`
+- [x] Running `ll-sprint run <any-sprint>` on a fresh start produces no "Resumed from previous state" message
+- [x] `ll-parallel --resume` still loads and reports prior state correctly (`clean_start=False` path unchanged)
+- [x] Unit test passes: `_load_state()` returns early without reading state file when `clean_start=True`
+- [x] Unit test passes: wave `create_parallel_config()` call in `sprint/run.py` passes `clean_start=True`
 
 ## Motivation
 
@@ -49,8 +51,8 @@ Call chain:
 ```
 ll-sprint run cli-polish
   → _cmd_sprint_run() [run.py:84]
-    → create_parallel_config(..., clean_start=False [default]) [run.py:348]
-    → ParallelOrchestrator.run() [run.py:360]
+    → create_parallel_config(..., clean_start=False [default]) [run.py:362]
+    → ParallelOrchestrator.run() [run.py:371]
       → _load_state() [orchestrator.py:470]  ← loads old .parallel-manage-state.json
         → queue.load_completed(7 old issues)
         → queue.load_failed(9 old issues)
@@ -75,7 +77,7 @@ def _load_state(self) -> None:
     ...  # rest unchanged
 ```
 
-**2. `scripts/little_loops/cli/sprint/run.py` — wave parallel config (line 348)**
+**2. `scripts/little_loops/cli/sprint/run.py` — wave parallel config (line 362)**
 
 Pass `clean_start=True` when creating the orchestrator for a sprint wave.
 
@@ -95,10 +97,10 @@ parallel_config = config.create_parallel_config(
 
 ### Files to Modify
 - `scripts/little_loops/parallel/orchestrator.py` — `_load_state()` at line 470
-- `scripts/little_loops/cli/sprint/run.py` — `create_parallel_config()` call at line 348
+- `scripts/little_loops/cli/sprint/run.py` — `create_parallel_config()` call at line 362
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/parallel/types.py` — `ParallelConfig.clean_start` field at line 306 (reference only)
+- `scripts/little_loops/parallel/types.py` — `ParallelConfig.clean_start` field at line 339 (reference only)
 - `scripts/little_loops/config.py` — `create_parallel_config()` at line 794 (reference only)
 
 ### Similar Patterns
@@ -135,11 +137,34 @@ parallel_config = config.create_parallel_config(
 
 ---
 
+## Resolution
+
+**Status**: Fixed
+**Completed**: 2026-03-06
+
+### Changes Made
+
+1. **`scripts/little_loops/parallel/orchestrator.py`** — Added `clean_start` guard at the top of `_load_state()`. When `parallel_config.clean_start` is `True`, the method now sets `started_at` and returns immediately without reading the state file.
+
+2. **`scripts/little_loops/cli/sprint/run.py`** — Added `clean_start=True` to the `create_parallel_config()` call in the multi-worker wave path. Sprint manages its own state; the orchestrator should never load stale state from a previous unrelated run.
+
+3. **`scripts/tests/test_orchestrator.py`** — Added `test_load_state_skips_file_when_clean_start`: verifies that a state file with completed/failed issues is not loaded when `clean_start=True`.
+
+4. **`scripts/tests/test_sprint.py`** — Added `TestSprintWaveCleanStart::test_wave_parallel_config_passes_clean_start`: verifies that the wave `create_parallel_config()` call passes `clean_start=True`.
+
+### Verification
+
+- All 3348 tests pass (including 2 new tests added for this fix)
+- `ll-parallel --resume` path unchanged (`clean_start=False` by default)
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dee6f2da-ed36-487d-a39a-cd3d16500656.jsonl`
 - `/ll:format-issue` - 2026-03-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dee6f2da-ed36-487d-a39a-cd3d16500656.jsonl`
+- `/ll:confidence-check` - 2026-03-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8ae81154-74a3-486d-a616-b7c6650a18e5.jsonl`
+- `/ll:ready-issue` - 2026-03-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/60b97b2a-601d-4e95-914f-ab3dc2e0f96e.jsonl`
+- `/ll:manage-issue` - 2026-03-06T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 
 ---
 
 ## Status
-**Open** | Created: 2026-03-06 | Priority: P2
+**Completed** | Created: 2026-03-06 | Completed: 2026-03-06 | Priority: P2

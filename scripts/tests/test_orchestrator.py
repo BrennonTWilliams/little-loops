@@ -769,6 +769,32 @@ class TestStateManagement:
         orchestrator._load_state()
         assert orchestrator.state.started_at != ""
 
+    def test_load_state_skips_file_when_clean_start(
+        self,
+        orchestrator: ParallelOrchestrator,
+        temp_repo_with_config: Path,
+    ) -> None:
+        """_load_state returns early without reading state file when clean_start=True."""
+        state_file = temp_repo_with_config / ".parallel-manage-state.json"
+        saved_state = {
+            "completed_issues": ["BUG-001", "BUG-002"],
+            "failed_issues": {"BUG-003": "Failed"},
+            "in_progress_issues": [],
+            "pending_merges": [],
+            "timing": {},
+            "started_at": "2025-01-05T10:00:00",
+            "last_checkpoint": "2025-01-05T10:30:00",
+        }
+        state_file.write_text(json.dumps(saved_state))
+
+        orchestrator.parallel_config.clean_start = True
+        orchestrator._load_state()
+
+        # Stale state must not be loaded
+        assert orchestrator.state.completed_issues == []
+        assert orchestrator.state.failed_issues == {}
+        assert orchestrator.state.started_at != ""
+
     def test_save_state_writes_file(
         self,
         orchestrator: ParallelOrchestrator,
