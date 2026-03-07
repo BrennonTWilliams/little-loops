@@ -16,7 +16,7 @@ The `--verbose` / `-v` flag is registered and documented as "Print verbose progr
 ## Location
 
 - **File**: `scripts/little_loops/workflow_sequence_analyzer.py`
-- **Line(s)**: 857–860, 883–886, 896–900 (at scan commit: a574ea0)
+- **Line(s)**: 941–944, 947–953, 956–960 (at scan commit: a574ea0; updated to current HEAD)
 - **Anchor**: `in function main`, `if args.verbose:` block and summary print block
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a574ea0ec555811db2490fece9aaf0819b3e3065/scripts/little_loops/workflow_sequence_analyzer.py#L883-L900)
 - **Code**:
@@ -129,6 +129,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `ux`, `workflow-analyzer`, `captured`
 
+## Resolution
+
+**Resolved**: 2026-03-06
+
+Implemented Option B + A (recommended approach):
+- Added `verbose: bool = False` parameter to `analyze_workflows()`
+- Added 4 per-stage progress prints to stderr around the pipeline calls (`[1/4]` through `[4/4]`)
+- Passed `verbose=args.verbose` from `main()` into `analyze_workflows()`
+- Gated the summary print block under `if args.verbose:` in `main()`; `Output written to:` always prints for piping
+- Added two new tests: `test_verbose_true_emits_progress_to_stderr` and `test_verbose_false_produces_no_stderr`
+
+**Files changed**:
+- `scripts/little_loops/workflow_sequence_analyzer.py`
+- `scripts/tests/test_workflow_sequence_analyzer.py`
+
 ## Session Log
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
@@ -138,9 +153,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/auto`
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/auto`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0ea8389-9e98-4047-b739-4a0f60a0fb88.jsonl`
+- `/ll:manage-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/auto`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P4
+**Completed** | Created: 2026-03-04 | Completed: 2026-03-06 | Priority: P4

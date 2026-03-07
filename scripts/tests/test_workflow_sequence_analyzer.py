@@ -753,6 +753,64 @@ class TestAnalyzeWorkflows:
             )
             assert result.metadata["message_count"] == 2
 
+    def test_verbose_true_emits_progress_to_stderr(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """verbose=True emits per-stage progress lines to stderr."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            messages = [
+                {"content": "Fix checkout.py", "uuid": "msg-1", "session_id": "s1"},
+                {"content": "Test checkout.py fix", "uuid": "msg-2", "session_id": "s1"},
+            ]
+
+            messages_file = tmpdir_path / "messages.jsonl"
+            with open(messages_file, "w") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+            patterns_file = tmpdir_path / "patterns.yaml"
+            with open(patterns_file, "w") as f:
+                yaml.dump({"category_distribution": []}, f)
+
+            analyze_workflows(
+                messages_file=messages_file,
+                patterns_file=patterns_file,
+                verbose=True,
+            )
+
+            captured = capsys.readouterr()
+            assert "[1/4]" in captured.err
+            assert "[2/4]" in captured.err
+            assert "[3/4]" in captured.err
+            assert "[4/4]" in captured.err
+
+    def test_verbose_false_produces_no_stderr(self, capsys: pytest.CaptureFixture[str]) -> None:
+        """verbose=False (default) emits nothing to stderr during analysis."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            messages = [
+                {"content": "Fix checkout.py", "uuid": "msg-1", "session_id": "s1"},
+            ]
+
+            messages_file = tmpdir_path / "messages.jsonl"
+            with open(messages_file, "w") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+            patterns_file = tmpdir_path / "patterns.yaml"
+            with open(patterns_file, "w") as f:
+                yaml.dump({"category_distribution": []}, f)
+
+            analyze_workflows(
+                messages_file=messages_file,
+                patterns_file=patterns_file,
+                verbose=False,
+            )
+
+            captured = capsys.readouterr()
+            assert captured.err == ""
+
 
 class TestLinkSessions:
     """Tests for _link_sessions internal function."""

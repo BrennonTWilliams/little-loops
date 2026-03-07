@@ -750,6 +750,7 @@ def analyze_workflows(
     output_file: Path | None = None,
     overlap_threshold: float = 0.3,
     boundary_threshold: float = 0.6,
+    verbose: bool = False,
 ) -> WorkflowAnalysis:
     """Main entry point: analyze workflows from messages and patterns.
 
@@ -759,6 +760,7 @@ def analyze_workflows(
         output_file: Output path for step2-workflows.yaml (optional)
         overlap_threshold: Minimum entity overlap to cluster messages together (default: 0.3)
         boundary_threshold: Minimum boundary score to split workflow segments (default: 0.6)
+        verbose: Emit per-stage progress to stderr (default: False)
 
     Returns:
         WorkflowAnalysis with all analysis results
@@ -779,10 +781,26 @@ def analyze_workflows(
 
     # Run analysis pipeline
     sessions = _group_by_session(messages)
+    if verbose:
+        print(f"[1/4] Linking sessions across {len(sessions)} session(s)...", file=sys.stderr)
     session_links = _link_sessions(sessions)
+    if verbose:
+        print(f"      → {len(session_links)} link(s) found", file=sys.stderr)
+    if verbose:
+        print("[2/4] Clustering by entities...", file=sys.stderr)
     entity_clusters = _cluster_by_entities(messages, overlap_threshold=overlap_threshold)
+    if verbose:
+        print(f"      → {len(entity_clusters)} cluster(s) found", file=sys.stderr)
+    if verbose:
+        print("[3/4] Computing workflow boundaries...", file=sys.stderr)
     boundaries = _compute_boundaries(messages, boundary_threshold=boundary_threshold)
+    if verbose:
+        print(f"      → {len(boundaries)} boundary/boundaries found", file=sys.stderr)
+    if verbose:
+        print("[4/4] Detecting workflows...", file=sys.stderr)
     workflows = _detect_workflows(messages, boundaries, patterns)
+    if verbose:
+        print(f"      → {len(workflows)} workflow(s) detected", file=sys.stderr)
 
     # Compute handoff analysis
     handoff_count = sum(
@@ -950,13 +968,14 @@ Examples:
                 output_file=output_path,
                 overlap_threshold=args.overlap_threshold,
                 boundary_threshold=args.boundary_threshold,
+                verbose=args.verbose,
             )
 
-            # Print summary
-            print(f"Analyzed {analysis.metadata['message_count']} messages")
-            print(f"Found {len(analysis.session_links)} session links")
-            print(f"Found {len(analysis.entity_clusters)} entity clusters")
-            print(f"Detected {len(analysis.workflows)} workflows")
+            if args.verbose:
+                print(f"Analyzed {analysis.metadata['message_count']} messages")
+                print(f"Found {len(analysis.session_links)} session links")
+                print(f"Found {len(analysis.entity_clusters)} entity clusters")
+                print(f"Detected {len(analysis.workflows)} workflows")
             print(f"Output written to: {output_path}")
 
             return 0
