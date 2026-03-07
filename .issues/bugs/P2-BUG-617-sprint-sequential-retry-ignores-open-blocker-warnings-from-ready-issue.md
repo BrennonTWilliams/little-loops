@@ -17,7 +17,7 @@ During `ll-sprint run` sequential retry, after `ready-issue` completes Phase 1, 
 4. Sprint runner proceeds to Phase 2: implementation runs immediately
 5. Implementation modifies files that the open blocker also targets → merge conflict risk or incorrect output
 
-## Actual Behavior
+## Current Behavior
 
 Sequential retry logic (in `scripts/little_loops/cli/sprint/run.py` or equivalent orchestrator) branches only on `CLOSE` verdict to skip implementation. Any other verdict (`PASS`, `CORRECTED`, and eventually `BLOCKED`) falls through to Phase 2.
 
@@ -38,6 +38,13 @@ When `ready-issue` returns `BLOCKED` (once BUG-616 is fixed), the sprint runner 
 
 Additionally, as a defense-in-depth measure, if the `ready-issue` output body contains an open blocker warning even under a non-`BLOCKED` verdict, the runner should log a warning. The hard gate should be the verdict enum once BUG-616 is fixed.
 
+## Motivation
+
+This bug causes incorrect automation behavior during sprint runs:
+- Issues with open blockers get implemented prematurely, leading to merge conflicts or incorrect output
+- The sprint runner silently ignores dependency warnings, undermining the blocker system's purpose
+- Affects any team using `ll-sprint run` with cross-issue dependencies
+
 ## Root Cause
 
 **File**: `scripts/little_loops/cli/sprint/run.py`
@@ -53,7 +60,7 @@ else:
 
 There is no `BLOCKED` branch because `ready-issue` never emitted that verdict (see BUG-616).
 
-## Proposed Fix
+## Proposed Solution
 
 1. After BUG-616 adds `BLOCKED` verdict: add a branch in the verdict dispatch:
    ```python
@@ -64,6 +71,34 @@ There is no `BLOCKED` branch because `ready-issue` never emitted that verdict (s
    ```
 2. Add `skipped_blocked` to sprint state schema so it surfaces in the wave summary
 3. Wave summary should report blocked issues separately from failed issues
+
+## Implementation Steps
+
+1. Add `BLOCKED` verdict branch to the sequential retry verdict dispatch in `run.py`
+2. Add `skipped_blocked` state to the sprint state schema
+3. Update wave summary reporting to distinguish blocked issues from failed issues
+4. Add tests for the new verdict branch and state transitions
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/sprint/run.py` — verdict dispatch in sequential retry loop
+
+### Dependent Files (Callers/Importers)
+- Sprint state schema (wherever `skipped_blocked` needs to be added)
+- Wave summary renderer (to report blocked issues separately)
+
+### Similar Patterns
+- Existing `CLOSE` verdict branch in the same dispatch block
+
+### Tests
+- `scripts/tests/test_cli_sprint_run.py` or equivalent — add test for `BLOCKED` verdict handling
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
 
 ## Impact
 
@@ -84,5 +119,11 @@ Open
 
 - BUG-616 (`ready-issue` must emit `BLOCKED` verdict before this fix is meaningful)
 
+## Blocks
+
+- BUG-616
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-06T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ec3d1ef8-aeec-4ccb-bd08-ffee1f74e5ef.jsonl`
+- `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID, DEP_ISSUES: added missing Blocks backlink for BUG-616
+- `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/dd27d8a7-ef12-4ceb-87ee-8fff7613ffb7.jsonl`
