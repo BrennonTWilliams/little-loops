@@ -133,6 +133,9 @@ Examples:
     list_parser = subparsers.add_parser("list", aliases=["l"], help="List loops")
     list_parser.set_defaults(command="list")
     list_parser.add_argument("--running", action="store_true", help="Only show running loops")
+    list_parser.add_argument(
+        "--status", help="Filter running loops by status (e.g., interrupted, awaiting_continuation)"
+    )
 
     # Status subcommand
     status_parser = subparsers.add_parser("status", aliases=["st"], help="Show loop status")

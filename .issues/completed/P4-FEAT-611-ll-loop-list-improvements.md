@@ -71,11 +71,11 @@ A developer managing multiple loops wants to quickly see which are `interrupted`
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop list` shows paradigm type for each available loop (loaded from raw YAML spec)
-- [ ] `ll-loop list` shows description when present in the loop spec
-- [ ] `ll-loop list --running` shows `LoopState.status` and elapsed time derived from `accumulated_ms`
-- [ ] `ll-loop list --status <value>` filters running loops by `LoopState.status`
-- [ ] `ll-loop list --status interrupted` returns exit code 1 if no loops match
+- [x] `ll-loop list` shows paradigm type for each available loop (loaded from raw YAML spec)
+- [x] `ll-loop list` shows description when present in the loop spec
+- [x] `ll-loop list --running` shows `LoopState.status` and elapsed time derived from `accumulated_ms`
+- [x] `ll-loop list --status <value>` filters running loops by `LoopState.status`
+- [x] `ll-loop list --status interrupted` returns exit code 1 if no loops match
 
 ## Proposed Solution
 
@@ -106,10 +106,65 @@ Elapsed time should be computed from `state.accumulated_ms` (in milliseconds) us
 
 ## Implementation Steps
 
-1. In `__init__.py`, add `list_parser.add_argument("--status", help="Filter running loops by status (e.g., interrupted, awaiting_continuation)")`
-2. In `info.py`, in the `--running` branch: after `states = list_running_loops(loops_dir)`, apply `if getattr(args, "status", None): states = [s for s in states if s.status == args.status]`; update the print line to include `state.status` and elapsed derived from `state.accumulated_ms // 1000`
-3. In `info.py`, in the available-loops branch: for each `yaml_files` path, open and `yaml.safe_load` to read `paradigm` and `description`; format display as `name  [paradigm]  description_first_line`
-4. Add tests for all three new behaviors
+1. In `__init__.py` (`list_parser` block at line 133), add:
+   ```python
+   list_parser.add_argument("--status", help="Filter running loops by status (e.g., interrupted, awaiting_continuation)")
+   ```
+
+2. In `info.py`, change the branch condition at line 27 from:
+   ```python
+   if getattr(args, "running", False):
+   ```
+   to:
+   ```python
+   if getattr(args, "running", False) or getattr(args, "status", None):
+   ```
+   This ensures `ll-loop list --status interrupted` works without requiring `--running`.
+
+3. In `info.py`, after `states = list_running_loops(loops_dir)` (line 30), apply status filter and update exit code:
+   ```python
+   if getattr(args, "status", None):
+       states = [s for s in states if s.status == args.status]
+   if not states:
+       if getattr(args, "status", None):
+           print(f"No loops with status: {args.status}")
+           return 1
+       print("No running loops")
+       return 0
+   ```
+   Then update the print line (line 36) to include `state.status` and elapsed derived from `accumulated_ms`:
+   ```python
+   elapsed_s = state.accumulated_ms // 1000
+   elapsed_str = f"{elapsed_s}s" if elapsed_s < 60 else f"{elapsed_s // 60}m {elapsed_s % 60}s"
+   print(f"  {state.loop_name}: {state.current_state} (iteration {state.iteration}) [{state.status}] {elapsed_str}")
+   ```
+
+4. In `info.py`, in the available-loops display loop (lines 59-62), open each YAML file with `yaml.safe_load` to read `paradigm` and `description`. Add `import yaml` at the top of the branch (inside the function is fine — `yaml` is not currently in `info.py`'s file-level imports). Note: all current built-in loops have `paradigm: fsm`; user-created loops compiled from a paradigm will show the paradigm name (e.g., `goal`):
+   ```python
+   for path in sorted(yaml_files):
+       import yaml
+       with open(path) as f:
+           spec = yaml.safe_load(f)
+       paradigm = spec.get("paradigm", "")
+       desc = (spec.get("description", "") or "").splitlines()
+       desc_str = f"  {desc[0]}" if desc else ""
+       tag = f"  [{paradigm}]" if paradigm else ""
+       print(f"  {path.stem}{tag}{desc_str}")
+   for path in builtin_files:
+       import yaml
+       with open(path) as f:
+           spec = yaml.safe_load(f)
+       paradigm = spec.get("paradigm", "")
+       desc = (spec.get("description", "") or "").splitlines()
+       desc_str = f"  {desc[0]}" if desc else ""
+       tag = f"  [{paradigm}]" if paradigm else ""
+       print(f"  {path.stem}{tag}{desc_str}  [built-in]")
+   ```
+
+5. Add tests in `TestCmdList` in `test_ll_loop_commands.py` for:
+   - Paradigm and description shown for available loops (use a fixture YAML with `paradigm: goal` and `description: "My description"`)
+   - `--running` output includes `state.status` and elapsed string
+   - `--status interrupted` filters correctly; exit code 1 when no loops match
 
 ## Impact
 
@@ -123,14 +178,26 @@ Elapsed time should be computed from `state.accumulated_ms` (in milliseconds) us
 `feature`, `ll-loop`, `cli`, `ux`
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-06T16:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6ede83e8-b180-4a37-9f33-509b62da4be9.jsonl` — verified all line refs accurate; identified `--status` without `--running` gap in Implementation Steps (condition must be `args.running OR args.status`); noted `yaml` not in `info.py` imports; noted built-in loops use `paradigm: fsm`; expanded steps with concrete code
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — VALID: `ll-loop list` displays only loop names; no paradigm/description/status shown; no `--status` filter
 - `/ll:format-issue` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe94482e-9372-4143-bed0-d453aad43004.jsonl` — reformatted to v2.0 FEAT template; added Motivation, Scope Boundaries, Proposed Solution, Integration Map, Implementation Steps; confirmed `LoopState.status`, `accumulated_ms` available in `persistence.py`; confirmed `FSMLoop.paradigm` in `schema.py`; confirmed description field in `loops/*.yaml`
 - `/ll:confidence-check` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fe94482e-9372-4143-bed0-d453aad43004.jsonl` — readiness: 96/100 PROCEED, outcome: 88/100 HIGH CONFIDENCE
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: minimal display, no status filter
 - `/ll:ready-issue` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2089b015-11be-4a21-8755-bb4e28055f84.jsonl` — CORRECTED: fixed 5 drifted line references in Integration Map
+- `/ll:ready-issue` - 2026-03-06T15:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a1160365-3807-494c-a819-6ebdac72cd6f.jsonl` — READY: all line references verified accurate; no corrections needed
 
 ---
 
+## Resolution
+
+Implemented in `info.py` and `__init__.py`:
+- Added `_load_loop_meta()` helper to extract paradigm and description from loop YAML specs
+- Updated `cmd_list` available-loops block to show `[paradigm]` tag and description for each loop
+- Extended `--running` output to include `[status]` and elapsed time (derived from `accumulated_ms`)
+- Added `--status` argument to `list_parser`; filter applied before display with exit code 1 on no match
+- `--status` alone (without `--running`) triggers the running-loops branch
+- Added 4 new tests covering all acceptance criteria
+
 ## Status
 
-**Open** | Created: 2026-03-06 | Priority: P4
+**Completed** | Created: 2026-03-06 | Priority: P4

@@ -132,6 +132,118 @@ class TestCmdList:
         loops_dir = tmp_path / ".loops"
         assert not loops_dir.exists()
 
+    def test_list_shows_paradigm_and_description(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Available loops display paradigm type and description."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text(
+            "name: my-loop\nparadigm: goal\ndescription: Ensure tests pass\n"
+        )
+        (loops_dir / "bare-loop.yaml").write_text("name: bare\n")
+
+        args = argparse.Namespace(running=False, status=None)
+        with patch("little_loops.cli.loop.info.get_builtin_loops_dir", return_value=tmp_path / "nonexistent"):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        captured = capsys.readouterr().out
+        assert "[goal]" in captured
+        assert "Ensure tests pass" in captured
+        assert "my-loop" in captured
+        assert "bare-loop" in captured
+
+    def test_running_shows_status_and_elapsed(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--running output includes state.status and elapsed time."""
+        from little_loops.cli.loop.info import cmd_list
+        from little_loops.fsm.persistence import LoopState
+
+        loops_dir = tmp_path / ".loops"
+        state = LoopState(
+            loop_name="my-loop",
+            current_state="check_types",
+            iteration=3,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-01-01T00:00:00",
+            updated_at="2026-01-01T00:02:15",
+            status="running",
+            accumulated_ms=135_000,  # 2m 15s
+        )
+
+        args = argparse.Namespace(running=True, status=None)
+        with patch("little_loops.fsm.persistence.list_running_loops", return_value=[state]):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        captured = capsys.readouterr().out
+        assert "[running]" in captured
+        assert "2m 15s" in captured
+        assert "iteration 3" in captured
+
+    def test_status_filter_matches(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--status filters running loops by status."""
+        from little_loops.cli.loop.info import cmd_list
+        from little_loops.fsm.persistence import LoopState
+
+        loops_dir = tmp_path / ".loops"
+
+        def make_state(name: str, s: str) -> LoopState:
+            return LoopState(
+                loop_name=name,
+                current_state="check",
+                iteration=1,
+                captured={},
+                prev_result=None,
+                last_result=None,
+                started_at="2026-01-01T00:00:00",
+                updated_at="2026-01-01T00:00:01",
+                status=s,
+                accumulated_ms=5_000,
+            )
+
+        states = [make_state("loop-a", "interrupted"), make_state("loop-b", "running")]
+
+        args = argparse.Namespace(running=False, status="interrupted")
+        with patch("little_loops.fsm.persistence.list_running_loops", return_value=states):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        captured = capsys.readouterr().out
+        assert "loop-a" in captured
+        assert "loop-b" not in captured
+
+    def test_status_filter_no_match_returns_1(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--status returns exit code 1 when no loops match."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        args = argparse.Namespace(running=False, status="interrupted")
+        with patch("little_loops.fsm.persistence.list_running_loops", return_value=[]):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 1
+        captured = capsys.readouterr().out
+        assert "No loops with status: interrupted" in captured
+
 
 class TestCmdHistory:
     """Tests for history command logic."""

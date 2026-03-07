@@ -19,21 +19,47 @@ from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.logger import Logger
 
 
+def _load_loop_meta(path: Path) -> tuple[str, str]:
+    """Return (paradigm, description) from a loop YAML file."""
+    import yaml
+
+    try:
+        with open(path) as f:
+            spec = yaml.safe_load(f) or {}
+        paradigm = spec.get("paradigm", "") or ""
+        desc_raw = spec.get("description", "") or ""
+        desc = desc_raw.splitlines()[0] if desc_raw.strip() else ""
+        return paradigm, desc
+    except Exception:
+        return "", ""
+
+
 def cmd_list(
     args: argparse.Namespace,
     loops_dir: Path,
 ) -> int:
     """List loops."""
-    if getattr(args, "running", False):
+    status_filter = getattr(args, "status", None)
+    if getattr(args, "running", False) or status_filter:
         from little_loops.fsm.persistence import list_running_loops
 
         states = list_running_loops(loops_dir)
+        if status_filter:
+            states = [s for s in states if s.status == status_filter]
         if not states:
+            if status_filter:
+                print(f"No loops with status: {status_filter}")
+                return 1
             print("No running loops")
             return 0
         print("Running loops:")
         for state in states:
-            print(f"  {state.loop_name}: {state.current_state} (iteration {state.iteration})")
+            elapsed_s = (state.accumulated_ms or 0) // 1000
+            elapsed_str = f"{elapsed_s}s" if elapsed_s < 60 else f"{elapsed_s // 60}m {elapsed_s % 60}s"
+            print(
+                f"  {state.loop_name}: {state.current_state} (iteration {state.iteration})"
+                f" [{state.status}] {elapsed_str}"
+            )
         return 0
 
     # Collect project loops
@@ -57,9 +83,15 @@ def cmd_list(
 
     print("Available loops:")
     for path in sorted(yaml_files):
-        print(f"  {path.stem}")
+        paradigm, desc = _load_loop_meta(path)
+        tag = f"  [{paradigm}]" if paradigm else ""
+        desc_str = f"  {desc}" if desc else ""
+        print(f"  {path.stem}{tag}{desc_str}")
     for path in builtin_files:
-        print(f"  {path.stem}  [built-in]")
+        paradigm, desc = _load_loop_meta(path)
+        tag = f"  [{paradigm}]" if paradigm else ""
+        desc_str = f"  {desc}" if desc else ""
+        print(f"  {path.stem}{tag}{desc_str}  [built-in]")
     return 0
 
 
