@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import threading
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -164,6 +165,16 @@ class DefaultActionRunner:
         )
         self._current_process = process
         output_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+
+        def _drain_stderr() -> None:
+            assert process.stderr is not None
+            for line in process.stderr:
+                stderr_chunks.append(line)
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
+
         try:
             for line in process.stdout:  # type: ignore[union-attr]
                 output_chunks.append(line)
@@ -173,15 +184,17 @@ class DefaultActionRunner:
         except subprocess.TimeoutExpired:
             process.kill()
             process.wait()
+            stderr_thread.join(timeout=5)
             return ActionResult(
                 output="".join(output_chunks),
-                stderr="Action timed out",
+                stderr="".join(stderr_chunks) or "Action timed out",
                 exit_code=124,
                 duration_ms=timeout * 1000,
             )
         finally:
             self._current_process = None
-        stderr = process.stderr.read()  # type: ignore[union-attr]
+        stderr_thread.join(timeout=5)
+        stderr = "".join(stderr_chunks)
         return ActionResult(
             output="".join(output_chunks),
             stderr=stderr,

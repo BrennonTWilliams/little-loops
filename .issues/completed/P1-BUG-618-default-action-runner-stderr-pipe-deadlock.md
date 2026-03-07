@@ -128,9 +128,22 @@ Option A preserves the existing `on_output_line` streaming behavior. Option B is
 
 `bug`, `fsm`, `loop`, `executor`, `captured`
 
+## Resolution
+
+Fixed in `scripts/little_loops/fsm/executor.py` via Option A (background thread).
+
+**Changes**:
+- Added `import threading` to executor.py
+- `DefaultActionRunner.run()` now drains `process.stderr` in a `daemon=True` background thread (`_drain_stderr`) that starts before the stdout streaming loop
+- `stderr_thread.join(timeout=5)` called in both the normal path and the `TimeoutExpired` path
+- On timeout, `stderr` is the actual captured stderr content (or `"Action timed out"` if nothing was captured), replacing the previous hardcoded literal
+- Added two integration tests in `TestDefaultActionRunnerStderrDrain`: large-stderr-no-deadlock and stderr-content-on-timeout
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
+- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/18ad333d-8e69-4276-9e1b-f8195a12c5d2.jsonl`
+- `/ll:manage-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53ff1d21-f604-40b1-aebc-c465253b10ed.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-07 | Priority: P1
+**Resolved** | Created: 2026-03-07 | Resolved: 2026-03-07 | Priority: P1

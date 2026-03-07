@@ -2578,3 +2578,42 @@ class TestDefaultActionRunnerProcessTracking:
         """_current_process is None before any action is run."""
         runner = DefaultActionRunner()
         assert runner._current_process is None
+
+
+class TestDefaultActionRunnerStderrDrain:
+    """Tests for BUG-618: stderr pipe deadlock on large stderr output."""
+
+    def test_large_stderr_does_not_deadlock(self) -> None:
+        """Subprocess writing >64KB to stderr must not deadlock."""
+        runner = DefaultActionRunner()
+        # Write 128KB to stderr while also writing a small amount to stdout
+        result = runner.run(
+            "python3 -c \""
+            "import sys; "
+            "sys.stderr.write('e' * 131072); "
+            "sys.stderr.flush(); "
+            "print('done')\"",
+            timeout=10,
+            is_slash_command=False,
+        )
+        assert result.exit_code == 0
+        assert "done" in result.output
+        assert len(result.stderr) >= 131072
+
+    def test_stderr_content_returned_on_timeout(self) -> None:
+        """Actual stderr content is returned even when action times out."""
+        runner = DefaultActionRunner()
+        # Write stderr, close stdout explicitly so the parent's stdout loop exits,
+        # then sleep past the timeout so process.wait() raises TimeoutExpired.
+        result = runner.run(
+            "python3 -c \""
+            "import sys, os, time; "
+            "sys.stderr.write('error content'); "
+            "sys.stderr.flush(); "
+            "os.close(sys.stdout.fileno()); "
+            "time.sleep(10)\"",
+            timeout=1,
+            is_slash_command=False,
+        )
+        assert result.exit_code == 124
+        assert "error content" in result.stderr
