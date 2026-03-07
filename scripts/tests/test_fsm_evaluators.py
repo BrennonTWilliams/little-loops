@@ -416,6 +416,27 @@ class TestEvaluateDispatcher:
         result = evaluate(config, "5", 0, ctx)
         assert result.verdict == "success"
 
+    def test_dispatch_output_numeric_numeric_string_target(self) -> None:
+        """output_numeric with a numeric string target converts correctly."""
+        config = EvaluateConfig(type="output_numeric", operator="eq", target="5.0")
+        ctx = InterpolationContext()
+        result = evaluate(config, "5", 0, ctx)
+        assert result.verdict == "success"
+
+    def test_dispatch_output_numeric_interpolated_target(self) -> None:
+        """output_numeric with interpolation template target resolves and compares."""
+        config = EvaluateConfig(type="output_numeric", operator="eq", target="${context.threshold}")
+        ctx = InterpolationContext(context={"threshold": "42"})
+        result = evaluate(config, "42", 0, ctx)
+        assert result.verdict == "success"
+
+    def test_dispatch_output_numeric_non_numeric_string_target_raises(self) -> None:
+        """output_numeric with non-numeric string target raises ValueError with diagnostic."""
+        config = EvaluateConfig(type="output_numeric", operator="eq", target="${context.threshold}")
+        ctx = InterpolationContext()  # threshold not set, resolves to literal template
+        with pytest.raises(ValueError, match="output_numeric target must be numeric"):
+            evaluate(config, "5", 0, ctx)
+
     def test_dispatch_output_json(self) -> None:
         """output_json type routes correctly."""
         config = EvaluateConfig(type="output_json", path=".count", operator="eq", target=0)

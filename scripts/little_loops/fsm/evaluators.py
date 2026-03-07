@@ -557,8 +557,18 @@ def evaluate(
         return evaluate_exit_code(exit_code)
 
     elif eval_type == "output_numeric":
-        # Target must be numeric
-        numeric_target = float(config.target) if config.target is not None else 0.0
+        if config.target is None:
+            numeric_target = 0.0
+        elif isinstance(config.target, str):
+            try:
+                resolved = interpolate(config.target, context) if context else config.target
+                numeric_target = float(resolved)
+            except (InterpolationError, ValueError) as e:
+                raise ValueError(
+                    f"output_numeric target must be numeric, got: {config.target!r}"
+                ) from e
+        else:
+            numeric_target = float(config.target)
         return evaluate_output_numeric(
             output=output,
             operator=config.operator or "eq",
