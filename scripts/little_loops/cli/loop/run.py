@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import argparse
+import atexit
+import os
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import (
@@ -66,19 +68,21 @@ def cmd_run(
     if getattr(args, "background", False):
         return run_background(loop_name, args, loops_dir)
 
-    # If running as foreground-internal (spawned by --background), register PID cleanup
-    foreground_pid_file: Path | None = None
-    if getattr(args, "foreground_internal", False):
-        import atexit
+    # Register PID file for all foreground runs so cmd_stop can send SIGTERM (BUG-639).
+    # Background-spawned processes (foreground_internal=True) have their PID written by the
+    # parent in run_background(); plain foreground runs must write their own PID here.
+    running_dir = loops_dir / ".running"
+    running_dir.mkdir(parents=True, exist_ok=True)
+    pid_file = running_dir / f"{loop_name}.pid"
+    foreground_pid_file: Path | None = pid_file
 
-        running_dir = loops_dir / ".running"
-        pid_file = running_dir / f"{loop_name}.pid"
-        foreground_pid_file = pid_file
+    if not getattr(args, "foreground_internal", False):
+        pid_file.write_text(str(os.getpid()))
 
-        def _cleanup_pid() -> None:
-            pid_file.unlink(missing_ok=True)
+    def _cleanup_pid() -> None:
+        pid_file.unlink(missing_ok=True)
 
-        atexit.register(_cleanup_pid)
+    atexit.register(_cleanup_pid)
 
     # Scope-based locking
     lock_manager = LockManager(loops_dir)

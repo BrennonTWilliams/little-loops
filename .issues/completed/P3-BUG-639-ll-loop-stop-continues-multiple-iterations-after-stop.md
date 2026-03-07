@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-07T00:00:00Z
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 90
 ---
 
 # BUG-639: `ll-loop stop` Continues for Several More Iterations After Stop Command
@@ -73,18 +75,19 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Implementation Steps
 
-1. Check `scripts/little_loops/cli/loop/run.py` — does `_loop_signal_handler` get registered in verbose/foreground mode?
-2. Check `scripts/little_loops/cli/loop/lifecycle.py::cmd_stop` — does it look up the PID differently for foreground processes?
-3. Check `scripts/little_loops/fsm/persistence.py::PersistentExecutor` — where is `_shutdown_requested` checked in the iteration loop?
-4. Review `ll-loop-issue-refinement.log` (user-provided) for the exact iterations that ran after stop was issued
-5. Fix the gap and add regression test
+1. **Confirm foreground PID gap** — `run.py:70–81`: verify `foreground_pid_file` is `None` for plain `ll-loop run <name> -v`. Fix: write a PID file for foreground runs (same path as background) so `cmd_stop` can send SIGTERM.
+2. **Fix `cmd_stop` foreground path** — `lifecycle.py:136–140`: the no-PID branch currently only writes state. Fix: either (a) look up the PID via `os.getpid()` equivalent (not applicable from another process) — the real fix is step 1 above (write PID file), or (b) add a state-file-based polling mechanism checked between iterations.
+3. **Verify `_shutdown_requested` check placement** — `executor.py:403–404`: confirm the flag is checked at top of `while True` (it is). Consider adding a check at the start of `PersistentExecutor`'s per-iteration wrapper in `persistence.py` if there is one, to ensure it's caught without entering `_execute_state`.
+4. **Verify `_loop_signal_handler` is registered** — `run.py:112`: `register_loop_signal_handlers(executor, pid_file=foreground_pid_file)` is called before `run_foreground`. Confirm that with the PID file fix in step 1, the SIGTERM delivery → `_current_process.kill()` path in `_helpers.py:52–59` will unblock the blocking stdout read at `executor.py:179`.
+5. **Add regression test** — in `test_cli_loop_lifecycle.py`: simulate `cmd_stop` sending SIGTERM to a foreground process PID; verify loop halts within 1 iteration. Use `MockActionRunner` with call-count guard from `test_fsm_persistence.py:1286–1340` as the iteration-bound assertion pattern.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/run.py` — check `_loop_signal_handler` registration in verbose/foreground mode
-- `scripts/little_loops/cli/loop/lifecycle.py` — check `cmd_stop` PID lookup and SIGTERM/SIGKILL path for foreground processes
-- `scripts/little_loops/fsm/persistence.py` — check `PersistentExecutor` iteration loop for `_shutdown_requested` check placement
+- `scripts/little_loops/cli/loop/run.py` — `run.py:70–81`: write foreground PID file unconditionally (not just under `--foreground-internal`) so `cmd_stop` can locate and signal the process
+- `scripts/little_loops/cli/loop/lifecycle.py` — `lifecycle.py:136–140`: the no-PID branch currently writes state only; once foreground PID file is written (run.py fix), this branch should be revisited; also verify `cmd_stop` SIGTERM path at `lifecycle.py:116`
+- `scripts/little_loops/cli/loop/_helpers.py` — `_helpers.py:52–59`: verify `_current_process.kill()` path in `_loop_signal_handler` is reachable and the `_current_process` reference is not `None` at signal delivery time
+- `scripts/little_loops/fsm/persistence.py` — verify `PersistentExecutor` delegates `request_shutdown()` to inner `FSMExecutor` correctly; `executor.py:387`
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/_helpers.py:35–78` — contains `_loop_signal_handler` (sets `_loop_shutdown_requested` and calls `executor.request_shutdown()`) and `register_loop_signal_handlers`; also contains the `_current_process.kill()` path (`_helpers.py:52–59`) that is the BUG-592 fix
@@ -101,7 +104,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - BUG-600 (`completed/P2-BUG-600-cmd-resume-missing-signal-handlers.md`) — prior gap where signal handlers were not registered on `cmd_resume`; similar pattern of a foreground code path missing handler registration
 
 ### Tests
-- TBD — add regression test verifying stop halts within 1 iteration in foreground and background modes
+- `scripts/tests/test_cli_loop_lifecycle.py` — existing `cmd_stop` tests with `_process_alive` mock; `_loop_signal_handler` registration assertions; SIGTERM/SIGKILL path coverage — add foreground no-PID regression here
+- `scripts/tests/test_cli_loop_background.py` — `TestLoopSignalHandler` class with `setup_method`/`teardown_method` global state reset (`_loop_shutdown_requested`, `_loop_executor`, `_loop_pid_file`); BUG-592 regression for `_current_process.kill()` — add foreground signal handler delivery test here
+- `scripts/tests/test_fsm_persistence.py:1080–1340` — `PersistentExecutor` shutdown tests: `request_shutdown()` delegation (`1105–1116`), bounded-iteration assertion (`1286–1340`) — follow these patterns for the ≤1 iteration acceptance criterion
+- `scripts/tests/test_fsm_executor.py:1723–1813` — `TestSignalHandling` class: pre-run shutdown (`1741–1763`), shutdown from inside runner (`1783–1813`) — closest unit-level model for iteration-count assertions
+- New test needed: simulate `cmd_stop` writing state-file only (no PID), verify foreground loop detects it within 1 iteration (currently impossible — this is the bug)
 
 ### Documentation
 - N/A
@@ -120,10 +127,22 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Session Log
 - `/ll:capture-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da7dc305-837f-4e45-9a7f-90e7eae114d2.jsonl`
 - `/ll:format-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c428d45b-7ea7-4ea3-89cd-1ed4a2a48023.jsonl`
+- `/ll:refine-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8a0f657-a512-4e80-9946-68695952f105.jsonl`
+- `/ll:confidence-check` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9538dd1-f957-415d-b790-afa66f18ac32.jsonl`
+- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d11c154b-ec01-40ba-bc51-c1eb3dd6ae2f.jsonl`
 
 ---
 
+## Resolution
+
+Root cause confirmed: plain foreground runs (`ll-loop run <name> -v`) never wrote a PID file, so `cmd_stop` fell into the no-PID branch and only wrote `state.status = "interrupted"` — no SIGTERM was sent, `_shutdown_requested` was never set, and the loop ran until natural termination.
+
+**Changes**:
+- `run.py`: Write PID file (`os.getpid()`) unconditionally for all foreground runs; background-spawned processes (`foreground_internal=True`) skip the write since their parent already wrote the PID via `run_background()`.
+- `lifecycle.py` (`cmd_resume`): Same fix; also pass `pid_file` to `register_loop_signal_handlers` so the force-exit path cleans up the PID file.
+- Tests: Updated `test_resume_registers_signal_handlers` assertion; added 4 regression tests.
+
 ## Status
 
-**State**: Open
+**State**: Resolved
 **Priority**: P3

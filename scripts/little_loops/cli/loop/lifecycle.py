@@ -155,15 +155,23 @@ def cmd_resume(
     if getattr(args, "background", False):
         return run_background(loop_name, args, loops_dir, subcommand="resume")
 
-    # If running as foreground-internal (spawned by --background), register PID cleanup
-    if getattr(args, "foreground_internal", False):
-        running_dir = loops_dir / ".running"
-        pid_file = running_dir / f"{loop_name}.pid"
+    # Register PID file for all foreground runs so cmd_stop can send SIGTERM (BUG-639).
+    # Background-spawned processes (foreground_internal=True) have their PID written by the
+    # parent in run_background(); plain foreground runs must write their own PID here.
+    import os
 
-        def _cleanup_pid() -> None:
-            pid_file.unlink(missing_ok=True)
+    running_dir = loops_dir / ".running"
+    running_dir.mkdir(parents=True, exist_ok=True)
+    pid_file = running_dir / f"{loop_name}.pid"
+    foreground_pid_file: Path | None = pid_file
 
-        atexit.register(_cleanup_pid)
+    if not getattr(args, "foreground_internal", False):
+        pid_file.write_text(str(os.getpid()))
+
+    def _cleanup_pid() -> None:
+        pid_file.unlink(missing_ok=True)
+
+    atexit.register(_cleanup_pid)
 
     try:
         fsm = load_loop(loop_name, loops_dir, logger)
@@ -190,7 +198,7 @@ def cmd_resume(
     executor = PersistentExecutor(fsm, loops_dir=loops_dir)
 
     # Register signal handlers for graceful shutdown (same as cmd_run)
-    register_loop_signal_handlers(executor)
+    register_loop_signal_handlers(executor, pid_file=foreground_pid_file)
 
     result = executor.resume()
 

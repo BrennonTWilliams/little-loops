@@ -687,6 +687,36 @@ states:
             assert pid_file.exists()
             assert pid_file.read_text() == "12345"
 
+    def test_plain_foreground_run_writes_pid_file(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+    ) -> None:
+        """Plain foreground run writes a PID file so cmd_stop can send SIGTERM (BUG-639)."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_content = """
+name: test-foreground-pid
+initial: done
+max_iterations: 1
+states:
+  done:
+    terminal: true
+"""
+        (loops_dir / "test-foreground-pid.yaml").write_text(loop_content)
+
+        monkeypatch.chdir(tmp_path)
+        with patch("little_loops.cli.loop.run.os.getpid", return_value=55555):
+            with patch.object(sys, "argv", ["ll-loop", "run", "test-foreground-pid"]):
+                from little_loops.cli import main_loop
+
+                result = main_loop()
+
+        assert result == 0
+        pid_file = loops_dir / ".running" / "test-foreground-pid.pid"
+        assert pid_file.exists(), "PID file should be written for plain foreground run (BUG-639)"
+        assert pid_file.read_text() == "55555"
+
     def test_creates_state_files(
         self,
         tmp_path: Path,

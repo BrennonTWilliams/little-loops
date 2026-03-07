@@ -402,7 +402,8 @@ class TestCmdResume:
             result = cmd_resume("test-loop", args, tmp_path, logger)
 
         assert result == 0
-        mock_register.assert_called_once_with(mock_exec_cls.return_value)
+        expected_pid_file = tmp_path / ".running" / "test-loop.pid"
+        mock_register.assert_called_once_with(mock_exec_cls.return_value, pid_file=expected_pid_file)
 
     def test_resume_signal_handler_triggers_graceful_shutdown(self, tmp_path: Path) -> None:
         """Ctrl-C during resume calls request_shutdown() instead of raising KeyboardInterrupt."""
@@ -505,6 +506,85 @@ class TestCmdResumeBackground:
 
         assert result == 0
         assert len(registered) == 1  # PID cleanup was registered
+
+
+    def test_plain_foreground_resume_writes_pid_file(self, tmp_path: Path) -> None:
+        """Plain foreground resume writes a PID file so cmd_stop can send SIGTERM (BUG-639)."""
+        logger = MagicMock()
+        args = argparse.Namespace()  # no background, no foreground_internal
+        mock_fsm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.cli.loop.lifecycle.os.getpid", return_value=99999),
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        pid_file = tmp_path / ".running" / "test-loop.pid"
+        assert pid_file.exists(), "PID file should be written for plain foreground resume (BUG-639)"
+        assert pid_file.read_text() == "99999"
+
+    def test_plain_foreground_resume_pid_passed_to_signal_handler(self, tmp_path: Path) -> None:
+        """Signal handler receives the PID file so force-exit cleans it up (BUG-639)."""
+        logger = MagicMock()
+        args = argparse.Namespace()
+        mock_fsm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.cli.loop.lifecycle.register_loop_signal_handlers") as mock_reg,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            cmd_resume("test-loop", args, tmp_path, logger)
+
+        expected_pid_file = tmp_path / ".running" / "test-loop.pid"
+        mock_reg.assert_called_once_with(mock_exec_cls.return_value, pid_file=expected_pid_file)
+
+    def test_foreground_internal_does_not_overwrite_parent_pid(self, tmp_path: Path) -> None:
+        """--foreground-internal skips writing PID (parent wrote it); existing PID preserved (BUG-639)."""
+        logger = MagicMock()
+        args = argparse.Namespace(foreground_internal=True)
+        mock_fsm = MagicMock()
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+
+        running_dir = tmp_path / ".running"
+        running_dir.mkdir(parents=True)
+        pid_file = running_dir / "test-loop.pid"
+        pid_file.write_text("12345")  # Parent-written PID
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+            patch("little_loops.cli.loop.lifecycle.atexit.register"),
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert pid_file.read_text() == "12345", "Parent-written PID should not be overwritten"
 
 
 class TestCmdResumeExitCodes:
