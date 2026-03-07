@@ -811,6 +811,79 @@ class TestAnalyzeWorkflows:
             captured = capsys.readouterr()
             assert captured.err == ""
 
+    def test_json_output_format(
+        self,
+        sample_messages: list[dict[str, Any]],
+        sample_patterns: dict[str, Any],
+    ) -> None:
+        """output_format='json' writes valid JSON equivalent to analysis.to_dict()."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            messages_file = tmpdir_path / "messages.jsonl"
+            with open(messages_file, "w") as f:
+                for msg in sample_messages:
+                    f.write(json.dumps(msg) + "\n")
+
+            patterns_file = tmpdir_path / "patterns.yaml"
+            with open(patterns_file, "w") as f:
+                yaml.dump(sample_patterns, f)
+
+            output_file = tmpdir_path / "output.json"
+
+            result = analyze_workflows(
+                messages_file=messages_file,
+                patterns_file=patterns_file,
+                output_file=output_file,
+                output_format="json",
+            )
+
+            assert output_file.exists()
+
+            with open(output_file) as f:
+                output_data = json.loads(f.read())
+
+            assert "analysis_metadata" in output_data
+            assert "entity_clusters" in output_data
+            assert "workflow_boundaries" in output_data
+            assert "workflows" in output_data
+            assert output_data["analysis_metadata"]["message_count"] == result.metadata["message_count"]
+
+    def test_yaml_output_format_default(
+        self,
+        sample_messages: list[dict[str, Any]],
+        sample_patterns: dict[str, Any],
+    ) -> None:
+        """output_format='yaml' (default) produces the same output as before."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            messages_file = tmpdir_path / "messages.jsonl"
+            with open(messages_file, "w") as f:
+                for msg in sample_messages:
+                    f.write(json.dumps(msg) + "\n")
+
+            patterns_file = tmpdir_path / "patterns.yaml"
+            with open(patterns_file, "w") as f:
+                yaml.dump(sample_patterns, f)
+
+            output_file = tmpdir_path / "output.yaml"
+
+            analyze_workflows(
+                messages_file=messages_file,
+                patterns_file=patterns_file,
+                output_file=output_file,
+                output_format="yaml",
+            )
+
+            assert output_file.exists()
+
+            with open(output_file) as f:
+                output_data = yaml.safe_load(f)
+
+            assert "analysis_metadata" in output_data
+            assert "entity_clusters" in output_data
+
 
 class TestLinkSessions:
     """Tests for _link_sessions internal function."""

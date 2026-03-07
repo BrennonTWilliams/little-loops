@@ -49,10 +49,10 @@ ll-workflows analyze --input msgs.jsonl --patterns p.yaml --format json | jq '.w
 
 ## Acceptance Criteria
 
-- [ ] `--format yaml` (default) produces the same output as today
-- [ ] `--format json` produces a JSON file equivalent to `json.dumps(analysis.to_dict(), indent=2)`
-- [ ] Default output file extension changes to `.json` when `--format json` is used and `--output` is not specified
-- [ ] Invalid `--format` value produces a clear error message
+- [x] `--format yaml` (default) produces the same output as today
+- [x] `--format json` produces a JSON file equivalent to `json.dumps(analysis.to_dict(), indent=2)`
+- [x] Default output file extension changes to `.json` when `--format json` is used and `--output` is not specified
+- [x] Invalid `--format` value produces a clear error message (handled by argparse `choices=["yaml","json"]`)
 
 ## Proposed Solution
 
@@ -141,9 +141,9 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Blocked By
 
-- BUG-547 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; higher priority bug should land first
-- FEAT-555 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; higher priority feature should land first
-- ENH-552 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; same priority but lower ID should land first
+- ~~BUG-547~~ — **Completed** ✓
+- FEAT-555 — overlapping files `scripts/little_loops/workflow_sequence_analyzer.py`, `scripts/tests/test_workflow_sequence_analyzer.py`; higher priority feature should land first (still open)
+- ~~ENH-552~~ — **Completed** ✓
 
 ## Blocks
 
@@ -151,10 +151,10 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Verification Notes
 
-- **Verified**: 2026-03-05 — VALID (minor line drift)
+- **Verified**: 2026-03-06 — VALID (minor line drift)
 - File `scripts/little_loops/workflow_sequence_analyzer.py` exists ✓
-- `yaml.dump` output block found at lines 806–810 (issue cites 789–794; ~16-line drift since scan commit `a574ea0`)
-- `def analyze_workflows` at line 738 ✓
+- `yaml.dump` output block found at lines 841–845 (previous verify cited 806–810; ~35-line drift since then)
+- `def analyze_workflows` at line 747 ✓
 - `json` imported at line 25 ✓
 - 5 dataclasses with `to_dict()` confirmed ✓
 - Core claims and proposed solution remain accurate
@@ -167,7 +167,20 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b997cd88-ad10-4335-bb5e-e4a3a37b1f72.jsonl`
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b997cd88-ad10-4335-bb5e-e4a3a37b1f72.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
+- `/ll:ready-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/641cb50f-678a-4e66-bc65-c092750dc794.jsonl`
+
+## Resolution
+
+- **Status**: Completed
+- **Completed**: 2026-03-06
+- **Changes**:
+  - `scripts/little_loops/workflow_sequence_analyzer.py`: Added `output_format` param to `analyze_workflows`, branched serialization on format, added `-f`/`--format` CLI argument with `choices=["yaml","json"]`, updated default output path to use `.json` extension when `--format json`
+  - `scripts/tests/test_workflow_sequence_analyzer.py`: Added `test_json_output_format` and `test_yaml_output_format_default` tests
+
+## Session Log
+
+- `/ll:manage-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P4
+**Completed** | Created: 2026-03-04 | Priority: P4

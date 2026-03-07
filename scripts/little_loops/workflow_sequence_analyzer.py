@@ -751,6 +751,7 @@ def analyze_workflows(
     overlap_threshold: float = 0.3,
     boundary_threshold: float = 0.6,
     verbose: bool = False,
+    output_format: str = "yaml",
 ) -> WorkflowAnalysis:
     """Main entry point: analyze workflows from messages and patterns.
 
@@ -761,6 +762,7 @@ def analyze_workflows(
         overlap_threshold: Minimum entity overlap to cluster messages together (default: 0.3)
         boundary_threshold: Minimum boundary score to split workflow segments (default: 0.6)
         verbose: Emit per-stage progress to stderr (default: False)
+        output_format: Output serialization format, "yaml" or "json" (default: "yaml")
 
     Returns:
         WorkflowAnalysis with all analysis results
@@ -838,7 +840,10 @@ def analyze_workflows(
         output_file = Path(output_file)
         output_file.parent.mkdir(parents=True, exist_ok=True)
         with open(output_file, "w", encoding="utf-8") as f:
-            yaml.dump(analysis.to_dict(), f, default_flow_style=False, sort_keys=False)
+            if output_format == "json":
+                json.dump(analysis.to_dict(), f, indent=2, default=str)
+            else:
+                yaml.dump(analysis.to_dict(), f, default_flow_style=False, sort_keys=False)
 
     return analysis
 
@@ -897,7 +902,14 @@ Examples:
         "--output",
         type=Path,
         default=None,
-        help="Output YAML file (default: .claude/workflow-analysis/step2-workflows.yaml)",
+        help="Output file (default: .claude/workflow-analysis/step2-workflows.yaml or .json)",
+    )
+    analyze_parser.add_argument(
+        "-f",
+        "--format",
+        choices=["yaml", "json"],
+        default="yaml",
+        help="Output format (default: yaml)",
     )
     analyze_parser.add_argument(
         "-v",
@@ -954,7 +966,10 @@ Examples:
         # Set default output path
         output_path = args.output
         if output_path is None:
-            output_path = Path(".claude/workflow-analysis/step2-workflows.yaml")
+            if args.format == "json":
+                output_path = Path(".claude/workflow-analysis/step2-workflows.json")
+            else:
+                output_path = Path(".claude/workflow-analysis/step2-workflows.yaml")
 
         if args.verbose:
             print(f"Input: {args.input}")
@@ -969,6 +984,7 @@ Examples:
                 overlap_threshold=args.overlap_threshold,
                 boundary_threshold=args.boundary_threshold,
                 verbose=args.verbose,
+                output_format=args.format,
             )
 
             if args.verbose:
