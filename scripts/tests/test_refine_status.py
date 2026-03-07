@@ -837,7 +837,7 @@ def _make_fully_formatted_bug(directory: Path, filename: str, title: str) -> Non
 
 
 class TestRefineStatusFormatColumn:
-    """Tests for the static fmt column using structural template detection."""
+    """Tests for the fmt column using dual-criterion detection (session log or structural)."""
 
     def test_fmt_checkmark_for_fully_formatted_bug(
         self,
@@ -904,13 +904,13 @@ class TestRefineStatusFormatColumn:
         assert record["id"] == "BUG-301"
         assert record["formatted"] is False, "Sparse BUG should report formatted=False"
 
-    def test_fmt_x_despite_format_issue_in_session_log(
+    def test_fmt_checkmark_when_format_issue_in_session_log(
         self,
         temp_project_dir: Path,
         sample_config: dict,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """✗ for an issue that ran /ll:format-issue but is still missing required sections."""
+        """✓ for an issue with /ll:format-issue in session log, even without required sections."""
         import json as json_module
 
         _write_config(temp_project_dir, sample_config)
@@ -940,8 +940,8 @@ class TestRefineStatusFormatColumn:
         lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
         record = json_module.loads(lines[0])
         assert record["id"] == "BUG-302"
-        assert record["formatted"] is False, (
-            "Session log entry for /ll:format-issue must not affect structural detection"
+        assert record["formatted"] is True, (
+            "Session log /ll:format-issue entry should mark issue as formatted"
         )
 
     def test_format_cmd_no_longer_creates_dynamic_column(
