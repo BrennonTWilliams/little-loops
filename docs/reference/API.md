@@ -89,6 +89,11 @@ BRConfig(project_root: Path)
 | `parallel` | `ParallelAutomationConfig` | Parallel automation settings |
 | `commands` | `CommandsConfig` | Command customization (includes `confidence_gate: ConfidenceGateConfig`, `tdd_mode: bool`) |
 | `scan` | `ScanConfig` | Codebase scanning settings |
+| `sprints` | `SprintsConfig` | Sprint management settings |
+| `loops` | `LoopsConfig` | FSM loop settings |
+| `sync` | `SyncConfig` | GitHub Issues sync settings |
+| `dependency_mapping` | `DependencyMappingConfig` | Overlap detection thresholds |
+| `refine_status` | `RefineStatusConfig` | refine-status display settings |
 | `cli` | `CliConfig` | CLI output settings (color toggle and color overrides) |
 | `issue_categories` | `list[str]` | List of category names |
 | `issue_priorities` | `list[str]` | List of priority prefixes |
@@ -377,6 +382,100 @@ class ParallelAutomationConfig:
 - `base.timeout_seconds` - Per-issue timeout in seconds (default: 3600)
 - `base.stream_output` - Stream subprocess output (default: False for parallel)
 
+### SprintsConfig
+
+Sprint management configuration.
+
+```python
+@dataclass
+class SprintsConfig:
+    sprints_dir: str = ".sprints"        # Directory for sprint YAML files
+    default_timeout: int = 3600          # Default per-issue timeout in seconds
+    default_max_workers: int = 2         # Default worker count for wave execution
+```
+
+### LoopsConfig
+
+FSM loop configuration.
+
+```python
+@dataclass
+class LoopsConfig:
+    loops_dir: str = ".loops"    # Directory for loop YAML definitions
+```
+
+### GitHubSyncConfig
+
+GitHub-specific sync configuration.
+
+```python
+@dataclass
+class GitHubSyncConfig:
+    repo: str | None = None                    # GitHub repo slug (owner/repo); auto-detected if None
+    label_mapping: dict[str, str] = {          # Issue type → GitHub label
+        "BUG": "bug",
+        "FEAT": "enhancement",
+        "ENH": "enhancement",
+    }
+    priority_labels: bool = True               # Sync priority as GitHub labels
+    sync_completed: bool = False               # Include completed issues in sync
+    state_file: str = ".claude/ll-sync-state.json"  # Sync state file path
+    pull_template: str = "minimal"             # Template for pulled issues ("minimal" | "full")
+```
+
+### SyncConfig
+
+Issue sync configuration.
+
+```python
+@dataclass
+class SyncConfig:
+    enabled: bool = False
+    provider: str = "github"
+    github: GitHubSyncConfig = GitHubSyncConfig()
+```
+
+### ScoringWeightsConfig
+
+Scoring weights for semantic conflict analysis. Used by `DependencyMappingConfig`.
+
+```python
+@dataclass
+class ScoringWeightsConfig:
+    semantic: float = 0.5    # Weight for semantic target overlap (component/function names)
+    section: float = 0.3     # Weight for section mention overlap (UI regions)
+    type: float = 0.2        # Weight for modification type match
+```
+
+Weights should sum to 1.0 for normalized scoring.
+
+### DependencyMappingConfig
+
+Dependency mapping threshold configuration. Controls overlap detection sensitivity and conflict scoring.
+
+```python
+@dataclass
+class DependencyMappingConfig:
+    overlap_min_files: int = 2                 # Minimum overlapping files to trigger overlap
+    overlap_min_ratio: float = 0.25            # Minimum ratio of overlapping to smaller file set
+    min_directory_depth: int = 2               # Minimum path segments for directory overlap
+    conflict_threshold: float = 0.4            # Below = parallel-safe, above = dependency proposed
+    high_conflict_threshold: float = 0.7       # Above = HIGH conflict label
+    confidence_modifier: float = 0.5           # Applied when dependency direction is ambiguous
+    scoring_weights: ScoringWeightsConfig      # Weights for semantic/section/type signals
+    exclude_common_files: list[str]            # Infrastructure files excluded from overlap detection
+```
+
+### RefineStatusConfig
+
+Configuration for the `ll-issues refine-status` display.
+
+```python
+@dataclass
+class RefineStatusConfig:
+    columns: list[str] = []    # Column names to include (empty = all default columns)
+```
+
 ---
 
 ## little_loops.issue_parser
@@ -426,6 +525,26 @@ def from_dict(cls, data: dict[str, Any]) -> IssueInfo
 ```
 Create from dictionary.
 
+### ProductImpact
+
+Product impact assessment dataclass, stored as `IssueInfo.product_impact`.
+
+```python
+@dataclass
+class ProductImpact:
+    goal_alignment: str | None = None    # Strategic priority ID this supports
+    persona_impact: str | None = None    # ID of affected persona
+    business_value: str | None = None    # "high" | "medium" | "low"
+    user_benefit: str | None = None      # Description of user benefit
+```
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `to_dict()` | `dict` | Convert to dictionary for JSON serialization |
+| `from_dict(data)` | `ProductImpact \| None` | Create from dictionary; returns `None` if data is `None`/empty |
+
 ### IssueParser
 
 Parses issue files based on project configuration.
@@ -469,6 +588,37 @@ Parse an issue file to extract metadata.
 **Returns:** Parsed `IssueInfo`
 
 ### Helper Functions
+
+#### is_normalized
+
+```python
+def is_normalized(filename: str) -> bool
+```
+
+Check whether an issue filename conforms to naming conventions.
+
+**Parameters:**
+- `filename` - The basename of the issue file (e.g. `"P2-BUG-010-my-issue.md"`)
+
+**Returns:** `True` if filename matches `^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$`
+
+#### is_formatted
+
+```python
+def is_formatted(issue_path: Path, templates_dir: Path | None = None) -> bool
+```
+
+Check whether an issue file has been formatted to the template structure.
+
+An issue is considered formatted if either:
+1. Its `## Session Log` section contains a `/ll:format-issue` entry, **or**
+2. All required sections for its type template are present as `##` headings.
+
+**Parameters:**
+- `issue_path` - Path to the issue markdown file
+- `templates_dir` - Optional override for the templates directory
+
+**Returns:** `True` if the issue passes either criterion; `False` for files whose type cannot be determined or whose template cannot be loaded
 
 #### find_issues
 
@@ -1395,7 +1545,7 @@ print(report)
 
 ## little_loops.git_operations
 
-Git utility functions for status checking, work verification, and .gitignore management.
+Git utility functions for status checking and .gitignore management.
 
 ### GitignorePattern
 
@@ -1537,24 +1687,30 @@ Check for uncommitted changes.
 
 **Returns:** `True` if there are uncommitted changes
 
-### verify_work_was_done
+---
+
+## little_loops.work_verification
+
+Shared work verification utilities used by `issue_manager` (ll-auto) and `worker_pool` (ll-parallel).
 
 ```python
-def verify_work_was_done(
-    logger: Logger,
-    changed_files: list[str] | None = None,
-) -> bool
+from little_loops.work_verification import verify_work_was_done, filter_excluded_files
 ```
 
-Verify that actual work was done (not just issue file moves).
+### Constants
 
-Prevents marking issues as "completed" when no actual fix was implemented by checking if changes were made to files outside of excluded directories (`.issues/`, `thoughts/`, etc.).
+```python
+EXCLUDED_DIRECTORIES = (
+    ".issues/",
+    "issues/",
+    ".speckit/",
+    "thoughts/",
+    ".worktrees/",
+    ".auto-manage",
+)
+```
 
-**Parameters:**
-- `logger` - Logger for output
-- `changed_files` - Optional list of changed files. If not provided, detects via git diff
-
-**Returns:** `True` if meaningful file changes were detected
+Directories excluded from work verification. Changes to files in these directories do not count as meaningful implementation work.
 
 ### filter_excluded_files
 
@@ -1567,7 +1723,37 @@ Filter out files in excluded directories.
 **Parameters:**
 - `files` - List of file paths to filter
 
-**Returns:** List of files not in excluded directories
+**Returns:** List of files not in `EXCLUDED_DIRECTORIES`
+
+### verify_work_was_done
+
+```python
+def verify_work_was_done(
+    logger: Logger,
+    changed_files: list[str] | None = None,
+) -> bool
+```
+
+Verify that actual work was done (not just issue file moves).
+
+Prevents marking issues as "completed" when no actual fix was implemented. Returns `True` if there are file changes outside of excluded directories.
+
+**Parameters:**
+- `logger` - Logger for output
+- `changed_files` - Optional pre-computed file list. If `None`, detects via `git diff` and `git diff --cached`
+
+**Returns:** `True` if meaningful file changes were detected
+
+**Example:**
+
+```python
+from little_loops.work_verification import verify_work_was_done
+from little_loops.logger import Logger
+
+logger = Logger()
+if not verify_work_was_done(logger):
+    logger.warning("No implementation changes detected")
+```
 
 ---
 
@@ -1719,6 +1905,83 @@ Fallback: Complete issue lifecycle when command exited early.
 
 ---
 
+## little_loops.issue_lifecycle
+
+Issue lifecycle operations: completing, closing, deferring, and undeferring issues.
+
+```python
+from little_loops.issue_lifecycle import defer_issue, undefer_issue
+```
+
+### defer_issue
+
+```python
+def defer_issue(
+    info: IssueInfo,
+    config: BRConfig,
+    logger: Logger,
+    reason: str | None = None,
+) -> bool
+```
+
+Move an issue from its active category directory to `deferred/`.
+
+Appends a `## Deferred` section to the issue file with the reason and date, then commits the move.
+
+**Parameters:**
+- `info` - Parsed issue info
+- `config` - Project configuration
+- `logger` - Logger for output
+- `reason` - Reason for deferring (default: `"Intentionally set aside for later consideration"`)
+
+**Returns:** `True` if successful, `False` otherwise
+
+### undefer_issue
+
+```python
+def undefer_issue(
+    config: BRConfig,
+    deferred_issue_path: Path,
+    logger: Logger,
+    reason: str | None = None,
+) -> Path | None
+```
+
+Move an issue from `deferred/` back to its original category directory.
+
+Removes the `## Deferred` section from the issue file and commits the move.
+
+**Parameters:**
+- `config` - Project configuration
+- `deferred_issue_path` - Path to the issue file in `deferred/`
+- `logger` - Logger for output
+- `reason` - Reason for undeferring (optional)
+
+**Returns:** New `Path` of the issue in its active category directory, or `None` if failed
+
+**Example:**
+
+```python
+from little_loops.issue_lifecycle import defer_issue, undefer_issue
+from little_loops.issue_parser import IssueParser
+from little_loops.config import BRConfig
+from little_loops.logger import Logger
+from pathlib import Path
+
+config = BRConfig(Path.cwd())
+logger = Logger()
+parser = IssueParser(config)
+info = parser.parse_file(Path(".issues/features/P3-FEAT-042-example.md"))
+
+# Defer
+defer_issue(info, config, logger, reason="Blocked pending design review")
+
+# Undefer later
+new_path = undefer_issue(config, Path(".issues/deferred/P3-FEAT-042-example.md"), logger)
+```
+
+---
+
 ## little_loops.state
 
 State persistence for automation resume capability.
@@ -1802,6 +2065,7 @@ StateManager(state_file: Path, logger: Logger)
 | `mark_completed(issue_id, timing=None)` | Mark issue as completed |
 | `mark_failed(issue_id, reason)` | Mark issue as failed |
 | `is_attempted(issue_id) -> bool` | Check if issue was attempted |
+| `record_corrections(issue_id, corrections)` | Record auto-corrections made to an issue |
 
 ---
 
@@ -2381,8 +2645,90 @@ class OrchestratorState:
     failed_issues: dict[str, str]
     pending_merges: list[str]
     timing: dict[str, dict[str, float]]
+    corrections: dict[str, list[str]]   # Issue ID → corrections made (for pattern analysis)
     started_at: str
     last_checkpoint: str
+```
+
+#### WorkerStage
+
+```python
+class WorkerStage(Enum):
+    SETUP = "setup"                # Creating git worktree and copying .claude/
+    VALIDATING = "validating"      # Running ready-issue command
+    IMPLEMENTING = "implementing"  # Running manage-issue command
+    VERIFYING = "verifying"        # Checking work was done and updating branch base
+    MERGING = "merging"            # Awaiting merge coordination
+    COMPLETED = "completed"        # Successfully finished
+    FAILED = "failed"              # Failed at some stage
+    INTERRUPTED = "interrupted"    # Interrupted during shutdown
+```
+
+Located at `little_loops.parallel.types`.
+
+#### PendingWorktreeInfo
+
+```python
+@dataclass
+class PendingWorktreeInfo:
+    worktree_path: Path             # Path to the worktree directory
+    branch_name: str                # Git branch (parallel/<issue-id>-<timestamp>)
+    issue_id: str                   # Extracted issue ID (e.g., "BUG-045")
+    commits_ahead: int              # Commits ahead of main
+    has_uncommitted_changes: bool   # Whether there are uncommitted changes
+    changed_files: list[str]        # Files with uncommitted changes
+```
+
+**Properties:**
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `has_pending_work` | `bool` | `True` if `commits_ahead > 0` or `has_uncommitted_changes` |
+
+Located at `little_loops.parallel.types`.
+
+#### OverlapResult
+
+```python
+@dataclass
+class OverlapResult:
+    has_overlap: bool = False
+    overlapping_issues: list[str] = []    # Issue IDs that overlap
+    overlapping_files: set[str] = set()   # Specific files/paths that overlap
+```
+
+`bool(result)` returns `result.has_overlap`. Located at `little_loops.parallel.overlap_detector`.
+
+#### OverlapDetector
+
+Thread-safe tracker for detecting file modification conflicts between parallel issues. Located at `little_loops.parallel.overlap_detector`.
+
+```python
+class OverlapDetector:
+    def __init__(self, config: DependencyMappingConfig | None = None) -> None
+```
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `register_issue(issue)` | `FileHints` | Register an issue as actively being processed |
+| `unregister_issue(issue_id)` | `None` | Unregister a completed issue |
+| `check_overlap(issue)` | `OverlapResult` | Check for conflicts without registering |
+| `get_active_issues()` | `list[str]` | List currently active issue IDs |
+| `get_hints(issue_id)` | `FileHints \| None` | Get hints for a registered issue |
+| `clear()` | `None` | Clear all tracked issues |
+
+**Usage pattern:**
+```python
+from little_loops.parallel.overlap_detector import OverlapDetector
+
+detector = OverlapDetector()
+result = detector.check_overlap(new_issue)
+if not result:
+    detector.register_issue(new_issue)
+    # ... process issue ...
+    detector.unregister_issue(new_issue.issue_id)
 ```
 
 ---
@@ -2522,6 +2868,77 @@ Entry point for `ll-messages` command. Extract user messages from Claude Code lo
 - `--exclude-agents` - Exclude agent session files
 - `--stdout` - Print to stdout instead of file
 - `-v, --verbose` - Verbose progress output
+
+### main_sprint
+
+```python
+def main_sprint() -> int
+```
+
+Entry point for `ll-sprint` command. Define and execute curated issue sets with dependency-aware wave ordering.
+
+**Returns:** Exit code
+
+**Sub-commands:** `create`, `edit`, `list`, `show`, `delete`, `run`, `resume`, `status`
+
+### main_parallel
+
+```python
+def main_parallel() -> int
+```
+
+Entry point for `ll-parallel` command. Process issues concurrently using isolated git worktrees.
+
+**Returns:** Exit code
+
+**CLI Arguments:**
+- `--max-workers` - Number of parallel workers
+- `--timeout` - Per-issue timeout in seconds
+- `--issues` - Specific issue IDs to process
+
+### main_sync
+
+```python
+def main_sync() -> int
+```
+
+Entry point for `ll-sync` command. Sync local issues with GitHub Issues (bidirectional push/pull).
+
+**Returns:** Exit code
+
+**Sub-commands:** `push`, `pull`, `status`, `reset`
+
+### main_deps
+
+```python
+def main_deps() -> int
+```
+
+Entry point for `ll-deps` command. Cross-issue dependency analysis and validation.
+
+**Returns:** Exit code
+
+**Sub-commands:** `validate`, `suggest`, `report`
+
+### main_verify_docs
+
+```python
+def main_verify_docs() -> int
+```
+
+Entry point for `ll-verify-docs` command. Verify that documented counts match actual file counts in the project.
+
+**Returns:** Exit code
+
+### main_check_links
+
+```python
+def main_check_links() -> int
+```
+
+Entry point for `ll-check-links` command. Check markdown documentation for broken links.
+
+**Returns:** Exit code
 
 ---
 
@@ -2969,6 +3386,9 @@ FSM (Finite State Machine) loop system for automation workflows. This subpackage
 | `little_loops.fsm.interpolation` | Variable substitution (`${context.*}`, etc.) |
 | `little_loops.fsm.validation` | Schema validation utilities |
 | `little_loops.fsm.persistence` | Loop state persistence |
+| `little_loops.fsm.handoff_handler` | Context handoff signal handling |
+| `little_loops.fsm.concurrency` | Scope-based lock management for concurrent loops |
+| `little_loops.fsm.signal_detector` | Pattern-based signal detection in action output |
 
 ### Quick Import
 
@@ -3668,6 +4088,160 @@ Get event history for a loop.
 
 ---
 
+### little_loops.fsm.handoff_handler
+
+Handles context handoff signals during FSM loop execution, with configurable behavior (pause, spawn, or terminate).
+
+#### HandoffBehavior
+
+```python
+class HandoffBehavior(Enum):
+    TERMINATE = "terminate"   # Stop loop execution immediately, no state preservation
+    PAUSE = "pause"           # Save state with continuation prompt and exit (default)
+    SPAWN = "spawn"           # Save state and spawn a new Claude session to continue
+```
+
+#### HandoffResult
+
+```python
+@dataclass
+class HandoffResult:
+    behavior: HandoffBehavior               # The behavior that was applied
+    continuation_prompt: str | None         # Continuation prompt from the signal
+    spawned_process: subprocess.Popen | None = None  # Set if SPAWN behavior used
+```
+
+#### HandoffHandler
+
+```python
+class HandoffHandler:
+    def __init__(self, behavior: HandoffBehavior = HandoffBehavior.PAUSE) -> None
+```
+
+Handle context handoff signals with configurable behavior.
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `handle(loop_name, continuation)` | `HandoffResult` | Handle a detected handoff signal; save state responsibility falls on the caller |
+
+**Example:**
+
+```python
+from little_loops.fsm.handoff_handler import HandoffHandler, HandoffBehavior
+
+handler = HandoffHandler(HandoffBehavior.PAUSE)
+result = handler.handle("fix-types", "Continue from iteration 5")
+# result.behavior == HandoffBehavior.PAUSE
+```
+
+---
+
+### little_loops.fsm.concurrency
+
+Scope-based concurrency control for FSM loops. Prevents concurrent loops from conflicting on the same files via file-based locking under `.loops/.running/`.
+
+#### ScopeLock
+
+```python
+@dataclass
+class ScopeLock:
+    loop_name: str      # Name of the loop holding the lock
+    scope: list[str]    # List of paths this loop operates on
+    pid: int            # Process ID of the lock holder
+    started_at: str     # ISO timestamp when lock was acquired
+```
+
+**Methods:** `to_dict()`, `from_dict(data)`
+
+#### LockManager
+
+```python
+class LockManager:
+    def __init__(self, loops_dir: Path | None = None) -> None
+```
+
+Manage scope-based locks for concurrent loop execution. Lock files are stored in `.loops/.running/<name>.lock`.
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `acquire(loop_name, scope)` | `bool` | Acquire lock; returns `False` if conflict exists |
+| `release(loop_name)` | `None` | Release lock for a loop |
+| `find_conflict(scope)` | `ScopeLock \| None` | Find conflicting running loop; cleans stale locks |
+| `list_locks()` | `list[ScopeLock]` | List all active locks; cleans stale locks |
+| `wait_for_scope(scope, timeout=300)` | `bool` | Wait until scope is available; `False` on timeout |
+
+---
+
+### little_loops.fsm.signal_detector
+
+Pattern-based signal detection for interpreting special markers in action output (e.g. `CONTEXT_HANDOFF:`, `FATAL_ERROR:`, `LOOP_STOP:`).
+
+#### DetectedSignal
+
+```python
+@dataclass
+class DetectedSignal:
+    signal_type: str        # Type of signal (e.g., "handoff", "error", "stop")
+    payload: str | None     # Captured content after the signal marker
+    raw_match: str          # The full matched string
+```
+
+#### SignalPattern
+
+```python
+class SignalPattern:
+    def __init__(self, name: str, pattern: str) -> None
+```
+
+Configurable signal pattern using regex. A capture group extracts the payload.
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `search(output)` | `DetectedSignal \| None` | Search for pattern in output |
+
+**Built-in patterns:**
+
+| Name | Marker | Signal type |
+|------|--------|-------------|
+| `HANDOFF_SIGNAL` | `CONTEXT_HANDOFF: <payload>` | `"handoff"` |
+| `ERROR_SIGNAL` | `FATAL_ERROR: <payload>` | `"error"` |
+| `STOP_SIGNAL` | `LOOP_STOP: <payload>` | `"stop"` |
+
+#### SignalDetector
+
+```python
+class SignalDetector:
+    def __init__(self, patterns: list[SignalPattern] | None = None) -> None
+```
+
+Detect signals in command output. Defaults to the three built-in patterns.
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `detect(output)` | `list[DetectedSignal]` | Detect all signals in output |
+| `detect_first(output)` | `DetectedSignal \| None` | Detect first matching signal (highest priority wins) |
+
+**Example:**
+
+```python
+from little_loops.fsm.signal_detector import SignalDetector
+
+detector = SignalDetector()
+signal = detector.detect_first("Some output\nCONTEXT_HANDOFF: Ready for fresh session")
+if signal and signal.signal_type == "handoff":
+    print(signal.payload)  # "Ready for fresh session"
+```
+
+---
+
 ## little_loops.sprint
 
 Sprint planning and execution for batch issue processing.
@@ -3704,6 +4278,30 @@ class Sprint:
 | `from_dict(data)` | `Sprint` | Create from dictionary |
 | `save(sprints_dir)` | `Path` | Save to YAML file |
 | `load(sprints_dir, name)` | `Sprint \| None` | Load from file |
+
+### SprintState
+
+Persistent state for sprint execution. Enables resume capability after interruption.
+
+```python
+@dataclass
+class SprintState:
+    sprint_name: str = ""                           # Name of the sprint being executed
+    current_wave: int = 0                           # Wave number currently being processed (1-indexed)
+    completed_issues: list[str] = []                # Completed issue IDs
+    failed_issues: dict[str, str] = {}              # Issue ID → failure reason
+    skipped_blocked_issues: dict[str, str] = {}     # Issue ID → block reason
+    timing: dict[str, dict[str, float]] = {}        # Per-issue timing breakdown
+    started_at: str = ""                            # ISO 8601 start timestamp
+    last_checkpoint: str = ""                       # ISO 8601 last save timestamp
+```
+
+**Methods:**
+
+| Method | Returns | Description |
+|--------|---------|-------------|
+| `to_dict()` | `dict` | Convert for JSON serialization |
+| `from_dict(data)` | `SprintState` | Create from dictionary |
 
 ### SprintManager
 
@@ -3965,6 +4563,91 @@ if result.has_errors:
             print(f"Broken: {r.url} at {r.file}:{r.line}")
 else:
     print(f"All {result.total_links} links valid!")
+```
+
+---
+
+## little_loops.session_log
+
+Session log linking for issue files. Links Claude Code JSONL session files to issue files by appending timestamped log entries.
+
+```python
+from little_loops.session_log import (
+    parse_session_log,
+    count_session_commands,
+    get_current_session_jsonl,
+    append_session_log_entry,
+)
+```
+
+### parse_session_log
+
+```python
+def parse_session_log(content: str) -> list[str]
+```
+
+Extract distinct `/ll:*` command names from the `## Session Log` section, in first-seen order (deduplicated).
+
+**Parameters:**
+- `content` - Full text of an issue markdown file
+
+**Returns:** List of distinct command names (e.g. `["/ll:refine-issue", "/ll:ready-issue"]`)
+
+### count_session_commands
+
+```python
+def count_session_commands(content: str) -> dict[str, int]
+```
+
+Count occurrences of each `/ll:*` command in the `## Session Log` section. Unlike `parse_session_log()`, this does NOT deduplicate — each entry is counted.
+
+**Parameters:**
+- `content` - Full text of an issue markdown file
+
+**Returns:** Mapping of command name to occurrence count (e.g. `{"/ll:refine-issue": 3}`)
+
+### get_current_session_jsonl
+
+```python
+def get_current_session_jsonl(cwd: Path | None = None) -> Path | None
+```
+
+Resolve the active Claude Code session's JSONL file path. Finds the most recently modified `.jsonl` file in the project's Claude Code session directory, excluding agent session files.
+
+**Parameters:**
+- `cwd` - Working directory to map. If `None`, uses current directory
+
+**Returns:** `Path` to the most recent JSONL file, or `None` if not found
+
+### append_session_log_entry
+
+```python
+def append_session_log_entry(
+    issue_path: Path,
+    command: str,
+    session_jsonl: Path | None = None,
+) -> bool
+```
+
+Append a session log entry to an issue file. Creates or appends to the `## Session Log` section with command name, ISO timestamp, and session JSONL path.
+
+**Parameters:**
+- `issue_path` - Path to the issue markdown file
+- `command` - Command name (e.g. `"/ll:manage-issue"`)
+- `session_jsonl` - Path to session JSONL file. If `None`, auto-detected via `get_current_session_jsonl()`
+
+**Returns:** `True` if entry was appended, `False` if session could not be resolved
+
+**Example:**
+
+```python
+from pathlib import Path
+from little_loops.session_log import append_session_log_entry
+
+success = append_session_log_entry(
+    Path(".issues/bugs/P1-BUG-001-example.md"),
+    "/ll:manage-issue",
+)
 ```
 
 ---

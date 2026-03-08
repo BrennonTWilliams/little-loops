@@ -2,7 +2,7 @@
 id: ENH-646
 type: ENH
 priority: P4
-status: active
+status: completed
 title: "API.md missing documentation sections for work_verification, session_log, FSM submodules, and other public APIs"
 created: 2026-03-07
 ---
@@ -87,5 +87,24 @@ Six CLI entry points documented in code but absent from the CLI section:
 
 Add missing sections to API.md. Prioritize: `work_verification` (high — functions misattributed), `session_log`, lifecycle functions, then config classes and FSM submodules.
 
+## Resolution
+
+All missing documentation gaps have been added to `docs/reference/API.md`:
+
+- **`little_loops.work_verification`** — Added proper module section with `filter_excluded_files`, `verify_work_was_done`, and `EXCLUDED_DIRECTORIES` constant. Removed misattributed entries from `git_operations` section.
+- **`little_loops.session_log`** — Added full section with `parse_session_log`, `count_session_commands`, `get_current_session_jsonl`, `append_session_log_entry`.
+- **`issue_parser.ProductImpact`** — Added dataclass documentation with fields and methods.
+- **`issue_parser.is_normalized` / `is_formatted`** — Added to Helper Functions section.
+- **`issue_lifecycle.defer_issue` / `undefer_issue`** — Added new `little_loops.issue_lifecycle` module section.
+- **`sprint.SprintState`** — Added dataclass documentation to sprint section.
+- **`StateManager.record_corrections()`** — Added to StateManager methods table.
+- **Config classes** — Added `SprintsConfig`, `LoopsConfig`, `GitHubSyncConfig`, `SyncConfig`, `ScoringWeightsConfig`, `DependencyMappingConfig`, `RefineStatusConfig`. Updated `BRConfig` properties table with `sprints`, `loops`, `sync`, `dependency_mapping`, `refine_status`.
+- **FSM submodules** — Added `handoff_handler` (`HandoffHandler`, `HandoffBehavior`, `HandoffResult`), `concurrency` (`ScopeLock`, `LockManager`), `signal_detector` (`SignalDetector`, `DetectedSignal`, `SignalPattern`). Updated FSM submodule overview table.
+- **`parallel.overlap_detector`** — Added `OverlapDetector`, `OverlapResult` to parallel Additional Types.
+- **`parallel.types`** — Added `WorkerStage`, `PendingWorktreeInfo` to parallel Additional Types.
+- **CLI entry points** — Added `main_sprint`, `main_parallel`, `main_sync`, `main_deps`, `main_verify_docs`, `main_check_links` to `little_loops.cli` section.
+
 ## Session Log
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: new issue; missing documentation gaps confirmed (work_verification, session_log, config classes, FSM submodules all absent from API.md)
+- `/ll:ready-issue` - 2026-03-07T23:21:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb3f0306-7321-45a7-8d8d-ba7f4796821f.jsonl`
+- `/ll:manage-issue` - 2026-03-07T23:30:00Z - implemented all missing documentation sections
