@@ -579,7 +579,7 @@
         "default_max_workers": {
           "type": "integer",
           "description": "Default worker count for parallel execution within waves",
-          "default": 4,
+          "default": 2,
           "minimum": 1,
           "maximum": 8
         }
