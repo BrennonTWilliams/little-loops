@@ -200,6 +200,39 @@ class TestGoalCompiler:
         errors = validate_fsm(fsm)
         assert not any(e.severity.value == "error" for e in errors)
 
+    def test_goal_with_on_partial_target(self) -> None:
+        """on_partial_target sets on_partial on evaluate state."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Test",
+            "tools": ["cmd1", "cmd2"],
+            "on_partial_target": "light_fix",
+        }
+        fsm = compile_goal(spec)
+        assert fsm.states["evaluate"].on_partial == "light_fix"
+
+    def test_goal_without_on_partial_target(self) -> None:
+        """Without on_partial_target, on_partial is None (backward compatible)."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Test",
+            "tools": ["cmd1", "cmd2"],
+        }
+        fsm = compile_goal(spec)
+        assert fsm.states["evaluate"].on_partial is None
+
+    def test_goal_with_on_partial_target_validates(self) -> None:
+        """Goal with on_partial_target pointing to extra state passes validation."""
+        spec = {
+            "paradigm": "goal",
+            "goal": "Test",
+            "tools": ["cmd1", "cmd2"],
+            "on_partial_target": "fix",
+        }
+        fsm = compile_goal(spec)
+        errors = validate_fsm(fsm)
+        assert not any(e.severity.value == "error" for e in errors)
+
     def test_multiline_fix_tool_infers_prompt_action_type(self) -> None:
         """Multiline fix tool string produces action_type='prompt' on fix state."""
         spec = {
@@ -510,6 +543,31 @@ class TestConvergenceCompiler:
         assert fsm.states["measure"].route.routes["target"] == "done"
         assert fsm.states["measure"].route.routes["progress"] == "apply"
 
+    def test_convergence_with_on_partial_target(self) -> None:
+        """on_partial_target sets on_partial on measure state."""
+        spec = {
+            "paradigm": "convergence",
+            "name": "test",
+            "check": "cmd",
+            "toward": 0,
+            "using": "fix",
+            "on_partial_target": "apply",
+        }
+        fsm = compile_convergence(spec)
+        assert fsm.states["measure"].on_partial == "apply"
+
+    def test_convergence_without_on_partial_target(self) -> None:
+        """Without on_partial_target, on_partial is None (backward compatible)."""
+        spec = {
+            "paradigm": "convergence",
+            "name": "test",
+            "check": "cmd",
+            "toward": 0,
+            "using": "fix",
+        }
+        fsm = compile_convergence(spec)
+        assert fsm.states["measure"].on_partial is None
+
     def test_convergence_captures_value(self) -> None:
         """Measure state captures current_value."""
         spec = {
@@ -742,6 +800,31 @@ class TestInvariantsCompiler:
         errors = validate_fsm(fsm)
         assert not any(e.severity.value == "error" for e in errors)
 
+    def test_invariants_with_on_partial_target(self) -> None:
+        """on_partial_target sets on_partial on all check states."""
+        spec = {
+            "paradigm": "invariants",
+            "name": "test",
+            "constraints": [
+                {"name": "c1", "check": "cmd1", "fix": "fix1"},
+                {"name": "c2", "check": "cmd2", "fix": "fix2"},
+            ],
+            "on_partial_target": "fix_c1",
+        }
+        fsm = compile_invariants(spec)
+        assert fsm.states["check_c1"].on_partial == "fix_c1"
+        assert fsm.states["check_c2"].on_partial == "fix_c1"
+
+    def test_invariants_without_on_partial_target(self) -> None:
+        """Without on_partial_target, on_partial is None on all check states."""
+        spec = {
+            "paradigm": "invariants",
+            "name": "test",
+            "constraints": [{"name": "c1", "check": "cmd", "fix": "fix"}],
+        }
+        fsm = compile_invariants(spec)
+        assert fsm.states["check_c1"].on_partial is None
+
 
 class TestImperativeCompiler:
     """Tests for compile_imperative."""
@@ -894,6 +977,42 @@ class TestImperativeCompiler:
             "name": "test",
             "steps": ["cmd1", "cmd2"],
             "until": {"check": "verify"},
+        }
+        fsm = compile_imperative(spec)
+        errors = validate_fsm(fsm)
+        assert not any(e.severity.value == "error" for e in errors)
+
+    def test_imperative_with_on_partial_target(self) -> None:
+        """on_partial_target sets on_partial on check_done state."""
+        spec = {
+            "paradigm": "imperative",
+            "name": "test",
+            "steps": ["cmd1", "cmd2"],
+            "until": {"check": "verify"},
+            "on_partial_target": "step_0",
+        }
+        fsm = compile_imperative(spec)
+        assert fsm.states["check_done"].on_partial == "step_0"
+
+    def test_imperative_without_on_partial_target(self) -> None:
+        """Without on_partial_target, on_partial is None (backward compatible)."""
+        spec = {
+            "paradigm": "imperative",
+            "name": "test",
+            "steps": ["cmd"],
+            "until": {"check": "verify"},
+        }
+        fsm = compile_imperative(spec)
+        assert fsm.states["check_done"].on_partial is None
+
+    def test_imperative_with_on_partial_target_validates(self) -> None:
+        """Imperative with on_partial_target pointing to existing state passes validation."""
+        spec = {
+            "paradigm": "imperative",
+            "name": "test",
+            "steps": ["cmd1", "cmd2"],
+            "until": {"check": "verify"},
+            "on_partial_target": "step_0",
         }
         fsm = compile_imperative(spec)
         errors = validate_fsm(fsm)

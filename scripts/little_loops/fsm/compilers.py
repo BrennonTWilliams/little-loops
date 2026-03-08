@@ -220,6 +220,7 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
 
     # Extract evaluator config if provided
     evaluate_config = _build_evaluate_config(spec.get("evaluator"))
+    on_partial_target = spec.get("on_partial_target")
 
     states = {
         "evaluate": StateConfig(
@@ -228,6 +229,7 @@ def compile_goal(spec: dict[str, Any]) -> FSMLoop:
             evaluate=evaluate_config,
             on_success="done",
             on_failure="fix",
+            on_partial=on_partial_target,
         ),
         "fix": StateConfig(
             action=fix_action,
@@ -289,6 +291,7 @@ def compile_convergence(spec: dict[str, Any]) -> FSMLoop:
     fix_action = spec["using"]
     tolerance = spec.get("tolerance", 0)
     on_stall = spec.get("on_stall", "done")
+    on_partial_target = spec.get("on_partial_target")
 
     # Build context for variable interpolation
     context = {
@@ -314,6 +317,7 @@ def compile_convergence(spec: dict[str, Any]) -> FSMLoop:
                     "stall": on_stall,
                 }
             ),
+            on_partial=on_partial_target,
         ),
         "apply": StateConfig(
             action=fix_action,
@@ -380,6 +384,7 @@ def compile_invariants(spec: dict[str, Any]) -> FSMLoop:
     name = spec["name"]
     constraints = spec["constraints"]
     maintain = spec.get("maintain", False)
+    on_partial_target = spec.get("on_partial_target")
 
     # Validate each constraint
     for i, constraint in enumerate(constraints):
@@ -409,6 +414,7 @@ def compile_invariants(spec: dict[str, Any]) -> FSMLoop:
             evaluate=evaluate_config,
             on_success=next_check,
             on_failure=fix_state,
+            on_partial=on_partial_target,
         )
         states[fix_state] = StateConfig(
             action=constraint["fix"],
@@ -483,6 +489,7 @@ def compile_imperative(spec: dict[str, Any]) -> FSMLoop:
     name = spec["name"]
     steps = spec["steps"]
     until_check = spec["until"]["check"]
+    on_partial_target = spec.get("on_partial_target")
 
     # Extract evaluator config for exit condition if provided
     evaluate_config = _build_evaluate_config(spec["until"].get("evaluator"))
@@ -505,6 +512,7 @@ def compile_imperative(spec: dict[str, Any]) -> FSMLoop:
         evaluate=evaluate_config,
         on_success="done",
         on_failure="step_0",
+        on_partial=on_partial_target,
     )
 
     # Terminal state

@@ -122,6 +122,10 @@
         "on_maintain": {
           "type": "string",
           "description": "State to transition to when maintain=true and loop completes"
+        },
+        "on_partial": {
+          "type": "string",
+          "description": "Shorthand for partial verdict routing"
         }
       },
       "additionalProperties": false

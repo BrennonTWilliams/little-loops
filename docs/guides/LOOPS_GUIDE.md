@@ -61,6 +61,20 @@ This compiles to three states: `evaluate` runs the check, `fix` runs the fix act
      └─────┘
 ```
 
+**Optional: `on_partial_target`** — Route `"partial"` verdicts to a specific state (useful with `llm_structured` evaluators). When an LLM evaluator returns `"partial"` (improving but not done), you can route to a lighter fix state instead of the full fix:
+
+```yaml
+paradigm: goal
+name: refine-document
+goal: "Document meets quality standards"
+tools:
+  - "/ll:check-quality"
+  - "/ll:full-revision"
+on_partial_target: light_fix   # partial verdict routes here instead of fix
+
+# light_fix state must be defined via extra_states or raw FSM override
+```
+
 ### Convergence — "Drive a metric toward a target"
 
 Use when you have a measurable value to optimize — an error count to reduce, a coverage percentage to increase.
@@ -153,6 +167,8 @@ max_iterations: 5
 ```
 
 This compiles to a linear chain of step states, a `check_done` state that evaluates the exit condition, and a `done` terminal. If the exit condition fails, execution loops back to `step_0`.
+
+**Optional: `on_partial_target`** — Route `"partial"` verdicts from `check_done` to a specific state. Useful when the exit condition returns `"partial"` (e.g., via `llm_structured`) to route to a lighter remediation path rather than restarting all steps.
 
 ```
   ┌────────┐          ┌────────┐          ┌────────┐          ┌────────────┐             ┌──────┐
@@ -342,7 +358,7 @@ The captured value is accessible as `${captured.lint_count.output}`, `${captured
 
 ### Routing
 
-States use **shorthand** (`on_success`, `on_failure`) or a **route table** for verdict-to-state mapping:
+States use **shorthand** (`on_success`, `on_failure`, `on_partial`) or a **route table** for verdict-to-state mapping:
 
 ```yaml
 route:
