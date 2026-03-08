@@ -249,8 +249,9 @@ Run `ll-parallel --help` for all options.
 FSM-based automation loop execution (create loops with `/ll:create-loop`):
 
 ```bash
-ll-loop run <loop-name>          # Execute a loop by name
-ll-loop run <loop-name> -b       # Run as background daemon
+ll-loop run <loop-name>                   # Execute a loop by name
+ll-loop run <loop-name> -b               # Run as background daemon
+ll-loop run <loop-name> --show-diagrams  # Show FSM diagram after each step
 ll-loop list                     # List all available loops
 ll-loop stop <loop-name>         # Stop a running loop
 ll-loop status <loop-name>       # Show loop status

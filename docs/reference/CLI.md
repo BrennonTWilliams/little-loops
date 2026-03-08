@@ -227,6 +227,8 @@ Run a loop.
 | `--quiet` | `-q` | Suppress progress output |
 | `--verbose` | `-v` | Show full prompt text and more output lines |
 | `--queue` | | Wait for conflicting loops to finish |
+| `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step |
+| `--context KEY=VALUE` | | Override a context variable (repeatable) |
 
 #### `ll-loop compile <input>` / `ll-loop c <input>`
 
@@ -260,6 +262,12 @@ Stop a running loop.
 #### `ll-loop resume <loop>` / `ll-loop res <loop>`
 
 Resume an interrupted loop.
+
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--background` | `-b` | Resume as a detached background process |
+| `--context KEY=VALUE` | | Override a context variable (repeatable) |
+| `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step |
 
 #### `ll-loop history <loop>` / `ll-loop h <loop>`
 
