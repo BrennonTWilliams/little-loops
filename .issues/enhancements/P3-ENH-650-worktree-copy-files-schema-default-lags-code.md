@@ -31,11 +31,43 @@ Update `config-schema.json` line ~229:
 
 ## Implementation Steps
 
-1. Open `config-schema.json`
-2. Find `parallel.worktree_copy_files` property definition
-3. Update `"default"` value to `[".claude/settings.local.json", ".env"]`
-4. Optionally add a description note explaining why `settings.local.json` is included
+1. `config-schema.json:229` — update `"default"` from `[".env"]` to `[".claude/settings.local.json", ".env"]`
+2. `config-schema.json:225` — update `description` to explain why `settings.local.json` is included (Claude Code auth tokens); current text: `"Additional files to copy from main repo to worktrees (relative paths). Note: .claude/ directory is always copied automatically."`
+3. `scripts/little_loops/parallel/types.py:339` — also update `ParallelConfig.worktree_copy_files` field default from `[".env"]` to `[".claude/settings.local.json", ".env"]` (currently diverged; only reached when constructing `ParallelConfig` directly without `BRConfig`)
+4. `scripts/tests/test_parallel_types.py:747` — update assertion from `[".env"]` to `[".claude/settings.local.json", ".env"]` after fixing `types.py:339`
 5. Validate: `python -m jsonschema --instance .claude/ll-config.json config-schema.json`
+
+## Acceptance Criteria
+
+- [ ] `config-schema.json` `parallel.worktree_copy_files.default` equals `[".claude/settings.local.json", ".env"]`
+- [ ] Schema validation passes: `python -m jsonschema --instance .claude/ll-config.json config-schema.json`
+- [ ] Schema `description` for `worktree_copy_files` explains why `.claude/settings.local.json` is included (Claude Code auth tokens)
+
+## API/Interface
+
+N/A — No public API changes (schema documentation only)
+
+## Integration Map
+
+### Files to Modify
+- `config-schema.json:229` — update `parallel.worktree_copy_files` default array to `[".claude/settings.local.json", ".env"]`
+- `scripts/little_loops/parallel/types.py:339` — update `ParallelConfig.worktree_copy_files` field default to match (also currently `[".env"]`)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/config.py` — `ParallelAutomationConfig` already has correct default; no changes needed
+
+### Similar Patterns
+- Other schema default arrays in `parallel` section for formatting reference
+
+### Tests
+- `scripts/tests/test_parallel_types.py:747` — asserts `config.worktree_copy_files == [".env"]`; update to `[".claude/settings.local.json", ".env"]` after fixing `types.py:339`
+- No test currently asserts `ParallelAutomationConfig.from_dict({})` → `worktree_copy_files == [".claude/settings.local.json", ".env"]`; add one in `scripts/tests/test_config.py` `TestParallelAutomationConfig.test_from_dict_with_defaults` (lines 225-235)
+
+### Documentation
+- `config-schema.json` — add `description` note for `worktree_copy_files` explaining the auth token rationale
+
+### Configuration
+- N/A
 
 ## Impact
 
@@ -48,9 +80,9 @@ enhancement, config, schema, parallel
 
 ## Status
 
----
 open
----
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82c79651-563d-4a71-9c05-13a21c920832.jsonl`
+- `/ll:format-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32aac736-5519-48ec-95de-0a16ae0781d8.jsonl`
+- `/ll:refine-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2922e0f4-92bb-44ff-a157-9cd86f57c35e.jsonl`
