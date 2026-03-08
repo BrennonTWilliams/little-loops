@@ -251,8 +251,14 @@ class TestActionType:
         mock_runner = MockActionRunner()
         mock_runner.always_return(exit_code=0, output="Analysis complete")
 
-        executor = FSMExecutor(fsm, action_runner=mock_runner)
-        executor.run()
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        with patch(
+            "little_loops.fsm.executor.evaluate_llm_structured",
+            return_value=EvaluationResult(verdict="success", details={}),
+        ):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            executor.run()
 
         assert "Analyze the code" in mock_runner.calls
 
@@ -297,8 +303,14 @@ class TestActionType:
         mock_runner = MockActionRunner()
         mock_runner.always_return(exit_code=0)
 
-        executor = FSMExecutor(fsm, action_runner=mock_runner)
-        executor.run()
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        with patch(
+            "little_loops.fsm.executor.evaluate_llm_structured",
+            return_value=EvaluationResult(verdict="success", details={}),
+        ):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            executor.run()
 
         assert "/ll:commit" in mock_runner.calls
 
@@ -319,8 +331,14 @@ class TestActionType:
         mock_runner = MockActionRunner()
         mock_runner.always_return(exit_code=0)
 
-        executor = FSMExecutor(fsm, action_runner=mock_runner)
-        executor.run()
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        with patch(
+            "little_loops.fsm.executor.evaluate_llm_structured",
+            return_value=EvaluationResult(verdict="success", details={}),
+        ):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            executor.run()
 
         assert "/ll:help" in mock_runner.calls
 

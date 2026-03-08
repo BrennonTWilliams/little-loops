@@ -581,6 +581,17 @@ issues:
             MockOrchestrator,
         )
 
+        # Mock retry path so failed issues stay in state.failed_issues
+        from little_loops.issue_manager import IssueProcessingResult
+
+        def mock_retry_fail(info: Any, **kwargs: Any) -> IssueProcessingResult:
+            return IssueProcessingResult(success=False, duration=0.1, issue_id=info.issue_id)
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            mock_retry_fail,
+        )
+
         monkeypatch.chdir(tmp_path)
         cli._sprint_shutdown_requested = False
 
@@ -840,6 +851,18 @@ issues:
                 return 1  # Some failures
 
         monkeypatch.setattr("little_loops.cli.sprint.run.ParallelOrchestrator", MockOrchestrator)
+
+        # Mock retry path so BUG-002 stays in failed_issues after retry attempt
+        from little_loops.issue_manager import IssueProcessingResult
+
+        def mock_retry_fail(info: Any, **kwargs: Any) -> IssueProcessingResult:
+            return IssueProcessingResult(success=False, duration=0.1, issue_id=info.issue_id)
+
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            mock_retry_fail,
+        )
+
         monkeypatch.chdir(tmp_path)
         cli._sprint_shutdown_requested = False
 
