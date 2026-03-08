@@ -403,7 +403,9 @@ class TestCmdResume:
 
         assert result == 0
         expected_pid_file = tmp_path / ".running" / "test-loop.pid"
-        mock_register.assert_called_once_with(mock_exec_cls.return_value, pid_file=expected_pid_file)
+        mock_register.assert_called_once_with(
+            mock_exec_cls.return_value, pid_file=expected_pid_file
+        )
 
     def test_context_overrides_applied_to_fsm(self, tmp_path: Path) -> None:
         """--context KEY=VALUE overrides are applied to fsm.context before execution."""
@@ -549,7 +551,6 @@ class TestCmdResumeBackground:
 
         assert result == 0
         assert len(registered) == 1  # PID cleanup was registered
-
 
     def test_plain_foreground_resume_writes_pid_file(self, tmp_path: Path) -> None:
         """Plain foreground resume writes a PID file so cmd_stop can send SIGTERM (BUG-639)."""

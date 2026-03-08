@@ -2598,7 +2598,7 @@ class TestDefaultActionRunnerStderrDrain:
         runner = DefaultActionRunner()
         # Write 128KB to stderr while also writing a small amount to stdout
         result = runner.run(
-            "python3 -c \""
+            'python3 -c "'
             "import sys; "
             "sys.stderr.write('e' * 131072); "
             "sys.stderr.flush(); "
@@ -2616,12 +2616,12 @@ class TestDefaultActionRunnerStderrDrain:
         # Write stderr, close stdout explicitly so the parent's stdout loop exits,
         # then sleep past the timeout so process.wait() raises TimeoutExpired.
         result = runner.run(
-            "python3 -c \""
+            'python3 -c "'
             "import sys, os, time; "
             "sys.stderr.write('error content'); "
             "sys.stderr.flush(); "
             "os.close(sys.stdout.fileno()); "
-            "time.sleep(10)\"",
+            'time.sleep(10)"',
             timeout=1,
             is_slash_command=False,
         )

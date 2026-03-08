@@ -1036,7 +1036,9 @@ class TestDisplayProgressEvents:
             {"event": "state_enter", "state": "start", "iteration": 1},
         ]
         executor = MockExecutor(events)
-        with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
+        with patch.object(
+            info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram
+        ) as mock_render:
             run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True))
             mock_render.assert_called_once_with(
                 self._make_fsm(), highlight_state="start", highlight_color="32"
@@ -1061,9 +1063,7 @@ class TestDisplayProgressEvents:
             run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
             mock_render.assert_not_called()
 
-    def test_no_flags_state_enter_no_diagram(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_no_flags_state_enter_no_diagram(self, capsys: pytest.CaptureFixture[str]) -> None:
         """Without --show-diagrams, state_enter events do not print the FSM diagram."""
         from unittest.mock import patch
 
@@ -1090,8 +1090,12 @@ class TestDisplayProgressEvents:
             {"event": "action_output", "line": "verbose output line"},
         ]
         executor = MockExecutor(events)
-        with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
-            run_foreground(executor, self._make_fsm(), self._make_args(verbose=True, show_diagrams=True))
+        with patch.object(
+            info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram
+        ) as mock_render:
+            run_foreground(
+                executor, self._make_fsm(), self._make_args(verbose=True, show_diagrams=True)
+            )
             mock_render.assert_called_once_with(
                 self._make_fsm(), highlight_state="start", highlight_color="32"
             )

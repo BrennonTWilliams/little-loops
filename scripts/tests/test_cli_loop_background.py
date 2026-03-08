@@ -246,7 +246,12 @@ class TestRunBackground:
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         args = argparse.Namespace(
-            max_iterations=None, no_llm=False, llm_model=None, verbose=True, quiet=False, queue=False
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            verbose=True,
+            quiet=False,
+            queue=False,
         )
 
         with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
@@ -265,7 +270,12 @@ class TestRunBackground:
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         args = argparse.Namespace(
-            max_iterations=None, no_llm=False, llm_model=None, verbose=False, quiet=False, queue=False
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            verbose=False,
+            quiet=False,
+            queue=False,
         )
 
         with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:

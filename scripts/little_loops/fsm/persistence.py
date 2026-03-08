@@ -76,7 +76,9 @@ class LoopState:
     last_result: dict[str, Any] | None
     started_at: str
     updated_at: str
-    status: str  # "running", "completed", "failed", "interrupted", "awaiting_continuation", "timed_out"
+    status: (
+        str  # "running", "completed", "failed", "interrupted", "awaiting_continuation", "timed_out"
+    )
     continuation_prompt: str | None = None
     accumulated_ms: int = 0  # total elapsed ms across all segments (for resume offset)
 
