@@ -181,6 +181,13 @@ Examples:
     test_parser.set_defaults(command="test")
     test_parser.add_argument("loop", help="Loop name")
     test_parser.add_argument("--state", help="Test a specific state instead of the initial state")
+    test_parser.add_argument(
+        "--exit-code",
+        type=int,
+        dest="exit_code",
+        metavar="N",
+        help="Simulated exit code for slash-command states (skips interactive prompt)",
+    )
 
     # Simulate subcommand
     simulate_parser = subparsers.add_parser(

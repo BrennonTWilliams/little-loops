@@ -61,17 +61,28 @@ def cmd_test(
     print()
 
     if is_slash:
-        print("Note: Slash commands require Claude CLI; skipping actual execution.")
-        print()
-        print("Verdict: SKIPPED (slash command)")
-        print()
-        print("\u2713 Loop structure is valid (slash command not executed)")
-        return 0
+        from little_loops.fsm.executor import ActionResult, SimulationActionRunner
 
-    # Run the action
-    runner = DefaultActionRunner()
-    timeout = state_config.timeout or 120
-    result = runner.run(action, timeout=timeout, is_slash_command=False)
+        exit_code_arg = getattr(args, "exit_code", None)
+        if exit_code_arg is not None:
+            sim_exit_code = exit_code_arg
+            print(f"[SIMULATED] Using --exit-code {sim_exit_code}")
+        else:
+            sim_runner = SimulationActionRunner()
+            sim_result = sim_runner.run(action, timeout=120, is_slash_command=True)
+            sim_exit_code = sim_result.exit_code
+        print()
+        result = ActionResult(
+            output=f"[simulated output for: {action}]",
+            stderr="",
+            exit_code=sim_exit_code,
+            duration_ms=0,
+        )
+    else:
+        # Run the action
+        runner = DefaultActionRunner()
+        timeout = state_config.timeout or 120
+        result = runner.run(action, timeout=timeout, is_slash_command=False)
 
     print(f"Exit code: {result.exit_code}")
 

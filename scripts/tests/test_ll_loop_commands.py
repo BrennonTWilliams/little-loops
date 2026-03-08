@@ -1294,3 +1294,86 @@ class TestCmdTest:
         result = cmd_test("multi-state", args, multi_state_loop, logger)
 
         assert result == 1
+
+    @pytest.fixture
+    def slash_command_loop(self, tmp_path: Path) -> Path:
+        """Create a loop with a slash-command evaluate state."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_file = loops_dir / "slash-loop.yaml"
+        loop_file.write_text(
+            "name: slash-loop\n"
+            "initial: evaluate\n"
+            "states:\n"
+            "  evaluate:\n"
+            '    action: "/ll:check-code"\n'
+            "    on_success: done\n"
+            "    on_failure: fix\n"
+            "  fix:\n"
+            '    action: "/ll:manage-issue bug fix"\n'
+            "    on_success: done\n"
+            "    on_failure: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+        return loops_dir
+
+    def test_slash_command_with_exit_code_0_traces_success_route(
+        self,
+        slash_command_loop: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--exit-code 0 simulates success and traces transition to on_success state."""
+        from little_loops.cli.loop.testing import cmd_test
+        from little_loops.logger import Logger
+
+        args = argparse.Namespace(state="evaluate", exit_code=0)
+        logger = Logger(use_color=False)
+        result = cmd_test("slash-loop", args, slash_command_loop, logger)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "SIMULATED" in captured.out
+        assert "Exit code: 0" in captured.out
+        assert "done" in captured.out  # routes to done on success
+
+    def test_slash_command_with_exit_code_1_traces_failure_route(
+        self,
+        slash_command_loop: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--exit-code 1 simulates failure and traces transition to on_failure state."""
+        from little_loops.cli.loop.testing import cmd_test
+        from little_loops.logger import Logger
+
+        args = argparse.Namespace(state="evaluate", exit_code=1)
+        logger = Logger(use_color=False)
+        result = cmd_test("slash-loop", args, slash_command_loop, logger)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "SIMULATED" in captured.out
+        assert "Exit code: 1" in captured.out
+        assert "fix" in captured.out  # routes to fix on failure
+
+    def test_slash_command_no_exit_code_uses_interactive_prompt(
+        self,
+        slash_command_loop: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Without --exit-code, slash-command state falls back to interactive prompt."""
+        import io
+
+        from little_loops.cli.loop.testing import cmd_test
+        from little_loops.logger import Logger
+
+        monkeypatch.setattr("sys.stdin", io.StringIO("1\n"))  # select Success (exit 0)
+        args = argparse.Namespace(state="evaluate", exit_code=None)
+        logger = Logger(use_color=False)
+        result = cmd_test("slash-loop", args, slash_command_loop, logger)
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "Exit code: 0" in captured.out
+        assert "done" in captured.out

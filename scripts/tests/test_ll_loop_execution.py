@@ -1403,13 +1403,13 @@ max_iterations: 5
         assert "evaluate → fix" in captured.out or "fix" in captured.out
         assert "configured correctly" in captured.out
 
-    def test_test_slash_command_skipped(
+    def test_test_slash_command_simulated_with_exit_code(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Test with slash command action is skipped."""
+        """Test with slash command action uses simulation when --exit-code is provided."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
 
@@ -1425,16 +1425,15 @@ max_iterations: 5
         (loops_dir / "test-slash.yaml").write_text(loop_yaml)
 
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "test", "test-slash"]):
+        with patch.object(sys, "argv", ["ll-loop", "test", "--exit-code", "0", "test-slash"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
 
-        assert result == 0  # Should succeed but skip execution
+        assert result == 0
         captured = capsys.readouterr()
-        assert "SKIPPED" in captured.out
-        assert "slash command" in captured.out.lower()
-        assert "valid" in captured.out
+        assert "SIMULATED" in captured.out
+        assert "Exit code: 0" in captured.out
 
     def test_test_parse_error_in_evaluator(
         self,
