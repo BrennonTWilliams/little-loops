@@ -42,7 +42,7 @@ The command should explicitly require an absolute path anchored to the project r
 5. Open a new session in the same project and run `/ll:resume`
 6. Observe failure: "No continuation prompt available"
 
-## Proposed Fix
+## Proposed Solution
 
 In `commands/handoff.md`, change the write instruction to make the project-root anchor explicit:
 
@@ -52,11 +52,48 @@ Write to `.claude/ll-continue-prompt.md` **relative to the current project root*
 
 Also add a guard to `commands/resume.md` to check both locations and warn if the file is only found at the user-level path (indicating a prior handoff bug).
 
+## Acceptance Criteria
+
+- [ ] `/ll:handoff` writes `ll-continue-prompt.md` to `<project-root>/.claude/`, not `~/.claude/`
+- [ ] `/ll:resume` reads from `<project-root>/.claude/ll-continue-prompt.md` and succeeds in a fresh session
+- [ ] Running handoff in a non-little-loops project produces the file at the project-level path
+- [ ] No file is created at `~/.claude/ll-continue-prompt.md` during handoff
+- [ ] `/ll:resume` warns if the prompt is found at `~/.claude/` but not at the project-level path
+
+## Implementation Steps
+
+1. Fix `commands/handoff.md` line 122 — change write instruction to use an absolute path anchored to `$(pwd)` (e.g., `$(pwd)/.claude/ll-continue-prompt.md`)
+2. Update `commands/resume.md` — add a guard that checks both `<project-root>/.claude/ll-continue-prompt.md` and `~/.claude/ll-continue-prompt.md`; warn if file is only found at the user-level path
+3. Manually test in a non-little-loops project: run `/ll:handoff`, confirm file lands at project-level path, run `/ll:resume` in a new session and confirm it resumes correctly
+4. Verify `~/.claude/ll-continue-prompt.md` is not created during the test
+
 ## Impact
 
 - `/ll:resume` fails silently across sessions when used in any project other than the little-loops repo itself
 - Continuation prompts accumulate in `~/.claude/` instead of being project-scoped
 - Cross-project contamination risk if a stale `~/.claude/ll-continue-prompt.md` is accidentally loaded by resume
 
+## Integration Map
+
+### Files to Modify
+- `commands/handoff.md` (line 122) — fix write instruction to use absolute path
+- `commands/resume.md` — add guard to check both locations
+
+### Dependent Files (Callers/Importers)
+- TBD — use grep to find references: `grep -r "ll-continue-prompt" commands/`
+
+### Similar Patterns
+- TBD — check if other commands write to `.claude/` paths that may have the same ambiguity
+
+### Tests
+- Manual integration test in a non-little-loops project
+
+### Documentation
+- `docs/TROUBLESHOOTING.md` — update if it covers handoff/resume behavior
+
+### Configuration
+- N/A
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-08T00:09:24Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d52cd1ce-a033-4728-b390-ae54f1cabf90.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
