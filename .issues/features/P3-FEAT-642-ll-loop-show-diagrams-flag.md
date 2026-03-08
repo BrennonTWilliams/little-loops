@@ -46,7 +46,7 @@ ll-loop run my-loop.yaml --verbose --show-diagrams
 - [ ] Help text for `--show-diagrams` clearly describes its purpose
 - [ ] Existing `--verbose` tests continue to pass without diagram assertions
 
-## API / Interface Changes
+## API/Interface
 
 ```
 ll-loop run <config> [--verbose] [--show-diagrams] [--exit-code] [--context KEY=VALUE]
@@ -68,10 +68,47 @@ New flag: `--show-diagrams` — Display the FSM box diagram with the current act
    - `--show-diagrams` alone shows diagram
    - Both flags together show diagram and verbose output
 
-## Related
+## Impact
+
+- **Priority**: P3 — UX improvement; not blocking, but diagram noise in `--verbose` actively affects agent log parsing workflows
+- **Effort**: Small — additive flag refactor; `--verbose` condition replaced by `--show-diagrams` in `_helpers.py`, propagated through call chain
+- **Risk**: Low — purely additive; no behavior change to existing `--verbose` or other flags
+- **Breaking Change**: No
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/loop/__init__.py` — Add `--show-diagrams` arg to `run` (line 113) and `resume` (line 188) subparsers
+- `scripts/little_loops/cli/loop/_helpers.py` — Replace `if verbose:` with `if show_diagrams:` in `run_foreground()` diagram branch (lines 292–321); propagate `show_diagrams` param through call signature
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/loop/info.py` — `_render_fsm_diagram()` called by `_helpers.py`; no changes needed here, only the call-site condition changes
+
+### Similar Patterns
+- `--verbose` flag propagation pattern in `run_background()` (`_helpers.py:212`) — check if diagram display exists there too and apply same decoupling
+
+### Tests
+- `scripts/tests/test_ll_loop_display.py` — Update `test_verbose_state_enter_prints_diagram` (line 1025) and `test_nonverbose_state_enter_no_diagram` (line 1046) to use `--show-diagrams`; add new tests for `--show-diagrams` alone and `--verbose --show-diagrams` combined
+
+### Documentation
+- N/A — no user-facing docs reference `--verbose` diagram behavior explicitly
+
+### Configuration
+- N/A
+
+## Labels
+
+`feature`, `cli`, `loop`, `ux`
+
+## Related Key Documentation
 
 - FEAT-637: FSM Box Diagram with Active State Highlight (the feature this refactors)
 
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-08T00:52:40Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4db38ae0-a36b-494b-a855-6d7f6b8178be.jsonl`
+
+---
+
+**Open** | Created: 2026-03-08 | Priority: P3
