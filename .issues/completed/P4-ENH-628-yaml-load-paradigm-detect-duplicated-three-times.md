@@ -77,9 +77,20 @@ def load_loop_with_spec(name_or_path: str, loops_dir: Path) -> tuple[FSMLoop, di
 ### Files to Modify
 - `scripts/little_loops/cli/loop/_helpers.py` — extract `_load_fsm_with_spec()`, simplify `load_loop` and `load_loop_with_spec`
 - `scripts/little_loops/cli/loop/run.py` — `cmd_run()` should use `load_loop` or `load_loop_with_spec`
+- `scripts/little_loops/cli/loop/config_cmds.py` — `cmd_validate()` at line ~69 has a 4th inline copy of the paradigm detection pattern; should delegate to helper
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/cli/loop/lifecycle.py:169` — calls `load_loop()`
+- `scripts/little_loops/cli/loop/testing.py:28,175` — calls `load_loop()` in two places
+- `scripts/little_loops/cli/loop/info.py:1027` — calls `load_loop_with_spec()`
+- `scripts/little_loops/cli/loop/run.py:37` — re-implements the full pattern inline (does not use helpers)
+- `scripts/little_loops/cli/loop/config_cmds.py:69` — re-implements the paradigm detection inline in `cmd_validate()`
+
+### Similar Patterns
+- The paradigm detection pattern (`"paradigm" in spec and "initial" not in spec`) appears in **4** locations, not 3 as originally noted: `_helpers.py` (×2), `run.py` (×1), `config_cmds.py` (×1). `config_cmds.py` should also be brought into scope.
 
 ### Tests
-- `scripts/tests/` — update tests that mock `load_loop`/`load_loop_with_spec` if needed
+- `scripts/tests/test_cli_loop_lifecycle.py` — mocks `little_loops.cli.loop.lifecycle.load_loop` in ~10 test cases; these will need updating if the mock target path changes
 
 ### Documentation
 - N/A
@@ -87,11 +98,19 @@ def load_loop_with_spec(name_or_path: str, loops_dir: Path) -> tuple[FSMLoop, di
 ### Configuration
 - N/A
 
+## Success Metrics
+
+- All existing tests pass without modification to test logic (only mock patch paths may change)
+- The paradigm detection condition (`"paradigm" in spec and "initial" not in spec`) exists in exactly **1** location after the refactor
+- `load_loop`, `load_loop_with_spec`, `cmd_run`, and `cmd_validate` all delegate to `_load_fsm_with_spec` (or through it)
+- No behavior change: same loops produce identical FSM output before and after
+
 ## Implementation Steps
 
 1. Extract `_load_fsm_with_spec(path)` helper in `_helpers.py`
 2. Simplify `load_loop` and `load_loop_with_spec` to delegate to it
 3. Update `cmd_run` in `run.py` to use `load_loop_with_spec` instead of inline logic
+4. Update `cmd_validate` in `config_cmds.py` to use the helper (4th copy of the pattern)
 
 ## Impact
 
@@ -106,7 +125,17 @@ def load_loop_with_spec(name_or_path: str, loops_dir: Path) -> tuple[FSMLoop, di
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e777632e-41b7-40d4-b52b-e02d2120c1b8.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d11c154b-ec01-40ba-bc51-c1eb3dd6ae2f.jsonl` — Closed as duplicate of ENH-606
+
+## Verification Notes
+
+**Verdict**: VALID (DUPLICATE) — Closed 2026-03-07
+
+- All 4 paradigm detection sites confirmed; integration map in ENH-606 is more complete
+- ENH-628's key additional finding (4th copy in `config_cmds.py`) is already captured in ENH-606 Integration Map
+- Closed as duplicate of ENH-606; implement ENH-606 instead
 
 ---
 
-**Open** | Created: 2026-03-07 | Priority: P4
+**Closed (Duplicate)** | Duplicate of: ENH-606 | Created: 2026-03-07 | Closed: 2026-03-07

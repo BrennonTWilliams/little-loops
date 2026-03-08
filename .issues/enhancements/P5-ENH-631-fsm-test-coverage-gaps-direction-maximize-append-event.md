@@ -15,17 +15,6 @@ Two small test coverage gaps in the FSM test suite:
 
 2. `append_event()` in `persistence.py` opens the events file in `"a"` mode and relies on `initialize()` having been called first (to create the parent directory). The test suite always goes through `PersistentExecutor` which calls `initialize()`. The code path where `append_event` is called before `initialize()` is not tested.
 
-## Location
-
-- **File**: `scripts/tests/test_fsm_evaluators.py`
-- **Line(s)**: 440–481 (at scan commit: 12a6af0)
-- **Anchor**: `in class TestEvaluateDispatcher`
-- **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/12a6af03c58a3b8f355e265a895b3950db89b66c/scripts/tests/test_fsm_evaluators.py#L440-L481)
-
-- **File**: `scripts/little_loops/fsm/persistence.py`
-- **Line(s)**: 187–194 (at scan commit: 12a6af0)
-- **Anchor**: `in class StatePersistence, method append_event()`
-
 ## Current Behavior
 
 1. `direction="maximize"` convergence behavior is only tested via direct `evaluate_convergence()` calls. Any regression in how `EvaluateConfig.direction` is passed through the dispatcher would go undetected.
@@ -66,8 +55,11 @@ def test_append_event_without_initialize_raises(tmp_path):
 ## Integration Map
 
 ### Files to Modify
-- `scripts/tests/test_fsm_evaluators.py` — add `direction="maximize"` dispatcher test
+- `scripts/tests/test_fsm_evaluators.py` — add `direction="maximize"` dispatcher test; anchor: `class TestEvaluateDispatcher` ([ref 12a6af0](https://github.com/BrennonTWilliams/little-loops/blob/12a6af03c58a3b8f355e265a895b3950db89b66c/scripts/tests/test_fsm_evaluators.py#L440-L481))
 - `scripts/tests/test_fsm_persistence.py` — add `append_event` without `initialize()` test
+
+### Source Under Test
+- `scripts/little_loops/fsm/persistence.py` — `class StatePersistence`, method `append_event()` (lines 187–194 at scan commit 12a6af0) — no modifications required
 
 ### Documentation
 - N/A
@@ -93,6 +85,7 @@ def test_append_event_without_initialize_raises(tmp_path):
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
+- `/ll:format-issue` - 2026-03-07T23:20:17Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e92f3b7-729f-49fa-923d-832b9db88827.jsonl`
 
 ---
 

@@ -3,6 +3,8 @@ discovered_commit: 12a6af03c58a3b8f355e265a895b3950db89b66c
 discovered_branch: main
 discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
+confidence_score: 98
+outcome_confidence: 100
 ---
 
 # ENH-629: `_scopes_overlap` re-resolves `Path.resolve()` (filesystem stat) on every path pair
@@ -66,8 +68,15 @@ resolved_scopes = [str(Path(p).resolve()) for p in scope]
 ### Files to Modify
 - `scripts/little_loops/fsm/concurrency.py` — `ScopeLockManager.acquire()`, `_scopes_overlap()`, `_paths_overlap()`
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/__init__.py` — re-exports `ScopeLockManager` from concurrency module
+- `scripts/little_loops/cli/loop/run.py` — imports `LockManager` for scope-based locking during loop execution
+
+### Similar Patterns
+- `ScopeLockManager._normalize_path()` in `concurrency.py` — already calls `Path(path).resolve()`; pre-resolution in `acquire()` can reuse this existing method directly rather than adding a new one
+
 ### Tests
-- `scripts/tests/test_fsm_concurrency.py` — existing tests cover behavior; no new tests needed
+- `scripts/tests/test_concurrency.py` — existing tests cover `_paths_overlap` and `_scopes_overlap`; no new tests needed
 
 ### Documentation
 - N/A
@@ -91,9 +100,17 @@ resolved_scopes = [str(Path(p).resolve()) for p in scope]
 
 `enhancement`, `fsm`, `concurrency`, `performance`, `captured`
 
+## Verification Notes
+
+Verified 2026-03-07 — **VALID**. Code at `concurrency.py` lines 220–250 matches the quoted snippets exactly. `_normalize_path()` is confirmed at line 252; `acquire()` at line 96 already calls it to produce resolved strings, but `_paths_overlap()` re-calls `Path.resolve()` anyway. No files have moved since the scan commit (12a6af0). Issue accurately describes the current state.
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a043191-c6ab-48e4-9698-8dbd73149442.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a043191-c6ab-48e4-9698-8dbd73149442.jsonl`
+- `/ll:confidence-check` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a043191-c6ab-48e4-9698-8dbd73149442.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10327983-1fed-40b5-b8f8-5574c5ed03c4.jsonl`
 
----
+## Status
 
 **Open** | Created: 2026-03-07 | Priority: P4

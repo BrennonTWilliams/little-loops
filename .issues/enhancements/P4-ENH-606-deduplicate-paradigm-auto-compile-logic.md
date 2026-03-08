@@ -102,6 +102,14 @@ Four copy-paste instances of identical paradigm detection logic create a compoun
 - `/ll:format-issue` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — v2.0 format: added Motivation, restructured Scope Boundaries, Success Metrics, Integration Map, Implementation Steps; added confidence_score and outcome_confidence to frontmatter
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — Readiness: 95/100 PROCEED; Outcome: 88/100 HIGH CONFIDENCE
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: 4 copy-paste sites confirmed
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d11c154b-ec01-40ba-bc51-c1eb3dd6ae2f.jsonl` — Supersedes ENH-628 (closed as duplicate)
+
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-03-07
+
+- All 4 `"paradigm" in spec` sites confirmed in codebase
+- **DUPLICATE**: ENH-628 (`P4-ENH-628-yaml-load-paradigm-detect-duplicated-three-times.md`) describes the same issue (ENH-628 title says "three times" but the body covers the same 4 sites). Recommend merging — ENH-606 has more complete Integration Map and Implementation Steps; ENH-628 has more detailed discovery notes. Consider closing ENH-628 and keeping ENH-606, or vice versa based on implementation preference.
 
 ---
 
