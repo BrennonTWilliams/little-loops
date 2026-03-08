@@ -554,10 +554,7 @@ class FSMExecutor:
         action = interpolate(action_template, ctx)
 
         # Determine if this is a slash command/prompt based on action_type or heuristic
-        if state.action_type is not None:
-            is_slash_command = state.action_type in ("prompt", "slash_command")
-        else:
-            is_slash_command = action.startswith("/")
+        is_slash_command = self._is_prompt_action(state)
 
         self._emit("action_start", {"action": action, "is_prompt": is_slash_command})
 
@@ -624,10 +621,7 @@ class FSMExecutor:
             # Default evaluation based on action type
             if action_result:
                 # Determine if this is a prompt/slash command for default evaluation
-                if state.action_type is not None:
-                    is_prompt = state.action_type in ("prompt", "slash_command")
-                else:
-                    is_prompt = state.action is not None and state.action.startswith("/")
+                is_prompt = self._is_prompt_action(state)
 
                 if is_prompt:
                     # Slash command or prompt: use LLM evaluation
@@ -749,6 +743,12 @@ class FSMExecutor:
         if route == "$current":
             return self.current_state
         return interpolate(route, ctx)
+
+    def _is_prompt_action(self, state: StateConfig) -> bool:
+        """Return True if state's action is a slash-command/prompt type."""
+        if state.action_type is not None:
+            return state.action_type in ("prompt", "slash_command")
+        return state.action is not None and state.action.startswith("/")
 
     def _build_context(self) -> InterpolationContext:
         """Build interpolation context for current state.
