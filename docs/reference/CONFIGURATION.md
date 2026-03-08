@@ -8,7 +8,7 @@ For interactive editing, use `/ll:configure`.
 
 ```json
 {
-  "$schema": "./config-schema.json",
+  "$schema": "../config-schema.json",
 
   "project": {
     "name": "my-project",
