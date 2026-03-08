@@ -214,8 +214,18 @@ def create_parallel_config(
     max_issues: int = 0,
     dry_run: bool = False,
     timeout_seconds: int | None = None,
+    idle_timeout_per_issue: int | None = None,
     stream_output: bool | None = None,
     show_model: bool | None = None,
+    only_ids: set[str] | None = None,
+    skip_ids: set[str] | None = None,
+    type_prefixes: set[str] | None = None,
+    merge_pending: bool = False,
+    clean_start: bool = False,
+    ignore_pending: bool = False,
+    overlap_detection: bool = False,
+    serialize_overlapping: bool = True,
+    base_branch: str = "main",
 ) -> ParallelConfig
 ```
 
@@ -227,8 +237,18 @@ Create a `ParallelConfig` from BRConfig settings with optional overrides.
 - `max_issues` - Maximum issues to process (0 = unlimited)
 - `dry_run` - Preview mode without processing
 - `timeout_seconds` - Per-issue timeout in seconds
+- `idle_timeout_per_issue` - Kill worker if no output for N seconds (0 to disable)
 - `stream_output` - Stream Claude output
 - `show_model` - Display model info on setup
+- `only_ids` - If provided, only process these issue IDs
+- `skip_ids` - Issue IDs to skip (in addition to completed/failed)
+- `type_prefixes` - If provided, only process issues with these type prefixes
+- `merge_pending` - Attempt to merge pending worktrees from previous runs
+- `clean_start` - Remove all worktrees without checking for pending work
+- `ignore_pending` - Report pending work but continue without merging
+- `overlap_detection` - Enable pre-flight overlap detection
+- `serialize_overlapping` - If True, defer overlapping issues; if False, just warn
+- `base_branch` - Base branch for rebase/merge operations
 
 **Returns:** Configured `ParallelConfig`
 
@@ -296,6 +316,7 @@ class IssuesConfig:
     deferred_dir: str = "deferred"
     priorities: list[str]  # ["P0", "P1", ...]
     templates_dir: str | None = None
+    capture_template: str = "full"
 ```
 
 ### CategoryConfig
@@ -318,6 +339,7 @@ Sequential automation configuration.
 @dataclass
 class AutomationConfig:
     timeout_seconds: int = 3600
+    idle_timeout_seconds: int = 0  # Kill if no output for N seconds (0 to disable)
     state_file: str = ".auto-manage-state.json"
     worktree_base: str = ".worktrees"
     max_workers: int = 2
@@ -368,11 +390,21 @@ Parsed information from an issue file.
 ```python
 @dataclass
 class IssueInfo:
-    path: Path           # Path to the issue file
-    issue_type: str      # e.g., "bugs"
-    priority: str        # e.g., "P1"
-    issue_id: str        # e.g., "BUG-123"
-    title: str           # Issue title
+    path: Path                              # Path to the issue file
+    issue_type: str                         # e.g., "bugs"
+    priority: str                           # e.g., "P1"
+    issue_id: str                           # e.g., "BUG-123"
+    title: str                              # Issue title
+    blocked_by: list[str] = []             # Issue IDs that block this issue
+    blocks: list[str] = []                 # Issue IDs that this issue blocks
+    discovered_by: str | None = None       # Source command/workflow that created this issue
+    product_impact: ProductImpact | None = None  # Product impact assessment
+    effort: int | None = None              # Effort estimate (1=low, 2=medium, 3=high)
+    impact: int | None = None              # Impact estimate (1=low, 2=medium, 3=high)
+    confidence_score: int | None = None    # Readiness score (0-100) from /ll:confidence-check
+    outcome_confidence: int | None = None  # Outcome confidence (0-100) from /ll:confidence-check
+    session_commands: list[str] = []       # Distinct /ll:* commands in ## Session Log
+    session_command_counts: dict[str, int] = {}  # Per-command occurrence counts
 ```
 
 #### Properties
@@ -445,6 +477,8 @@ def find_issues(
     config: BRConfig,
     category: str | None = None,
     skip_ids: set[str] | None = None,
+    only_ids: set[str] | None = None,
+    type_prefixes: set[str] | None = None,
 ) -> list[IssueInfo]
 ```
 
@@ -454,6 +488,8 @@ Find all issues matching criteria, sorted by priority.
 - `config` - Project configuration
 - `category` - Optional category to filter (e.g., `"bugs"`)
 - `skip_ids` - Issue IDs to skip
+- `only_ids` - If provided, only include these issue IDs
+- `type_prefixes` - If provided, only include issues whose ID starts with one of these prefixes (e.g., `{"BUG", "ENH"}`)
 
 **Returns:** List of `IssueInfo` sorted by priority
 
@@ -473,6 +509,8 @@ def find_highest_priority_issue(
     config: BRConfig,
     category: str | None = None,
     skip_ids: set[str] | None = None,
+    only_ids: set[str] | None = None,
+    type_prefixes: set[str] | None = None,
 ) -> IssueInfo | None
 ```
 
@@ -482,6 +520,8 @@ Find the highest priority issue.
 - `config` - Project configuration
 - `category` - Optional category to filter
 - `skip_ids` - Issue IDs to skip
+- `only_ids` - If provided, only include these issue IDs
+- `type_prefixes` - If provided, only include issues with these type prefixes
 
 **Returns:** Highest priority `IssueInfo` or `None` if no issues found
 
@@ -549,6 +589,7 @@ def from_issues(
     cls,
     issues: list[IssueInfo],
     completed_ids: set[str] | None = None,
+    all_known_ids: set[str] | None = None,
 ) -> DependencyGraph
 ```
 
@@ -557,6 +598,7 @@ Build graph from list of issues.
 **Parameters:**
 - `issues` - List of `IssueInfo` objects with `blocked_by` fields
 - `completed_ids` - Set of completed issue IDs (treated as resolved)
+- `all_known_ids` - Set of all issue IDs that exist on disk; references to these are silently skipped (not warned) even if not in the graph
 
 **Returns:** Constructed `DependencyGraph`
 
@@ -1562,6 +1604,10 @@ AutoManager(
     max_issues: int = 0,
     resume: bool = False,
     category: str | None = None,
+    only_ids: set[str] | None = None,
+    skip_ids: set[str] | None = None,
+    type_prefixes: set[str] | None = None,
+    verbose: bool = True,
 )
 ```
 
@@ -1571,6 +1617,10 @@ AutoManager(
 - `max_issues` - Maximum issues to process (0 = unlimited)
 - `resume` - Resume from previous state
 - `category` - Filter to specific category
+- `only_ids` - If provided, only process these issue IDs
+- `skip_ids` - Issue IDs to skip (in addition to attempted issues)
+- `type_prefixes` - If provided, only process issues with these type prefixes
+- `verbose` - Whether to output progress messages
 
 #### Methods
 
@@ -1635,6 +1685,8 @@ def close_issue(
     logger: Logger,
     close_reason: str | None,
     close_status: str | None,
+    fix_commit: str | None = None,
+    files_changed: list[str] | None = None,
 ) -> bool
 ```
 
@@ -1646,6 +1698,8 @@ Close an issue by moving to completed with closure status.
 - `logger` - Logger for output
 - `close_reason` - Reason code (e.g., `"already_fixed"`)
 - `close_status` - Status text (e.g., `"Closed - Already Fixed"`)
+- `fix_commit` - SHA of the commit that fixed the issue (for regression tracking)
+- `files_changed` - List of files modified by the fix (for regression tracking)
 
 **Returns:** `True` if successful
 
@@ -2175,6 +2229,7 @@ class ParallelConfig:
     max_issues: int = 0
     dry_run: bool = False
     timeout_per_issue: int = 3600
+    idle_timeout_per_issue: int = 0
     orchestrator_timeout: int = 0
     stream_subprocess_output: bool = False
     show_model: bool = False
@@ -2183,8 +2238,15 @@ class ParallelConfig:
     manage_command: str = "manage-issue {{issue_type}} {{action}} {{issue_id}}"
     only_ids: set[str] | None = None
     skip_ids: set[str] | None = None
+    type_prefixes: set[str] | None = None
     require_code_changes: bool = True
     worktree_copy_files: list[str]
+    merge_pending: bool = False
+    clean_start: bool = False
+    ignore_pending: bool = False
+    overlap_detection: bool = False
+    serialize_overlapping: bool = True
+    base_branch: str = "main"
 ```
 
 #### Methods
@@ -2235,9 +2297,12 @@ class WorkerResult:
     stdout: str = ""
     stderr: str = ""
     was_corrected: bool = False
+    corrections: list[str] = field(default_factory=list)
     should_close: bool = False
     close_reason: str | None = None
     close_status: str | None = None
+    was_blocked: bool = False
+    interrupted: bool = False
 ```
 
 ### IssuePriorityQueue
@@ -2263,8 +2328,10 @@ queue.mark_failed(issue_id)
 | `get(block=True, timeout=None)` | Get next issue from queue |
 | `mark_completed(issue_id)` | Mark issue as completed |
 | `mark_failed(issue_id)` | Mark issue as failed |
-| `p0_count() -> int` | Count of P0 issues in queue |
-| `parallel_count() -> int` | Count of P1-P5 issues in queue |
+| `qsize() -> int` | Count of issues currently in queue |
+| `in_progress_count() -> int` | Count of issues currently being processed |
+| `completed_count() -> int` | Count of completed issues |
+| `failed_count() -> int` | Count of failed issues |
 
 ### Additional Types
 
@@ -3329,6 +3396,7 @@ class ActionRunner(Protocol):
         action: str,
         timeout: int,
         is_slash_command: bool,
+        on_output_line: Callable[[str], None] | None = None,
     ) -> ActionResult: ...
 ```
 
