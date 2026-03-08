@@ -12,6 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.37.0] - 2026-03-08
+
+### Added
+
+- **TDD Mode in Round 3a advanced features** - Moved TDD Mode selection to Round 3a advanced features during `ll-init` setup (feat(init): 2045a2a)
+
+### Fixed
+
+- **Off-Path State Highlighting Missing in FSM Diagram** - Fixed `ll-loop run --show-diagrams` to properly highlight off-path states with green borders and bold text when they become the active state (BUG-655)
+- fix(config): replace hardcoded issue paths with config-driven resolution (ed5b3ad)
+- fix(schema): align worktree_copy_files default with code (470ef08)
+- fix(config): add test_dir field to ProjectConfig (ce3fc59)
+- fix(schema): correct default_max_workers default from 4 to 2 (e783ae7)
+
+### Changed
+
+- docs(schema): add three undocumented config fields to config-schema.json (aadf455)
+- docs(issues): clarify skills in README and update FEAT-638 verification logs (93411ce)
+
 ## [1.36.1] - 2026-03-07
 
 ### Fixed
@@ -22,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **API.md missing documentation sections** - Added documentation for `work_verification`, `session_log`, config classes (`SprintsConfig`, `LoopsConfig`, `GitHubSyncConfig`, etc.), FSM submodules (`handoff_handler`, `concurrency`, `signal_detector`), parallel types, and CLI entry points (ENH-646)
 
+[1.37.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.36.1...v1.37.0
 [1.36.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.36.0...v1.36.1
 
 ## [1.36.0] - 2026-03-07
