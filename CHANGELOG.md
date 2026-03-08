@@ -12,6 +12,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.36.0] - 2026-03-07
+
+### Added
+
+- feat(loop): add `--show-diagrams` flag to `ll-loop run` and `resume` — display FSM box diagram with active state highlighted during verbose run (cbae36b, 8d6585d)
+- feat(loop): add `--context KEY=VALUE` CLI override for `run` and `resume` (f307e13)
+- feat(loop): add `--exit-code` to `ll-loop test` for slash-command states (952e653)
+- feat(fsm): add numeric range checks to `validate_fsm` (db4d8e0)
+- feat(fsm): add `on_stall` override to convergence paradigm compiler (7ad4673)
+- feat(compilers): add `on_partial_target` field to all paradigm compilers (c101325)
+- feat(simulate): add all-error scenario for non-interactive error-verdict testing (b8c060a)
+
+### Fixed
+
+- fix(evaluators): raise `ValueError` when `output_numeric` or convergence target is `None` (e17c3d3)
+- fix(evaluators): guard `output_numeric` target against non-numeric strings (c2860a8)
+- fix(executor): drain stderr in background thread to prevent pipe deadlock (d961aab)
+- fix(fsm): remove `on_error="fix"` from `compile_goal` evaluate state (ea6d525)
+- fix(fsm): clear `_pending_error` on resume alongside `_pending_handoff` (37700a7)
+- fix(loop): write PID file for foreground runs so `cmd_stop` sends SIGTERM (df233e6)
+- fix(loop): forward `--verbose` flag to background process (f6edb97)
+- fix(persistence): map timeout termination to `timed_out` status (7096c9c)
+- fix(validation): add `on_partial` to `_validate_state_routing` shorthand check (763823a)
+- fix(handoff): anchor continuation prompt path to project root (9c8232a)
+- fix(issue_parser): add session log check to `is_formatted` (28622fe)
+- fix(docs): correct API.md signatures, data class schemas, and goals_parser reference (c242966, 955c370, 31f8165)
+- fix(docs): correct `$schema` relative path in CONFIGURATION.md example (e3d018a)
+
+### Changed
+
+- refactor(fsm): extract `_is_prompt_action` helper in `FSMExecutor` (cd0b742)
+
+[1.36.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.35.0...v1.36.0
+
 ## [1.35.0] - 2026-03-06
 
 ### Added
