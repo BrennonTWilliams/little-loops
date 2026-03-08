@@ -744,7 +744,7 @@ class TestParallelConfig:
         assert config.only_ids is None
         assert config.skip_ids is None
         assert config.require_code_changes is True
-        assert config.worktree_copy_files == [".env"]
+        assert config.worktree_copy_files == [".claude/settings.local.json", ".env"]
         assert config.merge_pending is False
         assert config.clean_start is False
         assert config.ignore_pending is False

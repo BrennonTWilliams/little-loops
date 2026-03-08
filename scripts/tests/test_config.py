@@ -236,6 +236,7 @@ class TestParallelAutomationConfig:
         # Parallel-specific defaults
         assert config.p0_sequential is True
         assert config.command_prefix == "/ll:"
+        assert config.worktree_copy_files == [".claude/settings.local.json", ".env"]
 
 
 class TestConfidenceGateConfig:

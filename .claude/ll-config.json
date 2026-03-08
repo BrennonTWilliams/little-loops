@@ -41,7 +41,9 @@
       "outcome_threshold": 70
     }
   },
-  "worktree_copy_files": [".claude/settings.local.json"],
+  "parallel": {
+    "worktree_copy_files": [".claude/settings.local.json", ".env"]
+  },
   "sprints": {
     "sprints_dir": ".sprints",
     "default_timeout": 3600,

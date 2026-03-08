@@ -336,7 +336,7 @@ class ParallelConfig:
     require_code_changes: bool = True  # If False, allow changes to only excluded dirs
     # Additional files to copy from main repo to worktrees
     # Note: .claude/ directory is always copied automatically (see worker_pool.py)
-    worktree_copy_files: list[str] = field(default_factory=lambda: [".env"])
+    worktree_copy_files: list[str] = field(default_factory=lambda: [".claude/settings.local.json", ".env"])
     # Pending worktree handling flags
     merge_pending: bool = False  # Attempt to merge pending worktrees
     clean_start: bool = False  # Remove all worktrees without checking

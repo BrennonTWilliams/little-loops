@@ -222,11 +222,11 @@
         },
         "worktree_copy_files": {
           "type": "array",
-          "description": "Additional files to copy from main repo to worktrees (relative paths). Note: .claude/ directory is always copied automatically.",
+          "description": "Additional files to copy from main repo to worktrees (relative paths). Includes .claude/settings.local.json by default because it carries Claude Code auth tokens required in each worktree. Note: .claude/ directory is always copied automatically.",
           "items": {
             "type": "string"
           },
-          "default": [".env"]
+          "default": [".claude/settings.local.json", ".env"]
         }
       },
       "additionalProperties": false
