@@ -12,6 +12,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.36.1] - 2026-03-07
+
+### Fixed
+
+- **ll-issues refine-status ID column truncates 4-digit FEAT IDs** - Replaced hardcoded `_ID_WIDTH = 8` with a dynamic column width computed from the longest issue ID in the dataset (BUG-647)
+
+### Changed
+
+- **API.md missing documentation sections** - Added documentation for `work_verification`, `session_log`, config classes (`SprintsConfig`, `LoopsConfig`, `GitHubSyncConfig`, etc.), FSM submodules (`handoff_handler`, `concurrency`, `signal_detector`), parallel types, and CLI entry points (ENH-646)
+
+[1.36.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.36.0...v1.36.1
+
 ## [1.36.0] - 2026-03-07
 
 ### Added
