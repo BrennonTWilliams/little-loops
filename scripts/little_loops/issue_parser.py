@@ -42,24 +42,34 @@ def is_normalized(filename: str) -> bool:
 
 
 def is_formatted(issue_path: Path, templates_dir: Path | None = None) -> bool:
-    """Check whether an issue file has all required sections per its type template.
+    """Check whether an issue file has been formatted.
 
-    Detects the issue type from the filename, loads the corresponding
-    ``{type}-sections.json`` template, collects section names that are marked
-    required (and not deprecated), then verifies each is present as a ``##``
-    heading in the file.
+    An issue is considered formatted if either:
+    1. Its ## Session Log contains a ``/ll:format-issue`` entry, OR
+    2. It has all required sections per its type template (structural check).
 
     Args:
         issue_path: Path to the issue markdown file.
         templates_dir: Optional override for the templates directory.
 
     Returns:
-        True if all required sections are present as ## headings, False otherwise.
+        True if the issue is formatted by either criterion, False otherwise.
         Returns False for files whose type cannot be determined or whose template
         cannot be loaded.
     """
     from little_loops.issue_template import load_issue_sections
+    from little_loops.session_log import parse_session_log
 
+    try:
+        content = issue_path.read_text(encoding="utf-8")
+    except Exception:
+        return False
+
+    # Criterion 1: /ll:format-issue appears in the session log
+    if "/ll:format-issue" in parse_session_log(content):
+        return True
+
+    # Criterion 2: all required sections are present as ## headings
     type_match = _ISSUE_TYPE_RE.search(issue_path.name)
     if not type_match:
         return False
@@ -80,11 +90,6 @@ def is_formatted(issue_path: Path, templates_dir: Path | None = None) -> bool:
 
     if not required:
         return True
-
-    try:
-        content = issue_path.read_text(encoding="utf-8")
-    except Exception:
-        return False
 
     headings = {m.strip() for m in re.findall(r"^##\s+(.+)$", content, re.MULTILINE)}
     return required.issubset(headings)
