@@ -644,7 +644,6 @@ class TestRefineStatusTable:
                 f"Row width {len(line)} exceeds terminal width {terminal_width}: {line!r}"
             )
 
-
     def test_four_digit_id_not_truncated(
         self,
         temp_project_dir: Path,
@@ -665,7 +664,9 @@ class TestRefineStatusTable:
         )
 
         with patch.object(
-            sys, "argv", ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
