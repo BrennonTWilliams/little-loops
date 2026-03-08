@@ -197,6 +197,9 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
 
     sorted_issues = sorted(issues, key=_sort_key)
 
+    # Dynamic ID column width: size to the longest issue_id present, minimum 8
+    id_width = max((len(issue.issue_id) for issue in sorted_issues), default=7) + 1
+
     fmt = getattr(args, "format", "table")
 
     if fmt == "json":
@@ -235,7 +238,9 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
         n_parts = len(pre_cmd) + len(all_cmds) + len(post_cmd)
         non_title_sum = (
             sum(
-                _STATIC_COLUMN_SPECS[c][0] if c in _STATIC_COLUMN_SPECS else _CMD_WIDTH
+                (id_width if c == "id" else _STATIC_COLUMN_SPECS[c][0])
+                if c in _STATIC_COLUMN_SPECS
+                else _CMD_WIDTH
                 for c in pre_cmd
                 if c != "title"
             )
@@ -248,6 +253,8 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
         title_w = max(_MIN_TITLE_WIDTH, term_cols - non_title_sum - 2 * (n_parts - 1))
 
     def _get_col_display_width(col: str) -> int:
+        if col == "id":
+            return id_width
         if col == "title":
             return title_w
         if col in _STATIC_COLUMN_SPECS:

@@ -645,6 +645,40 @@ class TestRefineStatusTable:
             )
 
 
+    def test_four_digit_id_not_truncated(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """4-digit issue IDs like FEAT-8885 are displayed without truncation."""
+        _write_config(temp_project_dir, sample_config)
+        features_dir = temp_project_dir / ".issues" / "features"
+        features_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            features_dir,
+            "P2-FEAT-8885-four-digit-id.md",
+            "FEAT-8885: Feature with 4-digit ID",
+        )
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "refine-status", "--no-key", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "FEAT-8885" in out, "Full 4-digit ID must appear untruncated"
+        assert "FEAT-888 " not in out and "FEAT-888\t" not in out, (
+            "Truncated ID FEAT-888 must not appear"
+        )
+
+
 class TestRefineStatusJson:
     """Tests for refine-status --format json output."""
 
