@@ -213,6 +213,8 @@ questions:
         description: "Keep local issue files and GitHub Issues in sync (two-way push/pull)"
       - label: "Confidence gate"
         description: "Require a minimum readiness score before automated implementation proceeds"
+      - label: "Test-Driven Development (TDD)"
+        description: "Write failing tests before implementation — manage-issue will create tests first, then implement to pass them"
     multiSelect: true
 ```
 
@@ -678,6 +680,11 @@ If confidence gate is enabled:
 { "commands": { "confidence_gate": { "enabled": true, "readiness_threshold": 85, "outcome_threshold": 70 } } }
 ```
 
+If TDD Mode is selected in Round 3a:
+```json
+{ "commands": { "tdd_mode": true } }
+```
+
 If sprint management is configured with non-default workers:
 ```json
 { "sprints": { "default_max_workers": 2 } }
@@ -882,21 +889,6 @@ questions:
 
 Use the actual `test_cmd` and `lint_cmd` values selected in Round 1 for these commands.
 
-```yaml
-  - header: "TDD Mode"
-    question: "Enable test-first (TDD) mode for issue implementation?"
-    options:
-      - label: "Skip (Recommended)"
-        description: "Standard implementation flow — tests alongside code"
-      - label: "Enable TDD"
-        description: "Write failing tests first, then implement to pass them"
-    multiSelect: false
-```
-
-**TDD Mode mapping:**
-- "Skip" → omit `commands.tdd_mode` (defaults to `false`)
-- "Enable TDD" → `{ "commands": { "tdd_mode": true } }`
-
 ## Round 9: Continuation Behavior (Optional)
 
 **Only run if user selected "Configure" in the Extended Config Gate.**
@@ -998,7 +990,7 @@ questions:
 |-------|-------|-----------|------------|
 | 1 | Core Settings | name, src_dir, test_cmd, lint_cmd | Always |
 | 2 | Additional Config | format_cmd, issues, scan_dirs, excludes | Always |
-| 3a | Core Features | features (multi-select: parallel, context_monitor, sync, confidence_gate) | Always |
+| 3a | Core Features | features (multi-select: parallel, context_monitor, sync, confidence_gate, tdd_mode) | Always |
 | 3b | Automation Features | automation (multi-select: sprint_management, fsm_loops, sequential_auto) | Always |
 | **4** | **Product Analysis** | **product (opt-in for product-focused analysis)** | **Always** |
 | 5a | Advanced (dynamic, first batch) | issues_path?, completed_dir?, worktree_files?, parallel_workers? | Conditional (≥1 active) |

@@ -2,9 +2,11 @@
 id: ENH-653
 type: enhancement
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-03-08
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 85
 ---
 
 # ENH-653: Add TDD Mode to `--interactive` Advanced Features Selection
@@ -28,8 +30,9 @@ TDD Mode (`commands.tdd_mode` in `ll-config.json`) is a first-class workflow pre
 - [ ] When "TDD Mode" is selected in Round 3a, the final config includes `{ "commands": { "tdd_mode": true } }`
 - [ ] When "TDD Mode" is NOT selected, `commands.tdd_mode` is omitted (defaults to `false`)
 - [ ] The ACTIVE count calculation (post-Round 3b) is updated to account for TDD Mode if it requires a follow-up question in Round 5 (it likely does not — selection alone is sufficient)
-- [ ] The existing TDD Mode question in Round 8 is removed to avoid duplication — OR it is conditioned on TDD not already being selected in Round 3a
+- [ ] The existing TDD Mode question in Round 8 is removed entirely (not guarded) to avoid duplication
 - [ ] Round 5 conditional logic table is updated to reflect any changes
+- [ ] Manual verification: run `/ll:init --interactive`, confirm TDD appears in Round 3a multi-select and does NOT appear in Round 8
 
 ## Implementation Steps
 
@@ -43,9 +46,7 @@ TDD Mode (`commands.tdd_mode` in `ll-config.json`) is a first-class workflow pre
 
 3. **Update ACTIVE count logic** — TDD Mode selection in Round 3a does NOT trigger additional Round 5 questions (it's a simple boolean), so ACTIVE count does not change.
 
-4. **Remove or suppress Round 8 TDD question** to avoid asking twice:
-   - Simplest fix: remove the TDD Mode block from Round 8 entirely (the mapping is captured in Round 3a)
-   - Alternative: guard Round 8 TDD block with "only show if NOT selected in Round 3a"
+4. **Remove the Round 8 TDD question entirely** — delete the TDD Mode block from Round 8 (`skills/init/interactive.md` lines ~886–898). Do not guard it conditionally; the mapping is fully captured in Round 3a and a conditional guard adds complexity for no benefit.
 
 5. **Update Round table** at the bottom of `interactive.md` if it references Round 8 TDD fields.
 
@@ -85,8 +86,20 @@ TDD Mode (`commands.tdd_mode` in `ll-config.json`) is a first-class workflow pre
 
 ---
 
-**Open** | Created: 2026-03-08 | Priority: P3
+**Completed** | Created: 2026-03-08 | Priority: P3
+
+## Resolution
+
+- Added "Test-Driven Development (TDD)" option to Round 3a multi-select in `skills/init/interactive.md`
+- Added TDD config mapping (`{ "commands": { "tdd_mode": true } }`) in the Round 5 configuration section
+- Removed the TDD Mode block (header, options, and mapping) from Round 8 entirely
+- Updated the summary table to include `tdd_mode` in Round 3a's features list
+- ACTIVE count logic unchanged — TDD selection requires no follow-up Round 5 question
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-08T07:22:30Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/81536658-b23f-4ba4-bcc6-0eb995bcf26f.jsonl`
 - `/ll:format-issue` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b384c54-14df-4e17-a051-5543cadfa726.jsonl`
+- `/ll:confidence-check` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bbd9f44-2987-40e6-996f-adbad58e0bce.jsonl`
+- `/ll:confidence-check` - 2026-03-08T08:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+- `/ll:ready-issue` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2b9858f3-eab7-4228-a05a-862f8e6117ba.jsonl`
+- `/ll:manage-issue` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
