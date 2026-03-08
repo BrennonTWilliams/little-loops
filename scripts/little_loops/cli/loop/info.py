@@ -865,32 +865,44 @@ def _render_2d_diagram(
             box_base = max_conn_h
 
             if bx + bw <= total_width:
+                is_highlighted = highlight_state is not None and off_s == highlight_state
+
+                def _bc_off(ch: str, _h: bool = is_highlighted) -> str:
+                    return colorize(ch, highlight_color) if _h else ch
+
                 # Top border
-                off_grid[box_base][bx] = "\u250c"
+                off_grid[box_base][bx] = _bc_off("\u250c")
                 for j in range(1, bw - 1):
-                    off_grid[box_base][bx + j] = "\u2500"
-                off_grid[box_base][bx + bw - 1] = "\u2510"
+                    off_grid[box_base][bx + j] = _bc_off("\u2500")
+                off_grid[box_base][bx + bw - 1] = _bc_off("\u2510")
 
                 # Content rows
                 for i, line in enumerate(off_content):
                     br = box_base + i + 1
-                    off_grid[br][bx] = "\u2502"
-                    off_grid[br][bx + bw - 1] = "\u2502"
-                    for j, ch in enumerate(line):
-                        if bx + 2 + j < bx + bw - 1:
-                            off_grid[br][bx + 2 + j] = ch
+                    off_grid[br][bx] = _bc_off("\u2502")
+                    off_grid[br][bx + bw - 1] = _bc_off("\u2502")
+                    if is_highlighted and i == 0:
+                        colored_line = colorize(line, f"{highlight_color};1")
+                        off_grid[br][bx + 2] = colored_line
+                        for j in range(1, len(line)):
+                            if bx + 2 + j < bx + bw - 1:
+                                off_grid[br][bx + 2 + j] = ""
+                    else:
+                        for j, ch in enumerate(line):
+                            if bx + 2 + j < bx + bw - 1:
+                                off_grid[br][bx + 2 + j] = ch
 
                 # Padding rows
                 for i in range(len(off_content) + 1, h - 1):
                     br = box_base + i
-                    off_grid[br][bx] = "\u2502"
-                    off_grid[br][bx + bw - 1] = "\u2502"
+                    off_grid[br][bx] = _bc_off("\u2502")
+                    off_grid[br][bx + bw - 1] = _bc_off("\u2502")
 
                 # Bottom border
-                off_grid[box_base + h - 1][bx] = "\u2514"
+                off_grid[box_base + h - 1][bx] = _bc_off("\u2514")
                 for j in range(1, bw - 1):
-                    off_grid[box_base + h - 1][bx + j] = "\u2500"
-                off_grid[box_base + h - 1][bx + bw - 1] = "\u2518"
+                    off_grid[box_base + h - 1][bx + j] = _bc_off("\u2500")
+                off_grid[box_base + h - 1][bx + bw - 1] = _bc_off("\u2518")
 
             # Draw outgoing edges on the name row (box_base + 1)
             name_row = box_base + 1
