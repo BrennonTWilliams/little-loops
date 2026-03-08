@@ -267,7 +267,7 @@ Reason: Cannot safely proceed without human guidance
 
 ## Session Continuation (Handoff) Template
 
-When context is running low, write a continuation prompt to `.claude/ll-continue-prompt.md` using this template:
+When context is running low, write a continuation prompt to `$(pwd)/.claude/ll-continue-prompt.md` (absolute path anchored to the project root — **never** to `~/.claude/ll-continue-prompt.md`) using this template:
 
 ```markdown
 # Session Continuation: [ISSUE-ID]

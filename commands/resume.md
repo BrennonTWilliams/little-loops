@@ -28,8 +28,17 @@ PROMPT_FILE="${prompt_file:-.claude/ll-continue-prompt.md}"
 
 Check for continuation state in order:
 1. Use provided `prompt_file` if specified
-2. Check `.claude/ll-continue-prompt.md` (primary location)
-3. Check `.claude/ll-session-state.json` (fallback for metadata)
+2. Check `$(pwd)/.claude/ll-continue-prompt.md` (primary location — project-level)
+3. Check `~/.claude/ll-continue-prompt.md` (user-level — warn if found here but not at project-level)
+4. Check `.claude/ll-session-state.json` (fallback for metadata)
+
+**Path guard**: If the file is found at `~/.claude/ll-continue-prompt.md` but NOT at the project-level path, display this warning before displaying the prompt content:
+
+```
+⚠ Warning: Continuation prompt found at ~/.claude/ll-continue-prompt.md (user-level), not at
+  <project-root>/.claude/ll-continue-prompt.md (project-level). This may be caused by a prior
+  handoff bug. The prompt may belong to a different project. Proceeding anyway.
+```
 
 ### 2. Validate Prompt
 

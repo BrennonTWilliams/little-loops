@@ -119,7 +119,7 @@ Compare conversation claims to artifact reality:
 
 ### 3. Generate Continuation Prompt
 
-Write to `.claude/ll-continue-prompt.md`.
+Write to `$(pwd)/.claude/ll-continue-prompt.md` — use an absolute path derived from the current working directory (the project root where Claude Code is running). **Never write to `~/.claude/ll-continue-prompt.md`.**
 
 **If `--deep` flag was NOT passed** (default mode):
 
@@ -208,7 +208,7 @@ After writing the continuation prompt, output:
 
 ```
 CONTEXT_HANDOFF: Ready for fresh session
-Continuation prompt written to: .claude/ll-continue-prompt.md
+Continuation prompt written to: <project-root>/.claude/ll-continue-prompt.md
 
 Source: Conversation summary [+ artifact validation with --deep]
 
