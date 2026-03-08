@@ -251,6 +251,8 @@ def run_background(
         cmd.extend(["--llm-model", llm_model])
     if getattr(args, "verbose", False):
         cmd.append("--verbose")
+    if getattr(args, "show_diagrams", False):
+        cmd.append("--show-diagrams")
     if getattr(args, "quiet", False):
         cmd.append("--quiet")
     if getattr(args, "queue", False):
@@ -290,6 +292,7 @@ def run_foreground(
     """
     quiet = getattr(args, "quiet", False)
     verbose = getattr(args, "verbose", False)
+    show_diagrams = getattr(args, "show_diagrams", False)
     if not quiet:
         print(f"Running loop: {colorize(fsm.name, '1')}")
         print(f"Max iterations: {colorize(str(fsm.max_iterations), '2')}")
@@ -312,7 +315,7 @@ def run_foreground(
                 elapsed_str = f"{elapsed_int}s"
             else:
                 elapsed_str = f"{elapsed_int // 60}m {elapsed_int % 60}s"
-            if verbose:
+            if show_diagrams:
                 from little_loops.cli.loop.info import _render_fsm_diagram
 
                 diagram = _render_fsm_diagram(

@@ -3,6 +3,8 @@ discovered_commit: 7ad4673a831718284ad0c0cf10178fe1194cc751
 discovered_branch: main
 discovered_date: 2026-03-08T00:52:40Z
 discovered_by: capture-issue
+confidence_score: 98
+outcome_confidence: 93
 ---
 
 # FEAT-642: Add `--show-diagrams` Flag to `ll-loop` for FSM Box Diagram Display
@@ -39,12 +41,12 @@ ll-loop run my-loop.yaml --verbose --show-diagrams
 
 ## Acceptance Criteria
 
-- [ ] `--show-diagrams` flag added to `ll-loop run` (and `ll-loop resume` if applicable)
-- [ ] FSM box diagram with active state highlight is shown each step **only** when `--show-diagrams` is passed
-- [ ] `--verbose` no longer triggers FSM box diagram output
-- [ ] `--verbose` and `--show-diagrams` can be combined without conflict
-- [ ] Help text for `--show-diagrams` clearly describes its purpose
-- [ ] Existing `--verbose` tests continue to pass without diagram assertions
+- [x] `--show-diagrams` flag added to `ll-loop run` (and `ll-loop resume` if applicable)
+- [x] FSM box diagram with active state highlight is shown each step **only** when `--show-diagrams` is passed
+- [x] `--verbose` no longer triggers FSM box diagram output
+- [x] `--verbose` and `--show-diagrams` can be combined without conflict
+- [x] Help text for `--show-diagrams` clearly describes its purpose
+- [x] Existing `--verbose` tests continue to pass without diagram assertions
 
 ## API/Interface
 
@@ -78,7 +80,7 @@ New flag: `--show-diagrams` — Display the FSM box diagram with the current act
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/__init__.py` — Add `--show-diagrams` arg to `run` (line 113) and `resume` (line 188) subparsers
+- `scripts/little_loops/cli/loop/__init__.py` — Add `--show-diagrams` arg to `run` (line 113) subparser; add to `resume` subparser after `--context` arg (~line 177, no `--verbose` exists there currently)
 - `scripts/little_loops/cli/loop/_helpers.py` — Replace `if verbose:` with `if show_diagrams:` in `run_foreground()` diagram branch (lines 292–321); propagate `show_diagrams` param through call signature
 
 ### Dependent Files (Callers/Importers)
@@ -108,7 +110,20 @@ New flag: `--show-diagrams` — Display the FSM box diagram with the current act
 
 - `/ll:capture-issue` - 2026-03-08T00:52:40Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 - `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4db38ae0-a36b-494b-a855-6d7f6b8178be.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eef0284f-0058-4962-abe7-f481fe36fb93.jsonl`
+- `/ll:confidence-check` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5da8f93f-6709-43ee-bcec-97fdfaf1d8be.jsonl`
+- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4205aea9-72fb-4d1f-aac7-c3f34b6f4898.jsonl`
+- `/ll:manage-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
+
+## Resolution
+
+Implemented `--show-diagrams` flag as a dedicated opt-in for FSM diagram display, decoupled from `--verbose`.
+
+### Changes Made
+- `scripts/little_loops/cli/loop/__init__.py`: Added `--show-diagrams` arg to `run` and `resume` subparsers
+- `scripts/little_loops/cli/loop/_helpers.py`: Changed diagram guard from `if verbose:` to `if show_diagrams:`; added `show_diagrams` forwarding in `run_background()`
+- `scripts/tests/test_ll_loop_display.py`: Updated `_make_args` to include `show_diagrams`; replaced old verbose diagram tests with 4 precise tests covering `--show-diagrams` alone, `--verbose` alone (no diagram), no flags (no diagram), and both combined
 
 ---
 
-**Open** | Created: 2026-03-08 | Priority: P3
+**Completed** | Created: 2026-03-08 | Priority: P3

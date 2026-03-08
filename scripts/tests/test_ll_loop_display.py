@@ -920,8 +920,10 @@ class TestRenderFsmDiagram:
 class TestDisplayProgressEvents:
     """Tests for display_progress event formatting in run_foreground."""
 
-    def _make_args(self, quiet: bool = False, verbose: bool = False) -> argparse.Namespace:
-        return argparse.Namespace(quiet=quiet, verbose=verbose)
+    def _make_args(
+        self, quiet: bool = False, verbose: bool = False, show_diagrams: bool = False
+    ) -> argparse.Namespace:
+        return argparse.Namespace(quiet=quiet, verbose=verbose, show_diagrams=show_diagrams)
 
     def _make_fsm(self) -> FSMLoop:
         return make_test_fsm()
@@ -1022,10 +1024,10 @@ class TestDisplayProgressEvents:
         assert "preview line" in out
         assert "streamed line" not in out
 
-    def test_verbose_state_enter_prints_diagram(
+    def test_show_diagrams_state_enter_prints_diagram(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """In verbose mode, state_enter events print the FSM diagram with highlighted state."""
+        """--show-diagrams flag causes state_enter events to print the FSM diagram."""
         from unittest.mock import patch
 
         from little_loops.cli.loop import info as info_mod
@@ -1035,7 +1037,7 @@ class TestDisplayProgressEvents:
         ]
         executor = MockExecutor(events)
         with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
-            run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+            run_foreground(executor, self._make_fsm(), self._make_args(show_diagrams=True))
             mock_render.assert_called_once_with(
                 self._make_fsm(), highlight_state="start", highlight_color="32"
             )
@@ -1043,10 +1045,26 @@ class TestDisplayProgressEvents:
         # Diagram contains box drawing characters
         assert "\u250c" in out
 
-    def test_nonverbose_state_enter_no_diagram(
+    def test_verbose_without_show_diagrams_no_diagram(
         self, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """In non-verbose mode, state_enter events do not print the FSM diagram."""
+        """--verbose alone does not print the FSM diagram."""
+        from unittest.mock import patch
+
+        from little_loops.cli.loop import info as info_mod
+
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch.object(info_mod, "_render_fsm_diagram") as mock_render:
+            run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+            mock_render.assert_not_called()
+
+    def test_no_flags_state_enter_no_diagram(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """Without --show-diagrams, state_enter events do not print the FSM diagram."""
         from unittest.mock import patch
 
         from little_loops.cli.loop import info as info_mod
@@ -1059,12 +1077,34 @@ class TestDisplayProgressEvents:
             run_foreground(executor, self._make_fsm(), self._make_args(verbose=False))
             mock_render.assert_not_called()
 
+    def test_verbose_and_show_diagrams_prints_diagram(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--verbose and --show-diagrams combined prints diagram and verbose output."""
+        from unittest.mock import patch
+
+        from little_loops.cli.loop import info as info_mod
+
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+            {"event": "action_output", "line": "verbose output line"},
+        ]
+        executor = MockExecutor(events)
+        with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
+            run_foreground(executor, self._make_fsm(), self._make_args(verbose=True, show_diagrams=True))
+            mock_render.assert_called_once_with(
+                self._make_fsm(), highlight_state="start", highlight_color="32"
+            )
+        out = capsys.readouterr().out
+        assert "\u250c" in out
+        assert "verbose output line" in out
+
 
 class TestRunForegroundExitCodes:
     """Tests for run_foreground exit code mapping (BUG-605)."""
 
     def _make_args(self) -> argparse.Namespace:
-        return argparse.Namespace(quiet=False, verbose=False)
+        return argparse.Namespace(quiet=False, verbose=False, show_diagrams=False)
 
     def _make_fsm(self) -> FSMLoop:
         return make_test_fsm()

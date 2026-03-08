@@ -113,6 +113,11 @@ Examples:
         "--verbose", "-v", action="store_true", help="Show full prompt text and more output lines"
     )
     run_parser.add_argument(
+        "--show-diagrams",
+        action="store_true",
+        help="Display the FSM box diagram with the active state highlighted after each step",
+    )
+    run_parser.add_argument(
         "--queue", action="store_true", help="Wait for conflicting loops to finish"
     )
     run_parser.add_argument(
@@ -173,6 +178,11 @@ Examples:
         default=[],
         metavar="KEY=VALUE",
         help="Override a context variable (can be repeated)",
+    )
+    resume_parser.add_argument(
+        "--show-diagrams",
+        action="store_true",
+        help="Display the FSM box diagram with the active state highlighted after each step",
     )
 
     # History subcommand
