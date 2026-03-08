@@ -255,6 +255,8 @@ def run_background(
         cmd.append("--quiet")
     if getattr(args, "queue", False):
         cmd.append("--queue")
+    for kv in getattr(args, "context", None) or []:
+        cmd.extend(["--context", kv])
 
     with open(log_file, "w") as log_fh:
         process = subprocess.Popen(

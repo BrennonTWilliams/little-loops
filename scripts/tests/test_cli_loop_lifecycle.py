@@ -405,6 +405,49 @@ class TestCmdResume:
         expected_pid_file = tmp_path / ".running" / "test-loop.pid"
         mock_register.assert_called_once_with(mock_exec_cls.return_value, pid_file=expected_pid_file)
 
+    def test_context_overrides_applied_to_fsm(self, tmp_path: Path) -> None:
+        """--context KEY=VALUE overrides are applied to fsm.context before execution."""
+        logger = MagicMock()
+        args = argparse.Namespace(context=["issue_id=042", "mode=fast"])
+        mock_fsm = MagicMock()
+        mock_fsm.context = {"issue_id": "001"}
+
+        mock_result = MagicMock()
+        mock_result.final_state = "done"
+        mock_result.iterations = 1
+        mock_result.duration_ms = 1000
+        mock_result.terminated_by = "terminal"
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+            patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec_cls,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            mock_exec_cls.return_value.resume.return_value = mock_result
+            result = cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert result == 0
+        assert mock_fsm.context["issue_id"] == "042"
+        assert mock_fsm.context["mode"] == "fast"
+
+    def test_context_invalid_format_raises_system_exit(self, tmp_path: Path) -> None:
+        """--context value missing '=' raises SystemExit with clear message."""
+        logger = MagicMock()
+        args = argparse.Namespace(context=["badvalue"])
+        mock_fsm = MagicMock()
+        mock_fsm.context = {}
+
+        with (
+            patch("little_loops.cli.loop.lifecycle.load_loop", return_value=mock_fsm),
+            patch("little_loops.fsm.persistence.StatePersistence") as mock_persist_cls,
+        ):
+            mock_persist_cls.return_value.load_state.return_value = None
+            with pytest.raises(SystemExit) as exc_info:
+                cmd_resume("test-loop", args, tmp_path, logger)
+
+        assert "KEY=VALUE" in str(exc_info.value)
+
     def test_resume_signal_handler_triggers_graceful_shutdown(self, tmp_path: Path) -> None:
         """Ctrl-C during resume calls request_shutdown() instead of raising KeyboardInterrupt."""
         from little_loops.cli.loop._helpers import _loop_signal_handler

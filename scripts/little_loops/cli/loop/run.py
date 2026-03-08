@@ -58,6 +58,11 @@ def cmd_run(
         fsm.llm.enabled = False
     if args.llm_model:
         fsm.llm.model = args.llm_model
+    for kv in getattr(args, "context", None) or []:
+        if "=" not in kv:
+            raise SystemExit(f"Invalid --context format: {kv!r} (expected KEY=VALUE)")
+        key, _, value = kv.partition("=")
+        fsm.context[key.strip()] = value.strip()
 
     # Dry run
     if args.dry_run:

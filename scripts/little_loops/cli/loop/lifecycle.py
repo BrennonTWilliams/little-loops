@@ -182,6 +182,12 @@ def cmd_resume(
         logger.error(f"Validation error: {e}")
         return 1
 
+    for kv in getattr(args, "context", None) or []:
+        if "=" not in kv:
+            raise SystemExit(f"Invalid --context format: {kv!r} (expected KEY=VALUE)")
+        key, _, value = kv.partition("=")
+        fsm.context[key.strip()] = value.strip()
+
     # Check state before resuming to show context
     persistence = StatePersistence(loop_name, loops_dir)
     state = persistence.load_state()

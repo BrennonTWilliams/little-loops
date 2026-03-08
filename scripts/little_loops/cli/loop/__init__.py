@@ -115,6 +115,13 @@ Examples:
     run_parser.add_argument(
         "--queue", action="store_true", help="Wait for conflicting loops to finish"
     )
+    run_parser.add_argument(
+        "--context",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Override a context variable (can be repeated)",
+    )
 
     # Compile subcommand
     compile_parser = subparsers.add_parser("compile", aliases=["c"], help="Compile paradigm to FSM")
@@ -159,6 +166,13 @@ Examples:
         "--foreground-internal",
         action="store_true",
         help=argparse.SUPPRESS,
+    )
+    resume_parser.add_argument(
+        "--context",
+        action="append",
+        default=[],
+        metavar="KEY=VALUE",
+        help="Override a context variable (can be repeated)",
     )
 
     # History subcommand

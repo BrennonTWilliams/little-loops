@@ -277,6 +277,51 @@ class TestRunBackground:
         cmd = mock_popen.call_args[0][0]
         assert "--verbose" not in cmd
 
+    def test_forwards_context_flags(self, tmp_path: Path) -> None:
+        """Forwards --context KEY=VALUE flags to child process."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        args = argparse.Namespace(
+            max_iterations=None,
+            no_llm=False,
+            llm_model=None,
+            quiet=False,
+            queue=False,
+            context=["issue_id=042", "mode=fast"],
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--context" in cmd
+        assert "issue_id=042" in cmd
+        assert "mode=fast" in cmd
+
+    def test_context_not_forwarded_when_empty(self, tmp_path: Path) -> None:
+        """Does not add --context to child command when list is empty."""
+        import argparse
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        args = argparse.Namespace(
+            max_iterations=None, no_llm=False, llm_model=None, quiet=False, queue=False, context=[]
+        )
+
+        with patch("little_loops.cli.loop._helpers.subprocess.Popen") as mock_popen:
+            mock_popen.return_value.pid = 1
+            from little_loops.cli.loop._helpers import run_background
+
+            run_background("my-loop", args, loops_dir)
+
+        cmd = mock_popen.call_args[0][0]
+        assert "--context" not in cmd
+
     def test_prints_confirmation(self, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
         """Prints launch confirmation with PID and help commands."""
         import argparse

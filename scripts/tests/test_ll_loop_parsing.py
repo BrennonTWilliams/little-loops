@@ -32,6 +32,7 @@ class TestLoopArgumentParsing:
         parser.add_argument("--quiet", "-q", action="store_true")
         parser.add_argument("--no-llm", action="store_true")
         parser.add_argument("--llm-model", type=str)
+        parser.add_argument("--context", action="append", default=[], metavar="KEY=VALUE")
         return parser
 
     def _create_subparser_only(self) -> argparse.ArgumentParser:
@@ -164,6 +165,24 @@ class TestLoopArgumentParsing:
         parser = self._create_run_parser()
         args = parser.parse_args(["test-loop"])
         assert args.llm_model is None
+
+    def test_context_single_flag(self) -> None:
+        """--context KEY=VALUE is parsed into a list."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop", "--context", "issue_id=042"])
+        assert args.context == ["issue_id=042"]
+
+    def test_context_multiple_flags(self) -> None:
+        """Multiple --context flags accumulate into a list."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop", "--context", "a=1", "--context", "b=2"])
+        assert args.context == ["a=1", "b=2"]
+
+    def test_context_default_is_empty_list(self) -> None:
+        """--context defaults to [] when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop"])
+        assert args.context == []
 
 
 class TestResolveLoopPath:
