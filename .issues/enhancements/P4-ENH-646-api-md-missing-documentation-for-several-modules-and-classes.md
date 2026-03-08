@@ -86,3 +86,6 @@ Six CLI entry points documented in code but absent from the CLI section:
 ## Fix
 
 Add missing sections to API.md. Prioritize: `work_verification` (high — functions misattributed), `session_log`, lifecycle functions, then config classes and FSM submodules.
+
+## Session Log
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: new issue; missing documentation gaps confirmed (work_verification, session_log, config classes, FSM submodules all absent from API.md)

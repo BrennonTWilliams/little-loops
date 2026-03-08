@@ -134,6 +134,7 @@ dst_pos = bfs_pos.get(dst, len(bfs_order))   # O(1), was O(n)
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: `bfs_order.index()` calls confirmed at lines 394–395; `bfs_pos` dict not yet added; Verification Notes corrected solution (bfs_pos not bfs_depth) already present
 - `/ll:verify-issues` - 2026-03-06T07:14:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7a87dd5-a8d5-4b8f-9271-78a1114bf527.jsonl` — VALID: `bfs_order.index()` still at lines 394–395; corrected `bfs_pos` solution in Verification Notes is accurate
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `bfs_order.index()` confirmed at `info.py:437-438` (shifted from 394-395); `bfs_pos` dict not yet added
 
 ---
 

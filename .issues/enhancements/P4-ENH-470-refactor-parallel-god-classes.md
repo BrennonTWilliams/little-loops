@@ -25,14 +25,14 @@ The `parallel/` package contains three god classes:
 - Rebase/retry logic
 - Worktree cleanup
 
-**WorkerPool** (`worker_pool.py`, 1,320 lines):
+**WorkerPool** (`worker_pool.py`, 1,334 lines):
 - Thread pool management
 - Git worktree creation/cleanup
 - Claude CLI subprocess execution
 - Output parsing integration
 - Work verification
 
-**ParallelOrchestrator** (`orchestrator.py`, 1,160 lines):
+**ParallelOrchestrator** (`orchestrator.py`, 1,163 lines):
 - Issue scanning and prioritization
 - Worker dispatch logic
 - State persistence for resume
@@ -43,7 +43,7 @@ The `parallel/` package contains three god classes:
 
 Cross-cutting concerns are extracted into focused helper modules. Each core class delegates specific responsibilities to helpers, reducing class size to ~600-800 lines while maintaining the same public API.
 
-_Current average: ~1,239 lines each (MergeCoordinator: 1,236, WorkerPool: 1,320, ParallelOrchestrator: 1,160)._
+_Current average: ~1,244 lines each (MergeCoordinator: 1,236, WorkerPool: 1,334, ParallelOrchestrator: 1,163)._
 
 ## Motivation
 
@@ -218,6 +218,7 @@ The `issue_history/` sub-package (introduced to decompose `issue_history/formatt
 - `/ll:refine-issue` - 2026-03-06T00:00:00Z - Codebase scan of `merge_coordinator.py`, `worker_pool.py`, `orchestrator.py`: added method-level extraction table (23 methods mapped to 3 helper modules), thread-safety checklist for all lock objects (`_lock`, `_process_lock`, `_callback_lock`, `_shutdown_event`, stash/index flags, `_problematic_commits`), extraction pattern based on `issue_history/` sub-package precedent, and recommended extraction order (state_persistence → worktree_manager → conflict_resolver). Replaced "novel extraction" with concrete pattern reference. Refine count: 6.
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — Readiness: 88/100 (PROCEED WITH CAUTION); Outcome: 71/100 (MODERATE). Both thresholds met. Complexity 18/25 (all within parallel/ subsystem), coverage 18/25, ambiguity 25/25 (method table fully specifies every method, order, and lock), change surface 10/25 (6 test files + 3 production callers).
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: god classes at 1236, 1320, 1163 lines
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — NEEDS_UPDATE: WorkerPool grew to 1,334 lines (was 1,320); updated counts (MergeCoordinator: 1,236, WorkerPool: 1,334, Orchestrator: 1,163; avg 1,244)
 
 ---
 

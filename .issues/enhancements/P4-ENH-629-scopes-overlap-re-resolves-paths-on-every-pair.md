@@ -110,6 +110,7 @@ Verified 2026-03-07 — **VALID**. Code at `concurrency.py` lines 220–250 matc
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a043191-c6ab-48e4-9698-8dbd73149442.jsonl`
 - `/ll:confidence-check` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a043191-c6ab-48e4-9698-8dbd73149442.jsonl`
 - `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10327983-1fed-40b5-b8f8-5574c5ed03c4.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `_paths_overlap()` re-calls `Path.resolve()` at `concurrency.py:220-230`; `_normalize_path()` at line 252 not reused in comparison
 
 ## Status
 

@@ -125,6 +125,7 @@ Note: `manage-issue/SKILL.md` has grown to exactly 500 lines — at the boundary
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: audit-claude-config (708 lines) and confidence-check (533 lines) still exceed 500; removed stale Blocks refs ENH-502 and ENH-496 (both completed)
 - `/ll:refine-issue` + `/ll:confidence-check` - 2026-03-06 - Re-assessed knowledge gaps: none new. Line counts re-confirmed (708, 533). `references/` pattern is clear; implementation steps fully specified. Raised confidence_score 80→86 (all research done, no open unknowns) and outcome_confidence 68→72 (slight residual uncertainty from ENH-493 blocker — reorganization needs to align with trigger description style before splitting content).
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: audit-claude-config(708L), confidence-check(533L) exceed limit
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: audit-claude-config (708L) and confidence-check (533L) still exceed 500-line limit; no `references/` subdirs exist
 
 ---
 

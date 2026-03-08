@@ -26,19 +26,20 @@ from little_loops.workflow_sequence_analyzer import (
     _cluster_by_entities, _compute_boundaries, _detect_workflows, _link_sessions,
     analyze_workflows, calculate_boundary_weight, entity_overlap,
     extract_entities, get_verb_class, semantic_similarity,
-    # Missing: _detect_handoff, _group_by_session, _load_messages,
+    # Missing: _detect_handoff, _group_by_session,
     #          _load_patterns, _get_message_category
 )
 ```
 
 ## Current Behavior
 
-The five functions are covered only through `TestAnalyzeWorkflows` integration tests. Untested edge cases include:
+The four remaining untested functions are covered only through `TestAnalyzeWorkflows` integration tests. Untested edge cases include:
 - `_detect_handoff`: matching a marker mid-sentence vs. at start of content
 - `_group_by_session`: message with no `session_id` key (defaults to `"unknown"`)
-- `_load_messages`: blank lines in JSONL, malformed JSON lines (see BUG-547)
 - `_load_patterns`: missing YAML keys, empty patterns file
 - `_get_message_category`: `category` field is not a `str` (isinstance guard is exercised)
+
+Note: `_load_messages` has been added to the import block and now has direct tests (see 2026-03-06 scope reduction).
 
 ## Expected Behavior
 
@@ -63,11 +64,6 @@ class TestGroupBySession:
     def test_missing_session_id_defaults_to_unknown(self) -> None: ...
     def test_empty_messages(self) -> None: ...
 
-class TestLoadMessages:
-    def test_loads_valid_jsonl(self) -> None: ...
-    def test_skips_blank_lines(self) -> None: ...
-    def test_malformed_line_skipped_with_warning(self) -> None: ...  # after BUG-547
-
 class TestLoadPatterns:
     def test_loads_valid_yaml(self) -> None: ...
     def test_missing_file_raises(self) -> None: ...
@@ -77,6 +73,8 @@ class TestGetMessageCategory:
     def test_returns_none_for_unknown_uuid(self) -> None: ...
     def test_returns_none_when_category_not_str(self) -> None: ...
 ```
+
+Note: `TestLoadMessages` is no longer needed — `_load_messages` was added to the test import block and direct tests exist (BUG-547 fix included).
 
 ## Scope Boundaries
 
@@ -105,12 +103,11 @@ class TestGetMessageCategory:
 
 ## Implementation Steps
 
-1. Import the five functions at the top of the test file
+1. Import the four functions at the top of the test file (`_detect_handoff`, `_group_by_session`, `_load_patterns`, `_get_message_category`)
 2. Add `TestDetectHandoff` with 3 test cases
 3. Add `TestGroupBySession` with 3 test cases
-4. Add `TestLoadMessages` with 3 test cases (coordinate with BUG-547 fix)
-5. Add `TestLoadPatterns` with 2 test cases
-6. Add `TestGetMessageCategory` with 3 test cases
+4. Add `TestLoadPatterns` with 2 test cases
+5. Add `TestGetMessageCategory` with 3 test cases
 
 ## Impact
 
@@ -145,6 +142,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c738121d-b426-4f59-8942-86c5b0459be3.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — NEEDS_UPDATE: _load_messages now imported; scope reduced to 4 functions
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `_load_messages` confirmed imported at test file line 24 with tests at 1506+; 4 remaining untested functions confirmed: `_detect_handoff`, `_group_by_session`, `_load_patterns`, `_get_message_category`; issue content updated to reflect scope
 
 ## Status
 

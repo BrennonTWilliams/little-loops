@@ -59,9 +59,9 @@ Four copy-paste instances of identical paradigm detection logic create a compoun
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/_helpers.py` — make `load_loop` delegate to `load_loop_with_spec`; remove duplicate body (lines 60-70)
-- `scripts/little_loops/cli/loop/run.py` — replace inline paradigm detection (lines 70-81) with `load_loop_with_spec()` call
-- `scripts/little_loops/cli/loop/config_cmds.py` — replace inline paradigm detection (lines 78-89) with `load_loop_with_spec()` call
+- `scripts/little_loops/cli/loop/_helpers.py` — make `load_loop` delegate to `load_loop_with_spec`; remove duplicate body (currently at lines 128 and 156)
+- `scripts/little_loops/cli/loop/run.py` — replace inline paradigm detection (currently at line 42) with `load_loop_with_spec()` call
+- `scripts/little_loops/cli/loop/config_cmds.py` — replace inline paradigm detection (currently at line 70) with `load_loop_with_spec()` call
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/run.py` — `cmd_run()` calls `load_loop` (will now route through canonical helper)
@@ -82,8 +82,8 @@ Four copy-paste instances of identical paradigm detection logic create a compoun
 ## Implementation Steps
 
 1. Update `_helpers.py`: replace `load_loop` body with `fsm, _ = load_loop_with_spec(name_or_path, loops_dir, logger); return fsm`
-2. Update `run.py` `cmd_run`: replace inline paradigm detection block (lines 70-81) with call to `load_loop()` or `load_loop_with_spec()`
-3. Update `config_cmds.py` `cmd_validate`: replace inline paradigm detection block (lines 78-89) similarly
+2. Update `run.py` `cmd_run`: replace inline paradigm detection (line 42) with call to `load_loop()` or `load_loop_with_spec()`
+3. Update `config_cmds.py` `cmd_validate`: replace inline paradigm detection (line 70) similarly
 4. Run full test suite to confirm no regressions
 
 ## Impact
@@ -103,6 +103,7 @@ Four copy-paste instances of identical paradigm detection logic create a compoun
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27ebdb5b-fb8e-4a41-92d4-ab0eb38e4a35.jsonl` — Readiness: 95/100 PROCEED; Outcome: 88/100 HIGH CONFIDENCE
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: 4 copy-paste sites confirmed
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d11c154b-ec01-40ba-bc51-c1eb3dd6ae2f.jsonl` — Supersedes ENH-628 (closed as duplicate)
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: 4 copy-paste sites confirmed (_helpers.py:128,156; run.py:42; config_cmds.py:70); updated Integration Map and Implementation Steps line refs
 
 ## Verification Notes
 

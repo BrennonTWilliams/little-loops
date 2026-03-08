@@ -147,9 +147,10 @@ In `cmd_history()`:
 
 ## Blocked By
 
-- ENH-539 — `docs/generalized-fsm-loop.md` overlap (higher priority; complete first)
 - ENH-537 — `docs/generalized-fsm-loop.md` overlap (higher priority; complete first)
 - ENH-538 — `docs/generalized-fsm-loop.md` overlap (higher priority; complete first)
+
+_(ENH-539 removed — completed as duplicate of ENH-626)_
 
 ## Verification Notes
 
@@ -178,6 +179,7 @@ Update first — HIGH utility (debugging 200+ event logs is a real pain point), 
 
 ## Session Log
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no --event, --state, --json, --since flags
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: filters still absent; removed stale Blocked By ENH-539 (completed as duplicate of ENH-626)
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test refs to `test_ll_loop_commands.py:101` (TestCmdHistory) and `:148` (TestHistoryTail)

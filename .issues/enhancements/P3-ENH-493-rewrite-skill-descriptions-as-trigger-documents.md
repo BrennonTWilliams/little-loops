@@ -131,6 +131,7 @@ _Added by `/ll:refine-issue` — reduces implementation ambiguity:_
 - `/ll:refine-issue` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — added proposed trigger phrase drafts for all 7 skills to reduce implementation ambiguity
 - `/ll:confidence-check` - 2026-03-06T12:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — readiness: 100/100 PROCEED, outcome: 71/100 MODERATE (up from 68 — ambiguity reduced by trigger phrase table; 7 files single subsystem shallow edits = 18/25 complexity)
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: 7 skills still need description rewrites
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: 7 skills still use summary-style descriptions
 
 ---
 
