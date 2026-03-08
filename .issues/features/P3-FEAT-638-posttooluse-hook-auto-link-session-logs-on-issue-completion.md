@@ -273,7 +273,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Verification Notes
 
-Re-verified 2026-03-07. Verdict: **VALID**.
+Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 
 - `hooks/hooks.json` exists; PostToolUse section confirmed ✓
 - `hooks/scripts/` directory exists with reference scripts ✓
@@ -316,6 +316,8 @@ Re-verified 2026-03-07. Verdict: **VALID**.
 - `/ll:verify-issues` - 2026-03-07T22:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/da7dc305-837f-4e45-9a7f-90e7eae114d2.jsonl`
 - `/ll:verify-issues` - 2026-03-07T22:49:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ee47df1b-807c-445b-b4e4-0c30e5296355.jsonl`
 - `/ll:confidence-check` - 2026-03-07T23:59:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62b97a68-6d3e-4460-993f-59940ca0029c.jsonl`
+- `/ll:verify-issues` - 2026-03-08T00:06:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001bb4dd-80ce-42a1-916a-56a833487d5b.jsonl`
+- `/ll:verify-issues` - 2026-03-08T00:07:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fec81786-b516-44bf-9948-e40b47c082de.jsonl`
 
 ---
 

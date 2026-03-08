@@ -89,7 +89,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 
 ## Commands
 
-Commands are organized by workflow capability. Run `/ll:help` for the full reference.
+Commands are organized by workflow capability. Skills (marked with `^` in `/ll:help`) are also invoked as `/ll:` commands and are included in the tables below. Run `/ll:help` for the full reference.
 
 ### Issue Discovery
 
