@@ -854,6 +854,68 @@ class TestRenderFsmDiagram:
             f"Expected ◄ left-going arrow on fix-tests name row: {fix_tests_name_line!r}"
         )
 
+    def test_highlighted_state_uses_configured_color(self) -> None:
+        """highlight_state box uses the configured ANSI color; other boxes do not."""
+        import little_loops.cli.output as output_mod
+
+        fsm = self._make_fsm(
+            initial="a",
+            states={
+                "a": StateConfig(action="step a", on_success="b"),
+                "b": StateConfig(terminal=True),
+            },
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm, highlight_state="a", highlight_color="36")
+
+        # Highlighted state box has the color code
+        assert "\033[36m" in result
+        # Bold variant used for state name
+        assert "\033[36;1m" in result
+
+    def test_highlighted_state_default_green(self) -> None:
+        """highlight_state defaults to color code '32' (green)."""
+        import little_loops.cli.output as output_mod
+
+        fsm = self._make_fsm(
+            initial="start",
+            states={"start": StateConfig(terminal=True)},
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm, highlight_state="start")
+
+        assert "\033[32m" in result
+
+    def test_no_highlight_state_unchanged(self) -> None:
+        """Without highlight_state, output contains no ANSI codes from box drawing."""
+        import little_loops.cli.output as output_mod
+
+        fsm = self._make_fsm(
+            initial="a",
+            states={
+                "a": StateConfig(action="step", on_success="b"),
+                "b": StateConfig(terminal=True),
+            },
+        )
+        with patch.object(output_mod, "_USE_COLOR", True):
+            result = _render_fsm_diagram(fsm)
+
+        # No ANSI codes in box chars (edge labels may add color but not box borders)
+        # State names should appear plain
+        assert "a" in result
+        assert "b" in result
+        # No color from box borders (highlight not active)
+        assert "\033[32m\u250c" not in result  # no colored top-left corner
+
+    def test_unknown_highlight_state_no_crash(self) -> None:
+        """Providing a non-existent state as highlight_state does not crash."""
+        fsm = self._make_fsm(
+            initial="a",
+            states={"a": StateConfig(terminal=True)},
+        )
+        result = _render_fsm_diagram(fsm, highlight_state="nonexistent", highlight_color="32")
+        assert "a" in result
+
 
 class TestDisplayProgressEvents:
     """Tests for display_progress event formatting in run_foreground."""
@@ -959,6 +1021,43 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert "preview line" in out
         assert "streamed line" not in out
+
+    def test_verbose_state_enter_prints_diagram(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """In verbose mode, state_enter events print the FSM diagram with highlighted state."""
+        from unittest.mock import patch
+
+        from little_loops.cli.loop import info as info_mod
+
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch.object(info_mod, "_render_fsm_diagram", wraps=info_mod._render_fsm_diagram) as mock_render:
+            run_foreground(executor, self._make_fsm(), self._make_args(verbose=True))
+            mock_render.assert_called_once_with(
+                self._make_fsm(), highlight_state="start", highlight_color="32"
+            )
+        out = capsys.readouterr().out
+        # Diagram contains box drawing characters
+        assert "\u250c" in out
+
+    def test_nonverbose_state_enter_no_diagram(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """In non-verbose mode, state_enter events do not print the FSM diagram."""
+        from unittest.mock import patch
+
+        from little_loops.cli.loop import info as info_mod
+
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch.object(info_mod, "_render_fsm_diagram") as mock_render:
+            run_foreground(executor, self._make_fsm(), self._make_args(verbose=False))
+            mock_render.assert_not_called()
 
 
 class TestRunForegroundExitCodes:

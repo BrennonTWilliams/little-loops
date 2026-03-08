@@ -1075,6 +1075,18 @@ class TestCliColorsConfig:
         assert config.type.FEAT == "32"  # default
         assert config.priority.P0 == "38;5;208;1"  # untouched default
 
+    def test_fsm_active_state_default(self) -> None:
+        config = CliColorsConfig()
+        assert config.fsm_active_state == "32"
+
+    def test_fsm_active_state_from_dict_default(self) -> None:
+        config = CliColorsConfig.from_dict({})
+        assert config.fsm_active_state == "32"
+
+    def test_fsm_active_state_from_dict_override(self) -> None:
+        config = CliColorsConfig.from_dict({"fsm_active_state": "36"})
+        assert config.fsm_active_state == "36"
+
 
 class TestCliConfig:
     """Tests for CliConfig dataclass."""

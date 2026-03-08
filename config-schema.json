@@ -794,6 +794,11 @@
               "ENH":  { "type": "string", "default": "34", "description": "ANSI SGR code for ENH labels (default: blue)" }
             },
             "additionalProperties": false
+          },
+          "fsm_active_state": {
+            "type": "string",
+            "default": "32",
+            "description": "ANSI SGR code for the active FSM state highlight during verbose run (default: green)"
           }
         },
         "additionalProperties": false

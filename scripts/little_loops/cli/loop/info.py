@@ -353,13 +353,22 @@ def _box_inner_lines(
 # ---------------------------------------------------------------------------
 
 
-def _render_fsm_diagram(fsm: FSMLoop, verbose: bool = False) -> str:
+def _render_fsm_diagram(
+    fsm: FSMLoop,
+    verbose: bool = False,
+    highlight_state: str | None = None,
+    highlight_color: str = "32",
+) -> str:
     """Render an improved text diagram of the FSM graph.
 
     Produces three sections:
       - Main flow: the primary (happy-path) traversal with edge labels
       - Branches: alternate forward transitions not on the main path
       - Back-edges: transitions to states earlier in BFS order (cycles)
+
+    Args:
+        highlight_state: If provided, render this state's box with the highlight color.
+        highlight_color: ANSI SGR code for the highlighted state (default: green).
     """
     # Build all edges: (from, to, label)
     edges: list[tuple[str, str, str]] = []
@@ -444,6 +453,8 @@ def _render_fsm_diagram(fsm: FSMLoop, verbose: bool = False) -> str:
         terminal_states=terminal_states,
         fsm_states=fsm.states,
         verbose=verbose,
+        highlight_state=highlight_state,
+        highlight_color=highlight_color,
     )
 
 
@@ -458,6 +469,8 @@ def _render_2d_diagram(
     terminal_states: set[str] | None = None,
     fsm_states: dict[str, StateConfig] | None = None,
     verbose: bool = False,
+    highlight_state: str | None = None,
+    highlight_color: str = "32",
 ) -> str:
     """Render a 2D box-drawing diagram of the FSM graph."""
     if not main_path:
@@ -580,33 +593,46 @@ def _render_2d_diagram(
         cx = col_start[sname]
         w = box_width[sname]
         content = box_inner[sname]
+        is_highlighted = highlight_state is not None and sname == highlight_state
+
+        def _bc(ch: str, _h: bool = is_highlighted) -> str:
+            """Colorize a box-drawing character for the highlighted state."""
+            return colorize(ch, highlight_color) if _h else ch
 
         # Top border: rows[0]
-        rows[0][cx] = "\u250c"
+        rows[0][cx] = _bc("\u250c")
         for j in range(1, w - 1):
-            rows[0][cx + j] = "\u2500"
-        rows[0][cx + w - 1] = "\u2510"
+            rows[0][cx + j] = _bc("\u2500")
+        rows[0][cx + w - 1] = _bc("\u2510")
 
         # Content rows: rows[1..len(content)]
         for i, line in enumerate(content):
             r = i + 1
-            rows[r][cx] = "\u2502"
-            rows[r][cx + w - 1] = "\u2502"
-            for j, ch in enumerate(line):
-                if cx + 2 + j < cx + w - 1:
-                    rows[r][cx + 2 + j] = ch
+            rows[r][cx] = _bc("\u2502")
+            rows[r][cx + w - 1] = _bc("\u2502")
+            if is_highlighted and i == 0:
+                # Colorize the entire state name line with bold highlight
+                colored_line = colorize(line, f"{highlight_color};1")
+                rows[r][cx + 2] = colored_line
+                for j in range(1, len(line)):
+                    if cx + 2 + j < cx + w - 1:
+                        rows[r][cx + 2 + j] = ""
+            else:
+                for j, ch in enumerate(line):
+                    if cx + 2 + j < cx + w - 1:
+                        rows[r][cx + 2 + j] = ch
 
         # Padding rows between content and bottom border
         for r in range(len(content) + 1, main_height - 1):
-            rows[r][cx] = "\u2502"
-            rows[r][cx + w - 1] = "\u2502"
+            rows[r][cx] = _bc("\u2502")
+            rows[r][cx + w - 1] = _bc("\u2502")
 
         # Bottom border: rows[main_height - 1]
         brow = main_height - 1
-        rows[brow][cx] = "\u2514"
+        rows[brow][cx] = _bc("\u2514")
         for j in range(1, w - 1):
-            rows[brow][cx + j] = "\u2500"
-        rows[brow][cx + w - 1] = "\u2518"
+            rows[brow][cx + j] = _bc("\u2500")
+        rows[brow][cx + w - 1] = _bc("\u2518")
 
     # Draw main-path edge labels on the name row (index 1) between boxes
     for i in range(len(main_path) - 1):

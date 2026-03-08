@@ -120,6 +120,9 @@ def cmd_run(
         # Register signal handlers for graceful shutdown
         register_loop_signal_handlers(executor, pid_file=foreground_pid_file)
 
-        return run_foreground(executor, fsm, args)
+        from little_loops.config import BRConfig
+
+        highlight_color = BRConfig(Path.cwd()).cli.colors.fsm_active_state
+        return run_foreground(executor, fsm, args, highlight_color=highlight_color)
     finally:
         lock_manager.release(fsm.name)

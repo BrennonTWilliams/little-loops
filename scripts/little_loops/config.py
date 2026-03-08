@@ -560,6 +560,7 @@ class CliColorsConfig:
     logger: CliColorsLoggerConfig = field(default_factory=CliColorsLoggerConfig)
     priority: CliColorsPriorityConfig = field(default_factory=CliColorsPriorityConfig)
     type: CliColorsTypeConfig = field(default_factory=CliColorsTypeConfig)
+    fsm_active_state: str = "32"
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> CliColorsConfig:
@@ -568,6 +569,7 @@ class CliColorsConfig:
             logger=CliColorsLoggerConfig.from_dict(data.get("logger", {})),
             priority=CliColorsPriorityConfig.from_dict(data.get("priority", {})),
             type=CliColorsTypeConfig.from_dict(data.get("type", {})),
+            fsm_active_state=data.get("fsm_active_state", "32"),
         )
 
 

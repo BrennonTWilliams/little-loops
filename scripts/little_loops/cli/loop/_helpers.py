@@ -277,8 +277,13 @@ def run_background(
     return 0
 
 
-def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int:
+def run_foreground(
+    executor: Any, fsm: FSMLoop, args: argparse.Namespace, highlight_color: str = "32"
+) -> int:
     """Run loop with progress display.
+
+    Args:
+        highlight_color: ANSI SGR code for the active FSM state highlight in verbose mode.
 
     Returns:
         Exit code (0 = success).
@@ -307,6 +312,13 @@ def run_foreground(executor: Any, fsm: FSMLoop, args: argparse.Namespace) -> int
                 elapsed_str = f"{elapsed_int}s"
             else:
                 elapsed_str = f"{elapsed_int // 60}m {elapsed_int % 60}s"
+            if verbose:
+                from little_loops.cli.loop.info import _render_fsm_diagram
+
+                diagram = _render_fsm_diagram(
+                    fsm, highlight_state=state, highlight_color=highlight_color
+                )
+                print(diagram, flush=True)
             print(
                 f"[{current_iteration[0]}/{fsm.max_iterations}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",
                 end="",
