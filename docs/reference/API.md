@@ -1158,139 +1158,173 @@ elif match.should_create:
 
 Analysis of completed issues for project health insights.
 
-### Public Functions (11)
+### Public Functions (25)
+
+#### Parsing & Scanning
 
 | Function | Purpose |
 |----------|---------|
-| `load_completed_issues()` | Load all completed issues from disk |
-| `compute_history_summary()` | Generate summary statistics |
-| `analyze_hotspots()` | Find files/components with most issues |
-| `analyze_coupling()` | Find issue correlation patterns |
-| `compute_velocity()` | Calculate issues per time period |
-| `analyze_type_distribution()` | Breakdown by issue type |
-| `analyze_priority_distribution()` | Breakdown by priority |
-| `cluster_regressions()` | Group related regressions |
-| `get_trend_data()` | Time series data for trends |
-| `generate_velocity_report()` | Human-readable velocity report |
-| `compute_failure_classification()` | Categorize failure types |
+| `parse_completed_issue(file_path)` | Parse a single completed issue file |
+| `scan_completed_issues(completed_dir)` | Scan completed directory for all issues |
+| `scan_active_issues(base_dir, categories)` | Scan active issue directories |
 
-### Data Classes (19)
+#### Analysis
+
+| Function | Purpose |
+|----------|---------|
+| `calculate_summary(issues)` | Calculate summary statistics |
+| `calculate_analysis(completed_dir, ...)` | Calculate full history analysis |
+| `analyze_hotspots(issues, ...)` | Detect file/directory hotspots |
+| `analyze_coupling(issues, ...)` | Analyze file coupling patterns |
+| `analyze_regression_clustering(issues)` | Cluster regression bug chains |
+| `analyze_test_gaps(issues, ...)` | Detect test coverage gaps |
+| `analyze_rejection_rates(issues)` | Analyze rejection and closure patterns |
+| `detect_manual_patterns(issues)` | Detect recurring manual activities |
+| `detect_config_gaps(manual_analysis, ...)` | Detect configuration automation gaps |
+| `analyze_agent_effectiveness(issues)` | Analyze agent effectiveness by type |
+| `analyze_complexity_proxy(issues)` | Analyze complexity via issue duration |
+| `detect_cross_cutting_smells(issues)` | Detect cross-cutting concern patterns |
+
+#### Formatting
+
+| Function | Purpose |
+|----------|---------|
+| `format_summary_text(summary)` | Format summary as plain text |
+| `format_summary_json(summary)` | Format summary as JSON |
+| `format_analysis_text(analysis)` | Format full analysis as plain text |
+| `format_analysis_json(analysis)` | Format full analysis as JSON |
+| `format_analysis_markdown(analysis)` | Format full analysis as Markdown |
+| `format_analysis_yaml(analysis)` | Format full analysis as YAML |
+
+#### Documentation Synthesis
+
+| Function | Purpose |
+|----------|---------|
+| `synthesize_docs(issues, topic, ...)` | Synthesize documentation from issue history |
+| `score_relevance(issue, topic)` | Score issue relevance to a topic |
+| `build_narrative_doc(issues, topic)` | Build narrative-style documentation |
+| `build_structured_doc(issues, topic)` | Build structured documentation |
+
+### Data Classes (26)
 
 #### CompletedIssue
 
-Parsed completed issue.
+Parsed information from a completed issue file.
 
 ```python
 @dataclass
 class CompletedIssue:
-    """A parsed completed issue."""
-    issue_id: str
-    issue_type: str  # bug, feature, enhancement
-    priority: str  # P0-P5
-    title: str
-    completed_at: str  # ISO timestamp
-    file_path: Path
-    blockers: list[str]
-    blocks: list[str]
-    tags: list[str]
+    """Parsed information from a completed issue file."""
+    path: Path
+    issue_type: str          # BUG, ENH, FEAT
+    priority: str            # P0-P5
+    issue_id: str            # e.g., BUG-001
+    discovered_by: str | None = None
+    discovered_date: date | None = None
+    completed_date: date | None = None
 ```
 
 #### HistorySummary
 
-Overall statistics.
+Summary statistics for completed issues.
 
 ```python
 @dataclass
 class HistorySummary:
-    """Summary of completed issues."""
+    """Summary statistics for completed issues."""
     total_count: int
-    date_range: tuple[str, str]
-    velocity: float  # issues per day
-    type_distribution: dict[str, int]
-    priority_distribution: dict[str, int]
+    type_counts: dict[str, int] = field(default_factory=dict)
+    priority_counts: dict[str, int] = field(default_factory=dict)
+    discovery_counts: dict[str, int] = field(default_factory=dict)
+    earliest_date: date | None = None
+    latest_date: date | None = None
+    # Properties: date_range_days, velocity
 ```
 
 #### Hotspot
 
-Files with frequent issues.
+A file or directory that appears in multiple issues.
 
 ```python
 @dataclass
 class Hotspot:
-    """A file or component with frequent issues."""
-    file_path: str
-    issue_count: int
-    issue_types: dict[str, int]
-    last_issue_date: str
+    """A file or directory that appears in multiple issues."""
+    path: str
+    issue_count: int = 0
+    issue_ids: list[str] = field(default_factory=list)
+    issue_types: dict[str, int] = field(default_factory=dict)  # {"BUG": 5, "ENH": 3}
+    bug_ratio: float = 0.0
+    churn_indicator: str = "low"  # "high", "medium", "low"
 ```
 
 #### CouplingPair
 
-Correlated issues.
+A pair of files that frequently appear together in issues.
 
 ```python
 @dataclass
 class CouplingPair:
-    """Two issues that are frequently blocked/blocking together."""
-    issue_a: str
-    issue_b: str
-    correlation_score: float
-    shared_files: list[str]
+    """A pair of files that frequently appear together in issues."""
+    file_a: str
+    file_b: str
+    co_occurrence_count: int = 0
+    coupling_strength: float = 0.0  # 0-1, Jaccard similarity
+    issue_ids: list[str] = field(default_factory=list)
 ```
 
-#### VelocityMetrics
+#### Other Data Classes
 
-Throughput measurements.
-
-```python
-@dataclass
-class VelocityMetrics:
-    """Velocity metrics over time."""
-    overall_velocity: float  # issues/day
-    weekly_velocity: float
-    monthly_velocity: float
-    trend: Literal["improving", "stable", "declining"]
-```
-
-#### TrendDataPoint
-
-Time series data.
-
-```python
-@dataclass
-class TrendDataPoint:
-    """A single data point in a trend series."""
-    date: str
-    count: int
-    cumulative: int
-```
+| Class | Purpose |
+|-------|---------|
+| `PeriodMetrics` | Metrics for a specific time period (quarter, month, week) |
+| `SubsystemHealth` | Health metrics for a subsystem directory |
+| `HotspotAnalysis` | Container for file/directory hotspot analysis results |
+| `CouplingAnalysis` | Container for file coupling analysis results |
+| `RegressionCluster` | A cluster of bugs where fixes caused new bugs |
+| `RegressionAnalysis` | Container for regression clustering results |
+| `TestGap` | A source file with bugs but missing/weak test coverage |
+| `TestGapAnalysis` | Container for test gap analysis results |
+| `RejectionMetrics` | Metrics for rejection and invalid closure tracking |
+| `RejectionAnalysis` | Container for rejection pattern analysis |
+| `ManualPattern` | A recurring manual activity detected across issues |
+| `ManualPatternAnalysis` | Container for manual pattern analysis results |
+| `ConfigGap` | A configuration gap that could automate manual work |
+| `ConfigGapsAnalysis` | Container for configuration gap analysis |
+| `AgentOutcome` | Metrics for a single agent processing a specific issue type |
+| `AgentEffectivenessAnalysis` | Container for agent effectiveness analysis |
+| `TechnicalDebtMetrics` | Technical debt health indicators |
+| `ComplexityProxy` | Duration-based complexity proxy for a file/directory |
+| `ComplexityProxyAnalysis` | Container for complexity proxy analysis |
+| `CrossCuttingSmell` | A detected cross-cutting concern scattered across the codebase |
+| `CrossCuttingAnalysis` | Container for cross-cutting concern analysis |
+| `HistoryAnalysis` | Complete history analysis report (all analysis results) |
 
 ### Example
 
 ```python
 from little_loops.issue_history import (
-    load_completed_issues,
-    compute_history_summary,
+    scan_completed_issues,
+    calculate_summary,
     analyze_hotspots,
-    generate_velocity_report,
+    format_summary_text,
 )
 from pathlib import Path
 
 # Load and analyze
 completed_dir = Path(".issues/completed")
-issues = load_completed_issues(completed_dir)
-summary = compute_history_summary(issues)
+issues = scan_completed_issues(completed_dir)
+summary = calculate_summary(issues)
 
 print(f"Completed: {summary.total_count}")
 print(f"Velocity: {summary.velocity:.2f} issues/day")
 
 # Find problematic files
-hotspots = analyze_hotspots(issues, min_issues=3)
-for hotspot in hotspots[:5]:
-    print(f"{hotspot.file_path}: {hotspot.issue_count} issues")
+hotspot_analysis = analyze_hotspots(issues)
+for hotspot in hotspot_analysis.file_hotspots[:5]:
+    print(f"{hotspot.path}: {hotspot.issue_count} issues")
 
-# Generate human-readable report
-report = generate_velocity_report(issues)
+# Generate text report
+report = format_summary_text(summary)
 print(report)
 ```
 
@@ -2119,7 +2153,7 @@ class ParallelConfig:
     priority_filter: list[str]
     max_issues: int = 0
     dry_run: bool = False
-    timeout_per_issue: int = 7200
+    timeout_per_issue: int = 3600
     orchestrator_timeout: int = 0
     stream_subprocess_output: bool = False
     show_model: bool = False
@@ -2710,8 +2744,8 @@ from little_loops.git_operations import (
     add_patterns_to_gitignore,
     get_untracked_files,
     check_git_status,
-    verify_work_was_done,
 )
+from little_loops.work_verification import verify_work_was_done, filter_excluded_files
 from little_loops.state import StateManager, ProcessingState
 from little_loops.logger import Logger, format_duration
 from little_loops.user_messages import (
@@ -3556,7 +3590,7 @@ Sprint planning and execution for batch issue processing.
 class SprintOptions:
     max_iterations: int = 100   # Max Claude iterations per issue
     timeout: int = 3600         # Per-issue timeout in seconds
-    max_workers: int = 4        # Worker count for parallel execution within waves
+    max_workers: int = 2        # Worker count for parallel execution within waves
 ```
 
 Sprint execution uses dependency-aware wave-based scheduling. Issues are grouped into waves where each wave contains issues whose blockers have all completed, and each wave is executed in parallel.
