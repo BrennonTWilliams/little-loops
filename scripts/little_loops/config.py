@@ -78,6 +78,7 @@ class ProjectConfig:
 
     name: str = ""
     src_dir: str = "src/"
+    test_dir: str = "tests"
     test_cmd: str = "pytest"
     lint_cmd: str = "ruff check ."
     type_cmd: str | None = "mypy"
@@ -91,6 +92,7 @@ class ProjectConfig:
         return cls(
             name=data.get("name", ""),
             src_dir=data.get("src_dir", "src/"),
+            test_dir=data.get("test_dir", "tests"),
             test_cmd=data.get("test_cmd", "pytest"),
             lint_cmd=data.get("lint_cmd", "ruff check ."),
             type_cmd=data.get("type_cmd", "mypy"),
@@ -890,6 +892,7 @@ class BRConfig:
             "project": {
                 "name": self._project.name,
                 "src_dir": self._project.src_dir,
+                "test_dir": self._project.test_dir,
                 "test_cmd": self._project.test_cmd,
                 "lint_cmd": self._project.lint_cmd,
                 "type_cmd": self._project.type_cmd,

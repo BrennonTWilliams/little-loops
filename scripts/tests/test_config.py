@@ -69,6 +69,7 @@ class TestProjectConfig:
         data = {
             "name": "my-project",
             "src_dir": "lib/",
+            "test_dir": "custom_tests",
             "test_cmd": "npm test",
             "lint_cmd": "eslint .",
             "type_cmd": "tsc --noEmit",
@@ -80,6 +81,7 @@ class TestProjectConfig:
 
         assert config.name == "my-project"
         assert config.src_dir == "lib/"
+        assert config.test_dir == "custom_tests"
         assert config.test_cmd == "npm test"
         assert config.lint_cmd == "eslint ."
         assert config.type_cmd == "tsc --noEmit"
@@ -93,6 +95,7 @@ class TestProjectConfig:
 
         assert config.name == ""
         assert config.src_dir == "src/"
+        assert config.test_dir == "tests"
         assert config.test_cmd == "pytest"
         assert config.lint_cmd == "ruff check ."
         assert config.type_cmd == "mypy"
