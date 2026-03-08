@@ -483,6 +483,33 @@ class TestConvergenceCompiler:
         assert measure.route.routes["progress"] == "apply"
         assert measure.route.routes["stall"] == "done"
 
+    def test_convergence_on_stall_default(self) -> None:
+        """Without on_stall, stall routes to done (backward compatible)."""
+        spec = {
+            "paradigm": "convergence",
+            "name": "test",
+            "check": "cmd",
+            "toward": 0,
+            "using": "fix",
+        }
+        fsm = compile_convergence(spec)
+        assert fsm.states["measure"].route.routes["stall"] == "done"
+
+    def test_convergence_on_stall_override(self) -> None:
+        """on_stall overrides the stall route target."""
+        spec = {
+            "paradigm": "convergence",
+            "name": "test",
+            "check": "cmd",
+            "toward": 0,
+            "using": "fix",
+            "on_stall": "recovery",
+        }
+        fsm = compile_convergence(spec)
+        assert fsm.states["measure"].route.routes["stall"] == "recovery"
+        assert fsm.states["measure"].route.routes["target"] == "done"
+        assert fsm.states["measure"].route.routes["progress"] == "apply"
+
     def test_convergence_captures_value(self) -> None:
         """Measure state captures current_value."""
         spec = {

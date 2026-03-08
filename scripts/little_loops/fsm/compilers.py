@@ -265,7 +265,8 @@ def compile_convergence(spec: dict[str, Any]) -> FSMLoop:
         check: "ruff check src/ --output-format=json | jq '.count'"
         toward: 0
         using: "/ll:check-code fix"
-        tolerance: 0  # Optional, defaults to 0
+        tolerance: 0      # Optional, defaults to 0
+        on_stall: done    # Optional, defaults to "done"; override to route stall elsewhere
 
     Args:
         spec: Convergence paradigm specification dict
@@ -287,6 +288,7 @@ def compile_convergence(spec: dict[str, Any]) -> FSMLoop:
     target = spec["toward"]
     fix_action = spec["using"]
     tolerance = spec.get("tolerance", 0)
+    on_stall = spec.get("on_stall", "done")
 
     # Build context for variable interpolation
     context = {
@@ -309,7 +311,7 @@ def compile_convergence(spec: dict[str, Any]) -> FSMLoop:
                 routes={
                     "target": "done",
                     "progress": "apply",
-                    "stall": "done",
+                    "stall": on_stall,
                 }
             ),
         ),

@@ -280,6 +280,22 @@ class TestConvergenceCompilerProperties:
         assert "target" in fsm.context
         assert fsm.context["target"] == spec["toward"]
 
+    @given(spec=convergence_spec())
+    @settings(max_examples=100)
+    def test_on_stall_defaults_to_done(self, spec: dict) -> None:
+        """Without on_stall, stall route targets 'done'."""
+        spec.pop("on_stall", None)
+        fsm = compile_convergence(spec)
+        assert fsm.states["measure"].route.routes["stall"] == "done"
+
+    @given(spec=convergence_spec(), on_stall=st.sampled_from(["done", "apply"]))
+    @settings(max_examples=50)
+    def test_on_stall_override_uses_provided_value(self, spec: dict, on_stall: str) -> None:
+        """on_stall overrides the stall route to the specified target."""
+        spec["on_stall"] = on_stall
+        fsm = compile_convergence(spec)
+        assert fsm.states["measure"].route.routes["stall"] == on_stall
+
 
 # =============================================================================
 # Invariants Compiler Properties
