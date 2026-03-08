@@ -981,45 +981,66 @@ if report.proposals:
 
 ## little_loops.goals_parser
 
-Product goals configuration for issue prioritization.
+Parser for `ll-goals.md` product goals document. Provides structured access to product goals including persona and priorities.
+
+### Persona
+
+Primary user persona.
+
+```python
+@dataclass
+class Persona:
+    """Primary user persona."""
+    id: str
+    name: str
+    role: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> Persona: ...
+```
+
+### Priority
+
+Strategic priority.
+
+```python
+@dataclass
+class Priority:
+    """Strategic priority."""
+    id: str
+    name: str
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any], index: int = 0) -> Priority: ...
+```
 
 ### ProductGoals
 
-Main configuration class for product goals.
+Parsed product goals from `ll-goals.md`.
 
 ```python
 @dataclass
 class ProductGoals:
-    """Product goals for issue prioritization."""
-    personas: dict[str, PersonaGoals] | None = None
-    priorities: dict[str, PriorityGoals] | None = None
+    """Parsed product goals from ll-goals.md."""
+    version: str
+    persona: Persona | None
+    priorities: list[Priority] = field(default_factory=list)
+    raw_content: str = ""
+
+    @classmethod
+    def from_file(cls, path: Path) -> ProductGoals | None: ...
+
+    @classmethod
+    def from_content(cls, content: str) -> ProductGoals | None: ...
+
+    def is_valid(self) -> bool: ...
 ```
 
-### PersonaGoals
+**`from_file(path)`** — Parse goals from an `ll-goals.md` file. Returns `None` if the file doesn't exist or is invalid.
 
-Configuration for persona-based goal prioritization.
+**`from_content(content)`** — Parse goals from raw string content. Returns `None` if the content is invalid or missing a YAML frontmatter block.
 
-```python
-@dataclass
-class PersonaGoals:
-    """Goals for a specific persona."""
-    persona: str
-    description: str
-    priorities: list[str]
-```
-
-### PriorityGoals
-
-Configuration for priority-based goal categorization.
-
-```python
-@dataclass
-class PriorityGoals:
-    """Goals for a specific priority level."""
-    priority: str  # P0-P5
-    description: str
-    categories: list[str]  # Issue types to prioritize
-```
+**`is_valid()`** — Returns `True` if both `persona` and at least one `priority` are defined.
 
 ### validate_goals
 
@@ -1027,31 +1048,31 @@ class PriorityGoals:
 def validate_goals(goals: ProductGoals) -> list[str]
 ```
 
-Validate product goals configuration.
+Validate product goals and return warnings.
 
 **Parameters:**
 - `goals` - ProductGoals instance to validate
 
-**Returns:** List of validation error messages (empty if valid)
+**Returns:** List of validation warning messages (empty if valid)
 
 **Example:**
 ```python
+from pathlib import Path
 from little_loops.goals_parser import ProductGoals, validate_goals
 
-goals = ProductGoals(
-    personas={
-        "end-user": PersonaGoals(
-            persona="end-user",
-            description="End user of the product",
-            priorities=["usability", "performance", "reliability"]
-        )
-    }
-)
+goals = ProductGoals.from_file(Path(".claude/ll-goals.md"))
+if goals is None:
+    print("Goals file not found or invalid")
+else:
+    warnings = validate_goals(goals)
+    for warning in warnings:
+        print(f"Warning: {warning}")
 
-errors = validate_goals(goals)
-if errors:
-    for error in errors:
-        print(f"Validation error: {error}")
+    if goals.persona:
+        print(f"Persona: {goals.persona.name} ({goals.persona.role})")
+
+    for priority in goals.priorities:
+        print(f"Priority: {priority.id} - {priority.name}")
 ```
 
 ---
