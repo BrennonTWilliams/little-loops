@@ -157,6 +157,18 @@
           "type": "boolean",
           "description": "Stream subprocess output to console",
           "default": true
+        },
+        "idle_timeout_seconds": {
+          "type": "integer",
+          "description": "Seconds of inactivity before automation considers the session idle. 0 disables.",
+          "default": 0,
+          "minimum": 0
+        },
+        "max_continuations": {
+          "type": "integer",
+          "description": "Maximum number of continuation prompts before automation stops.",
+          "default": 3,
+          "minimum": 1
         }
       },
       "additionalProperties": false
@@ -227,6 +239,11 @@
             "type": "string"
           },
           "default": [".claude/settings.local.json", ".env"]
+        },
+        "require_code_changes": {
+          "type": "boolean",
+          "description": "Require worktree to produce code changes before merging. Skips no-op runs.",
+          "default": true
         }
       },
       "additionalProperties": false

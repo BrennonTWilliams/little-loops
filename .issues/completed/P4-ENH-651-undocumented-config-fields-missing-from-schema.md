@@ -11,9 +11,9 @@ Three fields in `config.py` have no corresponding entries in `config-schema.json
 
 | Field | Location | Default |
 |-------|----------|---------|
-| `automation.idle_timeout_seconds` | `AutomationConfig` line 193 | `0` |
-| `automation.max_continuations` | `AutomationConfig` line 198 | `3` |
-| `parallel.require_code_changes` | `ParallelAutomationConfig` line 231 | `true` |
+| `automation.idle_timeout_seconds` | `AutomationConfig` line 195 | `0` |
+| `automation.max_continuations` | `AutomationConfig` line 200 | `3` |
+| `parallel.require_code_changes` | `ParallelAutomationConfig` line 233 | `true` |
 
 ## Motivation
 
@@ -71,15 +71,15 @@ Add the three properties to their respective sections in `config-schema.json`:
 
 ## Acceptance Criteria
 
-- [ ] `config-schema.json` includes `automation.idle_timeout_seconds` with type `integer` and default `0`
-- [ ] `config-schema.json` includes `automation.max_continuations` with type `integer` and default `3`
-- [ ] `config-schema.json` includes `parallel.require_code_changes` with type `boolean` and default `true`
-- [ ] Schema validation passes: `python -m jsonschema --instance .claude/ll-config.json config-schema.json`
-- [ ] All three fields have descriptive `description` strings matching their runtime behavior
+- [x] `config-schema.json` includes `automation.idle_timeout_seconds` with type `integer` and default `0`
+- [x] `config-schema.json` includes `automation.max_continuations` with type `integer` and default `3`
+- [x] `config-schema.json` includes `parallel.require_code_changes` with type `boolean` and default `true`
+- [x] Schema validation passes: `python -m jsonschema --instance .claude/ll-config.json config-schema.json`
+- [x] All three fields have descriptive `description` strings matching their runtime behavior
 
 ## Blocked By
 
-- ENH-650: Both touch `config-schema.json` and `config.py`; ENH-650's schema default correction should land first to avoid conflicts on the `parallel` section.
+- ~~ENH-650~~: Completed — schema default correction landed; `parallel` section conflict resolved.
 
 ## API/Interface
 
@@ -91,10 +91,10 @@ N/A — No public API changes (schema documentation only)
 - `config-schema.json` — add three property entries to `automation` (~line 160) and `parallel` (~line 230) sections
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/config.py:193,198` — `AutomationConfig` fields (confirmed: `idle_timeout_seconds: int = 0`, `max_continuations: int = 3`); read in `from_dict` at lines 205, 210
-- `scripts/little_loops/config.py:231` — `ParallelAutomationConfig.require_code_changes: bool = True`; read in `from_dict` at line 260
-- `scripts/little_loops/issue_manager.py:313-368` — Phase 1 `ready-issue` calls pass `idle_timeout` but NOT `max_continuations` (always uses hardcoded default of 3 regardless of config)
-- `scripts/little_loops/issue_manager.py:531` — Phase 2 `manage-issue` call (line 531) correctly passes `config.automation.max_continuations`
+- `scripts/little_loops/config.py:195,200` — `AutomationConfig` fields (confirmed: `idle_timeout_seconds: int = 0`, `max_continuations: int = 3`); read in `from_dict` at lines 207, 212
+- `scripts/little_loops/config.py:233` — `ParallelAutomationConfig.require_code_changes: bool = True`; read in `from_dict` at line 262
+- `scripts/little_loops/issue_manager.py:318,367` — Phase 1 `ready-issue` calls pass `idle_timeout` but NOT `max_continuations` (always uses hardcoded default of 3 regardless of config)
+- `scripts/little_loops/issue_manager.py:531` — Phase 2 `manage-issue` call correctly passes `config.automation.max_continuations`
 
 ### Similar Patterns
 - Other `automation` and `parallel` schema properties for `type`/`default`/`description` formatting reference
@@ -120,11 +120,21 @@ N/A — No public API changes (schema documentation only)
 
 enhancement, config, schema, documentation
 
+## Resolution
+
+Implemented 2026-03-08. Added three missing fields to `config-schema.json`:
+- `automation.idle_timeout_seconds` (integer, default 0, minimum 0)
+- `automation.max_continuations` (integer, default 3, minimum 1)
+- `parallel.require_code_changes` (boolean, default true)
+
+Updated `scripts/tests/test_config.py` to cover both fields in `TestAutomationConfig` and `require_code_changes` in `TestParallelAutomationConfig`. All 94 tests pass; `jsonschema` validation passes.
+
 ## Status
 
-open
+completed
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82c79651-563d-4a71-9c05-13a21c920832.jsonl`
 - `/ll:format-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32aac736-5519-48ec-95de-0a16ae0781d8.jsonl`
 - `/ll:refine-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2922e0f4-92bb-44ff-a157-9cd86f57c35e.jsonl`
+- `/ll:ready-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/815f39b9-3a23-4309-a743-73a1899ec2ef.jsonl`

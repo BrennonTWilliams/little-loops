@@ -174,6 +174,8 @@ class TestAutomationConfig:
             "worktree_base": "wt/",
             "max_workers": 4,
             "stream_output": False,
+            "idle_timeout_seconds": 30,
+            "max_continuations": 5,
         }
         config = AutomationConfig.from_dict(data)
 
@@ -182,6 +184,8 @@ class TestAutomationConfig:
         assert config.worktree_base == "wt/"
         assert config.max_workers == 4
         assert config.stream_output is False
+        assert config.idle_timeout_seconds == 30
+        assert config.max_continuations == 5
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating AutomationConfig with default values."""
@@ -192,6 +196,8 @@ class TestAutomationConfig:
         assert config.worktree_base == ".worktrees"
         assert config.max_workers == 2
         assert config.stream_output is True
+        assert config.idle_timeout_seconds == 0
+        assert config.max_continuations == 3
 
 
 class TestParallelAutomationConfig:
@@ -210,6 +216,7 @@ class TestParallelAutomationConfig:
             "command_prefix": "/custom:",
             "ready_command": "check {{issue_id}}",
             "manage_command": "process {{issue_type}} {{action}} {{issue_id}}",
+            "require_code_changes": False,
         }
         config = ParallelAutomationConfig.from_dict(data)
 
@@ -224,6 +231,7 @@ class TestParallelAutomationConfig:
         assert config.max_merge_retries == 5
         assert config.command_prefix == "/custom:"
         assert config.ready_command == "check {{issue_id}}"
+        assert config.require_code_changes is False
 
     def test_from_dict_with_defaults(self) -> None:
         """Test creating ParallelAutomationConfig with default values."""
@@ -237,6 +245,7 @@ class TestParallelAutomationConfig:
         assert config.p0_sequential is True
         assert config.command_prefix == "/ll:"
         assert config.worktree_copy_files == [".claude/settings.local.json", ".env"]
+        assert config.require_code_changes is True
 
 
 class TestConfidenceGateConfig:
