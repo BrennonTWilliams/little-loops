@@ -3,6 +3,8 @@ discovered_commit: 12a6af03c58a3b8f355e265a895b3950db89b66c
 discovered_branch: main
 discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 85
 ---
 
 # ENH-630: `validate_fsm` has no range checks for `max_iterations`, `backoff`, or `timeout` numeric fields
@@ -14,7 +16,7 @@ discovered_by: scan-codebase
 ## Location
 
 - **File**: `scripts/little_loops/fsm/validation.py`
-- **Line(s)**: 190–261 (at scan commit: 12a6af0)
+- **Line(s)**: 193–264 (at scan commit: 12a6af0)
 - **Anchor**: `in function validate_fsm()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/12a6af03c58a3b8f355e265a895b3950db89b66c/scripts/little_loops/fsm/validation.py#L190-L261)
 - **Code**:
@@ -68,8 +70,18 @@ if fsm.timeout is not None and fsm.timeout <= 0:
 ### Files to Modify
 - `scripts/little_loops/fsm/validation.py` — `validate_fsm()`
 
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/validation.py` — `load_and_validate()` calls `validate_fsm()` internally
+- `scripts/little_loops/cli/loop/config_cmds.py` — `cmd_validate()` calls `validate_fsm()` directly
+- `scripts/little_loops/cli/loop/_helpers.py` — calls `load_and_validate()` (indirect)
+- `scripts/little_loops/cli/loop/run.py` — calls `load_and_validate()` (indirect)
+- `scripts/little_loops/fsm/__init__.py` — re-exports `validate_fsm` as public API
+
+### Similar Patterns
+- Existing structural checks in `validate_fsm()` (unreachable states, missing routing, evaluator fields) use the same `errors.append(...)` pattern — new numeric checks follow the same convention
+
 ### Tests
-- `scripts/tests/test_fsm_validation.py` — add tests for each new validation rule
+- `scripts/tests/test_fsm_schema.py` — primary test file for `validate_fsm()`; add tests for `max_iterations=0`, `backoff=-1`, `timeout=0` (file `test_fsm_validation.py` does not yet exist)
 
 ### Documentation
 - N/A
@@ -93,9 +105,44 @@ if fsm.timeout is not None and fsm.timeout <= 0:
 
 `enhancement`, `fsm`, `validation`, `captured`
 
+## Verification Notes
+
+**Verdict**: VALID — Verified 2026-03-07
+
+- `validate_fsm()` confirmed at `scripts/little_loops/fsm/validation.py` (function `validate_fsm`); no numeric range checks present for `max_iterations`, `backoff`, or `timeout`
+- `FSMLoop` fields confirmed: `max_iterations: int = 50`, `backoff: float | None = None`, `timeout: int | None = None` (`scripts/little_loops/fsm/schema.py`)
+- Primary existing test file is `test_fsm_schema.py` (not `test_fsm_validation.py` which does not exist); Integration Map updated accordingly
+
+## Resolution
+
+**Status**: Completed — 2026-03-07
+
+### Changes Made
+
+- `scripts/little_loops/fsm/validation.py` — Added 5 numeric range checks in `validate_fsm()` after existing structural checks:
+  - `max_iterations <= 0` → error
+  - `backoff < 0` → error
+  - `timeout <= 0` → error
+  - `llm.max_tokens <= 0` → error
+  - `llm.timeout <= 0` → error
+- `scripts/tests/test_fsm_schema.py` — Added 11 tests covering all new checks (valid and invalid cases for each field)
+
+### Verification
+
+- 96 tests pass (`python -m pytest scripts/tests/test_fsm_schema.py`)
+- Lint clean (`ruff check`)
+- Type check clean (`mypy`)
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
+- `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a043191-c6ab-48e4-9698-8dbd73149442.jsonl`
+- `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a043191-c6ab-48e4-9698-8dbd73149442.jsonl`
+- `/ll:confidence-check` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a043191-c6ab-48e4-9698-8dbd73149442.jsonl`
+- `/ll:ready-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4e25ef1f-a191-43bd-9b43-c3291051d8a0.jsonl`
+- `/ll:manage-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-07 | Priority: P4
+## Status
+
+**Completed** | Created: 2026-03-07 | Completed: 2026-03-07 | Priority: P4

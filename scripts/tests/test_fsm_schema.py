@@ -1111,6 +1111,182 @@ class TestEvaluatorValidation:
 
         assert any("between 0 and 1" in e.message for e in errors)
 
+    def test_max_iterations_zero_rejected(self) -> None:
+        """max_iterations=0 is rejected at validation time."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "done": make_state(terminal=True),
+            },
+            max_iterations=0,
+        )
+        errors = validate_fsm(fsm)
+
+        error_messages = [e.message for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("max_iterations must be > 0" in m for m in error_messages)
+
+    def test_max_iterations_negative_rejected(self) -> None:
+        """Negative max_iterations is rejected."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "done": make_state(terminal=True),
+            },
+            max_iterations=-1,
+        )
+        errors = validate_fsm(fsm)
+
+        error_messages = [e.message for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("max_iterations must be > 0" in m for m in error_messages)
+
+    def test_max_iterations_positive_accepted(self) -> None:
+        """Positive max_iterations passes validation."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "done": make_state(terminal=True),
+            },
+            max_iterations=10,
+        )
+        errors = validate_fsm(fsm)
+
+        assert not any("max_iterations" in e.message for e in errors)
+
+    def test_backoff_negative_rejected(self) -> None:
+        """Negative backoff is rejected."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "done": make_state(terminal=True),
+            },
+            backoff=-5.0,
+        )
+        errors = validate_fsm(fsm)
+
+        error_messages = [e.message for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("backoff must be >= 0" in m for m in error_messages)
+
+    def test_backoff_zero_accepted(self) -> None:
+        """backoff=0 is valid (no sleep between iterations)."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "done": make_state(terminal=True),
+            },
+            backoff=0.0,
+        )
+        errors = validate_fsm(fsm)
+
+        assert not any("backoff" in e.message for e in errors)
+
+    def test_backoff_none_accepted(self) -> None:
+        """backoff=None (unset) is valid."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "done": make_state(terminal=True),
+            },
+            backoff=None,
+        )
+        errors = validate_fsm(fsm)
+
+        assert not any("backoff" in e.message for e in errors)
+
+    def test_timeout_zero_rejected(self) -> None:
+        """timeout=0 is rejected (loop would time out immediately)."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "done": make_state(terminal=True),
+            },
+            timeout=0,
+        )
+        errors = validate_fsm(fsm)
+
+        error_messages = [e.message for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("timeout must be > 0" in m for m in error_messages)
+
+    def test_timeout_negative_rejected(self) -> None:
+        """Negative timeout is rejected."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "done": make_state(terminal=True),
+            },
+            timeout=-1,
+        )
+        errors = validate_fsm(fsm)
+
+        error_messages = [e.message for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("timeout must be > 0" in m for m in error_messages)
+
+    def test_timeout_none_accepted(self) -> None:
+        """timeout=None (unset) is valid."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "done": make_state(terminal=True),
+            },
+            timeout=None,
+        )
+        errors = validate_fsm(fsm)
+
+        assert not any("timeout" in e.message for e in errors)
+
+    def test_llm_max_tokens_zero_rejected(self) -> None:
+        """llm.max_tokens=0 is rejected."""
+        from little_loops.fsm.schema import LLMConfig
+
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "done": make_state(terminal=True),
+            },
+            llm=LLMConfig(max_tokens=0),
+        )
+        errors = validate_fsm(fsm)
+
+        error_messages = [e.message for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("llm.max_tokens must be > 0" in m for m in error_messages)
+
+    def test_llm_timeout_zero_rejected(self) -> None:
+        """llm.timeout=0 is rejected."""
+        from little_loops.fsm.schema import LLMConfig
+
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "done": make_state(terminal=True),
+            },
+            llm=LLMConfig(timeout=0),
+        )
+        errors = validate_fsm(fsm)
+
+        error_messages = [e.message for e in errors if e.severity == ValidationSeverity.ERROR]
+        assert any("llm.timeout must be > 0" in m for m in error_messages)
+
 
 class TestLoadAndValidate:
     """Tests for load_and_validate function."""

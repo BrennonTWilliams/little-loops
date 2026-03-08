@@ -9,6 +9,7 @@ Validation checks:
 - At least one terminal state
 - Evaluator configs have required fields for their type
 - No conflicting routing (shorthand vs full route)
+- Numeric fields in valid ranges (max_iterations > 0, backoff >= 0, timeout > 0)
 """
 
 from __future__ import annotations
@@ -199,6 +200,7 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
     - At least one terminal state
     - Evaluator configurations are valid
     - Routing configurations are valid
+    - Numeric fields are in valid ranges (max_iterations > 0, backoff >= 0, timeout > 0)
 
     Args:
         fsm: The FSM loop to validate
@@ -248,6 +250,43 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
 
         # Validate routing configuration
         errors.extend(_validate_state_routing(state_name, state))
+
+    # Check numeric field ranges
+    if fsm.max_iterations <= 0:
+        errors.append(
+            ValidationError(
+                message=f"max_iterations must be > 0, got {fsm.max_iterations}",
+                path="max_iterations",
+            )
+        )
+    if fsm.backoff is not None and fsm.backoff < 0:
+        errors.append(
+            ValidationError(
+                message=f"backoff must be >= 0, got {fsm.backoff}",
+                path="backoff",
+            )
+        )
+    if fsm.timeout is not None and fsm.timeout <= 0:
+        errors.append(
+            ValidationError(
+                message=f"timeout must be > 0, got {fsm.timeout}",
+                path="timeout",
+            )
+        )
+    if fsm.llm.max_tokens <= 0:
+        errors.append(
+            ValidationError(
+                message=f"llm.max_tokens must be > 0, got {fsm.llm.max_tokens}",
+                path="llm.max_tokens",
+            )
+        )
+    if fsm.llm.timeout <= 0:
+        errors.append(
+            ValidationError(
+                message=f"llm.timeout must be > 0, got {fsm.llm.timeout}",
+                path="llm.timeout",
+            )
+        )
 
     # Check for unreachable states (warning only)
     reachable = _find_reachable_states(fsm)
