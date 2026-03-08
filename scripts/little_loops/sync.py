@@ -637,8 +637,8 @@ class GitHubSyncManager:
         filename = f"{priority}-{issue_id}-{slug}.md"
 
         # Determine category directory
-        category_map = {"BUG": "bugs", "FEAT": "features", "ENH": "enhancements"}
-        category = category_map.get(issue_type, "features")
+        cat = self.config.issues.get_category_by_prefix(issue_type)
+        category = cat.dir if cat else "features"
         category_dir = self.config.get_issue_dir(category)
         category_dir.mkdir(parents=True, exist_ok=True)
 

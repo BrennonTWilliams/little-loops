@@ -88,11 +88,25 @@ category = cat.dir if cat else "features"
 
 ## Acceptance Criteria
 
-- [ ] `history.py` resolves issues path from `config.issues.base_dir` (not hardcoded `".issues"`)
-- [ ] `operations.py` uses `config.issues.get_all_dirs()` when config available; falls back safely when not
-- [ ] `sync.py` derives `category_map` from config categories (no literal dict)
-- [ ] All existing tests pass: `python -m pytest scripts/tests/`
-- [ ] No regression when `base_dir` is set to a non-default value
+- [x] `history.py` resolves issues path from `config.issues.base_dir` (not hardcoded `".issues"`)
+- [x] `operations.py` uses `config.issues.get_all_dirs()` when config available; falls back safely when not
+- [x] `sync.py` derives `category_map` from config categories (no literal dict)
+- [x] All existing tests pass: `python -m pytest scripts/tests/`
+- [x] No regression when `base_dir` is set to a non-default value
+
+## Resolution
+
+**Completed 2026-03-08**
+
+### Changes Made
+
+- **`scripts/little_loops/cli/history.py`**: Added `BRConfig` and `add_config_arg` imports; added `--config` argument to parser; replaced `Path.cwd() / ".issues"` with `config.project_root / config.issues.base_dir`.
+- **`scripts/little_loops/sync.py:640`**: Replaced hardcoded `category_map = {"BUG": "bugs", ...}` with `self.config.issues.get_category_by_prefix(issue_type)`.
+- **`scripts/little_loops/dependency_mapper/operations.py`**: Already had config-driven branch (lines 266-270); hardcoded list remains only as fallback when `config=None` — no change needed.
+
+### Test Results
+
+183 tests passed, 0 failures.
 
 ## API/Interface
 
@@ -147,3 +161,4 @@ open
 - `/ll:capture-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/82c79651-563d-4a71-9c05-13a21c920832.jsonl`
 - `/ll:format-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/32aac736-5519-48ec-95de-0a16ae0781d8.jsonl`
 - `/ll:refine-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2922e0f4-92bb-44ff-a157-9cd86f57c35e.jsonl`
+- `/ll:ready-issue` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`

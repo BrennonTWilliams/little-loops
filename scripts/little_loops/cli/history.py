@@ -5,6 +5,9 @@ from __future__ import annotations
 import argparse
 from pathlib import Path
 
+from little_loops.cli_args import add_config_arg
+from little_loops.config import BRConfig
+
 
 def main_history() -> int:
     """Entry point for ll-history command.
@@ -158,6 +161,8 @@ Examples:
         help="Relevance scoring method: intersection (default), bm25, or hybrid",
     )
 
+    add_config_arg(parser)
+
     args = parser.parse_args()
 
     if not args.command:
@@ -165,7 +170,9 @@ Examples:
         return 1
 
     # Determine directories
-    issues_dir = args.directory or Path.cwd() / ".issues"
+    project_root = args.config or Path.cwd()
+    config = BRConfig(project_root)
+    issues_dir = args.directory or config.project_root / config.issues.base_dir
     completed_dir = issues_dir / "completed"
 
     if args.command == "summary":
