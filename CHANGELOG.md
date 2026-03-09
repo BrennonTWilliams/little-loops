@@ -12,6 +12,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.37.1] - 2026-03-08
+
+### Fixed
+
+- fix(issues): refine BUG-656 with root cause, solution, and confidence scores (7975326)
+
+### Changed
+
+- improve(init): remove 11 interactive prompts and use sensible defaults (eb70156)
+
+### Documentation
+
+- docs: update install instructions to reference PyPI package (58f27dc)
+
 ## [1.37.0] - 2026-03-08
 
 ### Added
@@ -41,6 +55,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **API.md missing documentation sections** - Added documentation for `work_verification`, `session_log`, config classes (`SprintsConfig`, `LoopsConfig`, `GitHubSyncConfig`, etc.), FSM submodules (`handoff_handler`, `concurrency`, `signal_detector`), parallel types, and CLI entry points (ENH-646)
 
+[1.37.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.37.0...v1.37.1
 [1.37.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.36.1...v1.37.0
 [1.36.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.36.0...v1.36.1
 
