@@ -1,0 +1,109 @@
+# Description: Progressively refine all active issues to ensure complete coverage.
+# For each incomplete issue (starting from highest ID), runs all missing
+# refinement commands (format, verify), scores with confidence-check,
+# and iterates with refine-issue until both confidence scores meet
+# thresholds (readiness>=85, outcome>=70).
+# Repeats until all active issues are fully refined.
+paradigm: fsm
+name: issue-refinement-git
+initial: evaluate
+states:
+  evaluate:
+    action: |
+      rm -f /tmp/issue-refinement-commit-count
+      ll-issues refine-status --no-key
+    action_type: shell
+    capture: "refine_status"
+    evaluate:
+      type: llm_structured
+      prompt: |
+        Examine this ll-issues refine-status table output.
+        Thresholds: readiness=85, outcome=70
+
+        Return verdict "success" ONLY if every issue row satisfies ALL of the following:
+          1. All boolean columns (fmt, verify) show ✓ (not — em-dash).
+          2. Both the ready (readiness score) and confidence (outcome confidence) columns
+             show integer values (not —) that meet or exceed thresholds (ready>=85, confidence>=70).
+        Return "failure" if any issue still has — or ✗ in a fmt or verify column, or if any issue
+        has unscored or below-threshold ready/confidence values.
+        Return "partial" if the output is ambiguous or truncated.
+    on_success: done
+    on_failure: format_issues
+    on_partial: evaluate
+    on_error: evaluate
+  format_issues:
+    action_type: prompt
+    action: |
+      Here is the current refinement state of all active issues (Thresholds: readiness=85, outcome=70):
+
+      ${captured.refine_status.output}
+
+      Find the highest-priority issue that still needs refinement work (lowest P number first,
+      then highest Issue ID as tiebreaker), where any boolean column shows — or ✗ for format or verify.
+
+      Execute Step A — Complete all missing refinement commands for that issue:
+      - format incomplete (column shows —, ✗, or absent): /ll:format-issue [ISSUE_ID] --auto
+      - verify incomplete (column shows —, ✗, or absent): /ll:verify-issues [ISSUE_ID] --auto
+
+      If no issues need format/verify work, skip this step entirely.
+    next: score_issues
+  score_issues:
+    action_type: prompt
+    action: |
+      Here is the current refinement state of all active issues (Thresholds: readiness=85, outcome=70):
+
+      ${captured.refine_status.output}
+
+      Find the highest-priority issue where the ready or confidence column shows — (not yet scored).
+
+      Execute Step B — Score if unscored:
+      - If ready or confidence shows — (not yet scored): /ll:confidence-check [ISSUE_ID] --auto
+
+      If no issues need scoring, skip this step entirely.
+    next: refine_issues
+  refine_issues:
+    action_type: prompt
+    timeout: 1200
+    action: |
+      Here is the current refinement state of all active issues (Thresholds: readiness=85, outcome=70):
+
+      ${captured.refine_status.output}
+
+      Find the highest-priority issue where ready < 85 or confidence < 70.
+
+      Execute Step C — Refine until scores meet thresholds (maximum 5 refinements):
+      - While (ready < 85 OR confidence < 70):
+        1. /ll:refine-issue [ISSUE_ID] --auto
+        2. /ll:confidence-check [ISSUE_ID] --auto
+        3. Check updated scores; stop if both thresholds met (ready>=85, confidence>=70) or 5 refinements reached
+      - Ceiling-acceptance: if 5 refinements have been reached and ready >= 85 (even if confidence < 70),
+        treat the issue as refined-to-ceiling and move on.
+
+      If no issues need refinement work, skip this step entirely.
+    next: check_commit
+  check_commit:
+    action: |
+      FILE="/tmp/issue-refinement-commit-count"
+      N=$(cat "$FILE" 2>/dev/null || echo 0)
+      N=$((N + 1))
+      printf '%s' "$N" > "$FILE"
+      if [ $((N % 5)) -eq 0 ]; then echo "COMMIT"; else echo "SKIP"; fi
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      prompt: |
+        The output is either "COMMIT" or "SKIP".
+        Return verdict "success" if the output is exactly "COMMIT".
+        Return "failure" if the output is "SKIP" or anything else.
+    on_success: commit
+    on_failure: evaluate
+    on_error: evaluate
+  commit:
+    action_type: prompt
+    action: /ll:commit
+    next: evaluate
+  done:
+    terminal: true
+max_iterations: 100
+timeout: 14400
+on_handoff: spawn
