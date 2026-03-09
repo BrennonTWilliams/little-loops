@@ -1294,10 +1294,11 @@ class TestLoadAndValidate:
     def test_load_valid_yaml(self, fsm_fixtures: Path) -> None:
         """Load valid YAML file."""
         fixture_path = fsm_fixtures / "valid-loop.yaml"
-        fsm = load_and_validate(fixture_path)
+        fsm, warnings = load_and_validate(fixture_path)
         assert fsm.name == "test-loop"
         assert fsm.initial == "check"
         assert len(fsm.states) == 2
+        assert warnings == []
 
     def test_file_not_found(self) -> None:
         """FileNotFoundError for missing file."""
@@ -1332,9 +1333,48 @@ class TestLoadAndValidate:
         """Warnings are logged but don't raise exceptions."""
         fixture_path = fsm_fixtures / "loop-with-unreachable-state.yaml"
         # Should not raise despite unreachable state warning
-        fsm = load_and_validate(fixture_path)
+        fsm, warnings = load_and_validate(fixture_path)
         assert fsm.name == "test-loop"
         assert "orphan" in fsm.states
+        assert any(w.severity == ValidationSeverity.WARNING for w in warnings)
+
+    def test_unknown_top_level_keys_warn(self, tmp_path: Path) -> None:
+        """Unknown top-level keys produce WARNING, not ERROR."""
+        loop_yaml = tmp_path / "unknown-keys.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "initial: check\n"
+            "max_iteration: 5\n"  # typo: should be max_iterations
+            "foo: bar\n"
+            "states:\n"
+            "  check:\n"
+            "    terminal: true\n"
+        )
+        fsm, warnings = load_and_validate(loop_yaml)
+        assert fsm.name == "test-loop"
+        unknown_warnings = [w for w in warnings if w.severity == ValidationSeverity.WARNING]
+        assert len(unknown_warnings) == 1
+        assert "foo" in unknown_warnings[0].message
+        assert "max_iteration" in unknown_warnings[0].message
+        # No errors raised
+        assert all(w.severity == ValidationSeverity.WARNING for w in unknown_warnings)
+
+    def test_known_keys_no_warning(self, tmp_path: Path) -> None:
+        """Known top-level keys produce no unknown-key warning."""
+        loop_yaml = tmp_path / "known-keys.yaml"
+        loop_yaml.write_text(
+            "name: test-loop\n"
+            "initial: check\n"
+            "max_iterations: 5\n"
+            "states:\n"
+            "  check:\n"
+            "    terminal: true\n"
+        )
+        _, warnings = load_and_validate(loop_yaml)
+        unknown_warnings = [
+            w for w in warnings if "Unknown top-level" in w.message
+        ]
+        assert unknown_warnings == []
 
     def test_missing_name_field(self, fsm_fixtures: Path) -> None:
         """Missing 'name' field raises ValueError."""

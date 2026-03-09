@@ -70,12 +70,10 @@ def cmd_validate(
         if "paradigm" in spec and "initial" not in spec:
             logger.info(f"Compiling paradigm file for validation: {path}")
             fsm = compile_paradigm(spec)
+            all_results = validate_fsm(fsm)
+            warnings = [r for r in all_results if r.severity == ValidationSeverity.WARNING]
         else:
-            fsm = load_and_validate(path)
-
-        # Surface warnings that load_and_validate only sends to Python logging
-        all_results = validate_fsm(fsm)
-        warnings = [r for r in all_results if r.severity == ValidationSeverity.WARNING]
+            fsm, warnings = load_and_validate(path)
 
         logger.success(f"{loop_name} is valid")
         print(f"  States: {', '.join(fsm.states.keys())}")

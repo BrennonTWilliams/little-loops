@@ -43,7 +43,7 @@ def cmd_run(
             logger.info(f"Auto-compiling paradigm file: {path}")
             fsm = compile_paradigm(spec)
         else:
-            fsm = load_and_validate(path)
+            fsm, _ = load_and_validate(path)
     except FileNotFoundError as e:
         logger.error(str(e))
         return 1

@@ -1717,7 +1717,7 @@ class TestMainLoopAdditionalCoverage:
             )
 
             # Patch at actual source module paths (cli.py imports these locally)
-            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=(mock_fsm, [])):
                 with patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec:
                     mock_executor = MagicMock()
                     # Create a proper mock result with all required attributes
@@ -1768,7 +1768,7 @@ class TestMainLoopAdditionalCoverage:
                 max_iterations=50,
             )
 
-            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=(mock_fsm, [])):
                 with patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec:
                     mock_executor = MagicMock()
                     # Create a proper mock result with all required attributes
@@ -1826,7 +1826,7 @@ states:
                 max_iterations=50,
             )
 
-            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=(mock_fsm, [])):
                 with patch.object(sys, "argv", ["ll-loop", "run", "test-loop", "--dry-run"]):
                     # Change to temp directory so resolve_loop_path works
                     import os
@@ -1864,7 +1864,7 @@ states:
                 max_iterations=50,
             )
 
-            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=(mock_fsm, [])):
                 with patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec:
                     mock_executor = MagicMock()
                     # Create a proper mock result with all required attributes
@@ -1915,7 +1915,7 @@ states:
                 max_iterations=50,
             )
 
-            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=(mock_fsm, [])):
                 with patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec:
                     mock_executor = MagicMock()
                     # Create a proper mock result with all required attributes
@@ -1989,7 +1989,7 @@ states:
                 max_iterations=50,
             )
 
-            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=(mock_fsm, [])):
                 with patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec:
                     mock_executor = MagicMock()
                     # Create a proper mock result with all required attributes
@@ -2067,7 +2067,7 @@ states:
                 max_iterations=50,
             )
 
-            with patch("little_loops.fsm.validation.load_and_validate", return_value=mock_fsm):
+            with patch("little_loops.fsm.validation.load_and_validate", return_value=(mock_fsm, [])):
                 with patch("little_loops.fsm.persistence.PersistentExecutor") as mock_exec:
                     mock_executor = MagicMock()
                     # Create a proper mock result with all required attributes

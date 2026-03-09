@@ -69,6 +69,24 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
 # Valid comparison operators
 VALID_OPERATORS = {"eq", "ne", "lt", "le", "gt", "ge"}
 
+# All top-level keys recognized by FSMLoop.from_dict()
+KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
+    {
+        "name",
+        "initial",
+        "states",
+        "paradigm",
+        "context",
+        "scope",
+        "max_iterations",
+        "backoff",
+        "timeout",
+        "maintain",
+        "llm",
+        "on_handoff",
+    }
+)
+
 
 def _validate_evaluator(state_name: str, evaluate: EvaluateConfig) -> list[ValidationError]:
     """Validate evaluator configuration for type-specific requirements.
@@ -333,14 +351,14 @@ def _find_reachable_states(fsm: FSMLoop) -> set[str]:
     return reachable
 
 
-def load_and_validate(path: Path) -> FSMLoop:
+def load_and_validate(path: Path) -> tuple[FSMLoop, list[ValidationError]]:
     """Load YAML file and validate FSM structure.
 
     Args:
         path: Path to the YAML file to load
 
     Returns:
-        Validated FSMLoop instance
+        Tuple of (validated FSMLoop instance, list of WARNING-severity ValidationErrors)
 
     Raises:
         FileNotFoundError: If the file doesn't exist
@@ -365,6 +383,18 @@ def load_and_validate(path: Path) -> FSMLoop:
     if missing:
         raise ValueError(f"FSM file missing required fields: {', '.join(missing)}")
 
+    # Check for unknown top-level keys before parsing
+    unknown_key_warnings: list[ValidationError] = []
+    unknown = set(data.keys()) - KNOWN_TOP_LEVEL_KEYS
+    if unknown:
+        unknown_key_warnings.append(
+            ValidationError(
+                path="<root>",
+                message=f"Unknown top-level keys: {', '.join(sorted(unknown))}",
+                severity=ValidationSeverity.WARNING,
+            )
+        )
+
     # Parse into dataclass
     fsm = FSMLoop.from_dict(data)
 
@@ -378,9 +408,10 @@ def load_and_validate(path: Path) -> FSMLoop:
         error_messages = "\n  ".join(str(e) for e in error_list)
         raise ValueError(f"FSM validation failed:\n  {error_messages}")
 
-    # Log warnings
-    warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
-    for warning in warnings:
+    # Collect all warnings (unknown-key warnings + structural warnings)
+    struct_warnings = [e for e in errors if e.severity == ValidationSeverity.WARNING]
+    all_warnings = unknown_key_warnings + struct_warnings
+    for warning in all_warnings:
         logger.warning(str(warning))
 
-    return fsm
+    return fsm, all_warnings

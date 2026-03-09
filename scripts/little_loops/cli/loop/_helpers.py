@@ -129,7 +129,8 @@ def load_loop(name_or_path: str, loops_dir: Path, logger: Logger) -> FSMLoop:
         logger.info(f"Auto-compiling paradigm file: {path}")
         return compile_paradigm(spec)
     else:
-        return load_and_validate(path)
+        fsm, _ = load_and_validate(path)
+        return fsm
 
 
 def load_loop_with_spec(
@@ -157,7 +158,7 @@ def load_loop_with_spec(
         logger.info(f"Auto-compiling paradigm file: {path}")
         fsm = compile_paradigm(spec)
     else:
-        fsm = load_and_validate(path)
+        fsm, _ = load_and_validate(path)
 
     return fsm, spec
 
