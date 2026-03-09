@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-09
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-662: review-loop FSM Logic Analysis and Evaluation
@@ -86,18 +88,21 @@ The analysis is done by Claude (LLM reasoning over the YAML), not rule-based cod
 ## Integration Map
 
 ### Files to Modify
-- `skills/review-loop/SKILL.md` — add FSM Flow Review phase with analysis instructions and output format
+- `skills/review-loop/SKILL.md` — add FSM Flow Review phase (Step 2c) between Step 2b and Step 3; insert between lines ~156-159 where QC checks end and display begins
+- `skills/review-loop/reference.md` — add FA-* check definitions (FA-1 through FA-6 for the six anti-patterns) to the quality check catalog; add FSM Flow Review display format alongside existing findings table format
 
 ### Dependent Files (Callers/Importers)
 - N/A (skill is invoked directly by users)
 
 ### Similar Patterns
-- Existing QC checks in `skills/review-loop/SKILL.md` for taxonomy/format consistency
-- `skills/create-loop/SKILL.md` for understanding what loop authors intend
+- Existing QC checks in `skills/review-loop/SKILL.md:112-156` and `reference.md:43-255` for taxonomy/format consistency (findings structure: `{ check_id, severity, location, message }`)
+- `skills/create-loop/SKILL.md` for understanding loop author intent and the `description:` field conventions
+- QC-2 (`reference.md:67-99`) for the pattern of iterating states and recording findings — the FSM analysis phase should follow the same append-to-findings pattern
 
 ### Tests
-- Manual test: run `/ll:review-loop issue-refinement-git` and verify FSM analysis section appears
-- Manual test: run on a loop with known spin risk to verify detection
+- Manual test: `/ll:review-loop issue-refinement-git` — should flag `/tmp/issue-refinement-commit-count` counter in `check_commit` state as fragile shared state (written but never reset), and note no explicit failure terminal
+- Manual test: `/ll:review-loop fix-quality-and-tests` — should flag `fix-quality` and `fix-tests` as having no explicit `on_error`, and note only `done` (success) terminal — no failure terminal
+- Manual test: a well-formed loop (e.g., one created from scratch via `/ll:create-loop`) to confirm "What works well" populates
 
 ### Documentation
 - N/A
@@ -105,14 +110,31 @@ The analysis is done by Claude (LLM reasoning over the YAML), not rule-based cod
 ### Configuration
 - N/A
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**`description:` field format discrepancy**: `issue-refinement-git.yaml` uses YAML comments at the top (no `description:` key), while `fix-quality-and-tests.yaml` uses a proper `description:` key (`loops/fix-quality-and-tests.yaml:3`). The FSM analysis phase must handle both: check for `description:` YAML key first, fall back to parsing top comments if absent.
+
+**Exact insertion point**: Step 2c belongs after `SKILL.md:156` (end of QC-7) and before `SKILL.md:159` (Step 3: Display findings header). The new step appends to the same shared findings list used by Step 3's display logic.
+
+**Real anti-pattern examples in test loops**:
+- `issue-refinement-git.yaml:66-70` (`check_commit` state): writes `/tmp/issue-refinement-commit-count` but no reset state exists — concrete `/tmp` fragile state example
+- `issue-refinement-git.yaml` has no failure terminal — `max_iterations: 100` just stops silently
+- `fix-quality-and-tests.yaml`: `fix-quality` and `fix-tests` states lack `on_error` routing (`fix-quality:23`, `fix-tests:54`), caught by QC-2 but also affects FSM logic analysis
+- `issue-refinement-git.yaml:31,80` — `on_error: evaluate` in both `evaluate` and `check_commit` states loops back without escape, meeting spin risk criteria
+
+**Findings list structure** (from `SKILL.md:104`): each finding is `{ check_id, severity, location, message }` — FA-* check IDs follow QC-* pattern
+
 ## Implementation Steps
 
-1. Read `skills/review-loop/SKILL.md` to understand the current review flow and QC structure
-2. Design the FSM Flow Review phase — define the analysis instructions, heuristics, and output format
-3. Add the FSM Flow Review phase to `SKILL.md` after existing QC checks
-4. Define the "What works well" / "Issues to consider" output format
-5. Test with `issue-refinement-git` and at least one other loop to verify quality of analysis
-6. Verify existing structural QC still passes correctly and findings count reflects both phases
+1. Read `skills/review-loop/SKILL.md:91-192` to understand QC check structure and findings list format before writing Step 2c
+2. Read `skills/review-loop/reference.md:43-284` for the existing check definitions and display format to model FA-* check entries after
+3. Design the six FA-* heuristic checks in `reference.md` (after QC-7 at ~line 255): FA-1 spin detection, FA-2 missing failure terminal, FA-3 unresetting `/tmp` shared state, FA-4 monolithic prompt state, FA-5 unreachable states (overlap with V-11 — skip if V-11 already caught it), FA-6 dead-end non-terminal states
+4. Add Step 2c to `SKILL.md` after line 156: insert the FSM Flow Review phase — read `description:` (YAML key or comment fallback), trace happy path, run FA-1 through FA-6 checks, build "What works well" and "Issues to consider" lists, append findings to shared list
+5. Update `reference.md` display format section (~line 259) to include the "What works well" / "Issues to consider" narrative block after the findings table
+6. Test with `issue-refinement-git` (expect: FA-3 fragile counter + missing failure terminal) and `fix-quality-and-tests` (expect: no failure terminal)
+7. Verify total findings count in Step 6 summary includes FA-* findings alongside V-* and QC-* findings
 
 ## Scope Boundaries
 
@@ -139,11 +161,35 @@ The analysis is done by Claude (LLM reasoning over the YAML), not rule-based cod
 
 `enhancement`, `review-loop`, `fsm`, `captured`
 
+## Resolution
+
+**Status**: Completed
+**Completed**: 2026-03-09
+**Implementation**: Additive — added Step 2c (FSM Flow Review) to `skills/review-loop/SKILL.md` and FA-1 through FA-6 check definitions to `skills/review-loop/reference.md`.
+
+### Changes Made
+
+- `skills/review-loop/SKILL.md`: Added Step 2c between Step 2b (QC-7) and Step 3. Step 2c extracts intent from `description:` or YAML comments, traces the happy path, runs FA-1 through FA-6 anti-pattern checks (appending to the shared findings list), builds "What works well" / "Issues to consider" narrative, and outputs the FSM Flow Review block after the findings table.
+- `skills/review-loop/reference.md`: Added FA-* check definitions table and detailed entries for FA-1 (spin detection), FA-2 (missing failure terminal), FA-3 (unresetting `/tmp` state), FA-4 (monolithic prompt state), FA-5 (unreachable states, deduped with V-11), FA-6 (dead-end non-terminal states). Updated Findings Display Format to include FSM Flow Review narrative block.
+
+### Acceptance Criteria Verification
+
+- [x] FSM Flow Review section appears after structural QC — Step 2c runs after Step 2b
+- [x] Happy path trace evaluates flow against `description:` — Step 2c-3
+- [x] Spin risks (FA-1) produce Warning finding
+- [x] Missing failure terminal (FA-2) produces Warning finding
+- [x] Output includes "What works well" and "Issues to consider" — Step 2c-5 and 2c-6
+- [x] Findings count includes FA-* findings — Step 6 summary clarified
+
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a1a61db5-bf6d-401c-a25e-1b0f6a9507c0.jsonl`
 - `/ll:format-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cd5c8d9-049c-4f5a-bc07-8ebea05c1e60.jsonl`
+- `/ll:refine-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8903ae37-9a16-44a8-a4b8-083839c5ad9d.jsonl`
+- `/ll:confidence-check` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/339453a3-a63e-483d-9c90-18ccd2e99a4e.jsonl`
+- `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/308f838f-9817-4318-ba85-59074f83f806.jsonl`
+- `/ll:manage-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current-session.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-09 | Priority: P3
+**Completed** | Created: 2026-03-09 | Priority: P3

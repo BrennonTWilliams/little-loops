@@ -256,6 +256,145 @@ states:
 
 ---
 
+## FSM Flow Analysis Checks (FA — logic and design)
+
+These checks are run during Step 2c (FSM Flow Review). They evaluate whether the FSM's logic, flow, and design are correct and well-structured — not just whether the YAML is valid. All are performed by LLM reasoning over the parsed YAML, not by the validator.
+
+| Check ID | Description | Severity |
+|----------|-------------|----------|
+| FA-1 | Spin risk — all error/partial transitions loop back without escape | Warning |
+| FA-2 | Missing failure terminal state | Warning |
+| FA-3 | Unresetting `/tmp` shared state | Warning |
+| FA-4 | Monolithic prompt state (≥ 4 numbered steps) | Suggestion |
+| FA-5 | Unreachable state (skip if V-11 already flagged it) | Warning |
+| FA-6 | Dead-end non-terminal state (no outbound transitions) | Error |
+
+---
+
+### FA-1: Spin Detection
+
+**Severity**: Warning
+**Breaking**: false
+**When to auto-apply**: Never (routing change required)
+
+For each non-terminal state: if ALL of its `on_error` and `on_partial` transitions route back to itself (or form a tight cycle of ≤ 2 states) with no counter, escape condition, or alternative path:
+
+**Finding**: `Warning: states.<name>: Spin risk — on_error and on_partial both route back to <name> with no escape. A persistent LLM error or ambiguous output will loop indefinitely until max_iterations.`
+
+**Fix template**:
+```yaml
+# Before
+states:
+  evaluate:
+    on_success: done
+    on_failure: fix
+    on_partial: evaluate   # loops back
+    on_error: evaluate     # loops back — no escape
+
+# After
+states:
+  evaluate:
+    on_success: done
+    on_failure: fix
+    on_partial: evaluate
+    on_error: error-terminal   # dedicated escape for persistent errors
+```
+
+---
+
+### FA-2: Missing Failure Terminal
+
+**Severity**: Warning
+**Breaking**: false
+**When to auto-apply**: Never (requires adding a new state)
+
+If no terminal state has a name suggesting failure (`failed`, `error`, `aborted`, `bail`, `halt`, or similar), and `max_iterations` is the only stop condition for failure cases:
+
+**Finding**: `Warning: No explicit failure terminal state. When the loop hits max_iterations on a failure path, it stops silently with no signal of failure. Consider adding a terminal state named 'failed' or 'error' for explicit failure signaling.`
+
+**Fix template**:
+```yaml
+# After (add a failure terminal state)
+states:
+  ...
+  failed:
+    terminal: true
+  # Then route appropriate on_error transitions to: failed
+```
+
+---
+
+### FA-3: Unresetting Shared State
+
+**Severity**: Warning
+**Breaking**: false
+**When to auto-apply**: Never (requires understanding of loop restart behavior)
+
+For each state action that writes to a `/tmp/` path (e.g., `echo N > /tmp/foo`, `tee /tmp/foo`): if no state action resets or removes that same `/tmp/` path before the loop's first action (or in the `initial` state's action):
+
+**Finding**: `Warning: states.<name>.action: Writes to /tmp/<file> but no state resets this file. Shared state persists across loop restarts, which can cause incorrect counts or stale data on retry.`
+
+**Fix template**:
+```yaml
+# Before (check_commit state writes counter, never reset)
+states:
+  check_commit:
+    action: |
+      COUNT=$(cat /tmp/my-count 2>/dev/null || echo 0)
+      echo $((COUNT + 1)) > /tmp/my-count
+
+# After (reset in initial state or add a reset state before the write)
+states:
+  start:
+    action: "rm -f /tmp/my-count"
+    action_type: shell
+    next: check_commit
+  check_commit:
+    action: |
+      COUNT=$(cat /tmp/my-count 2>/dev/null || echo 0)
+      echo $((COUNT + 1)) > /tmp/my-count
+```
+
+---
+
+### FA-4: Monolithic Prompt State
+
+**Severity**: Suggestion
+**Breaking**: false
+**When to auto-apply**: Never (decomposition is a structural change)
+
+For each state with `action_type: prompt`: count distinct numbered steps in the action text (lines matching `Step [N]`, `[N].`, `[N])` patterns). If ≥ 4 distinct steps are found:
+
+**Finding**: `Suggestion: states.<name>: Prompt action contains N numbered steps. Consider decomposing into smaller focused states — each state should do one clear thing. Monolithic prompt states are harder to debug and may exceed LLM context limits.`
+
+---
+
+### FA-5: Unreachable States (FSM Analysis)
+
+**Severity**: Warning
+**Breaking**: false
+**When to auto-apply**: Never
+
+**Only emit this finding if V-11 has NOT already flagged the same state** (check existing findings list for a `V-11` entry at `states.<name>` before adding an FA-5 finding).
+
+For each state not reachable via BFS from the `initial` state (using all outbound transitions):
+
+**Finding**: `Warning: states.<name>: Unreachable state — no transition path leads here from the initial state. This state is dead code.`
+
+---
+
+### FA-6: Dead-End Non-Terminal State
+
+**Severity**: Error
+**Breaking**: false
+**When to auto-apply**: Never (cannot safely infer the missing transition target)
+
+For each non-terminal state that has no outbound transitions (`on_success`, `on_failure`, `on_partial`, `on_error`, `next`, or any `route.*` key):
+
+**Finding**: `Error: states.<name>: Non-terminal state with no outbound transitions. The FSM will stall here with no way to proceed.`
+
+---
+
 ## Findings Display Format
 
 ```
@@ -275,12 +414,27 @@ States: N states  |  Initial: <initial-state>  |  Max iterations: <N>
 | 1 | V-11  | states.check | Unreachable state |
 | 2 | QC-2  | states.evaluate | Missing on_error for shell evaluator |
 | 3 | QC-1  | max_iterations | Value 200 is suspiciously high (>100) |
+| 4 | FA-1  | states.evaluate | Spin risk — on_error and on_partial both loop back |
+| 5 | FA-2  | (loop)   | No explicit failure terminal state |
 
 ### Suggestions (N)
 | # | Check | Location | Issue |
 |---|-------|----------|-------|
 | 1 | QC-3  | states.fix | action_type absent; action looks like a natural-language prompt |
 | 2 | QC-6  | on_handoff | max_iterations=50 but on_handoff not set explicitly |
+
+### FSM Flow Review: <loop-name>
+
+  <One-sentence overall assessment of whether the flow achieves its declared purpose>
+
+  **What works well**
+  - <specific strength — e.g., "evaluate → done/fix split is clean: exits only when all issues pass">
+  - <specific strength>
+
+  **Issues to consider**
+  1. <Plain-English description of FA-N finding with concrete actionable suggestion>
+  2. <Next finding if any>
+  (or "No significant logic issues found." if no FA-* findings)
 ```
 
 ---
