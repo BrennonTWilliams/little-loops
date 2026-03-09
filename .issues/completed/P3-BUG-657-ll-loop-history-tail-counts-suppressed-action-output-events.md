@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-08T00:00:00Z
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-657: `ll-loop history` `--tail` Counts Suppressed `action_output` Events, Hiding Earlier Iterations
@@ -80,7 +82,7 @@ Alternatively, raise the default `--tail` to 500 as a minimal fix, though that d
 
 1. In `cmd_history()` (`info.py`), filter out `action_output` events before applying the `--tail` slice
 2. Preserve `--verbose` behavior: when `verbose=True`, skip the filter so `action_output` events count toward tail as before
-3. Verify existing `TestHistoryTail` tests (`test_ll_loop_commands.py:182`) pass without modification
+3. Verify existing `TestHistoryTail` tests (`test_ll_loop_commands.py:298`) pass without modification
 4. Add regression test covering the multi-line stdout scenario (10+ `action_output` events, confirm tail counts visible events only)
 
 ## Integration Map
@@ -91,11 +93,24 @@ Alternatively, raise the default `--tail` to 500 as a minimal fix, though that d
 ### Dependent Files (Callers/Importers)
 - N/A — `cmd_history()` is a CLI entry point, not imported by other modules
 
-### Similar Patterns
-- N/A — tail-after-filter pattern is unique to this command
+### Event Source
+- `scripts/little_loops/fsm/executor.py:562` — `action_output` events are emitted here (one per stdout line from shell actions via `_on_line` callback); `action_complete` at lines 571–578 carries `output_preview` (last 2000 chars of output)
+
+### Event Persistence
+- `scripts/little_loops/fsm/persistence.py:455` — `get_loop_history()` module-level function; delegates to `StatePersistence.read_events()`
+- `scripts/little_loops/fsm/persistence.py:198` — `StatePersistence.read_events()`: opens `<loops_dir>/.running/<loop_name>.events.jsonl`, reads every non-empty line as JSON, returns full unfiltered list
+
+### CLI Registration
+- `scripts/little_loops/cli/loop/__init__.py:194-199` — `--tail` registered as `type=int, default=50`; `--verbose` as `store_true`
+
 
 ### Tests
-- `scripts/tests/test_ll_loop_commands.py` — `TestHistoryTail` class (line 182): verify existing tests pass; add new test for multi-line shell output scenario
+- `scripts/tests/test_ll_loop_commands.py:298` — `TestHistoryTail` class (6 tests, lines 298–459): `test_history_tail_limits_output`, `test_history_tail_zero_shows_all`, `test_history_tail_exceeds_events_shows_all`, `test_history_default_tail_shows_all_small`, `test_history_tail_preserves_chronological_order`, `test_history_tail_with_empty_events`; all use `transition` events only — none test the `action_output` suppression scenario, confirming the regression test gap
+- `scripts/tests/test_ll_loop_commands.py:251` — `TestCmdHistory` class: lower-level fixture-based tests for JSONL reading and basic tail slicing
+- `scripts/tests/test_ll_loop_display.py:989` — Constructs inline `action_output` event dicts (`{"event": "action_output", "line": "..."}`) fed to a `MockExecutor`; model for building the new regression test's event fixture
+
+### Similar Patterns
+- `scripts/little_loops/cli/loop/_helpers.py:379-384` — filter-then-limit analog: filters blank lines from `output_preview`, then takes `lines[-8:]`; same ordering semantics as the fix (filter first, then slice)
 
 ### Documentation
 - N/A — no docs reference the `--tail` behavior explicitly
@@ -108,7 +123,7 @@ Alternatively, raise the default `--tail` to 500 as a minimal fix, though that d
 - `ll-loop history <name>` with default `--tail 50` shows events spanning all iterations (not just the last 1–3) when shell actions produce multi-line stdout
 - `action_output` events do not count toward `--tail N` unless `--verbose` is passed
 - `ll-loop history <name> --verbose` continues to include `action_output` events, and `--tail` counts them as before (consistent with verbose mode intent)
-- Existing tests in `TestHistoryTail` (`test_ll_loop_commands.py:182`) still pass
+- Existing tests in `TestHistoryTail` (`test_ll_loop_commands.py:298`) still pass
 
 ## Impact
 
@@ -134,9 +149,26 @@ Alternatively, raise the default `--tail` to 500 as a minimal fix, though that d
 ## Session Log
 - `/ll:capture-issue` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 - `/ll:format-issue` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6406d067-9f2b-4081-b0e0-1751ae6a7a77.jsonl`
+- `/ll:refine-issue` - 2026-03-09T02:54:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/034997b3-41e2-48ee-bdaf-5539ad1c7e26.jsonl`
+- `/ll:confidence-check` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/abdd7012-f0c7-4c87-81d6-6affd6308d36.jsonl`
+- `/ll:ready-issue` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/40103391-446e-42b3-9937-9a478fff21ca.jsonl`
 
 ---
 
+## Resolution
+
+**Fixed** | Completed: 2026-03-08 | Priority: P3
+
+### Changes Made
+
+- `scripts/little_loops/cli/loop/info.py` — `cmd_history()`: filter out `action_output` events before applying the `--tail` slice in non-verbose mode
+- `scripts/tests/test_ll_loop_commands.py` — Added `test_history_tail_excludes_action_output_from_count` and `test_history_tail_verbose_counts_action_output` regression tests
+
+### Verification
+
+- All 8 `TestHistoryTail` tests pass
+- Linting clean
+
 ## Status
 
-**Open** | Created: 2026-03-08 | Priority: P3
+**Completed** | Created: 2026-03-08 | Priority: P3

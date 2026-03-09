@@ -458,6 +458,99 @@ class TestHistoryTail:
         captured = capsys.readouterr()
         assert "No history" in captured.out
 
+    def test_history_tail_excludes_action_output_from_count(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """action_output events should not count toward --tail in non-verbose mode.
+
+        Regression test for BUG-657: when a shell action produces many output lines,
+        those action_output events should not consume the tail budget, hiding earlier
+        iterations from the user.
+        """
+        running_dir = tmp_path / ".loops" / ".running"
+        running_dir.mkdir(parents=True)
+        events_file = running_dir / "test-loop.events.jsonl"
+
+        # Simulate 3 iterations, each with 1 visible event + 10 action_output events.
+        # Total raw events: 3 * 11 = 33. With --tail 5 applied to raw events (old bug),
+        # only the last 5 raw events (all action_output from iter 3) would be kept,
+        # hiding iter 1 and iter 2. With the fix, tail applies to visible events only.
+        events = []
+        for i in range(1, 4):
+            events.append(
+                {"event": "state_enter", "ts": f"2026-01-15T10:00:{i:02d}", "state": f"iter{i}", "iteration": i}
+            )
+            for j in range(10):
+                events.append(
+                    {"event": "action_output", "ts": f"2026-01-15T10:00:{i:02d}", "line": f"output line {j}"}
+                )
+
+        with open(events_file, "w") as f:
+            for event in events:
+                f.write(json.dumps(event) + "\n")
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "--tail", "5"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+
+        # All 3 iterations should be visible (3 visible events <= tail 5)
+        assert "iter1" in captured.out
+        assert "iter2" in captured.out
+        assert "iter3" in captured.out
+        # action_output lines should NOT appear in non-verbose mode
+        assert "output line" not in captured.out
+
+    def test_history_tail_verbose_counts_action_output(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """In verbose mode, action_output events count toward --tail as before."""
+        running_dir = tmp_path / ".loops" / ".running"
+        running_dir.mkdir(parents=True)
+        events_file = running_dir / "test-loop.events.jsonl"
+
+        # 2 iterations: 1 state_enter + 3 action_output each = 8 raw events total
+        events = []
+        for i in range(1, 3):
+            events.append(
+                {"event": "state_enter", "ts": f"2026-01-15T10:00:{i:02d}", "state": f"iter{i}", "iteration": i}
+            )
+            for j in range(3):
+                events.append(
+                    {"event": "action_output", "ts": f"2026-01-15T10:00:{i:02d}", "line": f"line{i}-{j}"}
+                )
+
+        with open(events_file, "w") as f:
+            for event in events:
+                f.write(json.dumps(event) + "\n")
+
+        monkeypatch.chdir(tmp_path)
+        # --tail 3 in verbose mode: only last 3 raw events (all action_output from iter2)
+        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "--tail", "3", "--verbose"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        captured = capsys.readouterr()
+
+        # iter1 should NOT appear (its events are beyond tail=3 in verbose/raw mode)
+        assert "iter1" not in captured.out
+        # action_output lines from iter2 should appear
+        assert "line2-0" in captured.out
+        assert "line2-1" in captured.out
+        assert "line2-2" in captured.out
+
 
 class TestCmdShow:
     """Tests for show command."""

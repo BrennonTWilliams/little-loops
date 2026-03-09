@@ -229,6 +229,8 @@ def cmd_history(
     tail = getattr(args, "tail", 50)
     verbose = getattr(args, "verbose", False)
     w = terminal_width()
+    if not verbose:
+        events = [e for e in events if e.get("event") != "action_output"]
     for event in events[-tail:]:
         line = _format_history_event(event, verbose, w)
         if line is not None:
