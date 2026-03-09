@@ -63,7 +63,7 @@ Without this feature, this requires a monolithic loop YAML duplicating all state
 5. **Persistence**: `PersistentExecutor` should record which sub-loop is active for crash recovery
 6. **CLI/help**: Update `ll-loop` docs and `create-loop` skill to expose the `loop:` state type as a paradigm option
 
-## API / Interface Changes
+## API/Interface
 
 `StateConfig` gains a new optional field:
 
@@ -87,15 +87,57 @@ class StateConfig:
 - **Readability**: Large monolithic loops with 15+ states become hard to reason about; decomposition into named sub-loops mirrors function decomposition in code
 - **Testability**: Sub-loops can be tested independently before composition
 
-## Related Files
+## Acceptance Criteria
 
-- `scripts/little_loops/fsm/schema.py` — `StateConfig`, `FSMLoop` dataclasses
-- `scripts/little_loops/fsm/fsm-loop-schema.json` — JSON Schema for YAML validation
-- `scripts/little_loops/fsm/executor.py` — `FSMExecutor._execute_state()`, main loop
-- `scripts/little_loops/fsm/validation.py` — `validate_fsm()`, reachability BFS
-- `scripts/little_loops/fsm/persistence.py` — `PersistentExecutor` for crash recovery
-- `scripts/little_loops/fsm/compilers.py` — paradigm compilers
-- `.loops/issue-refinement-git.yaml` — example loop that could become a sub-loop
+- [ ] A state with `loop: <name>` validates against `fsm-loop-schema.json` without error
+- [ ] `FSMExecutor` executes a sub-loop state by loading `.loops/<name>.yaml`
+- [ ] Sub-loop `success` terminal verdict routes parent to `on_success` state
+- [ ] Sub-loop `failure` terminal verdict routes parent to `on_failure` state
+- [ ] With `context_passthrough: true`, parent context variables are available in the child executor
+- [ ] Child `capture` variables are merged back into parent context after sub-loop completes
+- [ ] A state with both `loop:` and `action:` set fails YAML schema validation (mutually exclusive)
+- [ ] Cycle detection: loop A → loop B → loop A raises a validation error before execution
+- [ ] `PersistentExecutor` records the active sub-loop name so crash recovery can resume correctly
+- [ ] `create-loop` skill exposes the `loop:` state type as a selectable paradigm option
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/fsm/schema.py` — add `loop: str | None` and `context_passthrough: bool` to `StateConfig`
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — add `loop`, `context_passthrough` to `stateConfig`; enforce mutual exclusion with `action`/`action_type` via `oneOf`/`if-then`
+- `scripts/little_loops/fsm/executor.py` — `_execute_state()`: detect `state.loop is not None`, load child YAML, instantiate child `FSMExecutor`, run to completion, map verdict
+- `scripts/little_loops/fsm/validation.py` — extend `validate_fsm()` with cross-loop reachability and cycle detection (DFS across loop references)
+- `scripts/little_loops/fsm/persistence.py` — `PersistentExecutor`: record active sub-loop name in persisted state
+- `scripts/little_loops/fsm/compilers.py` — update if paradigm compilers need to emit `loop:` state type
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/__init__.py` — if `StateConfig` is re-exported, update public API
+- Any test files that construct `StateConfig` directly will need the new optional fields
+
+### Similar Patterns
+- `executor.py` — `action_type: shell` branch is the model for dispatching on state type
+- `validation.py` — existing BFS reachability is the model for cycle detection
+
+### Tests
+- `scripts/tests/test_ll_loop.py` (or similar) — add tests for: sub-loop execution, context passthrough, verdict mapping, mutual exclusion validation, cycle detection
+
+### Documentation
+- `skills/create-loop/SKILL.md` — expose `loop:` state type as a paradigm option
+- `.loops/` — existing loop YAMLs serve as examples for sub-loop composition
+
+### Configuration
+- `fsm-loop-schema.json` — additive schema change (non-breaking)
+
+## Impact
+
+- **Priority**: P3 — Useful composability improvement; not blocking any current workflows
+- **Effort**: Medium — Schema, executor dispatch, context passthrough, cycle detection, persistence update, and skill update; each step is bounded but there are 6+ files to touch
+- **Risk**: Medium — Executor changes are central to loop runtime; incorrect context merging or cycle detection gaps could cause silent failures; additive schema change is non-breaking for existing loops
+- **Breaking Change**: No — `loop:` and `context_passthrough:` are new optional fields; all existing loop YAMLs remain valid
+
+## Labels
+
+`fsm`, `loop`, `feature`, `architecture`
 
 ---
 
@@ -105,3 +147,4 @@ class StateConfig:
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/676e5b84-4af9-4667-8d7e-99c72a1adfe0.jsonl`
+- `/ll:format-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39efb4b0-1abf-4d76-b4be-ab46e1cf469e.jsonl`
