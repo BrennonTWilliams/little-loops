@@ -16,7 +16,7 @@ outcome_confidence: 100
 ## Location
 
 - **File**: `scripts/little_loops/fsm/concurrency.py`
-- **Line(s)**: 220–230 (at scan commit: 12a6af0)
+- **Line(s)**: 235–265 (updated from 220–230 at scan commit: 12a6af0)
 - **Anchor**: `in class ScopeLockManager, methods _scopes_overlap() and _paths_overlap()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/12a6af03c58a3b8f355e265a895b3950db89b66c/scripts/little_loops/fsm/concurrency.py#L220-L230)
 - **Code**:
@@ -36,7 +36,7 @@ def _paths_overlap(self, path1: str, path2: str) -> bool:
 
 ## Current Behavior
 
-Every call to `_scopes_overlap` resolves all scope paths from strings to absolute paths via filesystem stat. The `_normalize_path` method (line 252) also calls `Path(path).resolve()` at scope-acquire time; the resolved values are available at acquire time but are not reused in `_paths_overlap`.
+Every call to `_scopes_overlap` resolves all scope paths from strings to absolute paths via filesystem stat. The `_normalize_path` method (line 267) also calls `Path(path).resolve()` at scope-acquire time; the resolved values are available at acquire time but are not reused in `_paths_overlap`.
 
 ## Expected Behavior
 
@@ -73,7 +73,7 @@ resolved_scopes = [str(Path(p).resolve()) for p in scope]
 - `scripts/little_loops/cli/loop/run.py` — imports `LockManager` for scope-based locking during loop execution
 
 ### Similar Patterns
-- `ScopeLockManager._normalize_path()` in `concurrency.py` — already calls `Path(path).resolve()`; pre-resolution in `acquire()` can reuse this existing method directly rather than adding a new one
+- `ScopeLockManager._normalize_path()` in `concurrency.py` (line 267) — already calls `Path(path).resolve()`; pre-resolution in `acquire()` can reuse this existing method directly rather than adding a new one
 
 ### Tests
 - `scripts/tests/test_concurrency.py` — existing tests cover `_paths_overlap` and `_scopes_overlap`; no new tests needed
@@ -104,6 +104,18 @@ resolved_scopes = [str(Path(p).resolve()) for p in scope]
 
 Verified 2026-03-07 — **VALID**. Code at `concurrency.py` lines 220–250 matches the quoted snippets exactly. `_normalize_path()` is confirmed at line 252; `acquire()` at line 96 already calls it to produce resolved strings, but `_paths_overlap()` re-calls `Path.resolve()` anyway. No files have moved since the scan commit (12a6af0). Issue accurately describes the current state.
 
+## Resolution
+
+**Fixed** in `scripts/little_loops/fsm/concurrency.py`:
+
+- Added pre-normalization of incoming `scope` in `find_conflict()` once before the loop (O(n) stat calls vs previous O(n*m))
+- Added pre-normalization of `lock.scope` once per lock file read (defensive; lock files from `acquire()` are already absolute, but handles legacy/test files with relative paths)
+- Updated `_paths_overlap()` to skip `Path.resolve()` since both arguments are always pre-resolved absolute strings by the time it is called
+
+Reduces stat calls from O(k×n×m) to O(k×(n+m)) where k = number of active locks, n/m = scope list sizes.
+
+All 30 existing tests pass.
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
 - `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a043191-c6ab-48e4-9698-8dbd73149442.jsonl`
@@ -111,7 +123,9 @@ Verified 2026-03-07 — **VALID**. Code at `concurrency.py` lines 220–250 matc
 - `/ll:confidence-check` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6a043191-c6ab-48e4-9698-8dbd73149442.jsonl`
 - `/ll:format-issue` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10327983-1fed-40b5-b8f8-5574c5ed03c4.jsonl`
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `_paths_overlap()` re-calls `Path.resolve()` at `concurrency.py:220-230`; `_normalize_path()` at line 252 not reused in comparison
+- `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cfc4010-168d-48bc-b973-f34552693982.jsonl`
+- `/ll:manage-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 
 ## Status
 
-**Open** | Created: 2026-03-07 | Priority: P4
+**Completed** | Created: 2026-03-07 | Resolved: 2026-03-09 | Priority: P4

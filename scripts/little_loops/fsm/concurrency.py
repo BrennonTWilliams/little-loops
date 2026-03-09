@@ -163,6 +163,9 @@ class LockManager:
         if not self.running_dir.exists():
             return None
 
+        # Normalize once before the comparison loop to avoid O(n*m) stat calls
+        normalized_scope = [self._normalize_path(p) for p in scope]
+
         for lock_file in self.running_dir.glob("*.lock"):
             try:
                 with open(lock_file) as f:
@@ -175,8 +178,10 @@ class LockManager:
                     lock_file.unlink(missing_ok=True)
                     continue
 
-                # Check for overlap
-                if self._scopes_overlap(scope, lock.scope):
+                # Normalize lock scope (lock files from acquire() are already
+                # absolute, but normalize defensively in case of legacy files)
+                lock_scope = [self._normalize_path(p) for p in lock.scope]
+                if self._scopes_overlap(normalized_scope, lock_scope):
                     return lock
 
             except (json.JSONDecodeError, KeyError, FileNotFoundError):
@@ -241,9 +246,12 @@ class LockManager:
         return False
 
     def _paths_overlap(self, path1: str, path2: str) -> bool:
-        """Check if two paths overlap (same, or one contains the other)."""
-        p1 = Path(path1).resolve()
-        p2 = Path(path2).resolve()
+        """Check if two paths overlap (same, or one contains the other).
+
+        Assumes paths are already normalized (pre-resolved absolute strings).
+        """
+        p1 = Path(path1)
+        p2 = Path(path2)
 
         # Same path
         if p1 == p2:
