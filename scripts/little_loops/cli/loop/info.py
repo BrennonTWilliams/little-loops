@@ -564,6 +564,8 @@ def _render_2d_diagram(
             x += box_width[sname]
 
     # Place off-path states below, centered under their first neighbor
+    off_right_edge: int = 0  # right edge of last placed off-path state; 0 = none placed
+    gap = 4
     for s in off_path:
         neighbor = None
         for src, dst, _ in branches + back_edges:
@@ -575,10 +577,15 @@ def _render_2d_diagram(
                 break
         if neighbor:
             nc = col_center[neighbor]
-            col_start[s] = max(2, nc - box_width[s] // 2)
+            ideal_start = max(2, nc - box_width[s] // 2)
         else:
-            col_start[s] = 2
-        col_center[s] = col_start[s] + box_width[s] // 2
+            ideal_start = 2
+
+        # Shift right to avoid overlapping an already-placed off-path state
+        actual_start = ideal_start if off_right_edge == 0 else max(ideal_start, off_right_edge + gap)
+        col_start[s] = actual_start
+        col_center[s] = actual_start + box_width[s] // 2
+        off_right_edge = actual_start + box_width[s]
 
     total_width = x + 4
     for s in off_path:
@@ -732,12 +739,23 @@ def _render_2d_diagram(
             continue
 
         # Find anchor state on main path
+        # Pass 1: direct incoming edge from main-path (anchor → off_s)
         anchor = None
+        has_direct_incoming = False
         for src, dst, _ in state_edges:
-            other = dst if src == off_s else src
-            if other in main_path_set:
-                anchor = other
+            if src in main_path_set and dst == off_s:
+                anchor = src
+                has_direct_incoming = True
                 break
+
+        # Pass 2: fallback — any connection to a main-path state
+        if not anchor:
+            for src, dst, _ in state_edges:
+                other = dst if src == off_s else src
+                if other in main_path_set:
+                    anchor = other
+                    break
+
         if not anchor:
             anchor = main_path[0]
 
@@ -749,7 +767,9 @@ def _render_2d_diagram(
         for src, dst, label in state_edges:
             if src == anchor and dst == off_s:
                 down_labels.append(label)
-            elif src == off_s and dst == anchor:
+            elif src == off_s and dst == anchor and has_direct_incoming:
+                # Only use vertical up-connector when anchor also directly leads here.
+                # Pure back-edges (no direct incoming) go to outgoing → horizontal ◄ arrow.
                 up_labels.append(label)
             else:
                 outgoing.append((src, dst, label))
@@ -882,6 +902,7 @@ def _render_2d_diagram(
                 for i, line in enumerate(off_content):
                     br = box_base + i + 1
                     off_grid[br][bx] = _bc_off("\u2502")
+                    off_grid[br][bx + 1] = " "  # restore space overwritten by inter-state arrows
                     off_grid[br][bx + bw - 1] = _bc_off("\u2502")
                     if is_highlighted and i == 0:
                         colored_line = colorize(line, f"{highlight_color};1")

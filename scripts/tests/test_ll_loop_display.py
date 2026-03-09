@@ -854,6 +854,66 @@ class TestRenderFsmDiagram:
             f"Expected ◄ left-going arrow on fix-tests name row: {fix_tests_name_line!r}"
         )
 
+    def test_linear_off_path_chain_all_states_visible(self) -> None:
+        """All states in a linear off-path chain appear as distinct non-overlapping boxes.
+
+        Regression for BUG-658: fix/check_commit/commit form a chain below evaluate,
+        all back-anchored to the same main-path state. Previously all three collapsed
+        to the same column and overwrote each other.
+        """
+        fsm = self._make_fsm(
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="check",
+                    on_success="done",
+                    on_failure="fix",
+                    on_partial="evaluate",
+                ),
+                "fix": StateConfig(action="fix", next="check_commit"),
+                "check_commit": StateConfig(
+                    action="check-c",
+                    on_success="commit",
+                    on_failure="evaluate",
+                ),
+                "commit": StateConfig(action="commit", next="evaluate"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        lines = result.split("\n")
+
+        # All 4 non-terminal states must appear in a box line
+        for state in ("evaluate", "fix", "check_commit", "commit"):
+            box_lines = [ln for ln in lines if state in ln and "\u2502" in ln]
+            assert box_lines, f"{state!r} should be rendered in a box with │ borders"
+
+        # All three off-path states should appear on a common row (side-by-side, not stacked).
+        # We look for a single line that contains all three names alongside box-border │ chars.
+        shared_row = next(
+            (
+                i
+                for i, ln in enumerate(lines)
+                if "fix" in ln and "check_commit" in ln and "commit" in ln and "\u2502" in ln
+            ),
+            None,
+        )
+        assert shared_row is not None, (
+            "Expected a single row containing fix, check_commit, and commit "
+            "(side-by-side layout); none found. Full diagram:\n" + result
+        )
+
+        # They must be at non-overlapping horizontal positions (left-to-right order).
+        # Search for "commit" *after* "check_commit" ends to avoid false match.
+        row = lines[shared_row]
+        fix_pos = row.index("fix")
+        cc_pos = row.index("check_commit")
+        commit_pos = row.index("commit", cc_pos + len("check_commit"))
+        assert fix_pos < cc_pos < commit_pos, (
+            f"Off-path states should appear left-to-right; "
+            f"fix={fix_pos}, check_commit={cc_pos}, commit={commit_pos}"
+        )
+
     def test_highlighted_state_uses_configured_color(self) -> None:
         """highlight_state box uses the configured ANSI color; other boxes do not."""
         import little_loops.cli.output as output_mod
