@@ -1028,6 +1028,28 @@ class TestMaintainMode:
         # Calls: start.sh, check.sh, check.sh (restart), check.sh (restart)
         assert result.terminated_by == "max_iterations"
 
+    def test_maintain_route_event_emitted(self) -> None:
+        """Restart in maintain mode emits a route event with reason='maintain'."""
+        events: list[dict[str, Any]] = []
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            maintain=True,
+            max_iterations=2,
+            states={
+                "check": StateConfig(action="check.sh", on_success="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        executor = FSMExecutor(fsm, event_callback=events.append, action_runner=mock_runner)
+        executor.run()
+
+        route_events = [e for e in events if e.get("event") == "route"]
+        assert any(e.get("reason") == "maintain" for e in route_events)
+
 
 class TestEvaluators:
     """Tests for evaluator integration."""

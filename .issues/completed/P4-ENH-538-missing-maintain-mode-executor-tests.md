@@ -64,8 +64,8 @@ def test_maintain_route_event_emitted(self, mock_runner):
 _Added by `/ll:refine-issue` — Existing maintain mode test coverage:_
 
 **Partial coverage confirmed (verified 2026-03-03):**
-- `scripts/tests/test_fsm_executor.py:934` — `TestMaintainMode` class exists and covers: (1) terminal state with `maintain=True` causes restart (`test_maintain_restarts_after_terminal`), (2) `on_maintain` target overrides `initial` (`test_maintain_uses_on_maintain_target`)
-- `scripts/tests/test_fsm_executor.py:2341` — `TestMaintainModeExecutor` class also exists with `test_maintain_mode_restarts_on_null_transition` covering (3) `max_iterations` still terminates
+- `scripts/tests/test_fsm_executor.py:975` — `TestMaintainMode` class exists and covers: (1) terminal state with `maintain=True` causes restart (`test_maintain_restarts_after_terminal`), (2) `on_maintain` target overrides `initial` (`test_maintain_uses_on_maintain_target`)
+- `scripts/tests/test_fsm_executor.py:2396` — `TestMaintainModeExecutor` class also exists with `test_maintain_mode_restarts_on_null_transition` covering (3) `max_iterations` still terminates
 
 **Only scenario 4 is missing**: the emitted `route` event with `reason: "maintain"` (`test_maintain_route_event_emitted`). Scope is now a single test case, not a full class.
 
@@ -77,7 +77,7 @@ _Added by `/ll:refine-issue` — Existing maintain mode test coverage:_
 
 ## Implementation Steps
 
-1. Open `scripts/tests/test_fsm_executor.py:840` (`TestMaintainMode`)
+1. Open `scripts/tests/test_fsm_executor.py:975` (`TestMaintainMode`)
 2. Add `test_maintain_route_event_emitted` using the existing `MockActionRunner` fixture pattern
 3. Run `python -m pytest scripts/tests/test_fsm_executor.py -k "route_event_emitted"` to confirm it passes
 
@@ -111,6 +111,7 @@ _Added by `/ll:refine-issue` — Existing maintain mode test coverage:_
 - `/ll:map-dependencies` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2d766fe-2cc3-467b-a046-6a331a5941d9.jsonl` — Added Blocks FEAT-543 (docs overlap, auto)
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: `executor.py:385–400` maintain branch confirmed; `TestMaintainMode:934` and `TestMaintainModeExecutor:2341` confirmed present; `test_maintain_route_event_emitted` still absent
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - Manual assessment per v2.0 ENH framework — Readiness: 100/100 (PROCEED), Outcome Confidence: 100/100 (HIGH CONFIDENCE)
+- `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3048e96b-1730-44aa-8df6-029c8217cf8b.jsonl` — CORRECTED: line drift on TestMaintainMode (934→975), TestMaintainModeExecutor (2341→2396), executor.py maintain branch (~385→424); test_maintain_route_event_emitted still absent
 
 ## Blocks
 
@@ -118,6 +119,13 @@ _Added by `/ll:refine-issue` — Existing maintain mode test coverage:_
 
 ---
 
+## Resolution
+
+Added `test_maintain_route_event_emitted` to `TestMaintainMode` in `scripts/tests/test_fsm_executor.py`. The test verifies that restarting in maintain mode emits a `route` event with `reason="maintain"`. Test passes (1 passed in 1.32s).
+
+## Session Log (continued)
+- `/ll:manage-issue` - 2026-03-09T00:00:00Z - Added `test_maintain_route_event_emitted` to `TestMaintainMode`; test passes.
+
 ## Status
 
-**Open** | Created: 2026-03-03 | Priority: P4
+**Completed** | Created: 2026-03-03 | Completed: 2026-03-09 | Priority: P4
