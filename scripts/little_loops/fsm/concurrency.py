@@ -23,6 +23,21 @@ from typing import Any
 RUNNING_DIR = ".running"
 
 
+def _process_alive(pid: int) -> bool:
+    """Check if a process is still running.
+
+    Returns True if alive (or alive but unreadable due to EPERM),
+    False only if process does not exist (ESRCH).
+    """
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError as e:
+        if e.errno == errno.ESRCH:
+            return False  # No such process
+        return True  # EPERM or other: process exists, no permission
+
+
 def _iso_now() -> str:
     """Return current time as ISO8601 string."""
     return datetime.now(UTC).isoformat()
@@ -255,10 +270,4 @@ class LockManager:
 
     def _process_alive(self, pid: int) -> bool:
         """Check if process is still running."""
-        try:
-            os.kill(pid, 0)
-            return True
-        except OSError as e:
-            if e.errno == errno.ESRCH:
-                return False  # No such process
-            return True  # EPERM or other: process exists, no permission
+        return _process_alive(pid)

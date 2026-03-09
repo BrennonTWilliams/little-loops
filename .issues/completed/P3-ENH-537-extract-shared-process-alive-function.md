@@ -21,7 +21,7 @@ An identical 6-line `os.kill(pid, 0)` / `except OSError` function exists in two 
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/fsm/concurrency.py#L252-L258)
 
 - **File**: `scripts/little_loops/cli/loop/lifecycle.py`
-- **Line(s)**: 30–38 (at scan commit: 47c81c8; current HEAD)
+- **Line(s)**: 36–44 (at scan commit: 47c81c8; current HEAD)
 - **Anchor**: `module-level function _process_alive()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/cli/loop/lifecycle.py#L28-L34)
 
@@ -148,6 +148,7 @@ from little_loops.fsm.concurrency import _process_alive
 `enhancement`, `ll-loop`, `refactor`, `concurrency`, `scan-codebase`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c8b2b96f-f861-4b5d-90ff-b3c03d39592f.jsonl` — CORRECTED: updated lifecycle.py line ref 30–38 → 36–44
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: duplication confirmed in concurrency.py:256 and lifecycle.py:31
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `_process_alive` duplication confirmed at `concurrency.py:256` and `lifecycle.py:36`
 
@@ -165,6 +166,15 @@ from little_loops.fsm.concurrency import _process_alive
 
 ---
 
+## Resolution
+
+**Completed** | 2026-03-09
+
+- Extracted `_process_alive` as module-level function in `concurrency.py` (line 26) with EPERM/ESRCH fix
+- `LockManager._process_alive` now delegates to the module-level function
+- `lifecycle.py` imports `_process_alive` from `concurrency.py`; local definition removed
+- All 104 tests pass
+
 ## Status
 
-**Open** | Created: 2026-03-03 | Priority: P3
+**Completed** | Created: 2026-03-03 | Priority: P3

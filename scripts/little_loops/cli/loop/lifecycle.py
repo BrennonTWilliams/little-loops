@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import atexit
-import errno
 import os
 import signal
 import time
@@ -16,6 +15,7 @@ from little_loops.cli.loop._helpers import (
     register_loop_signal_handlers,
     run_background,
 )
+from little_loops.fsm.concurrency import _process_alive
 from little_loops.logger import Logger
 
 
@@ -31,17 +31,6 @@ def _read_pid_file(pid_file: Path) -> int | None:
         return int(pid_file.read_text().strip())
     except (ValueError, OSError):
         return None
-
-
-def _process_alive(pid: int) -> bool:
-    """Check if a process is still running."""
-    try:
-        os.kill(pid, 0)
-        return True
-    except OSError as e:
-        if e.errno == errno.ESRCH:
-            return False  # No such process
-        return True  # EPERM or other: process exists, no permission
 
 
 def cmd_status(
