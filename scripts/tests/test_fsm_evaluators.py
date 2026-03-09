@@ -509,6 +509,25 @@ class TestEvaluateDispatcher:
         assert result.verdict == "error"
         assert "Cannot parse output" in result.details["error"]
 
+    def test_dispatch_convergence_maximize_target_reached(self) -> None:
+        """convergence with direction='maximize' returns 'target' when current >= target."""
+        config = EvaluateConfig(type="convergence", target=10.0, direction="maximize", tolerance=0)
+        ctx = InterpolationContext()
+        result = evaluate(config, "10.0", 0, ctx)
+        assert result.verdict == "target"
+
+    def test_dispatch_convergence_maximize_progress(self) -> None:
+        """convergence with direction='maximize' returns 'progress' when current improves."""
+        config = EvaluateConfig(
+            type="convergence",
+            target=10.0,
+            direction="maximize",
+            previous="${prev.output}",
+        )
+        ctx = InterpolationContext(prev={"output": "5"})
+        result = evaluate(config, "8", 0, ctx)
+        assert result.verdict == "progress"
+
     def test_dispatch_convergence_none_target_raises(self) -> None:
         """convergence with target=None raises ValueError instead of silently using 0.0."""
         config = EvaluateConfig(type="convergence")  # target defaults to None

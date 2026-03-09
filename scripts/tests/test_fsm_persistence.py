@@ -188,6 +188,12 @@ class TestStatePersistence:
         assert events[1]["event"] == "state_enter"
         assert events[1]["state"] == "check"
 
+    def test_append_event_without_initialize_raises(self, tmp_path: Path) -> None:
+        """append_event() raises FileNotFoundError when parent directory does not exist."""
+        persistence = StatePersistence("test-loop", tmp_path / "nonexistent_dir")
+        with pytest.raises(FileNotFoundError):
+            persistence.append_event({"type": "test"})
+
     def test_read_events_returns_empty_if_missing(self, tmp_loops_dir: Path) -> None:
         """read_events() returns empty list if no file exists."""
         persistence = StatePersistence("test-loop", tmp_loops_dir)
