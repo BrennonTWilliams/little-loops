@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-09
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 78
 ---
 
 # FEAT-659: Hierarchical FSM Loops (Sub-Loop States)
@@ -47,7 +49,13 @@ The child FSM's state transitions, verdicts, and logs remain encapsulated — th
 
 ## Use Case
 
-A top-level `code-review` loop that:
+**Who**: A loop author (developer) writing multi-step automation workflows with ll-loop.
+
+**Context**: They have already written focused, well-tested sub-loops (e.g., `lint-fix.yaml`, `test-suite.yaml`) and want to compose them into a higher-level `code-review` loop without duplicating state logic.
+
+**Goal**: Define a `code-review` loop that sequences sub-loops and routes based on their outcomes — without copy-pasting states or relying on opaque shell subprocess chaining.
+
+**Outcome**: A top-level `code-review` loop that:
 1. Runs `ll-loop run lint-fix` as a sub-loop (state: `fix_lint`)
 2. On success, runs `ll-loop run test-suite` as a sub-loop (state: `run_tests`)
 3. On success, reaches `done`
@@ -148,3 +156,5 @@ class StateConfig:
 ## Session Log
 - `/ll:capture-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/676e5b84-4af9-4667-8d7e-99c72a1adfe0.jsonl`
 - `/ll:format-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39efb4b0-1abf-4d76-b4be-ab46e1cf469e.jsonl`
+- `/ll:confidence-check` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d679cf53-9ecc-49cd-83db-5c6e64b94944.jsonl`
+- `/ll:format-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db6fef1c-59c1-4668-b211-889ca671a572.jsonl`
