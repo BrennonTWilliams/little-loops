@@ -470,4 +470,5 @@ The `simulate` command accepts `--scenario` to auto-select verdicts instead of p
 - [FSM Loop System Design](../generalized-fsm-loop.md) — Internal FSM architecture, schema, evaluators, variable interpolation, and compiler details
 - [Configuration Reference](../reference/CONFIGURATION.md) — Project-wide settings (test commands, paths, etc.) used by loop actions
 - `/ll:create-loop` — Interactive loop creation wizard
+- `/ll:review-loop` — Audit an existing loop for quality, correctness, and best practices
 - `ll-loop --help` — Full CLI reference for all loop subcommands

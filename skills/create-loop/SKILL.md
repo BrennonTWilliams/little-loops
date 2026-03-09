@@ -248,6 +248,7 @@ If confirmed:
    Max iterations: <max>
 
    Run now with: ll-loop <name>
+   Tip: Run /ll:review-loop <name> to audit quality and best practices.
    ```
 
    On success with test issues (test ran but found problems):
@@ -263,6 +264,7 @@ If confirmed:
    You may want to review the configuration before running.
 
    Run now with: ll-loop <name>
+   Tip: Run /ll:review-loop <name> to audit quality and best practices.
    ```
 
    On validation failure:
