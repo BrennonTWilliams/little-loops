@@ -16,12 +16,12 @@ outcome_confidence: 93
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/info.py`
-- **Line(s)**: 62–84 (at scan commit: 47c81c8)
+- **Line(s)**: 215–237 (updated from 62–84 at scan commit: 47c81c8)
 - **Anchor**: `in function cmd_history()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/cli/loop/info.py#L62-L84)
 
 - **File**: `scripts/little_loops/cli/loop/__init__.py`
-- **Line(s)**: 127–131 (at scan commit: 47c81c8)
+- **Line(s)**: 189–197 (updated from 127–131 at scan commit: 47c81c8)
 - **Anchor**: `history_parser` argument definition
 - **Code**:
 ```python
@@ -109,8 +109,8 @@ In `cmd_history()`:
 - `ll-history` (`scripts/little_loops/cli/history.py`) — filtering patterns
 
 ### Tests
-- `scripts/tests/test_ll_loop_commands.py:135` (`TestCmdHistory` class) — add: `--event evaluate` filters to only evaluate events
-- `scripts/tests/test_ll_loop_commands.py:182` (`TestHistoryTail` class) — add: `--json` emits valid JSON lines; `--state check` filters to check-state events
+- `scripts/tests/test_ll_loop_commands.py:251` (`TestCmdHistory` class) — add: `--event evaluate` filters to only evaluate events
+- `scripts/tests/test_ll_loop_commands.py:298` (`TestHistoryTail` class) — add: `--json` emits valid JSON lines; `--state check` filters to check-state events
 - Pattern: `many_events_file` fixture at `conftest.py:296` provides 10-event JSONL file; follow `TestHistoryTail` pattern for filter tests
 
 ### Documentation
@@ -180,6 +180,7 @@ Update first — HIGH utility (debugging 200+ event logs is a real pain point), 
 ## Session Log
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no --event, --state, --json, --since flags
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: filters still absent; removed stale Blocked By ENH-539 (completed as duplicate of ENH-626)
+- `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bc8b254-8ac0-409d-b79d-9795de6dc39e.jsonl` — BLOCKED: ENH-537 and ENH-538 still active; corrected line numbers (info.py 62-84→215-237, __init__.py 127-131→189-197, test classes 135/182→251/298)
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test refs to `test_ll_loop_commands.py:101` (TestCmdHistory) and `:148` (TestHistoryTail)

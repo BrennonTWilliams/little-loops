@@ -1,60 +1,100 @@
-# Session Continuation: Refine BUG-616 Issue
+# Session Continuation: Debugging /ll:review-loop — FSM Flow Review Not Executing
 
 ## Conversation Summary
 
 ### Primary Intent
-Refine issue BUG-616 (`ready-issue` returns `CORRECTED` instead of `BLOCKED` when open blockers exist) with codebase research to fill knowledge gaps needed for implementation.
+Fix `/ll:review-loop` so that the FSM Flow Review (anti-pattern checks FA-1 through FA-6 + narrative) actually executes. Currently the model runs QC-1 through QC-7, sees zero findings, and jumps to summary — skipping the FSM logic analysis entirely.
 
 ### What Happened
-1. **Invoked `/ll:refine-issue BUG-616`** — read the issue file and launched 3 parallel research agents (codebase-locator, codebase-analyzer, codebase-pattern-finder)
-2. **Agent timeout issues** — background agents completed but task IDs expired before output could be captured; performed direct research manually to compensate
-3. **Direct codebase research** — searched across `commands/ready-issue.md`, `scripts/little_loops/output_parsing.py`, `scripts/little_loops/issue_manager.py`, `scripts/little_loops/parallel/worker_pool.py`, `scripts/little_loops/dependency_graph.py`, and test files
-4. **Key discovery** — Found that `commands/ready-issue.md:156` explicitly states "Open blockers are a WARNING, not a failure. The issue can still be marked READY" — this is the design decision that must change. Also found `output_parsing.py:23` `VALID_VERDICTS` tuple does not include `BLOCKED`.
-5. **Updated issue file** — Enriched Root Cause (with precise file:line refs), Implementation Steps (4 concrete steps across 2 files), and Integration Map (2 files to modify, 3 dependent callers, 2 similar patterns, 2 test files)
-6. **Appended session log** entry to the issue file
 
-### User Feedback
-No corrections or guidance provided during the session.
+**Phase 1 — Diagnosis (run 1, `review-loop-debug.txt`):**
+- Ran `/ll:review-loop issue-refinement-git`
+- Model ran QC-1→QC-7 (all clean), output "No findings." — Step 2c never reached
+- Root cause: model treats zero QC findings as "done" and skips Step 2c
+
+**Phase 2 — Fix attempt 1 (wording, run 2):**
+- Changed skip condition from vague "you want faster output" to unconditional
+- Added "Do not output findings yet" guard after QC-7
+- Result: identical failure
+
+**Phase 3 — Fix attempt 2 (structural, run 3):**
+- Moved FA-1 through FA-6 inline into Step 2b (same section as QC checks)
+- Added `### FSM Mental Model` section header between QC-7 and FA-1
+- Result: still failed — model narrated "QC-7 ✓ --- No Findings" and stopped
+
+**Phase 4 — Fix attempt 3 (naming, applied in this session, NOT YET TESTED):**
+- Root cause confirmed: the `FA-N` naming creates a semantic break. The model treats `QC-N` as the complete check sequence. When it hits `### FA-1` after `### QC-7`, it interprets this as a different phase and stops
+- Fix applied: renamed FA-1 through FA-6 → **QC-8 through QC-13** in `SKILL.md`
+- Removed the `### FSM Mental Model` section header (replaced with inline paragraph before QC-8) to eliminate the visual break
+- FA-N IDs preserved as `check_id` values in findings output (e.g., `check_id: FA-1`) for display/reference alignment with `reference.md`
 
 ### Errors and Resolutions
 | Error | How Fixed | User Feedback |
 |-------|-----------|---------------|
-| Background agents timed out / task IDs expired | Performed direct Grep/Read research on the same files | None |
-| One agent ID not found (`a899819b98c373576`) | Skipped; covered by manual research | None |
+| Step 2c always skipped when QC clean | Wording: added "always run", "do not output yet" | Still failed |
+| Step 2c always skipped | Structural: moved FA checks inline to Step 2b | Still failed |
+| FA checks still skipped despite being in Step 2b | Renamed FA-N to QC-8 through QC-13; removed section break | Not yet tested |
 
 ### Code Changes
-| File | Changes Made | Discussion Context |
-|------|--------------|-------------------|
-| `.issues/bugs/P2-BUG-616-ready-issue-returns-corrected-instead-of-blocked-when-open-blockers-exist.md` | Enriched Root Cause, Implementation Steps, Integration Map sections with codebase research findings; appended session log | Refine-issue research enrichment |
+| File | Changes Made |
+|------|--------------|
+| `skills/review-loop/SKILL.md` | Multiple iterations — current state: FA-1→FA-6 renamed to QC-8→QC-13 inline in Step 2b; mental model section header removed; Step 2c is narrative-only |
 
 ## Resume Point
 
 ### What Was Being Worked On
-BUG-616 refinement completed. User then requested `/ll:handoff`.
-
-### Direct Quote
-> User invoked `/ll:handoff` after the refinement was complete.
+Verifying whether the QC-8→QC-13 rename fixes the behavioral skip.
 
 ### Next Step
-The refined BUG-616 is ready for the next pipeline step:
-- Run `/ll:ready-issue BUG-616` to validate the enriched issue
-- Then `/ll:manage-issue` to implement (modify `commands/ready-issue.md` and `scripts/little_loops/output_parsing.py`)
-- BUG-617 should be implemented after BUG-616 (companion fix for sprint runner to handle BLOCKED verdict)
+Run `/ll:review-loop issue-refinement-git` and check whether the model narrates QC-8 through QC-13.
+
+**Expected output if fix works:**
+```
+- QC-7 ... ✓
+- QC-8 Spin Detection: evaluate — on_partial: evaluate (loops back), on_error: evaluate (loops back), no escape. WARNING.
+- QC-9 Missing Failure Terminal: only terminal is 'done', no failed/error state. WARNING.
+- QC-10 Unresetting Shared State: check_commit writes /tmp/issue-refinement-commit-count, no reset in initial state. WARNING.
+- QC-11 Monolithic Prompt State: fix state — count numbered steps...
+- QC-12 Unreachable States: all 5 states reachable. ✓
+- QC-13 Dead-End Non-Terminal: all have outbound transitions. ✓
+
+### FSM Flow Review: issue-refinement-git
+  **Issues to consider**
+  1. Spin risk on evaluate errors...
+  2. No explicit failure terminal...
+  3. /tmp counter never resets...
+```
+
+**If fix still fails, fallback plan:**
+Change the check format from `### QC-N: Name` section headers to a flat numbered list under a single header, e.g.:
+```markdown
+## All Checks (QC-1 through QC-13)
+Run each check in order. Record findings.
+
+**QC-1** max_iterations range: ...
+**QC-2** Missing on_error routing: ...
+...
+**QC-8** Spin detection: ...
+```
+Removing `###` section headers between checks may prevent the model from treating QC-8+ as a new phase.
 
 ## Important Context
 
+### Key Behavioral Insight
+The model has a strong prior: "`QC-N` prefix = quality check sequence." It cannot be overridden by instruction text ("always run", "do not output yet") — only by making the FA checks look identical to QC checks (same prefix, continuous numbering, no section breaks between them).
+
 ### Decisions Made
-- **Root cause is a design decision, not a bug in logic**: Line 156 of `ready-issue.md` explicitly says blockers are warnings only. The fix requires changing this policy.
-- **Two files need modification**: `commands/ready-issue.md` (verdict taxonomy + blocker policy) and `scripts/little_loops/output_parsing.py` (VALID_VERDICTS + extraction logic)
-- **Downstream callers already handle BLOCKED implicitly**: Both `issue_manager.py:474` and `worker_pool.py:321` check `not parsed["is_ready"]`, which will catch BLOCKED since `is_ready` stays False. Explicit BLOCKED handling (BUG-617) is still needed in sprint runner for `skipped_blocked` state.
+- **FA-N IDs preserved in check_id**: `reference.md` documents FA-1 through FA-6 by those names. SKILL.md now labels section headers QC-8 through QC-13, but the `check_id` in each finding still says `FA-1` through `FA-6`. This keeps the display consistent with reference.md.
+- **reference.md not changed**: The canonical FA-* definitions in `reference.md` are unchanged. Only `SKILL.md` uses the QC-N labels.
 
-### Gotchas Discovered
-- **`output_parsing.py` must also be updated** — the issue originally only mentioned `commands/ready-issue.md`, but the Python parsing layer at `VALID_VERDICTS` and `_extract_verdict_from_text()` also needs BLOCKED added or it will never be parsed
-- **Verdict priority order matters** — BLOCKED must be checked before READY/CORRECTED in the verdict taxonomy to ensure it overrides corrections
+### Loop Under Review
+`issue-refinement-git` — 5-state FSM: `evaluate → fix → check_commit → commit → done`
 
-### User-Specified Constraints
-None specified.
+Known issues the FA checks SHOULD surface (verified by manual inspection):
+1. `check_commit` writes `/tmp/issue-refinement-commit-count`, never reset → QC-10/FA-3
+2. `evaluate` has `on_partial: evaluate` AND `on_error: evaluate` — no escape → QC-8/FA-1
+3. Only terminal is `done` — no failure terminal → QC-9/FA-2
+4. `fix` is a multi-step prompt state — may trigger QC-11/FA-4
 
-### Patterns Being Followed
-- Following existing blocker check pattern at `commands/ready-issue.md:148-154` (already validates Blocked By entries, just needs to force verdict)
-- Following `dependency_graph.py:112-134` `get_ready_issues()` / `get_blocking_issues()` pattern for blocker-aware logic
+### User Preference
+User expects to see these as "Issues to consider" in the FSM Flow Review narrative block.

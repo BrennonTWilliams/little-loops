@@ -3,6 +3,8 @@ discovered_commit: 12a6af03c58a3b8f355e265a895b3950db89b66c
 discovered_branch: main
 discovered_date: 2026-03-07T05:53:04Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # ENH-631: FSM test coverage gaps — `direction="maximize"` via dispatcher; `append_event` without `initialize()`
@@ -83,11 +85,22 @@ def test_append_event_without_initialize_raises(tmp_path):
 
 `enhancement`, `testing`, `fsm`, `captured`
 
+## Resolution
+
+Added two test cases:
+
+1. `TestEvaluateDispatcher::test_dispatch_convergence_maximize_target_reached` and `test_dispatch_convergence_maximize_progress` in `scripts/tests/test_fsm_evaluators.py` — exercises the `direction="maximize"` path through the `evaluate()` dispatcher
+2. `TestStatePersistence::test_append_event_without_initialize_raises` in `scripts/tests/test_fsm_persistence.py` — verifies `FileNotFoundError` when `append_event()` is called without `initialize()`
+
+All 168 tests pass.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
+- `/ll:confidence-check` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ece04b0a-a2ce-4735-8217-fa4d505ba91b.jsonl`
 - `/ll:scan-codebase` - 2026-03-07T05:53:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7aaeac-a482-4a78-9f78-be55d16b7093.jsonl`
 - `/ll:format-issue` - 2026-03-07T23:20:17Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9e92f3b7-729f-49fa-923d-832b9db88827.jsonl`
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: new issue; `direction="maximize"` dispatcher test and `append_event`-without-`initialize()` test both confirmed absent
 
 ---
 
-**Open** | Created: 2026-03-07 | Priority: P5
+**Completed** | Created: 2026-03-07 | Completed: 2026-03-09 | Priority: P5

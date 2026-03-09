@@ -5,6 +5,8 @@ priority: P4
 status: active
 discovered_date: 2026-03-08
 discovered_by: capture-issue
+confidence_score: 85
+outcome_confidence: 78
 ---
 
 # ENH-654: FSM Diagram Active State Background Fill Highlight
@@ -102,6 +104,7 @@ No config schema changes are strictly required if `highlight_color` is automatic
 ## Session Log
 - `/ll:capture-issue` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb1dacf-d3dc-4461-88d7-450e60c8640a.jsonl`
 - `/ll:format-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a9e18cb-659a-48f7-9438-2e4c4fdddd25.jsonl`
+- `/ll:confidence-check` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a53c6fa-fc4b-421b-b487-38a43f4dff4a.jsonl`
 
 ## Status
 
