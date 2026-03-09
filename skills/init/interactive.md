@@ -10,9 +10,10 @@ Before starting the wizard, initialize these counters:
 
 ```
 STEP = 0      # Current round number (incremented before each round)
-TOTAL = 7     # Working total (mandatory rounds: 1, 2, 3a, 3b, 4, 6, 7)
-              # Updated after Round 3b (adds 1-3 for Rounds 5a/5b/5c)
-              # Updated after Round 7 (adds 3 if "Configure" selected)
+TOTAL = 6     # Working total (mandatory rounds: 1, 2, 3a, 4, 5a, 6)
+              # Round 3b is silent (automation always enabled, no user prompt)
+              # Round 5a always runs (auto_timeout always active); Round 5b never shown
+              # Round 7 is silent (advanced settings always skipped)
 ```
 
 Before each round's `AskUserQuestion` call, increment STEP and output:
@@ -21,7 +22,7 @@ Before each round's `AskUserQuestion` call, increment STEP and output:
 **Step [STEP] of [TOTAL]** — [Round Name]
 ```
 
-Use `~[TOTAL]` (tilde prefix) for Rounds 1–4 to signal the total may grow as conditions are evaluated. Starting with Round 5, the total is known exactly.
+Use `~[TOTAL]` (tilde prefix) for Rounds 1–3a to signal the total may grow (Round 5a adds 1 based on parallel processing selection). Starting with Round 4, the total is known exactly (6 total).
 
 ## Wizard Introduction
 
@@ -32,7 +33,7 @@ Before starting Round 1, display the following introduction:
 
 ## Round 1: Core Project Settings
 
-Increment STEP to 1 and output: **Step 1 of ~7** — Core Settings
+Increment STEP to 1 and output: **Step 1 of ~6** — Core Settings
 
 Use a SINGLE AskUserQuestion call with 4 questions:
 
@@ -126,7 +127,7 @@ Populate options based on detected project type. Use these alternatives by langu
 
 ## Round 2: Additional Configuration
 
-Increment STEP to 2 and output: **Step 2 of ~7** — Additional Configuration
+Increment STEP to 2 and output: **Step 2 of ~6** — Additional Configuration
 
 **First, detect existing issues directory:**
 ```bash
@@ -140,7 +141,9 @@ else
 fi
 ```
 
-Use a SINGLE AskUserQuestion call with 4 questions:
+**Issues directory (silent)**: If `EXISTING_ISSUES_DIR` is found, use it automatically. Otherwise, use `.issues` as the default. No prompting — users can change this value later by editing `.claude/ll-config.json` directly or via `/ll:configure`.
+
+Use a SINGLE AskUserQuestion call with 3 questions:
 
 ```yaml
 questions:
@@ -153,24 +156,6 @@ questions:
         description: "Alternative format command"
       - label: "None"
         description: "No formatting command"
-    multiSelect: false
-
-  - header: "Issues"
-    # If EXISTING_ISSUES_DIR is found:
-    question: "Found existing '[EXISTING_ISSUES_DIR]/' directory. Use it for issue tracking?"
-    # OR if no existing directory:
-    # question: "Enable issue management features?"
-    options:
-      # If existing dir found:
-      - label: "Yes, use [EXISTING_ISSUES_DIR]/"
-        description: "Keep existing directory for issue tracking"
-      # OR if no existing dir:
-      # - label: "Yes, use .issues/"
-      #   description: "Create .issues/ for tracking bugs, features, enhancements"
-      - label: "Yes, custom directory"
-        description: "Specify a custom directory name"
-      - label: "Disable"
-        description: "Skip issue management configuration"
     multiSelect: false
 
   - header: "Scan Dirs"
@@ -196,7 +181,7 @@ questions:
 
 ## Round 3a: Core Features Selection
 
-Increment STEP to 3 and output: **Step 3 of ~7** — Core Features
+Increment STEP to 3 and output: **Step 3 of ~6** — Core Features
 
 Use a SINGLE AskUserQuestion call with the features multi-select:
 
@@ -220,45 +205,26 @@ questions:
 
 This round always runs and determines which follow-up questions are needed in Round 5.
 
-## Round 3b: Automation Features Selection
+## Round 3b: Automation Features (Auto-Enabled)
 
-Increment STEP to 4 and output: **Step 4 of ~7** — Automation Features
+All automation tools are always enabled — no user input required. Do NOT increment STEP or prompt the user.
 
-Use a SINGLE AskUserQuestion call with the automation features multi-select:
+# Always enable automation tools — configurable via /ll:configure
+Treat all automation features as selected:
+- Sprint management: always enabled
+- FSM loops: always enabled
+- Sequential automation (ll-auto): always enabled
 
-```yaml
-questions:
-  - header: "Automation"
-    question: "Which automation tools do you want to configure settings for?"
-    options:
-      - label: "Sprint management"
-        description: "Process groups of related issues in coordinated waves (requires ll-sprint CLI)"
-      - label: "FSM loops"
-        description: "Run repeatable multi-step workflows using state machine definitions (requires ll-loop CLI)"
-      - label: "Sequential automation (ll-auto)"
-        description: "Process issues one at a time in priority order (requires ll-auto CLI)"
-    multiSelect: true
-```
-
-This round always runs. If any automation feature is selected, additional questions appear in Round 5.
-
-**After Round 3b responses, recalculate TOTAL:**
+**After Round 3b, recalculate TOTAL:**
 
 ```
 Count active conditions for Round 5:
   ACTIVE = 0
-  if Round 2 → "Yes, custom directory":         ACTIVE += 1  # issues_path
-  if Round 2 → issues enabled (not "Disable"):  ACTIVE += 1  # completed_dir
-  if Round 3a → "Parallel processing":           ACTIVE += 3  # worktree_files + parallel_workers + parallel_timeout
-  if Round 3a → "Context monitoring":            ACTIVE += 1
-  if Round 3a → "GitHub sync":                   ACTIVE += 2  # priority_labels + sync_completed questions
-  if Round 3a → "Confidence gate":               ACTIVE += 2
-  if Round 3b → "Sprint management":             ACTIVE += 1
-  if Round 3b → "Sequential automation":         ACTIVE += 1
+  if Round 3a → "Parallel processing":     ACTIVE += 2  # worktree_files + parallel_workers (ll-parallel)
+  ALWAYS (sequential automation enabled):  ACTIVE += 1  # auto_timeout
 
-  if ACTIVE >= 1: TOTAL += 1   # Round 5a will be shown
-  if ACTIVE > 4:  TOTAL += 1   # Round 5b will be shown
-  if ACTIVE > 8:  TOTAL += 1   # Round 5c will be shown
+  TOTAL += 1   # Round 5a always runs (auto_timeout always active); max ACTIVE = 3
+  # Round 5b and 5c are never shown (max ACTIVE never exceeds 4)
 ```
 
 ## Round 4: Product Analysis
@@ -408,58 +374,33 @@ If Round 5a is presented, increment STEP by 1 and output: **Step [STEP] of [TOTA
 If Round 5b is presented, increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Advanced Settings (continued)
 If Round 5c is presented, increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Advanced Settings (continued)
 
-**Include questions based on these conditions (ordered list of 11):**
+**Include questions based on these conditions (ordered list, max 3 active):**
 
-1. **issues_path** - If user selected "Yes, custom directory" in Round 2
-2. **completed_dir** - If user selected any "Yes" option (not "Disable") in Round 2 Issues question
-3. **worktree_files** - If user selected "Parallel processing" in Round 3a
-4. **parallel_workers** - If user selected "Parallel processing" in Round 3a
-5. **parallel_timeout** - If user selected "Parallel processing" in Round 3a
-6. **threshold** - If user selected "Context monitoring" in Round 3a
-7. **priority_labels** - If user selected "GitHub sync" in Round 3a
-8. **sync_completed** - If user selected "GitHub sync" in Round 3a
-9. **gate_readiness** - If user selected "Confidence gate" in Round 3a
-10. **gate_outcome** - If user selected "Confidence gate" in Round 3a
-11. **sprints_workers** - If user selected "Sprint management" in Round 3b
-12. **auto_timeout** - If user selected "Sequential automation (ll-auto)" in Round 3b
+1. **worktree_files** - If user selected "Parallel processing" in Round 3a
+2. **parallel_workers** - If user selected "Parallel processing" in Round 3a
+3. **auto_timeout** - Always (sequential automation is always enabled from Round 3b)
 
-If all conditions are false, skip this round entirely and proceed directly to Round 6 (Document Tracking).
+The following questions have been removed and their defaults applied silently:
+- `issues_path` — not applicable (Round 2 no longer offers "custom directory"; existing dir or `.issues` used automatically)
+- `completed_dir` → always "completed" (# Default: issues.completed_dir = "completed")
+- `parallel_timeout` → always 3600 (# Default: parallel.timeout_per_issue = 3600)
+- `threshold` → always 80% (# Default: context_monitor.auto_handoff_threshold = 80)
+- `priority_labels` → always Yes (# Default: sync.github.priority_labels = true)
+- `sync_completed` → always No (# Default: sync.github.sync_completed = false)
+- `gate_readiness` → always 85 (# Default: commands.confidence_gate.readiness_threshold = 85)
+- `gate_outcome` → always 70 (# Default: commands.confidence_gate.outcome_threshold = 70)
+- `sprints_workers` → always 2 (# Default: sprints.default_max_workers = 2)
 
-**Overflow handling**: Before presenting, count the number of active conditions. `AskUserQuestion` supports a maximum of 4 questions per call. If the active count exceeds 4, split into multiple sub-rounds using separate `AskUserQuestion` calls:
-- **Round 5a** — first 4 active questions (always presented when any condition is true)
-- **Round 5b** — next up to 4 active questions, positions 5–8 in the ordered list above (only presented when active count > 4)
-- **Round 5c** — remaining active questions, positions 9–12 in the ordered list above (only presented when active count > 8)
+Round 5a always runs (auto_timeout is always active). Maximum 3 conditions can be active simultaneously, so Round 5b and 5c are never shown.
 
-### Round 5a: Advanced Settings (first batch)
+**Overflow handling**: Not applicable — active conditions never exceed 3. All questions fit in a single Round 5a call.
 
-Use a SINGLE AskUserQuestion call with up to 4 questions (the first 4 active conditions):
+### Round 5a: Advanced Settings
+
+Use a SINGLE AskUserQuestion call with up to 4 questions (only active conditions from the ordered list):
 
 ```yaml
 questions:
-  # ONLY include if user selected "Yes, custom directory" in Round 2:
-  - header: "Issues Path"
-    question: "What directory name should be used for issues?"
-    options:
-      - label: ".issues"
-        description: "Hidden directory (recommended)"
-      - label: "issues"
-        description: "Visible directory"
-      - label: ".tasks"
-        description: "Alternative naming"
-    multiSelect: false
-
-  # ONLY include if user selected any "Yes" option (not "Disable") in Round 2 Issues question:
-  - header: "Completed Dir"
-    question: "What directory name should completed issues be moved to?"
-    options:
-      - label: "completed (Recommended)"
-        description: "Standard directory inside issues base dir"
-      - label: "done"
-        description: "Alternative naming"
-      - label: "archive"
-        description: "Alternative naming"
-    multiSelect: false
-
   # ONLY include if user selected "Parallel processing" in Round 3a:
   - header: "Worktree"
     question: "Which additional files should be copied to each git worktree? (Note: .claude/ is always copied automatically)"
@@ -484,96 +425,7 @@ questions:
         description: "Higher parallelism — needs more CPU/memory"
     multiSelect: false
 
-  # ONLY include if user selected "Parallel processing" in Round 3a:
-  - header: "Issue Timeout"
-    question: "What timeout should ll-parallel use per issue?"
-    options:
-      - label: "3600 (Recommended)"
-        description: "1 hour per issue — default"
-      - label: "7200"
-        description: "2 hours — complex issues"
-      - label: "14400"
-        description: "4 hours — very complex issues"
-    multiSelect: false
-
-  # ONLY include if user selected "Context monitoring" in Round 3a:
-  - header: "Threshold"
-    question: "At what context usage percentage should auto-handoff trigger?"
-    options:
-      - label: "80%"
-        description: "Default - balanced for most workloads"
-      - label: "70%"
-        description: "Conservative - earlier handoff, more headroom"
-      - label: "90%"
-        description: "Aggressive - maximize context before handoff"
-    multiSelect: false
-
-  # ONLY include if user selected "GitHub sync" in Round 3a:
-  - header: "Priority Labels"
-    question: "Add priority levels (P0-P5) as GitHub labels when syncing?"
-    options:
-      - label: "Yes (Recommended)"
-        description: "Map P0-P5 to GitHub labels for filtering"
-      - label: "No"
-        description: "Don't add priority labels to GitHub Issues"
-    multiSelect: false
-```
-
-### Round 5b: Advanced Settings (overflow batch)
-
-**Only present this call when the total active condition count exceeds 4.** Collect the next up to 4 active questions (positions 5–8 in the ordered list):
-
-```yaml
-questions:
-  # ONLY include if user selected "GitHub sync" in Round 3a:
-  - header: "Sync Completed"
-    question: "Sync completed issues to GitHub (close them)?"
-    options:
-      - label: "No (Recommended)"
-        description: "Only sync active issues"
-      - label: "Yes"
-        description: "Also close completed issues on GitHub"
-    multiSelect: false
-
-  # ONLY include if user selected "Confidence gate" in Round 3a:
-  - header: "Readiness Gate"
-    question: "Minimum readiness score (confidence_score) required to proceed with implementation?"
-    options:
-      - label: "85 (Recommended)"
-        description: "Enforces solid readiness before implementation"
-      - label: "70"
-        description: "Allows most issues through"
-      - label: "95"
-        description: "Strict; only near-perfect issues proceed"
-    multiSelect: false
-
-  # ONLY include if user selected "Confidence gate" in Round 3a:
-  - header: "Outcome Gate"
-    question: "Minimum outcome confidence score (outcome_confidence) required to proceed with implementation?"
-    options:
-      - label: "70 (Recommended)"
-        description: "Balanced outcome confidence requirement"
-      - label: "60"
-        description: "Permissive — allows higher-risk implementations"
-      - label: "85"
-        description: "Strict — only high-confidence outcomes proceed"
-    multiSelect: false
-
-  # ONLY include if user selected "Sprint management" in Round 3b:
-  - header: "Sprint Workers"
-    question: "How many parallel workers should sprint waves use by default?"
-    options:
-      - label: "4 (Recommended)"
-        description: "Balanced for most systems"
-      - label: "2"
-        description: "Conservative — fewer concurrent worktrees"
-      - label: "6"
-        description: "High parallelism"
-      - label: "8"
-        description: "Maximum parallelism"
-    multiSelect: false
-
-  # ONLY include if user selected "Sequential automation (ll-auto)" in Round 3b:
+  # ALWAYS include (sequential automation always enabled from Round 3b):
   - header: "Auto Timeout"
     question: "What timeout should ll-auto use per issue (seconds)?"
     options:
@@ -586,69 +438,11 @@ questions:
     multiSelect: false
 ```
 
-### Round 5c: Advanced Settings (second overflow batch)
+### Round 5b and 5c
 
-**Only present this call when the total active condition count exceeds 8.** Collect the remaining active questions (positions 9–12 in the ordered list):
-
-```yaml
-questions:
-  # ONLY include if user selected "Confidence gate" in Round 3a (if not already shown in 5b):
-  - header: "Readiness Gate"
-    question: "Minimum readiness score (confidence_score) required to proceed with implementation?"
-    options:
-      - label: "85 (Recommended)"
-        description: "Enforces solid readiness before implementation"
-      - label: "70"
-        description: "Allows most issues through"
-      - label: "95"
-        description: "Strict; only near-perfect issues proceed"
-    multiSelect: false
-
-  # ONLY include if user selected "Confidence gate" in Round 3a (if not already shown in 5b):
-  - header: "Outcome Gate"
-    question: "Minimum outcome confidence score (outcome_confidence) required to proceed with implementation?"
-    options:
-      - label: "70 (Recommended)"
-        description: "Balanced outcome confidence requirement"
-      - label: "60"
-        description: "Permissive — allows higher-risk implementations"
-      - label: "85"
-        description: "Strict — only high-confidence outcomes proceed"
-    multiSelect: false
-
-  # ONLY include if user selected "Sprint management" in Round 3b (if not already shown in 5b):
-  - header: "Sprint Workers"
-    question: "How many parallel workers should sprint waves use by default?"
-    options:
-      - label: "4 (Recommended)"
-        description: "Balanced for most systems"
-      - label: "2"
-        description: "Conservative — fewer concurrent worktrees"
-      - label: "6"
-        description: "High parallelism"
-      - label: "8"
-        description: "Maximum parallelism"
-    multiSelect: false
-
-  # ONLY include if user selected "Sequential automation (ll-auto)" in Round 3b (if not already shown in 5b):
-  - header: "Auto Timeout"
-    question: "What timeout should ll-auto use per issue (seconds)?"
-    options:
-      - label: "3600 (Recommended)"
-        description: "1 hour per issue — default"
-      - label: "1800"
-        description: "30 minutes — faster workflows"
-      - label: "7200"
-        description: "2 hours — complex or long-running issues"
-    multiSelect: false
-```
+**Not used.** After removing prompted questions, the maximum active condition count is 3 (worktree_files + parallel_workers + auto_timeout). All questions fit in Round 5a. Rounds 5b and 5c are never shown.
 
 **Configuration from Round 5 responses:**
-
-If issues are enabled and user selected a non-default completed directory:
-```json
-{ "issues": { "completed_dir": "done" } }
-```
 
 If parallel is enabled and user selected files:
 ```json
@@ -660,35 +454,36 @@ If parallel is enabled and user selected non-default workers:
 { "parallel": { "max_workers": 3 } }
 ```
 
-If parallel is enabled and user selected non-default timeout:
+If context monitoring is enabled (silently, from Round 3a selection):
 ```json
-{ "parallel": { "timeout_per_issue": 7200 } }
+{ "context_monitor": { "enabled": true } }
 ```
+- `auto_handoff_threshold` defaults to 80 — omit from config (schema default)
 
-If context monitoring is enabled:
+If GitHub sync is enabled (silently, from Round 3a selection):
 ```json
-{ "context_monitor": { "enabled": true, "auto_handoff_threshold": 80 } }
+{ "sync": { "enabled": true } }
 ```
+- `sync.github.priority_labels` defaults to true — omit from config (schema default)
+- `sync.github.sync_completed` defaults to false — omit from config (schema default)
 
-If GitHub sync is enabled:
+If confidence gate is enabled (silently, from Round 3a selection):
 ```json
-{ "sync": { "enabled": true, "github": { "priority_labels": true, "sync_completed": false } } }
+{ "commands": { "confidence_gate": { "enabled": true } } }
 ```
-
-If confidence gate is enabled:
-```json
-{ "commands": { "confidence_gate": { "enabled": true, "readiness_threshold": 85, "outcome_threshold": 70 } } }
-```
+- `readiness_threshold` defaults to 85 — omit from config (schema default)
+- `outcome_threshold` defaults to 70 — omit from config (schema default)
 
 If TDD Mode is selected in Round 3a:
 ```json
 { "commands": { "tdd_mode": true } }
 ```
 
-If sprint management is configured with non-default workers:
+Sprint management is always enabled — always include:
 ```json
 { "sprints": { "default_max_workers": 2 } }
 ```
+- `sprints.default_max_workers` is hardcoded to 2, which differs from schema default (4); always include this key
 
 If sequential automation is configured with non-default timeout:
 ```json
@@ -696,19 +491,17 @@ If sequential automation is configured with non-default timeout:
 ```
 
 **Notes:**
-- Only include `issues.completed_dir` if user selected a non-default value (not "completed"); if "completed" is selected, omit the key
-- Only include `auto_handoff_threshold` if user selected a non-default value (not 80%)
+- Omit `issues.completed_dir` — "completed" is the schema default
+- Omit `auto_handoff_threshold` — 80 is the schema default
 - Only include non-default values. If user selects exactly `[".env"]` (the default), the `worktree_copy_files` key can be omitted
 - The `.claude/` directory is always copied automatically regardless of `worktree_copy_files` setting
 - Only include `parallel.max_workers` if user selected a non-default value (not 2); if 2 is selected, omit the key
-- Only include `parallel.timeout_per_issue` if user selected a non-default value (not 3600); if 3600 is selected, omit the key
-- Only include `sync.github.priority_labels` if user selected "No" (true is the default)
-- Only include `sync.github.sync_completed` if user selected "Yes" (false is the default)
-- If both sync sub-settings are defaults, the `sync.github` object can be omitted (just include `sync.enabled: true`)
-- Only include `commands.confidence_gate.readiness_threshold` if user selected a non-default value (not 85)
-- Only include `commands.confidence_gate.outcome_threshold` if user selected a non-default value (not 70)
-- If user selected all defaults, just include `commands.confidence_gate.enabled: true`
-- Only include `sprints.default_max_workers` if user selected a non-default value (not 4); if 4 is selected, omit the sprints section
+- Omit `parallel.timeout_per_issue` — 3600 is the schema default
+- Omit `sync.github.priority_labels` — true is the schema default
+- Omit `sync.github.sync_completed` — false is the schema default
+- Omit `commands.confidence_gate.readiness_threshold` — 85 is the schema default
+- Omit `commands.confidence_gate.outcome_threshold` — 70 is the schema default
+- Always include `sprints.default_max_workers: 2` (differs from schema default of 4); if user selected a non-default value (not 2), use their value instead
 - Only include `automation.timeout_seconds` if user selected a non-default value (not 3600); if 3600 is selected, omit the automation section
 - FSM loops (`loops_dir` default is `.loops`) has no non-default settings to configure via init; the `.loops` directory is used automatically
 
@@ -794,32 +587,13 @@ If "Skip" selected or no documents found, omit the `documents` section entirely 
 
 **After completing Round 6, proceed to Round 7 (Extended Config Gate).**
 
-## Round 7: Extended Configuration Gate
+## Round 7: Extended Configuration Gate (Auto-Skipped)
 
-Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Extended Configuration
+Advanced settings are always skipped during init — no user input required. Do NOT increment STEP or prompt the user.
 
-Use a SINGLE AskUserQuestion call:
-
-```yaml
-questions:
-  - header: "Advanced"
-    question: "Would you like to configure additional advanced settings?"
-    options:
-      - label: "Skip (Recommended)"
-        description: "Use sensible defaults for continuation, prompt optimization, and more"
-      - label: "Configure"
-        description: "Set up test directory, build command, continuation, and prompt optimization"
-    multiSelect: false
-```
-
-If "Skip (Recommended)" is selected, proceed directly to the Display Summary step.
-If "Configure" is selected, continue to Rounds 8-10.
-
-**After Round 7 response, recalculate TOTAL:**
-
-```
-if user selected "Configure": TOTAL += 3   # Rounds 8, 9, 10 will be shown
-```
+# Always skip advanced settings — configurable via /ll:configure
+Proceed directly to the Display Summary step. Rounds 8–10 are never shown during init.
+Users can access test directory, build command, continuation, and prompt optimization settings via `/ll:configure`.
 
 ## Round 8: Project Advanced (Optional)
 
@@ -984,23 +758,21 @@ questions:
 
 ## Interactive Mode Summary
 
-**Total interaction rounds: 7-13**
+**Total interaction rounds: 6 (fixed)**
 
 | Round | Group | Questions | Conditions |
 |-------|-------|-----------|------------|
 | 1 | Core Settings | name, src_dir, test_cmd, lint_cmd | Always |
-| 2 | Additional Config | format_cmd, issues, scan_dirs, excludes | Always |
+| 2 | Additional Config | format_cmd, scan_dirs, excludes (issues dir: silent) | Always |
 | 3a | Core Features | features (multi-select: parallel, context_monitor, sync, confidence_gate, tdd_mode) | Always |
-| 3b | Automation Features | automation (multi-select: sprint_management, fsm_loops, sequential_auto) | Always |
+| 3b | Automation Features | **Silent** — sprint_management, fsm_loops, sequential_auto always enabled | Always (no prompt) |
 | **4** | **Product Analysis** | **product (opt-in for product-focused analysis)** | **Always** |
-| 5a | Advanced (dynamic, first batch) | issues_path?, completed_dir?, worktree_files?, parallel_workers? | Conditional (≥1 active) |
-| 5b | Advanced (dynamic, overflow) | parallel_timeout?, threshold?, priority_labels?, sync_completed? | Conditional (>4 active total) |
-| 5c | Advanced (dynamic, 2nd overflow) | gate_threshold?, sprints_workers?, auto_timeout? | Conditional (>8 active total) |
+| 5a | Advanced (dynamic) | worktree_files?, parallel_workers?, auto_timeout | Always (auto_timeout always active) |
 | **6** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
-| 7 | Extended Config Gate | configure_extended? | Always |
-| 8 | Project Advanced (optional) | test_dir, build_cmd, run_cmd, impl_hooks | If Gate=Configure |
-| 9 | Continuation (optional) | auto_detect, include, expiry | If Gate=Configure |
-| 10 | Prompt Optimization (optional) | enabled, mode, confirm | If Gate=Configure |
+| 7 | Extended Config Gate | **Silent** — always skips; Rounds 8–10 never shown | Always (no prompt) |
+| 8 | Project Advanced (optional) | test_dir, build_cmd, run_cmd, impl_hooks | Never shown (use /ll:configure) |
+| 9 | Continuation (optional) | auto_detect, include, expiry | Never shown (use /ll:configure) |
+| 10 | Prompt Optimization (optional) | enabled, mode, confirm | Never shown (use /ll:configure) |
 
 **Key behavior**:
 - Wait for each group's AskUserQuestion response before proceeding to the next

@@ -123,12 +123,12 @@ Removing the "Configure additional advanced settings?" gate (`interactive.md:797
 
 ## Acceptance Criteria
 
-- [ ] Running `/ll:init` on a new project no longer asks any of the listed questions
-- [ ] All removed questions still result in correct values written to `.claude/ll-config.json`
-- [ ] `parallel_workers` defaults to `2`, not `4`
-- [ ] If `.issues/` exists, it is used automatically without prompting
-- [ ] Automation tools (sprint, loops, ll-auto) are always enabled without prompting
-- [ ] Users can still override any value via `/ll:configure` or direct config edits
+- [x] Running `/ll:init` on a new project no longer asks any of the listed questions
+- [x] All removed questions still result in correct values written to `.claude/ll-config.json`
+- [x] `parallel_workers` defaults to `2`, not `4`
+- [x] If `.issues/` exists, it is used automatically without prompting
+- [x] Automation tools (sprint, loops, ll-auto) are always enabled without prompting
+- [x] Users can still override any value via `/ll:configure` or direct config edits
 
 ## Impact
 
@@ -160,7 +160,19 @@ Removing the "Configure additional advanced settings?" gate (`interactive.md:797
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: all 11 AskUserQuestion prompts still present
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: no changes to init wizard since last verification
+- `/ll:ready-issue` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0a103f1-5ea2-4d95-94cb-919111052aae.jsonl`
+
+## Resolution
+
+Implemented in `skills/init/interactive.md` and `skills/init/SKILL.md`:
+- Removed Round 3b AskUserQuestion; automation tools (sprint, loops, ll-auto) always enabled silently
+- Removed Issues directory question from Round 2; existing dir or `.issues` used automatically
+- Removed 9 Round 5 questions (completed_dir, parallel_timeout, threshold, priority_labels, sync_completed, gate_readiness, gate_outcome, sprints_workers, issues_path); defaults applied silently
+- Fixed `sprints.default_max_workers` default from 4 → 2; updated "not 4" annotation to "not 2" in both interactive.md and SKILL.md
+- Removed Round 7 gate; always skips to summary (Rounds 8–10 accessible via /ll:configure)
+- Wizard reduced from 7-13 interactive rounds to 6 fixed rounds
+- All 3421 tests pass; lint clean
 
 ## Status
 
-**Open** | Created: 2026-03-05 | Priority: P3
+**Completed** | Created: 2026-03-05 | Completed: 2026-03-08 | Priority: P3

@@ -165,7 +165,7 @@ Configuration Summary:
   commands.post_implement: [command]       # Only show if configured
 
   [SPRINTS]                               # Only show if "Sprint management" selected in Round 3b
-  sprints.default_max_workers: [workers]  # Only if non-default (not 4)
+  sprints.default_max_workers: [workers]  # Only if non-default (not 2)
 
   [LOOPS]                                 # Only show if "FSM loops" selected in Round 3b
   loops.loops_dir: .loops                 # Always .loops (default)
