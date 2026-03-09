@@ -154,56 +154,58 @@ Read top-level `on_handoff`. Read `max_iterations` (use 50 if absent).
 Collect all state action texts. Check if any downstream state action contains `$captured` or `{{captured}}`.
 - For each upstream state that has `evaluate.type` in `["output_contains", "output_numeric", "output_json"]` and lacks `capture:`: add Suggestion finding at path `states.<name>`
 
+Before running QC-8 through QC-13, build the FSM mental model from the YAML dict: record terminal states (where `terminal: true`), the transition map (all routing targets per non-terminal state), the inbound map (which states reach each state), and the happy path (trace `on_success`/`next` from `initial` to terminal). Use this model in the checks below.
+
+### QC-8: Spin Detection
+
+For each non-terminal state, check whether ALL of its `on_error` and `on_partial` transitions route back to itself (or form a tight cycle of ≤ 2 states) with no counter or escape condition:
+- If yes: add Warning finding at path `states.<name>` (check_id: FA-1)
+
+### QC-9: Missing Failure Terminal
+
+Scan all terminal states. If none has a name suggesting failure (`failed`, `error`, `aborted`, `bail`, `halt`, or similar), and `max_iterations` is the only stop condition for failure cases:
+- Add Warning finding at path `(loop)` (check_id: FA-2)
+- Note: a non-terminal error-handling state that eventually routes to a failure terminal does NOT trigger this
+
+### QC-10: Unresetting Shared State
+
+Scan all state `action` texts for writes to `/tmp/` paths (e.g., `echo ... > /tmp/foo`, `tee /tmp/foo`). For each `/tmp/` path written, check whether any state action resets or removes it at loop start (in the `initial` state or an explicit `start`/`init` state):
+- If a `/tmp/` file is written but never reset: add Warning finding at path `states.<name>.action` (check_id: FA-3)
+
+### QC-11: Monolithic Prompt State
+
+For each state with `action_type: prompt`, count distinct numbered steps in the action text (lines matching `Step [N]`, `[N].`, `[N])`):
+- If ≥ 4 distinct steps: add Suggestion finding at path `states.<name>` (check_id: FA-4)
+
+### QC-12: Unreachable States
+
+For each state not reachable via BFS from `initial` using all outbound transitions:
+- Skip if V-11 already flagged this state (check existing findings for `V-11` at the same location)
+- Otherwise: add Warning finding at path `states.<name>` (check_id: FA-5)
+
+### QC-13: Dead-End Non-Terminal States
+
+For each non-terminal state that has no outbound transitions (`on_success`, `on_failure`, `on_partial`, `on_error`, `next`, or any `route.*`):
+- Add Error finding at path `states.<name>` (check_id: FA-6)
+
+**Do not output any findings yet.** Proceed to Step 2c to build the narrative, then Step 3 to display everything.
+
 ---
 
-## Step 2c: FSM Flow Review
+## Step 2c: FSM Flow Review Narrative
 
-**Skip this step if**: `--dry-run` flag is set and you want faster output. Otherwise always run after Step 2b.
-
-Read the FA-* check definitions from `reference.md` now. Then perform the following LLM-driven analysis of the FSM's logic and flow.
+Build the narrative summary using the FA findings and mental model from Step 2b. This step always runs — even when FA findings count is zero, the narrative must be written.
 
 ### 2c-1: Extract Intent
 
 Read the loop's declared purpose:
 1. Check for a `description:` YAML key — use its value if present
-2. If absent, look for leading YAML comments (lines starting with `#` before the first non-comment key) and parse those as the description
+2. If absent, look for leading YAML comments (lines starting with `#` before the first non-comment key)
 3. If neither found, use `"(no description provided)"` as the intent
 
-### 2c-2: Build FSM Mental Model
+### 2c-2: Build Narrative Summary
 
-From the parsed YAML dict, extract:
-- **States list**: all keys in `states`
-- **Terminal states**: states where `terminal: true`
-- **Non-terminal states**: all states not terminal
-- **Initial state**: the `initial` field value
-- **Transition map**: for each non-terminal state, collect all routing targets (`on_success`, `on_failure`, `on_partial`, `on_error`, `next`, and any `route.*` values)
-- **Inbound map**: for each state, which states transition into it
-
-### 2c-3: Trace Happy Path
-
-Starting from the `initial` state, trace the primary (success) path through `on_success` (or `next`) transitions until reaching a terminal state. If the path forks or loops, note both branches.
-
-Evaluate: does the happy path correctly implement what the `description:` says the loop should do? Note any misalignments.
-
-### 2c-4: Run FSM Anti-Pattern Checks
-
-Run each check from FA-1 through FA-6 in `reference.md`. For each finding, append to the shared findings list using the same format: `{ check_id: "FA-N", severity: "Error"|"Warning"|"Suggestion", location: "<path>", message: "<text>" }`.
-
-**FA-1 — Spin Detection**: For each non-terminal state, check whether ALL of its error/partial transitions route back to itself (or form a tight cycle of ≤ 2 states) with no counter or escape condition. If yes: Warning.
-
-**FA-2 — Missing Failure Terminal**: Scan all terminal states. If none has a name suggesting failure (`failed`, `error`, `aborted`, `bail`, `halt`, or similar), and `max_iterations` is the only stop condition: Warning. Note: a loop with a well-named non-terminal error-handling state (that eventually reaches a failure terminal) does NOT trigger this.
-
-**FA-3 — Unresetting Shared State**: Scan all state `action` texts for writes to `/tmp/` files or shell variables (e.g., `echo ... > /tmp/foo`, `N=0`, `count=0`). For each `/tmp/` path written, check whether any state action resets or removes it at loop start. If a `/tmp` file is written but never reset: Warning at the writing state.
-
-**FA-4 — Monolithic Prompt State**: For each state with `action_type: prompt`, count the number of distinct numbered steps (e.g., "Step 1", "Step 2", or "1.", "2.") in the action text. If ≥ 4 distinct steps: Suggestion that the state may benefit from decomposition into smaller focused states.
-
-**FA-5 — Unreachable States**: For each state not reachable via BFS from `initial`: Warning. **Skip if V-11 already flagged this state** (check existing findings for `V-11` at the same state location to avoid duplicates).
-
-**FA-6 — Dead-End Non-Terminal States**: For each non-terminal state that has no outbound transitions (no `on_success`, `on_failure`, `on_partial`, `on_error`, `next`, or `route`): Error.
-
-### 2c-5: Build Narrative Summary
-
-After running the anti-pattern checks, compose two lists:
+Compose two lists:
 
 **What works well**: List 2–4 specific strengths of the FSM design. Examples:
 - Clean evaluate → done/fix split
@@ -214,7 +216,7 @@ After running the anti-pattern checks, compose two lists:
 
 **Issues to consider**: List any FA-* findings in plain English with actionable suggestions. If no FA-* findings exist, write `"No significant logic issues found."`
 
-### 2c-6: Output FSM Flow Review
+### 2c-3: Output FSM Flow Review
 
 After Step 3 displays the findings table and before Step 4, output this block:
 
@@ -262,9 +264,13 @@ States: <N> states  |  Initial: <initial>  |  Max iterations: <N>
 ...
 ```
 
-If there are zero findings in a severity group, omit that group's section entirely.
+If there are zero findings in a severity group, omit that group's section entirely. If all three groups are empty, output:
 
-After the findings table, output the FSM Flow Review narrative block from Step 2c-6.
+```
+No V-* or QC-* findings.
+```
+
+**Then always output the FSM Flow Review narrative block from Step 2c-3.** This block is required even when all findings counts are zero — it may surface FA-* findings and always includes the narrative summary.
 
 If `--dry-run` flag was given: stop here. Output:
 
