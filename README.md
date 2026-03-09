@@ -12,6 +12,9 @@
   <a href="https://python.org">
     <img src="https://img.shields.io/badge/python-3.11+-blue.svg?style=flat-square&logo=python" alt="Python Version">
   </a>
+  <a href="https://pypi.org/project/little-loops/">
+    <img src="https://img.shields.io/pypi/v/little-loops?style=flat-square&label=PyPI" alt="PyPI Version">
+  </a>
 </p>
 
 # little-loops
@@ -211,11 +214,20 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 
 ## CLI Tools
 
-**Requires Python 3.11+**. Install with:
+**Requires Python 3.11+**. Install from PyPI:
 
 ```bash
-pip install -e /path/to/little-loops/scripts
+pip install little-loops
 ```
+
+<details>
+<summary>Developer install (editable, with test dependencies)</summary>
+
+```bash
+pip install -e "./scripts[dev]"
+```
+
+</details>
 
 ### ll-auto
 
@@ -419,7 +431,7 @@ For the full configuration reference — all sections, options, variable substit
 |-------|----------|
 | Config not loading | Run `/ll:init` or check `.claude/ll-config.json` exists |
 | Command not found | Verify plugin is enabled in `.claude/settings.local.json` |
-| `ll-auto`/`ll-parallel` not found | Run `pip install -e /path/to/little-loops/scripts` |
+| `ll-auto`/`ll-parallel` not found | Run `pip install little-loops` |
 | Worktree errors | Run `ll-parallel --cleanup` then `git worktree prune` |
 | Issues not discovered | Check `issues.base_dir` config matches your `.issues/` path |
 | Resume not working | Delete state file (`.auto-manage-state.json` or `.parallel-manage-state.json`) |

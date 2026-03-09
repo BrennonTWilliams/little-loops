@@ -183,7 +183,7 @@ SESSION & CONFIG
     Toggle automatic prompt optimization settings
     Settings: enabled, mode, confirm, status
 
-CLI TOOLS (pip install -e ./scripts)
+CLI TOOLS (pip install little-loops)
 ------------------------------------
 ll-auto           Process all backlog issues sequentially in priority order
 ll-parallel       Process issues concurrently using isolated git worktrees

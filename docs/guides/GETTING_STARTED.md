@@ -38,8 +38,10 @@ For local development, use a local path instead:
 The slash commands run inside Claude Code sessions. The CLI tools (`ll-auto`, `ll-sprint`, `ll-loop`, etc.) run from your terminal and drive automated execution.
 
 ```bash
-pip install -e "./scripts[dev]"
+pip install little-loops
 ```
+
+> **Contributing to little-loops?** Use the editable dev install instead: `pip install -e "./scripts[dev]"`
 
 ### Step 3: Verify
 

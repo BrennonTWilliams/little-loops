@@ -1,9 +1,9 @@
 # CLI Tools Reference
 
-Complete reference for all `ll-` command-line tools. Install with:
+Complete reference for all `ll-` command-line tools. Install from PyPI:
 
 ```bash
-pip install -e "./scripts[dev]"
+pip install little-loops
 ```
 
 See [COMMANDS.md](COMMANDS.md) for `/ll:` slash commands and [README](../../README.md) for overview.

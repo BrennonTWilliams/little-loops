@@ -138,7 +138,7 @@ Automation layer for batch and parallel issue processing:
 | `ll-sprint` | Sprint-based issue processing |
 | `ll-loop` | FSM-based automation loop execution |
 
-Install: `pip install -e "./scripts[dev]"`
+Install: `pip install little-loops`
 
 ## Directory Structure
 

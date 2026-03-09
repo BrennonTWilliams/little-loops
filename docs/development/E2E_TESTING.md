@@ -171,5 +171,5 @@ If git initialization fails:
 
 If imports fail during tests:
 - Ensure you're running from the `scripts/` directory
-- Verify the package is installed: `pip install -e scripts/[dev]`
+- Verify the package is installed: `pip install little-loops[dev]`
 - Check PYTHONPATH includes `scripts/`
