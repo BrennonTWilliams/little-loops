@@ -175,9 +175,28 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - [ ] Not started
 
+## Verification Notes
+
+**Verdict**: VALID — Issue accurately describes the current codebase state.
+
+All referenced files exist and core claims are confirmed:
+- `fsm-loop-schema.json:131` — `additionalProperties: false` in `stateConfig` ✓
+- `StateConfig.action: str | None` at `schema.py:191` ✓
+- `FSMExecutor.__init__` (lines 341-378) has no `loops_dir` param ✓
+- `PersistentExecutor.__init__` (lines 238-271) already has `loops_dir` ✓
+- `_execute_state()` at `executor.py:491-536`, `_is_prompt_action()` at 747-751 ✓
+- `LoopState` dataclass at `persistence.py:46-83` ✓
+- `resolve_loop_path()` at `_helpers.py:86`, DFS cycle detection at `dependency_graph.py:278-321` ✓
+- `FSMLoop.context` at `schema.py:365`, `self.captured` at `executor.py:367` ✓
+
+Minor line drift (non-blocking):
+- `_find_reachable_states()`: issue says 306-333, actually starts at line 324 in `validation.py`
+- `conftest.py loops_dir` fixture: issue says 225-305, actually at line 271
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/676e5b84-4af9-4667-8d7e-99c72a1adfe0.jsonl`
 - `/ll:format-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/39efb4b0-1abf-4d76-b4be-ab46e1cf469e.jsonl`
 - `/ll:confidence-check` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d679cf53-9ecc-49cd-83db-5c6e64b94944.jsonl`
 - `/ll:format-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db6fef1c-59c1-4668-b211-889ca671a572.jsonl`
 - `/ll:refine-issue` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0ed4f286-d86e-4514-aa2e-31ef719a6e8b.jsonl`
+- `/ll:verify-issues` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`

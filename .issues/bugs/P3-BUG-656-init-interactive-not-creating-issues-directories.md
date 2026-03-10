@@ -109,11 +109,23 @@ ENH-453 added the `mkdir` to SKILL.md Step 8 but did not uncomment the default o
 
 `bug`, `init`, `onboarding`, `captured`
 
+## Verification Notes
+
+- **Verdict**: NEEDS_UPDATE
+- **Verified**: 2026-03-09
+- **Findings**:
+  - **Root cause at `interactive.md:168–169` is OUTDATED**: Those lines now contain "Scan Dirs" / "Custom selection", not a commented-out "Yes, use .issues/" option. The issue directory handling was refactored to silent auto-detection at `interactive.md:132–144` — when no `.issues/` dir exists, the wizard silently defaults to `.issues` with no user prompt.
+  - **`SKILL.md:296–299` mkdir confirmed unconditional**: Verified accurate.
+  - **`SKILL.md:333` completion message confirmed unconditional**: Verified accurate.
+  - **Core bug changed in nature**: Since `interactive.md` no longer has a user-facing "enable issue management" question, there is no "Disable" path. The mkdir runs unconditionally for all inits, so directories should always be created. Proposed fix #1 (uncomment option) is no longer applicable.
+  - **Fix needed**: Update root cause and proposed solution to reflect current code. The remaining real risk is that LLMs may skip bash steps in SKILL.md, which can still prevent directory creation — but the cause is unreliable LLM step execution, not a commented-out UI option.
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8c9fbbab-751f-4a81-918e-15e1679ae4ae.jsonl`
 - `/ll:refine-issue` - 2026-03-08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/31ac7f57-4c4f-493a-b624-a5dd9cd01e66.jsonl`
 - `/ll:ready-issue` - 2026-03-08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ffe8067e-0faf-4a13-97c6-c7842f173890.jsonl`
 - `/ll:confidence-check` - 2026-03-08T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/130348b7-6f10-4ffb-bc17-cd9244cd1bcb.jsonl`
+- `/ll:verify-issues` - 2026-03-09T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

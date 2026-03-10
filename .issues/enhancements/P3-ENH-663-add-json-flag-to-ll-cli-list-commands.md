@@ -1,9 +1,19 @@
 ---
 discovered_date: 2026-03-09
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # ENH-663: Add `--json` flag to `ll-` CLI list commands
+
+## Current Behavior
+
+`ll-issues list`, `ll-loop list`, and `ll-sprint list` all output human-readable table or text format only. There is no structured output option, so FSM loops and automation scripts must scrape/parse the human-readable output — which breaks on formatting changes, whitespace tweaks, or column additions.
+
+## Expected Behavior
+
+Each `list` subcommand accepts a `--json` flag. When set, output is a JSON array of objects to stdout (exit 0). Without the flag, existing human-readable table output is unchanged. This provides a stable, structured interface for programmatic consumers.
 
 ## Summary
 
@@ -88,17 +98,53 @@ Each command should emit a JSON array. Representative schemas:
 - [ ] Exit code is 0 on success for both modes
 - [ ] Unit tests cover `--json` path for each command
 
-## Related Files
+## Integration Map
 
-| File | Role |
-|------|------|
-| `scripts/little_loops/cli/issues/list_cmd.py` | `ll-issues list` implementation |
-| `scripts/little_loops/cli/loop/__init__.py` | `ll-loop list` implementation |
-| `scripts/little_loops/cli/sprint/__init__.py` | `ll-sprint list` implementation |
-| `scripts/little_loops/cli/output.py` | Shared output helpers |
-| `scripts/tests/test_cli.py` | Existing CLI tests |
+### Files to Modify
+- `scripts/little_loops/cli/issues/list_cmd.py` — add `--json` flag to `cmd_list` argument parser, serialize issue list to JSON when set
+- `scripts/little_loops/cli/loop/__init__.py` — add `--json` flag to `list_parser`, emit loop metadata as JSON array
+- `scripts/little_loops/cli/sprint/__init__.py` — add `--json` flag to `list_parser`, emit sprint metadata as JSON array
+
+### Dependent Files (Callers/Importers)
+- FSM loop YAML files that invoke `ll-issues list` or `ll-loop list` (consumers will benefit from `--json` once added)
+- `scripts/little_loops/cli/output.py` — optional shared `print_json()` helper
+
+### Similar Patterns
+- N/A — no existing `--json` flag on list commands; this is the first instance
+
+### Tests
+- `scripts/tests/test_cli.py` — add parameterized test cases for `--json` path on each command; verify table output unchanged without flag
+
+### Documentation
+- N/A — CLI `--help` text will reflect the new flag automatically
+
+### Configuration
+- N/A
+
+## Scope Boundaries
+
+- Only `list` subcommands for `ll-issues`, `ll-loop`, and `ll-sprint` are in scope
+- Other subcommands (`show`, `run`, `create`, etc.) do NOT get `--json` in this issue
+- JSON schema is not formally versioned or enforced — it is a stable but informal contract
+- No changes to human-readable output format
+
+## Impact
+
+- **Priority**: P3 — Eliminates fragile text-parsing in FSM loop automations; enables reliable scripted workflows
+- **Effort**: Small — Additive `--json` flag on three existing argument parsers; no structural changes
+- **Risk**: Low — Purely additive; default behavior (no flag) is completely unchanged
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `cli`, `automation`, `captured`
 
 ---
 
+**Open** | Created: 2026-03-09 | Priority: P3
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-09T23:47:50Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d305cad5-64a5-4cef-bf3e-f1c6e65b32db.jsonl`
+- `/ll:format-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
+- `/ll:verify-issues` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
+- `/ll:confidence-check` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`

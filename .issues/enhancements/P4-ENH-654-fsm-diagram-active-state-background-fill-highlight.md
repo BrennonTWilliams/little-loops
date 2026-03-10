@@ -45,12 +45,23 @@ No config schema changes are strictly required if `highlight_color` is automatic
 
 ## Implementation Steps
 
-1. **Read `_render_2d_diagram()` in `info.py`** to understand the grid model (`rows` / `off_grid` lists of `[" "] * total_width`)
-2. **Add fill pass for main-path highlighted box**: after placing border chars, iterate every interior cell `(cx+1)..(cx+bw-2)` for all content and padding rows, setting each to `colorize(" ", bg_code)` where `bg_code = str(int(highlight_color) + 10)` (converts fg→bg for standard ANSI codes)
-3. **Update content rendering**: for highlighted boxes, wrap each content char as `colorize(ch, f"30;{bg_code}")` (dark fg + colored bg) instead of just placing the raw char
-4. **Apply same fill pass to off-path box rendering** (after ENH-638 adds off-path border highlighting)
-5. **Handle edge case**: the `colored_line` trick in the main-path highlighted-box block of `_render_2d_diagram()` (where a single long colored string is stored at `rows[r][cx+2]` and subsequent cells set to `""`) must still work with the fill — ensure empty-string cells don't overwrite the bg-colored spaces placed in the fill pass
-6. **Verify with `ll-loop run issue-refinement --show-diagrams`** that the active state box visually fills with color
+1. **Read `_render_2d_diagram()` in `info.py:463-964`** to understand the grid model (`rows`/`off_grid` are `list[list[str]]` initialized to `[" "] * total_width`)
+2. **Compute `bg_code` safely** — add a helper near line 601 (before the main-path loop):
+   ```python
+   # fg→bg: works for simple codes 30-37 and 90-97; guard against compound codes like "38;5;208"
+   try:
+       bg_code = str(int(highlight_color) + 10)
+   except ValueError:
+       bg_code = None  # compound code — skip bg fill
+   ```
+3. **Add fill pass for main-path highlighted box** (`info.py:601-644`): when `is_highlighted and bg_code`:
+   - After writing border chars, add a pre-fill pass over all content + padding rows: iterate columns `cx+1` through `cx+w-2` (inclusive), setting each to `colorize(" ", bg_code)` — this covers interior padding
+   - The fill pass must run **before** the content/colored_line writes so that subsequent char writes overwrite the spaces correctly
+4. **Update content rendering for highlighted boxes** (`info.py:618-632`): for `i == 0` (colored_line trick at line 622-628), change to `colorize(line, f"30;{bg_code};1")` (dark fg + bg + bold); for `i > 0` content chars (plain assignment at 629-632), wrap as `colorize(ch, f"30;{bg_code}")`
+5. **Handle `colored_line` trick compatibility**: the empty-string cells (`""`) at `cx+3..cx+2+len(line)-1` are placed **after** the fill pass, so they replace the bg-colored spaces — this is intentional; the ANSI sequence at `cx+2` includes its own bg code, so the output is correct when joined
+6. **Apply same fill pass to off-path block** (`info.py:889-928`): mirror the fill pass using `off_grid` and `bx`/`bw`; **do not** fill `bx+1` with bg color (that cell is restored to `" "` at the `off_grid[br][bx + 1] = " "` line ~909 for arrow continuity)
+7. **Add test assertions** in `scripts/tests/test_ll_loop_display.py:928-977`: assert `"\033[42m "` (or `f"\033[{bg_code}m "`) appears in the result for the highlighted state's interior rows
+8. **Verify visually** with `ll-loop run issue-refinement --show-diagrams`
 
 ## Integration Map
 
@@ -60,13 +71,22 @@ No config schema changes are strictly required if `highlight_color` is automatic
 ### Dependent Files (Callers/Importers)
 - N/A — `_render_2d_diagram()` is called internally by the `ll-loop run --show-diagrams` rendering path; no external callers import this function
 
+_Codebase Research: full call chain with line refs:_
+- `scripts/little_loops/cli/loop/run.py:125-126` — reads `highlight_color` from config, calls `run_foreground()`
+- `scripts/little_loops/cli/loop/_helpers.py:283-323` — `run_foreground()` subscribes to `state_enter` events; calls `_render_fsm_diagram(fsm, highlight_state=state, highlight_color=highlight_color)` at line `322-323`
+- `scripts/little_loops/cli/loop/info.py:358-460` — `_render_fsm_diagram()` delegates to `_render_2d_diagram()` at line `458-459`
+- `scripts/little_loops/cli/loop/info.py:463-964` — `_render_2d_diagram()` — all box rendering
+
 ### Similar Patterns
-- `scripts/little_loops/cli/loop/info.py` — existing border-highlighting code (`colorize()` calls on border chars in the main-path block) is the pattern to extend with bg fill
+- `scripts/little_loops/cli/loop/info.py:601-644` — **main-path highlighted-box block**: `_bc()` helper closure (line 607-609), border chars colorized individually, first content row uses the `colored_line` trick (lines 622-628) where one ANSI string is stored at `rows[r][cx+2]` and subsequent cells set to `""`
+- `scripts/little_loops/cli/loop/info.py:889-928` — **off-path highlighted-box block**: mirrors main-path exactly using `_bc_off()` and `off_grid`; note line `off_grid[br][bx + 1] = " "` (restores space overwritten by connector arrows — important: fill pass must not overwrite this cell for `bx+1`)
+- `scripts/little_loops/cli/output.py:89-93` — `colorize(text, code)` definition: accepts any ANSI SGR string, wraps with `\033[{code}m...\033[0m`
 
 ### Tests
+- `scripts/tests/test_ll_loop_display.py:928-977` — **primary diagram rendering tests** (missed in original issue): covers `_render_fsm_diagram` with `highlight_color` assertions; patches `output_mod._USE_COLOR = True`; asserts `"\033[36m"` in result (border) and `"\033[36;1m"` (bold name) — **new bg fill assertions should be added here**
+- `scripts/tests/test_cli_output.py:58-64` — `colorize()` unit tests
 - `scripts/tests/test_fsm_executor.py` — run after changes to confirm no regressions
 - `scripts/tests/test_sprint_integration.py` — run after changes to confirm no regressions
-- No dedicated diagram rendering tests exist; verify visually with `ll-loop run issue-refinement --show-diagrams`
 
 ### Documentation
 - N/A — internal rendering change; no user-facing docs reference active state fill styling
@@ -105,6 +125,8 @@ No config schema changes are strictly required if `highlight_color` is automatic
 - `/ll:capture-issue` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb1dacf-d3dc-4461-88d7-450e60c8640a.jsonl`
 - `/ll:format-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a9e18cb-659a-48f7-9438-2e4c4fdddd25.jsonl`
 - `/ll:confidence-check` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a53c6fa-fc4b-421b-b487-38a43f4dff4a.jsonl`
+- `/ll:refine-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f46a5b1-a489-4906-a03e-8e3d129e5c8a.jsonl`
+- `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/12d9282f-0d38-4934-975d-426a4e8789d4.jsonl`
 
 ## Status
 
