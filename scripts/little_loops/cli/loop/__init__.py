@@ -148,6 +148,7 @@ Examples:
     list_parser.add_argument(
         "--status", help="Filter running loops by status (e.g., interrupted, awaiting_continuation)"
     )
+    list_parser.add_argument("--json", action="store_true", help="Output as JSON array")
 
     # Status subcommand
     status_parser = subparsers.add_parser("status", aliases=["st"], help="Show loop status")

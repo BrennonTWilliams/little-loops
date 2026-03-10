@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from typing import TYPE_CHECKING
 
-from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize
+from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, print_json
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -16,7 +16,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
 
     Args:
         config: Project configuration
-        args: Parsed arguments with optional .type, .priority, and .flat attributes
+        args: Parsed arguments with optional .type, .priority, .flat, and .json attributes
 
     Returns:
         Exit code (0 = success)
@@ -31,6 +31,21 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
 
     if not issues:
         print("No active issues found.")
+        return 0
+
+    if getattr(args, "json", False):
+        print_json(
+            [
+                {
+                    "id": issue.issue_id,
+                    "priority": issue.priority,
+                    "type": issue.issue_id.split("-", 1)[0],
+                    "title": issue.title,
+                    "path": str(issue.path),
+                }
+                for issue in issues
+            ]
+        )
         return 0
 
     if getattr(args, "flat", False):

@@ -2206,6 +2206,48 @@ class TestMainSprintAdditionalCoverage:
 
         assert result == 0
 
+    def test_list_json_output(self, tmp_path: Path, capsys) -> None:
+        """ll-sprint list --json outputs a valid JSON array with name, path, issues fields."""
+        import json as _json
+
+        from little_loops.cli.sprint.manage import _cmd_sprint_list
+        from little_loops.sprint import Sprint, SprintManager
+
+        sprints_dir = tmp_path / ".sprints"
+        sprints_dir.mkdir()
+        Sprint(name="my-sprint", description="", issues=["BUG-001", "FEAT-002"], created="").save(
+            sprints_dir
+        )
+        manager = SprintManager(sprints_dir=sprints_dir)
+        args = argparse.Namespace(json=True, verbose=False)
+        result = _cmd_sprint_list(args, manager)
+
+        assert result == 0
+        data = _json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert len(data) == 1
+        item = data[0]
+        assert item["name"] == "my-sprint"
+        assert "path" in item
+        assert item["issues"] == 2
+
+    def test_list_json_empty(self, tmp_path: Path, capsys) -> None:
+        """ll-sprint list --json with no sprints outputs empty JSON array."""
+        import json as _json
+
+        from little_loops.cli.sprint.manage import _cmd_sprint_list
+        from little_loops.sprint import SprintManager
+
+        empty_sprints_dir = tmp_path / ".sprints"
+        empty_sprints_dir.mkdir()
+        manager = SprintManager(sprints_dir=empty_sprints_dir)
+        args = argparse.Namespace(json=True, verbose=False)
+        result = _cmd_sprint_list(args, manager)
+
+        assert result == 0
+        data = _json.loads(capsys.readouterr().out)
+        assert data == []
+
     def test_delete_not_found_error(self) -> None:
         """ll-sprint delete returns error for non-existent sprint."""
         with patch("pathlib.Path.cwd", return_value=Path.cwd()):

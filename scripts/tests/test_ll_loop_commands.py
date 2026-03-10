@@ -247,6 +247,82 @@ class TestCmdList:
         captured = capsys.readouterr().out
         assert "No loops with status: interrupted" in captured
 
+    def test_list_json_output(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json outputs a valid JSON array with name and path fields."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "loop-a.yaml").write_text("name: loop-a\n")
+        (loops_dir / "loop-b.yaml").write_text("name: loop-b\n")
+
+        args = argparse.Namespace(running=False, status=None, json=True)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert len(data) == 2
+        names = {item["name"] for item in data}
+        assert names == {"loop-a", "loop-b"}
+        for item in data:
+            assert "name" in item
+            assert "path" in item
+
+    def test_list_json_empty(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json with no loops outputs an empty JSON array."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        args = argparse.Namespace(running=False, status=None, json=True)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data == []
+
+    def test_list_without_json_unchanged(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Without --json, output is unchanged human-readable format."""
+        from little_loops.cli.loop.info import cmd_list
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "my-loop.yaml").write_text("name: my-loop\n")
+
+        args = argparse.Namespace(running=False, status=None, json=False)
+        with patch(
+            "little_loops.cli.loop.info.get_builtin_loops_dir",
+            return_value=tmp_path / "nonexistent",
+        ):
+            result = cmd_list(args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Available loops:" in out
+        assert "my-loop" in out
+
 
 class TestCmdHistory:
     """Tests for history command logic."""

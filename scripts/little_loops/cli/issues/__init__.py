@@ -67,6 +67,7 @@ Examples:
         action="store_true",
         help="Output flat list (current format) for scripting compatibility",
     )
+    ls.add_argument("--json", action="store_true", help="Output as JSON array")
     add_config_arg(ls)
 
     seq = subs.add_parser(

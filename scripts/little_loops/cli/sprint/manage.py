@@ -6,6 +6,7 @@ import argparse
 from pathlib import Path
 from typing import Any
 
+from little_loops.cli.output import print_json
 from little_loops.cli.sprint._helpers import _render_execution_plan
 from little_loops.dependency_graph import DependencyGraph, refine_waves_for_contention
 from little_loops.logger import Logger
@@ -17,7 +18,23 @@ def _cmd_sprint_list(args: argparse.Namespace, manager: SprintManager) -> int:
     sprints = manager.list_all()
 
     if not sprints:
+        if getattr(args, "json", False):
+            print_json([])
+            return 0
         print("No sprints defined")
+        return 0
+
+    if getattr(args, "json", False):
+        print_json(
+            [
+                {
+                    "name": sprint.name,
+                    "path": str(manager.sprints_dir / f"{sprint.name}.yaml"),
+                    "issues": len(sprint.issues),
+                }
+                for sprint in sprints
+            ]
+        )
         return 0
 
     print(f"Available sprints ({len(sprints)}):")

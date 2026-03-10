@@ -14,7 +14,7 @@ from little_loops.cli.loop._helpers import (
     load_loop_with_spec,
     resolve_loop_path,
 )
-from little_loops.cli.output import colorize, terminal_width
+from little_loops.cli.output import colorize, print_json, terminal_width
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.logger import Logger
 
@@ -80,7 +80,16 @@ def cmd_list(
         ]
 
     if not yaml_files and not builtin_files:
+        if getattr(args, "json", False):
+            print_json([])
+            return 0
         print("No loops available")
+        return 0
+
+    if getattr(args, "json", False):
+        items: list[dict[str, Any]] = [{"name": p.stem, "path": str(p)} for p in sorted(yaml_files)]
+        items += [{"name": p.stem, "path": str(p), "built_in": True} for p in builtin_files]
+        print_json(items)
         return 0
 
     print("Available loops:")

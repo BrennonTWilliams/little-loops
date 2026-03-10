@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import sys
 import textwrap
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from little_loops.config import CliConfig
@@ -91,3 +92,8 @@ def colorize(text: str, code: str) -> str:
     if not _USE_COLOR:
         return text
     return f"\033[{code}m{text}\033[0m"
+
+
+def print_json(data: Any) -> None:
+    """Print *data* as formatted JSON to stdout."""
+    print(json.dumps(data, indent=2))

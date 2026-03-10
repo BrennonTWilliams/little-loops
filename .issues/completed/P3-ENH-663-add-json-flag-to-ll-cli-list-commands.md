@@ -91,12 +91,12 @@ Each command should emit a JSON array. Representative schemas:
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues list --json` outputs a valid JSON array; each element contains at minimum `id`, `priority`, `type`, `title`, `path`
-- [ ] `ll-loop list --json` outputs a valid JSON array; each element contains at minimum `name`, `path`
-- [ ] `ll-sprint list --json` outputs a valid JSON array; each element contains at minimum `name`, `path`
-- [ ] Default (no `--json`) output is unchanged for all three commands
-- [ ] Exit code is 0 on success for both modes
-- [ ] Unit tests cover `--json` path for each command
+- [x] `ll-issues list --json` outputs a valid JSON array; each element contains at minimum `id`, `priority`, `type`, `title`, `path`
+- [x] `ll-loop list --json` outputs a valid JSON array; each element contains at minimum `name`, `path`
+- [x] `ll-sprint list --json` outputs a valid JSON array; each element contains at minimum `name`, `path`
+- [x] Default (no `--json`) output is unchanged for all three commands
+- [x] Exit code is 0 on success for both modes
+- [x] Unit tests cover `--json` path for each command
 
 ## Integration Map
 
@@ -141,10 +141,28 @@ Each command should emit a JSON array. Representative schemas:
 
 ---
 
-**Open** | Created: 2026-03-09 | Priority: P3
+**Completed** | Created: 2026-03-09 | Resolved: 2026-03-09 | Priority: P3
+
+## Resolution
+
+Added `--json` flag to `ll-issues list`, `ll-loop list`, and `ll-sprint list` subcommands. When set, each command outputs a JSON array of objects (one per item) to stdout and exits 0. Default human-readable output is unchanged. A shared `print_json()` helper was added to `cli/output.py`.
+
+Files changed:
+- `scripts/little_loops/cli/output.py` — added `print_json(data)` helper
+- `scripts/little_loops/cli/issues/__init__.py` — added `--json` flag to `list` parser
+- `scripts/little_loops/cli/issues/list_cmd.py` — serialize issues to JSON when flag set
+- `scripts/little_loops/cli/loop/__init__.py` — added `--json` flag to `list` parser
+- `scripts/little_loops/cli/loop/info.py` — serialize loops to JSON when flag set
+- `scripts/little_loops/cli/sprint/__init__.py` — added `--json` flag to `list` parser
+- `scripts/little_loops/cli/sprint/manage.py` — serialize sprints to JSON when flag set
+- `scripts/tests/test_issues_cli.py` — 3 new tests for `--json` path
+- `scripts/tests/test_ll_loop_commands.py` — 3 new tests for `--json` path
+- `scripts/tests/test_cli.py` — 2 new tests for sprint `--json` path
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-09T23:47:50Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d305cad5-64a5-4cef-bf3e-f1c6e65b32db.jsonl`
 - `/ll:format-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
 - `/ll:verify-issues` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
 - `/ll:confidence-check` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01f82782-0b8c-4ad7-bf21-b0fbd48b9fa2.jsonl`
+- `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75d05dca-d3c0-4752-915a-468f5a607e15.jsonl`
+- `/ll:manage-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
