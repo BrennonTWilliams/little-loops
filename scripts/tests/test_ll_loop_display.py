@@ -848,10 +848,12 @@ class TestRenderFsmDiagram:
             "expected same row (side-by-side layout)"
         )
 
-        # fix-tests should show a left-going arrow (◄) for its cross-edge to check-quality
+        # fix-tests → check-quality is an off-path → main-path back-edge: rendered as U-route
+        # (▲ indicator), NOT as a ◄ left-arrow on the name row.
+        assert "\u25b2" in result, "Expected \u25b2 U-route indicator for fix-tests\u2192check-quality back-edge"
         fix_tests_name_line = lines[fix_tests_row]
-        assert "\u25c4" in fix_tests_name_line, (
-            f"Expected ◄ left-going arrow on fix-tests name row: {fix_tests_name_line!r}"
+        assert "\u25c4" not in fix_tests_name_line, (
+            f"Unexpected \u25c4 left-arrow on fix-tests name row (Bug 3 should render U-route instead): {fix_tests_name_line!r}"
         )
 
     def test_linear_off_path_chain_all_states_visible(self) -> None:
@@ -913,6 +915,63 @@ class TestRenderFsmDiagram:
             f"Off-path states should appear left-to-right; "
             f"fix={fix_pos}, check_commit={cc_pos}, commit={commit_pos}"
         )
+
+    def test_issue_refinement_git_topology(self) -> None:
+        """Regression for BUG-664: off-path chain arrows and back-edges render correctly.
+
+        Tests the 6-state issue-refinement-git topology:
+        evaluate → (on_failure) → format_issues → score_issues → refine_issues
+                                                                     → check_commit → commit → (back to evaluate)
+                                                   check_commit → (on_failure) → evaluate
+        """
+        fsm = self._make_fsm(
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="evaluate",
+                    on_success="evaluate",
+                    on_failure="format_issues",
+                    on_partial="evaluate",
+                ),
+                "format_issues": StateConfig(action="format", next="score_issues"),
+                "score_issues": StateConfig(action="score", next="refine_issues"),
+                "refine_issues": StateConfig(action="refine", next="check_commit"),
+                "check_commit": StateConfig(
+                    action="check",
+                    on_success="commit",
+                    on_failure="evaluate",
+                ),
+                "commit": StateConfig(action="commit", next="evaluate"),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        lines = result.split("\n")
+
+        # 1. All 6 states appear in boxes (line with state name AND │ border)
+        for state in ("evaluate", "format_issues", "score_issues", "refine_issues", "check_commit", "commit"):
+            box_lines = [ln for ln in lines if state in ln and "\u2502" in ln]
+            assert box_lines, f"{state!r} should be rendered in a box with \u2502 borders"
+
+        # 2. ▶ right-arrow appears somewhere in diagram (between adjacent off-path states)
+        assert "\u25b6" in result, "Expected \u25b6 right-arrow between off-path states"
+
+        # 3. ▲ appears at least twice (two separate U-route row-pairs for check_commit→evaluate
+        #    and commit→evaluate — must not overwrite each other)
+        up_arrow_count = result.count("\u25b2")
+        assert up_arrow_count >= 2, (
+            f"Expected \u25b2 for both check_commit\u2192evaluate and commit\u2192evaluate back-edges, "
+            f"found {up_arrow_count}. Full diagram:\n{result}"
+        )
+
+        # 4. No ◄ immediately adjacent to check_commit or commit left walls (Bug 3 guard)
+        for state in ("check_commit", "commit"):
+            state_rows = [ln for ln in lines if state in ln and "\u2502" in ln]
+            for row in state_rows:
+                state_pos = row.index(state)
+                prefix = row[:state_pos]
+                assert "\u25c4" not in prefix[-6:], (
+                    f"Found \u25c4 immediately left of {state!r} box \u2014 Bug 3 not fixed. Row: {row!r}"
+                )
 
     def test_highlighted_state_uses_configured_color(self) -> None:
         """highlight_state box uses the configured ANSI color; other boxes do not."""

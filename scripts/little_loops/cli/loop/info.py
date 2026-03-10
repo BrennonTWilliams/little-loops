@@ -565,7 +565,7 @@ def _render_2d_diagram(
 
     # Place off-path states below, centered under their first neighbor
     off_right_edge: int = 0  # right edge of last placed off-path state; 0 = none placed
-    gap = 4
+    prev_off: str | None = None
     for s in off_path:
         neighbor = None
         for src, dst, _ in branches + back_edges:
@@ -581,11 +581,24 @@ def _render_2d_diagram(
         else:
             ideal_start = 2
 
+        # Compute minimum gap needed for any edge label between prev_off and s
+        if prev_off is not None:
+            gap = max(
+                4,
+                max(
+                    (len(lbl) + 6 for src, dst, lbl in branches + back_edges if src == prev_off and dst == s),
+                    default=4,
+                ),
+            )
+        else:
+            gap = 4
+
         # Shift right to avoid overlapping an already-placed off-path state
         actual_start = ideal_start if off_right_edge == 0 else max(ideal_start, off_right_edge + gap)
         col_start[s] = actual_start
         col_center[s] = actual_start + box_width[s] // 2
         off_right_edge = actual_start + box_width[s]
+        prev_off = s
 
     total_width = x + 4
     for s in off_path:
@@ -733,6 +746,7 @@ def _render_2d_diagram(
     # --- Off-path states: render as multi-row boxes with vertical connectors ---
     # Phase 1: Pre-compute specs for all off-path states (no rendering yet)
     off_spec: dict[str, dict] = {}
+    off_to_main_back: list[tuple[str, str, str]] = []
     for off_s in off_path:
         state_edges = off_state_edges.get(off_s, [])
         if not state_edges:
@@ -771,6 +785,10 @@ def _render_2d_diagram(
                 # Only use vertical up-connector when anchor also directly leads here.
                 # Pure back-edges (no direct incoming) go to outgoing → horizontal ◄ arrow.
                 up_labels.append(label)
+            elif src in off_path_set and dst in main_path_set:
+                # off-path → main-path back-edge without a direct vertical connector:
+                # collect for U-route rendering after the off-path grid.
+                off_to_main_back.append((src, dst, label))
             else:
                 outgoing.append((src, dst, label))
 
@@ -932,7 +950,7 @@ def _render_2d_diagram(
             for src, dst, label in outgoing:
                 if src == off_s:
                     start_col = bx + bw
-                    target_col = col_center.get(dst, start_col + len(label) + 4)
+                    target_col = col_start.get(dst, start_col + len(label) + 4)
                     edge_text = "\u2500" + label + "\u2500\u2500\u25b6"
                     available = target_col - start_col
                     if available > len(edge_text):
@@ -958,6 +976,36 @@ def _render_2d_diagram(
 
         for row in off_grid:
             lines.append("".join(row).rstrip())
+
+    # --- Off-to-main back-edges: U-route row-pairs below the off-path grid ---
+    for src, dst, label in off_to_main_back:
+        src_col = col_center.get(src, 0)
+        dst_col = col_center.get(dst, 0)
+        left = min(src_col, dst_col)
+        right = max(src_col, dst_col)
+
+        row = [" "] * total_width
+        if 0 <= dst_col < total_width:
+            row[dst_col] = "\u25b2"
+        if 0 <= src_col < total_width:
+            row[src_col] = "\u2502"
+        lines.append("".join(row).rstrip())
+
+        row = [" "] * total_width
+        if left < total_width:
+            row[left] = "\u2514"
+        if right < total_width:
+            row[right] = "\u2518"
+        for j in range(left + 1, right):
+            if j < total_width:
+                row[j] = "\u2500"
+        label_padded = f" {label} "
+        lstart = (left + right) // 2 - len(label_padded) // 2
+        for j, ch in enumerate(label_padded):
+            pos = lstart + j
+            if left < pos < right and 0 <= pos < total_width:
+                row[pos] = ch
+        lines.append("".join(row).rstrip())
 
     if diagram_indent > 0:
         lines = [" " * diagram_indent + ln if ln.strip() else ln for ln in lines]
