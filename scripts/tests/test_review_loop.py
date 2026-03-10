@@ -178,11 +178,15 @@ class TestReviewLoopChecks:
         )
         issues = validate_fsm(fsm)
         warnings = [i for i in issues if i.severity == ValidationSeverity.WARNING]
-        assert any("route" in i.message.lower() or "conflict" in i.message.lower() for i in warnings)
+        assert any(
+            "route" in i.message.lower() or "conflict" in i.message.lower() for i in warnings
+        )
 
     # ---- Built-in loops pass validation ----
 
-    @pytest.mark.parametrize("loop_file", list(LOOPS_DIR.glob("*.yaml")) if LOOPS_DIR.exists() else [])
+    @pytest.mark.parametrize(
+        "loop_file", list(LOOPS_DIR.glob("*.yaml")) if LOOPS_DIR.exists() else []
+    )
     def test_builtin_loops_are_valid(self, loop_file: Path) -> None:
         """All built-in loops in loops/ should pass structural validation without errors."""
         with open(loop_file) as f:
@@ -414,16 +418,17 @@ class TestReviewLoopAutoFix:
         """--auto should only apply QC-6 (add on_handoff: pause)."""
         # Simulate the auto-apply eligibility check from reference.md
         all_findings = [
-            {"check": "QC-1", "breaking": False},   # judgment call → not auto-applied
-            {"check": "QC-2", "breaking": False},   # routing change → not auto-applied
-            {"check": "QC-4", "breaking": False},   # routing change → not auto-applied
-            {"check": "QC-6", "breaking": False},   # pure addition of default value → auto-applied
+            {"check": "QC-1", "breaking": False},  # judgment call → not auto-applied
+            {"check": "QC-2", "breaking": False},  # routing change → not auto-applied
+            {"check": "QC-4", "breaking": False},  # routing change → not auto-applied
+            {"check": "QC-6", "breaking": False},  # pure addition of default value → auto-applied
         ]
         routing_checks = {"QC-2", "QC-4"}
         judgment_checks = {"QC-1"}
 
         auto_eligible = [
-            f for f in all_findings
+            f
+            for f in all_findings
             if not f["breaking"]
             and f["check"] not in routing_checks
             and f["check"] not in judgment_checks

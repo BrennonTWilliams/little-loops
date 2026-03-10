@@ -850,7 +850,9 @@ class TestRenderFsmDiagram:
 
         # fix-tests → check-quality is an off-path → main-path back-edge: rendered as U-route
         # (▲ indicator), NOT as a ◄ left-arrow on the name row.
-        assert "\u25b2" in result, "Expected \u25b2 U-route indicator for fix-tests\u2192check-quality back-edge"
+        assert "\u25b2" in result, (
+            "Expected \u25b2 U-route indicator for fix-tests\u2192check-quality back-edge"
+        )
         fix_tests_name_line = lines[fix_tests_row]
         assert "\u25c4" not in fix_tests_name_line, (
             f"Unexpected \u25c4 left-arrow on fix-tests name row (Bug 3 should render U-route instead): {fix_tests_name_line!r}"
@@ -948,7 +950,14 @@ class TestRenderFsmDiagram:
         lines = result.split("\n")
 
         # 1. All 6 states appear in boxes (line with state name AND │ border)
-        for state in ("evaluate", "format_issues", "score_issues", "refine_issues", "check_commit", "commit"):
+        for state in (
+            "evaluate",
+            "format_issues",
+            "score_issues",
+            "refine_issues",
+            "check_commit",
+            "commit",
+        ):
             box_lines = [ln for ln in lines if state in ln and "\u2502" in ln]
             assert box_lines, f"{state!r} should be rendered in a box with \u2502 borders"
 

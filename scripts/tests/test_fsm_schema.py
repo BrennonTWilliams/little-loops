@@ -1371,9 +1371,7 @@ class TestLoadAndValidate:
             "    terminal: true\n"
         )
         _, warnings = load_and_validate(loop_yaml)
-        unknown_warnings = [
-            w for w in warnings if "Unknown top-level" in w.message
-        ]
+        unknown_warnings = [w for w in warnings if "Unknown top-level" in w.message]
         assert unknown_warnings == []
 
     def test_missing_name_field(self, fsm_fixtures: Path) -> None:

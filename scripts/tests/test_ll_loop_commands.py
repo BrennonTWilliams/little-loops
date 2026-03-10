@@ -481,11 +481,20 @@ class TestHistoryTail:
         events = []
         for i in range(1, 4):
             events.append(
-                {"event": "state_enter", "ts": f"2026-01-15T10:00:{i:02d}", "state": f"iter{i}", "iteration": i}
+                {
+                    "event": "state_enter",
+                    "ts": f"2026-01-15T10:00:{i:02d}",
+                    "state": f"iter{i}",
+                    "iteration": i,
+                }
             )
             for j in range(10):
                 events.append(
-                    {"event": "action_output", "ts": f"2026-01-15T10:00:{i:02d}", "line": f"output line {j}"}
+                    {
+                        "event": "action_output",
+                        "ts": f"2026-01-15T10:00:{i:02d}",
+                        "line": f"output line {j}",
+                    }
                 )
 
         with open(events_file, "w") as f:
@@ -523,11 +532,20 @@ class TestHistoryTail:
         events = []
         for i in range(1, 3):
             events.append(
-                {"event": "state_enter", "ts": f"2026-01-15T10:00:{i:02d}", "state": f"iter{i}", "iteration": i}
+                {
+                    "event": "state_enter",
+                    "ts": f"2026-01-15T10:00:{i:02d}",
+                    "state": f"iter{i}",
+                    "iteration": i,
+                }
             )
             for j in range(3):
                 events.append(
-                    {"event": "action_output", "ts": f"2026-01-15T10:00:{i:02d}", "line": f"line{i}-{j}"}
+                    {
+                        "event": "action_output",
+                        "ts": f"2026-01-15T10:00:{i:02d}",
+                        "line": f"line{i}-{j}",
+                    }
                 )
 
         with open(events_file, "w") as f:
@@ -536,7 +554,9 @@ class TestHistoryTail:
 
         monkeypatch.chdir(tmp_path)
         # --tail 3 in verbose mode: only last 3 raw events (all action_output from iter2)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "--tail", "3", "--verbose"]):
+        with patch.object(
+            sys, "argv", ["ll-loop", "history", "test-loop", "--tail", "3", "--verbose"]
+        ):
             from little_loops.cli import main_loop
 
             result = main_loop()

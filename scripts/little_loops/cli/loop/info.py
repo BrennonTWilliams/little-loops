@@ -586,7 +586,11 @@ def _render_2d_diagram(
             gap = max(
                 4,
                 max(
-                    (len(lbl) + 6 for src, dst, lbl in branches + back_edges if src == prev_off and dst == s),
+                    (
+                        len(lbl) + 6
+                        for src, dst, lbl in branches + back_edges
+                        if src == prev_off and dst == s
+                    ),
                     default=4,
                 ),
             )
@@ -594,7 +598,9 @@ def _render_2d_diagram(
             gap = 4
 
         # Shift right to avoid overlapping an already-placed off-path state
-        actual_start = ideal_start if off_right_edge == 0 else max(ideal_start, off_right_edge + gap)
+        actual_start = (
+            ideal_start if off_right_edge == 0 else max(ideal_start, off_right_edge + gap)
+        )
         col_start[s] = actual_start
         col_center[s] = actual_start + box_width[s] // 2
         off_right_edge = actual_start + box_width[s]
