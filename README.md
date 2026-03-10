@@ -267,6 +267,7 @@ ll-loop run <loop-name>                   # Execute a loop by name
 ll-loop run <loop-name> -b               # Run as background daemon
 ll-loop run <loop-name> --show-diagrams  # Show FSM diagram after each step
 ll-loop list                     # List all available loops
+ll-loop list --json              # JSON array of available loops
 ll-loop stop <loop-name>         # Stop a running loop
 ll-loop status <loop-name>       # Show loop status
 ll-loop resume <loop-name>       # Resume an interrupted loop
@@ -289,6 +290,7 @@ Define and execute curated issue sets with dependency-aware ordering:
 ll-sprint create sprint-1 --issues BUG-001,FEAT-010
 ll-sprint run sprint-1           # Execute a sprint
 ll-sprint list                   # List all sprints
+ll-sprint list --json            # JSON array of all sprints
 ll-sprint show sprint-1          # Show sprint details
 ll-sprint edit sprint-1 --add BUG-045  # Edit sprint issue list
 ll-sprint delete sprint-1        # Delete a sprint
@@ -361,6 +363,7 @@ ll-issues next-id                             # Next available issue number
 ll-issues list                                # List all active issues
 ll-issues list --type FEAT --priority P2      # Filter by type and priority
 ll-issues list --flat                         # Flat output for scripting
+ll-issues list --json                         # JSON output for scripting
 ll-issues show FEAT-001                       # Show summary card for an issue
 ll-issues sequence                            # Dependency-ordered implementation sequence
 ll-issues sequence --limit 5                  # Show top 5 issues to work on

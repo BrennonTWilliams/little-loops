@@ -150,6 +150,7 @@ List all sprints.
 | Flag | Short | Description |
 |------|-------|-------------|
 | `--verbose` | `-v` | Show detailed information |
+| `--json` | | Output as JSON array |
 
 #### `ll-sprint show <sprint>` / `ll-sprint s <sprint>`
 
@@ -194,6 +195,7 @@ ll-sprint create sprint-1 --issues BUG-001,FEAT-010 --description "Q1 fixes"
 ll-sprint run sprint-1
 ll-sprint run sprint-1 --dry-run
 ll-sprint list
+ll-sprint list --json                         # JSON array of all sprints
 ll-sprint show sprint-1
 ll-sprint edit sprint-1 --add BUG-045,ENH-050
 ll-sprint edit sprint-1 --remove BUG-001
@@ -250,6 +252,7 @@ List available loops.
 | Flag | Description |
 |------|-------------|
 | `--running` | Only show currently running loops |
+| `--json` | Output as JSON array |
 
 #### `ll-loop status <loop>` / `ll-loop st <loop>`
 
@@ -310,6 +313,7 @@ ll-loop simulate fix-types --scenario all-pass
 ll-loop compile paradigm.yaml         # Compile paradigm to FSM
 ll-loop list                          # List available loops
 ll-loop list --running                # List running loops
+ll-loop list --json                   # JSON array of available loops
 ll-loop status fix-types              # Show loop status
 ll-loop stop fix-types                # Stop a running loop
 ll-loop resume fix-types              # Resume interrupted loop
@@ -344,6 +348,7 @@ List active issues with optional filters.
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
 | `--priority` | Filter by priority: `P0`–`P5` |
 | `--flat` | Output flat list for scripting |
+| `--json` | Output as JSON array |
 | `--config` | Path to project root |
 
 #### `ll-issues show <issue_id>` / `ll-issues s <issue_id>`
@@ -380,6 +385,8 @@ The `Norm` column checks filenames against `^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-
 ```bash
 ll-issues next-id
 ll-issues list --type FEAT --priority P2
+ll-issues list --json                         # JSON array of all active issues
+ll-issues list --type BUG --json             # JSON filtered by type
 ll-issues show FEAT-518
 ll-issues show 518
 ll-issues sequence --limit 10
