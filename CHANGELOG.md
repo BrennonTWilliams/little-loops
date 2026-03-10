@@ -12,6 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.38.0] - 2026-03-09
+
+### Added
+
+- **New `/ll:review-loop` FSM Loop Quality Auditor** - Comprehensive skill for auditing FSM loop configurations, analyzing logic, and suggesting improvements (FEAT-660)
+- **Issue-refinement-git FSM loop** - Automated issue refinement workflow using git integration (88baf5d)
+
+### Fixed
+
+- **FSM Diagram Off-Path Arrows and Back-Edges Broken** - Fixed rendering of off-path arrows and back-edges in FSM diagrams for multi-state chains (BUG-664)
+- fix(review-loop): rename FA-N checks to QC-8/QC-13 to prevent early termination (e99931c)
+
+### Changed
+
+- **Add Unknown-Key Detection to `load_and_validate()`** - Improved FSM validation with detection of unknown keys in loop configurations (ENH-661)
+- **review-loop FSM Logic Analysis Phase** - Enhanced review-loop with comprehensive FSM logic analysis and evaluation (ENH-662)
+- **Extract Shared `_process_alive` to Eliminate Duplication** - Refactored concurrency module to eliminate code duplication between `concurrency.py` and `lifecycle.py` (ENH-537)
+- **Pre-resolve Scope Paths to Eliminate O(n×m) stat Calls** - Performance optimization for `_scopes_overlap` path resolution (ENH-629)
+- **FSM Test Coverage for `maintain` Mode and `direction="maximize"`** - Added missing executor-level tests (ENH-538, ENH-631)
+
 ## [1.37.3] - 2026-03-09
 
 ### Fixed
@@ -1109,6 +1129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.38.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.37.3...v1.38.0
 [1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
 [1.33.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.0...v1.33.1
 [1.0.0]: https://github.com/BrennonTWilliams/little-loops/compare/v0.0.1...v1.0.0
