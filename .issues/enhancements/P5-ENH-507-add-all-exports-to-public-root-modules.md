@@ -320,3 +320,7 @@ Update first - Clean hygiene improvement but LOW utility for a CLI/plugin projec
 **Open** | Created: 2026-02-25 | Priority: P5
 
 _(No active blockers — FEAT-488 was completed 2026-03-06)_
+
+## Blocked By
+- ENH-665
+- ENH-667

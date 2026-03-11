@@ -119,4 +119,5 @@ Or alternatively, call `_save_state()` only when state actually changes (issue c
 
 **Open** | Created: 2026-02-24 | Priority: P4
 
-
+## Blocked By
+- ENH-665

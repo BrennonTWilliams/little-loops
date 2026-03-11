@@ -117,3 +117,6 @@ Four copy-paste instances of identical paradigm detection logic create a compoun
 ## Status
 
 **Open** | Created: 2026-03-06 | Priority: P4
+
+## Blocked By
+- ENH-671

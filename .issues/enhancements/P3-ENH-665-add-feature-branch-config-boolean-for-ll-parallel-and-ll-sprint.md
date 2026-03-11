@@ -94,3 +94,15 @@ Active
 ## Session Log
 - `/ll:capture-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eec31a4c-27c6-4b78-bafd-8496b3a68d4a.jsonl`
 - `/ll:format-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644cb258-98f9-4276-9d10-660523431e43.jsonl`
+
+
+## Blocked By
+- BUG-656
+## Blocks
+- FEAT-638
+- ENH-507
+- ENH-470
+- ENH-459
+- ENH-654
+- ENH-497
+- ENH-485

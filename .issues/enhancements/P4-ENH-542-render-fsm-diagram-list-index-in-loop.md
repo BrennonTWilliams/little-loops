@@ -139,6 +139,7 @@ dst_pos = bfs_pos.get(dst, len(bfs_order))   # O(1), was O(n)
 ---
 
 ## Blocked By
+- ENH-668
 
 - ENH-540
 - ENH-541

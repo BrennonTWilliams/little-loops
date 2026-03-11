@@ -146,6 +146,9 @@ In `cmd_history()`:
 `feature`, `ll-loop`, `ux`, `cli`, `scan-codebase`
 
 ## Blocked By
+- ENH-668
+- ENH-667
+- ENH-541
 
 _(ENH-537 completed — extracted `process_alive` utility)_
 _(ENH-538 completed — added maintain-mode executor tests)_

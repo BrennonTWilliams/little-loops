@@ -49,8 +49,17 @@ The FSM diagram is the primary visual tool for understanding loop configurations
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/info.py` — current renderer (refactor `_render_fsm_diagram` at line 367 and `_render_2d_diagram` at line 472)
+- `scripts/little_loops/cli/loop/info.py` — current renderer (refactor `_render_fsm_diagram` at line 367 and `_render_2d_diagram` at line 472; function ends at line 1027)
 - `scripts/little_loops/cli/loop/layout.py` — **new file** for extracted layout engine
+
+### Helper Functions Requiring Relocation Decision
+The full extraction scope from `info.py` is **lines 255-1027** (not just 367-1027):
+- `info.py:255-262` — `_EDGE_LABEL_COLORS: dict[str, str]` — maps `"success"/"fail"/"error"/"partial"/"next"/"_"` to ANSI codes
+- `info.py:265-279` — `_colorize_label(label: str) -> str` — keyword colorizer used by `_colorize_diagram_labels`
+- `info.py:282-295` — `_colorize_diagram_labels(diagram: str) -> str` — regex post-processing pass; called as the final step of `_render_2d_diagram:1027`
+- `info.py:303-358` — `_box_inner_lines(state, display_label, verbose, inner_width) -> list[str]` — per-state box content lines; called during coordinate assignment
+
+All four must move to `layout.py`. Do not create import cycles by importing from `info.py` within `layout.py`.
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/info.py:1226` — `cmd_show` calls `_render_fsm_diagram`
@@ -64,7 +73,25 @@ The FSM diagram is the primary visual tool for understanding loop configurations
 - P4-ENH-654: FSM diagram active state background fill highlight
 
 ### Tests
-- `scripts/tests/test_ll_loop_display.py` — imports `_render_fsm_diagram` directly; update existing tests and add new topology-specific test cases
+- `scripts/tests/test_ll_loop_display.py` — imports `_render_fsm_diagram` directly at line 14; `TestRenderFsmDiagram` class at line 634 has 9 test functions
+
+The class uses an inner `_make_fsm(self, name, initial, states)` factory that constructs `FSMLoop` directly (not via `make_test_fsm`). The module also has top-level `make_test_state` / `make_test_fsm` helpers at lines 47-95.
+
+**Test requiring update (will break with vertical linear rendering):**
+- `test_main_flow_order` (line 771) — asserts horizontal order via `result.split("\n")[1]` position comparison; assumes states appear left-to-right on line index 1; must be rewritten to assert top-to-bottom vertical ordering for linear chains
+
+**Tests to preserve/verify (13 total in TestRenderFsmDiagram):**
+- `test_single_terminal_state` (645), `test_linear_flow_shows_labels` (655), `test_next_transition_label` (675) — basic correctness
+- `test_branching_fsm_shows_branches_section` (687), `test_cyclic_fsm_shows_back_edges_section` (710), `test_self_loop_annotated` (730) — complex topology
+- `test_route_table_branches` (746), `test_bidirectional_back_edge_both_pipes_on_label_rows` (789), `test_multiple_off_path_states_same_depth` (813) — specific rendering
+- `test_linear_off_path_chain_all_states_visible` — BUG-658 regression
+- `test_issue_refinement_git_topology` (929) — 6-state cyclic regression (BUG-664)
+- 3x `test_highlighted_state_*` — ANSI color assertions with `patch.object(output_mod, "_USE_COLOR", True)`
+
+**New topology-specific tests to add** (per acceptance criteria):
+- 2-state linear, 4-state linear (verify vertical rendering)
+- Diamond pattern, fan-in with 3+ paths
+- Terminal-width overflow — assert no line exceeds `terminal_width()` characters
 
 ### Documentation
 - N/A
@@ -74,7 +101,7 @@ The FSM diagram is the primary visual tool for understanding loop configurations
 
 ## Implementation Steps
 
-1. Extract layout logic from `info.py:367-993` into new `layout.py` module
+1. Extract layout logic from `info.py:255-1027` into new `layout.py` module — includes `_EDGE_LABEL_COLORS`, `_colorize_label`, `_colorize_diagram_labels`, `_box_inner_lines`, `_render_fsm_diagram`, `_render_2d_diagram` (note: `_render_2d_diagram` ends at line 1027, not 993)
 2. Implement `TopologyDetector` — DFS classification (linear/tree/DAG/cyclic), back-edge extraction with label preservation
 3. Implement `LayerAssigner` — longest-path assignment + Coffman-Graham width constraint (`W = floor((terminal_width - margin) / (max_node_width + gap))`)
 4. Implement `CrossingMinimizer` — barycenter heuristic with 3 top-down/bottom-up sweeps
@@ -111,6 +138,40 @@ The FSM diagram is the primary visual tool for understanding loop configurations
 
 N/A — display-only change. No public API additions or modifications. The internal `_render_fsm_diagram` function signature is preserved; layout logic is extracted into `layout.py` as internal implementation detail.
 
+## Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+### Reusable graph algorithms in `dependency_graph.py`
+**Key finding**: The codebase already has graph traversal implementations that the `TopologyDetector` and `LayerAssigner` can model after — do not reinvent from scratch:
+
+- `dependency_graph.py:278-321` — DFS cycle detection with WHITE/GRAY/BLACK coloring; back-edge detection via GRAY ancestor check — directly applicable to cycle removal phase
+- `dependency_graph.py:224-276` — Kahn's algorithm topological sort using `deque` — applicable to layer assignment after cycle removal
+- `dependency_graph.py:138-185` — BFS wave grouping (`get_execution_waves`) — equivalent to topological layer assignment
+
+These operate on `DependencyGraph` (issue-tracking objects), not `FSMLoop`, so cannot be called directly. But the algorithms should be ported/adapted.
+
+### Required imports for `layout.py`
+```python
+from __future__ import annotations
+import re
+from collections import deque
+from little_loops.fsm.schema import FSMLoop, StateConfig
+from little_loops.cli.output import terminal_width, colorize
+```
+
+### Internal mechanisms to preserve in `layout.py`
+
+- **`diagram_indent` centering** (`info.py:624`): `diagram_indent = max(0, (tw - total_width) // 2)` — centers diagram in terminal; applied to all rendered lines. Must be preserved.
+- **`highlight_state` / `highlight_color` params** — consumed by `_helpers.py:322-323` (`_render_fsm_diagram(fsm, highlight_state=state, highlight_color=highlight_color)`). Public signature of `_render_fsm_diagram` must stay unchanged.
+- **`verbose` mode box-width branching** (`info.py:512-516`) — `max_box_inner` formula differs in verbose vs. normal mode. Must be preserved in coordinate assignment.
+
+### `_render_2d_diagram` actual end line
+The function ends with `return _colorize_diagram_labels("\n".join(lines))` at line **1027**, not 993. Line 993 is mid-function (inside off-path grid rendering). Extraction scope: `info.py:367-1027`.
+
+### FSMLoop data structure fields consumed by renderer
+From `fsm/schema.py`: `FSMLoop.states: dict[str, StateConfig]`, `FSMLoop.initial: str`. Per `StateConfig`: `on_success`, `on_failure`, `on_error`, `on_partial`, `next`, `route` (`RouteConfig`), `terminal`, `action_type`, `action`. `RouteConfig.routes: dict[str, str]`, `RouteConfig.default: str | None`.
+
 ## Related Key Documentation
 
 - `thoughts/FEAT-670-layout-engine-research.md` — algorithm research, current implementation analysis, library survey
@@ -130,7 +191,11 @@ N/A — display-only change. No public API additions or modifications. The inter
 ## Session Log
 - `/ll:capture-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/000d1e34-e885-4aae-83d4-999718fb8e90.jsonl`
 - `/ll:format-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644cb258-98f9-4276-9d10-660523431e43.jsonl`
+- `/ll:refine-issue` - 2026-03-11T03:23:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fee81fea-8bf1-4d92-a43d-05577978a440.jsonl`
 
 ---
 
 **Open** | Created: 2026-03-10 | Priority: P3
+
+## Blocks
+- ENH-654

@@ -81,7 +81,13 @@ The `skill` subcommand is mutually exclusive with category-based alignment (e.g.
 
 **Open** | Created: 2026-03-04 | Priority: P3
 
+
+## Blocked By
+- ENH-669
+- BUG-656
 ## Blocks
+- FEAT-638
+- ENH-668
 
 - ENH-493
 - ENH-494

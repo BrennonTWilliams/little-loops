@@ -250,4 +250,6 @@ Second review confirms prior assessment. Scores unchanged: MEDIUM utility, HIGH 
 ### Update (2026-03-03 Tradeoff Review)
 Third review confirms prior assessment. The dependency audit is now complete (detailed caller/importer list in "Dependent Files" section). The remaining preparedness gaps are: (1) a method-level extraction plan specifying which methods move to which helper modules, (2) a thread-safety review checklist for lock ownership during extraction, and (3) an established extraction pattern to follow (currently "novel extraction"). Also note: the 2026-02-26 audit recommends extracting `output_parsing` to root first (ENH-510) to eliminate bidirectional coupling before tackling this refactor. Do not implement until all preparedness items are completed and ENH-510 is addressed.
 
-
+## Blocked By
+- ENH-665
+- ENH-667

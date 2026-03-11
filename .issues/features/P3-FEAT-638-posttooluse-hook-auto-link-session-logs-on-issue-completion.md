@@ -324,3 +324,13 @@ Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 ## Status
 
 **Open** | Created: 2026-03-07 | Priority: P3
+
+
+## Blocked By
+- FEAT-565
+- BUG-656
+- ENH-665
+## Blocks
+- ENH-668
+- ENH-493
+- ENH-494

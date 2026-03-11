@@ -132,3 +132,15 @@ ENH-453 added the `mkdir` to SKILL.md Step 8 but did not uncomment the default o
 ## Status
 
 **Open** | Created: 2026-03-08 | Priority: P3
+
+## Blocks
+- FEAT-638
+- FEAT-565
+- ENH-669
+- ENH-665
+- ENH-668
+- ENH-459
+- ENH-494
+- ENH-497
+- ENH-654
+- ENH-493

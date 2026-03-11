@@ -108,3 +108,17 @@ Add a `--check` flag to each affected skill using the existing `--auto` flag as 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-11T01:40:37Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/534f29dc-9078-4565-b6a5-14cb33271b6f.jsonl`
 - `/ll:format-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644cb258-98f9-4276-9d10-660523431e43.jsonl`
+
+## Blocked By
+- FEAT-638
+- ENH-671
+- FEAT-565
+- BUG-656
+- ENH-669
+
+## Blocks
+- FEAT-543
+- ENH-494
+- ENH-541
+- ENH-542
+- ENH-493

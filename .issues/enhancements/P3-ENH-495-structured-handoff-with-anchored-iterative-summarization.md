@@ -162,3 +162,7 @@ The existing template has these sections: `## Conversation Summary` (with subsec
 
 ### Recommendation
 Update first — Good intent, but the handoff schema becomes part of a session-continuity contract once changed. Before restructuring, validate the proposed four-section schema against 3-5 real session handoff files. Also: document the current 3-section schema (Conversation Summary / Resume Point / Important Context) in `CONTRIBUTING.md` as a baseline, so the diff from current → proposed is explicit. The MEDIUM maintenance overhead comes from `/ll:resume` needing updates to parse and surface structured fields — ensure that change is scoped into this issue before implementation.
+
+## Blocks
+- ENH-493
+- ENH-494
