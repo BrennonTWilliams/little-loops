@@ -625,7 +625,15 @@ def _render_layered_diagram(
 
     # True back-edges: only those going to an earlier layer (computed after layer assignment)
     # Will be finalized below after col positions are computed
-    non_self_back_initial = [(s, d, lbl) for s, d, lbl in back_edges if s != d]
+    # Combine same-pair back-edges into single entries with merged labels (e.g. "error/fail")
+    back_edge_labels_initial: dict[tuple[str, str], str] = {}
+    for s, d, lbl in back_edges:
+        if s != d:
+            if (s, d) in back_edge_labels_initial:
+                back_edge_labels_initial[(s, d)] += "/" + lbl
+            else:
+                back_edge_labels_initial[(s, d)] = lbl
+    non_self_back_initial = [(s, d, lbl) for (s, d), lbl in back_edge_labels_initial.items()]
     back_edge_margin = 0
     if non_self_back_initial:
         max_label_len = max(len(lbl) for _, _, lbl in non_self_back_initial)
@@ -683,7 +691,8 @@ def _render_layered_diagram(
 
     # Reclassify back-edges based on actual layer positions
     # Only edges going to an earlier layer are true margin back-edges
-    non_self_back: list[tuple[str, str, str]] = []
+    # Combine same-pair edges into merged labels (e.g. "error/fail")
+    back_edge_labels_reclass: dict[tuple[str, str], str] = {}
     same_layer_edges: list[tuple[str, str, str]] = []
     for src, dst, lbl in back_edges:
         if src == dst:
@@ -691,10 +700,14 @@ def _render_layered_diagram(
         src_layer = layer_of.get(src, -1)
         dst_layer = layer_of.get(dst, -1)
         if dst_layer < src_layer:
-            non_self_back.append((src, dst, lbl))
+            if (src, dst) in back_edge_labels_reclass:
+                back_edge_labels_reclass[(src, dst)] += "/" + lbl
+            else:
+                back_edge_labels_reclass[(src, dst)] = lbl
         elif dst_layer == src_layer:
             same_layer_edges.append((src, dst, lbl))
         # dst_layer > src_layer: these are actually forward edges, already in forward_edge_labels
+    non_self_back = [(s, d, lbl) for (s, d), lbl in back_edge_labels_reclass.items()]
 
     # Recalculate back-edge margin if it changed
     if non_self_back:
@@ -859,10 +872,12 @@ def _render_layered_diagram(
             reverse=True,
         )
         used_cols: list[int] = []
+        # Compute rightmost pipe column so labels go right of ALL pipes
+        rightmost_pipe_col = 1 + (len(sorted_back) - 1) * 2
 
         for src, dst, label in sorted_back:
-            # Source: bottom-center of source box; target: name row of target box
-            src_row = row_start.get(src, 0) + box_height.get(src, 2) - 1
+            # Source: name row of source box; target: name row of target box
+            src_row = row_start.get(src, 0) + 1  # name row, not bottom border
             dst_row = row_start.get(dst, 0) + 1  # name row
 
             # Find a free column in the margin
@@ -901,10 +916,10 @@ def _render_layered_diagram(
                     if c < total_width:
                         grid[dst_row][c] = "\u2500"
 
-            # Label on the margin line
+            # Label on the margin line (right of ALL pipes, not just this one)
             label_row_pos = (top_row + bot_row) // 2
             if 0 <= label_row_pos < total_height:
-                label_start = col + 2
+                label_start = rightmost_pipe_col + 2
                 for j, ch in enumerate(label):
                     if label_start + j < content_left - 1 and label_start + j < total_width:
                         grid[label_row_pos][label_start + j] = ch

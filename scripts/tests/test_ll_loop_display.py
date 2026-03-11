@@ -926,6 +926,7 @@ class TestRenderFsmDiagram:
                     action="check",
                     on_success="commit",
                     on_failure="evaluate",
+                    on_error="evaluate",
                 ),
                 "commit": StateConfig(action="commit", next="evaluate"),
             },
@@ -945,20 +946,38 @@ class TestRenderFsmDiagram:
             box_lines = [ln for ln in lines if state in ln and "\u2502" in ln]
             assert box_lines, f"{state!r} should be rendered in a box with \u2502 borders"
 
-        # 2. ▲ appears at least twice (back-edges from check_commit→evaluate
-        #    and commit→evaluate rendered as left-margin arrows)
+        # 2. ▲ appears exactly twice: check_commit→evaluate (combined fail/error)
+        #    and commit→evaluate. Same-pair edges should be merged, not duplicated.
         up_arrow_count = result.count("\u25b2")
-        assert up_arrow_count >= 2, (
-            f"Expected \u25b2 for both check_commit\u2192evaluate and commit\u2192evaluate back-edges, "
+        assert up_arrow_count == 2, (
+            f"Expected exactly 2 \u25b2 (check_commit\u2192evaluate combined + commit\u2192evaluate), "
             f"found {up_arrow_count}. Full diagram:\n{result}"
         )
 
-        # 3. Both ↺ partial and ↺ error self-loops appear for evaluate
+        # 3. Combined label "fail/error" or "error/fail" should appear for the merged edge
+        assert "fail/" in result or "/fail" in result, (
+            f"Expected combined fail/error label for check_commit\u2192evaluate, "
+            f"not separate pipes. Full diagram:\n{result}"
+        )
+
+        # 4. Both ↺ partial and ↺ error self-loops appear for evaluate
         assert "\u21ba" in result, "Expected \u21ba self-loop marker for evaluate"
         assert "partial" in result, "Expected 'partial' self-loop label"
-        assert "error" in result, "Expected 'error' self-loop label"
 
-        # 4. States appear in top-to-bottom vertical order
+        # 5. No garbled labels — no line should have a letter immediately after │
+        import re
+
+        for ln in lines:
+            garbled = re.findall(r"\u2502[a-zA-Z]", ln)
+            assert not garbled, (
+                f"Garbled label detected (letter touching pipe): {garbled!r} in line: {ln!r}"
+            )
+
+        # 6. Box borders should not be overwritten — └ and ┘ should appear in boxes
+        border_lines = [ln for ln in lines if "\u2514" in ln or "\u2518" in ln]
+        assert border_lines, "Box bottom borders (└/┘) should be present"
+
+        # 7. States appear in top-to-bottom vertical order
         eval_row = next(i for i, ln in enumerate(lines) if "evaluate" in ln and "\u2502" in ln)
         fmt_row = next(
             i for i, ln in enumerate(lines) if "format_issues" in ln and "\u2502" in ln
