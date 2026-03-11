@@ -26,7 +26,6 @@ def cmd_run(
     """Run a loop."""
     import yaml
 
-    from little_loops.fsm.compilers import compile_paradigm
     from little_loops.fsm.concurrency import LockManager
     from little_loops.fsm.persistence import PersistentExecutor
     from little_loops.fsm.validation import load_and_validate
@@ -38,12 +37,15 @@ def cmd_run(
         with open(path) as f:
             spec = yaml.safe_load(f)
 
-        # Auto-compile if it's a paradigm file (has 'paradigm' but no 'initial')
+        # Paradigm YAML (has 'paradigm' but no 'initial') is no longer supported at runtime.
         if "paradigm" in spec and "initial" not in spec:
-            logger.info(f"Auto-compiling paradigm file: {path}")
-            fsm = compile_paradigm(spec)
-        else:
-            fsm, _ = load_and_validate(path)
+            raise ValueError(
+                f"Paradigm YAML format is no longer supported by the engine: {path}\n"
+                "Convert to FSM YAML using: ll-loop compile <file>\n"
+                "Or write FSM YAML directly (see docs/guides/LOOPS_GUIDE.md)."
+            )
+
+        fsm, _ = load_and_validate(path)
     except FileNotFoundError as e:
         logger.error(str(e))
         return 1

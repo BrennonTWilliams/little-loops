@@ -169,6 +169,21 @@ def load_loop(name: str) -> FSMLoop:
 
 `architecture`, `refactoring`, `fsm`, `captured`
 
+## Resolution
+
+Removed `compile_paradigm()` from all 4 engine runtime call sites:
+- `_helpers.py`: `load_loop()` and `load_loop_with_spec()` now raise `ValueError` for paradigm YAML
+- `run.py`: `cmd_run()` now raises `ValueError` for paradigm YAML instead of auto-compiling
+- `config_cmds.py`: `cmd_validate()` now returns error code 1 for paradigm YAML
+- `fsm/__init__.py`: Removed `compile_paradigm` from package exports and `__all__`
+
+`cmd_compile()` retained as the migration path for converting paradigm YAML → FSM YAML.
+
+Updated tests:
+- `test_builtin_loops.py`: `test_all_compile_to_valid_fsm` → `test_all_validate_as_valid_fsm` using `load_and_validate`
+- `test_create_loop.py`: 5 `TestLoopFileValidation` tests converted to FSM YAML fixtures
+- `test_ll_loop_execution.py`: 4 `TestCmdTest` tests converted from paradigm YAML to FSM YAML
+
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1564701c-0b71-47e9-8677-e3a418dce76e.jsonl`
@@ -180,7 +195,7 @@ def load_loop(name: str) -> FSMLoop:
 
 ---
 
-**Open** | Created: 2026-03-10 | Priority: P3
+**Completed** | Created: 2026-03-10 | Resolved: 2026-03-10 | Priority: P3
 
 ## Blocks
 - ENH-493

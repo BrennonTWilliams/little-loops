@@ -1,8 +1,12 @@
-"""FSM loop schema, validation, compilation, interpolation, evaluators, and execution.
+"""FSM loop schema, validation, interpolation, evaluators, and execution.
 
 This module provides the type-safe representation of FSM loop definitions,
-validation logic, paradigm compilers, variable interpolation, evaluators,
-and the execution engine for the little-loops FSM system.
+validation logic, variable interpolation, evaluators, and the execution engine
+for the little-loops FSM system.
+
+Paradigm compilation (compile_paradigm) is available in fsm.compilers but is
+not a public package export — it is used only by wizard/template generation
+(ll-loop compile) and is not part of the runtime engine load path.
 
 Public exports:
     # Schema
@@ -17,9 +21,6 @@ Public exports:
     ValidationError: Structured validation error
     validate_fsm: Validate FSM structure
     load_and_validate: Load YAML and validate
-
-    # Compilation
-    compile_paradigm: Compile high-level paradigm spec to FSMLoop
 
     # Interpolation
     InterpolationContext: Runtime context for variable resolution
@@ -70,7 +71,6 @@ Public exports:
     LockManager: Manager for acquiring/releasing scope locks
 """
 
-from little_loops.fsm.compilers import compile_paradigm
 from little_loops.fsm.concurrency import (
     LockManager,
     ScopeLock,
@@ -164,7 +164,6 @@ __all__ = [
     "StateConfig",
     "StatePersistence",
     "ValidationError",
-    "compile_paradigm",
     "evaluate",
     "evaluate_convergence",
     "evaluate_exit_code",

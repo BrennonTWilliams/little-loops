@@ -1348,12 +1348,19 @@ class TestCmdTest:
         loops_dir.mkdir()
 
         loop_yaml = """
-paradigm: goal
+paradigm: fsm
 name: test-echo
-goal: echo works
-tools:
-  - "echo hello"
-  - "echo fixed"
+initial: evaluate
+states:
+  evaluate:
+    action: "echo hello"
+    on_success: done
+    on_failure: fix
+  fix:
+    action: "echo fixed"
+    next: evaluate
+  done:
+    terminal: true
 max_iterations: 5
 """
         (loops_dir / "test-echo.yaml").write_text(loop_yaml)
@@ -1381,12 +1388,19 @@ max_iterations: 5
         loops_dir.mkdir()
 
         loop_yaml = """
-paradigm: goal
+paradigm: fsm
 name: test-fail
-goal: exit with error
-tools:
-  - "exit 1"
-  - "echo fixed"
+initial: evaluate
+states:
+  evaluate:
+    action: "exit 1"
+    on_success: done
+    on_failure: fix
+  fix:
+    action: "echo fixed"
+    next: evaluate
+  done:
+    terminal: true
 max_iterations: 5
 """
         (loops_dir / "test-fail.yaml").write_text(loop_yaml)
@@ -1414,12 +1428,21 @@ max_iterations: 5
         loops_dir.mkdir()
 
         loop_yaml = """
-paradigm: goal
+paradigm: fsm
 name: test-slash
-goal: slash command works
-tools:
-  - "/ll:check-code"
-  - "/ll:check-code fix"
+initial: evaluate
+states:
+  evaluate:
+    action: "/ll:check-code"
+    action_type: slash_command
+    on_success: done
+    on_failure: fix
+  fix:
+    action: "/ll:check-code fix"
+    action_type: slash_command
+    next: evaluate
+  done:
+    terminal: true
 max_iterations: 5
 """
         (loops_dir / "test-slash.yaml").write_text(loop_yaml)
@@ -1752,26 +1775,34 @@ states:
         assert "[SIMULATED]" in captured.out
         assert "mypy src/" in captured.out
 
-    def test_simulate_with_paradigm_file(
+    def test_simulate_with_fsm_file(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """simulate auto-compiles paradigm files."""
+        """simulate works with FSM YAML files."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
-        # Use imperative paradigm with correct structure
-        paradigm_yaml = """
+        fsm_yaml = """
 name: imperative-test
-paradigm: imperative
-steps:
-  - "echo step1"
-  - "echo step2"
-until:
-  check: "echo done"
+paradigm: fsm
+initial: step_0
+states:
+  step_0:
+    action: "echo step1"
+    next: step_1
+  step_1:
+    action: "echo step2"
+    next: check_done
+  check_done:
+    action: "echo done"
+    on_success: done
+    on_failure: step_0
+  done:
+    terminal: true
 """
-        (loops_dir / "imperative-test.yaml").write_text(paradigm_yaml)
+        (loops_dir / "imperative-test.yaml").write_text(fsm_yaml)
 
         monkeypatch.chdir(tmp_path)
         with patch.object(

@@ -9,8 +9,7 @@ from unittest.mock import patch
 import pytest
 import yaml
 
-from little_loops.fsm.compilers import compile_paradigm
-from little_loops.fsm.validation import ValidationSeverity, validate_fsm
+from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
 
 BUILTIN_LOOPS_DIR = Path(__file__).parent.parent.parent / "loops"
 
@@ -44,12 +43,10 @@ class TestBuiltinLoopFiles:
                 f"{loop_file.name}: name '{data['name']}' doesn't match filename stem"
             )
 
-    def test_all_compile_to_valid_fsm(self, builtin_loops: list[Path]) -> None:
-        """All built-in loops compile to valid FSMs without errors."""
+    def test_all_validate_as_valid_fsm(self, builtin_loops: list[Path]) -> None:
+        """All built-in loops load and validate as FSMs without errors."""
         for loop_file in builtin_loops:
-            with open(loop_file) as f:
-                spec = yaml.safe_load(f)
-            fsm = compile_paradigm(spec)
+            fsm, _ = load_and_validate(loop_file)
             errors = validate_fsm(fsm)
             error_list = [e for e in errors if e.severity == ValidationSeverity.ERROR]
             assert not error_list, (

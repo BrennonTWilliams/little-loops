@@ -626,14 +626,18 @@ class TestLoopFileValidation:
         return loops
 
     def test_valid_goal_loop_file(self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """Valid goal loop file passes ll-loop validate."""
+        """Valid FSM loop file (goal-style) passes ll-loop validate."""
         loop_content = """
-paradigm: goal
+paradigm: fsm
 name: test-goal
-goal: Tests pass
-tools:
-  - pytest
-  - echo fix
+initial: run
+states:
+  run:
+    action: pytest
+    on_success: done
+    on_failure: done
+  done:
+    terminal: true
 max_iterations: 10
 """
         (loops_dir / "test-goal.yaml").write_text(loop_content)
@@ -649,15 +653,22 @@ max_iterations: 10
     def test_valid_invariants_loop_file(
         self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Valid invariants loop file passes ll-loop validate."""
+        """Valid FSM loop file (invariants-style) passes ll-loop validate."""
         loop_content = """
-paradigm: invariants
+paradigm: fsm
 name: quality-gate
-constraints:
-  - name: lint
-    check: ruff check src/
-    fix: ruff check --fix src/
-maintain: false
+initial: lint
+states:
+  lint:
+    action: ruff check src/
+    on_success: done
+    on_failure: fix-lint
+  fix-lint:
+    action: ruff check --fix src/
+    on_success: lint
+    on_failure: done
+  done:
+    terminal: true
 max_iterations: 20
 """
         (loops_dir / "quality-gate.yaml").write_text(loop_content)
@@ -673,14 +684,21 @@ max_iterations: 20
     def test_valid_convergence_loop_file(
         self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Valid convergence loop file passes ll-loop validate."""
+        """Valid FSM loop file (convergence-style) passes ll-loop validate."""
         loop_content = """
-paradigm: convergence
+paradigm: fsm
 name: reduce-errors
-check: "echo 5"
-toward: 0
-using: echo fix
-tolerance: 0
+initial: check
+states:
+  check:
+    action: "echo 5"
+    on_success: done
+    on_failure: fix
+  fix:
+    action: echo fix
+    next: check
+  done:
+    terminal: true
 max_iterations: 20
 """
         (loops_dir / "reduce-errors.yaml").write_text(loop_content)
@@ -696,15 +714,20 @@ max_iterations: 20
     def test_valid_imperative_loop_file(
         self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch
     ) -> None:
-        """Valid imperative loop file passes ll-loop validate."""
+        """Valid FSM loop file (imperative-style) passes ll-loop validate."""
         loop_content = """
-paradigm: imperative
+paradigm: fsm
 name: build-test
-steps:
-  - echo build
-  - echo test
-until:
-  check: "echo done"
+initial: build
+states:
+  build:
+    action: echo build
+    next: test
+  test:
+    action: echo test
+    next: done
+  done:
+    terminal: true
 max_iterations: 10
 """
         (loops_dir / "build-test.yaml").write_text(loop_content)
@@ -720,11 +743,15 @@ max_iterations: 10
     def test_invalid_loop_file_fails_validation(
         self, loops_dir: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
     ) -> None:
-        """Invalid loop file fails ll-loop validate."""
+        """Invalid FSM loop file fails ll-loop validate."""
         loop_content = """
-paradigm: goal
+paradigm: fsm
 name: bad-goal
-# Missing required 'goal' and 'tools' fields
+initial: nonexistent
+states:
+  start:
+    terminal: true
+# initial references nonexistent state = validation error
 """
         (loops_dir / "bad-goal.yaml").write_text(loop_content)
         monkeypatch.chdir(loops_dir.parent)
@@ -738,7 +765,7 @@ name: bad-goal
         captured = capsys.readouterr()
         # Error should mention the issue
         output = captured.err.lower() + captured.out.lower()
-        assert "error" in output or "require" in output
+        assert "invalid" in output or "nonexistent" in output or "bad-goal" in output
 
 
 # =============================================================================

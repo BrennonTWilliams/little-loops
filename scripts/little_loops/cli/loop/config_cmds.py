@@ -56,8 +56,7 @@ def cmd_validate(
     """Validate a loop definition."""
     import yaml
 
-    from little_loops.fsm.compilers import compile_paradigm
-    from little_loops.fsm.validation import ValidationSeverity, load_and_validate, validate_fsm
+    from little_loops.fsm.validation import load_and_validate
 
     try:
         path = resolve_loop_path(loop_name, loops_dir)
@@ -66,15 +65,16 @@ def cmd_validate(
         with open(path) as f:
             spec = yaml.safe_load(f)
 
-        # Auto-compile if it's a paradigm file (has 'paradigm' but no 'initial')
+        # Paradigm YAML (has 'paradigm' but no 'initial') is no longer supported.
         if "paradigm" in spec and "initial" not in spec:
-            logger.info(f"Compiling paradigm file for validation: {path}")
-            fsm = compile_paradigm(spec)
-            all_results = validate_fsm(fsm)
-            warnings = [r for r in all_results if r.severity == ValidationSeverity.WARNING]
-        else:
-            fsm, warnings = load_and_validate(path)
+            logger.error(
+                f"{loop_name} uses deprecated paradigm YAML format.\n"
+                "  Convert to FSM YAML using: ll-loop compile <file>\n"
+                "  Or write FSM YAML directly (see docs/guides/LOOPS_GUIDE.md)."
+            )
+            return 1
 
+        fsm, warnings = load_and_validate(path)
         logger.success(f"{loop_name} is valid")
         print(f"  States: {', '.join(fsm.states.keys())}")
         print(f"  Initial: {fsm.initial}")
