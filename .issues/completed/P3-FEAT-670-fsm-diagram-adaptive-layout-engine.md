@@ -2,7 +2,7 @@
 id: FEAT-670
 type: FEAT
 priority: P3
-status: active
+status: completed
 discovered_date: 2026-03-10
 discovered_by: capture-issue
 confidence_score: 100
@@ -244,10 +244,38 @@ From `fsm/schema.py`: `FSMLoop.states: dict[str, StateConfig]`, `FSMLoop.initial
 - `/ll:refine-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53dc25b3-91cb-457d-a0cc-95d8fe9087b3.jsonl`
 - `/ll:ready-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27c058d4-81a2-4f93-b6c1-3154d2afbb85.jsonl`
 - `/ll:ready-issue` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a385813-1230-48e4-9557-8fcd4a2fbd09.jsonl`
+- `/ll:manage-issue implement` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/67687020-1e43-4a95-8452-d5336be1e43d.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-10 | Priority: P3
+**Completed** | Created: 2026-03-10 | Completed: 2026-03-11 | Priority: P3
+
+## Resolution
+
+**Action**: implement
+**Date**: 2026-03-11
+
+### Changes Made
+- Created `scripts/little_loops/cli/loop/layout.py` (~1096 lines) — new adaptive layout engine module
+- Extracted diagram rendering code from `info.py` (lines 255-1027) into `layout.py`
+- Implemented Sugiyama-style layered graph drawing pipeline:
+  - `TopologyDetector` — classifies FSM as linear/tree/general
+  - `LayerAssigner` — longest-path layer assignment with Coffman-Graham width constraint
+  - `CrossingMinimizer` — barycenter heuristic with 3 sweeps
+  - Coordinate assignment mapping layers to character grid positions
+- Vertical rendering for linear chains (top-to-bottom)
+- Side-by-side rendering for branches within same layer
+- Left-margin back-edge arrows with labels for cycles
+- Self-loop aggregation (multiple labels: `↺ partial, error`)
+- Combined labels for multiple edges between same pair (`pass/skip`)
+- Updated `info.py` to re-export from `layout.py` for backward compatibility
+- Updated 4 existing tests for vertical layout assertions
+- Added 6 new topology-specific tests in `TestAdaptiveLayoutTopologies`
+
+### Verification
+- 3485 tests passed, 0 failures
+- ruff check: all passed
+- mypy: no issues in 97 source files
 
 ## Blocks
 - ENH-654

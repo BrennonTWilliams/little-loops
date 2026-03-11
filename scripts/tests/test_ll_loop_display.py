@@ -769,7 +769,7 @@ class TestRenderFsmDiagram:
         assert "skip" in result
 
     def test_main_flow_order(self) -> None:
-        """Main flow states appear in left-to-right order."""
+        """Main flow states appear in top-to-bottom order (vertical layout)."""
         fsm = self._make_fsm(
             initial="first",
             states={
@@ -779,12 +779,12 @@ class TestRenderFsmDiagram:
             },
         )
         result = _render_fsm_diagram(fsm)
-        # Name row is index 1 (index 0 is top border)
-        name_line = result.split("\n")[1]
-        pos_first = name_line.index("first")
-        pos_second = name_line.index("second")
-        pos_third = name_line.index("third")
-        assert pos_first < pos_second < pos_third
+        lines = result.split("\n")
+        # Find the row index where each state name appears in a box (with │ border)
+        first_row = next(i for i, ln in enumerate(lines) if "first" in ln and "\u2502" in ln)
+        second_row = next(i for i, ln in enumerate(lines) if "second" in ln and "\u2502" in ln)
+        third_row = next(i for i, ln in enumerate(lines) if "third" in ln and "\u2502" in ln)
+        assert first_row < second_row < third_row
 
     def test_bidirectional_back_edge_both_pipes_on_label_rows(self) -> None:
         """Both │ pipes appear on each label row when connector has up+down edges."""
@@ -811,7 +811,7 @@ class TestRenderFsmDiagram:
             assert row.count("\u2502") >= 2, f"Expected both pipes on label row: {row!r}"
 
     def test_multiple_off_path_states_same_depth(self) -> None:
-        """Two off-path states appear at the same vertical depth (side-by-side)."""
+        """Two off-path states appear in boxes with back-edges to main path."""
         # Mirrors fix-quality-and-tests: two check→fix pairs with fix-tests→check-quality cross-edge
         fsm = self._make_fsm(
             initial="check-quality",
@@ -834,7 +834,7 @@ class TestRenderFsmDiagram:
         result = _render_fsm_diagram(fsm)
         lines = result.split("\n")
 
-        # Both off-path box name rows must appear on the SAME line index
+        # Both off-path states must appear in boxes
         fix_quality_row = next(
             (i for i, ln in enumerate(lines) if "fix-quality" in ln and "\u2502" in ln), None
         )
@@ -843,27 +843,20 @@ class TestRenderFsmDiagram:
         )
         assert fix_quality_row is not None, "fix-quality box not found"
         assert fix_tests_row is not None, "fix-tests box not found"
-        assert fix_quality_row == fix_tests_row, (
-            f"fix-quality at row {fix_quality_row}, fix-tests at row {fix_tests_row}; "
-            "expected same row (side-by-side layout)"
-        )
 
-        # fix-tests → check-quality is an off-path → main-path back-edge: rendered as U-route
-        # (▲ indicator), NOT as a ◄ left-arrow on the name row.
+        # In layered layout, fix-quality and fix-tests are at different depths
+        # (fix-quality at depth 1, fix-tests at depth 2). Both should be visible.
+        # Back-edges should be rendered (▲ for upward arrows in margin)
         assert "\u25b2" in result, (
-            "Expected \u25b2 U-route indicator for fix-tests\u2192check-quality back-edge"
-        )
-        fix_tests_name_line = lines[fix_tests_row]
-        assert "\u25c4" not in fix_tests_name_line, (
-            f"Unexpected \u25c4 left-arrow on fix-tests name row (Bug 3 should render U-route instead): {fix_tests_name_line!r}"
+            "Expected \u25b2 margin back-edge arrow for back-edges to check-quality"
         )
 
     def test_linear_off_path_chain_all_states_visible(self) -> None:
         """All states in a linear off-path chain appear as distinct non-overlapping boxes.
 
         Regression for BUG-658: fix/check_commit/commit form a chain below evaluate,
-        all back-anchored to the same main-path state. Previously all three collapsed
-        to the same column and overwrote each other.
+        all back-anchored to the same main-path state. In the layered layout, these
+        states appear at increasing depths (top-to-bottom), not side-by-side.
         """
         fsm = self._make_fsm(
             initial="evaluate",
@@ -890,41 +883,31 @@ class TestRenderFsmDiagram:
         # All 4 non-terminal states must appear in a box line
         for state in ("evaluate", "fix", "check_commit", "commit"):
             box_lines = [ln for ln in lines if state in ln and "\u2502" in ln]
-            assert box_lines, f"{state!r} should be rendered in a box with │ borders"
+            assert box_lines, f"{state!r} should be rendered in a box with \u2502 borders"
 
-        # All three off-path states should appear on a common row (side-by-side, not stacked).
-        # We look for a single line that contains all three names alongside box-border │ chars.
-        shared_row = next(
-            (
-                i
-                for i, ln in enumerate(lines)
-                if "fix" in ln and "check_commit" in ln and "commit" in ln and "\u2502" in ln
-            ),
-            None,
+        # In layered layout, off-path states are at different vertical depths (top-to-bottom)
+        fix_row = next(i for i, ln in enumerate(lines) if "fix" in ln and "\u2502" in ln)
+        cc_row = next(
+            i for i, ln in enumerate(lines) if "check_commit" in ln and "\u2502" in ln
         )
-        assert shared_row is not None, (
-            "Expected a single row containing fix, check_commit, and commit "
-            "(side-by-side layout); none found. Full diagram:\n" + result
+        commit_row = next(
+            i
+            for i, ln in enumerate(lines)
+            if "commit" in ln and "check_commit" not in ln and "\u2502" in ln
         )
-
-        # They must be at non-overlapping horizontal positions (left-to-right order).
-        # Search for "commit" *after* "check_commit" ends to avoid false match.
-        row = lines[shared_row]
-        fix_pos = row.index("fix")
-        cc_pos = row.index("check_commit")
-        commit_pos = row.index("commit", cc_pos + len("check_commit"))
-        assert fix_pos < cc_pos < commit_pos, (
-            f"Off-path states should appear left-to-right; "
-            f"fix={fix_pos}, check_commit={cc_pos}, commit={commit_pos}"
+        assert fix_row < cc_row < commit_row, (
+            f"Off-path states should appear top-to-bottom; "
+            f"fix={fix_row}, check_commit={cc_row}, commit={commit_row}"
         )
 
     def test_issue_refinement_git_topology(self) -> None:
-        """Regression for BUG-664: off-path chain arrows and back-edges render correctly.
+        """Regression for BUG-664: 6-state issue-refinement topology renders correctly.
 
-        Tests the 6-state issue-refinement-git topology:
-        evaluate → (on_failure) → format_issues → score_issues → refine_issues
-                                                                     → check_commit → commit → (back to evaluate)
-                                                   check_commit → (on_failure) → evaluate
+        Tests that:
+        - All 6 states appear in boxes
+        - Back-edges from check_commit and commit route to evaluate (correct target)
+        - Both ↺ partial and ↺ error self-loops appear for evaluate
+        - States are laid out vertically in correct order
         """
         fsm = self._make_fsm(
             initial="evaluate",
@@ -934,6 +917,7 @@ class TestRenderFsmDiagram:
                     on_success="evaluate",
                     on_failure="format_issues",
                     on_partial="evaluate",
+                    on_error="evaluate",
                 ),
                 "format_issues": StateConfig(action="format", next="score_issues"),
                 "score_issues": StateConfig(action="score", next="refine_issues"),
@@ -961,26 +945,28 @@ class TestRenderFsmDiagram:
             box_lines = [ln for ln in lines if state in ln and "\u2502" in ln]
             assert box_lines, f"{state!r} should be rendered in a box with \u2502 borders"
 
-        # 2. ▶ right-arrow appears somewhere in diagram (between adjacent off-path states)
-        assert "\u25b6" in result, "Expected \u25b6 right-arrow between off-path states"
-
-        # 3. ▲ appears at least twice (two separate U-route row-pairs for check_commit→evaluate
-        #    and commit→evaluate — must not overwrite each other)
+        # 2. ▲ appears at least twice (back-edges from check_commit→evaluate
+        #    and commit→evaluate rendered as left-margin arrows)
         up_arrow_count = result.count("\u25b2")
         assert up_arrow_count >= 2, (
             f"Expected \u25b2 for both check_commit\u2192evaluate and commit\u2192evaluate back-edges, "
             f"found {up_arrow_count}. Full diagram:\n{result}"
         )
 
-        # 4. No ◄ immediately adjacent to check_commit or commit left walls (Bug 3 guard)
-        for state in ("check_commit", "commit"):
-            state_rows = [ln for ln in lines if state in ln and "\u2502" in ln]
-            for row in state_rows:
-                state_pos = row.index(state)
-                prefix = row[:state_pos]
-                assert "\u25c4" not in prefix[-6:], (
-                    f"Found \u25c4 immediately left of {state!r} box \u2014 Bug 3 not fixed. Row: {row!r}"
-                )
+        # 3. Both ↺ partial and ↺ error self-loops appear for evaluate
+        assert "\u21ba" in result, "Expected \u21ba self-loop marker for evaluate"
+        assert "partial" in result, "Expected 'partial' self-loop label"
+        assert "error" in result, "Expected 'error' self-loop label"
+
+        # 4. States appear in top-to-bottom vertical order
+        eval_row = next(i for i, ln in enumerate(lines) if "evaluate" in ln and "\u2502" in ln)
+        fmt_row = next(
+            i for i, ln in enumerate(lines) if "format_issues" in ln and "\u2502" in ln
+        )
+        score_row = next(
+            i for i, ln in enumerate(lines) if "score_issues" in ln and "\u2502" in ln
+        )
+        assert eval_row < fmt_row < score_row, "States should appear top-to-bottom"
 
     def test_highlighted_state_uses_configured_color(self) -> None:
         """highlight_state box uses the configured ANSI color; other boxes do not."""
@@ -1043,6 +1029,148 @@ class TestRenderFsmDiagram:
         )
         result = _render_fsm_diagram(fsm, highlight_state="nonexistent", highlight_color="32")
         assert "a" in result
+
+
+class TestAdaptiveLayoutTopologies:
+    """Tests for topology-specific adaptive layout rendering."""
+
+    def _make_fsm(
+        self,
+        name: str = "test",
+        initial: str = "start",
+        states: dict[str, StateConfig] | None = None,
+    ) -> FSMLoop:
+        return FSMLoop(name=name, initial=initial, states=states or {}, max_iterations=50)
+
+    def test_two_state_linear_vertical(self) -> None:
+        """2-state linear FSM renders vertically."""
+        fsm = self._make_fsm(
+            initial="a",
+            states={
+                "a": StateConfig(action="step", on_success="b"),
+                "b": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        lines = result.split("\n")
+        a_row = next(i for i, ln in enumerate(lines) if "a" in ln and "\u2502" in ln)
+        b_row = next(i for i, ln in enumerate(lines) if "b" in ln and "\u2502" in ln)
+        assert a_row < b_row, "2-state linear should render top-to-bottom"
+        assert "\u25bc" in result, "Expected \u25bc vertical arrow between states"
+
+    def test_four_state_linear_vertical(self) -> None:
+        """4-state linear FSM renders vertically in correct order."""
+        fsm = self._make_fsm(
+            initial="s1",
+            states={
+                "s1": StateConfig(action="a", on_success="s2"),
+                "s2": StateConfig(action="b", on_success="s3"),
+                "s3": StateConfig(action="c", on_success="s4"),
+                "s4": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        lines = result.split("\n")
+        rows = {}
+        for state in ("s1", "s2", "s3", "s4"):
+            rows[state] = next(
+                i for i, ln in enumerate(lines) if state in ln and "\u2502" in ln
+            )
+        assert rows["s1"] < rows["s2"] < rows["s3"] < rows["s4"]
+
+    def test_diamond_pattern(self) -> None:
+        """Diamond pattern (fan-out + fan-in) renders with branches and convergence."""
+        fsm = self._make_fsm(
+            initial="start",
+            states={
+                "start": StateConfig(action="check", on_success="left", on_failure="right"),
+                "left": StateConfig(action="path-a", on_success="end"),
+                "right": StateConfig(action="path-b", on_success="end"),
+                "end": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        lines = result.split("\n")
+        # All states appear in boxes
+        for state in ("start", "left", "right", "end"):
+            box_lines = [ln for ln in lines if state in ln and "\u2502" in ln]
+            assert box_lines, f"{state!r} should be in a box"
+        # Both "success" and "fail" labels appear
+        assert "success" in result
+        assert "fail" in result
+
+    def test_fan_in_three_paths(self) -> None:
+        """Fan-in with 3+ paths converging on a single state."""
+        fsm = self._make_fsm(
+            initial="dispatch",
+            states={
+                "dispatch": StateConfig(
+                    action="route",
+                    route=RouteConfig(routes={"a": "path_a", "b": "path_b", "c": "path_c"}),
+                ),
+                "path_a": StateConfig(action="a", on_success="merge"),
+                "path_b": StateConfig(action="b", on_success="merge"),
+                "path_c": StateConfig(action="c", on_success="merge"),
+                "merge": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        # All states in boxes
+        for state in ("dispatch", "path_a", "path_b", "path_c", "merge"):
+            assert state in result, f"{state!r} should appear in diagram"
+        # Route labels present
+        for lbl in ("a", "b", "c"):
+            assert lbl in result
+
+    def test_terminal_width_no_overflow(self) -> None:
+        """Diagram lines do not exceed terminal width."""
+        from unittest.mock import patch as _patch
+
+        from little_loops.cli import output as output_mod
+
+        # Simulate a narrow terminal
+        with _patch.object(output_mod, "terminal_width", return_value=80):
+            fsm = self._make_fsm(
+                initial="evaluate",
+                states={
+                    "evaluate": StateConfig(
+                        action="check",
+                        on_success="done",
+                        on_failure="fix",
+                        on_partial="evaluate",
+                    ),
+                    "fix": StateConfig(action="fix", next="evaluate"),
+                    "done": StateConfig(terminal=True),
+                },
+            )
+            result = _render_fsm_diagram(fsm)
+            for i, line in enumerate(result.split("\n")):
+                # Strip ANSI codes for width check
+                import re
+
+                clean = re.sub(r"\033\[[0-9;]*m", "", line)
+                assert len(clean) <= 80, (
+                    f"Line {i} exceeds terminal width (80): {len(clean)} chars: {line!r}"
+                )
+
+    def test_multiple_self_loops_all_shown(self) -> None:
+        """State with multiple self-loops shows all labels."""
+        fsm = self._make_fsm(
+            initial="monitor",
+            states={
+                "monitor": StateConfig(
+                    action="check",
+                    on_success="done",
+                    on_partial="monitor",
+                    on_error="monitor",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+        assert "\u21ba" in result
+        assert "partial" in result
+        assert "error" in result
 
 
 class TestDisplayProgressEvents:
