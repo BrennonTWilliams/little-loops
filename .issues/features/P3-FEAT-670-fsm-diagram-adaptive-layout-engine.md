@@ -5,6 +5,8 @@ priority: P3
 status: active
 discovered_date: 2026-03-10
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 79
 ---
 
 # FEAT-670: FSM Diagram Adaptive Layout Engine
@@ -63,7 +65,7 @@ All four must move to `layout.py`. Do not create import cycles by importing from
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/cli/loop/info.py:1226` — `cmd_show` calls `_render_fsm_diagram`
-- `scripts/little_loops/cli/loop/_helpers.py:319-325` — `run_foreground()` calls `_render_fsm_diagram` on `state_enter` events
+- `scripts/little_loops/cli/loop/_helpers.py:324-326` — `run_foreground()` calls `_render_fsm_diagram` on `state_enter` events
 - `scripts/little_loops/fsm/schema.py` — provides `FSMLoop`, `StateConfig`, `RouteConfig` consumed by renderer
 - `scripts/little_loops/cli/output.py` — provides `terminal_width()`, `colorize()`
 
@@ -73,20 +75,21 @@ All four must move to `layout.py`. Do not create import cycles by importing from
 - P4-ENH-654: FSM diagram active state background fill highlight
 
 ### Tests
-- `scripts/tests/test_ll_loop_display.py` — imports `_render_fsm_diagram` directly at line 14; `TestRenderFsmDiagram` class at line 634 has 9 test functions
+- `scripts/tests/test_ll_loop_display.py` — imports `_render_fsm_diagram` directly at line 14 (`from little_loops.cli.loop.info import _render_fsm_diagram`); `TestRenderFsmDiagram` class at line 634 has 16 test functions
+- `scripts/tests/test_ll_loop_commands.py:724` — `test_show_displays_diagram` calls `main_loop()` which internally invokes `_render_fsm_diagram`; `test_show_diagram_appears_before_states` at line 1270 does same — **both tests call through `main_loop()` and will fail post-extraction unless `info.py` re-exports `_render_fsm_diagram` from `layout.py`**
 
 The class uses an inner `_make_fsm(self, name, initial, states)` factory that constructs `FSMLoop` directly (not via `make_test_fsm`). The module also has top-level `make_test_state` / `make_test_fsm` helpers at lines 47-95.
 
 **Test requiring update (will break with vertical linear rendering):**
 - `test_main_flow_order` (line 771) — asserts horizontal order via `result.split("\n")[1]` position comparison; assumes states appear left-to-right on line index 1; must be rewritten to assert top-to-bottom vertical ordering for linear chains
 
-**Tests to preserve/verify (13 total in TestRenderFsmDiagram):**
+**Tests to preserve/verify (16 total in TestRenderFsmDiagram):**
 - `test_single_terminal_state` (645), `test_linear_flow_shows_labels` (655), `test_next_transition_label` (675) — basic correctness
 - `test_branching_fsm_shows_branches_section` (687), `test_cyclic_fsm_shows_back_edges_section` (710), `test_self_loop_annotated` (730) — complex topology
 - `test_route_table_branches` (746), `test_bidirectional_back_edge_both_pipes_on_label_rows` (789), `test_multiple_off_path_states_same_depth` (813) — specific rendering
 - `test_linear_off_path_chain_all_states_visible` — BUG-658 regression
-- `test_issue_refinement_git_topology` (929) — 6-state cyclic regression (BUG-664)
-- 3x `test_highlighted_state_*` — ANSI color assertions with `patch.object(output_mod, "_USE_COLOR", True)`
+- `test_issue_refinement_git_topology` (921) — 6-state cyclic regression (BUG-664); **must be updated**: assert back-edges from `check_commit` and `commit` route to `evaluate` (the correct YAML target), not to `format_issues` (the incorrect level shown in `fixed-ref-git-fsm-diagram.txt`); also assert both `↺ partial` and `↺ error` self-loops appear for `evaluate`
+- 4x highlighted-state tests: `test_highlighted_state_uses_configured_color` (985), `test_highlighted_state_default_green` (1004), `test_no_highlight_state_unchanged`, `test_unknown_highlight_state_no_crash` — ANSI color assertions with `patch.object(output_mod, "_USE_COLOR", True)`
 
 **New topology-specific tests to add** (per acceptance criteria):
 - 2-state linear, 4-state linear (verify vertical rendering)
@@ -94,7 +97,7 @@ The class uses an inner `_make_fsm(self, name, initial, states)` factory that co
 - Terminal-width overflow — assert no line exceeds `terminal_width()` characters
 
 ### Documentation
-- N/A
+- `docs/reference/OUTPUT_STYLING.md:136,180,184` — documents `_render_fsm_diagram`, `_colorize_diagram_labels`, `terminal_width` usage; may need updates if the public interface changes
 
 ### Configuration
 - N/A
@@ -117,10 +120,15 @@ The class uses an inner `_make_fsm(self, name, initial, states)` factory that co
 - [ ] Linear chain FSMs render vertically (top-to-bottom) instead of horizontally
 - [ ] Branching FSMs (multiple outgoing transitions) render branches side-by-side below the branch point
 - [ ] Fan-in states (multiple incoming transitions) are visually clear
-- [ ] Back-edges (cycles) render as labeled margin arrows without overlapping state boxes
+- [ ] Back-edges (cycles) render as labeled margin arrows routed to their **correct target state** without overlapping state boxes
+- [ ] States with multiple self-loops (e.g., both `on_partial` and `on_error` returning to self) display all self-loop labels, not just the last one written
 - [ ] Diagrams respect terminal width — no horizontal overflow for any supported topology
 - [ ] All existing FSM loop configs in the project render correctly
 - [ ] Existing diagram tests pass or are updated
+
+> **Note on `fixed-ref-git-fsm-diagram.txt`**: This file is illustrative only and contains two known inaccuracies that the implementation must NOT replicate:
+> 1. **Wrong back-edge targets**: The diagram shows back-edges from `check_commit` (on_failure/on_error) and `commit` (next) terminating at the `format_issues` level, but both transition targets in the YAML are `evaluate`. Correct rendering must route these arrows all the way up to `evaluate`.
+> 2. **Missing self-loop**: `evaluate` has both `on_partial: evaluate` and `on_error: evaluate` self-loops, but the diagram only shows `↺ partial`. The current renderer silently drops `↺ error` because both labels overwrite the same cell. Both must be rendered.
 
 ## Scope Boundaries
 
@@ -160,10 +168,50 @@ from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.cli.output import terminal_width, colorize
 ```
 
+### Preserved Public Signatures
+
+Both signatures must remain unchanged after extraction (any rename breaks callers):
+
+```python
+# info.py:367-372 — entry point; must remain importable from info.py (re-export if moved)
+def _render_fsm_diagram(
+    fsm: FSMLoop,
+    verbose: bool = False,
+    highlight_state: str | None = None,
+    highlight_color: str = "32",
+) -> str: ...
+
+# info.py:472-485 — internal; may move to layout.py without re-export
+def _render_2d_diagram(
+    main_path: list[str],
+    edges: list[tuple[str, str, str]],
+    main_edge_set: set[tuple[str, str]],
+    branches: list[tuple[str, str, str]],
+    back_edges: list[tuple[str, str, str]],
+    bfs_order: list[str],
+    initial: str = "",
+    terminal_states: set[str] | None = None,
+    fsm_states: dict[str, StateConfig] | None = None,
+    verbose: bool = False,
+    highlight_state: str | None = None,
+    highlight_color: str = "32",
+) -> str: ...
+
+# info.py:303-308 — moves to layout.py
+def _box_inner_lines(
+    state: StateConfig | None,
+    display_label: str,
+    verbose: bool,
+    inner_width: int,
+) -> list[str]: ...
+```
+
+**Re-export requirement**: `test_ll_loop_display.py:14` imports `_render_fsm_diagram` from `info.py`; `test_ll_loop_commands.py:724,1270` patches `info_mod._render_fsm_diagram`. After moving to `layout.py`, keep `info.py` re-exporting: `from little_loops.cli.loop.layout import _render_fsm_diagram`. The `_helpers.py:320` lazy import (`from little_loops.cli.loop.info import _render_fsm_diagram`) also relies on this re-export.
+
 ### Internal mechanisms to preserve in `layout.py`
 
 - **`diagram_indent` centering** (`info.py:624`): `diagram_indent = max(0, (tw - total_width) // 2)` — centers diagram in terminal; applied to all rendered lines. Must be preserved.
-- **`highlight_state` / `highlight_color` params** — consumed by `_helpers.py:322-323` (`_render_fsm_diagram(fsm, highlight_state=state, highlight_color=highlight_color)`). Public signature of `_render_fsm_diagram` must stay unchanged.
+- **`highlight_state` / `highlight_color` params** — consumed by `_helpers.py:322-323` (`_render_fsm_diagram(fsm, highlight_state=state, highlight_color=highlight_color)`); `verbose` is NOT passed (defaults to `False`). Public signature of `_render_fsm_diagram` must stay unchanged.
 - **`verbose` mode box-width branching** (`info.py:512-516`) — `max_box_inner` formula differs in verbose vs. normal mode. Must be preserved in coordinate assignment.
 
 ### `_render_2d_diagram` actual end line
@@ -189,9 +237,13 @@ From `fsm/schema.py`: `FSMLoop.states: dict[str, StateConfig]`, `FSMLoop.initial
 - P3-BUG-664: FSM diagram off-path arrows and back-edges broken (completed)
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/54edef10-3495-4074-a73f-5fbf089e106e.jsonl`
 - `/ll:capture-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/000d1e34-e885-4aae-83d4-999718fb8e90.jsonl`
 - `/ll:format-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644cb258-98f9-4276-9d10-660523431e43.jsonl`
 - `/ll:refine-issue` - 2026-03-11T03:23:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fee81fea-8bf1-4d92-a43d-05577978a440.jsonl`
+- `/ll:refine-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/53dc25b3-91cb-457d-a0cc-95d8fe9087b3.jsonl`
+- `/ll:ready-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/27c058d4-81a2-4f93-b6c1-3154d2afbb85.jsonl`
+- `/ll:ready-issue` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8a385813-1230-48e4-9557-8fcd4a2fbd09.jsonl`
 
 ---
 
