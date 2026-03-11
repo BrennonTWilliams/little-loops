@@ -1,4 +1,8 @@
 ---
+id: ENH-665
+type: ENH
+priority: P3
+status: active
 discovered_date: 2026-03-10
 discovered_by: capture-issue
 ---
@@ -20,6 +24,17 @@ When `use_feature_branches: true` is set in `ll-config.json`, `ll-parallel` and 
 ## Motivation
 
 Teams using `ll-parallel` and `ll-sprint` in real CI/CD workflows need each issue to land on its own branch for proper code review, PR creation, and traceability. The default of `false` ensures no breaking change for existing users.
+
+## Success Metrics
+
+- When `use_feature_branches: true`, each issue processed by `ll-parallel` and `ll-sprint` results in a dedicated branch (e.g., `feature/ENH-123-slug`) in the worktree
+- When `use_feature_branches: false` (default), behavior is identical to the current implementation — no new branches created
+- All existing `ll-parallel` and `ll-sprint` tests pass without modification
+
+## Scope Boundaries
+
+- **In scope**: Adding `use_feature_branches` boolean config option; reading it in `parallel.py` and `sprint.py`; creating the feature branch inside the worktree; documenting the new option
+- **Out of scope**: Auto-creating PRs from feature branches (separate concern); merging feature branches back to main; branch naming customization beyond issue slug; changes to worktree cleanup logic
 
 ## Proposed Solution
 
@@ -78,3 +93,4 @@ Active
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eec31a4c-27c6-4b78-bafd-8496b3a68d4a.jsonl`
+- `/ll:format-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644cb258-98f9-4276-9d10-660523431e43.jsonl`

@@ -107,6 +107,10 @@ The FSM diagram is the primary visual tool for understanding loop configurations
 - **Risk**: Low — Display-only change; no impact on FSM execution, YAML format, or loop behavior
 - **Breaking Change**: No
 
+## API/Interface
+
+N/A — display-only change. No public API additions or modifications. The internal `_render_fsm_diagram` function signature is preserved; layout logic is extracted into `layout.py` as internal implementation detail.
+
 ## Related Key Documentation
 
 - `thoughts/FEAT-670-layout-engine-research.md` — algorithm research, current implementation analysis, library survey
@@ -125,6 +129,7 @@ The FSM diagram is the primary visual tool for understanding loop configurations
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-10T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/000d1e34-e885-4aae-83d4-999718fb8e90.jsonl`
+- `/ll:format-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644cb258-98f9-4276-9d10-660523431e43.jsonl`
 
 ---
 
