@@ -19,11 +19,11 @@ The engine accepts only FSM YAML (states + transitions). Paradigm templates exis
 
 ## Motivation
 
-- Paradigm redundancy: Invariants is structurally identical to chained Goal loops; Goal and Convergence differ only in stall detection (a parameter, not a paradigm). The taxonomy doesn't earn its complexity.
-- Leaky abstraction: `on_partial_target`, `extra_states`, and raw `route:` tables are FSM concepts bleeding through the paradigm layer. Power users already need FSM knowledge.
-- Two-schema problem: Users must learn paradigm YAML for simple cases and FSM YAML for advanced cases, rather than learning FSM once.
-- The `fsm` passthrough paradigm already exists, which is an implicit admission that paradigms are sometimes insufficient.
-- Simpler engine: removing the compile step reduces code surface area and eliminates a class of bugs where compiled FSM diverges from user intent.
+- **Code surface area**: `fsm/compilers.py` is 529 lines with 4 compiler functions (`compile_goal`, `compile_convergence`, `compile_invariants`, `compile_imperative`) that would move out of the runtime path. Removing the compile step eliminates an entire call-site category — 2 `compile_paradigm()` calls in `_helpers.py` and their associated validation branches.
+- **Paradigm redundancy**: Invariants is structurally identical to chained Goal loops; Goal and Convergence differ only in stall detection (a parameter, not a paradigm). 4 schemas collapse to 0 runtime-compiled schemas — the taxonomy doesn't earn its complexity.
+- **Leaky abstraction**: `on_partial_target`, `extra_states`, and raw `route:` tables are FSM concepts bleeding through the paradigm layer. Power users already need FSM knowledge to use advanced features.
+- **Two-schema problem**: Users must learn paradigm YAML for simple cases and FSM YAML for advanced cases, rather than learning FSM once. The `fsm` passthrough paradigm (already in use by all current built-in loops) is an implicit admission that paradigms are sometimes insufficient.
+- **Zero migration risk from built-ins**: All existing built-in loops already use `paradigm: fsm`; the migration cost is concentrated in tests (5 test files reference non-FSM `paradigm:` values) and user-authored `.loops/` files.
 
 ## Proposed Solution
 
@@ -122,6 +122,7 @@ def load_loop(name: str) -> FSMLoop:
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1564701c-0b71-47e9-8677-e3a418dce76e.jsonl`
+- `/ll:format-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b31fd356-3f18-4de7-a793-37b195831fdb.jsonl`
 
 ---
 
