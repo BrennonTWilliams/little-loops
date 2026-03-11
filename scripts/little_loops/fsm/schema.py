@@ -340,14 +340,12 @@ class LLMConfig:
 class FSMLoop:
     """Complete FSM loop definition.
 
-    The main dataclass representing a loop configuration. This matches
-    the universal FSM schema that all paradigms compile to.
+    The main dataclass representing a loop configuration.
 
     Attributes:
         name: Unique loop identifier
         initial: Starting state name
         states: Mapping from state name to StateConfig
-        paradigm: Source paradigm (for reference, e.g., "goal", "convergence")
         context: User-defined shared variables
         scope: Paths this loop operates on (for concurrency control)
         max_iterations: Safety limit for loop iterations
@@ -361,7 +359,6 @@ class FSMLoop:
     name: str
     initial: str
     states: dict[str, StateConfig]
-    paradigm: str | None = None
     context: dict[str, Any] = field(default_factory=dict)
     scope: list[str] = field(default_factory=list)
     max_iterations: int = 50
@@ -379,8 +376,6 @@ class FSMLoop:
             "states": {name: state.to_dict() for name, state in self.states.items()},
         }
 
-        if self.paradigm is not None:
-            result["paradigm"] = self.paradigm
         if self.context:
             result["context"] = self.context
         if self.scope:
@@ -418,7 +413,6 @@ class FSMLoop:
             name=data["name"],
             initial=data["initial"],
             states=states,
-            paradigm=data.get("paradigm"),
             context=data.get("context", {}),
             scope=data.get("scope", []),
             max_iterations=data.get("max_iterations", 50),

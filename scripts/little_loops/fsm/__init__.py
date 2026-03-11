@@ -4,10 +4,6 @@ This module provides the type-safe representation of FSM loop definitions,
 validation logic, variable interpolation, evaluators, and the execution engine
 for the little-loops FSM system.
 
-Paradigm compilation (compile_paradigm) is available in fsm.compilers but is
-not a public package export — it is used only by wizard/template generation
-(ll-loop compile) and is not part of the runtime engine load path.
-
 Public exports:
     # Schema
     FSMLoop: Main dataclass representing a complete loop definition

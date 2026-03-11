@@ -22,11 +22,6 @@
       },
       "minProperties": 1
     },
-    "paradigm": {
-      "type": "string",
-      "description": "Source paradigm (for reference)",
-      "enum": ["goal", "convergence", "invariants", "imperative", "fsm"]
-    },
     "context": {
       "type": "object",
       "description": "User-defined shared variables",

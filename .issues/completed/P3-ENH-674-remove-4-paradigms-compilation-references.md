@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-11
 discovered_by: capture-issue
+confidence_score: 96
+outcome_confidence: 61
 ---
 
 # ENH-674: Remove deprecated 4 Paradigms compilation from codebase
@@ -29,11 +31,12 @@ Maintaining deprecated paradigm compilation code creates unnecessary maintenance
 - Remove paradigm-related schemas, types, and constants
 - Remove paradigm references from documentation
 - Remove or update paradigm-specific tests
+- Remove vestigial `paradigm: fsm` key from loop YAML files (`.loops/`, `loops/`)
 - Close ENH-606 (deduplicate paradigm auto-compile logic) as superseded
 
 **Out of scope:**
 - Changing the FSM execution engine
-- Modifying existing FSM loop definitions that are already in FSM format
+- Modifying FSM logic (states, transitions, actions) in existing loop definitions
 
 ## Proposed Solution
 
@@ -72,9 +75,9 @@ N/A — No new public APIs. This is a removal of deprecated internal APIs only. 
 ### Dependent Files (Callers/Importers)
 - `commands/loop-suggester.md` — may reference paradigm concepts
 - `skills/review-loop/SKILL.md` — may reference paradigm validation
-- `.loops/issue-refinement-git.yaml` — check for paradigm format usage
-- `loops/fix-quality-and-tests.yaml` — check for paradigm format usage
-- `loops/issue-refinement.yaml` — check for paradigm format usage
+- `.loops/issue-refinement-git.yaml` — remove `paradigm: fsm` key
+- `loops/fix-quality-and-tests.yaml` — remove `paradigm: fsm` key
+- `loops/issue-refinement.yaml` — remove `paradigm: fsm` key
 
 ### Similar Patterns
 - ENH-606 identifies 4 copy-paste sites for paradigm detection — all should be removed
@@ -112,9 +115,10 @@ N/A — No new public APIs. This is a removal of deprecated internal APIs only. 
 1. Grep codebase for all paradigm-related code and documentation references
 2. Remove paradigm compiler modules and related utility functions
 3. Remove paradigm detection logic from all call sites
-4. Remove paradigm-related tests or convert to pure FSM tests
-5. Update documentation to remove paradigm references
-6. Run full test suite to confirm no regressions
+4. Remove `paradigm: fsm` key from loop YAML files
+5. Remove paradigm-related tests or convert to pure FSM tests
+6. Update documentation to remove paradigm references
+7. Run full test suite to confirm no regressions
 
 ## Impact
 
@@ -134,12 +138,40 @@ N/A — No new public APIs. This is a removal of deprecated internal APIs only. 
 
 `enhancement`, `ll-loop`, `cleanup`, `deprecation-removal`
 
+## Resolution
+
+**Resolved**: 2026-03-11
+
+### Changes Made
+- Deleted `scripts/little_loops/fsm/compilers.py` (530 lines — 4 paradigm compilers + routing function)
+- Removed `paradigm` field from `FSMLoop` dataclass in `schema.py`
+- Removed `paradigm` from `KNOWN_TOP_LEVEL_KEYS` in `validation.py`
+- Removed `paradigm` schema definition from `fsm-loop-schema.json`
+- Removed `cmd_compile` function and `compile` CLI subcommand
+- Removed 4 paradigm detection blocks (`"paradigm" in spec and "initial" not in spec`) from `_helpers.py`, `run.py`, `config_cmds.py`
+- Removed paradigm display from `info.py` (`_load_loop_meta`, show command header)
+- Removed `paradigm: fsm` from 3 loop YAML files
+- Deleted `test_fsm_compilers.py` (1278 lines) and `test_fsm_compiler_properties.py` (470 lines)
+- Removed paradigm compilation tests from 8 additional test files
+- Updated documentation: API.md, CLI.md, LOOPS_GUIDE.md, README.md, CONTRIBUTING.md, TESTING.md, SKILL.md, generalized-fsm-loop.md
+
+### Verification
+- `grep -ri "paradigm" scripts/little_loops/` returns zero hits in source code
+- `grep -ri "compile_paradigm" scripts/` returns zero hits in source code
+- Full test suite: 3283 passed, 0 failed
+- Type checking: clean (mypy)
+- Linting: clean (ruff)
+- ENH-606 already closed as superseded
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-11T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a62efb4c-0a29-4bd8-a178-c13c34639add.jsonl`
 - `/ll:format-issue` - 2026-03-11 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f08c54d6-5d2f-49fa-be74-5b3e2575dc08.jsonl`
+- `/ll:confidence-check` - 2026-03-11T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/137a7b5c-d986-4fd2-9e3c-4896313879c2.jsonl`
+- `/ll:ready-issue` - 2026-03-11T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78bd6806-7974-4164-b7e2-9489ee13d916.jsonl`
+- `/ll:manage-issue` - 2026-03-11 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a1ed10ad-297a-4b15-899f-f7abcb35ac49.jsonl`
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-03-11 | Priority: P3
+**Completed** | Created: 2026-03-11 | Completed: 2026-03-11 | Priority: P3

@@ -75,12 +75,10 @@ If no file found, output an error and stop.
 Use `Read` to load the YAML. Parse as a raw dict (you do not need to invoke Python — read the YAML text and inspect the keys).
 
 **Format detection**:
-- **Legacy paradigm format**: YAML has `paradigm:` key AND lacks `initial:` key — this format is no longer supported by the engine; flag as Error and stop review (suggest `ll-loop compile <file>` to migrate)
-- **FSM format**: YAML has `initial:` key
+- **FSM format**: YAML has `initial:` key — this is the only supported format
 
 Record:
 - `loop_name`: the `name` field
-- `format`: `"fsm"` (legacy paradigm format is rejected immediately)
 - `initial`: the `initial` field
 - `states`: dict of state names → state configs
 - `max_iterations`: numeric value or absent

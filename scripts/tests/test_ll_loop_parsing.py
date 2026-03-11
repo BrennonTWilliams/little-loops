@@ -107,20 +107,6 @@ class TestLoopArgumentParsing:
         assert args.command == "list"
         assert args.running is True
 
-    def test_compile_subcommand(self) -> None:
-        """compile subcommand."""
-        parser = self._create_subparser_only()
-        args = parser.parse_args(["compile", "paradigm.yaml"])
-        assert args.command == "compile"
-        assert args.input == "paradigm.yaml"
-        assert args.output is None
-
-    def test_compile_with_output(self) -> None:
-        """compile with -o output."""
-        parser = self._create_subparser_only()
-        args = parser.parse_args(["compile", "paradigm.yaml", "-o", "output.yaml"])
-        assert args.output == "output.yaml"
-
     def test_history_subcommand(self) -> None:
         """history subcommand."""
         parser = self._create_subparser_only()

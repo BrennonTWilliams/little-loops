@@ -32,17 +32,6 @@ class TestBuiltinLoopFiles:
                 data = yaml.safe_load(f)
             assert isinstance(data, dict), f"{loop_file.name}: root must be a mapping"
 
-    def test_all_have_required_paradigm_fields(self, builtin_loops: list[Path]) -> None:
-        """All built-in loops have paradigm and name fields."""
-        for loop_file in builtin_loops:
-            with open(loop_file) as f:
-                data = yaml.safe_load(f)
-            assert "paradigm" in data, f"{loop_file.name}: missing 'paradigm'"
-            assert "name" in data, f"{loop_file.name}: missing 'name'"
-            assert data["name"] == loop_file.stem, (
-                f"{loop_file.name}: name '{data['name']}' doesn't match filename stem"
-            )
-
     def test_all_validate_as_valid_fsm(self, builtin_loops: list[Path]) -> None:
         """All built-in loops load and validate as FSMs without errors."""
         for loop_file in builtin_loops:

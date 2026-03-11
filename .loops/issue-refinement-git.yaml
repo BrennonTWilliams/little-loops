@@ -4,7 +4,6 @@
 # and iterates with refine-issue until both confidence scores meet
 # thresholds (readiness>=85, outcome>=70).
 # Repeats until all active issues are fully refined.
-paradigm: fsm
 name: issue-refinement-git
 initial: evaluate
 states:

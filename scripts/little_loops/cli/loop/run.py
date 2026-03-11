@@ -24,27 +24,12 @@ def cmd_run(
     logger: Logger,
 ) -> int:
     """Run a loop."""
-    import yaml
-
     from little_loops.fsm.concurrency import LockManager
     from little_loops.fsm.persistence import PersistentExecutor
     from little_loops.fsm.validation import load_and_validate
 
     try:
         path = resolve_loop_path(loop_name, loops_dir)
-
-        # Load the file to check format
-        with open(path) as f:
-            spec = yaml.safe_load(f)
-
-        # Paradigm YAML (has 'paradigm' but no 'initial') is no longer supported at runtime.
-        if "paradigm" in spec and "initial" not in spec:
-            raise ValueError(
-                f"Paradigm YAML format is no longer supported by the engine: {path}\n"
-                "Convert to FSM YAML using: ll-loop compile <file>\n"
-                "Or write FSM YAML directly (see docs/guides/LOOPS_GUIDE.md)."
-            )
-
         fsm, _ = load_and_validate(path)
     except FileNotFoundError as e:
         logger.error(str(e))

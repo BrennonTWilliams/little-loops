@@ -152,7 +152,7 @@ little-loops/
 │   ├── guides/                          # User guides
 │   │   ├── GETTING_STARTED.md           # Getting started guide
 │   │   ├── ISSUE_MANAGEMENT_GUIDE.md    # Issue management workflow
-│   │   ├── LOOPS_GUIDE.md               # Loop creation and paradigms
+│   │   ├── LOOPS_GUIDE.md               # Loop creation guide
 │   │   ├── SESSION_HANDOFF.md           # Context management guide
 │   │   └── SPRINT_GUIDE.md             # Sprint planning and execution
 │   ├── development/                     # Developer documentation

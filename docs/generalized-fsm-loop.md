@@ -168,7 +168,6 @@ backoff: 2
 Full control over states and transitions for complex workflows.
 
 ```yaml
-paradigm: fsm
 name: "lint-fix-cycle"
 initial: "check"
 states:
@@ -349,7 +348,6 @@ states:                         # State definitions
     timeout: number             # Action-level timeout in seconds
 
 # Optional Loop-Level Settings
-paradigm: string                # Source paradigm (for reference)
 context: object                 # Shared variables/config
 scope: array[string]            # Paths this loop operates on (for concurrency)
 max_iterations: integer         # Safety limit (default: 50)

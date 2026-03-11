@@ -271,7 +271,6 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 | `ll-loop run <name>` | Run a loop (also: `ll-loop <name>`) |
 | `ll-loop validate <name>` | Check YAML for schema errors and unreachable states |
 | `ll-loop show <name>` | Display states, transitions, and ASCII diagram |
-| `ll-loop compile <file>` | Migrate legacy paradigm YAML to FSM YAML |
 | `ll-loop test <name>` | Run a single iteration to verify configuration |
 | `ll-loop simulate <name>` | Trace execution interactively without running actions |
 | `ll-loop list` | List available loops (`--running` for active only) |

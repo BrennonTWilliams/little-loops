@@ -132,18 +132,18 @@ class TestCmdList:
         loops_dir = tmp_path / ".loops"
         assert not loops_dir.exists()
 
-    def test_list_shows_paradigm_and_description(
+    def test_list_shows_description(
         self,
         tmp_path: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Available loops display paradigm type and description."""
+        """Available loops display description."""
         from little_loops.cli.loop.info import cmd_list
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         (loops_dir / "my-loop.yaml").write_text(
-            "name: my-loop\nparadigm: goal\ndescription: Ensure tests pass\n"
+            "name: my-loop\ndescription: Ensure tests pass\n"
         )
         (loops_dir / "bare-loop.yaml").write_text("name: bare\n")
 
@@ -156,7 +156,6 @@ class TestCmdList:
 
         assert result == 0
         captured = capsys.readouterr().out
-        assert "[goal]" in captured
         assert "Ensure tests pass" in captured
         assert "my-loop" in captured
         assert "bare-loop" in captured
@@ -1364,50 +1363,6 @@ class TestCmdShow:
         assert "ll-loop test my-loop" in out
         assert "ll-loop status my-loop" in out
         assert "ll-loop history my-loop" in out
-
-
-class TestCmdCompile:
-    """Tests for cmd_compile round-trip serialization (BUG-601)."""
-
-    def test_compile_preserves_llm_scope_on_handoff(self, tmp_path: Path) -> None:
-        """Compiled .fsm.yaml retains llm, scope, and on_handoff fields (BUG-601)."""
-        from little_loops.cli.loop.config_cmds import cmd_compile
-        from little_loops.logger import Logger
-
-        input_file = tmp_path / "my-loop.yaml"
-        input_file.write_text(
-            "name: my-loop\n"
-            "initial: check\n"
-            "on_handoff: spawn\n"
-            "scope:\n"
-            "  - src/\n"
-            "llm:\n"
-            "  model: claude-opus-4-6\n"
-            "  max_tokens: 1024\n"
-            "states:\n"
-            "  check:\n"
-            '    action: "echo hello"\n'
-            "    on_success: done\n"
-            "    on_failure: done\n"
-            "  done:\n"
-            "    terminal: true\n"
-        )
-        output_file = tmp_path / "my-loop.fsm.yaml"
-        args = argparse.Namespace(input=str(input_file), output=str(output_file))
-        logger = Logger(use_color=False)
-
-        result = cmd_compile(args, logger)
-
-        assert result == 0
-        assert output_file.exists()
-        with open(output_file) as f:
-            compiled = yaml.safe_load(f)
-
-        assert compiled.get("on_handoff") == "spawn", "on_handoff dropped during compilation"
-        assert compiled.get("scope") == ["src/"], "scope dropped during compilation"
-        assert "llm" in compiled, "llm block dropped during compilation"
-        assert compiled["llm"].get("model") == "claude-opus-4-6"
-        assert compiled["llm"].get("max_tokens") == 1024
 
 
 class TestCmdTest:

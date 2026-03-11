@@ -703,33 +703,6 @@ states:
 
                 assert result == 1
 
-    def test_main_loop_compile_command(self) -> None:
-        """main_loop compile compiles paradigm to FSM."""
-        import tempfile
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            input_file = Path(tmpdir) / "paradigm.yaml"
-            input_file.write_text("name: test\nparadigm: simple")
-
-            with patch("little_loops.fsm.compilers.compile_paradigm") as mock_compile:
-                from little_loops.fsm.schema import FSMLoop, StateConfig
-
-                mock_fsm = FSMLoop(
-                    name="compiled",
-                    paradigm="simple",
-                    initial="start",
-                    states={"start": StateConfig(terminal=True)},
-                    max_iterations=10,
-                )
-                mock_compile.return_value = mock_fsm
-
-                with patch.object(sys, "argv", ["ll-loop", "compile", str(input_file)]):
-                    from little_loops.cli import main_loop
-
-                    result = main_loop()
-
-            assert result == 0
-
     def test_main_loop_no_command_shows_help(self) -> None:
         """main_loop with no command shows help and returns error."""
         with patch.object(sys, "argv", ["ll-loop"]):
@@ -1710,7 +1683,7 @@ class TestMainLoopAdditionalCoverage:
 
             mock_fsm = FSMLoop(
                 name="test",
-                paradigm="test",
+
                 initial="start",
                 states={"start": StateConfig(terminal=True)},
                 max_iterations=50,
@@ -1764,7 +1737,7 @@ class TestMainLoopAdditionalCoverage:
 
             mock_fsm = FSMLoop(
                 name="compiled",
-                paradigm="test",
+
                 initial="start",
                 states={"start": StateConfig(terminal=True)},
                 max_iterations=50,
@@ -1821,7 +1794,7 @@ states:
 
             mock_fsm = FSMLoop(
                 name="test-loop",
-                paradigm="test",
+
                 initial="start",
                 states={
                     "start": StateConfig(action='echo "test"', on_success="done"),
@@ -1864,7 +1837,7 @@ states:
 
             mock_fsm = FSMLoop(
                 name="test",
-                paradigm="test",
+
                 initial="start",
                 states={"start": StateConfig(terminal=True)},
                 max_iterations=50,
@@ -1917,7 +1890,7 @@ states:
 
             mock_fsm = FSMLoop(
                 name="test",
-                paradigm="test",
+
                 initial="start",
                 states={"start": StateConfig(terminal=True)},
                 max_iterations=50,
@@ -1993,7 +1966,7 @@ states:
 
             mock_fsm = FSMLoop(
                 name="test",
-                paradigm="test",
+
                 initial="start",
                 states={"start": StateConfig(terminal=True)},
                 max_iterations=50,
@@ -2073,7 +2046,7 @@ states:
 
             mock_fsm = FSMLoop(
                 name="test",
-                paradigm="test",
+
                 initial="start",
                 states={"start": StateConfig(terminal=True)},
                 max_iterations=50,

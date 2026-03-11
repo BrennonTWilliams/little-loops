@@ -1,4 +1,3 @@
-paradigm: fsm
 name: issue-refinement
 description: |
   Progressively refine all active issues to ensure complete coverage.

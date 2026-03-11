@@ -381,25 +381,6 @@ class TestReviewLoopQualityChecks:
         has_on_handoff = "on_handoff" in spec
         assert has_on_handoff  # → no QC-6 flag
 
-    # ---- Format detection ----
-
-    def test_format_detection_paradigm(self) -> None:
-        """Format detection: has 'paradigm' key AND lacks 'initial' → paradigm format."""
-        spec = {"paradigm": "goal", "name": "my-loop"}
-        is_paradigm = "paradigm" in spec and "initial" not in spec
-        assert is_paradigm
-
-    def test_format_detection_raw_fsm_with_initial(self) -> None:
-        """Format detection: has 'initial' key → raw FSM format (even if paradigm also present)."""
-        spec = {"paradigm": "fsm", "initial": "start", "name": "my-loop", "states": {}}
-        is_paradigm = "paradigm" in spec and "initial" not in spec
-        assert not is_paradigm  # → raw FSM
-
-    def test_format_detection_raw_fsm_no_paradigm(self) -> None:
-        """Format detection: has 'initial' only → raw FSM format."""
-        spec = {"initial": "start", "name": "my-loop", "states": {}}
-        is_paradigm = "paradigm" in spec and "initial" not in spec
-        assert not is_paradigm  # → raw FSM
 
 
 # =============================================================================

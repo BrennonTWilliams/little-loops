@@ -1,4 +1,3 @@
-paradigm: fsm
 name: fix-quality-and-tests
 description: |
   Sequential quality gate: lint + format + types must be clean before tests are

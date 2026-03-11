@@ -84,7 +84,7 @@ def get_builtin_loops_dir() -> Path:
 
 
 def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:
-    """Resolve loop name to path, preferring compiled FSM over paradigm."""
+    """Resolve loop name to file path."""
     path = Path(name_or_path)
     if path.exists():
         return path
@@ -94,7 +94,7 @@ def resolve_loop_path(name_or_path: str, loops_dir: Path) -> Path:
     if fsm_path.exists():
         return fsm_path
 
-    # Fall back to <loops_dir>/<name>.yaml (paradigm)
+    # Fall back to <loops_dir>/<name>.yaml
     loops_path = loops_dir / f"{name_or_path}.yaml"
     if loops_path.exists():
         return loops_path
@@ -112,25 +112,11 @@ def load_loop(name_or_path: str, loops_dir: Path, logger: Logger) -> FSMLoop:
 
     Raises:
         FileNotFoundError: If loop not found.
-        ValueError: If loop is invalid or uses deprecated paradigm YAML format.
+        ValueError: If loop is invalid.
     """
-    import yaml
-
     from little_loops.fsm.validation import load_and_validate
 
     path = resolve_loop_path(name_or_path, loops_dir)
-
-    with open(path) as f:
-        spec = yaml.safe_load(f)
-
-    # Paradigm YAML (has 'paradigm' but no 'initial') is no longer supported at runtime.
-    if "paradigm" in spec and "initial" not in spec:
-        raise ValueError(
-            f"Paradigm YAML format is no longer supported by the engine: {path}\n"
-            "Convert to FSM YAML using: ll-loop compile <file>\n"
-            "Or write FSM YAML directly (see docs/guides/LOOPS_GUIDE.md)."
-        )
-
     fsm, _ = load_and_validate(path)
     return fsm
 
@@ -144,7 +130,7 @@ def load_loop_with_spec(
 
     Raises:
         FileNotFoundError: If loop not found.
-        ValueError: If loop is invalid or uses deprecated paradigm YAML format.
+        ValueError: If loop is invalid.
     """
     import yaml
 
@@ -154,14 +140,6 @@ def load_loop_with_spec(
 
     with open(path) as f:
         spec = yaml.safe_load(f)
-
-    # Paradigm YAML (has 'paradigm' but no 'initial') is no longer supported at runtime.
-    if "paradigm" in spec and "initial" not in spec:
-        raise ValueError(
-            f"Paradigm YAML format is no longer supported by the engine: {path}\n"
-            "Convert to FSM YAML using: ll-loop compile <file>\n"
-            "Or write FSM YAML directly (see docs/guides/LOOPS_GUIDE.md)."
-        )
 
     fsm, _ = load_and_validate(path)
     return fsm, spec

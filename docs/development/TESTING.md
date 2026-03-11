@@ -435,35 +435,27 @@ For complex data structures, create custom strategies:
 
 ```python
 @st.composite
-def goal_spec(draw: st.DrawFn) -> dict:
-    """Generate valid goal compiler input specs."""
-    goal = draw(
-        st.text(
-            min_size=1,
-            max_size=100,
-            alphabet=st.characters(whitelist_categories=("L", "N", "P", "Z")),
-        )
-    )
-    num_tools = draw(st.integers(min_value=1, max_value=3))
-    tools = [draw(st.text(min_size=1, max_size=50)) for _ in range(num_tools)]
+def fsm_spec(draw: st.DrawFn) -> dict:
+    """Generate valid FSM loop specs."""
+    name = draw(st.text(min_size=1, max_size=50,
+        alphabet=st.characters(whitelist_categories=("L", "N"))))
     max_iter = draw(st.integers(min_value=1, max_value=100))
-
-    spec: dict = {
-        "paradigm": "goal",
-        "goal": goal,
-        "tools": tools,
+    return {
+        "name": name,
+        "initial": "start",
+        "states": {
+            "start": {"action": "echo check", "on_success": "done", "on_failure": "start"},
+            "done": {"terminal": True},
+        },
         "max_iterations": max_iter,
     }
-    return spec
 
-class TestGoalCompilerProperties:
-    @given(spec=goal_spec())
+class TestFSMLoopProperties:
+    @given(spec=fsm_spec())
     @settings(max_examples=100)
-    def test_always_three_states(self, spec: dict) -> None:
-        """Goal compiler always produces exactly 3 states."""
-        fsm = compile_goal(spec)
-        assert len(fsm.states) == 3
-        assert set(fsm.states.keys()) == {"evaluate", "fix", "done"}
+    def test_always_has_initial_and_states(self, spec: dict) -> None:
+        """FSM spec always has initial state in states dict."""
+        assert spec["initial"] in spec["states"]
 ```
 
 ### Mutation Testing with mutmut

@@ -16,7 +16,7 @@ def main_loop() -> int:
     Returns:
         Exit code (0 = success)
     """
-    from little_loops.cli.loop.config_cmds import cmd_compile, cmd_install, cmd_validate
+    from little_loops.cli.loop.config_cmds import cmd_install, cmd_validate
     from little_loops.cli.loop.info import cmd_history, cmd_list, cmd_show
     from little_loops.cli.loop.lifecycle import cmd_resume, cmd_status, cmd_stop
     from little_loops.cli.loop.run import cmd_run
@@ -35,7 +35,6 @@ def main_loop() -> int:
     # This enables "ll-loop fix-types" shorthand for "ll-loop run fix-types"
     known_subcommands = {
         "run",
-        "compile",
         "validate",
         "list",
         "status",
@@ -78,7 +77,6 @@ Examples:
   %(prog)s validate fix-types     # Validate loop definition
   %(prog)s test fix-types         # Run single test iteration
   %(prog)s simulate fix-types     # Interactive simulation (dry-run with prompts)
-  %(prog)s compile paradigm.yaml  # Compile paradigm to FSM
   %(prog)s list                   # List available loops
   %(prog)s list --running         # List running loops
   %(prog)s status fix-types       # Show loop status
@@ -127,12 +125,6 @@ Examples:
         metavar="KEY=VALUE",
         help="Override a context variable (can be repeated)",
     )
-
-    # Compile subcommand
-    compile_parser = subparsers.add_parser("compile", aliases=["c"], help="Compile paradigm to FSM")
-    compile_parser.set_defaults(command="compile")
-    compile_parser.add_argument("input", help="Input paradigm YAML file")
-    compile_parser.add_argument("-o", "--output", help="Output FSM YAML file")
 
     # Validate subcommand
     validate_parser = subparsers.add_parser(
@@ -258,8 +250,6 @@ Examples:
     # Dispatch commands
     if args.command == "run":
         return cmd_run(args.loop, args, loops_dir, logger)
-    elif args.command == "compile":
-        return cmd_compile(args, logger)
     elif args.command == "validate":
         return cmd_validate(args.loop, loops_dir, logger)
     elif args.command == "list":

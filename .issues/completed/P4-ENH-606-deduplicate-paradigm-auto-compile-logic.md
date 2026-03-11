@@ -116,7 +116,6 @@ Four copy-paste instances of identical paradigm detection logic create a compoun
 
 ## Status
 
-**Open** | Created: 2026-03-06 | Priority: P4
+**Closed (Superseded)** | Created: 2026-03-06 | Closed: 2026-03-11 | Priority: P4
 
-## Blocked By
-- ENH-671
+Superseded by ENH-674 (remove all paradigm compilation references) — no need to deduplicate code that is being fully removed.

@@ -1,51 +1,11 @@
-"""ll-loop config subcommands: compile, validate, install."""
+"""ll-loop config subcommands: validate, install."""
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import get_builtin_loops_dir, resolve_loop_path
 from little_loops.logger import Logger
-
-
-def cmd_compile(
-    args: argparse.Namespace,
-    logger: Logger,
-) -> int:
-    """Compile paradigm YAML to FSM."""
-    import yaml
-
-    from little_loops.fsm.compilers import compile_paradigm
-
-    input_path = Path(args.input)
-    if not input_path.exists():
-        logger.error(f"Input file not found: {input_path}")
-        return 1
-
-    try:
-        with open(input_path) as f:
-            spec = yaml.safe_load(f)
-        fsm = compile_paradigm(spec)
-    except ValueError as e:
-        logger.error(f"Compilation error: {e}")
-        return 1
-    except yaml.YAMLError as e:
-        logger.error(f"YAML parse error: {e}")
-        return 1
-
-    output_path = (
-        Path(args.output) if args.output else Path(str(input_path).replace(".yaml", ".fsm.yaml"))
-    )
-
-    # Convert FSMLoop to dict for YAML output
-    fsm_dict = fsm.to_dict()
-
-    with open(output_path, "w") as f:
-        yaml.dump(fsm_dict, f, default_flow_style=False, sort_keys=False)
-
-    logger.success(f"Compiled to: {output_path}")
-    return 0
 
 
 def cmd_validate(
@@ -54,26 +14,10 @@ def cmd_validate(
     logger: Logger,
 ) -> int:
     """Validate a loop definition."""
-    import yaml
-
     from little_loops.fsm.validation import load_and_validate
 
     try:
         path = resolve_loop_path(loop_name, loops_dir)
-
-        # Load the file to check format
-        with open(path) as f:
-            spec = yaml.safe_load(f)
-
-        # Paradigm YAML (has 'paradigm' but no 'initial') is no longer supported.
-        if "paradigm" in spec and "initial" not in spec:
-            logger.error(
-                f"{loop_name} uses deprecated paradigm YAML format.\n"
-                "  Convert to FSM YAML using: ll-loop compile <file>\n"
-                "  Or write FSM YAML directly (see docs/guides/LOOPS_GUIDE.md)."
-            )
-            return 1
-
         fsm, warnings = load_and_validate(path)
         logger.success(f"{loop_name} is valid")
         print(f"  States: {', '.join(fsm.states.keys())}")

@@ -128,29 +128,6 @@ states:
 
         assert result == 1
 
-    def test_compile_yaml_error_returns_error(
-        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-    ) -> None:
-        """compile returns error for malformed YAML."""
-        # Create file with invalid YAML syntax
-        input_file = tmp_path / "malformed.yaml"
-        input_file.write_text(
-            """
-name: test
-paradigm: simple
-invalid yaml: [unclosed bracket
-goal: "Test"
-"""
-        )
-
-        monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "compile", str(input_file)]):
-            from little_loops.cli import main_loop
-
-            result = main_loop()
-
-        assert result == 1
-
     def test_status_displays_all_fields(
         self,
         tmp_path: Path,
@@ -250,44 +227,6 @@ states:
         assert captured.err != ""
         assert "validation" in captured.err.lower() or "invalid" in captured.err.lower()
         assert "nonexistent" in captured.err  # Mentions the invalid state
-
-    def test_yaml_parse_error_message(
-        self,
-        tmp_path: Path,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """Invalid YAML shows parsing error."""
-        # Use compile command which properly catches yaml.YAMLError
-        bad_file = tmp_path / "bad.yaml"
-        bad_file.write_text("invalid: yaml: content: [broken")
-
-        with patch.object(sys, "argv", ["ll-loop", "compile", str(bad_file)]):
-            from little_loops.cli import main_loop
-
-            result = main_loop()
-
-        captured = capsys.readouterr()
-        assert result == 1
-        assert captured.err != ""
-        assert "yaml" in captured.err.lower() or "parse" in captured.err.lower()
-
-    def test_compile_missing_input_error_message(
-        self,
-        tmp_path: Path,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """Compile with missing file shows helpful error."""
-        missing_path = tmp_path / "nonexistent.yaml"
-        with patch.object(sys, "argv", ["ll-loop", "compile", str(missing_path)]):
-            from little_loops.cli import main_loop
-
-            result = main_loop()
-
-        captured = capsys.readouterr()
-        assert result == 1
-        assert captured.err != ""
-        assert "not found" in captured.err.lower()
-        assert str(missing_path) in captured.err or "nonexistent" in captured.err
 
     def test_status_no_state_error_message(
         self,

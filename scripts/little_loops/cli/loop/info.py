@@ -24,19 +24,17 @@ from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.logger import Logger
 
 
-def _load_loop_meta(path: Path) -> tuple[str, str]:
-    """Return (paradigm, description) from a loop YAML file."""
+def _load_loop_meta(path: Path) -> str:
+    """Return description from a loop YAML file."""
     import yaml
 
     try:
         with open(path) as f:
             spec = yaml.safe_load(f) or {}
-        paradigm = spec.get("paradigm", "") or ""
         desc_raw = spec.get("description", "") or ""
-        desc = desc_raw.splitlines()[0] if desc_raw.strip() else ""
-        return paradigm, desc
+        return desc_raw.splitlines()[0] if desc_raw.strip() else ""
     except Exception:
-        return "", ""
+        return ""
 
 
 def cmd_list(
@@ -99,15 +97,13 @@ def cmd_list(
 
     print("Available loops:")
     for path in sorted(yaml_files):
-        paradigm, desc = _load_loop_meta(path)
-        tag = f"  [{paradigm}]" if paradigm else ""
+        desc = _load_loop_meta(path)
         desc_str = f"  {desc}" if desc else ""
-        print(f"  {path.stem}{tag}{desc_str}")
+        print(f"  {path.stem}{desc_str}")
     for path in builtin_files:
-        paradigm, desc = _load_loop_meta(path)
-        tag = f"  [{paradigm}]" if paradigm else ""
+        desc = _load_loop_meta(path)
         desc_str = f"  {desc}" if desc else ""
-        print(f"  {path.stem}{tag}{desc_str}  [built-in]")
+        print(f"  {path.stem}{desc_str}  [built-in]")
     return 0
 
 
@@ -404,10 +400,8 @@ def cmd_show(
     )
 
     # --- Compact metadata header ---
-    # Line 1: ── name ───────── paradigm · N states · M transitions ──
-    stats_parts = []
-    if fsm.paradigm:
-        stats_parts.append(fsm.paradigm)
+    # Line 1: ── name ───────── N states · M transitions ──
+    stats_parts: list[str] = []
     stats_parts.append(f"{n_states} states")
     stats_parts.append(f"{n_transitions} transitions")
     stats_str = " \u00b7 ".join(stats_parts)

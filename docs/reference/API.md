@@ -3384,7 +3384,6 @@ FSM (Finite State Machine) loop system for automation workflows. This subpackage
 | Module | Purpose |
 |--------|---------|
 | `little_loops.fsm.schema` | FSM state machine schema definitions |
-| `little_loops.fsm.compilers` | Legacy paradigm-to-FSM compilers (used by `ll-loop compile` and `/ll:create-loop`) |
 | `little_loops.fsm.evaluators` | Verdict evaluators (exit_code, llm_structured, etc.) |
 | `little_loops.fsm.executor` | FSM execution engine |
 | `little_loops.fsm.interpolation` | Variable substitution (`${context.*}`, etc.) |
@@ -3432,7 +3431,6 @@ class FSMLoop:
     name: str                          # Unique loop identifier
     initial: str                       # Starting state name
     states: dict[str, StateConfig]     # State configurations
-    paradigm: str | None = None        # Set to "fsm" for user-authored loops; identifies compiler source for compiled loops
     context: dict[str, Any] = {}       # User-defined shared variables
     scope: list[str] = []              # Paths for concurrency control
     max_iterations: int = 50           # Safety limit
@@ -3568,65 +3566,6 @@ class LLMConfig:
     max_tokens: int = 256
     timeout: int = 30
 ```
-
----
-
-### little_loops.fsm.compilers
-
-Legacy paradigm-to-FSM compilers. Used internally by `ll-loop compile` (migration path) and `/ll:create-loop` (wizard). Not exported from `little_loops.fsm` public API — import directly from `little_loops.fsm.compilers`.
-
-> **Note:** The FSM engine (`load_loop`, `cmd_run`) no longer accepts paradigm YAML at runtime. These compilers are wizard utilities only. Users write FSM YAML directly or use `/ll:create-loop` to generate it.
-
-#### compile_paradigm
-
-```python
-def compile_paradigm(spec: dict[str, Any]) -> FSMLoop
-```
-
-Route to appropriate compiler based on the `paradigm` field in `spec`.
-
-**Parameters:**
-- `spec` - Legacy paradigm specification dictionary with `paradigm` field (`goal`, `convergence`, `invariants`, or `imperative`)
-
-**Returns:** Compiled `FSMLoop` instance
-
-**Raises:** `ValueError` if paradigm is unknown
-
-**Example:**
-```python
-from little_loops.fsm.compilers import compile_paradigm
-
-spec = {
-    "paradigm": "goal",
-    "goal": "No type errors in src/",
-    "tools": ["/ll:check-code types", "/ll:manage-issue bug fix"],
-    "max_iterations": 20,
-}
-fsm = compile_paradigm(spec)
-print(fsm.initial)  # "evaluate"
-```
-
-#### Pattern Compilers
-
-```python
-def compile_goal(spec: dict) -> FSMLoop
-```
-Fix-until-clean pattern: evaluate → (success → done, failure → fix), fix → evaluate
-
-```python
-def compile_convergence(spec: dict) -> FSMLoop
-```
-Drive-a-metric pattern: measure → (target → done, progress → apply, stall → done)
-
-```python
-def compile_invariants(spec: dict) -> FSMLoop
-```
-Maintain-constraints pattern: chain multiple check/fix state pairs
-
-```python
-def compile_imperative(spec: dict) -> FSMLoop
-```
-Run-a-sequence pattern: ordered step states with exit condition
 
 ---
 
