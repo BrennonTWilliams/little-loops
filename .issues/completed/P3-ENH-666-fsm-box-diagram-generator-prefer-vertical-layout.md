@@ -2,7 +2,9 @@
 id: ENH-666
 type: ENH
 priority: P3
-status: active
+status: closed
+closed_date: 2026-03-10
+closed_reason: superseded by FEAT-670
 discovered_date: 2026-03-10
 discovered_by: capture-issue
 ---
@@ -135,4 +137,4 @@ Arrows connecting vertical states go from the center-bottom of the source box to
 
 ---
 
-**Open** | Created: 2026-03-10 | Priority: P3
+**Closed (Superseded)** | Created: 2026-03-10 | Closed: 2026-03-10 | Superseded by: FEAT-670
