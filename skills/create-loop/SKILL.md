@@ -1,5 +1,5 @@
 ---
-description: Create a new FSM loop configuration interactively. Guides users through paradigm selection, parameter gathering, YAML generation, and validation.
+description: Create a new FSM loop configuration interactively. Guides users through loop type selection, parameter gathering, YAML generation, and validation.
 allowed-tools:
   - Bash(mkdir:*, test:*, ll-loop:*)
 ---
@@ -7,10 +7,10 @@ allowed-tools:
 # Create Loop
 
 Interactive command for creating new automation loop configurations. This command guides you through:
-1. Choosing a paradigm (type of automation)
-2. Gathering paradigm-specific parameters
+1. Choosing a loop type (fix-until-clean, maintain constraints, drive a metric, or run a sequence)
+2. Gathering type-specific parameters
 3. Naming the loop
-4. Generating and previewing YAML
+4. Generating and previewing FSM YAML
 5. Saving and validating
 6. Optional test iteration to verify the loop works
 
@@ -36,18 +36,18 @@ questions:
     options:
       - label: "Start from template (Recommended)"
         description: "Choose a pre-built loop for common tasks"
-      - label: "Build from paradigm"
-        description: "Configure a new loop from scratch"
+      - label: "Build from scratch"
+        description: "Configure a new loop from scratch using the guided wizard"
 ```
 
 **If "Start from template"**: Read [templates.md](templates.md) for template selection and customization flow (Steps 0.1-0.2), then skip to Step 4.
-**If "Build from paradigm"**: Skip to Step 1 (Paradigm Selection)
+**If "Build from scratch"**: Skip to Step 1 (Loop Type Selection)
 
 ---
 
-### Step 1: Paradigm Selection (Custom Mode Only)
+### Step 1: Loop Type Selection (Custom Mode Only)
 
-If user selected "Build from paradigm" in Step 0, use this flow.
+If user selected "Build from scratch" in Step 0, use this flow.
 
 Use AskUserQuestion with a single-select to determine the loop type:
 
@@ -67,21 +67,21 @@ questions:
         description: "Execute steps in order, repeat until condition met. Best for: multi-stage builds"
 ```
 
-**Paradigm Mapping:**
-- "Fix errors until clean" -> `goal` paradigm
-- "Maintain code quality continuously" -> `invariants` paradigm
-- "Drive a metric toward a target" -> `convergence` paradigm
-- "Run a sequence of steps" -> `imperative` paradigm
+**Type Mapping:**
+- "Fix errors until clean" -> `fix-until-clean` type (states: evaluate, fix, done)
+- "Maintain code quality continuously" -> `maintain-constraints` type (check/fix pairs + terminal)
+- "Drive a metric toward a target" -> `drive-metric` type (states: measure, apply, done)
+- "Run a sequence of steps" -> `run-sequence` type (step_0...step_N, check_done, done)
 
-### Step 2: Paradigm-Specific Questions
+### Step 2: Type-Specific Questions
 
-Based on the selected paradigm, read [paradigms.md](paradigms.md) for the detailed question flow and YAML generation for each paradigm type (goal, invariants, convergence, imperative).
+Based on the selected loop type, read [loop-types.md](loop-types.md) for the detailed question flow and FSM YAML generation for each type.
 
 ---
 
 ### Step 3: Loop Name
 
-After gathering paradigm-specific parameters, ask for the loop name:
+After gathering type-specific parameters, ask for the loop name:
 
 ```yaml
 questions:
@@ -95,21 +95,21 @@ questions:
         description: "Enter your own name"
 ```
 
-**Auto-suggest names based on paradigm:**
-- Goal: `fix-<targets>` (e.g., `fix-types-and-lint`)
-- Invariants: `<constraint-names>-guardian` (e.g., `tests-types-lint-guardian`)
-- Convergence: `reduce-<metric>` or `increase-<metric>` (e.g., `reduce-lint-errors`)
-- Imperative: `<step-summary>-loop` (e.g., `fix-test-check-loop`)
+**Auto-suggest names based on loop type:**
+- Fix until clean: `fix-<targets>` (e.g., `fix-types-and-lint`)
+- Maintain constraints: `<constraint-names>-guardian` (e.g., `tests-types-lint-guardian`)
+- Drive a metric: `reduce-<metric>` or `increase-<metric>` (e.g., `reduce-lint-errors`)
+- Run a sequence: `<step-summary>-loop` (e.g., `fix-test-check-loop`)
 
 ### Step 4: Preview and Confirm
 
-Generate and display both the paradigm YAML and the compiled FSM preview.
+Generate and display the FSM YAML.
 
-**Generate FSM Preview:**
+**Generate FSM YAML:**
 
-Read [reference.md](reference.md) for the FSM Compilation Reference showing how each paradigm maps to FSM states and transitions, and for example previews.
+Read [loop-types.md](loop-types.md) for the FSM YAML template for the selected loop type. Generate the complete FSM YAML based on the parameters gathered in Step 2.
 
-Using the FSM Compilation Reference, generate a preview showing:
+Also generate a summary preview showing:
 1. States in execution order (use -> between states)
 2. Transitions for each non-terminal state
 3. Terminal states marked with `[terminal]`
@@ -120,12 +120,12 @@ Using the FSM Compilation Reference, generate a preview showing:
 ```
 Here's your loop configuration:
 
-## Paradigm YAML
+## FSM YAML
 ```yaml
 <generated-yaml>
 ```
 
-## Compiled FSM Preview
+## Summary
 States: <state1> -> <state2> -> ... -> <terminal>
 Transitions:
   <state1>: <verdict>-><target>, <verdict>-><target>
@@ -278,8 +278,8 @@ If confirmed:
 ## Additional Resources
 
 - For pre-built loop templates, see [templates.md](templates.md)
-- For paradigm-specific question flows and YAML generation, see [paradigms.md](paradigms.md)
-- For FSM compilation reference, quick reference tables, and advanced configuration, see [reference.md](reference.md)
+- For loop type question flows and FSM YAML generation, see [loop-types.md](loop-types.md)
+- For quick reference tables and advanced configuration, see [reference.md](reference.md)
 
 ## Examples
 
@@ -288,10 +288,10 @@ If confirmed:
 /ll:create-loop
 
 # The command will guide you through:
-# 1. Selecting a paradigm (goal, invariants, convergence, imperative)
-# 2. Configuring paradigm-specific options
+# 1. Selecting a loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence)
+# 2. Configuring type-specific options
 # 3. Naming the loop
-# 4. Previewing and saving the YAML
+# 4. Previewing and saving the FSM YAML
 ```
 
 ---

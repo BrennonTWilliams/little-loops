@@ -306,12 +306,12 @@ Resume from a previous session's continuation prompt.
 Create FSM loop configurations interactively.
 
 **Workflow:**
-1. Select paradigm (goal, convergence, invariants, imperative)
-2. Configure paradigm-specific parameters
-3. Name and preview the loop
+1. Select loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence)
+2. Configure type-specific parameters
+3. Name and preview the FSM YAML
 4. Save to `.loops/<name>.yaml` and validate
 
-**See also:** `docs/generalized-fsm-loop.md` for paradigm details.
+**See also:** `docs/generalized-fsm-loop.md` for FSM schema details.
 
 ### `/ll:loop-suggester`
 Analyze user message history to suggest FSM loop configurations automatically.
@@ -321,7 +321,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 
 **Features:**
 - Detects repeated tool sequences (check-fix cycles, multi-constraint patterns)
-- Maps patterns to appropriate paradigms (goal, invariants, convergence, imperative)
+- Maps patterns to appropriate loop types (fix-until-clean, maintain-constraints, drive-metric, run-sequence)
 - Generates ready-to-use loop YAML with confidence scores
 - Outputs to `.claude/loop-suggestions/`
 

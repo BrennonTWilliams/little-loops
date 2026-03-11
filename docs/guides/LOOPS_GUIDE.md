@@ -7,8 +7,7 @@ A loop is a YAML-defined automation workflow that runs commands, evaluates resul
 Why does this matter? LLMs are stateless — they don't remember what happened two prompts ago. The FSM gives them persistent memory of what was tried, what worked, and when to stop.
 
 ```
-You write:    paradigm YAML (5-10 lines)
-System makes: FSM states + transitions (compiled automatically)
+You write:    FSM YAML (or use /ll:create-loop)
 You run:      ll-loop run <name>
 ```
 
@@ -18,7 +17,6 @@ Loops live in `.loops/` as YAML files. Each loop has:
 
 - **States** — units of work (run a check, apply a fix, etc.)
 - **Transitions** — edges between states (on success go here, on failure go there)
-- **A paradigm** — a high-level pattern that compiles to states and transitions automatically
 
 When a loop runs, the engine:
 
@@ -27,198 +25,59 @@ When a loop runs, the engine:
 3. Follows the matching **transition** to the next state
 4. Repeats until reaching a **terminal state** or hitting `max_iterations`
 
-You don't write FSM states by hand (unless you want to). Instead, pick a **paradigm** — a mental model that matches your problem — and let the compiler generate the FSM.
+Use `/ll:create-loop` for an interactive wizard that guides you through creating loops, or write FSM YAML directly (see the [FSM Loop System Design](../generalized-fsm-loop.md) for the schema).
 
-## The 4 Paradigms
-
-### Goal — "Fix until clean"
-
-Use when you have a single condition to check and a single action to fix it.
-
-**Example** — fix type errors until `mypy` passes:
-
-```yaml
-paradigm: goal
-name: fix-types
-goal: "No type errors"
-tools:
-  - "mypy src/"
-  - "/ll:check-code fix"
-max_iterations: 10
-```
-
-This compiles to three states: `evaluate` runs the check, `fix` runs the fix action, and `done` is the terminal state. If the check passes, the loop is done. If it fails, the fix runs and the check repeats.
-
-```
-  ┌──────────┐             ┌──────┐
-  │ evaluate │───success──▶│ done │
-  └──────────┘             └──────┘
-       │ ▲
-  fail │ │ next
-       ▼ │
-     ┌─────┐
-     │ fix │
-     └─────┘
-```
-
-**Optional: `on_partial_target`** — Route `"partial"` verdicts to a specific state (useful with `llm_structured` evaluators). When an LLM evaluator returns `"partial"` (improving but not done), you can route to a lighter fix state instead of the full fix:
-
-```yaml
-paradigm: goal
-name: refine-document
-goal: "Document meets quality standards"
-tools:
-  - "/ll:check-quality"
-  - "/ll:full-revision"
-on_partial_target: light_fix   # partial verdict routes here instead of fix
-
-# light_fix state must be defined via extra_states or raw FSM override
-```
-
-### Convergence — "Drive a metric toward a target"
-
-Use when you have a measurable value to optimize — an error count to reduce, a coverage percentage to increase.
-
-**Example** — reduce lint errors to zero:
-
-```yaml
-paradigm: convergence
-name: reduce-lint-errors
-check: "ruff check src/ 2>&1 | grep -c 'error' || echo 0"
-toward: 0
-using: "/ll:check-code fix"
-tolerance: 0
-max_iterations: 50
-```
-
-This compiles to three states: `measure` runs the metric command, `apply` runs the fix action, and `done` is the terminal. The evaluator produces one of three verdicts: **target** (metric reached the goal), **progress** (metric improved, keep going), or **stall** (no improvement, stop).
-
-```
-  ┌─────────┐──target────▶┌──────┐
-  │ measure │──stall─────▶│ done │
-  └─────────┘             └──────┘
-       │ ▲
-progress │ next
-       ▼ │
-    ┌───────┐
-    │ apply │
-    └───────┘
-```
-
-### Invariants — "Maintain multiple quality gates"
-
-Use when multiple independent conditions must all be true — lint, types, formatting, tests.
-
-**Example** — an invariants loop that maintains code quality:
-
-```yaml
-paradigm: invariants
-name: quality-gate
-constraints:
-  - name: "lint"
-    check: "/ll:check-code lint"
-    fix: "Auto-fix lint issues"
-  - name: "types"
-    check: "/ll:check-code types"
-    fix: "Fix type errors"
-  - name: "format"
-    check: "/ll:check-code format"
-    fix: "Auto-format code"
-  - name: "tests"
-    check: "/ll:run-tests"
-    fix: "Fix failing tests"
-maintain: false
-max_iterations: 15
-```
-
-This compiles to a chain of check/fix pairs followed by a terminal `all_valid` state. Each constraint is checked in order. If a check fails, its fix runs and the check repeats. When it passes, the next constraint is checked.
-
-```
-  ┌────────────┐             ┌─────────────┐             ┌──────────────┐             ┌─────────────┐             ┌───────────┐
-  │ check_lint │───success──▶│ check_types │───success──▶│ check_format │───success──▶│ check_tests │───success──▶│ all_valid │
-  └────────────┘             └─────────────┘             └──────────────┘             └─────────────┘             └───────────┘
-        │ ▲                        │ ▲                          │ ▲                          │ ▲
-   fail │ │ next              fail │ │ next                fail │ │ next                fail │ │ next
-        ▼ │                        ▼ │                          ▼ │                          ▼ │
-   ┌──────────┐               ┌───────────┐               ┌────────────┐               ┌───────────┐
-   │ fix_lint │               │ fix_types │               │ fix_format │               │ fix_tests │
-   └──────────┘               └───────────┘               └────────────┘               └───────────┘
-```
-
-Set `maintain: true` to restart from the first constraint after all pass (daemon mode).
-
-### Imperative — "Run ordered steps, repeat until done"
-
-Use when you have a specific sequence of steps plus an exit condition.
-
-**Example** — an imperative loop that scans and triages issues:
-
-```yaml
-paradigm: imperative
-name: codebase-scan
-steps:
-  - "/ll:scan-codebase"
-  - "/ll:verify-issues"
-  - "/ll:prioritize-issues"
-until:
-  check: "git status --porcelain"
-  condition: "output_empty"
-max_iterations: 5
-```
-
-This compiles to a linear chain of step states, a `check_done` state that evaluates the exit condition, and a `done` terminal. If the exit condition fails, execution loops back to `step_0`.
-
-**Optional: `on_partial_target`** — Route `"partial"` verdicts from `check_done` to a specific state. Useful when the exit condition returns `"partial"` (e.g., via `llm_structured`) to route to a lighter remediation path rather than restarting all steps.
-
-```
-  ┌────────┐          ┌────────┐          ┌────────┐          ┌────────────┐             ┌──────┐
-  │ step_0 │───next──▶│ step_1 │───next──▶│ step_2 │───next──▶│ check_done │───success──▶│ done │
-  └────────┘          └────────┘          └────────┘          └────────────┘             └──────┘
-       ▲                                                             │
-       └─────────────────────────── fail ────────────────────────────┘
-```
-
-## Choosing a Paradigm
+## Common Loop Patterns
 
 ```
 What are you trying to do?
 │
-├─ Fix a specific problem ──────────▶ Goal
+├─ Fix a specific problem ──────────▶ Fix until clean
 │   "Run check, if fails run fix, repeat"
 │
-├─ Maintain multiple standards ─────▶ Invariants
+├─ Maintain multiple standards ─────▶ Maintain constraints
 │   "Check A, fix A, check B, fix B, ..."
 │
-├─ Reduce/increase a metric ────────▶ Convergence
+├─ Reduce/increase a metric ────────▶ Drive a metric
 │   "Measure, if not at target, fix, measure again"
 │
-└─ Run ordered steps ───────────────▶ Imperative
+└─ Run ordered steps ───────────────▶ Run a sequence
     "Do step 1, do step 2, check if done, repeat"
 ```
 
-| Paradigm | States | Branching | Best for |
+| Loop type | States | Branching | Best for |
 |-----------|--------|-----------|----------|
-| Goal | 3 (evaluate, fix, done) | Binary (pass/fail) | Single check + fix |
-| Convergence | 3 (measure, apply, done) | Three-way (target/progress/stall) | Metric optimization |
-| Invariants | 2 per constraint + 1 | Binary per constraint | Multi-gate quality |
-| Imperative | 1 per step + 2 | Binary exit check | Ordered workflows |
+| Fix until clean | evaluate, fix, done | Binary (pass/fail) | Single check + fix |
+| Drive a metric | measure, apply, done | Three-way (target/progress/stall) | Metric optimization |
+| Maintain constraints | 2 per constraint + 1 | Binary per constraint | Multi-gate quality |
+| Run a sequence | 1 per step + 2 | Binary exit check | Ordered workflows |
+
+Use `/ll:create-loop` to build any of these interactively. The wizard generates FSM YAML ready to run.
 
 ## Walkthrough: Creating and Running a Loop
 
-Here's a complete example: creating a goal-paradigm loop to fix test failures.
+Here's a complete example: a loop that fixes test failures until all tests pass.
 
 ### 1. Create
 
-Run `/ll:create-loop`. The interactive wizard asks you to choose a paradigm, configure the check and fix commands, and set parameters. Or write the YAML directly:
+Run `/ll:create-loop` to use the interactive wizard. Or write the FSM YAML directly:
 
 ```yaml
-paradigm: goal
 name: fix-tests
-goal: "All tests pass"
-tools:
-  - "pytest tests/"
-  - "Fix failing tests based on the pytest output"
+initial: evaluate
 max_iterations: 10
+states:
+  evaluate:
+    action: "pytest tests/"
+    on_success: done
+    on_failure: fix
+    on_error: fix
+  fix:
+    action: "Fix failing tests based on the pytest output"
+    action_type: prompt
+    next: evaluate
+  done:
+    terminal: true
 ```
 
 Save this to `.loops/fix-tests.yaml`.
@@ -241,7 +100,6 @@ Output:
 
 ```
 Loop: fix-tests
-Paradigm: goal
 Description: All tests pass
 Max iterations: 10
 Source: .loops/fix-tests.yaml
@@ -296,10 +154,10 @@ These loops ship with little-loops and cover common workflows. Install one to `.
 ll-loop install <name>       # Copies to .loops/ for editing
 ```
 
-| Loop | Paradigm | Description |
-|------|----------|-------------|
-| `fix-quality-and-tests` | fsm | Sequential quality gate: fix lint, format, and types before running tests; loops back after test fixes to catch regressions |
-| `issue-refinement` | fsm | Progressively refine all active issues through format, verify, and confidence scoring |
+| Loop | Description |
+|------|-------------|
+| `fix-quality-and-tests` | Sequential quality gate: fix lint, format, and types before running tests; loops back after test fixes to catch regressions |
+| `issue-refinement` | Progressively refine all active issues through format, verify, and confidence scoring |
 
 ## Beyond the Basics
 
@@ -315,7 +173,7 @@ Evaluators interpret action output and produce a **verdict** string used for rou
 | `output_numeric` | `success` / `failure` / `error` | — | Compare parsed numeric output to a target |
 | `output_json` | `success` / `failure` / `error` | — | Extract a JSON path value and compare |
 | `output_contains` | `success` / `failure` | — | Regex or substring match on stdout |
-| `convergence` | `target` / `progress` / `stall` | convergence paradigm | Track a metric toward a goal value |
+| `convergence` | `target` / `progress` / `stall` | metric-tracking states | Track a metric toward a goal value |
 | `llm_structured` | `success` / `failure` / `blocked` / `partial` | slash commands | Natural-language judgment via LLM |
 
 Override the default by adding an `evaluate:` block to a state:
@@ -413,7 +271,7 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 | `ll-loop run <name>` | Run a loop (also: `ll-loop <name>`) |
 | `ll-loop validate <name>` | Check YAML for schema errors and unreachable states |
 | `ll-loop show <name>` | Display states, transitions, and ASCII diagram |
-| `ll-loop compile <file>` | Compile paradigm YAML to FSM YAML |
+| `ll-loop compile <file>` | Migrate legacy paradigm YAML to FSM YAML |
 | `ll-loop test <name>` | Run a single iteration to verify configuration |
 | `ll-loop simulate <name>` | Trace execution interactively without running actions |
 | `ll-loop list` | List available loops (`--running` for active only) |
@@ -467,7 +325,7 @@ The `simulate` command accepts `--scenario` to auto-select verdicts instead of p
 
 ## Further Reading
 
-- [FSM Loop System Design](../generalized-fsm-loop.md) — Internal FSM architecture, schema, evaluators, variable interpolation, and compiler details
+- [FSM Loop System Design](../generalized-fsm-loop.md) — FSM schema, evaluators, variable interpolation, and full YAML reference
 - [Configuration Reference](../reference/CONFIGURATION.md) — Project-wide settings (test commands, paths, etc.) used by loop actions
 - `/ll:create-loop` — Interactive loop creation wizard
 - `/ll:review-loop` — Audit an existing loop for quality, correctness, and best practices

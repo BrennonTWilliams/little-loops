@@ -2,13 +2,13 @@
 
 ## Overview
 
-The little-loops (`ll`) loop system uses **Finite State Machines (FSM)** as the universal internal representation for all loops. Users can author loops using multiple paradigms that feel natural for their use case, and each paradigm compiles down to the same FSM-based YAML schema.
+The little-loops (`ll`) loop system uses **Finite State Machines (FSM)** as the execution model for all loops. Users author loops directly as FSM YAML — defining states, transitions, and evaluators — and the engine executes them as-is.
 
 This design provides:
-- **Flexibility** - Express loops in whatever mental model fits the problem
 - **Consistency** - Single execution engine, predictable behavior
 - **Debuggability** - FSM state is always inspectable
 - **Composability** - All loops share the same underlying structure
+- **Transparency** - What you write is what the engine runs
 
 ## Integration with Existing Tools
 
@@ -30,39 +30,29 @@ states:
     on_failure: "done"
 ```
 
-## Authoring Paradigms
+## Common Loop Patterns
 
-Users can create loops using any of these five paradigms:
+All loops are authored as FSM YAML in `.loops/`. Use `/ll:create-loop` to generate FSM YAML interactively, or write it directly. Common patterns and the FSM structures they produce:
 
-| Paradigm | Best For | Mental Model |
-|----------|----------|--------------|
-| **Goal-Oriented** | Outcome-focused tasks | "I want X to be true" |
-| **Convergence** | Metric optimization | "Drive metric toward target" |
-| **Invariant Maintenance** | Continuous compliance | "Keep these constraints true" |
-| **Imperative** | Sequential workflows | "Do X, then Y, until Z" |
-| **FSM (Direct)** | Complex branching logic | "States and transitions" |
+| Loop type | Best For | Mental Model |
+|-----------|----------|--------------|
+| **Fix until clean** | Outcome-focused tasks | "Run check, fix if fails, repeat" |
+| **Drive a metric** | Metric optimization | "Drive metric toward target" |
+| **Maintain constraints** | Continuous compliance | "Keep these constraints true" |
+| **Run a sequence** | Sequential workflows | "Do X, then Y, until Z" |
 
 ---
 
-## Paradigm Definitions
+## Loop Pattern Examples
 
-### 1. Goal-Oriented
+### 1. Fix Until Clean
 
-Declare the desired end state. The system determines how to get there.
+Run a check, apply a fix on failure, repeat until the check passes.
 
-```yaml
-paradigm: goal
-goal: "No type errors in src/"
-tools:
-  - /ll:check-code types
-  - /ll:manage-issue bug fix
-max_iterations: 20
-```
-
-**Compiles to FSM:**
 ```yaml
 name: "goal-no-type-errors"
 initial: "evaluate"
+max_iterations: 20
 states:
   evaluate:
     action: "/ll:check-code types"
@@ -73,25 +63,14 @@ states:
     next: "evaluate"
   done:
     terminal: true
-max_iterations: 20
 ```
 
 ---
 
-### 2. Convergence
+### 2. Drive a Metric
 
-Drive a metric toward a target value using a specified action.
+Measure a numeric value and apply fixes until it reaches a target.
 
-```yaml
-paradigm: convergence
-name: "reduce-lint-errors"
-check: "ruff check src/ --output-format=json | jq '.count'"
-toward: 0
-using: "/ll:check-code fix"
-tolerance: 0  # optional: stop when within tolerance of target
-```
-
-**Compiles to FSM:**
 ```yaml
 name: "reduce-lint-errors"
 initial: "measure"
@@ -105,9 +84,8 @@ states:
     capture: "current_value"
     evaluate:
       type: convergence
-      target: "${context.target}"
+      toward: "${context.target}"
       tolerance: "${context.tolerance}"
-      previous: "${prev.output}"
     route:
       target: "done"
       progress: "apply"
@@ -121,27 +99,10 @@ states:
 
 ---
 
-### 3. Invariant Maintenance
+### 3. Maintain Constraints
 
-Continuously maintain a set of constraints. When any breaks, fix it.
+Check multiple independent constraints in order; fix each on failure.
 
-```yaml
-paradigm: invariants
-name: "code-quality-guardian"
-constraints:
-  - name: "tests-pass"
-    check: "pytest"
-    fix: "/ll:manage-issue bug fix"
-  - name: "lint-clean"
-    check: "ruff check src/"
-    fix: "/ll:check-code fix"
-  - name: "types-valid"
-    check: "mypy src/"
-    fix: "/ll:manage-issue bug fix"
-maintain: true  # continuous mode
-```
-
-**Compiles to FSM:**
 ```yaml
 name: "code-quality-guardian"
 initial: "check_tests"
@@ -168,34 +129,21 @@ states:
     action: "/ll:manage-issue bug fix"
     next: "check_types"
   all_valid:
+    # For daemon mode, set next: check_tests instead of terminal: true
     terminal: true
-    on_maintain: "check_tests"  # restart if maintain=true
-maintain: true
 ```
 
 ---
 
-### 4. Imperative
+### 4. Run a Sequence
 
-Sequential steps with explicit condition and iteration control.
+Execute an ordered list of steps, then check an exit condition.
 
-```yaml
-paradigm: imperative
-name: "fix-all-types"
-steps:
-  - /ll:check-code types
-  - /ll:manage-issue bug fix
-until:
-  check: "mypy src/"
-  passes: true
-max_iterations: 20
-backoff: 2  # seconds between iterations
-```
-
-**Compiles to FSM:**
 ```yaml
 name: "fix-all-types"
 initial: "step_0"
+max_iterations: 20
+backoff: 2
 states:
   step_0:
     action: "/ll:check-code types"
@@ -1800,16 +1748,26 @@ What's the maximum number of fix attempts?
 Here's the loop configuration:
 
 ```yaml
-paradigm: invariants
 name: "fix-types-and-lint"
-constraints:
-  - name: "types-valid"
-    check: "mypy src/"
-    fix: "/ll:manage-issue bug fix"
-  - name: "lint-clean"
-    check: "ruff check src/"
-    fix: "/ll:check-code fix"
+initial: check_types
 max_iterations: 10
+states:
+  check_types:
+    action: "mypy src/"
+    on_success: check_lint
+    on_failure: fix_types
+  fix_types:
+    action: "/ll:manage-issue bug fix"
+    next: check_types
+  check_lint:
+    action: "ruff check src/"
+    on_success: all_valid
+    on_failure: fix_lint
+  fix_lint:
+    action: "/ll:check-code fix"
+    next: check_lint
+  all_valid:
+    terminal: true
 ```
 
 Save to .loops/fix-types-and-lint.yaml? [Y/n]
@@ -1821,7 +1779,7 @@ The command uses `AskUserQuestion` with various patterns:
 
 | Pattern | Use Case |
 |---------|----------|
-| Single-select | Paradigm choice, iteration limits |
+| Single-select | Loop type choice, iteration limits |
 | Multi-select | Which checks to include, which tools to use |
 | Free text | Custom loop names, custom commands |
 

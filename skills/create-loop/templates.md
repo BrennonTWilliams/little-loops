@@ -1,26 +1,26 @@
-# Template Path: Paradigm Selection & Customization
+# Template Path: Loop Type Selection & Customization
 
-## Step 0.1: Paradigm Selection (Template Path)
+## Step 0.1: Loop Type Selection (Template Path)
 
-If "Start from template" was selected, present the loop paradigms:
+If "Start from template" was selected, present the available templates:
 
 ```yaml
 questions:
-  - question: "Which loop paradigm fits your use case?"
-    header: "Paradigm"
+  - question: "Which template fits your use case?"
+    header: "Template"
     multiSelect: false
     options:
-      - label: "Goal (Recommended)"
-        description: "Define an end state and let the loop work toward it. Best for: fixing errors until clean"
-      - label: "Invariants"
-        description: "Define conditions that must always hold; loop checks and fixes violations. Best for: quality gates"
-      - label: "Convergence"
-        description: "Measure a metric and apply fixes until it reaches a target. Best for: reducing error counts"
-      - label: "Imperative"
-        description: "Execute an ordered list of steps sequentially. Best for: multi-stage builds"
+      - label: "Python quality (Recommended)"
+        description: "Fix lint, type, and format errors for Python projects. Best for: ruff + mypy"
+      - label: "JavaScript quality"
+        description: "Fix lint and type errors for JS/TS projects. Best for: eslint + tsc"
+      - label: "Tests until passing"
+        description: "Run tests and fix failures until all pass. Best for: any project with a test suite"
+      - label: "Full quality gate"
+        description: "Multi-constraint quality gate covering tests, types, and lint. Best for: CI-like validation"
 ```
 
-**After paradigm selection**: Continue to Step 0.2 (Template Customization) with the selected paradigm, then skip to Step 4 (Preview and Confirm) with template-populated configuration. The template definitions below provide pre-built configurations for each paradigm.
+**After template selection**: Continue to Step 0.2 (Template Customization), then skip to Step 4 (Preview and Confirm) with template-populated configuration.
 
 ---
 
@@ -29,48 +29,77 @@ questions:
 ### Template: python-quality
 
 ```yaml
-paradigm: invariants
 name: "python-quality"
-constraints:
-  - name: "lint"
-    check: "ruff check {{src_dir}}"
-    fix: "ruff check --fix {{src_dir}}"
-  - name: "types"
-    check: "mypy {{src_dir}}"
-    fix: "echo 'Fix type errors manually or use /ll:manage-issue bug fix'"
-  - name: "format"
-    check: "ruff format --check {{src_dir}}"
-    fix: "ruff format {{src_dir}}"
-maintain: false
+initial: check_lint
 max_iterations: {{max_iterations}}
+states:
+  check_lint:
+    action: "ruff check {{src_dir}}"
+    on_success: check_types
+    on_failure: fix_lint
+  fix_lint:
+    action: "ruff check --fix {{src_dir}}"
+    next: check_lint
+  check_types:
+    action: "mypy {{src_dir}}"
+    on_success: check_format
+    on_failure: fix_types
+  fix_types:
+    action: "echo 'Fix type errors manually or use /ll:manage-issue bug fix'"
+    next: check_types
+  check_format:
+    action: "ruff format --check {{src_dir}}"
+    on_success: all_valid
+    on_failure: fix_format
+  fix_format:
+    action: "ruff format {{src_dir}}"
+    next: check_format
+  all_valid:
+    terminal: true
 ```
 
 ### Template: javascript-quality
 
 ```yaml
-paradigm: invariants
 name: "javascript-quality"
-constraints:
-  - name: "lint"
-    check: "npx eslint {{src_dir}}"
-    fix: "npx eslint --fix {{src_dir}}"
-  - name: "types"
-    check: "npx tsc --noEmit"
-    fix: "echo 'Fix type errors manually'"
-maintain: false
+initial: check_lint
 max_iterations: {{max_iterations}}
+states:
+  check_lint:
+    action: "npx eslint {{src_dir}}"
+    on_success: check_types
+    on_failure: fix_lint
+  fix_lint:
+    action: "npx eslint --fix {{src_dir}}"
+    next: check_lint
+  check_types:
+    action: "npx tsc --noEmit"
+    on_success: all_valid
+    on_failure: fix_types
+  fix_types:
+    action: "echo 'Fix type errors manually'"
+    next: check_types
+  all_valid:
+    terminal: true
 ```
 
 ### Template: tests-until-passing
 
 ```yaml
-paradigm: goal
 name: "tests-until-passing"
-goal: "All tests pass"
-tools:
-  - "{{test_cmd}}"
-  - "/ll:manage-issue bug fix"
+initial: evaluate
 max_iterations: {{max_iterations}}
+states:
+  evaluate:
+    action: "{{test_cmd}}"
+    on_success: done
+    on_failure: fix
+    on_error: fix
+  fix:
+    action: "/ll:manage-issue bug fix"
+    next: evaluate
+  done:
+    terminal: true
 ```
 
 **Test command by template context:**
@@ -81,20 +110,33 @@ max_iterations: {{max_iterations}}
 ### Template: full-quality-gate
 
 ```yaml
-paradigm: invariants
 name: "full-quality-gate"
-constraints:
-  - name: "tests"
-    check: "{{test_cmd}}"
-    fix: "/ll:manage-issue bug fix"
-  - name: "types"
-    check: "{{type_cmd}}"
-    fix: "/ll:manage-issue bug fix"
-  - name: "lint"
-    check: "{{lint_cmd}}"
-    fix: "{{lint_fix_cmd}}"
-maintain: false
+initial: check_tests
 max_iterations: {{max_iterations}}
+states:
+  check_tests:
+    action: "{{test_cmd}}"
+    on_success: check_types
+    on_failure: fix_tests
+  fix_tests:
+    action: "/ll:manage-issue bug fix"
+    next: check_tests
+  check_types:
+    action: "{{type_cmd}}"
+    on_success: check_lint
+    on_failure: fix_types
+  fix_types:
+    action: "/ll:manage-issue bug fix"
+    next: check_types
+  check_lint:
+    action: "{{lint_cmd}}"
+    on_success: all_valid
+    on_failure: fix_lint
+  fix_lint:
+    action: "{{lint_fix_cmd}}"
+    next: check_lint
+  all_valid:
+    terminal: true
 ```
 
 **Command defaults for full-quality-gate:**
@@ -108,7 +150,7 @@ max_iterations: {{max_iterations}}
 
 ## Step 0.2: Template Customization
 
-After paradigm selection, ask for customization:
+After template selection, ask for customization:
 
 ```yaml
 questions:
@@ -147,7 +189,6 @@ questions:
 - Replace `{{test_cmd}}`, `{{type_cmd}}`, `{{lint_cmd}}`, `{{lint_fix_cmd}}` with language-appropriate defaults
 
 **Flow after template customization:**
-- Use the selected paradigm to pick the matching template definition below
-- The generated YAML and auto-suggested loop name are ready
+- The generated FSM YAML and auto-suggested loop name are ready
 - Continue directly to Step 4 (Preview and Confirm) with the template-populated configuration
-- Skip Step 1 (Paradigm Selection), Step 2 (Paradigm-Specific Questions), and Step 3 (Loop Name) since paradigm + template provides all configuration
+- Skip Step 1 (Loop Type Selection), Step 2 (Type-Specific Questions), and Step 3 (Loop Name) since the template provides all configuration

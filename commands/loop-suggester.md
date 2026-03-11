@@ -103,130 +103,138 @@ Look for:
 - +0.05 if tool commands are identical (not just tool type)
 - -0.10 if pattern has high variance in tool count
 
-### Step 5: Generate Paradigm YAML
+### Step 5: Generate FSM YAML
 
-For each detected pattern, generate the appropriate paradigm configuration using the templates below.
+For each detected pattern, generate the appropriate FSM YAML configuration using the templates below.
 
-#### Goal Paradigm (Check-Fix Cycle)
+#### Fix Until Clean (Check-Fix Cycle)
 
 Use when a single condition must be satisfied through iterative check-fix rounds.
 
 ```yaml
 name: "{name}"
-paradigm: goal
-description: "{description}"
-
-goal:
-  check_cmd: "{command that returns exit 0 on success, non-zero on failure}"
-  fix_prompt: |
-    The check command failed with the above output.
-    Analyze the errors and fix them.
-  max_iterations: 10
-
-options:
-  stop_on_first_error: false
-  working_dir: "."
+initial: evaluate
+max_iterations: 10
+states:
+  evaluate:
+    action: "{command that returns exit 0 on success, non-zero on failure}"
+    on_success: done
+    on_failure: fix
+    on_error: fix
+  fix:
+    action: "The check command failed with the above output. Analyze the errors and fix them."
+    action_type: prompt
+    next: evaluate
+  done:
+    terminal: true
 ```
 
 **Detected from**: `Bash(check) → Edit → Bash(check)` sequences where the same check tool appears before and after edits.
 
-#### Invariants Paradigm (Multi-Constraint)
+#### Maintain Constraints (Multi-Constraint)
 
 Use when multiple independent constraints must all pass simultaneously.
 
 ```yaml
 name: "{name}"
-paradigm: invariants
-description: "{description}"
-
-invariants:
-  checks:
-    - name: "{check_1_name}"
-      cmd: "{command_1}"
-    - name: "{check_2_name}"
-      cmd: "{command_2}"
-    - name: "{check_3_name}"
-      cmd: "{command_3}"
-  fix_prompt: |
-    One or more invariant checks failed. Review each failure above
-    and fix the underlying issues without breaking passing checks.
-  max_iterations: 15
-
-options:
-  stop_on_first_error: false
-  working_dir: "."
+initial: check_{check_1_name}
+max_iterations: 15
+states:
+  check_{check_1_name}:
+    action: "{command_1}"
+    on_success: check_{check_2_name}
+    on_failure: fix_{check_1_name}
+  fix_{check_1_name}:
+    action: "One or more checks failed. Review and fix the underlying issues without breaking passing checks."
+    action_type: prompt
+    next: check_{check_1_name}
+  check_{check_2_name}:
+    action: "{command_2}"
+    on_success: check_{check_3_name}   # or all_valid if last
+    on_failure: fix_{check_2_name}
+  fix_{check_2_name}:
+    action: "Fix the failing check."
+    action_type: prompt
+    next: check_{check_2_name}
+  # ... repeat for each constraint
+  all_valid:
+    terminal: true
 ```
 
 **Detected from**: Multiple different check tools running in succession within the same session, with consistent ordering across sessions.
 
-#### Convergence Paradigm (Metric Tracking)
+#### Drive a Metric (Metric Tracking)
 
 Use when a numeric metric must reach a target value through iterative improvement.
 
 ```yaml
 name: "{name}"
-paradigm: convergence
-description: "{description}"
-
-convergence:
-  metric_cmd: "{command that outputs a numeric value}"
-  metric_pattern: "([0-9]+\\.?[0-9]*)"
-  direction: "{higher_is_better|lower_is_better}"
-  target: {target_value}
-  threshold: {acceptable_delta}
-  improve_prompt: |
-    The current metric value is {current}. The target is {target}.
-    Analyze the codebase and make changes to move the metric
-    toward the target.
-  max_iterations: 20
-
-options:
-  working_dir: "."
+initial: measure
+max_iterations: 20
+states:
+  measure:
+    action: "{command that outputs a numeric value}"
+    evaluate:
+      type: convergence
+      toward: {target_value}
+      tolerance: {acceptable_delta}
+    route:
+      target: done
+      progress: apply
+      stall: done
+  apply:
+    action: "The current metric has not reached the target. Analyze the codebase and make changes to improve the metric."
+    action_type: prompt
+    next: measure
+  done:
+    terminal: true
 ```
 
 **Detected from**: Repeated numeric output comparisons with changes in between.
 
-#### Imperative Paradigm (Step Sequence)
+#### Run a Sequence (Step Sequence)
 
 Use when a fixed sequence of steps must execute in order, optionally repeating.
 
 ```yaml
 name: "{name}"
-paradigm: imperative
-description: "{description}"
-
-imperative:
-  steps:
-    - name: "{step_1_name}"
-      prompt: |
-        {instruction for step 1}
-    - name: "{step_2_name}"
-      prompt: |
-        {instruction for step 2}
-    - name: "{step_3_name}"
-      prompt: |
-        {instruction for step 3}
-  verify_cmd: "{optional final verification command}"
-  max_iterations: 5
-
-options:
-  working_dir: "."
+initial: step_0
+max_iterations: 5
+states:
+  step_0:
+    action: "{instruction for step 1}"
+    action_type: prompt
+    next: step_1
+  step_1:
+    action: "{instruction for step 2}"
+    action_type: prompt
+    next: step_2
+  step_2:
+    action: "{instruction for step 3}"
+    action_type: prompt
+    next: check_done
+  check_done:
+    action: "{optional final verification command}"
+    on_success: done
+    on_failure: step_0
+  done:
+    terminal: true
 ```
 
 **Detected from**: Consistent ordered steps without branching.
 
-#### Pattern-to-Paradigm Mapping
+#### Pattern-to-Loop-Type Mapping
 
-| Signal | Paradigm | Why |
-|--------|----------|-----|
-| Single pass/fail check repeated | **goal** | One exit condition, simple cycle |
-| Multiple independent checks must all pass | **invariants** | Fixing one check may break another |
-| Numeric output being optimized | **convergence** | Needs target tracking and direction |
-| Ordered steps, no branching | **imperative** | Sequence matters, not conditions |
-| Single check + metric output | **goal** (not convergence) | If pass/fail is sufficient, prefer simpler paradigm |
-| Two checks, one depends on other | **goal** with combined check | Avoid invariants if checks aren't independent |
+| Signal | Loop type | Why |
+|--------|-----------|-----|
+| Single pass/fail check repeated | **Fix until clean** | One exit condition, simple cycle |
+| Multiple independent checks must all pass | **Maintain constraints** | Fixing one check may break another |
+| Numeric output being optimized | **Drive a metric** | Needs target tracking and direction |
+| Ordered steps, no branching | **Run a sequence** | Sequence matters, not conditions |
+| Single check + metric output | **Fix until clean** (not drive-metric) | If pass/fail is sufficient, prefer simpler loop |
+| Two checks, one depends on other | **Fix until clean** with combined check | Avoid maintain-constraints if checks aren't independent |
 
-**General rule**: prefer simpler paradigms. `goal` > `invariants` > `convergence` > `imperative` when multiple fit.
+**General rule**: prefer simpler loop types. Fix until clean > Maintain constraints > Drive a metric > Run a sequence when multiple fit.
 
 ### Step 6: Calculate Confidence Score
 
@@ -254,20 +262,20 @@ analysis_metadata:
 
 summary:
   total_suggestions: [count]
-  by_paradigm:
-    goal: [count]
-    invariants: [count]
-    convergence: [count]
-    imperative: [count]
+  by_loop_type:
+    fix_until_clean: [count]
+    maintain_constraints: [count]
+    drive_metric: [count]
+    run_sequence: [count]
 
 suggestions:
   - id: "loop-001"
     name: "[suggested loop name]"
-    paradigm: "[goal|invariants|convergence|imperative]"
+    loop_type: "[fix_until_clean|maintain_constraints|drive_metric|run_sequence]"
     confidence: [0.0-1.0]
     rationale: "[2-3 sentences explaining detection]"
     yaml_config: |
-      [Complete paradigm YAML]
+      [Complete FSM YAML]
     usage_instructions: |
       1. Save to {{config.loops.loops_dir}}/[name].yaml
       2. Run: ll-loop validate [name]
@@ -281,7 +289,7 @@ suggestions:
 
 - **DO** suggest when pattern appears 3+ times
 - **DO** suggest when pattern spans multiple sessions (indicates habitual workflow)
-- **DO** prefer simpler paradigms (`goal` over `invariants` when both fit)
+- **DO** prefer simpler loop types (fix-until-clean over maintain-constraints when both fit)
 - **DO** include realistic confidence scores (rarely above 0.9)
 
 ### When NOT to Suggest Loops
@@ -297,7 +305,7 @@ suggestions:
 |--------|-----------------|-------------------|
 | Input | Interactive questions | Message history analysis |
 | Output | Single loop | Multiple suggestions |
-| Paradigm selection | User chooses | Auto-detected |
+| Loop type selection | User chooses | Auto-detected |
 | Best for | Known automation needs | Discovering automation opportunities |
 
 Use `/ll:create-loop` when you know what loop you want. Use `/ll:loop-suggester` when you want to discover what loops might help based on your actual usage patterns.

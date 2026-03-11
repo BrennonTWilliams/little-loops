@@ -1,10 +1,10 @@
-# Paradigm-Specific Questions (Step 2)
+# Loop Type Questions (Step 2)
 
-Based on the selected paradigm, ask follow-up questions.
+Based on the selected loop type, ask follow-up questions.
 
 ---
 
-## Goal Paradigm Questions
+## Fix Until Clean Questions
 
 If user selected "Fix errors until clean":
 
@@ -36,7 +36,7 @@ questions:
       - label: "50"
         description: "For large codebases"
 
-> **Note**: The runtime default is 50 for all paradigms. These options are suggested starting points to explicitly specify in your YAML based on your use case.
+> **Note**: The runtime default is 50 for all loop types. These options are suggested starting points to explicitly specify in your YAML based on your use case.
 ```
 
 **If "Custom check" was selected**, ask for the commands:
@@ -149,65 +149,55 @@ If "Less than threshold" or "Greater than threshold" selected, ask for target va
 - "Output is numeric" + "Greater than threshold" → `type: output_numeric, operator: gt, target: <value>`
 - "AI interpretation" → `type: llm_structured`
 
-**Generate Goal YAML:**
+**Generate Fix Until Clean FSM YAML:**
 
 ```yaml
-paradigm: goal
 name: "<loop-name>"
-goal: "<description of what passes>"
-tools:
-  - "<check-command>"      # First tool is the check (plain string)
-  - "<fix-command>"        # Second tool is the fix (plain string)
+initial: evaluate
 max_iterations: <selected-max>
 # scope: ["src/"]          # Optional: declare paths for ll-parallel concurrency control
-# Include evaluator only if not using default (exit_code):
-evaluator:                 # Optional - omit for exit_code default
-  type: "<output_contains|output_numeric|llm_structured>"
-  pattern: "<pattern>"     # For output_contains only
-  operator: "<eq|lt|gt>"   # For output_numeric only
-  target: <number>         # For output_numeric only
+states:
+  evaluate:
+    action: "<check-command>"
+    on_success: done
+    on_failure: fix
+    on_error: fix
+    # Include evaluate block only if not using default (exit_code):
+    # evaluate:             # Optional - omit for exit_code default
+    #   type: "<output_contains|output_numeric|llm_structured>"
+    #   pattern: "<pattern>"     # For output_contains only
+    #   operator: "<eq|lt|gt>"   # For output_numeric only
+    #   target: <number>         # For output_numeric only
+  fix:
+    action: "<fix-command>"
+    # action_type: prompt   # Add if fix action is natural language (no leading /)
+    next: evaluate
+  done:
+    terminal: true
 ```
-
-**Object-style tool entries** (explicit `action_type`):
-
-Each `tools:` entry may also be an object to declare `action_type` explicitly:
-
-```yaml
-tools:
-  - tool: "<command-or-prompt>"   # required
-    action_type: prompt           # shell | prompt | slash_command
-```
-
-Both styles are backward-compatible and may be mixed:
-
-```yaml
-paradigm: goal
-goal: "All issues refined"
-tools:
-  - "ll-issues refine-status"           # string → executor infers dispatch mode
-  - tool: |                              # object → explicit dispatch mode
-      Run `ll-issues refine-status` and
-      confirm all statuses are updated.
-    action_type: prompt
-```
-
-Valid `action_type` values: `shell`, `prompt`, `slash_command`. Omitting `action_type` from an object entry is equivalent to a plain string (executor infers dispatch mode).
 
 **Example for "Type errors + Lint errors":**
 
 ```yaml
-paradigm: goal
 name: "fix-types-and-lint"
-goal: "Type and lint checks pass"
-tools:
-  - "mypy src/ && ruff check src/"
-  - "/ll:check-code fix"
+initial: evaluate
 max_iterations: 10
+states:
+  evaluate:
+    action: "mypy src/ && ruff check src/"
+    on_success: done
+    on_failure: fix
+    on_error: fix
+  fix:
+    action: "/ll:check-code fix"
+    next: evaluate
+  done:
+    terminal: true
 ```
 
 ---
 
-## Invariants Paradigm Questions
+## Maintain Constraints Questions
 
 If user selected "Maintain code quality continuously":
 
@@ -251,7 +241,7 @@ questions:
 
 **Evaluator Selection** (ask for each constraint if user wants custom evaluation):
 
-Use the Tool Evaluator Defaults table (from Goal paradigm section) to customize the evaluator question based on each constraint's check command. For example, if the constraint uses `pytest`, show "Exit code (Recommended for pytest)" with the rationale "Well-behaved: 0=all pass, 1=failures, 2+=errors".
+Use the Tool Evaluator Defaults table (from Fix Until Clean section) to customize the evaluator question based on each constraint's check command. For example, if the constraint uses `pytest`, show "Exit code (Recommended for pytest)" with the rationale "Well-behaved: 0=all pass, 1=failures, 2+=errors".
 
 ```yaml
 # Example with pytest constraint:
@@ -270,53 +260,73 @@ questions:
         description: "Let Claude analyze the output"
 ```
 
-Follow the same conditional flow as Goal paradigm for pattern/numeric follow-ups.
+Follow the same conditional flow as Fix Until Clean for pattern/numeric follow-ups.
 
-**Generate Invariants YAML:**
+**Generate Maintain Constraints FSM YAML:**
+
+For each constraint `{name}` in order, generate a check/fix pair of states. The terminal state is `all_valid`. If `maintain: true`, the `all_valid` state loops back to the first check state instead of terminating.
 
 ```yaml
-paradigm: invariants
 name: "<loop-name>"
-constraints:
-  - name: "<constraint-1-name>"
-    check: "<check-command>"
-    fix: "<fix-command>"
-    # Include evaluator only if not using default (exit_code):
-    evaluator:               # Optional per-constraint
-      type: "<output_contains|output_numeric|llm_structured>"
-      pattern: "<pattern>"   # For output_contains only
-      operator: "<eq|lt|gt>" # For output_numeric only
-      target: <number>       # For output_numeric only
-  - name: "<constraint-2-name>"
-    check: "<check-command>"
-    fix: "<fix-command>"
-maintain: <true|false>
+initial: check_<name1>
 max_iterations: 50
 # scope: ["src/"]            # Optional: declare paths for ll-parallel concurrency control
+states:
+  check_<name1>:
+    action: "<check-1-command>"
+    on_success: check_<name2>  # or all_valid if last constraint
+    on_failure: fix_<name1>
+    # evaluate:               # Optional per-constraint
+    #   type: "<output_contains|output_numeric|llm_structured>"
+  fix_<name1>:
+    action: "<fix-1-command>"
+    next: check_<name1>
+  check_<name2>:
+    action: "<check-2-command>"
+    on_success: all_valid      # or next constraint
+    on_failure: fix_<name2>
+  fix_<name2>:
+    action: "<fix-2-command>"
+    next: check_<name2>
+  all_valid:
+    terminal: true             # or next: check_<name1> if maintain: true
 ```
 
 **Example for "Tests + Types + Lint":**
 
 ```yaml
-paradigm: invariants
 name: "code-quality-guardian"
-constraints:
-  - name: "tests-pass"
-    check: "pytest"
-    fix: "/ll:manage-issue bug fix"
-  - name: "types-valid"
-    check: "mypy src/"
-    fix: "/ll:manage-issue bug fix"
-  - name: "lint-clean"
-    check: "ruff check src/"
-    fix: "ruff check --fix src/"
-maintain: false
+initial: check_tests
 max_iterations: 50
+states:
+  check_tests:
+    action: "pytest"
+    on_success: check_types
+    on_failure: fix_tests
+  fix_tests:
+    action: "/ll:manage-issue bug fix"
+    next: check_tests
+  check_types:
+    action: "mypy src/"
+    on_success: check_lint
+    on_failure: fix_types
+  fix_types:
+    action: "/ll:manage-issue bug fix"
+    next: check_types
+  check_lint:
+    action: "ruff check src/"
+    on_success: all_valid
+    on_failure: fix_lint
+  fix_lint:
+    action: "ruff check --fix src/"
+    next: check_lint
+  all_valid:
+    terminal: true
 ```
 
 ---
 
-## Convergence Paradigm Questions
+## Drive a Metric Questions
 
 If user selected "Drive a metric toward a target":
 
@@ -368,34 +378,58 @@ questions:
         description: "Specify your own fix command"
 ```
 
-**Generate Convergence YAML:**
+**Generate Drive a Metric FSM YAML:**
 
 ```yaml
-paradigm: convergence
 name: "<loop-name>"
-check: "<metric-command>"
-toward: <target-value>
-using: "<fix-action>"
-tolerance: 0
+initial: measure
 max_iterations: 50
 # scope: ["src/"]  # Optional: declare paths for ll-parallel concurrency control
+states:
+  measure:
+    action: "<metric-command>"
+    evaluate:
+      type: convergence
+      toward: <target-value>
+      tolerance: 0
+    route:
+      target: done
+      progress: apply
+      stall: done
+  apply:
+    action: "<fix-action>"
+    next: measure
+  done:
+    terminal: true
 ```
 
 **Example for "Reduce lint errors to 0":**
 
 ```yaml
-paradigm: convergence
 name: "eliminate-lint-errors"
-check: "ruff check src/ 2>&1 | grep -c 'error' || echo 0"
-toward: 0
-using: "/ll:check-code fix"
-tolerance: 0
+initial: measure
 max_iterations: 50
+states:
+  measure:
+    action: "ruff check src/ 2>&1 | grep -c 'error' || echo 0"
+    evaluate:
+      type: convergence
+      toward: 0
+      tolerance: 0
+    route:
+      target: done
+      progress: apply
+      stall: done
+  apply:
+    action: "/ll:check-code fix"
+    next: measure
+  done:
+    terminal: true
 ```
 
 ---
 
-## Imperative Paradigm Questions
+## Run a Sequence Questions
 
 If user selected "Run a sequence of steps":
 
@@ -432,7 +466,7 @@ questions:
 
 **Evaluator Selection** (ask for the exit condition check):
 
-Use the Tool Evaluator Defaults table (from Goal paradigm section) to customize the evaluator question based on the exit condition check command. For compound commands (e.g., "mypy && ruff && pytest"), show "Exit code (Recommended)" since multiple tools are being combined.
+Use the Tool Evaluator Defaults table (from Fix Until Clean section) to customize the evaluator question based on the exit condition check command. For compound commands (e.g., "mypy && ruff && pytest"), show "Exit code (Recommended)" since multiple tools are being combined.
 
 ```yaml
 # Example with "Tests pass" exit condition (pytest):
@@ -451,41 +485,60 @@ questions:
         description: "Let Claude analyze the output"
 ```
 
-Follow the same conditional flow as Goal paradigm for pattern/numeric follow-ups.
+Follow the same conditional flow as Fix Until Clean for pattern/numeric follow-ups.
 
-**Generate Imperative YAML:**
+**Generate Run a Sequence FSM YAML:**
 
 ```yaml
-paradigm: imperative
 name: "<loop-name>"
-steps:
-  - "<step-1>"
-  - "<step-2>"
-  - "<step-3>"
-until:
-  check: "<exit-condition-command>"
-  # Include evaluator only if not using default (exit_code):
-  evaluator:                 # Optional for exit condition
-    type: "<output_contains|output_numeric|llm_structured>"
-    pattern: "<pattern>"     # For output_contains only
-    operator: "<eq|lt|gt>"   # For output_numeric only
-    target: <number>         # For output_numeric only
-max_iterations: 50  # Default if omitted
+initial: step_0
+max_iterations: 50
 backoff: 2
 # scope: ["src/"]            # Optional: declare paths for ll-parallel concurrency control
+states:
+  step_0:
+    action: "<step-1>"
+    next: step_1
+  step_1:
+    action: "<step-2>"
+    next: step_2
+  step_2:
+    action: "<step-3>"
+    next: check_done
+  check_done:
+    action: "<exit-condition-command>"
+    on_success: done
+    on_failure: step_0
+    # evaluate:               # Optional for exit condition
+    #   type: "<output_contains|output_numeric|llm_structured>"
+    #   pattern: "<pattern>"  # For output_contains only
+    #   operator: "<eq|lt|gt>" # For output_numeric only
+    #   target: <number>      # For output_numeric only
+  done:
+    terminal: true
 ```
 
 **Example for "Fix -> Test -> Check until clean":**
 
 ```yaml
-paradigm: imperative
 name: "fix-test-check"
-steps:
-  - "/ll:check-code fix"
-  - "pytest"
-  - "mypy src/"
-until:
-  check: "mypy src/ && ruff check src/ && pytest"
-max_iterations: 50  # Default if omitted
+initial: step_0
+max_iterations: 50
 backoff: 2
+states:
+  step_0:
+    action: "/ll:check-code fix"
+    next: step_1
+  step_1:
+    action: "pytest"
+    next: step_2
+  step_2:
+    action: "mypy src/"
+    next: check_done
+  check_done:
+    action: "mypy src/ && ruff check src/ && pytest"
+    on_success: done
+    on_failure: step_0
+  done:
+    terminal: true
 ```

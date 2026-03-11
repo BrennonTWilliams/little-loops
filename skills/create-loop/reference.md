@@ -1,8 +1,8 @@
-# FSM Compilation Reference & Quick Reference
+# FSM Quick Reference & Advanced Configuration
 
-## FSM Compilation Reference
+## Loop Type State Structures
 
-Each paradigm compiles to a specific FSM structure. Use this reference when generating the FSM preview in Step 4.
+Reference for the state structures each loop type generates. Use this when generating the Summary preview in Step 4.
 
 > **Notation Legend:**
 > - `->` (arrow) means "transitions to" (conceptual representation)
@@ -25,7 +25,7 @@ Each paradigm compiles to a specific FSM structure. Use this reference when gene
 >      _error: "error" # fallback for evaluation errors
 >    ```
 
-### Goal Paradigm -> FSM
+### Fix Until Clean
 ```
 States: evaluate, fix, done
 Initial: evaluate
@@ -40,7 +40,7 @@ Transitions:
   done: [terminal]
 ```
 
-### Convergence Paradigm -> FSM
+### Drive a Metric
 ```
 States: measure, apply, done
 Initial: measure
@@ -55,7 +55,7 @@ Transitions:
   done: [terminal]
 ```
 
-### Invariants Paradigm -> FSM
+### Maintain Constraints
 For each constraint `{name}` in order:
 ```
 States: check_{name1}, fix_{name1}, check_{name2}, fix_{name2}, ..., all_valid
@@ -68,10 +68,10 @@ Transitions:
   fix_{name}:
     - next -> check_{name}
   all_valid: [terminal]
-    - on_maintain -> check_{first} (if maintain: true)
+    - next -> check_{first} (if daemon/maintain mode)
 ```
 
-### Imperative Paradigm -> FSM
+### Run a Sequence
 For each step in order:
 ```
 States: step_0, step_1, ..., step_N, check_done, done
@@ -88,13 +88,13 @@ Transitions:
 
 ---
 
-## FSM Preview Examples
+## FSM Summary Examples
 
-**Example previews by paradigm:**
+**Example summaries by loop type:**
 
-Goal paradigm (with output_contains evaluator):
+Fix until clean (with output_contains evaluator):
 ```
-## Compiled FSM Preview
+## Summary
 States: evaluate -> fix -> done
 Transitions:
   evaluate: success->done, failure->fix, error->fix
@@ -105,9 +105,9 @@ Max iterations: 10
 Evaluator: output_contains [pattern: "0 errors"]
 ```
 
-Goal paradigm (default exit_code):
+Fix until clean (default exit_code):
 ```
-## Compiled FSM Preview
+## Summary
 States: evaluate -> fix -> done
 Transitions:
   evaluate: success->done, failure->fix, error->fix
@@ -118,9 +118,9 @@ Max iterations: 10
 Evaluator: exit_code (default)
 ```
 
-Convergence paradigm:
+Drive a metric:
 ```
-## Compiled FSM Preview
+## Summary
 States: measure -> apply -> done
 Transitions:
   measure: target->done, progress->apply, stall->done
@@ -131,9 +131,9 @@ Max iterations: 50
 Evaluator: convergence [toward: 0, tolerance: 0]
 ```
 
-Invariants paradigm (with per-constraint evaluators):
+Maintain constraints (with per-constraint evaluators):
 ```
-## Compiled FSM Preview
+## Summary
 States: check_tests -> fix_tests -> check_types -> fix_types -> check_lint -> fix_lint -> all_valid
 Transitions:
   check_tests: success->check_types, failure->fix_tests
@@ -151,9 +151,9 @@ Evaluators:
   check_lint: exit_code (default)
 ```
 
-Imperative paradigm (with 3 steps):
+Run a sequence (with 3 steps):
 ```
-## Compiled FSM Preview
+## Summary
 States: step_0 -> step_1 -> step_2 -> check_done -> done
 Transitions:
   step_0: next->step_1
@@ -172,12 +172,12 @@ Evaluator: output_numeric [operator: eq, target: 0]
 
 ### Template Quick Reference
 
-| Template | Paradigm | Best For |
-|----------|----------|----------|
-| Python quality | invariants | Python projects with ruff + mypy |
-| JavaScript quality | invariants | JS/TS projects with eslint + tsc |
-| Tests until passing | goal | Any project with test suite |
-| Full quality gate | invariants | CI-like multi-check validation |
+| Template | Loop Type | Best For |
+|----------|-----------|----------|
+| Python quality | Maintain constraints | Python projects with ruff + mypy |
+| JavaScript quality | Maintain constraints | JS/TS projects with eslint + tsc |
+| Tests until passing | Fix until clean | Any project with test suite |
+| Full quality gate | Maintain constraints | CI-like multi-check validation |
 
 **When to use templates:**
 - You want a working loop quickly
@@ -186,24 +186,24 @@ Evaluator: output_numeric [operator: eq, target: 0]
 
 **When to build custom:**
 - You have unique check/fix commands
-- You need convergence (metric-based) loops
-- You need imperative (step sequence) loops
+- You need metric-based loops (drive a metric)
+- You need step-sequence loops (run a sequence)
 
-### Paradigm Decision Tree
+### Loop Type Decision Tree
 
 ```
 What are you trying to do?
 |
-|- Fix a specific problem -> Goal paradigm
+|- Fix a specific problem -> Fix until clean
 |   "Run check, if fails run fix, repeat until passes"
 |
-|- Maintain multiple standards -> Invariants paradigm
+|- Maintain multiple standards -> Maintain constraints
 |   "Check A, fix A if needed, check B, fix B if needed, ..."
 |
-|- Reduce/increase a metric -> Convergence paradigm
+|- Reduce/increase a metric -> Drive a metric
 |   "Measure value, if not at target, apply fix, measure again"
 |
-'- Run ordered steps -> Imperative paradigm
+'- Run ordered steps -> Run a sequence
     "Do step 1, do step 2, check if done, repeat if not"
 ```
 
@@ -211,42 +211,74 @@ What are you trying to do?
 
 **Quick lint fix:**
 ```yaml
-paradigm: goal
 name: "quick-lint-fix"
-goal: "Lint passes"
-tools:
-  - "ruff check src/"
-  - "ruff check --fix src/"
+initial: evaluate
 max_iterations: 5
+states:
+  evaluate:
+    action: "ruff check src/"
+    on_success: done
+    on_failure: fix
+    on_error: fix
+  fix:
+    action: "ruff check --fix src/"
+    next: evaluate
+  done:
+    terminal: true
 ```
 
 **Full quality gate:**
 ```yaml
-paradigm: invariants
 name: "full-quality-gate"
-constraints:
-  - name: "types"
-    check: "mypy src/"
-    fix: "/ll:manage-issue bug fix"
-  - name: "lint"
-    check: "ruff check src/"
-    fix: "ruff check --fix src/"
-  - name: "tests"
-    check: "pytest"
-    fix: "/ll:manage-issue bug fix"
-maintain: false
+initial: check_types
 max_iterations: 30
+states:
+  check_types:
+    action: "mypy src/"
+    on_success: check_lint
+    on_failure: fix_types
+  fix_types:
+    action: "/ll:manage-issue bug fix"
+    next: check_types
+  check_lint:
+    action: "ruff check src/"
+    on_success: check_tests
+    on_failure: fix_lint
+  fix_lint:
+    action: "ruff check --fix src/"
+    next: check_lint
+  check_tests:
+    action: "pytest"
+    on_success: all_valid
+    on_failure: fix_tests
+  fix_tests:
+    action: "/ll:manage-issue bug fix"
+    next: check_tests
+  all_valid:
+    terminal: true
 ```
 
 **Coverage improvement:**
 ```yaml
-paradigm: convergence
 name: "improve-coverage"
-check: "pytest --cov=src --cov-report=term | grep TOTAL | awk '{print $4}' | tr -d '%'"
-toward: 80
-using: "/ll:manage-issue feature implement"
-tolerance: 1
+initial: measure
 max_iterations: 20
+states:
+  measure:
+    action: "pytest --cov=src --cov-report=term | grep TOTAL | awk '{print $4}' | tr -d '%'"
+    evaluate:
+      type: convergence
+      toward: 80
+      tolerance: 1
+    route:
+      target: done
+      progress: apply
+      stall: done
+  apply:
+    action: "/ll:manage-issue feature implement"
+    next: measure
+  done:
+    terminal: true
 ```
 
 ### Advanced State Configuration
@@ -268,26 +300,41 @@ The `action_type` field explicitly controls how an action is executed. In most c
 
 **Example - Plain prompt (no leading `/`):**
 ```yaml
-paradigm: goal
 name: "fix-with-plain-prompt"
-goal: "Code is clean"
-tools:
-  - "ruff check src/"
-  - "Please fix all lint errors in the src/ directory"
-action_type: "prompt"  # Explicitly mark as prompt since it doesn't start with /
+initial: evaluate
 max_iterations: 10
+states:
+  evaluate:
+    action: "ruff check src/"
+    on_success: done
+    on_failure: fix
+    on_error: fix
+  fix:
+    action: "Please fix all lint errors in the src/ directory"
+    action_type: prompt  # Explicitly mark as prompt since it doesn't start with /
+    next: evaluate
+  done:
+    terminal: true
 ```
 
 **Example - Shell command starting with `/`:**
 ```yaml
-paradigm: goal
 name: "run-specific-script"
-goal: "Script succeeds"
-tools:
-  - "/usr/local/bin/check.sh"
-  - "/usr/local/bin/fix.sh"
-action_type: "shell"  # Run via shell, not Claude CLI, despite leading /
+initial: evaluate
 max_iterations: 5
+states:
+  evaluate:
+    action: "/usr/local/bin/check.sh"
+    action_type: shell  # Run via shell, not Claude CLI, despite leading /
+    on_success: done
+    on_failure: fix
+    on_error: fix
+  fix:
+    action: "/usr/local/bin/fix.sh"
+    action_type: shell
+    next: evaluate
+  done:
+    terminal: true
 ```
 
 **Most users can omit this field** - the default heuristic covers the common case where slash commands start with `/` and shell commands don't.
@@ -308,27 +355,39 @@ The `on_handoff` field configures loop behavior when context handoff signals are
 
 **Example - Spawn continuation sessions:**
 ```yaml
-paradigm: goal
 name: "automated-quality-fix"
-goal: "All quality checks pass"
-tools:
-  - "pytest && mypy src/ && ruff check src/"
-  - "/ll:manage-issue bug fix"
+initial: evaluate
 max_iterations: 20
 on_handoff: "spawn"  # Automatically continue in new session if context runs out
+states:
+  evaluate:
+    action: "pytest && mypy src/ && ruff check src/"
+    on_success: done
+    on_failure: fix
+    on_error: fix
+  fix:
+    action: "/ll:manage-issue bug fix"
+    next: evaluate
+  done:
+    terminal: true
 ```
 
 **Example - Terminate on handoff:**
 ```yaml
-paradigm: invariants
 name: "quick-check-guardian"
-constraints:
-  - name: "types"
-    check: "mypy src/"
-    fix: "/ll:manage-issue bug fix"
-maintain: false
+initial: check_types
 max_iterations: 10
 on_handoff: "terminate"  # Stop if we run out of context
+states:
+  check_types:
+    action: "mypy src/"
+    on_success: all_valid
+    on_failure: fix_types
+  fix_types:
+    action: "/ll:manage-issue bug fix"
+    next: check_types
+  all_valid:
+    terminal: true
 ```
 
 **Most users can omit this field** - the default `pause` behavior is appropriate for most interactive use cases.
@@ -352,33 +411,49 @@ The `scope` field declares which files or directories a loop operates on. It is 
 
 **Example - Loop scoped to a subdirectory:**
 ```yaml
-paradigm: goal
 name: "fix-api-types"
-goal: "Type errors in src/api/ are resolved"
-tools:
-  - "mypy src/api/"
-  - "/ll:manage-issue bug fix"
+initial: evaluate
 max_iterations: 10
 scope:
   - "src/api/"
+states:
+  evaluate:
+    action: "mypy src/api/"
+    on_success: done
+    on_failure: fix
+    on_error: fix
+  fix:
+    action: "/ll:manage-issue bug fix"
+    next: evaluate
+  done:
+    terminal: true
 ```
 
 **Example - Multiple paths:**
 ```yaml
-paradigm: invariants
 name: "frontend-quality"
-constraints:
-  - name: "lint"
-    check: "npx eslint src/frontend/"
-    fix: "npx eslint --fix src/frontend/"
-  - name: "types"
-    check: "npx tsc --noEmit"
-    fix: "/ll:manage-issue bug fix"
-maintain: false
+initial: check_lint
 max_iterations: 20
 scope:
   - "src/frontend/"
   - "tests/frontend/"
+states:
+  check_lint:
+    action: "npx eslint src/frontend/"
+    on_success: check_types
+    on_failure: fix_lint
+  fix_lint:
+    action: "npx eslint --fix src/frontend/"
+    next: check_lint
+  check_types:
+    action: "npx tsc --noEmit"
+    on_success: all_valid
+    on_failure: fix_types
+  fix_types:
+    action: "/ll:manage-issue bug fix"
+    next: check_types
+  all_valid:
+    terminal: true
 ```
 
 **Most users can omit this field** — it is only needed when running loops in parallel via `ll-parallel`. Single-loop use cases do not require scope declaration.
@@ -398,22 +473,27 @@ The `partial` verdict is returned by the `llm_structured` evaluator when Claude 
 - You want to route partial progress to a different fix state than full failure (e.g., a lighter-weight fix action)
 - You want to count partial iterations separately or transition to a reporting state
 
-**Example A — Goal-paradigm YAML (no `on_partial`; paradigm level does not support it):**
+**Example A — FSM YAML without `on_partial` (partial routes to fix):**
 ```yaml
-paradigm: goal
 name: "refine-issues"
-goal: "All issues have complete implementation plans"
-tools:
-  - "/ll:verify-issues"
-  - "/ll:refine-issue"
+initial: evaluate
 max_iterations: 15
-evaluator:
-  type: llm_structured
+states:
+  evaluate:
+    action: "/ll:verify-issues"
+    on_success: done
+    on_failure: fix
+    on_error: fix
+    evaluate:
+      type: llm_structured
+  fix:
+    action: "/ll:refine-issue"
+    next: evaluate
+  done:
+    terminal: true
 ```
 
-**Example B — Raw FSM YAML with `on_partial` (requires hand-authored FSM, not a paradigm shorthand):**
-> **Note:** `on_partial` is a state-level field available only in raw FSM YAML.
-> It cannot be specified in paradigm-level YAML such as Example A above.
+**Example B — FSM YAML with `on_partial` for finer routing:**
 ```yaml
 states:
   evaluate:

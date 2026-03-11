@@ -135,23 +135,30 @@ For each proposal, include actionable steps:
 
 When `cli_command` category entries are present in Step 1 patterns, use the actual CLI commands as `action` values:
 ```yaml
-# Example ll-loop config generated from detected CLI command patterns
+# Example ll-loop FSM config generated from detected CLI command patterns
 name: test-fix-lint
-description: "Automated test → fix → lint cycle"
-paradigm: fix_loop
-steps:
-  - name: run_tests
+initial: run_tests
+max_iterations: 10
+states:
+  run_tests:
     action: "python -m pytest scripts/tests/ -v"
     on_success: check_lint
     on_failure: fix_errors
-  - name: fix_errors
-    action: "prompt: Fix the failing tests based on the error output"
-    on_success: run_tests
-    on_failure: stop
-  - name: check_lint
+    on_error: fix_errors
+  fix_errors:
+    action: "Fix the failing tests based on the error output"
+    action_type: prompt
+    next: run_tests
+  check_lint:
     action: "ruff check scripts/"
     on_success: done
     on_failure: fix_lint
+    on_error: fix_lint
+  fix_lint:
+    action: "ruff check --fix scripts/"
+    next: check_lint
+  done:
+    terminal: true
 ```
 
 Use specific CLI commands discovered in the `cli_command` patterns rather than generic placeholders.

@@ -197,7 +197,7 @@ action: "./scripts/run_checks.sh"   # or: "$HOME/scripts/run_checks.sh"
 **Breaking**: false
 **When to auto-apply**: No
 
-If `max_iterations > 20` (explicit or estimated from paradigm) and `on_handoff` is absent from the top-level spec:
+If `max_iterations > 20` (explicit) and `on_handoff` is absent from the top-level spec:
 
 **Finding**: `Suggestion: on_handoff not set. With max_iterations > 20, the loop may outlast a Claude session. Consider setting on_handoff: pause (default) or on_handoff: spawn explicitly.`
 
@@ -400,7 +400,7 @@ For each non-terminal state that has no outbound transitions (`on_success`, `on_
 ```
 ## Review: <loop-name>
 
-Format: Raw FSM | Paradigm (<paradigm-name>)
+Format: FSM
 States: N states  |  Initial: <initial-state>  |  Max iterations: <N>
 
 ### Errors (N)

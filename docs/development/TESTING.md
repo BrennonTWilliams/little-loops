@@ -436,7 +436,7 @@ For complex data structures, create custom strategies:
 ```python
 @st.composite
 def goal_spec(draw: st.DrawFn) -> dict:
-    """Generate valid goal paradigm specs."""
+    """Generate valid goal compiler input specs."""
     goal = draw(
         st.text(
             min_size=1,
@@ -460,7 +460,7 @@ class TestGoalCompilerProperties:
     @given(spec=goal_spec())
     @settings(max_examples=100)
     def test_always_three_states(self, spec: dict) -> None:
-        """Goal paradigm always produces exactly 3 states."""
+        """Goal compiler always produces exactly 3 states."""
         fsm = compile_goal(spec)
         assert len(fsm.states) == 3
         assert set(fsm.states.keys()) == {"evaluate", "fix", "done"}

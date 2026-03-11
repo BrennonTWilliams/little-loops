@@ -3384,7 +3384,7 @@ FSM (Finite State Machine) loop system for automation workflows. This subpackage
 | Module | Purpose |
 |--------|---------|
 | `little_loops.fsm.schema` | FSM state machine schema definitions |
-| `little_loops.fsm.compilers` | Compile paradigms (goal, convergence, etc.) to FSM |
+| `little_loops.fsm.compilers` | Legacy paradigm-to-FSM compilers (used by `ll-loop compile` and `/ll:create-loop`) |
 | `little_loops.fsm.evaluators` | Verdict evaluators (exit_code, llm_structured, etc.) |
 | `little_loops.fsm.executor` | FSM execution engine |
 | `little_loops.fsm.interpolation` | Variable substitution (`${context.*}`, etc.) |
@@ -3402,8 +3402,6 @@ from little_loops.fsm import (
     FSMLoop, StateConfig, EvaluateConfig, RouteConfig, LLMConfig,
     # Validation
     ValidationError, validate_fsm, load_and_validate,
-    # Compilation
-    compile_paradigm,
     # Interpolation
     InterpolationContext, InterpolationError, interpolate, interpolate_dict,
     # Evaluation
@@ -3434,7 +3432,7 @@ class FSMLoop:
     name: str                          # Unique loop identifier
     initial: str                       # Starting state name
     states: dict[str, StateConfig]     # State configurations
-    paradigm: str | None = None        # Source paradigm (goal, convergence, etc.)
+    paradigm: str | None = None        # Set to "fsm" for user-authored loops; identifies compiler source for compiled loops
     context: dict[str, Any] = {}       # User-defined shared variables
     scope: list[str] = []              # Paths for concurrency control
     max_iterations: int = 50           # Safety limit
@@ -3575,7 +3573,9 @@ class LLMConfig:
 
 ### little_loops.fsm.compilers
 
-Paradigm compilers for FSM loop generation. Each paradigm compiles to the universal FSM schema.
+Legacy paradigm-to-FSM compilers. Used internally by `ll-loop compile` (migration path) and `/ll:create-loop` (wizard). Not exported from `little_loops.fsm` public API — import directly from `little_loops.fsm.compilers`.
+
+> **Note:** The FSM engine (`load_loop`, `cmd_run`) no longer accepts paradigm YAML at runtime. These compilers are wizard utilities only. Users write FSM YAML directly or use `/ll:create-loop` to generate it.
 
 #### compile_paradigm
 
@@ -3583,22 +3583,19 @@ Paradigm compilers for FSM loop generation. Each paradigm compiles to the univer
 def compile_paradigm(spec: dict[str, Any]) -> FSMLoop
 ```
 
-Route to appropriate compiler based on paradigm field.
+Route to appropriate compiler based on the `paradigm` field in `spec`.
 
 **Parameters:**
-- `spec` - Paradigm specification dictionary with `paradigm` field
+- `spec` - Legacy paradigm specification dictionary with `paradigm` field (`goal`, `convergence`, `invariants`, or `imperative`)
 
 **Returns:** Compiled `FSMLoop` instance
 
 **Raises:** `ValueError` if paradigm is unknown
 
-**Supported paradigms:** `goal`, `convergence`, `invariants`, `imperative`, `fsm`
-
 **Example:**
 ```python
-from little_loops.fsm import compile_paradigm
+from little_loops.fsm.compilers import compile_paradigm
 
-# Goal paradigm
 spec = {
     "paradigm": "goal",
     "goal": "No type errors in src/",
@@ -3609,27 +3606,27 @@ fsm = compile_paradigm(spec)
 print(fsm.initial)  # "evaluate"
 ```
 
-#### Paradigm-Specific Compilers
+#### Pattern Compilers
 
 ```python
 def compile_goal(spec: dict) -> FSMLoop
 ```
-Goal paradigm: evaluate → (success → done, failure → fix), fix → evaluate
+Fix-until-clean pattern: evaluate → (success → done, failure → fix), fix → evaluate
 
 ```python
 def compile_convergence(spec: dict) -> FSMLoop
 ```
-Convergence paradigm: measure → (target → done, progress → apply, stall → done)
+Drive-a-metric pattern: measure → (target → done, progress → apply, stall → done)
 
 ```python
 def compile_invariants(spec: dict) -> FSMLoop
 ```
-Invariants paradigm: chain multiple check/fix constraints
+Maintain-constraints pattern: chain multiple check/fix state pairs
 
 ```python
 def compile_imperative(spec: dict) -> FSMLoop
 ```
-Imperative paradigm: step sequence with exit condition
+Run-a-sequence pattern: ordered step states with exit condition
 
 ---
 

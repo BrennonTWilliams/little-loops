@@ -117,7 +117,7 @@ little-loops/
 │   │   └── show-output.md
 │   ├── create-loop/         # User-invoked
 │   │   ├── SKILL.md
-│   │   ├── paradigms.md
+│   │   ├── loop-types.md
 │   │   ├── reference.md
 │   │   └── templates.md
 │   ├── format-issue/        # User-invoked

@@ -36,7 +36,7 @@ Otherwise, list available loops:
 ll-loop list
 ```
 
-Parse the output to get loop names, paradigms, and descriptions. Then ask the user to pick one:
+Parse the output to get loop names and descriptions. Then ask the user to pick one:
 
 ```yaml
 questions:
@@ -45,9 +45,9 @@ questions:
     multiSelect: false
     options:
       - label: "<name1>"
-        description: "<paradigm> — <description first line>"
+        description: "<description first line>"
       - label: "<name2>"
-        description: "<paradigm> — <description first line>"
+        description: "<description first line>"
       # one entry per available loop
 ```
 
@@ -75,13 +75,13 @@ If no file found, output an error and stop.
 Use `Read` to load the YAML. Parse as a raw dict (you do not need to invoke Python — read the YAML text and inspect the keys).
 
 **Format detection**:
-- **Paradigm format**: YAML has `paradigm:` key AND lacks `initial:` key
-- **Raw FSM format**: YAML has `initial:` key (regardless of whether `paradigm:` is also present)
+- **Legacy paradigm format**: YAML has `paradigm:` key AND lacks `initial:` key — this format is no longer supported by the engine; flag as Error and stop review (suggest `ll-loop compile <file>` to migrate)
+- **FSM format**: YAML has `initial:` key
 
 Record:
 - `loop_name`: the `name` field
-- `format`: `"paradigm"` or `"raw_fsm"`
-- `initial`: the `initial` field (raw FSM only)
+- `format`: `"fsm"` (legacy paradigm format is rejected immediately)
+- `initial`: the `initial` field
 - `states`: dict of state names → state configs
 - `max_iterations`: numeric value or absent
 - `on_handoff`: string value or absent
@@ -245,7 +245,7 @@ Output the full findings report using the format from `reference.md`:
 ```
 ## Review: <loop-name>
 
-Format: <Raw FSM | Paradigm (<paradigm>)>
+Format: FSM
 States: <N> states  |  Initial: <initial>  |  Max iterations: <N>
 
 ### Errors (N)

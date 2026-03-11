@@ -271,7 +271,7 @@ ll-loop list --json              # JSON array of available loops
 ll-loop stop <loop-name>         # Stop a running loop
 ll-loop status <loop-name>       # Show loop status
 ll-loop resume <loop-name>       # Resume an interrupted loop
-ll-loop compile <paradigm.yaml>  # Compile paradigm YAML to FSM
+ll-loop compile <paradigm.yaml>  # Migrate legacy paradigm YAML to FSM
 ll-loop validate <loop-name>     # Validate loop definition
 ll-loop history <loop-name>      # Show loop execution history
 ll-loop test <loop-name>         # Run a single test iteration
@@ -449,7 +449,7 @@ For detailed solutions, see [Troubleshooting Guide](docs/development/TROUBLESHOO
 - [Configuration Reference](docs/reference/CONFIGURATION.md) - Full config options and examples
 - [Command Reference](docs/reference/COMMANDS.md) - All slash commands with usage
 - [CLI Reference](docs/reference/CLI.md) - All `ll-` CLI tools with flags and examples
-- [Loops Guide](docs/guides/LOOPS_GUIDE.md) - Loop creation, paradigms, and practical examples
+- [Loops Guide](docs/guides/LOOPS_GUIDE.md) - Loop creation, FSM YAML, and practical examples
 - [Session Handoff Guide](docs/guides/SESSION_HANDOFF.md) - Context management and session continuation
 - [Merge Coordinator Guide](docs/development/MERGE-COORDINATOR.md) - Sophisticated merge coordination for parallel processing
 - [Troubleshooting Guide](docs/development/TROUBLESHOOTING.md) - Common issues and solutions

@@ -234,11 +234,11 @@ Run a loop.
 
 #### `ll-loop compile <input>` / `ll-loop c <input>`
 
-Compile a paradigm YAML file to an FSM definition.
+Migrate a legacy paradigm YAML file to FSM YAML format.
 
 | Argument/Flag | Short | Description |
 |---------------|-------|-------------|
-| `input` | | Input paradigm YAML file |
+| `input` | | Input paradigm YAML file to migrate |
 | `--output` | `-o` | Output FSM YAML file |
 
 #### `ll-loop validate <loop>` / `ll-loop val <loop>`
@@ -310,7 +310,7 @@ ll-loop validate fix-types            # Validate loop definition
 ll-loop test fix-types                # Run single test iteration
 ll-loop simulate fix-types            # Interactive simulation
 ll-loop simulate fix-types --scenario all-pass
-ll-loop compile paradigm.yaml         # Compile paradigm to FSM
+ll-loop compile paradigm.yaml         # Migrate legacy paradigm YAML to FSM
 ll-loop list                          # List available loops
 ll-loop list --running                # List running loops
 ll-loop list --json                   # JSON array of available loops
