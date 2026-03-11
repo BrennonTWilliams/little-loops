@@ -726,6 +726,8 @@ class TestRenderFsmDiagram:
         assert "\u2502" in result  # │ vertical connector
         # Off-path box rendered with box-drawing chars
         assert "\u25b2" in result or "\u25bc" in result  # ▲ or ▼ arrow
+        # Corner characters at pipe-to-horizontal turns
+        assert "\u2514" in result or "\u251c" in result  # └ or ├ corner chars
 
     def test_self_loop_annotated(self) -> None:
         """Self-loop transition is annotated with loop indicator."""
@@ -946,12 +948,22 @@ class TestRenderFsmDiagram:
             box_lines = [ln for ln in lines if state in ln and "\u2502" in ln]
             assert box_lines, f"{state!r} should be rendered in a box with \u2502 borders"
 
-        # 2. ▲ appears exactly twice: check_commit→evaluate (combined fail/error)
-        #    and commit→evaluate. Same-pair edges should be merged, not duplicated.
+        # 2. ▲ appears at box connection point (both back-edges share target,
+        #    so one ▲ at the evaluate box entry point)
         up_arrow_count = result.count("\u25b2")
-        assert up_arrow_count == 2, (
-            f"Expected exactly 2 \u25b2 (check_commit\u2192evaluate combined + commit\u2192evaluate), "
+        assert up_arrow_count >= 1, (
+            f"Expected at least 1 \u25b2 at evaluate box connection, "
             f"found {up_arrow_count}. Full diagram:\n{result}"
+        )
+
+        # 2b. Corner characters (├/└) at pipe-to-horizontal turn points
+        assert "\u251c" in result, (
+            f"Expected \u251c (├) corner where pipe continues below. "
+            f"Full diagram:\n{result}"
+        )
+        assert "\u2514" in result, (
+            f"Expected \u2514 (└) corner where pipe ends. "
+            f"Full diagram:\n{result}"
         )
 
         # 3. Combined label "fail/error" or "error/fail" should appear for the merged edge

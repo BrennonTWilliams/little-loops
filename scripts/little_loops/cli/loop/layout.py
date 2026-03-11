@@ -898,10 +898,6 @@ def _render_layered_diagram(
                 if 0 <= r < total_height and col < total_width:
                     grid[r][col] = "\u2502"
 
-            # Arrow tip at target (going up since back-edges go to earlier states)
-            if 0 <= top_row < total_height and col < total_width:
-                grid[top_row][col] = "\u25b2"
-
             # Horizontal connector from source box to margin
             if 0 <= src_row < total_height:
                 src_left = col_start.get(src, col + 1)
@@ -910,11 +906,21 @@ def _render_layered_diagram(
                         grid[src_row][c] = "\u2500"
 
             # Horizontal connector from margin to target box
+            dst_left = col_start.get(dst, col + 1)
             if 0 <= dst_row < total_height:
-                dst_left = col_start.get(dst, col + 1)
                 for c in range(col + 1, dst_left):
                     if c < total_width:
                         grid[dst_row][c] = "\u2500"
+
+            # Corner characters at pipe-to-horizontal turn points
+            for row in (src_row, dst_row):
+                if 0 <= row < total_height and col < total_width:
+                    # └ if pipe ends at this row, ├ if pipe continues below
+                    grid[row][col] = "\u2514" if row == bot_row else "\u251c"
+
+            # Arrow tip at target: place ▲ at end of horizontal connector
+            if 0 <= dst_row < total_height and dst_left - 1 > col and dst_left - 1 < total_width:
+                grid[dst_row][dst_left - 1] = "\u25b2"
 
             # Label on the margin line (right of ALL pipes, not just this one)
             label_row_pos = (top_row + bot_row) // 2
