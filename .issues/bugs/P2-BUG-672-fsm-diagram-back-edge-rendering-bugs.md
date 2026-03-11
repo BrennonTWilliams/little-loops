@@ -30,11 +30,11 @@ The adaptive layout engine (`layout.py`) renders back-edges incorrectly in the `
 ## Root Cause
 
 - **File**: `scripts/little_loops/cli/loop/layout.py`
-- **Anchor**: `in function _render_layered_diagram()`, back-edge rendering block (from `non_self_back_initial` construction through `sorted_back` iteration)
+- **Anchor**: `_render_layered_diagram()`, back-edge rendering block (lines 854–910)
 - **Cause**:
-  1. `non_self_back_initial` list comprehension doesn't combine edges with same `(src, dst)` pair before computing `back_edge_margin`
-  2. In the `for src, dst, label in sorted_back:` loop, `label_start = col + 2` positions the label relative to the current pipe column instead of the rightmost pipe column
-  3. In the same loop, `src_row` is computed as `row_start[src] + box_height[src] - 1` (bottom border row `└───┘`) instead of `row_start[src] + 1` (name/content row)
+  1. **Duplicate pipes** — `non_self_back_initial` at line 628 is a simple list comprehension `[(s, d, lbl) for s, d, lbl in back_edges if s != d]` that doesn't combine edges with same `(src, dst)` pair before computing `back_edge_margin` (line 630–632). The reclassification loop at lines 686–697 rebuilding `non_self_back` also doesn't combine.
+  2. **Label overlap** — At line 907, `label_start = col + 2` positions each label relative to its own pipe column. When multiple pipes exist (col=1, col=3, col=5), labels at `col + 2` (e.g., col 3 for the first pipe) land on top of other pipes' columns, producing garbled output like `│aerror`.
+  3. **Border overwrite** — At line 865, `src_row = row_start.get(src, 0) + box_height.get(src, 2) - 1` resolves to the `└───┘` border row. The horizontal connector loop at lines 891–895 then overwrites border characters with `─`.
 
 ## Motivation
 
@@ -42,45 +42,75 @@ FSM diagrams are the primary visual feedback for loop configuration. Garbled bac
 
 ## Proposed Solution
 
-### 1. Combine same-pair back-edge labels (in `non_self_back_initial` construction and after reclassification into `non_self_back`)
+### 1. Combine same-pair back-edge labels (lines 628 and 686–697)
 
-Before computing `back_edge_margin`, consolidate back-edges with same `(src, dst)` into a single entry with joined labels (e.g., "error/fail"). Apply the same consolidation after the layer-based reclassification loop that builds `non_self_back`.
+Follow the same pattern used for forward edges at `layout.py:607-624`:
 
-### 2. Fix label positioning (in `for src, dst, label in sorted_back:` loop, `label_start` assignment)
+**At line 628** — Replace the list comprehension with a dict-based consolidation:
+```python
+# Before: non_self_back_initial = [(s, d, lbl) for s, d, lbl in back_edges if s != d]
+back_edge_labels: dict[tuple[str, str], str] = {}
+for s, d, lbl in back_edges:
+    if s != d:
+        if (s, d) in back_edge_labels:
+            back_edge_labels[(s, d)] += "/" + lbl
+        else:
+            back_edge_labels[(s, d)] = lbl
+non_self_back_initial = [(s, d, lbl) for (s, d), lbl in back_edge_labels.items()]
+```
 
-Before the `sorted_back` loop, compute `rightmost_pipe_col = 1 + (len(sorted_back) - 1) * 2`. Replace `label_start = col + 2` with `label_start = rightmost_pipe_col + 2`.
+**At lines 686–697** — Apply the same consolidation after reclassification builds `non_self_back`.
 
-### 3. Fix source connector row (in `for src, dst, label in sorted_back:` loop, `src_row` assignment)
+### 2. Fix label positioning (line 907)
 
-Change `src_row = row_start.get(src, 0) + box_height.get(src, 2) - 1` to `src_row = row_start.get(src, 0) + 1` (name row, not border).
+Before the `sorted_back` loop, compute the rightmost pipe column. Replace `label_start = col + 2` with:
+```python
+rightmost_pipe_col = 1 + (len(sorted_back) - 1) * 2
+# ... inside loop:
+label_start = rightmost_pipe_col + 2  # right of ALL pipes
+```
+
+### 3. Fix source connector row (line 865)
+
+Change to use the name/content row (1 below box top):
+```python
+# Before: src_row = row_start.get(src, 0) + box_height.get(src, 2) - 1
+src_row = row_start.get(src, 0) + 1  # name row, not bottom border
+```
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/layout.py` — `_render_layered_diagram()` function
+- `scripts/little_loops/cli/loop/layout.py` — `_render_layered_diagram()` lines 628–632 (combine same-pair edges), lines 686–697 (reclassification combine), line 865 (src_row fix), line 907 (label_start fix)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/display.py` — calls `_render_fsm_diagram()`
+- `scripts/little_loops/cli/loop/info.py:20` — re-exports `_render_fsm_diagram` from `layout.py`
+- `scripts/little_loops/cli/loop/info.py:457` — calls `_render_fsm_diagram(fsm, verbose=verbose)`
+- `scripts/little_loops/cli/loop/_helpers.py:324-326` — calls `_render_fsm_diagram()` for diagram display during loop execution
 
 ### Similar Patterns
-- N/A
+- `layout.py:607-624` — Forward edge label combining uses `forward_edge_labels` dict with `(src, dst)` keys and `+= "/" + lbl` for duplicate pairs. The same pattern should be applied to `non_self_back_initial` and `non_self_back`.
 
 ### Tests
-- `scripts/tests/test_ll_loop_display.py` — add test for `issue-refinement-git` back-edge rendering
+- `scripts/tests/test_ll_loop_display.py:908-969` — Existing `test_issue_refinement_git_loop_all_states_and_back_edges` tests the issue-refinement-git pattern; currently asserts `▲` count ≥ 2 but does NOT check for label garbling, correct pipe count, or border integrity. Needs additional assertions.
+- `scripts/tests/test_ll_loop_display.py:789` — `test_bidirectional_back_edge_both_pipes_on_label_rows` tests bidirectional back-edges.
 
 ### Documentation
 - N/A
 
 ### Configuration
-- N/A
+- `.loops/issue-refinement-git.yaml` — The loop config that triggers this bug. Has `check_commit` state with `on_failure: evaluate` and `on_error: evaluate` (same-pair back-edges), plus `commit` state with `next: evaluate` (third back-edge).
 
 ## Implementation Steps
 
-1. Combine same-pair back-edge entries before margin sizing and after reclassification
-2. Fix label positioning to use rightmost pipe column
-3. Fix source connector row to use content row instead of border row
-4. Add test verifying combined labels, no garbled output, correct pipe count
-5. Run full test suite to verify no regressions
+1. **Combine same-pair back-edges** — In `layout.py:628`, replace list comprehension with dict-based consolidation (same pattern as `forward_edge_labels` at line 607). Apply same consolidation in the reclassification block at lines 686–697.
+2. **Fix label positioning** — In `layout.py:907`, compute `rightmost_pipe_col = 1 + (len(sorted_back) - 1) * 2` before the loop; replace `label_start = col + 2` with `label_start = rightmost_pipe_col + 2`.
+3. **Fix source connector row** — In `layout.py:865`, change `row_start.get(src, 0) + box_height.get(src, 2) - 1` to `row_start.get(src, 0) + 1`.
+4. **Extend test** — In `test_ll_loop_display.py:933`, add assertions to `test_issue_refinement_git_loop_all_states_and_back_edges`:
+   - `check_commit→evaluate` fail/error edges should produce exactly 2 `▲` arrows (not 3)
+   - No garbled substrings like `│a` followed by a letter on the same line
+   - `└` and `┘` border characters should not be overwritten by `─`
+5. **Run full test suite**: `python -m pytest scripts/tests/test_ll_loop_display.py -v`
 
 ## Impact
 
@@ -102,6 +132,7 @@ Change `src_row = row_start.get(src, 0) + box_height.get(src, 2) - 1` to `src_ro
 ## Session Log
 - `/ll:capture-issue` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2628af2a-aca0-4d4e-ad1b-655fd8aab5a9.jsonl`
 - `/ll:format-issue` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd96b75e-fbd0-4dcc-ba9f-72fc5447a846.jsonl`
+- `/ll:refine-issue` - 2026-03-11T20:05:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 
