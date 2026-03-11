@@ -45,6 +45,7 @@ Examples:
   %(prog)s refine-status
   %(prog)s refine-status --type BUG
   %(prog)s refine-status --format json
+  %(prog)s refine-status --json
 """,
     )
 
@@ -106,6 +107,12 @@ Examples:
         action="store_true",
         default=False,
         help="Suppress the Key section below the table",
+    )
+    refine_s.add_argument(
+        "--json",
+        action="store_true",
+        default=False,
+        help="Output as JSON array. Matches ll-issues list --json interface. (--format json outputs NDJSON instead)",
     )
     add_config_arg(refine_s)
 

@@ -6,7 +6,7 @@ import argparse
 import json
 from typing import TYPE_CHECKING
 
-from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, terminal_width
+from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, print_json, terminal_width
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -200,7 +200,27 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     # Dynamic ID column width: size to the longest issue_id present, minimum 8
     id_width = max((len(issue.issue_id) for issue in sorted_issues), default=7) + 1
 
+    use_json_array = getattr(args, "json", False)
     fmt = getattr(args, "format", "table")
+
+    if use_json_array:
+        print_json([
+            {
+                "id": issue.issue_id,
+                "priority": issue.priority,
+                "title": issue.title,
+                "source": issue.discovered_by,
+                "commands": issue.session_commands,
+                "confidence_score": issue.confidence_score,
+                "outcome_confidence": issue.outcome_confidence,
+                "total": len(issue.session_commands),
+                "normalized": is_normalized(issue.path.name),
+                "formatted": is_formatted(issue.path),
+                "refine_count": issue.session_command_counts.get("/ll:refine-issue", 0),
+            }
+            for issue in sorted_issues
+        ])
+        return 0
 
     if fmt == "json":
         for issue in sorted_issues:

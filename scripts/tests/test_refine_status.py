@@ -1131,3 +1131,156 @@ class TestRefineStatusConfigColumns:
         data_line = next((ln for ln in lines if "BUG-402" in ln), None)
         assert data_line is not None
         assert "\u2014" in data_line  # em-dash in the unknown column cell
+
+
+class TestRefineStatusJsonFlag:
+    """Tests for refine-status --json flag (JSON array output)."""
+
+    def test_json_flag_outputs_array(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json outputs a valid JSON array (not NDJSON)."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            bugs_dir,
+            "P1-BUG-070-json-flag.md",
+            "BUG-070: JSON flag test",
+            confidence_score=85,
+            outcome_confidence=75,
+            session_commands=["/ll:refine-issue", "/ll:ready-issue"],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        assert isinstance(data, list)
+        assert len(data) == 1
+
+    def test_json_flag_fields(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json records contain the same fields as --format json."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(
+            bugs_dir,
+            "P2-BUG-071-json-fields.md",
+            "BUG-071: JSON fields test",
+            confidence_score=90,
+            outcome_confidence=80,
+            session_commands=["/ll:refine-issue"],
+        )
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        data = json.loads(out)
+        record = data[0]
+        assert record["id"] == "BUG-071"
+        assert record["priority"] == "P2"
+        assert record["confidence_score"] == 90
+        assert record["outcome_confidence"] == 80
+        assert record["total"] == 1
+        assert record["refine_count"] == 1
+        assert "normalized" in record
+        assert "formatted" in record
+        assert "source" in record
+        assert "commands" in record
+
+    def test_json_flag_no_color_codes(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json output contains no ANSI escape sequences."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(bugs_dir, "P3-BUG-072-no-color.md", "BUG-072: No color test")
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "\x1b[" not in out
+
+    def test_json_flag_and_format_json_coexist(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json takes precedence when combined with --format json (no error)."""
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        _make_issue(bugs_dir, "P3-BUG-073-coexist.md", "BUG-073: Coexist test")
+
+        with patch.object(
+            sys,
+            "argv",
+            [
+                "ll-issues",
+                "refine-status",
+                "--json",
+                "--format",
+                "json",
+                "--config",
+                str(temp_project_dir),
+            ],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        out = capsys.readouterr().out
+        # --json takes precedence: output is a JSON array, not NDJSON
+        data = json.loads(out)
+        assert isinstance(data, list)
