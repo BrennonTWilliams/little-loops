@@ -1,0 +1,88 @@
+name: issue-discovery-triage
+description: |
+  Automated issue discovery and triage cycle. Scans the codebase for new
+  technical issues, normalizes filenames/IDs, prioritizes by severity, and
+  runs tradeoff analysis to close low-value items. Loops until a full scan
+  cycle discovers no net-new issues (diminishing returns), then commits and
+  stops.
+initial: count_baseline
+states:
+  count_baseline:
+    action: |
+      COUNT=$(ll-issues list --json 2>/dev/null | python3 -c "
+      import sys, json
+      try:
+          data = json.load(sys.stdin)
+          print(len(data))
+      except Exception:
+          print(0)
+      ")
+      echo "$COUNT"
+    action_type: shell
+    capture: baseline
+    next: discover
+  discover:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Run `/ll:scan-codebase` to discover new technical issues in the codebase.
+      Focus on genuine bugs, missing error handling, and code quality problems.
+      Do not re-file issues that already exist in .issues/.
+    next: normalize
+  normalize:
+    action_type: prompt
+    action: |
+      Run `/ll:normalize-issues` to ensure all issue files follow the correct
+      naming convention (P[0-5]-[TYPE]-[NNN]-description.md) and have valid
+      frontmatter and IDs.
+    next: prioritize
+  prioritize:
+    action_type: prompt
+    action: |
+      Run `/ll:prioritize-issues --auto` to assign P0-P5 priority levels to
+      any issues that are missing or have incorrect priority assignments.
+    next: tradeoff_review
+  tradeoff_review:
+    action_type: prompt
+    action: |
+      Run `/ll:tradeoff-review-issues` to evaluate recently discovered issues.
+      Close or deprioritize issues that have low value relative to their
+      implementation cost. Be aggressive about closing noise.
+    next: count_new
+  count_new:
+    action: |
+      COUNT=$(ll-issues list --json 2>/dev/null | python3 -c "
+      import sys, json
+      try:
+          data = json.load(sys.stdin)
+          print(len(data))
+      except Exception:
+          print(0)
+      ")
+      echo "$COUNT"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      prompt: |
+        The baseline issue count was: ${captured.baseline.output}
+        The current issue count is shown in the action output.
+
+        Compare the two numbers:
+        - Return "success" if the current count is STRICTLY GREATER than the
+          baseline count (new issues were discovered this cycle).
+        - Return "failure" if the current count is LESS THAN OR EQUAL to the
+          baseline count (no net-new issues — diminishing returns, time to stop).
+    on_success: commit
+    on_failure: done
+    on_error: done
+  commit:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit all newly created and modified issue files.
+      Use a commit message like: "chore(issues): discover and triage new issues"
+    next: count_baseline
+  done:
+    terminal: true
+max_iterations: 10
+timeout: 7200
+on_handoff: spawn
