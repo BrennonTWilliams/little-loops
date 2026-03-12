@@ -1072,6 +1072,34 @@ class TestRenderFsmDiagram:
             box_lines = [ln for ln in result.split("\n") if state in ln and "│" in ln]
             assert box_lines, f"{state!r} should be rendered in a box"
 
+    def test_inter_layer_offset_edge_draws_horizontal_connector(self) -> None:
+        """Offset inter-layer edge draws ─ connector from source box to pipe.
+
+        When a state branches to two states on the next layer, the off-center
+        destination gets a horizontal connector (───┐ or ┌───) linking the
+        source box boundary to the vertical pipe.
+        """
+        # a → b (success) and a → c (failure), both on next layer.
+        # b and c share a layer; one pipe aligns with a, the other is offset.
+        fsm = self._make_fsm(
+            initial="a",
+            states={
+                "a": StateConfig(action="step", on_success="b", on_failure="c"),
+                "b": StateConfig(terminal=True),
+                "c": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+
+        # Horizontal connector should appear for the offset edge
+        assert "\u2500" in result, (
+            f"Offset inter-layer edge should have ─ horizontal connector.\n{result}"
+        )
+        # Corner piece where horizontal meets vertical
+        assert "\u2510" in result or "\u250c" in result, (
+            f"Offset inter-layer edge should have ┐ or ┌ corner.\n{result}"
+        )
+
     def test_highlighted_state_uses_configured_color(self) -> None:
         """highlight_state box uses the configured ANSI color; other boxes do not."""
         import little_loops.cli.output as output_mod

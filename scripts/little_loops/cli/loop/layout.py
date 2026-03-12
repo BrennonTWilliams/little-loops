@@ -883,11 +883,35 @@ def _render_layered_diagram(
                     inter_edges.append((src, dst, label))
 
         # Draw each edge with its own vertical pipe to the target's center
-        for _src, dst, label in inter_edges:
+        for src, dst, label in inter_edges:
             dst_cc = col_center[dst]
+            src_left = col_start[src]
+            src_right = src_left + box_width[src]
+
+            # Horizontal connector when pipe is outside source box range
+            if dst_cc >= src_right or dst_cc < src_left:
+                conn_row = arrow_start_row
+                if 0 <= conn_row < total_height:
+                    if dst_cc >= src_right:
+                        # Pipe right of source: ───┐
+                        for c in range(src_right, dst_cc):
+                            if 0 <= c < total_width:
+                                grid[conn_row][c] = "\u2500"
+                        if 0 <= dst_cc < total_width:
+                            grid[conn_row][dst_cc] = "\u2510"
+                    else:
+                        # Pipe left of source: ┌───
+                        for c in range(dst_cc + 1, src_left):
+                            if 0 <= c < total_width:
+                                grid[conn_row][c] = "\u2500"
+                        if 0 <= dst_cc < total_width:
+                            grid[conn_row][dst_cc] = "\u250c"
+                pipe_start = arrow_start_row + 1
+            else:
+                pipe_start = arrow_start_row
 
             # Draw vertical pipe at destination's center column
-            for r in range(arrow_start_row, arrow_end_row):
+            for r in range(pipe_start, arrow_end_row):
                 if 0 <= dst_cc < total_width and r < total_height:
                     grid[r][dst_cc] = "\u2502"
 
