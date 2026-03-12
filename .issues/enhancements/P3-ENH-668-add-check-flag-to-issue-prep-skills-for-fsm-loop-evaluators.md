@@ -111,10 +111,7 @@ Add a `--check` flag to each affected skill using the existing `--auto` flag as 
 
 ## Blocked By
 - FEAT-638
-- ENH-671
 - FEAT-565
-- BUG-656
-- ENH-669
 
 ## Blocks
 - FEAT-543

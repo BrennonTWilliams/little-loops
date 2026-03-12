@@ -328,7 +328,6 @@ Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 
 ## Blocked By
 - FEAT-565
-- BUG-656
 - ENH-665
 ## Blocks
 - ENH-668

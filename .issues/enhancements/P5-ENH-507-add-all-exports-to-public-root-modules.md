@@ -323,4 +323,3 @@ _(No active blockers — FEAT-488 was completed 2026-03-06)_
 
 ## Blocked By
 - ENH-665
-- ENH-667

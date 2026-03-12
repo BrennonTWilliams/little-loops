@@ -31,7 +31,7 @@ Every line in a `SKILL.md` is loaded into the context window when that skill is 
 
 ## Proposed Solution
 
-1. Audit all 15 `skills/*/SKILL.md` files for line count: `wc -l skills/*/SKILL.md`
+1. Audit all 16 `skills/*/SKILL.md` files for line count: `wc -l skills/*/SKILL.md`
 2. For any skill exceeding 500 lines, identify what content is "reference" vs. "operational"
 3. Create `skills/<name>/references/` directories for overflow content
 4. Add "See also" links in `SKILL.md` pointing to reference files
@@ -153,11 +153,8 @@ Update first - Only 2 skills exceed the 500-line limit (audit-claude-config: 708
 
 ## Blocked By
 - FEAT-638
-- ENH-669
 - ENH-668
 - ENH-495
-- BUG-656
-
 - ENH-493
 - FEAT-565
 

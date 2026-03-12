@@ -97,7 +97,6 @@ Active
 
 
 ## Blocked By
-- BUG-656
 ## Blocks
 - FEAT-638
 - ENH-507

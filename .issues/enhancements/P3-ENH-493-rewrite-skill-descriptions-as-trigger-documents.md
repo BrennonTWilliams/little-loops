@@ -140,14 +140,10 @@ _Added by `/ll:refine-issue` — reduces implementation ambiguity:_
 **Open** | Created: 2026-02-24 | Priority: P3
 
 ## Blocked By
-- ENH-671
 - FEAT-659
 - FEAT-638
 - ENH-495
-- BUG-656
 - ENH-668
-- ENH-669
-
 - FEAT-565
 
 ## Blocks

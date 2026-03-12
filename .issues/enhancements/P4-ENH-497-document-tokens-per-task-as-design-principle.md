@@ -146,5 +146,4 @@ This principle is validated by published research on long-context LLM architectu
 **Open** | Created: 2026-02-24 | Priority: P4
 
 ## Blocked By
-- BUG-656
 - ENH-665

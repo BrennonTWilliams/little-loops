@@ -135,17 +135,10 @@ dst_pos = bfs_pos.get(dst, len(bfs_order))   # O(1), was O(n)
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: `bfs_order.index()` calls confirmed at lines 394–395; `bfs_pos` dict not yet added; Verification Notes corrected solution (bfs_pos not bfs_depth) already present
 - `/ll:verify-issues` - 2026-03-06T07:14:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e7a87dd5-a8d5-4b8f-9271-78a1114bf527.jsonl` — VALID: `bfs_order.index()` still at lines 394–395; corrected `bfs_pos` solution in Verification Notes is accurate
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `bfs_order.index()` confirmed at `info.py:437-438` (shifted from 394-395); `bfs_pos` dict not yet added
-
----
-
-## Blocked By
-- ENH-668
-
-- ENH-540
-- ENH-541
+- `/ll:verify-issues` - 2026-03-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce22b31f-c86d-405e-81b7-51f36fa9812d.jsonl` — RESOLVED: `bfs_order` no longer exists in `info.py`; code refactored by FEAT-670 (adaptive layout engine). Moved to completed/
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-03-03 | Priority: P4
+**Completed** | Created: 2026-03-03 | Resolved: 2026-03-12 | Priority: P4

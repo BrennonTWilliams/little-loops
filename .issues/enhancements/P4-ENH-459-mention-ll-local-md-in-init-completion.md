@@ -107,7 +107,6 @@ Also consider adding `.claude/ll.local.md` to the `.gitignore` entries in Step 9
 
 ## Blocked By
 - ENH-493
-- BUG-656
 - ENH-665
 ## Blocks
 

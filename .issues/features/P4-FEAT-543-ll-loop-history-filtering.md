@@ -147,7 +147,6 @@ In `cmd_history()`:
 
 ## Blocked By
 - ENH-668
-- ENH-667
 - ENH-541
 
 _(ENH-537 completed — extracted `process_alive` utility)_

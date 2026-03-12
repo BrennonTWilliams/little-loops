@@ -134,6 +134,4 @@ _Codebase Research: full call chain with line refs:_
 
 ## Blocked By
 - ENH-540
-- FEAT-670
 - ENH-665
-- BUG-656

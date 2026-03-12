@@ -53,9 +53,10 @@ Two-part fix applied:
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4cb1a514-1752-4f1f-9c34-c6be12fca682.jsonl`
+- `/ll:verify-issues` - 2026-03-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce22b31f-c86d-405e-81b7-51f36fa9812d.jsonl` — Moved to completed/ (fix in commit 564df03; frontmatter already marked resolved)
 
 ---
 
 ## Status
 
-**Resolved** | Created: 2026-03-12 | Priority: P3
+**Completed** | Created: 2026-03-12 | Resolved: 2026-03-12 | Priority: P3

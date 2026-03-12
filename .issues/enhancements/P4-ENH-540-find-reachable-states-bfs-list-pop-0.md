@@ -138,8 +138,6 @@ Internal implementation detail only — no external impact.
 ## Blocks
 - ENH-654
 
-- ENH-542
-
 ---
 
 ## Status
