@@ -998,8 +998,8 @@ def _render_layered_diagram(
             reverse=True,
         )
         used_fwd_cols: list[int] = []
-        # Leftmost pipe column (closest to content) for label placement
-        leftmost_pipe_col = total_content_w + 2
+        # Rightmost pipe column (furthest from content) for label placement
+        rightmost_fwd_pipe_col = total_content_w + 2 + (len(sorted_fwd_skip) - 1) * 2
 
         for src, dst, label in sorted_fwd_skip:
             src_row = row_start.get(src, 0) + 1  # name row
@@ -1057,16 +1057,13 @@ def _render_layered_diagram(
             if 0 <= dst_row < total_height and dst_right < col and dst_right < total_width:
                 grid[dst_row][dst_right] = "\u25c0"
 
-            # Label on the margin line (left of ALL pipes)
+            # Label on the margin line (right of ALL pipes, mirroring left-margin approach)
             label_row_pos = (top_row + bot_row) // 2
             if 0 <= label_row_pos < total_height:
-                # Place label right-aligned just left of the leftmost pipe
-                label_end = leftmost_pipe_col - 1
-                label_start_pos = label_end - len(label)
+                label_start = rightmost_fwd_pipe_col + 2
                 for j, ch in enumerate(label):
-                    pos = label_start_pos + j
-                    if 0 <= pos < total_width:
-                        grid[label_row_pos][pos] = ch
+                    if label_start + j < total_width:
+                        grid[label_row_pos][label_start + j] = ch
 
     # Convert grid to string
     lines = ["".join(row).rstrip() for row in grid]
