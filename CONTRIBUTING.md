@@ -122,8 +122,8 @@ little-loops/
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
 ├── loops/                # Built-in FSM loop definitions
-│   └── issue-refinement.yaml
-├── skills/               # 15 skill definitions (user-invocable workflows)
+│   └── issue-refinement-git.yaml
+├── skills/               # 16 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
 │   ├── audit-claude-config/          # Audit plugin configuration
 │   ├── audit-docs/                   # Audit documentation accuracy
@@ -138,6 +138,7 @@ little-loops/
 │   ├── manage-issue/                 # Manage issue lifecycle
 │   ├── map-dependencies/             # Discover and map issue dependencies
 │   ├── product-analyzer/             # Analyze codebase against product goals
+│   ├── review-loop/                  # Review and improve FSM loop configurations
 │   └── workflow-automation-proposer/ # Propose automations from patterns
 ├── templates/            # Project-type config templates
 ├── docs/                 # Documentation
@@ -154,7 +155,8 @@ little-loops/
 │   │   ├── ISSUE_MANAGEMENT_GUIDE.md    # Issue management workflow
 │   │   ├── LOOPS_GUIDE.md               # Loop creation guide
 │   │   ├── SESSION_HANDOFF.md           # Context management guide
-│   │   └── SPRINT_GUIDE.md             # Sprint planning and execution
+│   │   ├── SPRINT_GUIDE.md             # Sprint planning and execution
+│   │   └── WORKFLOW_ANALYSIS_GUIDE.md  # Workflow analysis guide
 │   ├── development/                     # Developer documentation
 │   │   ├── E2E_TESTING.md              # End-to-end testing guide
 │   │   ├── MERGE-COORDINATOR.md        # Merge coordinator docs
@@ -162,7 +164,9 @@ little-loops/
 │   │   └── TROUBLESHOOTING.md          # Common issues and solutions
 │   ├── research/                        # Research documents
 │   │   ├── CLI-TOOLS-AUDIT.md           # CLI tools audit
-│   │   └── claude-cli-integration-mechanics.md
+│   │   ├── claude-cli-integration-mechanics.md
+│   │   ├── LCM-Integration-Brainstorm.md  # LCM integration roadmap
+│   │   └── LCM-Lossless-Context-Management.md  # LCM research
 │   ├── claude-code/                     # Claude Code documentation
 │   └── demo/                            # Demo materials
 └── scripts/              # Python CLI tools
