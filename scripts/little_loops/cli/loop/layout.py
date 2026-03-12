@@ -915,12 +915,17 @@ def _render_layered_diagram(
             # Corner characters at pipe-to-horizontal turn points
             for row in (src_row, dst_row):
                 if 0 <= row < total_height and col < total_width:
-                    # └ if pipe ends at this row, ├ if pipe continues below
-                    grid[row][col] = "\u2514" if row == bot_row else "\u251c"
+                    existing = grid[row][col]
+                    if row == bot_row:
+                        # Pipe ends, turns right: └; if horizontal already crosses here: ┴
+                        grid[row][col] = "\u2534" if existing == "\u2500" else "\u2514"
+                    else:  # row == top_row
+                        # Pipe starts going down, turns right: ┌; if horizontal already crosses here: ┬
+                        grid[row][col] = "\u252c" if existing == "\u2500" else "\u250c"
 
-            # Arrow tip at target: place ▲ at end of horizontal connector
+            # Arrow tip at target: place ▶ at end of horizontal connector (entering box from left)
             if 0 <= dst_row < total_height and dst_left - 1 > col and dst_left - 1 < total_width:
-                grid[dst_row][dst_left - 1] = "\u25b2"
+                grid[dst_row][dst_left - 1] = "\u25b6"
 
             # Label on the margin line (right of ALL pipes, not just this one)
             label_row_pos = (top_row + bot_row) // 2

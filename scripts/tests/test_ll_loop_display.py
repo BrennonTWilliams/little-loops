@@ -725,9 +725,9 @@ class TestRenderFsmDiagram:
         # Vertical connectors present for routed edges
         assert "\u2502" in result  # │ vertical connector
         # Off-path box rendered with box-drawing chars
-        assert "\u25b2" in result or "\u25bc" in result  # ▲ or ▼ arrow
+        assert "\u25b6" in result or "\u25bc" in result  # ▶ or ▼ arrow
         # Corner characters at pipe-to-horizontal turns
-        assert "\u2514" in result or "\u251c" in result  # └ or ├ corner chars
+        assert "\u2514" in result or "\u250c" in result  # └ or ┌ corner chars
 
     def test_self_loop_annotated(self) -> None:
         """Self-loop transition is annotated with loop indicator."""
@@ -849,8 +849,8 @@ class TestRenderFsmDiagram:
         # In layered layout, fix-quality and fix-tests are at different depths
         # (fix-quality at depth 1, fix-tests at depth 2). Both should be visible.
         # Back-edges should be rendered (▲ for upward arrows in margin)
-        assert "\u25b2" in result, (
-            "Expected \u25b2 margin back-edge arrow for back-edges to check-quality"
+        assert "\u25b6" in result, (
+            "Expected \u25b6 (▶) margin back-edge arrow for back-edges to check-quality"
         )
 
     def test_linear_off_path_chain_all_states_visible(self) -> None:
@@ -948,17 +948,16 @@ class TestRenderFsmDiagram:
             box_lines = [ln for ln in lines if state in ln and "\u2502" in ln]
             assert box_lines, f"{state!r} should be rendered in a box with \u2502 borders"
 
-        # 2. ▲ appears at box connection point (both back-edges share target,
-        #    so one ▲ at the evaluate box entry point)
-        up_arrow_count = result.count("\u25b2")
-        assert up_arrow_count >= 1, (
-            f"Expected at least 1 \u25b2 at evaluate box connection, "
-            f"found {up_arrow_count}. Full diagram:\n{result}"
+        # 2. ▶ appears at box connection point (horizontal connector enters box from left)
+        right_arrow_count = result.count("\u25b6")
+        assert right_arrow_count >= 1, (
+            f"Expected at least 1 \u25b6 (▶) at evaluate box connection, "
+            f"found {right_arrow_count}. Full diagram:\n{result}"
         )
 
-        # 2b. Corner characters (├/└) at pipe-to-horizontal turn points
-        assert "\u251c" in result, (
-            f"Expected \u251c (├) corner where pipe continues below. "
+        # 2b. Corner characters (┌/┬/└) at pipe-to-horizontal turn points
+        assert "\u250c" in result or "\u252c" in result, (
+            f"Expected \u250c (┌) or \u252c (┬) corner at top of back-edge pipe. "
             f"Full diagram:\n{result}"
         )
         assert "\u2514" in result, (
