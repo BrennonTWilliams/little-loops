@@ -756,13 +756,13 @@ class TestCmdShow:
 
         assert result == 1
 
-    def test_show_verbose_prompt_action_shows_all_lines(
+    def test_show_prompt_action_shows_3_lines(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Verbose mode shows full prompt action text."""
+        """Prompt action type shows first 3 lines + ... not the full text."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         long_prompt = "\n".join(f"Line {i}: " + "x" * 50 for i in range(10))
@@ -780,23 +780,24 @@ class TestCmdShow:
             "    terminal: true\n"
         )
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
 
         assert result == 0
         out = capsys.readouterr().out
+        assert "..." in out
         assert "Line 0" in out
-        assert "Line 9" in out
+        assert "Line 9" not in out
 
-    def test_show_verbose_shell_action_shows_full(
+    def test_show_shell_action_truncated_at_70(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Verbose mode shows full shell action text."""
+        """Shell action still truncates at 70 chars."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         long_shell = "echo " + "x" * 100
@@ -812,14 +813,15 @@ class TestCmdShow:
             "    terminal: true\n"
         )
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
 
         assert result == 0
         out = capsys.readouterr().out
-        assert long_shell in out
+        assert "..." in out
+        assert long_shell not in out
 
     def test_show_verbose_shows_full_action(
         self,
@@ -888,13 +890,13 @@ class TestCmdShow:
         assert "prompt:" in out
         assert "Did the command succeed" in out
 
-    def test_show_verbose_evaluate_prompt_full(
+    def test_show_evaluate_prompt_preview(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Verbose show displays full evaluate prompt."""
+        """Non-verbose show displays truncated evaluate prompt preview."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         (loops_dir / "my-loop.yaml").write_text(
@@ -913,7 +915,7 @@ class TestCmdShow:
             "    terminal: true\n"
         )
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -921,16 +923,17 @@ class TestCmdShow:
         assert result == 0
         out = capsys.readouterr().out
         assert "evaluate: LLM (structured)" in out
-        assert "Examine the output carefully." in out
-        assert "Second line detail" in out
+        assert "prompt: Examine the output carefully." in out
+        assert " ..." in out  # truncated because multiple lines
+        assert "Second line detail" not in out
 
-    def test_show_verbose_evaluate_prompt_shows_full(
+    def test_show_evaluate_prompt_truncated_at_100_chars(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Verbose mode shows full evaluate prompt without truncation."""
+        """Evaluate prompt preview truncates long single lines at 100 chars."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         long_prompt = "x" * 120
@@ -948,14 +951,15 @@ class TestCmdShow:
             "    terminal: true\n"
         )
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
 
         assert result == 0
         out = capsys.readouterr().out
-        assert long_prompt in out
+        assert " ..." in out
+        assert long_prompt not in out
 
     def test_show_evaluate_min_confidence_non_default(
         self,
@@ -980,7 +984,7 @@ class TestCmdShow:
             "    terminal: true\n"
         )
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -1044,7 +1048,7 @@ class TestCmdShow:
             "    terminal: true\n"
         )
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -1076,7 +1080,7 @@ class TestCmdShow:
             "    terminal: true\n"
         )
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -1108,7 +1112,7 @@ class TestCmdShow:
             "    terminal: true\n"
         )
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -1262,13 +1266,13 @@ class TestCmdShow:
         for line in action_content_lines:
             assert line.startswith("      "), f"Action line not indented: {line!r}"
 
-    def test_show_default_omits_states_section(
+    def test_show_diagram_appears_before_states(
         self,
         tmp_path: Path,
         monkeypatch: pytest.MonkeyPatch,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """Default (non-verbose) output omits States section; diagram is present."""
+        """Diagram section appears before States section in output."""
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
         (loops_dir / "my-loop.yaml").write_text(
@@ -1283,36 +1287,6 @@ class TestCmdShow:
         )
         monkeypatch.chdir(tmp_path)
         with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
-            from little_loops.cli import main_loop
-
-            result = main_loop()
-
-        assert result == 0
-        out = capsys.readouterr().out
-        assert "Diagram:" in out
-        assert "States:" not in out
-
-    def test_show_verbose_includes_states_section(
-        self,
-        tmp_path: Path,
-        monkeypatch: pytest.MonkeyPatch,
-        capsys: pytest.CaptureFixture[str],
-    ) -> None:
-        """Verbose output includes States section after Diagram."""
-        loops_dir = tmp_path / ".loops"
-        loops_dir.mkdir()
-        (loops_dir / "my-loop.yaml").write_text(
-            "name: my-loop\n"
-            "initial: check\n"
-            "states:\n"
-            "  check:\n"
-            '    action: "echo hello"\n'
-            "    on_success: done\n"
-            "  done:\n"
-            "    terminal: true\n"
-        )
-        monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -1346,7 +1320,7 @@ class TestCmdShow:
             "    terminal: true\n"
         )
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop", "--verbose"]):
+        with patch.object(sys, "argv", ["ll-loop", "show", "my-loop"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
