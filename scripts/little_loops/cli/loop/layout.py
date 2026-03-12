@@ -633,7 +633,28 @@ def _render_layered_diagram(
                 back_edge_labels_initial[(s, d)] += "/" + lbl
             else:
                 back_edge_labels_initial[(s, d)] = lbl
-    non_self_back_initial = [(s, d, lbl) for (s, d), lbl in back_edge_labels_initial.items()]
+
+    # Pre-compute layer positions to detect main-path cycle edges early.
+    # This ensures back_edge_margin accounts for ALL backward-pointing edges
+    # (including main-path cycles like commit → initial_state) before column
+    # positions are computed.
+    prelim_layer_of: dict[str, int] = {}
+    for li, layer in enumerate(layers):
+        for s in layer:
+            prelim_layer_of[s] = li
+
+    # Include main-path/branch edges that point backward in margin estimate
+    all_back_labels: dict[tuple[str, str], str] = dict(back_edge_labels_initial)
+    for (src, dst), lbl in forward_edge_labels.items():
+        src_layer = prelim_layer_of.get(src, -1)
+        dst_layer = prelim_layer_of.get(dst, -1)
+        if dst_layer < src_layer:
+            if (src, dst) in all_back_labels:
+                all_back_labels[(src, dst)] += "/" + lbl
+            else:
+                all_back_labels[(src, dst)] = lbl
+
+    non_self_back_initial = [(s, d, lbl) for (s, d), lbl in all_back_labels.items()]
     back_edge_margin = 0
     if non_self_back_initial:
         max_label_len = max(len(lbl) for _, _, lbl in non_self_back_initial)
@@ -707,6 +728,25 @@ def _render_layered_diagram(
         elif dst_layer == src_layer:
             same_layer_edges.append((src, dst, lbl))
         # dst_layer > src_layer: these are actually forward edges, already in forward_edge_labels
+
+    # Also reclassify main/branch edges in forward_edge_labels that point backward
+    # after layer assignment (e.g. main-path cycle edges like commit → initial_state)
+    backward_in_fwd: list[tuple[str, str]] = []
+    for (src, dst), lbl in forward_edge_labels.items():
+        src_layer = layer_of.get(src, -1)
+        dst_layer = layer_of.get(dst, -1)
+        if dst_layer < src_layer:
+            backward_in_fwd.append((src, dst))
+            if (src, dst) in back_edge_labels_reclass:
+                back_edge_labels_reclass[(src, dst)] += "/" + lbl
+            else:
+                back_edge_labels_reclass[(src, dst)] = lbl
+        elif dst_layer == src_layer and src != dst:
+            backward_in_fwd.append((src, dst))
+            same_layer_edges.append((src, dst, lbl))
+    for key in backward_in_fwd:
+        del forward_edge_labels[key]
+
     non_self_back = [(s, d, lbl) for (s, d), lbl in back_edge_labels_reclass.items()]
 
     # Recalculate back-edge margin if it changed

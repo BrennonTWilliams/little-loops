@@ -998,6 +998,40 @@ class TestRenderFsmDiagram:
         )
         assert eval_row < fmt_row < score_row, "States should appear top-to-bottom"
 
+    def test_main_path_cycle_renders_back_edge(self) -> None:
+        """Main-path cycle edge (last → initial) renders as left-margin back-edge.
+
+        Regression test: when the main path forms a cycle (e.g. commit → start
+        via 'next'), the backward edge must render as a left-margin back-edge
+        arrow, not be silently dropped.
+        """
+        fsm = self._make_fsm(
+            initial="start",
+            states={
+                "start": StateConfig(action="count", next="work"),
+                "work": StateConfig(action="do", on_success="decide"),
+                "decide": StateConfig(
+                    action="eval", on_success="commit", on_failure="done"
+                ),
+                "commit": StateConfig(action="save", next="start"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+
+        # Back-edge from commit → start must have left-margin corner characters
+        assert "┌" in result or "┬" in result, (
+            f"Main-path cycle should render as back-edge with top corner.\n{result}"
+        )
+        # The ▶ connector entering the target box
+        assert "▶" in result, (
+            f"Main-path cycle back-edge should have ▶ connector.\n{result}"
+        )
+        # All states should be visible
+        for state in ("start", "work", "decide", "commit", "done"):
+            box_lines = [ln for ln in result.split("\n") if state in ln and "│" in ln]
+            assert box_lines, f"{state!r} should be rendered in a box"
+
     def test_highlighted_state_uses_configured_color(self) -> None:
         """highlight_state box uses the configured ANSI color; other boxes do not."""
         import little_loops.cli.output as output_mod
