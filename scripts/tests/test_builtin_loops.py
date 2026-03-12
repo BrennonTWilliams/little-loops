@@ -46,6 +46,7 @@ class TestBuiltinLoopFiles:
         """The expected set of built-in loops exists."""
         expected = {
             "fix-quality-and-tests",
+            "issue-discovery-triage",
             "issue-refinement",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
