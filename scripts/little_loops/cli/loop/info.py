@@ -452,105 +452,87 @@ def cmd_show(
     if diagram:
         print(diagram)
 
-    # --- State overview table ---
-    print()
-    _print_state_overview_table(fsm)
+    # --- State overview table & detailed States (verbose only) ---
+    if verbose:
+        print()
+        _print_state_overview_table(fsm)
 
-    # --- States & Transitions ---
-    print()
-    print("States:")
-    first_state = True
-    for name, state in fsm.states.items():
-        if not first_state:
-            print()
-        first_state = False
+        # --- States & Transitions ---
+        print()
+        print("States:")
+        first_state = True
+        for name, state in fsm.states.items():
+            if not first_state:
+                print()
+            first_state = False
 
-        # Improved state section header: ── name ──── MARKERS · type ──
-        right_parts = []
-        if name == fsm.initial:
-            right_parts.append("INITIAL")
-        if state.terminal:
-            right_parts.append("TERMINAL")
-        if state.action_type:
-            right_parts.append(state.action_type)
-        right_info = " \u00b7 ".join(right_parts)
-        inner_left = f"\u2500\u2500 {name} "
-        inner_right = f" {right_info} \u2500\u2500" if right_info else " \u2500\u2500"
-        fill = "\u2500" * max(0, tw - 2 - len(inner_left) - len(inner_right))
-        print(f"  {inner_left}{fill}{inner_right}")
+            # Improved state section header: ── name ──── MARKERS · type ──
+            right_parts = []
+            if name == fsm.initial:
+                right_parts.append("INITIAL")
+            if state.terminal:
+                right_parts.append("TERMINAL")
+            if state.action_type:
+                right_parts.append(state.action_type)
+            right_info = " \u00b7 ".join(right_parts)
+            inner_left = f"\u2500\u2500 {name} "
+            inner_right = f" {right_info} \u2500\u2500" if right_info else " \u2500\u2500"
+            fill = "\u2500" * max(0, tw - 2 - len(inner_left) - len(inner_right))
+            print(f"  {inner_left}{fill}{inner_right}")
 
-        if state.action:
-            if verbose:
+            if state.action:
                 indented = "\n      ".join(state.action.strip().splitlines())
                 print(f"    action:\n      {indented}")
-            elif state.action_type == "prompt":
-                lines_act = state.action.strip().splitlines()
-                preview = "\n      ".join(lines_act[:3])
-                if len(lines_act) > 3 or len(state.action) > 200:
-                    preview += " ..."
-                print(f"    action:\n      {preview}")
-            else:  # shell, slash_command, or None
-                action_display = (
-                    state.action[:70] + "..." if len(state.action) > 70 else state.action
-                )
-                print(f"    action: {action_display}")
-        if state.evaluate:
-            ev = state.evaluate
-            print(f"    evaluate: {_humanize_evaluate_type(ev.type)}")
-            if ev.prompt:
-                if verbose:
+            if state.evaluate:
+                ev = state.evaluate
+                print(f"    evaluate: {_humanize_evaluate_type(ev.type)}")
+                if ev.prompt:
                     print("      prompt:")
                     for line in ev.prompt.strip().splitlines():
                         print(f"    \u2502 {line}")
-                else:
-                    ev_lines = ev.prompt.strip().splitlines()
-                    preview = ev_lines[0][:100] + (
-                        " ..." if len(ev_lines) > 1 or len(ev_lines[0]) > 100 else ""
-                    )
-                    print(f"      prompt: {preview}")
-            if ev.min_confidence != 0.5:
-                print(f"      min_confidence: {ev.min_confidence}")
-            if ev.operator:
-                print(f"      operator: {ev.operator} {ev.target}")
-            if ev.pattern:
-                print(f"      pattern: {ev.pattern}")
-        if state.capture:
-            print(f"    capture: {state.capture}")
-        if state.timeout:
-            print(f"    timeout: {state.timeout}s")
-        # Collect (label, target) pairs
-        raw_transitions: list[tuple[str, str]] = []
-        for label, target in [
-            ("success", state.on_success),
-            ("failure", state.on_failure),
-            ("error", state.on_error),
-            ("partial", state.on_partial),
-            ("next", state.next),
-            ("maintain", state.on_maintain),
-        ]:
-            if target:
-                raw_transitions.append((label, target))
-        if state.route:
-            for verdict, target in state.route.routes.items():
-                raw_transitions.append((verdict, target))
-            if state.route.default:
-                raw_transitions.append(("_", state.route.default))
-        # Group by target, preserving first-seen order
-        target_labels: dict[str, list[str]] = {}
-        seen_targets: list[str] = []
-        for label, target in raw_transitions:
-            if target not in target_labels:
-                target_labels[target] = []
-                seen_targets.append(target)
-            target_labels[target].append(label)
-        transitions = [
-            f"{_colorize_label('/'.join(target_labels[t]))} \u2500\u2500\u2192 {t}"
-            for t in seen_targets
-        ]
-        if transitions:
-            print("    Transitions:")
-            for t in transitions:
-                print(f"      {t}")
+                if ev.min_confidence != 0.5:
+                    print(f"      min_confidence: {ev.min_confidence}")
+                if ev.operator:
+                    print(f"      operator: {ev.operator} {ev.target}")
+                if ev.pattern:
+                    print(f"      pattern: {ev.pattern}")
+            if state.capture:
+                print(f"    capture: {state.capture}")
+            if state.timeout:
+                print(f"    timeout: {state.timeout}s")
+            # Collect (label, target) pairs
+            raw_transitions: list[tuple[str, str]] = []
+            for label, target in [
+                ("success", state.on_success),
+                ("failure", state.on_failure),
+                ("error", state.on_error),
+                ("partial", state.on_partial),
+                ("next", state.next),
+                ("maintain", state.on_maintain),
+            ]:
+                if target:
+                    raw_transitions.append((label, target))
+            if state.route:
+                for verdict, target in state.route.routes.items():
+                    raw_transitions.append((verdict, target))
+                if state.route.default:
+                    raw_transitions.append(("_", state.route.default))
+            # Group by target, preserving first-seen order
+            target_labels: dict[str, list[str]] = {}
+            seen_targets: list[str] = []
+            for label, target in raw_transitions:
+                if target not in target_labels:
+                    target_labels[target] = []
+                    seen_targets.append(target)
+                target_labels[target].append(label)
+            transitions = [
+                f"{_colorize_label('/'.join(target_labels[t]))} \u2500\u2500\u2192 {t}"
+                for t in seen_targets
+            ]
+            if transitions:
+                print("    Transitions:")
+                for t in transitions:
+                    print(f"      {t}")
 
     # --- Commands ---
     print()
