@@ -2777,6 +2777,7 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 |-------------|-------------|
 | `next-id` | Print next globally unique issue number |
 | `list` | List active issues with optional type/priority filters |
+| `count` | Count active issues with optional filters (`--type`, `--priority`, `--json`) |
 | `show` | Show summary card for a single issue |
 | `sequence` | Suggest dependency-ordered implementation sequence |
 | `impact-effort` | Display impact vs effort matrix for active issues |

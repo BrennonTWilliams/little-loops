@@ -1036,6 +1036,172 @@ class TestIssuesCLIShow:
         assert "History:" not in captured.out
 
 
+class TestIssuesCLICount:
+    """Tests for ll-issues count sub-command."""
+
+    def test_count_all_issues(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count outputs total number of active issues."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "count", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "5"
+
+    def test_count_filter_by_type(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count --type BUG shows only bug count."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "count", "--type", "BUG", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "3"
+
+    def test_count_filter_by_priority(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count --priority P0 shows only P0 count."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "count", "--priority", "P0", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "1"
+
+    def test_count_json_output(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count --json outputs valid JSON with total, by_type, and by_priority."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "count", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["total"] == 5
+        assert data["by_type"]["BUG"] == 3
+        assert data["by_type"]["FEAT"] == 2
+        assert data["by_type"]["ENH"] == 0
+        assert data["by_priority"]["P0"] == 1
+        assert data["by_priority"]["P1"] == 2
+        assert data["by_priority"]["P2"] == 2
+
+    def test_count_json_with_type_filter(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count --type BUG --json filters JSON output to bugs only."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "count", "--type", "BUG", "--json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert data["total"] == 3
+        assert data["by_type"]["BUG"] == 3
+        assert data["by_type"]["FEAT"] == 0
+
+    def test_count_empty_project(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count with no issues outputs 0."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+        (temp_project_dir / ".issues" / "bugs").mkdir(parents=True)
+
+        with patch.object(sys, "argv", ["ll-issues", "count", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "0"
+
+    def test_count_alias_c(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """count alias 'c' works the same as 'count'."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(sys, "argv", ["ll-issues", "c", "--config", str(temp_project_dir)]):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert captured.out.strip() == "5"
+
+
 class TestIssuesCLIHelp:
     """Tests for ll-issues help and no-command behavior."""
 

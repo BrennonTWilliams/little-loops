@@ -341,6 +341,17 @@ List active issues with optional filters.
 | `--json` | Output as JSON array |
 | `--config` | Path to project root |
 
+#### `ll-issues count` / `ll-issues c`
+
+Count active issues. Outputs a single integer by default, or a JSON object with breakdowns.
+
+| Flag | Description |
+|------|-------------|
+| `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
+| `--priority` | Filter by priority: `P0`–`P5` |
+| `--json` | Output JSON with `total`, `by_type`, and `by_priority` breakdowns |
+| `--config` | Path to project root |
+
 #### `ll-issues show <issue_id>` / `ll-issues s <issue_id>`
 
 Show summary card for a single issue. Accepts short form (`518`), type-prefixed (`FEAT-518`), or full (`P3-FEAT-518`).
@@ -377,6 +388,9 @@ ll-issues next-id
 ll-issues list --type FEAT --priority P2
 ll-issues list --json                         # JSON array of all active issues
 ll-issues list --type BUG --json             # JSON filtered by type
+ll-issues count                              # Total active issue count
+ll-issues count --json                       # JSON with breakdowns
+ll-issues count --type BUG                   # Count bugs only
 ll-issues show FEAT-518
 ll-issues show 518
 ll-issues sequence --limit 10

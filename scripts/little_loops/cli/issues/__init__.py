@@ -14,6 +14,7 @@ def main_issues() -> int:
     Returns:
         Exit code (0 = success, 1 = error)
     """
+    from little_loops.cli.issues.count_cmd import cmd_count
     from little_loops.cli.issues.impact_effort import cmd_impact_effort
     from little_loops.cli.issues.list_cmd import cmd_list
     from little_loops.cli.issues.next_id import cmd_next_id
@@ -31,6 +32,7 @@ def main_issues() -> int:
 Sub-commands:
   next-id        Print next globally unique issue number
   list           List active issues with optional filters
+  count          Count active issues (total or filtered)
   show           Show summary card for a single issue
   sequence       Suggest dependency-ordered implementation sequence
   impact-effort  Display impact vs effort matrix for active issues
@@ -39,6 +41,9 @@ Sub-commands:
 Examples:
   %(prog)s next-id
   %(prog)s list --type FEAT --priority P2
+  %(prog)s count
+  %(prog)s count --json
+  %(prog)s count --type BUG
   %(prog)s show FEAT-518
   %(prog)s sequence --limit 10
   %(prog)s impact-effort
@@ -70,6 +75,17 @@ Examples:
     )
     ls.add_argument("--json", action="store_true", help="Output as JSON array")
     add_config_arg(ls)
+
+    cnt = subs.add_parser("count", aliases=["c"], help="Count active issues")
+    cnt.set_defaults(command="count")
+    cnt.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
+    cnt.add_argument(
+        "--priority",
+        choices=["P0", "P1", "P2", "P3", "P4", "P5"],
+        help="Filter by priority level",
+    )
+    cnt.add_argument("--json", action="store_true", help="Output as JSON with breakdowns")
+    add_config_arg(cnt)
 
     seq = subs.add_parser(
         "sequence", aliases=["seq"], help="Suggest implementation order based on dependencies"
@@ -133,6 +149,8 @@ Examples:
         return cmd_next_id(config)
     if args.command == "list":
         return cmd_list(config, args)
+    if args.command == "count":
+        return cmd_count(config, args)
     if args.command == "sequence":
         return cmd_sequence(config, args)
     if args.command == "show":
