@@ -26,6 +26,25 @@ Proactively offer or invoke this skill when the user:
 - Mentions missing or broken dependency links
 - Wants a dependency graph visualization
 
+## Arguments
+
+$ARGUMENTS
+
+Parse arguments for flags:
+
+```bash
+AUTO_MODE=false
+
+# Auto-enable in automation contexts
+if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]]; then AUTO_MODE=true; fi
+
+# Explicit flags
+if [[ "$ARGUMENTS" == *"--auto"* ]]; then AUTO_MODE=true; fi
+```
+
+- **flags** (optional):
+  - `--auto` - Non-interactive mode: apply all HIGH-confidence dependency proposals (≥0.7 conflict score) without prompting. Skip MEDIUM-confidence proposals.
+
 ## How to Use
 
 Run the `ll-deps` CLI command based on user needs:
@@ -86,6 +105,7 @@ ll-deps -d path/to/issues analyze
 | "Analyze deps for my sprint" | `ll-deps analyze --sprint <name>` |
 | "Validate sprint dependencies" | `ll-deps validate --sprint <name>` |
 | "Which issues conflict?" | `ll-deps analyze` |
+| "Map deps non-interactively" | `/ll:map-dependencies --auto` |
 
 ## Interpreting Results
 
@@ -116,6 +136,12 @@ Pairs with conflict score < 0.4 are reported as safe to run in parallel. These t
 ## Applying Proposals
 
 After reviewing the analysis output, if you want to apply proposed dependencies:
+
+### Auto Mode Behavior
+
+**When `AUTO_MODE` is true**: Skip the AskUserQuestion prompt below. Apply all HIGH-confidence proposals (conflict score ≥ 0.7) automatically. Skip MEDIUM-confidence proposals (conservative default). Emit one status line per applied proposal: `[SOURCE-ID] → [TARGET-ID]: dependency added (confidence: HIGH)`
+
+### Interactive Mode (default)
 
 1. Use AskUserQuestion to confirm which proposals to apply:
    - "Apply all" — write all proposed dependencies

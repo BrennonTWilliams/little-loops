@@ -11,6 +11,9 @@ arguments:
   - name: issue_id
     description: Optional specific issue ID to verify
     required: false
+  - name: flags
+    description: "Optional flags: --auto (non-interactive, apply all non-destructive changes without prompting)"
+    required: false
 ---
 
 # Verify Issues
@@ -24,6 +27,21 @@ This command uses project configuration from `.claude/ll-config.json`:
 - **Source directory**: `{{config.project.src_dir}}`
 
 ## Process
+
+### 0. Parse Flags
+
+```bash
+ISSUE_ID="${issue_id:-}"
+FLAGS="${flags:-}"
+AUTO_MODE=false
+
+# Auto-enable auto mode in automation contexts
+if [[ "$FLAGS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then
+    AUTO_MODE=true
+fi
+
+if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
+```
 
 ### 1. Find Issues to Verify
 
@@ -96,6 +114,8 @@ When an issue matches a completed issue, perform regression analysis:
    - Days since original fix
 
 ### 3. Request User Approval
+
+**Skip this section if `AUTO_MODE` is true.** In auto mode, proceed directly to Phase 4, applying all non-destructive changes (verification notes, line number updates). Skip moving resolved issues to completed/ in auto mode (destructive action requires explicit approval).
 
 Before making any changes, present the verification results to the user:
 
@@ -201,6 +221,9 @@ $ARGUMENTS
   - If provided, verifies only that specific issue
   - If omitted, verifies all open issues
 
+- **flags** (optional): Command behavior flags
+  - `--auto` - Non-interactive mode: apply all non-destructive changes (verification notes, line number updates) without prompting. Skips moving resolved issues to completed/ (requires explicit approval).
+
 ---
 
 ## Examples
@@ -211,6 +234,12 @@ $ARGUMENTS
 
 # Verify a specific issue
 /ll:verify-issues BUG-042
+
+# Non-interactive mode (for FSM loop actions)
+/ll:verify-issues --auto
+
+# Verify a specific issue non-interactively
+/ll:verify-issues BUG-042 --auto
 
 # After verification, process resolved issues
 /ll:manage-issue bug fix RESOLVED-ISSUE-ID

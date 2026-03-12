@@ -158,7 +158,26 @@ Exit non-zero only on hard errors; partial success exits zero with summary.
 - `/ll:refine-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/10685d70-4d1f-420f-be75-81a4b4fefe36.jsonl`
 - `/ll:ready-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4915946-638f-4f1b-8cd6-6502108d230b.jsonl`
 - `/ll:confidence-check` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b4915946-638f-4f1b-8cd6-6502108d230b.jsonl`
+- `/ll:manage-issue` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/45358110-356e-4957-9ed5-e2169fe080ed.jsonl`
 
+
+---
+
+## Resolution
+
+- **Status**: Completed
+- **Completed**: 2026-03-12
+- **Action**: implement
+
+### Changes Made
+- `commands/verify-issues.md`: Added `flags` argument to frontmatter, Pattern A flag parsing (`### 0. Parse Flags`), gated `### 3. Request User Approval` behind `AUTO_MODE`, added `--auto` to Arguments and Examples
+- `skills/map-dependencies/SKILL.md`: Added `## Arguments` section with Pattern B `$ARGUMENTS` parsing, gated AskUserQuestion in `## Applying Proposals` behind `AUTO_MODE` (HIGH-confidence only in auto mode), added `--auto` to Examples
+- `skills/issue-size-review/SKILL.md`: Added `## Arguments` section with Pattern B `$ARGUMENTS` parsing and issue ID extraction, gated `### Phase 4: User Approval` behind `AUTO_MODE` (Very Large ≥8 only in auto mode), added `--auto` to Examples
+
+### Auto-Mode Conservative Defaults
+- **verify-issues**: Apply non-destructive updates; skip moving resolved issues
+- **map-dependencies**: Apply HIGH-confidence proposals (≥0.7); skip MEDIUM
+- **issue-size-review**: Auto-decompose Very Large (≥8); skip Large (5-7)
 
 ## Blocked By
 - ~~BUG-656~~ (resolved)

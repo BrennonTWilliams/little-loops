@@ -32,6 +32,35 @@ Invoke this skill to review all active issues:
 /ll:issue-size-review
 ```
 
+## Arguments
+
+$ARGUMENTS
+
+Parse arguments for flags:
+
+```bash
+ISSUE_ID=""
+AUTO_MODE=false
+
+# Auto-enable in automation contexts
+if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]]; then AUTO_MODE=true; fi
+
+# Explicit flags
+if [[ "$ARGUMENTS" == *"--auto"* ]]; then AUTO_MODE=true; fi
+
+# Extract issue ID (non-flag argument)
+for token in $ARGUMENTS; do
+    case "$token" in
+        --*) ;; # skip flags
+        *) ISSUE_ID="$token" ;;
+    esac
+done
+```
+
+- **issue_id** (optional): Specific issue ID to review (e.g., `ENH-179`)
+- **flags** (optional):
+  - `--auto` - Non-interactive mode: auto-decompose only Very Large issues (score ≥ 8) where decomposition is unambiguous. Skip Large issues (5-7) as ambiguous. Emit one status line per issue: `[ID] [action]: [summary]`
+
 ## Workflow
 
 The skill follows a 5-phase workflow:
@@ -93,6 +122,12 @@ For each candidate issue:
    ```
 
 ### Phase 4: User Approval
+
+#### Auto Mode Behavior
+
+**When `AUTO_MODE` is true**: Skip the AskUserQuestion prompts below. Auto-approve decomposition only for Very Large issues (score ≥ 8) where the decomposition is unambiguous (distinct sub-tasks with clear boundaries). Skip Large issues (score 5-7) as ambiguous — flag them in the output but do not decompose. Emit one status line per issue: `[ID] decomposed: N child issues` or `[ID] skipped: score X (ambiguous)`.
+
+#### Interactive Mode (default)
 
 For each decomposition proposal, use AskUserQuestion:
 
@@ -248,6 +283,7 @@ ISSUE SIZE REVIEW
 | "Sprint planning - need smaller tasks" | Run issue size review |
 | "Review issue complexity" | Run issue size review |
 | "Can we split ENH-179?" | Run issue size review targeting ENH-179 |
+| "Review sizes non-interactively" | `/ll:issue-size-review --auto` |
 
 ## Size Thresholds
 
