@@ -3,7 +3,10 @@ type: BUG
 id: BUG-656
 title: init --interactive does not create .issues directory structure
 priority: P3
-status: open
+status: completed
+completed_date: 2026-03-12
+completed_by: manual-review
+resolution: Fixed by refactoring — interactive.md now silently auto-detects or defaults to .issues/, mkdir runs unconditionally in SKILL.md Step 8
 discovered_date: 2026-03-08
 discovered_by: capture-issue
 confidence_score: 100
