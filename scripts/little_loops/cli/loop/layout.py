@@ -602,6 +602,44 @@ def _render_layered_diagram(
         all_states, display_label, fsm_states, verbose, max_box_inner
     )
 
+    # Post-hoc layer merge: re-merge adjacent single-state layers that were
+    # over-split by the conservative max_width_per_layer estimate.  Only merge
+    # when both layers receive an edge from the same source state (indicating
+    # they were originally one layer split by width constraint).
+    available_w = tw - 20  # conservative content-area estimate
+    gap_between = 6
+    # Build edge target sets: for each state, which earlier states point to it
+    _incoming: dict[str, set[str]] = {s: set() for layer in layers for s in layer}
+    for src, dst, _ in edges:
+        if src != dst and dst in _incoming:
+            _incoming[dst].add(src)
+    merged = True
+    while merged:
+        merged = False
+        i = 0
+        while i < len(layers) - 1:
+            la, lb = layers[i], layers[i + 1]
+            # Only merge single-state layers that share an incoming source
+            if len(la) == 1 and len(lb) == 1:
+                sources_a = _incoming.get(la[0], set())
+                sources_b = _incoming.get(lb[0], set())
+                shared_source = sources_a & sources_b
+            else:
+                shared_source = set()
+            combined_w = (
+                sum(box_width[s] for s in la)
+                + gap_between * (len(la) - 1)
+                + gap_between
+                + sum(box_width[s] for s in lb)
+                + gap_between * (len(lb) - 1)
+            )
+            if shared_source and combined_w <= available_w and len(la) + len(lb) <= 4:
+                layers[i] = la + lb
+                layers.pop(i + 1)
+                merged = True
+            else:
+                i += 1
+
     # Collect ALL non-self-loop forward edge labels (main + branches + same-depth back-edges)
     # Multiple edges between the same pair are combined as "label1/label2"
     forward_edge_labels: dict[tuple[str, str], str] = {}
