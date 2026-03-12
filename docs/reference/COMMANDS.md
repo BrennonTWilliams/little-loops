@@ -342,6 +342,16 @@ Analyze user message history to suggest FSM loop configurations automatically.
 
 **Trigger keywords:** "suggest loops", "loop from history", "automate workflow"
 
+### `/ll:review-loop`
+Review an existing FSM loop configuration for quality, correctness, consistency, and potential improvements. Analyzes all states and transitions, reports findings by severity (Error/Warning/Suggestion), proposes concrete fixes with before/after diffs, and applies approved changes.
+
+**Arguments:**
+- `loop_name` (optional): Name or path of the loop to review. If omitted, lists available loops to pick from.
+
+**Flags:** `--auto` (apply safe fixes automatically), `--dry-run` (report only, no changes)
+
+**See also:** `/ll:create-loop`, `ll-loop validate`, `ll-loop show`
+
 ### `/ll:workflow-automation-proposer`
 Synthesize workflow patterns into concrete automation proposals. Final step (Step 3) of the `/ll:analyze-workflows` pipeline.
 
@@ -394,6 +404,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `resume` | Resume from continuation prompt |
 | `create-loop` | Interactive FSM loop creation |
 | `loop-suggester` | Suggest loops from message history |
+| `review-loop` | Review and improve existing FSM loop configurations |
 | `workflow-automation-proposer` | Synthesize workflow patterns into automation proposals |
 | `create-sprint` | Create sprint with curated issue list |
 | `review-sprint` | Review sprint health and suggest improvements |
