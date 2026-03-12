@@ -93,9 +93,20 @@ This is the same pattern already used by `capture-issue` when creating issues.
 
 `bug`, `captured`, `skill`
 
+## Verification Notes
+
+**Verdict: RESOLVED** — The described bug does not exist in the current codebase. The `manage-issue` skill already includes Phase 5, step 1.5 ("Append Session Log Entry") in `skills/manage-issue/SKILL.md:385-389`, with full format documentation in `skills/manage-issue/templates.md:331-340`. This has been present since the skill file was created (commit `d975158`, 2026-02-13). Grep confirms session logs are present across 24+ completed issues.
+
+## Resolution
+
+- **Status**: Resolved (invalid — feature already exists)
+- **Verified by**: `/ll:verify-issues`
+- **Date**: 2026-03-11
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f09a701-d8cd-451a-aa37-9972ec066ddc.jsonl`
+- `/ll:verify-issues` - 2026-03-11T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e2050bf-957a-4055-a5ee-c894a143d00a.jsonl`
 
 ---
 ## Status
-**Open** | Created: 2026-03-11 | Priority: P3
+**Resolved** | Created: 2026-03-11 | Priority: P3
