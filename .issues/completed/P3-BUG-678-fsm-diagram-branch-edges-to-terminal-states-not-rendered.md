@@ -157,8 +157,16 @@ Extend the margin calculation at `layout.py:659-661` to account for right-margin
 - `/ll:refine-issue` - 2026-03-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c12ab473-91e6-418f-9bc2-afa5200c5133.jsonl`
 - `/ll:ready-issue` - 2026-03-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ce22b31f-c86d-405e-81b7-51f36fa9812d.jsonl`
 
+## Resolution
+
+**Fixed** — Added right-margin forward-skip edge renderer in `layout.py`, symmetric to the existing left-margin back-edge renderer. Forward edges spanning 2+ layers are now rendered with right-margin vertical pipes, horizontal connectors, corner glyphs, `◀` arrowheads, and labels.
+
+### Changes
+- `scripts/little_loops/cli/loop/layout.py` — Added skip-forward edge identification, right margin width pre-computation, and right-margin rendering block (~60 lines)
+- `scripts/tests/test_ll_loop_display.py` — Added regression test `test_branch_to_terminal_skip_layer_renders_edge`
+
 ---
 
 ## Status
 
-**Open** | Created: 2026-03-12 | Priority: P3
+**Resolved** | Created: 2026-03-12 | Resolved: 2026-03-12 | Priority: P3

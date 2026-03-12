@@ -1032,6 +1032,46 @@ class TestRenderFsmDiagram:
             box_lines = [ln for ln in result.split("\n") if state in ln and "│" in ln]
             assert box_lines, f"{state!r} should be rendered in a box"
 
+    def test_branch_to_terminal_skip_layer_renders_edge(self) -> None:
+        """Branch edge to terminal state spanning multiple layers renders as right-margin edge.
+
+        Regression test (BUG-678): when a branch edge (on_failure/on_error)
+        targets a terminal state that is 2+ layers away, the forward skip-layer
+        edge must render as a right-margin arrow, not be silently dropped.
+
+        Topology: start → work → evaluate → commit → cleanup → done
+        with evaluate.on_failure → done.  Longest-path assignment places
+        done at layer 5 (via cleanup), making evaluate(2) → done(5) a
+        forward skip-layer edge spanning 3 layers.
+        """
+        fsm = self._make_fsm(
+            initial="start",
+            states={
+                "start": StateConfig(action="scan", on_success="work"),
+                "work": StateConfig(action="do", on_success="evaluate"),
+                "evaluate": StateConfig(
+                    action="check", on_success="commit", on_failure="done"
+                ),
+                "commit": StateConfig(action="save", on_success="cleanup"),
+                "cleanup": StateConfig(action="tidy", on_success="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+
+        # Right-margin corner characters for forward skip-layer edge
+        assert "┐" in result or "┘" in result or "┤" in result, (
+            f"Forward skip-layer edge should render right-margin corners.\n{result}"
+        )
+        # The ◀ connector entering the target box from the right
+        assert "◀" in result, (
+            f"Forward skip-layer edge should have ◀ connector.\n{result}"
+        )
+        # All states should be visible
+        for state in ("start", "work", "evaluate", "commit", "cleanup", "done"):
+            box_lines = [ln for ln in result.split("\n") if state in ln and "│" in ln]
+            assert box_lines, f"{state!r} should be rendered in a box"
+
     def test_highlighted_state_uses_configured_color(self) -> None:
         """highlight_state box uses the configured ANSI color; other boxes do not."""
         import little_loops.cli.output as output_mod

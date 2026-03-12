@@ -758,12 +758,26 @@ def _render_layered_diagram(
             back_edge_margin = actual_margin
             content_left = 2 + back_edge_margin
 
+    # Identify forward skip-layer edges (span > 1 layer, not handled by consecutive renderer)
+    skip_forward_edges: list[tuple[str, str, str]] = []
+    for (src, dst), lbl in forward_edge_labels.items():
+        src_layer = layer_of.get(src, -1)
+        dst_layer = layer_of.get(dst, -1)
+        if dst_layer > src_layer + 1:
+            skip_forward_edges.append((src, dst, lbl))
+
+    # Pre-compute right margin width for forward skip-layer edges
+    right_edge_margin = 0
+    if skip_forward_edges:
+        max_fwd_label_len = max(len(lbl) for _, _, lbl in skip_forward_edges)
+        right_edge_margin = max_fwd_label_len + 6
+
     # Compute total width needed
     total_content_w = 0
     for s in all_states:
         right = col_start[s] + box_width[s]
         total_content_w = max(total_content_w, right)
-    total_width = max(total_content_w + 4, tw)
+    total_width = max(total_content_w + right_edge_margin + 4, tw)
 
     # Compute vertical positions with space for self-loops and inter-layer arrows
     row_start: dict[str, int] = {}
@@ -974,6 +988,85 @@ def _render_layered_diagram(
                 for j, ch in enumerate(label):
                     if label_start + j < content_left - 1 and label_start + j < total_width:
                         grid[label_row_pos][label_start + j] = ch
+
+    # Forward skip-layer edges: right-margin vertical arrows with labels
+    # Symmetric to the left-margin back-edge renderer above
+    if skip_forward_edges:
+        sorted_fwd_skip = sorted(
+            skip_forward_edges,
+            key=lambda e: abs(row_start.get(e[0], 0) - row_start.get(e[1], 0)),
+            reverse=True,
+        )
+        used_fwd_cols: list[int] = []
+        # Leftmost pipe column (closest to content) for label placement
+        leftmost_pipe_col = total_content_w + 2
+
+        for src, dst, label in sorted_fwd_skip:
+            src_row = row_start.get(src, 0) + 1  # name row
+            dst_row = row_start.get(dst, 0) + 1  # name row
+
+            # Allocate column in right margin (starting from content edge, going right)
+            col = total_content_w + 2
+            for uc in sorted(used_fwd_cols):
+                if uc == col:
+                    col += 2
+            used_fwd_cols.append(col)
+
+            if col >= total_width:
+                continue
+
+            top_row = min(src_row, dst_row)
+            bot_row = max(src_row, dst_row)
+
+            # Draw vertical line in right margin
+            for r in range(top_row, bot_row + 1):
+                if 0 <= r < total_height and col < total_width:
+                    grid[r][col] = "\u2502"
+
+            # Horizontal connector from source box right side to margin
+            # Draw from pipe inward, stopping at first non-empty cell
+            src_right = col_start.get(src, 0) + box_width.get(src, 0)
+            if 0 <= src_row < total_height:
+                for c in range(col - 1, src_right - 1, -1):
+                    if 0 <= c < total_width:
+                        if grid[src_row][c] != " ":
+                            break
+                        grid[src_row][c] = "\u2500"
+
+            # Horizontal connector from margin to destination box right side
+            dst_right = col_start.get(dst, 0) + box_width.get(dst, 0)
+            if 0 <= dst_row < total_height:
+                for c in range(col - 1, dst_right - 1, -1):
+                    if 0 <= c < total_width:
+                        if grid[dst_row][c] != " ":
+                            break
+                        grid[dst_row][c] = "\u2500"
+
+            # Corner characters at pipe-to-horizontal turn points
+            for row in (src_row, dst_row):
+                if 0 <= row < total_height and col < total_width:
+                    existing = grid[row][col]
+                    if row == bot_row:
+                        # Pipe ends, turns left: ┘; if horizontal crosses: ┤
+                        grid[row][col] = "\u2524" if existing == "\u2500" else "\u2518"
+                    else:  # row == top_row
+                        # Pipe starts going down, turns left: ┐; if horizontal crosses: ┤
+                        grid[row][col] = "\u2524" if existing == "\u2500" else "\u2510"
+
+            # Arrow tip at target: ◀ entering box from right side
+            if 0 <= dst_row < total_height and dst_right < col and dst_right < total_width:
+                grid[dst_row][dst_right] = "\u25c0"
+
+            # Label on the margin line (left of ALL pipes)
+            label_row_pos = (top_row + bot_row) // 2
+            if 0 <= label_row_pos < total_height:
+                # Place label right-aligned just left of the leftmost pipe
+                label_end = leftmost_pipe_col - 1
+                label_start_pos = label_end - len(label)
+                for j, ch in enumerate(label):
+                    pos = label_start_pos + j
+                    if 0 <= pos < total_width:
+                        grid[label_row_pos][pos] = ch
 
     # Convert grid to string
     lines = ["".join(row).rstrip() for row in grid]
