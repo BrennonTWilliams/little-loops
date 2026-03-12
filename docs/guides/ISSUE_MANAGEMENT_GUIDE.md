@@ -218,6 +218,8 @@ Reads each issue and tests its claims against the actual codebase. Checks that:
 
 Flags issues with incorrect claims (file moved, function renamed, behavior already fixed) and either updates them or recommends closure. Run this before a sprint to avoid implementing against stale information.
 
+**Flags:** `--auto` — non-interactive mode for FSM loop automation. Skips user approval and does not move resolved issues.
+
 ### Pruning Low-Value Issues
 
 ```
@@ -279,6 +281,8 @@ Both scores are persisted to the issue's frontmatter as `confidence_score` and `
 
 Reviews active issues for scope. Issues estimated at more than one session's work (typically >4 hours or >~200 LOC) are flagged for decomposition. The skill proposes how to split them: identifying a core issue and N satellite issues that can each be implemented independently.
 
+**Flags:** `--auto` — non-interactive mode for FSM loop automation. Auto-decomposes only issues scoring >=8.
+
 Decomposed issues reference each other via the `blocked_by` field. Implementing in dependency order prevents integration conflicts.
 
 ### Dependency Mapping
@@ -293,6 +297,8 @@ Analyzes active issues for cross-issue dependencies based on shared file overlap
 - Identifies contention hotspots (many issues touching the same file)
 
 Run this before sprint planning. Issues with unresolved dependencies shouldn't be batched for parallel execution — they'll conflict at merge time.
+
+**Flags:** `--auto` — non-interactive mode for FSM loop automation. Applies only HIGH-confidence proposals.
 
 ---
 
