@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.39.0] - 2026-03-11
+
+### Added
+
+- **Adaptive layout engine for FSM diagrams** - New layout engine that automatically adjusts FSM diagram geometry based on graph structure (5f2df71)
+- **`--json` flag for `ll-issues`, `ll-loop`, and `ll-sprint` list commands** - Machine-readable JSON output for all list subcommands (7f88574, 8477dda)
+
+### Fixed
+
+- **FSM back-edge rendering: corner characters and arrow direction** - Corrected corner chars and arrow direction for back-edge pipes; consolidated three successive fix iterations (8c35e70, 48703d5, 3f33e0b)
+
+### Changed
+
+- **Remove deprecated paradigm compilation system** - Removed `compile_paradigm` from FSM engine runtime load path and deleted deprecated paradigm compilation code (09c83ab, d0692bd)
+- **Remove 4 Paradigms concept from docs** - Updated all documentation to reflect FSM YAML as the canonical loop format (c6021ef)
+
 ## [1.38.0] - 2026-03-09
 
 ### Added
@@ -1129,6 +1145,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.39.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.38.0...v1.39.0
 [1.38.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.37.3...v1.38.0
 [1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
 [1.33.1]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.0...v1.33.1
