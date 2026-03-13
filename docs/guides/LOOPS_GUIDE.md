@@ -306,6 +306,73 @@ The `simulate` command accepts `--scenario` to auto-select verdicts instead of p
 | `first-fail` | First evaluation fails, rest succeed |
 | `alternating` | Alternates between success and failure |
 
+## Pattern: Using `--check` with Exit Code Evaluators
+
+Issue prep skills (`format-issue`, `verify-issues`, `ready-issue`, `confidence-check`, `issue-size-review`, `map-dependencies`, `normalize-issues`, `prioritize-issues`) support a `--check` flag that runs analysis without side effects and exits non-zero when work remains. This makes them usable as FSM loop evaluators with `evaluate: type: exit_code`.
+
+**Important**: Since `/ll:` commands are auto-detected as prompt actions by the executor, states using `--check` must explicitly set `evaluate: type: exit_code` to bypass LLM-structured evaluation.
+
+### Example: Prep-Sprint Invariants Loop
+
+```yaml
+name: prep-sprint
+description: |
+  Ensure all active issues pass prep gates before sprint planning.
+  Checks format compliance, verification, sizing, dependencies, and readiness.
+initial: check-format
+states:
+  check-format:
+    action: "/ll:format-issue --all --check"
+    action_type: slash_command
+    evaluate:
+      type: exit_code
+    on_success: check-verify
+    on_failure: fix-format
+  fix-format:
+    action: "/ll:format-issue --all --auto"
+    action_type: slash_command
+    next: check-format
+  check-verify:
+    action: "/ll:verify-issues --check"
+    action_type: slash_command
+    evaluate:
+      type: exit_code
+    on_success: check-size
+    on_failure: fix-verify
+  fix-verify:
+    action: "Run /ll:verify-issues --auto to fix verification issues."
+    action_type: prompt
+    next: check-verify
+  check-size:
+    action: "/ll:issue-size-review --check"
+    action_type: slash_command
+    evaluate:
+      type: exit_code
+    on_success: check-deps
+    on_failure: fix-size
+  fix-size:
+    action: "Run /ll:issue-size-review --auto to decompose oversized issues."
+    action_type: prompt
+    next: check-size
+  check-deps:
+    action: "/ll:map-dependencies --check"
+    action_type: slash_command
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: fix-deps
+  fix-deps:
+    action: "/ll:map-dependencies --auto"
+    action_type: slash_command
+    next: check-deps
+  done:
+    terminal: true
+max_iterations: 20
+timeout: 3600
+```
+
+Each `check-*` state uses `evaluate: type: exit_code` to route on the skill's exit code (0=success, 1=failure). The corresponding `fix-*` states run the skill in auto mode to remediate, then loop back to re-check.
+
 ## Tips
 
 - **Start with low `max_iterations`** (5-10) while developing a loop. Increase once the logic is proven.

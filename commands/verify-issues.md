@@ -34,6 +34,7 @@ This command uses project configuration from `.claude/ll-config.json`:
 ISSUE_ID="${issue_id:-}"
 FLAGS="${flags:-}"
 AUTO_MODE=false
+CHECK_MODE=false
 
 # Auto-enable auto mode in automation contexts
 if [[ "$FLAGS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then
@@ -41,6 +42,7 @@ if [[ "$FLAGS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${DANGEROUSLY_
 fi
 
 if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
+if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 ```
 
 ### 1. Find Issues to Verify
@@ -112,6 +114,10 @@ When an issue matches a completed issue, perform regression analysis:
    - Files modified since fix
    - Related commits that touched the fixed files
    - Days since original fix
+
+### 2.5. Check Mode Behavior (--check)
+
+**When `CHECK_MODE` is true**: Run all verification logic (sections 2A-2E) without writing changes. For each issue with a non-VALID verdict, print `[ID] verify: [verdict]`. After all issues checked, if any were non-VALID: print `N issues not verified`, then `exit 1`. If all VALID: print `All issues verified`, then `exit 0`. This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
 
 ### 3. Request User Approval
 
@@ -223,6 +229,7 @@ $ARGUMENTS
 
 - **flags** (optional): Command behavior flags
   - `--auto` - Non-interactive mode: apply all non-destructive changes (verification notes, line number updates) without prompting. Skips moving resolved issues to completed/ (requires explicit approval).
+  - `--check` — Check-only mode for FSM loop evaluators. Run verification without applying changes, print `[ID] verify: [verdict]` per non-VALID issue, exit 1 if any non-VALID, exit 0 if all valid. Implies `--auto`.
 
 ---
 
@@ -240,6 +247,10 @@ $ARGUMENTS
 
 # Verify a specific issue non-interactively
 /ll:verify-issues BUG-042 --auto
+
+# Check-only mode for FSM loop evaluators (exit 0 if all pass, exit 1 if any fail)
+/ll:verify-issues --check
+/ll:verify-issues BUG-042 --check
 
 # After verification, process resolved issues
 /ll:manage-issue bug fix RESOLVED-ISSUE-ID

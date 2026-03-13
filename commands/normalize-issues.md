@@ -5,6 +5,10 @@ allowed-tools:
   - Glob
   - Edit
   - Bash(git:*, ll-issues:*)
+arguments:
+  - name: flags
+    description: "Optional flags: --auto (non-interactive), --check (check-only for FSM evaluators)"
+    required: false
 ---
 
 # Normalize Issues
@@ -39,6 +43,31 @@ Issue files must follow the naming pattern `P[0-5]-[PREFIX]-[NNN]-[slug].md` whe
 - This breaks automation tools that expect a flat completed/ sibling directory
 
 ## Process
+
+### -1. Parse Flags
+
+```bash
+FLAGS="${flags:-}"
+AUTO_MODE=false
+CHECK_MODE=false
+
+# Auto-enable auto mode in automation contexts
+if [[ "$FLAGS" == *"--dangerously-skip-permissions"* ]] || [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then
+    AUTO_MODE=true
+fi
+
+if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
+if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
+```
+
+### -0.5. Check Mode Behavior (--check)
+
+**When `CHECK_MODE` is true**: Scan for directory structure violations (step 0), invalid filenames (step 1), and duplicate IDs (step 1b) without applying fixes. For each violation, print one line:
+- `[dir] structure: [violation description]` for directory violations
+- `[filename] normalize: missing valid ID` for missing IDs
+- `[ID] normalize: duplicate across [types]` for duplicate IDs
+
+After scanning, if any violations found: print `N normalization issues found`, then `exit 1`. If clean: print `All issues normalized`, then `exit 0`. This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
 
 ### 0. Validate Directory Structure
 
@@ -377,11 +406,25 @@ The `.issues/` directory must follow this structure:
 
 ---
 
+## Arguments
+
+$ARGUMENTS
+
+- **flags** (optional): Command behavior flags
+  - `--auto` - Non-interactive mode: apply all normalization changes without prompting
+  - `--check` — Check-only mode for FSM loop evaluators. Scan for violations without fixing, print one line per issue, exit 1 if any found, exit 0 if clean. Implies `--auto`.
+
 ## Examples
 
 ```bash
 # Find and fix all invalid issue filenames
 /ll:normalize-issues
+
+# Check-only mode for FSM loop evaluators (exit 0 if clean, exit 1 if violations)
+/ll:normalize-issues --check
+
+# Non-interactive mode (apply fixes without prompting)
+/ll:normalize-issues --auto
 
 # After normalization, verify and commit
 /ll:verify-issues

@@ -37,6 +37,7 @@ Parse arguments for issue ID and flags:
 ISSUE_ID=""
 AUTO_MODE=false
 ALL_MODE=false
+CHECK_MODE=false
 
 # Auto-enable in automation contexts
 if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]]; then AUTO_MODE=true; fi
@@ -44,6 +45,7 @@ if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]]; then AUTO_MODE=true
 # Explicit flags
 if [[ "$ARGUMENTS" == *"--auto"* ]]; then AUTO_MODE=true; fi
 if [[ "$ARGUMENTS" == *"--all"* ]]; then ALL_MODE=true; fi
+if [[ "$ARGUMENTS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 
 # Extract issue ID (non-flag argument)
 for token in $ARGUMENTS; do
@@ -74,6 +76,7 @@ fi
 - **flags** (optional): Command behavior flags
   - `--auto` — Non-interactive mode (skip user prompts, use defaults)
   - `--all` — Evaluate all active issues (bugs/, features/, enhancements/), skip completed/ and deferred/. Implies `--auto`.
+  - `--check` — Check-only mode for FSM loop evaluators. Run all evaluation logic without writes, print one line per failing issue (`[ID] check: score N/100 (below threshold)`), exit 1 if any fail, exit 0 if all pass. Implies `--auto`.
 
 ## Issue Discovery
 
@@ -410,6 +413,20 @@ When `AUTO_MODE` is true:
 When `AUTO_MODE` is false (interactive, single issue):
 - Behavior unchanged from current implementation
 
+### Check Mode Behavior (--check)
+
+When `CHECK_MODE` is true, run as an FSM loop evaluator:
+
+1. Run all evaluation logic (readiness + outcome confidence scoring) without writing to issue frontmatter
+2. For each issue evaluated:
+   - If readiness score < 70: print `[ID] check: score N/100 (below threshold)`
+   - If readiness score >= 70: skip (passes gate)
+3. After all issues evaluated:
+   - If any failed: print `N issues not ready`, then `exit 1`
+   - If all passed: print `All issues pass confidence check`, then `exit 0`
+
+This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
+
 ## Output Format
 
 ```
@@ -530,4 +547,8 @@ This skill is referenced in `/ll:manage-issue` Phase 2 as a recommended pre-plan
 
 # All active issues, explicit --auto (also works)
 /ll:confidence-check --all --auto
+
+# Check-only mode for FSM loop evaluators (exit 0 if all pass, exit 1 if any fail)
+/ll:confidence-check --all --check
+/ll:confidence-check ENH-277 --check
 ```

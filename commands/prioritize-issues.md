@@ -4,7 +4,10 @@ allowed-tools:
   - Read
   - Glob
   - Bash(git:*)
-
+arguments:
+  - name: flags
+    description: "Optional flags: --auto (non-interactive), --check (check-only for FSM evaluators)"
+    required: false
 ---
 
 # Prioritize Issues
@@ -34,10 +37,17 @@ This command uses project configuration from `.claude/ll-config.json`:
 ### 0. Parse Flags
 
 ```bash
+FLAGS="${flags:-}"
 AUTO_MODE=false
+CHECK_MODE=false
 if [[ -n "${DANGEROUSLY_SKIP_PERMISSIONS:-}" ]]; then AUTO_MODE=true; fi
 if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
+if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 ```
+
+### 0.5. Check Mode Behavior (--check)
+
+**When `CHECK_MODE` is true**: Scan for unprioritized issues (files without `P[0-5]-` prefix). For each unprioritized issue, print `[ID] priority: missing P[0-5] prefix`. After scanning, if any unprioritized: print `N issues not prioritized`, then `exit 1`. If all prioritized: print `All issues prioritized`, then `exit 0`. This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
 
 ### 1. Find Unprioritized Issues
 
@@ -206,6 +216,9 @@ git mv "{{config.issues.base_dir}}/[category]/[old-name].md" \
 ```bash
 # Prioritize all unprioritized issues
 /ll:prioritize-issues
+
+# Check-only mode for FSM loop evaluators (exit 0 if all prioritized, exit 1 if any missing)
+/ll:prioritize-issues --check
 
 # Then manage the highest priority
 /ll:manage-issue bug fix

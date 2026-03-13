@@ -40,6 +40,7 @@ $ARGUMENTS
   - `--auto` - Enable non-interactive auto-format mode (applies inferred changes without prompts)
   - `--all` - Process all active issues (bugs/, features/, enhancements/), skip completed/
   - `--dry-run` - Preview changes without applying them (no file modifications)
+  - `--check` — Check-only mode for FSM loop evaluators. Dry-run of auto mode: run analysis, print `[ID] format: N gaps found` per non-compliant issue, exit 1 if any gaps, exit 0 if all compliant. Implies `--auto --dry-run`.
 
 ## Process
 
@@ -51,6 +52,7 @@ FLAGS="${flags:-}"
 AUTO_MODE=false
 ALL_MODE=false
 DRY_RUN=false
+CHECK_MODE=false
 # Check if --dangerously-skip-permissions is in effect
 # When running in automation contexts (ll-auto, ll-parallel, ll-sprint), this flag is present
 # If detected, auto-enable auto mode for non-interactive operation
@@ -61,6 +63,7 @@ fi
 if [[ "$FLAGS" == *"--auto"* ]]; then AUTO_MODE=true; fi
 if [[ "$FLAGS" == *"--all"* ]]; then ALL_MODE=true; fi
 if [[ "$FLAGS" == *"--dry-run"* ]]; then DRY_RUN=true; fi
+if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; DRY_RUN=true; fi
 
 # Validate: --all requires issue_id to be omitted
 if [[ "$ALL_MODE" == true ]] && [[ -n "$ISSUE_ID" ]]; then
@@ -315,6 +318,20 @@ See [templates.md](templates.md) for complete output format templates:
 - Auto mode output (--auto)
 - Batch mode output (--all --auto)
 
+### Check Mode Behavior (--check)
+
+When `CHECK_MODE` is true, run as an FSM loop evaluator:
+
+1. Run full template compliance analysis (sections 2-3.5) without writing changes
+2. For each issue analyzed:
+   - If structural gaps found: print `[ID] format: N gaps found`
+   - If no gaps: skip (passes gate)
+3. After all issues analyzed:
+   - If any had gaps: print `N issues not format-compliant`, then `exit 1`
+   - If all compliant: print `All issues format-compliant`, then `exit 0`
+
+This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
+
 ## Examples
 
 ```bash
@@ -335,6 +352,10 @@ See [templates.md](templates.md) for complete output format templates:
 
 # Batch auto-format all issues with dry-run preview
 /ll:format-issue --all --auto --dry-run
+
+# Check-only mode for FSM loop evaluators (exit 0 if all pass, exit 1 if any gaps)
+/ll:format-issue --all --check
+/ll:format-issue BUG-042 --check
 ```
 
 ## Integration

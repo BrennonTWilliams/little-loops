@@ -12,7 +12,7 @@ arguments:
     description: Issue ID to validate (e.g., BUG-004, FEAT-001)
     required: false
   - name: flags
-    description: "Optional flags: --deep (use sub-agents for comprehensive validation)"
+    description: "Optional flags: --deep (use sub-agents for comprehensive validation), --check (check-only for FSM evaluators)"
     required: false
 ---
 
@@ -32,6 +32,25 @@ This command uses project configuration from `.claude/ll-config.json`:
 - **Template style**: `{{config.issues.capture_template}}` (full, minimal, or legacy — controls which creation variant to use when assembling sections)
 
 ## Process
+
+### 0. Parse Flags
+
+```bash
+FLAGS="${flags:-}"
+CHECK_MODE=false
+DEEP_MODE=false
+
+if [[ "$FLAGS" == *"--deep"* ]]; then DEEP_MODE=true; fi
+if [[ "$FLAGS" == *"--check"* ]]; then CHECK_MODE=true; fi
+```
+
+### 0.5. Check Mode Behavior (--check)
+
+**When `CHECK_MODE` is true**: Run validation logic (sections 1-4) without applying auto-corrections or writing session logs. After determining the verdict:
+- If verdict is READY or CORRECTED: print `[ID] ready: [verdict]` and `exit 0`
+- If verdict is BLOCKED, NOT_READY, CLOSE, or any other: print `[ID] ready: [verdict]` and `exit 1`
+
+This integrates with FSM `evaluate: type: exit_code` routing (0=success, 1=failure, 2+=error).
 
 ### 1. Find Issue File
 
@@ -353,6 +372,7 @@ $ARGUMENTS
 
 - **flags** (optional): Modify validation behavior
   - `--deep` - Use sub-agents for comprehensive validation (verifies file paths, line numbers, code snippets against actual codebase)
+  - `--check` — Check-only mode for FSM loop evaluators. Run validation without auto-corrections, print `[ID] ready: [verdict]`, exit 0 if READY/CORRECTED, exit 1 otherwise.
 
 ---
 
@@ -370,6 +390,9 @@ $ARGUMENTS
 
 # Deep validation on highest priority
 /ll:ready-issue --deep
+
+# Check-only mode for FSM loop evaluators (exit 0 if ready, exit 1 if not)
+/ll:ready-issue BUG-042 --check
 
 # After validation, implement
 /ll:manage-issue bug fix BUG-042

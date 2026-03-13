@@ -34,16 +34,19 @@ Parse arguments for flags:
 
 ```bash
 AUTO_MODE=false
+CHECK_MODE=false
 
 # Auto-enable in automation contexts
 if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]]; then AUTO_MODE=true; fi
 
 # Explicit flags
 if [[ "$ARGUMENTS" == *"--auto"* ]]; then AUTO_MODE=true; fi
+if [[ "$ARGUMENTS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 ```
 
 - **flags** (optional):
   - `--auto` - Non-interactive mode: apply all HIGH-confidence dependency proposals (≥0.7 conflict score) without prompting. Skip MEDIUM-confidence proposals.
+  - `--check` — Check-only mode for FSM loop evaluators. Run dependency analysis without applying changes, print `[ID] deps: N unmapped dependencies` per issue with unmapped deps, exit 1 if any unmapped, exit 0 if all mapped. Implies `--auto`.
 
 ## How to Use
 
@@ -106,6 +109,7 @@ ll-deps -d path/to/issues analyze
 | "Validate sprint dependencies" | `ll-deps validate --sprint <name>` |
 | "Which issues conflict?" | `ll-deps analyze` |
 | "Map deps non-interactively" | `/ll:map-dependencies --auto` |
+| "Check if all deps are mapped" | `/ll:map-dependencies --check` |
 
 ## Interpreting Results
 
@@ -140,6 +144,10 @@ After reviewing the analysis output, if you want to apply proposed dependencies:
 ### Auto Mode Behavior
 
 **When `AUTO_MODE` is true**: Skip the AskUserQuestion prompt below. Apply all HIGH-confidence proposals (conflict score ≥ 0.7) automatically. Skip MEDIUM-confidence proposals (conservative default). Emit one status line per applied proposal: `[SOURCE-ID] → [TARGET-ID]: dependency added (confidence: HIGH)`
+
+### Check Mode Behavior (--check)
+
+**When `CHECK_MODE` is true**: Run dependency analysis without applying any changes. For each issue with unmapped dependencies (HIGH-confidence proposals not yet in `## Blocked By`), print `[ID] deps: N unmapped dependencies`. After all issues analyzed, if any had unmapped deps: print `N issues with unmapped dependencies`, then `exit 1`. If all mapped: print `All dependencies mapped`, then `exit 0`. This integrates with FSM `evaluate: type: exit_code` routing.
 
 ### Interactive Mode (default)
 

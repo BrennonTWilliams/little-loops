@@ -41,12 +41,14 @@ Parse arguments for flags:
 ```bash
 ISSUE_ID=""
 AUTO_MODE=false
+CHECK_MODE=false
 
 # Auto-enable in automation contexts
 if [[ "$ARGUMENTS" == *"--dangerously-skip-permissions"* ]]; then AUTO_MODE=true; fi
 
 # Explicit flags
 if [[ "$ARGUMENTS" == *"--auto"* ]]; then AUTO_MODE=true; fi
+if [[ "$ARGUMENTS" == *"--check"* ]]; then CHECK_MODE=true; AUTO_MODE=true; fi
 
 # Extract issue ID (non-flag argument)
 for token in $ARGUMENTS; do
@@ -60,6 +62,7 @@ done
 - **issue_id** (optional): Specific issue ID to review (e.g., `ENH-179`)
 - **flags** (optional):
   - `--auto` - Non-interactive mode: auto-decompose only Very Large issues (score ≥ 8) where decomposition is unambiguous. Skip Large issues (5-7) as ambiguous. Emit one status line per issue: `[ID] [action]: [summary]`
+  - `--check` — Check-only mode for FSM loop evaluators. Run size scoring without decomposition, print `[ID] size: score N (oversized)` per issue scoring >= 5, exit 1 if any oversized, exit 0 if all pass. Implies `--auto`.
 
 ## Workflow
 
@@ -126,6 +129,10 @@ For each candidate issue:
 #### Auto Mode Behavior
 
 **When `AUTO_MODE` is true**: Skip the AskUserQuestion prompts below. Auto-approve decomposition only for Very Large issues (score ≥ 8) where the decomposition is unambiguous (distinct sub-tasks with clear boundaries). Skip Large issues (score 5-7) as ambiguous — flag them in the output but do not decompose. Emit one status line per issue: `[ID] decomposed: N child issues` or `[ID] skipped: score X (ambiguous)`.
+
+#### Check Mode Behavior (--check)
+
+**When `CHECK_MODE` is true**: Run size scoring only (no decomposition). For each issue scoring >= 5 (Large or Very Large), print `[ID] size: score N (oversized)`. After all issues scored, if any were oversized: print `N issues oversized`, then `exit 1`. If all pass: print `All issues pass size check`, then `exit 0`. This integrates with FSM `evaluate: type: exit_code` routing.
 
 #### Interactive Mode (default)
 
@@ -284,6 +291,7 @@ ISSUE SIZE REVIEW
 | "Review issue complexity" | Run issue size review |
 | "Can we split ENH-179?" | Run issue size review targeting ENH-179 |
 | "Review sizes non-interactively" | `/ll:issue-size-review --auto` |
+| "Check if issues are sized for sprint" | `/ll:issue-size-review --check` |
 
 ## Size Thresholds
 
