@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-13
 discovered_by: capture-issue
+confidence_score: 96
+outcome_confidence: 86
 ---
 
 # FEAT-716: Suggest FSM loop configs from commands, prompts, and skills
@@ -64,6 +66,38 @@ Extend `/ll:loop-suggester` with a `--from-commands` flag (or create a new skill
 ### Configuration
 - No new config keys expected; respects existing `ll-config.json` `loops.*` settings
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Correct implementation target** (Verification Notes confirmed): `commands/loop-suggester.md` — not a skill; extend this command or create a new skill directory. If extending as a skill: create `skills/loop-suggester-from-commands/SKILL.md` (or add `--from-commands` flag handling to `commands/loop-suggester.md`).
+
+**Skill enumeration source** — Glob `skills/*/SKILL.md` (16 files exist); parse YAML frontmatter block. Each SKILL.md has `description` (often includes "Trigger keywords:" inline), `argument-hint`, `allowed-tools`, and `arguments` fields. Command enumeration: Glob `commands/*.md` (similar frontmatter structure).
+
+**CLI entry points** — Parse `scripts/pyproject.toml:47-59` `[project.scripts]` section; 12 `ll-*` entries map to Python callables. No help-text API exists — entry-point names and descriptions must be sourced from `pyproject.toml` and cross-referenced with `commands/*.md` or `CLAUDE.md`.
+
+**FSM schema required fields** (`scripts/little_loops/fsm/schema.py`):
+- `FSMLoop` (line 339): requires `name`, `initial`, `states`; optional `max_iterations` (default 50), `timeout`, `on_handoff`, `context`, `scope`, `maintain`
+- `StateConfig` (line 167): `action`, `action_type` (`"prompt"/"slash_command"/"shell"`), `on_success`, `on_failure`, `on_error`, `next`, `terminal`, `capture`, `timeout`
+- Evaluator types: `exit_code`, `output_numeric`, `output_json`, `output_contains`, `convergence`, `llm_structured`
+
+**Suggestion output format** — `commands/loop-suggester.md:252-284` writes to `.claude/loop-suggestions/suggestions-{timestamp}.yaml` with fields: `analysis_metadata`, `summary`, `suggestions[]`. Each suggestion: `id`, `name`, `loop_type`, `confidence`, `rationale`, `yaml_config` (must be valid FSM YAML), `usage_instructions`. The new `--from-commands` mode should write to the same format/location and set `source: "commands-catalog"` in `analysis_metadata`.
+
+**FSM paradigm templates** (reusable) — `skills/create-loop/loop-types.md` has 4 complete FSM templates: fix-until-clean (lines 152-196), maintain-constraints (lines 265-325), drive-metric (lines 381-428), run-sequence (lines 489-543). These are the target shapes for generated proposals.
+
+**`loops/` vs `.loops/` distinction**:
+- `loops/` = 19 built-in YAML definitions (not writable by users)
+- `.loops/` = user-created loop configs + `.running/` runtime state
+- `resolve_loop_path()` at `scripts/little_loops/cli/loop/_helpers.py:86` checks both; user-generated YAMLs should go to `.loops/` (`config.loops.loops_dir`)
+
+**Validation entry point** — `load_and_validate(path)` at `scripts/little_loops/fsm/validation.py:354`; called by `ll-loop validate <name>`. Returns `(FSMLoop, list[ValidationError])`. Raises `ValueError` on ERROR-severity issues.
+
+**Test files to model after**:
+- `scripts/tests/test_loop_suggester.py` — output schema structure and confidence bounds
+- `scripts/tests/test_builtin_loops.py:17-43` — bulk validation pattern for generated YAMLs
+- `scripts/tests/test_fsm_schema.py:38-65` — `make_state()` / `make_fsm()` helpers
+- `scripts/tests/test_create_loop.py` — CLI validate round-trip pattern
+
 ## Use Case
 
 A developer installs little-loops on a new project and runs:
@@ -114,6 +148,22 @@ states:
 5. On selection, validate and write YAML to `.loops/` using existing schema
 6. Add tests for enumeration and proposal logic
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — concrete file:line references for implementers:_
+
+1. **Enumerate skills**: Glob `skills/*/SKILL.md` (16 files) and parse YAML frontmatter — extract `description` (includes "Trigger keywords:"), `argument-hint`, `arguments[].name`. Enumerate commands: Glob `commands/*.md` (same frontmatter). For CLI commands: parse `[project.scripts]` from `scripts/pyproject.toml:47-59`.
+
+2. **Group by theme**: Map each skill/command to one of 5 themes (issue-management, code-quality, git-release, loops, analysis) by matching keywords in `description` and trigger keywords fields. Themes align with the groupings in `CLAUDE.md` and `docs/reference/COMMANDS.md`.
+
+3. **Generate FSM proposals**: Reuse the 4 paradigm templates from `skills/create-loop/loop-types.md` (fix-until-clean, maintain-constraints, drive-metric, run-sequence). Reference real command/skill names as `action` values with `action_type: slash_command` or `action_type: prompt`. Look at `loops/fix-quality-and-tests.yaml` and `loops/issue-refinement.yaml` for production-quality examples.
+
+4. **Render proposals**: Follow `commands/loop-suggester.md:252-284` output schema — write to `.claude/loop-suggestions/suggestions-{timestamp}.yaml` with `id`, `name`, `loop_type`, `confidence`, `rationale`, `yaml_config` (valid FSM YAML), `usage_instructions`. Set `source: "commands-catalog"` in `analysis_metadata` to distinguish from history-based suggestions.
+
+5. **Validate and write**: Call `load_and_validate(path)` at `scripts/little_loops/fsm/validation.py:354` before presenting to user. Write accepted YAML to `{{config.loops.loops_dir}}/<name>.yaml` (resolves to `.loops/<name>.yaml`). Run `ll-loop validate <name>` as a final check (uses `resolve_loop_path()` at `scripts/little_loops/cli/loop/_helpers.py:86`).
+
+6. **Add tests**: Model after `scripts/tests/test_loop_suggester.py` for output schema validation. Use `make_state()` / `make_fsm()` helpers from `scripts/tests/test_fsm_schema.py:38-65`. Add bulk validation test following `scripts/tests/test_builtin_loops.py:17-43` pattern to verify all generated proposals pass `load_and_validate()`.
+
 ## Impact
 
 - **Priority**: P3 - Useful onboarding accelerator and discoverability aid
@@ -148,3 +198,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c4727e9-091f-4035-98d1-bd60d48ebc28.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b28391f-b086-4d28-86cb-448201c8b40e.jsonl`
+- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`

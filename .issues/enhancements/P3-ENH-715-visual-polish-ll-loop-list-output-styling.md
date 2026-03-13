@@ -1,6 +1,8 @@
 ---
 discovered_date: "2026-03-13"
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # ENH-715: Visual polish for ll-loop list output styling
@@ -34,24 +36,24 @@ CLI output consistency improves usability. `ll-issues list` already demonstrates
 
 ## Proposed Solution
 
-Modify `scripts/little_loops/cli/loop/info.py` (`list_loops` and `list_running` functions) to use imports from `scripts/little_loops/cli/output.py`:
+Modify `scripts/little_loops/cli/loop/info.py` (`cmd_list` function) to use existing imports from `scripts/little_loops/cli/output.py` (`colorize` is already imported at line 22 but unused in `cmd_list`):
 
-- Import `colorize` from `cli.output`
+- `colorize` is already imported — just apply it in `cmd_list()`
 - Define loop-specific color codes (or reuse existing ones) for loop names, descriptions, tags
 - Style `[built-in]` with dim (`"2"`)
 - Style loop names with bold or a distinctive color
 - Style group headers ("Project loops:", "Built-in loops:") like `ll-issues list` type headers
-- For running loops: colorize state names, iteration counts, and elapsed time
+- For running loops: colorize state names, iteration counts, and elapsed time (in the `if getattr(args, "running", False)` branch of `cmd_list`)
 
-Reference implementation: `scripts/little_loops/cli/issues/list_cmd.py` lines 51-76 for the pattern used by `ll-issues list`.
+Reference implementation: `scripts/little_loops/cli/issues/list_cmd.py` — see `cmd_list()` for the grouping, header colorization, and per-row colorization pattern used by `ll-issues list`.
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/info.py` — `list_loops()` and `list_running()` functions
+- `scripts/little_loops/cli/loop/info.py` — `cmd_list()` function (handles both regular listing and running-loops display)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/commands.py` — calls `list_loops()` / `list_running()`
+- `scripts/little_loops/cli/loop/__init__.py` — calls `cmd_list()` at line 256
 
 ### Similar Patterns
 - `scripts/little_loops/cli/issues/list_cmd.py` — reference implementation for styled list output
@@ -67,10 +69,10 @@ Reference implementation: `scripts/little_loops/cli/issues/list_cmd.py` lines 51
 
 ## Implementation Steps
 
-1. Add `colorize` import to `loop/info.py` from `cli.output`
+1. `colorize` is already imported in `loop/info.py` — skip import step
 2. Define color constants for loop list elements (name, tag, header)
-3. Apply colors to `list_loops()` output (names, descriptions, built-in tags, headers)
-4. Apply colors to `list_running()` output (state, iteration, elapsed, status)
+3. Apply colors to `cmd_list()` static-list branch (names, descriptions, built-in tags, headers)
+4. Apply colors to `cmd_list()` running-loops branch (state, iteration, elapsed, status)
 5. Run existing tests and update any broken string assertions
 
 ## Scope Boundaries
@@ -86,12 +88,19 @@ Reference implementation: `scripts/little_loops/cli/issues/list_cmd.py` lines 51
 - **Risk**: Low - Additive styling only, existing `NO_COLOR` and non-TTY guards in `colorize()` handle graceful degradation
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
 ## Labels
 
 `enhancement`, `cli`, `captured`
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/48c65a82-961f-4b5a-a5e6-9fe32bc7c8b9.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 
 ---
 

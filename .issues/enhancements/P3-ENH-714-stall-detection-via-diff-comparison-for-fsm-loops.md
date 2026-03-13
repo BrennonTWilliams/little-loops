@@ -11,7 +11,7 @@ Add a new `diff_stall` evaluator type (or reusable shell state pattern) that det
 
 ## Current Behavior
 
-- The `convergence` evaluator (`evaluators.py:312-374`) detects stalls for numeric metrics by comparing current vs. previous values and emitting `stall` verdict
+- The `convergence` evaluator (`evaluate_convergence()` in `evaluators.py`) detects stalls for numeric metrics by comparing current vs. previous values and emitting `stall` verdict
 - Prompt-based actions (`action_type: prompt`) using `llm_structured` evaluation have no automatic stall detection
 - If an LLM-as-judge evaluator keeps returning `failure` and the fix action produces no changes, the loop retries until `max_iterations` is exhausted
 - No built-in mechanism to compare `git diff` between iterations
@@ -74,6 +74,41 @@ Path B would add a `DiffStallEvaluator` to `evaluators.py` that:
 3. If identical for `max_stall` consecutive iterations, returns `failure` (stalled)
 4. If different, updates snapshot and returns `success` (progress)
 
+## API/Interface
+
+**Path A — Shell state template** (no Python API changes):
+
+```yaml
+# New documented pattern for harness loop YAML
+check_stall:
+  action_type: shell
+  evaluate:
+    type: output_contains
+    pattern: "PROGRESS"
+  on_success: next_phase
+  on_failure: skip_item
+```
+
+**Path B — `diff_stall` evaluator type** (new YAML config fields):
+
+```yaml
+evaluate:
+  type: diff_stall        # new evaluator type key
+  scope: ["scripts/"]    # optional list[str]; defaults to repo root
+  max_stall: 2           # optional int; default 1 (one no-change iteration = stall)
+```
+
+**Path B — `DiffStallEvaluator` Python class** (new addition to `evaluators.py`):
+
+```python
+class DiffStallEvaluator:
+    """Detects stalled iterations by comparing git diff --stat between runs."""
+    def evaluate(self, scope: list[str] | None = None, max_stall: int = 1) -> EvaluationResult:
+        ...  # returns verdict: "success" (progress) or "failure" (stalled)
+```
+
+New schema fields would be validated in `schema.py` and `validation.py`.
+
 ## Scope Boundaries
 
 - **In scope**: Detecting no-change iterations via git diff comparison; configurable scope paths; configurable stall threshold
@@ -81,8 +116,9 @@ Path B would add a `DiffStallEvaluator` to `evaluators.py` that:
 
 ## Success Metrics
 
-- Harness loops (FEAT-712) terminate early when stuck instead of burning max_iterations
-- Reduction in wasted Claude API tokens from degenerate retry cycles
+- Harness loops (FEAT-712) terminate early on stall rather than exhausting `max_iterations` — at least 1 observed degenerate loop exits early via stall detection
+- Zero regression on existing loops: all current `evaluators.py` unit tests continue to pass after Path B addition
+- Path A: documented pattern usable in a generated harness loop with no runtime code changes
 
 ## Integration Map
 
@@ -94,8 +130,8 @@ Path B would add a `DiffStallEvaluator` to `evaluators.py` that:
 - For Path B: `scripts/little_loops/fsm/evaluators.py`, `scripts/little_loops/fsm/schema.py`, `scripts/little_loops/fsm/validation.py`
 
 ### Similar Patterns
-- `evaluators.py:312-374` — `convergence` evaluator's stall detection (numeric equivalent)
-- `issue-refinement.yaml:98-111` — Counter-based state that could be enhanced with stall detection
+- `evaluate_convergence()` in `evaluators.py` — `convergence` evaluator's stall detection (numeric equivalent)
+- `check_commit` state in `loops/issue-refinement.yaml` — Counter-based state that could be enhanced with stall detection
 
 ### Tests
 - For Path B: `scripts/tests/test_fsm_evaluators.py` — Add diff_stall evaluator tests
@@ -131,8 +167,14 @@ Path B would add a `DiffStallEvaluator` to `evaluators.py` that:
 
 `fsm-loops`, `evaluators`, `safety`, `captured`
 
+## Verification Notes
+
+- 2026-03-13 (`/ll:verify-issues --auto`): **VALID** — All file references confirmed to exist. `evaluate_convergence()` verified in `scripts/little_loops/fsm/evaluators.py`. No `diff_stall` evaluator exists in `evaluators.py`, `schema.py`, or `validation.py`. `check_commit` state confirmed in `loops/issue-refinement.yaml`. `skills/create-loop/loop-types.md` covers only numeric `convergence` evaluator — diff-based stall detection gap is real and unimplemented.
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b28391f-b086-4d28-86cb-448201c8b40e.jsonl`
+- `/ll:format-issue` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:verify-issues` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 
 ---
 
