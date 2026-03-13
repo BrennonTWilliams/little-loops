@@ -352,6 +352,37 @@ Review an existing FSM loop configuration for quality, correctness, consistency,
 
 **See also:** `/ll:create-loop`, `ll-loop validate`, `ll-loop show`
 
+### `/ll:analyze-loop`
+Analyze loop execution history to synthesize actionable issues from failure patterns, SIGKILL terminations, retry floods, and performance anomalies. Auto-selects the most recently interrupted/failed loop, or analyzes a named loop when specified.
+
+**Arguments:**
+- `loop_name` (optional): Loop name to analyze. If omitted, auto-selects the most recently updated interrupted/failed loop.
+- `tail` (optional): Limit history events analyzed to the N most recent (default 200)
+
+**Signal detection rules:**
+- Action `exit_code ≠ 0` repeated 3+ times on same state → BUG P2
+- `loop_complete.terminated_by == "signal"` (SIGKILL) → BUG P2
+- `loop_complete.terminated_by == "error"` (FATAL_ERROR) → BUG P2
+- Same state entered 5+ times (retry flood) → ENH P3
+- Avg action duration ≥ 30s across 3+ samples on same state → ENH P4
+- `evaluate.verdict == "fail"` 3+ times on same state → BUG P3
+
+**Usage:**
+```bash
+# Auto-select most recent interrupted loop
+/ll:analyze-loop
+
+# Analyze a specific loop
+/ll:analyze-loop issue-fixer
+
+# Limit events analyzed
+/ll:analyze-loop issue-fixer --tail 100
+```
+
+**Trigger keywords:** "analyze loop", "loop issues", "loop failures", "loop history issues"
+
+**See also:** `/ll:review-loop`, `/ll:create-loop`, `ll-loop history`
+
 ### `/ll:workflow-automation-proposer`
 Synthesize workflow patterns into concrete automation proposals. Final step (Step 3) of the `/ll:analyze-workflows` pipeline.
 
@@ -405,6 +436,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `create-loop` | Interactive FSM loop creation |
 | `loop-suggester` | Suggest loops from message history |
 | `review-loop` | Review and improve existing FSM loop configurations |
+| `analyze-loop` | Analyze loop execution history and synthesize issues from failure patterns |
 | `workflow-automation-proposer` | Synthesize workflow patterns into automation proposals |
 | `create-sprint` | Create sprint with curated issue list |
 | `review-sprint` | Review sprint health and suggest improvements |
