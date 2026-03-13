@@ -652,15 +652,6 @@ def _render_layered_diagram(
             else:
                 forward_edge_labels[(src, dst)] = lbl
 
-    # Also include back-edges that are between same-layer states (not true back-edges)
-    # These will be recategorized after layer assignment
-    for src, dst, lbl in back_edges:
-        if src != dst:
-            if (src, dst) in forward_edge_labels:
-                forward_edge_labels[(src, dst)] += "/" + lbl
-            else:
-                forward_edge_labels[(src, dst)] = lbl
-
     # True back-edges: only those going to an earlier layer (computed after layer assignment)
     # Will be finalized below after col positions are computed
     # Combine same-pair back-edges into single entries with merged labels (e.g. "error/fail")
@@ -765,7 +756,11 @@ def _render_layered_diagram(
                 back_edge_labels_reclass[(src, dst)] = lbl
         elif dst_layer == src_layer:
             same_layer_edges.append((src, dst, lbl))
-        # dst_layer > src_layer: these are actually forward edges, already in forward_edge_labels
+        else:  # dst_layer > src_layer: actually forward edge
+            if (src, dst) in forward_edge_labels:
+                forward_edge_labels[(src, dst)] += "/" + lbl
+            else:
+                forward_edge_labels[(src, dst)] = lbl
 
     # Also reclassify main/branch edges in forward_edge_labels that point backward
     # after layer assignment (e.g. main-path cycle edges like commit → initial_state)
@@ -784,6 +779,48 @@ def _render_layered_diagram(
             same_layer_edges.append((src, dst, lbl))
     for key in backward_in_fwd:
         del forward_edge_labels[key]
+
+    # Add same-layer back-edges to forward_edge_labels so gap calculation accounts for them
+    for src, dst, lbl in same_layer_edges:
+        if (src, dst) in forward_edge_labels:
+            forward_edge_labels[(src, dst)] += "/" + lbl
+        else:
+            forward_edge_labels[(src, dst)] = lbl
+
+    # Recalculate inter-box gaps for layers with newly discovered same-layer edges
+    affected_layers: set[int] = set()
+    for src, dst, _lbl in same_layer_edges:
+        sl = layer_of.get(src, -1)
+        dl = layer_of.get(dst, -1)
+        if sl >= 0:
+            affected_layers.add(sl)
+        if dl >= 0:
+            affected_layers.add(dl)
+    for li in affected_layers:
+        layer = layers[li]
+        if len(layer) < 2:
+            continue
+        gap_between = 6
+        total_layer_w = sum(box_width[s] for s in layer)
+        # Recalculate gaps with label-aware spacing
+        gaps: list[int] = []
+        for i in range(len(layer) - 1):
+            sname, next_s = layer[i], layer[i + 1]
+            label_fwd = forward_edge_labels.get((sname, next_s), "")
+            label_rev = forward_edge_labels.get((next_s, sname), "")
+            max_label = max(len(label_fwd), len(label_rev))
+            gap = max(gap_between, max_label + 6) if max_label > 0 else gap_between
+            gaps.append(gap)
+        total_layer_w += sum(gaps)
+        x = common_center - total_layer_w // 2
+        x = max(content_left, x)
+        for i, sname in enumerate(layer):
+            col_start[sname] = x
+            col_center[sname] = x + box_width[sname] // 2
+            if i < len(layer) - 1:
+                x += box_width[sname] + gaps[i]
+            else:
+                x += box_width[sname]
 
     non_self_back = [(s, d, lbl) for (s, d), lbl in back_edge_labels_reclass.items()]
 
@@ -927,6 +964,21 @@ def _render_layered_diagram(
                     if label_start + j < total_width:
                         grid[label_row][label_start + j] = ch
 
+        # Post-pass: connect horizontal gaps for multi-branch sources
+        if len(inter_edges) >= 2 and 0 <= arrow_start_row < total_height:
+            src_targets: dict[str, list[int]] = {}
+            for src, dst, _ in inter_edges:
+                if dst in col_center:
+                    src_targets.setdefault(src, []).append(col_center[dst])
+            for src, centers in src_targets.items():
+                if len(centers) < 2:
+                    continue
+                left = min(centers)
+                right = max(centers)
+                for c in range(left + 1, right):
+                    if 0 <= c < total_width and grid[arrow_start_row][c] == " ":
+                        grid[arrow_start_row][c] = "\u2500"  # ─
+
     # Draw same-layer edges (horizontal arrows between states on same layer)
     # Includes both branches and reclassified back-edges within same layer
     all_same_layer: list[tuple[str, str, str]] = list(same_layer_edges)
@@ -1009,8 +1061,8 @@ def _render_layered_diagram(
             top_row = min(src_row, dst_row)
             bot_row = max(src_row, dst_row)
 
-            # Draw vertical line in margin
-            for r in range(top_row, bot_row + 1):
+            # Draw vertical line in margin (exclude corner rows handled below)
+            for r in range(top_row + 1, bot_row):
                 if 0 <= r < total_height and col < total_width:
                     grid[r][col] = "\u2502"
 
@@ -1103,8 +1155,8 @@ def _render_layered_diagram(
             top_row = min(src_row, dst_row)
             bot_row = max(src_row, dst_row)
 
-            # Draw vertical line in right margin
-            for r in range(top_row, bot_row + 1):
+            # Draw vertical line in right margin (exclude corner rows handled below)
+            for r in range(top_row + 1, bot_row):
                 if 0 <= r < total_height and col < total_width:
                     grid[r][col] = "\u2502"
 
