@@ -200,6 +200,7 @@ Examples:
     history_parser.add_argument(
         "--verbose", "-v", action="store_true", help="Show action output lines and full prompts"
     )
+    history_parser.add_argument("--json", action="store_true", help="Output events as JSON array")
 
     # Test subcommand
     test_parser = subparsers.add_parser(

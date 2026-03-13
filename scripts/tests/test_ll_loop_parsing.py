@@ -121,6 +121,27 @@ class TestLoopArgumentParsing:
         args = parser.parse_args(["history", "fix-types", "--tail", "20"])
         assert args.tail == 20
 
+    def test_history_json_accepted_by_real_parser(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+        """history --json is accepted by the actual ll-loop parser (not rejected as unrecognized)."""
+        import sys
+        from unittest.mock import patch
+
+        monkeypatch.chdir(tmp_path)
+        with (
+            patch.object(sys, "argv", ["ll-loop", "history", "my-loop", "--json"]),
+            patch("little_loops.cli.loop.info.cmd_history", return_value=0) as mock_history,
+        ):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        assert result == 0
+        mock_history.assert_called_once()
+        # cmd_history(loop_name, args, loops_dir) — args is the second positional argument
+        call_args = mock_history.call_args
+        history_args = call_args[0][1]
+        assert getattr(history_args, "json", False) is True
+
     def test_status_subcommand(self) -> None:
         """status subcommand."""
         parser = self._create_subparser_only()

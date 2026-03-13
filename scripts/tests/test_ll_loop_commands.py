@@ -647,6 +647,163 @@ class TestHistoryTail:
         assert "line2-2" in captured.out
 
 
+    def test_history_json_output(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json outputs a valid JSON array of events."""
+        from little_loops.cli.loop.info import cmd_history
+
+        running_dir = tmp_path / ".loops" / ".running"
+        running_dir.mkdir(parents=True)
+        events = [
+            {"event": "loop_start", "ts": "2026-01-13T10:00:00", "loop": "test-loop"},
+            {"event": "state_enter", "ts": "2026-01-13T10:00:01", "state": "check", "iteration": 1},
+        ]
+        events_file = running_dir / "test-loop.events.jsonl"
+        with open(events_file, "w") as f:
+            for event in events:
+                f.write(json.dumps(event) + "\n")
+
+        args = argparse.Namespace(tail=50, verbose=False, json=True)
+        result = cmd_history("test-loop", args, tmp_path / ".loops")
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert len(data) == 2
+        assert data[0]["event"] == "loop_start"
+        assert data[1]["event"] == "state_enter"
+
+    def test_history_json_respects_tail(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json with --tail N returns only the last N events."""
+        from little_loops.cli.loop.info import cmd_history
+
+        running_dir = tmp_path / ".loops" / ".running"
+        running_dir.mkdir(parents=True)
+        events = [{"event": f"evt_{i}", "ts": f"2026-01-13T10:00:{i:02d}"} for i in range(5)]
+        events_file = running_dir / "test-loop.events.jsonl"
+        with open(events_file, "w") as f:
+            for event in events:
+                f.write(json.dumps(event) + "\n")
+
+        args = argparse.Namespace(tail=2, verbose=False, json=True)
+        result = cmd_history("test-loop", args, tmp_path / ".loops")
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert len(data) == 2
+        assert data[0]["event"] == "evt_3"
+        assert data[1]["event"] == "evt_4"
+
+    def test_history_json_empty(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json with no history outputs nothing (no history message, exit 0)."""
+        from little_loops.cli.loop.info import cmd_history
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        args = argparse.Namespace(tail=50, verbose=False, json=True)
+        result = cmd_history("nonexistent", args, loops_dir)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "No history" in out  # plain-text path still taken when no events
+
+
+class TestCmdListRunningJson:
+    """Tests for list --running --json."""
+
+    def test_list_running_json_output(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --running --json outputs a JSON array of running loop states."""
+        from little_loops.cli.loop.info import cmd_list
+        from little_loops.fsm.persistence import LoopState
+
+        state = LoopState(
+            loop_name="my-loop",
+            current_state="run_tests",
+            iteration=3,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-01-13T10:00:00",
+            updated_at="2026-01-13T10:00:01",
+            status="running",
+        )
+
+        args = argparse.Namespace(running=True, status=None, json=True)
+        with patch("little_loops.fsm.persistence.list_running_loops", return_value=[state]):
+            result = cmd_list(args, tmp_path / ".loops")
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert isinstance(data, list)
+        assert len(data) == 1
+        assert data[0]["loop_name"] == "my-loop"
+        assert data[0]["current_state"] == "run_tests"
+        assert data[0]["iteration"] == 3
+
+    def test_list_running_json_empty(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --running --json with no running loops exits 0 with 'No running loops' message."""
+        from little_loops.cli.loop.info import cmd_list
+
+        args = argparse.Namespace(running=True, status=None, json=True)
+        with patch("little_loops.fsm.persistence.list_running_loops", return_value=[]):
+            result = cmd_list(args, tmp_path / ".loops")
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "No running loops" in out
+
+    def test_list_running_without_json_unchanged(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --running without --json still outputs human-readable text."""
+        from little_loops.cli.loop.info import cmd_list
+        from little_loops.fsm.persistence import LoopState
+
+        state = LoopState(
+            loop_name="my-loop",
+            current_state="run_tests",
+            iteration=3,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-01-13T10:00:00",
+            updated_at="2026-01-13T10:00:01",
+            status="running",
+            accumulated_ms=42000,
+        )
+
+        args = argparse.Namespace(running=True, status=None, json=False)
+        with patch("little_loops.fsm.persistence.list_running_loops", return_value=[state]):
+            result = cmd_list(args, tmp_path / ".loops")
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Running loops:" in out
+        assert "my-loop" in out
+
+
 class TestCmdShow:
     """Tests for show command."""
 

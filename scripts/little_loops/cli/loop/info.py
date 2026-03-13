@@ -55,6 +55,9 @@ def cmd_list(
                 return 1
             print("No running loops")
             return 0
+        if getattr(args, "json", False):
+            print_json([s.to_dict() for s in states])
+            return 0
         print("Running loops:")
         for state in states:
             elapsed_s = (state.accumulated_ms or 0) // 1000
@@ -241,6 +244,9 @@ def cmd_history(
     w = terminal_width()
     if not verbose:
         events = [e for e in events if e.get("event") != "action_output"]
+    if getattr(args, "json", False):
+        print_json(events[-tail:])
+        return 0
     for event in events[-tail:]:
         line = _format_history_event(event, verbose, w)
         if line is not None:
