@@ -5,7 +5,7 @@ description: |
   CLI tools), compares against documented state, and fixes discrepancies.
 initial: gather_state
 llm:
-  max_tokens: 512
+  max_tokens: 1024
 states:
   gather_state:
     action: |
@@ -75,7 +75,19 @@ states:
       3. Markdown formatting is correct
 
       If any issues are found, fix them now.
-    next: commit
+    capture: verify_result
+    next: route_verify
+  route_verify:
+    evaluate:
+      type: llm_structured
+      source: "${captured.verify_result.output}"
+      prompt: |
+        Were any documentation issues found that still need fixing?
+        Return "success" if docs are clean.
+        Return "failure" if fixes are still needed.
+    on_success: commit
+    on_failure: update_docs
+    on_error: commit
   commit:
     action_type: prompt
     action: |

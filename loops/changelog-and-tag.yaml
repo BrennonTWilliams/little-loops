@@ -33,6 +33,12 @@ states:
       CHANGELOG.md (append to top, below any existing header). Use conventional
       changelog format with issue IDs as references.
     capture: changelog
+    next: commit_changelog
+  commit_changelog:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit the new CHANGELOG.md entry.
+      Use message: "docs(changelog): add release notes"
     next: create_release
   create_release:
     action_type: prompt

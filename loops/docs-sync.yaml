@@ -31,8 +31,9 @@ states:
       type: output_contains
       source: "${captured.verify_results.output}${captured.link_results.output}"
       pattern: "FAIL\\|ERROR\\|BROKEN\\|MISMATCH"
-    on_success: fix_docs
-    on_failure: done
+      negate: true
+    on_success: done
+    on_failure: fix_docs
   fix_docs:
     action_type: prompt
     timeout: 600

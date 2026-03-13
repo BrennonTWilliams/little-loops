@@ -15,14 +15,14 @@ states:
       echo "=== Total ==="
       find .issues -maxdepth 2 -name '*.md' -not -path '.issues/completed/*' -not -path '.issues/templates/*' 2>/dev/null | wc -l | tr -d ' '
     action_type: shell
-    capture: before_snapshot
+    capture: current_snapshot
     next: analyze_balance
   analyze_balance:
     action_type: prompt
     timeout: 300
     action: |
       Current priority distribution:
-      ${captured.before_snapshot.output}
+      ${captured.current_snapshot.output}
 
       Healthy distribution guidelines:
       - P0 (critical): 0-2 issues (true emergencies only)
@@ -80,12 +80,12 @@ states:
         echo "$P: $COUNT"
       done
     action_type: shell
-    capture: after_snapshot
+    capture: current_snapshot
     next: check_healthy
   check_healthy:
     evaluate:
       type: llm_structured
-      source: "${captured.after_snapshot.output}"
+      source: "${captured.current_snapshot.output}"
       prompt: |
         Review the priority distribution. Is it healthy?
         - P0: 0-2 issues, P1: 3-5 issues, P2: 5-10 issues

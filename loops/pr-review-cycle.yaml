@@ -94,11 +94,11 @@ states:
     action_type: prompt
     timeout: 120
     action: |
-      Potential secrets or API keys were detected in the diff:
-      ${captured.branch_info.output}
+      Potential secrets or API keys were detected in the diff.
 
-      Review each match in `git diff main...HEAD` to confirm whether they are
-      real secrets or false positives. Report what was found and recommend:
+      Run: git diff main...HEAD | grep -iE '(api[_-]?key|secret|password|token)\s*[=:]\s*["'"'"'][A-Za-z0-9+/]{16,}'
+
+      Review each match to confirm true positive vs false positive. For true positives:
       - Replace hardcoded secrets with environment variable references
       - Add affected variable names to .env.example
       - Ensure .env is in .gitignore

@@ -82,11 +82,8 @@ states:
     action_type: prompt
     timeout: 600
     action: |
-      Plugin validation output:
+      Plugin validation failed:
       ${captured.plugin_state.output}
-
-      Audit results (if available):
-      ${captured.audit_result.output}
 
       Fix all identified issues:
       - Update plugin.json to match actual command/skill files

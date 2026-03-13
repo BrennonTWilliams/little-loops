@@ -45,6 +45,12 @@ states:
       4. Do NOT use # type: ignore unless genuinely unavoidable
 
       Fix up to 5 errors per iteration to keep changes reviewable.
+    next: commit_fixes
+  commit_fixes:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit the type error fixes.
+      Use message: "fix(types): fix mypy type errors"
     next: run_mypy
   done:
     terminal: true

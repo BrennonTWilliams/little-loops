@@ -49,6 +49,12 @@ states:
     action: |
       Run `/ll:normalize-issues` to ensure all new issue files follow
       the correct naming convention and have valid IDs.
+    next: commit_split
+  commit_split:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit the split issues.
+      Use message: "chore(issues): split oversized issues"
     next: find_large
   done:
     terminal: true
