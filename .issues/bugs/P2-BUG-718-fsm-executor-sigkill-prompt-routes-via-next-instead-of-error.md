@@ -3,6 +3,8 @@ discovered_commit: b44bf7c
 discovered_branch: main
 discovered_date: 2026-03-13T06:00:00Z
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 88
 ---
 
 # BUG-718: FSM executor routes SIGKILL'd prompt actions via unconditional `next` instead of error path
@@ -62,6 +64,28 @@ should either:
    unrecoverable action failure
 
 Option 1 or 2 is preferred. Option 3 is a minimal fix.
+
+## Proposed Solution
+
+In `FSMExecutor._execute_state()` (`scripts/little_loops/fsm/executor.py`), after `_run_action` returns for a state using `state.next`, add a negative exit code check before returning the next state:
+
+```python
+result = self._run_action(state.action, state, ctx)
+self.prev_result = {
+    "output": result.output,
+    "exit_code": result.exit_code,
+    "state": self.current_state,
+}
+if result.exit_code is not None and result.exit_code < 0:
+    # Process killed by signal — trigger graceful shutdown instead of silently advancing
+    if state.on_error:
+        return interpolate(state.on_error, ctx)
+    self.request_shutdown()
+    return None
+return interpolate(state.next, ctx)
+```
+
+Reuses the existing `request_shutdown()` mechanism — no new infrastructure required. The optional `state.on_error` fallback enables loop authors to handle SIGKILL with a custom recovery state rather than shutdown.
 
 ## Root Cause
 
@@ -144,6 +168,8 @@ history misleading.
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T06:00:00Z - analysis of `ll-loop history issue-refinement-git`
 - `/ll:format-issue` - 2026-03-13T06:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1bce590-015a-4862-aabe-11dcbf71a389.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc8374e-5f2d-475d-9631-d7487ab7323f.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc8374e-5f2d-475d-9631-d7487ab7323f.jsonl`
 
 ---
 
