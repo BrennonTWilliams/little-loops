@@ -236,7 +236,28 @@ See [templates.md](templates.md) for:
 
 **Skip this entire section if `AUTO_MODE` is true.**
 
-For each identified structural gap **and content quality issue**, use AskUserQuestion to gather information.
+#### 4.0 Confidence Filtering
+
+Before presenting any question to the user, evaluate each identified gap and quality issue:
+
+For each item from Steps 3 and 3.5, ask: **"Can I determine the right answer from the existing issue content, codebase conventions, and general engineering principles?"**
+
+- **High confidence** (one answer is clearly correct from context): **Do not ask the user.** Make the decision autonomously. Record what you chose and why in the output report under a "Resolved automatically" section.
+- **Low confidence** (genuinely ambiguous, depends on user preference/intent, or multiple viable approaches with real tradeoffs): Present as an interactive question in Step 4.1.
+
+**Examples of high-confidence items (resolve autonomously):**
+- "What should the fallback be when optional data is missing?" → codebase already has a safe-default pattern; pick the consistent option
+- "Should this support an additional mode?" → adds complexity with no clear use case; YAGNI principle applies
+- "Which existing utility should this use?" → only one utility does the job; no real choice
+
+**Examples of low-confidence items (ask the user):**
+- "Should this be opt-in or opt-out?" → genuine product decision depending on user risk tolerance
+- "Which of these two architectural approaches?" → real tradeoffs between simplicity and extensibility
+- "What priority should this have relative to other work?" → depends on business context you don't have
+
+#### 4.1 Present Remaining Questions
+
+After confidence filtering, present only the **low-confidence items** to the user. If all items were resolved with high confidence, skip interactive questions entirely and proceed to Step 5.
 
 **Maximum 4 questions per round** (tool limitation). Prioritize by:
 1. Required missing sections first
@@ -244,7 +265,7 @@ For each identified structural gap **and content quality issue**, use AskUserQue
 3. Conditional missing sections if context suggests relevance
 4. Nice-to-have missing sections last
 
-Present a summary of all identified gaps and quality issues first, then ask user which to address:
+Present a summary of remaining gaps and quality issues, then ask user which to address:
 
 ```yaml
 questions:
