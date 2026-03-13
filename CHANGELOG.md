@@ -12,10 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.41.0] - 2026-03-13
+
 ### Added
 
 - **`--clear` flag for `ll-loop run` and `resume`** — Emits ANSI clear-screen before each iteration; combine with `--show-diagrams` for a live in-place FSM dashboard. Suppressed when stdout is not a tty (ENH-718)
 - **`--delay <SECONDS>` flag for `ll-loop run` and `resume`** — Inserts an interruptible pause between FSM iterations; useful for recording terminal sessions. Overrides `backoff:` from the loop YAML. (ENH-735)
+- **`ll-loop analyze` skill** — Synthesizes actionable issues from loop execution history; captures patterns across iterations into BUG/ENH/FEAT issue files (FEAT-719)
+- **20 built-in FSM loop definitions** — Common dev workflow loops bundled with `ll-loop` for immediate use (c1b18fe)
+
+### Fixed
+
+- **FSM diagram disconnected box-drawing junction characters** — Upgraded box-drawing corners to junctions on character collision (BUG-710)
+- **`issue-refinement` loop: three logic defects** — Fixed counter reset, LLM-managed iteration, and LLM ceiling-acceptance defects (BUG-720)
+- **`issue-refinement` loop: LLM parses issue ID instead of shell** — Replaced LLM-driven ID extraction with deterministic shell `parse_id` state (BUG-721)
+- **`--show-diagrams` suppressed by `--quiet`** — Allow `--show-diagrams` to work alongside `--quiet` (BUG-727)
+- **`--json` flag missing from `ll-loop history` and `ll-loop list --running`** — Added `--json` support to both subcommands (b27bd30)
+- **FSM bugs across built-in loop configs** — Audited and fixed 18+ bugs across 24 built-in FSM loops plus 6 simplifications (5867dbd, 1708235, d66c3ac)
+- **FSM layout: multi-branch horizontal connector gaps** — Connected multi-branch horizontal connectors across source box gaps and skip-layer edge horizontals (f8ba63c, 6ebff0e)
+- **`format-issue` missing confidence gate** — Added confidence gate to interactive mode questions (8c8c3cd)
 
 ## [1.40.0] - 2026-03-12
 
@@ -1175,6 +1190,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.41.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.40.0...v1.41.0
 [1.40.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.39.0...v1.40.0
 [1.39.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.38.0...v1.39.0
 [1.38.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.37.3...v1.38.0
