@@ -4,11 +4,17 @@
 # so no state sees stale data. Zero-cost decision states handle multi-way
 # routing without LLM calls.
 name: issue-refinement
-initial: evaluate
+initial: init
 states:
+  init:
+    action: rm -f /tmp/issue-refinement-commit-count
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_success: evaluate
+    on_error: evaluate
   evaluate:
     action: |
-      rm -f /tmp/issue-refinement-commit-count
       ll-issues refine-status --json | python3 -c "
       import json, sys
       issues = json.load(sys.stdin)
@@ -24,6 +30,9 @@ states:
           if cs is None or oc is None:
               print(f'NEEDS_SCORE {issue[\"id\"]}')
               sys.exit(1)
+          rc = issue.get('refine_count', 0)
+          if cs >= 85 and rc >= 5:
+              continue
           if cs < 85 or oc < 70:
               print(f'NEEDS_REFINE {issue[\"id\"]}')
               sys.exit(1)
@@ -62,7 +71,7 @@ states:
       2. /ll:verify-issues [ISSUE_ID] --auto
 
       Replace [ISSUE_ID] with the actual ID from the classifier output.
-    next: evaluate
+    next: check_commit
   score_issues:
     action_type: prompt
     action: |
@@ -73,25 +82,17 @@ states:
       /ll:confidence-check [ISSUE_ID] --auto
 
       Replace [ISSUE_ID] with the actual ID from the classifier output.
-    next: evaluate
+    next: check_commit
   refine_issues:
     action_type: prompt
-    timeout: 1200
+    timeout: 600
     action: |
       The classifier output is:
       ${captured.classify.output}
 
-      Extract the issue ID from that output line. Then run a refine loop
-      (maximum 5 iterations) for that single issue:
-
-      While (readiness < 85 OR outcome_confidence < 70) and iterations < 5:
-        1. /ll:refine-issue [ISSUE_ID] --auto
-        2. /ll:confidence-check [ISSUE_ID] --auto
-        3. Check updated scores; stop if both thresholds met (readiness>=85, outcome_confidence>=70)
-
-      Ceiling-acceptance: if 5 refinements reached and readiness >= 85
-      (even if outcome_confidence < 70), treat the issue as refined-to-ceiling
-      and move on.
+      Extract the issue ID from that output line. Run these two commands in order:
+      1. /ll:refine-issue [ISSUE_ID] --auto
+      2. /ll:confidence-check [ISSUE_ID] --auto
 
       Replace [ISSUE_ID] with the actual ID from the classifier output.
     next: check_commit
