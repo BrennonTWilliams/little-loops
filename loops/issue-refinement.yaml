@@ -1,18 +1,14 @@
-# Description: Progressively refine all active issues to ensure complete coverage.
-# Uses a deterministic shell classifier to route each issue to the correct
-# refinement step (format → score → refine), re-evaluating after every action
-# so no state sees stale data. Zero-cost decision states handle multi-way
-# routing without LLM calls.
 name: issue-refinement
+description: |
+  Progressively refine all active issues through format → score → refine pipeline.
+  Routes each issue to the correct step using a deterministic shell classifier.
+  Commits every 5 actions and continues until all issues meet quality thresholds.
 initial: init
 states:
   init:
     action: rm -f /tmp/issue-refinement-commit-count
     action_type: shell
-    evaluate:
-      type: exit_code
-    on_success: evaluate
-    on_error: evaluate
+    next: evaluate
   evaluate:
     action: |
       ll-issues refine-status --json | python3 -c "
@@ -31,6 +27,8 @@ states:
               print(f'NEEDS_SCORE {issue[\"id\"]}')
               sys.exit(1)
           rc = issue.get('refine_count', 0)
+          # Cap: after 5 refinements with cs>=85, graduate even if oc is still low.
+          # Prevents infinite refinement loops on stubborn issues.
           if cs >= 85 and rc >= 5:
               continue
           if cs < 85 or oc < 70:
@@ -46,7 +44,7 @@ states:
     on_failure: parse_id
     on_error: evaluate
   parse_id:
-    action: echo "${captured.classify.output}" | awk '{printf $2}'
+    action: echo "${captured.classify.output}" | awk 'NR==1{printf $2}'
     action_type: shell
     capture: "issue_id"
     evaluate:
@@ -108,6 +106,6 @@ states:
     next: evaluate
   done:
     terminal: true
-max_iterations: 100
+max_iterations: 300
 timeout: 14400
 on_handoff: spawn
