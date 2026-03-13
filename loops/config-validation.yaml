@@ -1,0 +1,68 @@
+name: config-validation
+description: |
+  Validate all configuration files for consistency and schema compliance.
+  Checks plugin.json, ll-config.json, hooks.json, and other config files
+  against their schemas and cross-references.
+initial: validate_config
+scope:
+  - ".claude/"
+  - ".claude-plugin/"
+states:
+  validate_config:
+    action: |
+      ERRORS=0
+      echo "=== plugin.json ==="
+      python3 -c "import json; json.load(open('.claude-plugin/plugin.json'))" 2>&1 || ERRORS=$((ERRORS+1))
+      echo "=== ll-config.json ==="
+      python3 -c "import json; json.load(open('.claude/ll-config.json'))" 2>&1 || ERRORS=$((ERRORS+1))
+      echo "=== hooks.json ==="
+      python3 -c "import json; json.load(open('hooks/hooks.json'))" 2>&1 || ERRORS=$((ERRORS+1))
+      echo "=== config-schema.json ==="
+      python3 -c "import json; json.load(open('config-schema.json'))" 2>&1 || ERRORS=$((ERRORS+1))
+      exit $ERRORS
+    action_type: shell
+    capture: validation_results
+    evaluate:
+      type: exit_code
+    on_success: check_consistency
+    on_failure: fix_config
+    on_error: fix_config
+  check_consistency:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Run `/ll:audit-claude-config` to check cross-references between
+      config files. Verify that:
+      1. Commands referenced in plugin.json exist in commands/
+      2. Skills referenced exist in skills/
+      3. Hook scripts referenced in hooks.json exist
+      4. Config schema matches ll-config.json structure
+    capture: consistency_report
+    next: route_fix
+  route_fix:
+    evaluate:
+      type: llm_structured
+      source: "${captured.consistency_report.output}"
+      prompt: |
+        Does the audit report identify any consistency issues that need fixing?
+        Return "success" if there are issues to fix.
+        Return "failure" if all configs are consistent.
+    on_success: fix_config
+    on_failure: done
+    on_error: done
+  fix_config:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Config validation/consistency issues found:
+      ${captured.validation_results.output}
+
+      Fix all identified configuration issues:
+      - JSON syntax errors: fix malformed JSON
+      - Missing references: add missing files or remove stale references
+      - Schema violations: update configs to match their schemas
+    next: validate_config
+  done:
+    terminal: true
+max_iterations: 10
+timeout: 1800

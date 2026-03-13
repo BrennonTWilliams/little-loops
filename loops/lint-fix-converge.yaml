@@ -1,0 +1,72 @@
+name: lint-fix-converge
+description: |
+  Drive lint violations to zero using iterative auto-fix and manual-fix
+  cycles. Uses a convergence evaluator to detect when fixes stall (no
+  progress between iterations), preventing infinite loops on unfixable
+  violations.
+initial: count_lint
+backoff: 2
+states:
+  count_lint:
+    action: |
+      LINT_COUNT=$(ruff check scripts/ --output-format=json 2>/dev/null | python3 -c "
+      import sys, json
+      try:
+          data = json.load(sys.stdin)
+          print(len(data))
+      except Exception:
+          print(0)
+      ")
+      echo "$LINT_COUNT"
+    action_type: shell
+    capture: lint_count
+    evaluate:
+      type: convergence
+      target: 0
+      direction: minimize
+      tolerance: 0
+    on_success: done
+    on_failure: auto_fix
+    on_error: auto_fix
+  auto_fix:
+    action: "ruff check scripts/ --fix --unsafe-fixes 2>&1 | tail -5"
+    action_type: shell
+    capture: fix_output
+    next: manual_fix_check
+  manual_fix_check:
+    action: |
+      REMAINING=$(ruff check scripts/ --output-format=json 2>/dev/null | python3 -c "
+      import sys, json
+      try:
+          data = json.load(sys.stdin)
+          print(len(data))
+      except Exception:
+          print(0)
+      ")
+      echo "$REMAINING"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: eq
+      target: 0
+    on_success: count_lint
+    on_failure: manual_fix
+    on_error: count_lint
+  manual_fix:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Auto-fix could not resolve all lint violations. Run `ruff check scripts/`
+      to see remaining violations.
+
+      For each remaining violation:
+      1. Read the affected file and understand the context
+      2. Apply a targeted fix that resolves the violation
+      3. Do NOT add noqa comments unless the violation is a genuine false positive
+
+      Fix violations one at a time, verifying each fix with ruff check on that file.
+    next: count_lint
+  done:
+    terminal: true
+max_iterations: 20
+timeout: 3600

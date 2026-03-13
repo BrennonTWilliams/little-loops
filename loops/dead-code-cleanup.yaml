@@ -1,0 +1,95 @@
+name: dead-code-cleanup
+description: |
+  Find dead code, remove high-confidence items, and verify tests pass after
+  each removal. Scans for unused imports, functions, and variables, removes
+  the most confident items, and loops until clean or count stops decreasing.
+initial: scan
+scope:
+  - "scripts/"
+states:
+  scan:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Run `/ll:find-dead-code` to scan for unused code in the codebase.
+      Save findings to /tmp/ll-dead-code-report.txt. Focus on:
+      - Unused imports
+      - Unreferenced functions and classes
+      - Dead variables and constants
+    capture: scan_results
+    next: count_findings
+  count_findings:
+    action: |
+      REPORT="/tmp/ll-dead-code-report.txt"
+      if [ -f "$REPORT" ]; then
+        COUNT=$(grep -c '^[[:space:]]*-' "$REPORT" 2>/dev/null || echo 0)
+      else
+        COUNT=0
+      fi
+      echo "{\"count\": $COUNT}"
+    action_type: shell
+    capture: finding_count
+    evaluate:
+      type: output_json
+      path: ".count"
+      operator: eq
+      target: 0
+    on_success: done
+    on_failure: remove_code
+    on_error: done
+  remove_code:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Dead code scan results:
+      ${captured.scan_results.output}
+
+      Remove the top 3 highest-confidence dead code items. For each:
+      1. Verify the code is truly unused (check for dynamic references)
+      2. Remove the dead code
+      3. Remove any imports that become unused after removal
+
+      Do NOT remove code that might be used via:
+      - Dynamic dispatch / getattr
+      - Plugin registration
+      - Public API contracts
+    next: verify_tests
+  verify_tests:
+    action_type: shell
+    timeout: 600
+    action: |
+      CMD=$(python3 -c "
+      import json, pathlib
+      p = pathlib.Path('.claude/ll-config.json')
+      cfg = json.loads(p.read_text()) if p.exists() else {}
+      print(cfg.get('project', {}).get('test_cmd', 'pytest'))
+      ")
+      set -o pipefail
+      eval "$CMD" 2>&1 | tee /tmp/ll-dead-code-tests.txt
+    evaluate:
+      type: exit_code
+    on_success: commit
+    on_failure: revert_and_scan
+    on_error: revert_and_scan
+  revert_and_scan:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Tests failed after dead code removal. Read /tmp/ll-dead-code-tests.txt
+      to see the failures.
+
+      Revert the most recent dead code removal that caused the failure using
+      `git checkout -- <file>`. Then move on to the next scan cycle — the
+      reverted item will be skipped in future iterations.
+    next: scan
+  commit:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit the dead code removal.
+      Use message: "refactor: remove dead code identified by scan"
+    next: scan
+  done:
+    terminal: true
+max_iterations: 15
+timeout: 5400
+on_handoff: spawn

@@ -1,0 +1,52 @@
+name: worktree-health
+description: |
+  Continuous monitoring of orphaned worktrees and stale branches. Periodically
+  checks for worktrees left by interrupted ll-parallel runs and branches that
+  are no longer needed, cleaning them up automatically. Runs in maintain mode
+  for ongoing monitoring.
+initial: check_worktrees
+maintain: true
+backoff: 300
+states:
+  check_worktrees:
+    action: |
+      ORPHANED=$(git worktree list --porcelain 2>/dev/null | grep -c "^worktree.*ll-worktree" || echo 0)
+      echo "$ORPHANED"
+    action_type: shell
+    capture: worktree_count
+    evaluate:
+      type: output_contains
+      pattern: "0"
+    on_success: check_branches
+    on_failure: cleanup_worktrees
+    on_error: check_branches
+  cleanup_worktrees:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Run `/ll:cleanup-worktrees` to remove orphaned worktrees from
+      interrupted ll-parallel runs. Review each worktree before removal
+      to ensure no uncommitted work is lost.
+    next: check_branches
+  check_branches:
+    action: |
+      STALE=$(git branch --merged main 2>/dev/null | grep -v '^\*' | grep -v 'main' | wc -l | tr -d ' ')
+      echo "$STALE"
+    action_type: shell
+    capture: stale_branches
+    evaluate:
+      type: output_contains
+      pattern: "0"
+    on_success: done
+    on_failure: prune_branches
+    on_error: done
+  prune_branches:
+    action: |
+      git branch --merged main | grep -v '^\*' | grep -v 'main' | xargs -r git branch -d 2>&1
+    action_type: shell
+    next: done
+  done:
+    terminal: true
+    on_maintain: check_worktrees
+max_iterations: 50
+timeout: 86400

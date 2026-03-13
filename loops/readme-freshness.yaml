@@ -1,0 +1,87 @@
+name: readme-freshness
+description: |
+  Compare README and CLAUDE.md against actual project state, identify stale
+  sections, and update them. Gathers current counts (commands, skills, loops,
+  CLI tools), compares against documented state, and fixes discrepancies.
+initial: gather_state
+llm:
+  max_tokens: 512
+states:
+  gather_state:
+    action: |
+      echo "=== Commands ==="
+      ls commands/*.md 2>/dev/null | wc -l
+      echo "=== Skills ==="
+      ls skills/*/SKILL.md 2>/dev/null | wc -l
+      echo "=== Loops ==="
+      ls loops/*.yaml 2>/dev/null | wc -l
+      echo "=== CLI Tools ==="
+      ls scripts/little_loops/cli/*.py 2>/dev/null | wc -l
+      echo "=== Issues ==="
+      find .issues -maxdepth 2 -name '*.md' -not -path '.issues/completed/*' 2>/dev/null | wc -l
+      echo "=== Agents ==="
+      ls agents/*.md 2>/dev/null | wc -l
+    action_type: shell
+    capture: project_state
+    next: compare_readme
+  compare_readme:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Current project state counts:
+      ${captured.project_state.output}
+
+      Read CLAUDE.md and README.md. Compare documented counts, command
+      lists, and CLI tool descriptions against the actual project state above.
+
+      For each discrepancy found, note:
+      - File and section
+      - What it says vs what it should say
+      - Severity (outdated count, missing entry, wrong description)
+
+      Report all discrepancies. Do not make changes yet.
+    capture: discrepancies
+    next: route_updates
+  route_updates:
+    evaluate:
+      type: llm_structured
+      source: "${captured.discrepancies.output}"
+      prompt: |
+        Review the discrepancy report. Are there any discrepancies that need fixing?
+        Return "success" if there are discrepancies to fix.
+        Return "failure" if everything is already up to date.
+    on_success: update_docs
+    on_failure: done
+    on_error: done
+  update_docs:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Based on the discrepancy analysis:
+      ${captured.discrepancies.output}
+
+      Update CLAUDE.md and README.md to reflect the actual project state.
+      Only change sections that are genuinely stale — do not rewrite prose
+      or change formatting unless necessary for accuracy.
+    next: verify_accuracy
+  verify_accuracy:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Re-read the updated CLAUDE.md and README.md. Verify that:
+      1. All counts match the project state gathered earlier
+      2. No sections were accidentally deleted or corrupted
+      3. Markdown formatting is correct
+
+      If any issues are found, fix them now.
+    next: commit
+  commit:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit the documentation updates.
+      Use message: "docs: update README and CLAUDE.md to match project state"
+    next: done
+  done:
+    terminal: true
+max_iterations: 5
+timeout: 2400

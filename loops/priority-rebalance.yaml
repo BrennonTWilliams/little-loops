@@ -1,0 +1,77 @@
+name: priority-rebalance
+description: |
+  Review P0-P5 priority distribution across active issues, identify
+  mis-prioritized items, and rebalance. Takes a before/after snapshot
+  to track changes and commits the rebalanced priorities.
+initial: snapshot
+states:
+  snapshot:
+    action: |
+      echo "=== Priority Distribution ==="
+      for P in P0 P1 P2 P3 P4 P5; do
+        COUNT=$(ls .issues/bugs/${P}-* .issues/features/${P}-* .issues/enhancements/${P}-* 2>/dev/null | wc -l | tr -d ' ')
+        echo "$P: $COUNT"
+      done
+      echo "=== Total ==="
+      find .issues -maxdepth 2 -name '*.md' -not -path '.issues/completed/*' -not -path '.issues/templates/*' 2>/dev/null | wc -l | tr -d ' '
+    action_type: shell
+    capture: before_snapshot
+    next: analyze_balance
+  analyze_balance:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Current priority distribution:
+      ${captured.before_snapshot.output}
+
+      Healthy distribution guidelines:
+      - P0 (critical): 0-2 issues (true emergencies only)
+      - P1 (high): 3-5 issues (important, time-sensitive)
+      - P2 (medium): 5-10 issues (standard backlog)
+      - P3 (low): any count (nice-to-have)
+      - P4-P5 (minimal): any count (someday/maybe)
+
+      Read a sample of issues from over-represented priority levels.
+      Identify issues that appear mis-prioritized relative to their
+      actual impact and urgency.
+    capture: analysis
+    next: route_rebalance
+  route_rebalance:
+    evaluate:
+      type: llm_structured
+      source: "${captured.analysis.output}"
+      prompt: |
+        Does the analysis identify any issues that need reprioritization?
+        Return "success" if there are issues to reprioritize.
+        Return "failure" if the current distribution is healthy.
+    on_success: reprioritize
+    on_failure: done
+    on_error: done
+  reprioritize:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Based on the priority analysis:
+      ${captured.analysis.output}
+
+      Run `/ll:prioritize-issues --auto` to reassign priorities for
+      the mis-prioritized issues identified. Focus on:
+      - Deflating P0/P1 items that aren't truly critical/high priority
+      - Promoting P3+ items that deserve more attention
+    next: align
+  align:
+    action_type: prompt
+    action: |
+      Run `/ll:align-issues` to verify the reprioritized issues still
+      align with project goals and key documents.
+    next: commit
+  commit:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit the priority rebalancing.
+      Use message: "chore(issues): rebalance priority distribution"
+    next: done
+  done:
+    terminal: true
+max_iterations: 5
+timeout: 3600

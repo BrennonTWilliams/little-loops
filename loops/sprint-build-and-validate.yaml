@@ -1,0 +1,105 @@
+name: sprint-build-and-validate
+description: |
+  Create a sprint from the backlog, validate all included issues are
+  implementation-ready, fix any that aren't, and review the final sprint
+  composition. Ensures sprint quality before execution begins.
+initial: assess_backlog
+context:
+  max_issues: 8
+states:
+  assess_backlog:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Run `ll-issues list` to see the current backlog.
+      Assess which issues are highest priority and ready for a sprint.
+      Consider dependencies, priority levels, and issue readiness.
+      Target ${context.max_issues} issues maximum for the sprint.
+    capture: backlog_assessment
+    next: create_sprint
+  create_sprint:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Based on the backlog assessment:
+      ${captured.backlog_assessment.output}
+
+      Run `/ll:create-sprint` to create a new sprint definition.
+      Select up to ${context.max_issues} issues, prioritizing:
+      1. P0-P1 issues first
+      2. Issues with no blocking dependencies
+      3. Issues that have been refined (high confidence scores)
+    capture: sprint_def
+    next: validate_issues
+  validate_issues:
+    action_type: prompt
+    timeout: 600
+    action: |
+      For each issue in the sprint, run `/ll:confidence-check [ISSUE_ID] --auto`
+      to verify implementation readiness.
+
+      Flag any issues with:
+      - Readiness score < 85
+      - Outcome confidence < 70
+      - Missing dependencies
+    capture: validation_result
+    next: route_validation
+  route_validation:
+    evaluate:
+      type: llm_structured
+      source: "${captured.validation_result.output}"
+      prompt: |
+        Are all sprint issues implementation-ready (readiness >= 85,
+        outcome confidence >= 70)?
+        Return "success" if all issues pass.
+        Return "failure" if any issues need fixing.
+    on_success: review_sprint
+    on_failure: fix_issues
+    on_error: review_sprint
+  fix_issues:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Some sprint issues aren't ready:
+      ${captured.validation_result.output}
+
+      For each unready issue, run:
+      1. `/ll:refine-issue [ISSUE_ID] --auto` to fill knowledge gaps
+      2. `/ll:confidence-check [ISSUE_ID] --auto` to re-score
+
+      If an issue can't reach readiness >= 85 after refinement, consider
+      replacing it with another backlog issue.
+    next: validate_issues
+  review_sprint:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Run `/ll:review-sprint` to perform a final health check on the
+      sprint composition. Check for:
+      - Dependency conflicts between sprint issues
+      - Scope contention (multiple issues touching same files)
+      - Overall sprint size and balance
+    capture: review_result
+    next: route_review
+  route_review:
+    evaluate:
+      type: llm_structured
+      source: "${captured.review_result.output}"
+      prompt: |
+        Is the sprint healthy and ready for execution?
+        Return "success" if the sprint is good to go.
+        Return "failure" if the review found critical issues.
+    on_success: commit
+    on_failure: fix_issues
+    on_error: commit
+  commit:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit the sprint definition.
+      Use message: "chore(sprint): create validated sprint definition"
+    next: done
+  done:
+    terminal: true
+max_iterations: 15
+timeout: 5400
+on_handoff: spawn

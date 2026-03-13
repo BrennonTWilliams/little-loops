@@ -1,0 +1,73 @@
+name: issue-staleness-review
+description: |
+  Find old issues, review their relevance, and close or reprioritize stale
+  ones. Identifies issues that haven't been touched in a configurable number
+  of days, evaluates each for continued relevance, and takes action.
+initial: find_stale
+context:
+  stale_days: 30
+states:
+  find_stale:
+    action: |
+      find .issues -maxdepth 2 -name '*.md' -not -path '.issues/completed/*' -not -path '.issues/templates/*' -mtime +30 2>/dev/null | head -10
+    action_type: shell
+    capture: stale_list
+    evaluate:
+      type: output_contains
+      pattern: ".md"
+    on_success: review_issue
+    on_failure: done
+    on_error: done
+  review_issue:
+    action_type: prompt
+    timeout: 300
+    action: |
+      The following issues haven't been modified in over ${context.stale_days} days:
+      ${captured.stale_list.output}
+
+      For the first issue in the list:
+      1. Read the issue file
+      2. Check if the code it references still exists and still has the problem
+      3. Check if a similar issue has been created more recently
+      4. Determine: is this issue still relevant?
+    capture: review_result
+    next: triage
+  triage:
+    evaluate:
+      type: llm_structured
+      source: "${captured.review_result.output}"
+      prompt: |
+        Based on the review, what should happen to this issue?
+        Return "success" if the issue should be CLOSED (no longer relevant,
+        already fixed, or duplicated by a newer issue).
+        Return "failure" if the issue should be KEPT (still relevant and
+        needs work).
+    on_success: close_issue
+    on_failure: reprioritize
+    on_error: find_stale
+  close_issue:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Move the reviewed stale issue to .issues/completed/ with a note
+      explaining why it was closed (stale, already fixed, or duplicated).
+    next: commit
+  reprioritize:
+    action_type: prompt
+    timeout: 120
+    action: |
+      The stale issue is still relevant. Review its priority level.
+      If it has been stale for a long time but is still valid, consider
+      whether it should be deprioritized (bumped to P4/P5) to reflect
+      that it's not urgent enough to have been addressed.
+    next: commit
+  commit:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit the issue triage changes.
+      Use message: "chore(issues): triage stale issues"
+    next: find_stale
+  done:
+    terminal: true
+max_iterations: 15
+timeout: 3600

@@ -1,0 +1,48 @@
+name: changelog-and-tag
+description: |
+  Generate changelog from completed issues, create git tag, and prepare a
+  release. Reads the version bump type from context (major/minor/patch),
+  gathers completed issues, generates a changelog entry, and creates the
+  release with tag.
+initial: gather_completed
+context:
+  version_bump: "minor"
+states:
+  gather_completed:
+    action: |
+      ls .issues/completed/ 2>/dev/null | head -50
+    action_type: shell
+    capture: completed_list
+    evaluate:
+      type: output_contains
+      pattern: ".md"
+    on_success: generate_changelog
+    on_failure: done
+    on_error: done
+  generate_changelog:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Review the completed issues in .issues/completed/ and generate a changelog.
+
+      Completed issues found:
+      ${captured.completed_list.output}
+
+      Read each completed issue file to understand what was done. Group changes
+      by type (Features, Enhancements, Bug Fixes). Write the changelog entry to
+      CHANGELOG.md (append to top, below any existing header). Use conventional
+      changelog format with issue IDs as references.
+    capture: changelog
+    next: create_release
+  create_release:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Run `/ll:manage-release` with a ${context.version_bump} version bump.
+      The changelog has already been updated. Create the git tag and prepare
+      the release notes from the changelog entry just generated.
+    next: done
+  done:
+    terminal: true
+max_iterations: 5
+timeout: 1800

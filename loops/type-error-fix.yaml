@@ -1,0 +1,53 @@
+name: type-error-fix
+description: |
+  Fix mypy type errors iteratively until the codebase is clean. Runs mypy,
+  analyzes errors by category, applies targeted fixes, and re-checks. Loops
+  until mypy exits cleanly or max iterations reached.
+initial: run_mypy
+states:
+  run_mypy:
+    action: |
+      python -m mypy scripts/little_loops/ 2>&1 | tee /tmp/ll-mypy-results.txt
+    action_type: shell
+    capture: mypy_output
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: analyze_errors
+    on_error: analyze_errors
+  analyze_errors:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Read /tmp/ll-mypy-results.txt to see the current mypy errors.
+
+      Categorize the errors:
+      - Missing type annotations
+      - Incompatible types
+      - Missing imports / stubs
+      - Other
+
+      List the top 5 highest-impact errors (errors that may cause cascading
+      failures when fixed). We will fix these first.
+    capture: analysis
+    next: fix_errors
+  fix_errors:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Based on the mypy error analysis:
+      ${captured.analysis.output}
+
+      Fix the identified type errors in priority order. For each error:
+      1. Read the affected file
+      2. Understand what the correct type should be
+      3. Apply the fix — prefer accurate types over broad Any/ignore
+      4. Do NOT use # type: ignore unless genuinely unavoidable
+
+      Fix up to 5 errors per iteration to keep changes reviewable.
+    next: run_mypy
+  done:
+    terminal: true
+max_iterations: 25
+timeout: 5400
+on_handoff: spawn

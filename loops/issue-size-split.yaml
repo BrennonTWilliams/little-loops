@@ -1,0 +1,56 @@
+name: issue-size-split
+description: |
+  Review issues for sizing, identify oversized ones, and split them into
+  smaller issues. Iterates until no issues exceed the size threshold,
+  normalizing filenames after each split.
+initial: find_large
+scope:
+  - ".issues/"
+states:
+  find_large:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Run `/ll:issue-size-review` to evaluate the size and complexity of
+      all active issues. Identify any issues that are too large for a
+      single implementation session.
+    capture: size_report
+    next: route_large
+  route_large:
+    evaluate:
+      type: llm_structured
+      source: "${captured.size_report.output}"
+      prompt: |
+        Review the issue size report. Are there any issues flagged as
+        too large or recommended for splitting?
+        Return "success" if issues need splitting.
+        Return "failure" if all issues are appropriately sized.
+    on_success: split_issue
+    on_failure: done
+    on_error: done
+  split_issue:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Based on the size review:
+      ${captured.size_report.output}
+
+      For the largest oversized issue:
+      1. Read the full issue file
+      2. Identify natural decomposition points (separate concerns, sequential steps)
+      3. Create new smaller issue files for each sub-task
+      4. Update the original issue to reference the new sub-issues
+      5. Move the original to completed if fully decomposed, or update its scope
+
+      Each new issue should be independently implementable in one session.
+    next: normalize
+  normalize:
+    action_type: prompt
+    action: |
+      Run `/ll:normalize-issues` to ensure all new issue files follow
+      the correct naming convention and have valid IDs.
+    next: find_large
+  done:
+    terminal: true
+max_iterations: 20
+timeout: 5400

@@ -1,0 +1,59 @@
+name: docs-sync
+description: |
+  Verify documentation matches the codebase, check for broken links, and
+  fix discrepancies. Runs doc verification tools, link checkers, and
+  iterates until docs are synchronized with actual project state.
+initial: verify_docs
+scope:
+  - "docs/"
+  - "*.md"
+states:
+  verify_docs:
+    action: "ll-verify-docs 2>&1 || true"
+    action_type: shell
+    capture: verify_results
+    evaluate:
+      type: exit_code
+    on_success: check_links
+    on_failure: fix_docs
+    on_error: fix_docs
+  check_links:
+    action: "ll-check-links 2>&1 || true"
+    action_type: shell
+    capture: link_results
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: fix_docs
+    on_error: done
+  fix_docs:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Documentation issues found:
+
+      Verification results:
+      ${captured.verify_results.output}
+
+      Link check results:
+      ${captured.link_results.output}
+
+      Fix all documentation discrepancies:
+      - Update counts that don't match actual file counts
+      - Fix broken internal links (wrong paths, renamed files)
+      - Update CLI command lists to match actual tools
+      - Remove references to deleted files/features
+
+      Do NOT rewrite prose — only fix factual inaccuracies and broken references.
+    next: commit
+  commit:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit the documentation fixes.
+      Use message: "docs: sync documentation with codebase state"
+    next: verify_docs
+  done:
+    terminal: true
+max_iterations: 10
+timeout: 3600
+on_handoff: spawn

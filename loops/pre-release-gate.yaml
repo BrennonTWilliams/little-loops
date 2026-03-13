@@ -1,0 +1,105 @@
+name: pre-release-gate
+description: |
+  Validate all quality gates before creating a release. Runs lint, format,
+  types, tests, and docs audit sequentially. Auto-fixes quality issues and
+  test failures before proceeding. Only creates a release when all gates pass.
+initial: check_quality
+states:
+  check_quality:
+    action: "Run `/ll:check-code lint,format,types` and report results."
+    action_type: prompt
+    capture: quality_result
+    evaluate:
+      type: llm_structured
+      prompt: |
+        Did ALL quality checks (lint, format, types) pass with zero errors?
+        Return "success" if all checks are clean.
+        Return "failure" if any check found errors.
+    on_success: run_tests
+    on_failure: fix_quality
+    on_error: fix_quality
+  fix_quality:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Quality check results:
+      ${captured.quality_result.output}
+
+      Run `/ll:check-code fix` to auto-fix lint and format violations.
+      Then manually fix any remaining type errors — read each error,
+      understand the context, and apply a targeted fix.
+      Do NOT suppress with # type: ignore unless unavoidable.
+    next: check_quality
+  run_tests:
+    action_type: shell
+    timeout: 600
+    action: |
+      CMD=$(python3 -c "
+      import json, pathlib
+      p = pathlib.Path('.claude/ll-config.json')
+      cfg = json.loads(p.read_text()) if p.exists() else {}
+      print(cfg.get('project', {}).get('test_cmd', 'pytest'))
+      ")
+      set -o pipefail
+      eval "$CMD" 2>&1 | tee /tmp/ll-release-test-results.txt
+    capture: test_result
+    evaluate:
+      type: exit_code
+    on_success: audit_docs
+    on_failure: fix_tests
+    on_error: fix_tests
+  fix_tests:
+    action_type: prompt
+    timeout: 1200
+    action: |
+      Read /tmp/ll-release-test-results.txt to see the test failures.
+
+      For each failing test, diagnose before fixing:
+      - Is the test wrong (stale assertion)? Fix the test.
+      - Is the implementation wrong (bug)? Fix the implementation.
+
+      Never delete tests. Fix one at a time, re-run to verify.
+    next: check_quality
+  audit_docs:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Run `/ll:audit-docs` to verify documentation is accurate and complete.
+      Check that all documented features, commands, and APIs match the
+      actual codebase state.
+    capture: docs_result
+    next: route_docs
+  route_docs:
+    evaluate:
+      type: llm_structured
+      source: "${captured.docs_result.output}"
+      prompt: |
+        Did the documentation audit pass without critical issues?
+        Return "success" if docs are release-ready (minor issues OK).
+        Return "failure" if there are critical doc issues that must be
+        fixed before release.
+    on_success: create_release
+    on_failure: fix_docs
+    on_error: create_release
+  fix_docs:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Fix critical documentation issues found by the audit:
+      ${captured.docs_result.output}
+
+      Only fix issues that would be misleading or incorrect in a release.
+      Minor style issues can wait.
+    next: audit_docs
+  create_release:
+    action_type: prompt
+    timeout: 300
+    action: |
+      All quality gates passed. Run `/ll:manage-release` to create the
+      release. Include a summary of what was fixed during the gate process.
+    next: done
+  done:
+    terminal: true
+max_iterations: 20
+timeout: 7200
+on_handoff: spawn

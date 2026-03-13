@@ -1,0 +1,70 @@
+name: dependency-audit
+description: |
+  Validate issue dependencies for cycles and missing prerequisites, then
+  fix. Checks cross-issue dependency references, detects cycles, identifies
+  missing prerequisites, and resolves issues until the dependency graph
+  is clean.
+initial: check_deps
+scope:
+  - ".issues/"
+states:
+  check_deps:
+    action: "ll-deps validate --json 2>&1 || true"
+    action_type: shell
+    capture: dep_results
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: analyze_cycles
+    on_error: analyze_cycles
+  analyze_cycles:
+    evaluate:
+      type: output_contains
+      source: "${captured.dep_results.output}"
+      pattern: "cycle"
+    on_success: fix_cycles
+    on_failure: fix_refs
+  fix_cycles:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Dependency validation found cycles:
+      ${captured.dep_results.output}
+
+      For each cycle:
+      1. Identify which dependency is the weakest (least essential)
+      2. Remove that dependency reference from the issue's frontmatter
+      3. Add a comment explaining why the dependency was removed
+
+      Break all cycles with minimal dependency removal.
+    next: verify
+  fix_refs:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Dependency validation found issues:
+      ${captured.dep_results.output}
+
+      Fix all broken dependency references:
+      - Missing issue references: check if the issue was renamed or completed
+      - Invalid IDs: correct the ID format
+      - Stale references: remove dependencies on completed/closed issues
+    next: verify
+  verify:
+    action: "ll-deps validate 2>&1 || true"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_success: commit
+    on_failure: check_deps
+    on_error: check_deps
+  commit:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit the dependency fixes.
+      Use message: "fix(issues): resolve dependency graph issues"
+    next: done
+  done:
+    terminal: true
+max_iterations: 10
+timeout: 3600
