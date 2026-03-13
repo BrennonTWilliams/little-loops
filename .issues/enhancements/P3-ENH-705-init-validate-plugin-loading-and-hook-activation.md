@@ -52,11 +52,42 @@ Add a validation step (Step 10 or after Step 9: Write Configuration) in `skills/
 3. If hook features enabled and plugin not detected, emit structured warning
 4. Add test coverage for the warning condition
 
+## Impact
+
+- **Priority**: P3 - Quality-of-life improvement; silent failures are confusing but not blocking
+- **Effort**: Small - Single validation step added to existing skill file
+- **Risk**: Low - Warning-only, does not block init or change config behavior
+- **Breaking Change**: No
+
 ## Integration Map
 
 ### Files to Modify
 - `skills/init/SKILL.md` — add validation step after config write
 - `skills/init/interactive.md` — optionally surface warning in wizard summary
 
+### Dependent Files (Callers/Importers)
+- N/A — init skill is invoked directly by users, not imported
+
+### Similar Patterns
+- N/A — no existing plugin-loading validation patterns to follow
+
+### Tests
+- TBD — identify test coverage for init skill validation logic
+
+### Documentation
+- N/A — warning is self-documenting in init output
+
+### Configuration
+- N/A — reads existing `ll-config.json` keys, no new config added
+
+## Labels
+
+`enhancement`, `init`, `developer-experience`
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4922c4e9-2029-4f68-b0a3-04ae4dbcd620.jsonl`
+- `/ll:format-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/515ca590-73cd-40a5-bdc2-fd93b84ad7b4.jsonl`
+
+---
+
+**Open** | Created: 2026-03-12 | Priority: P3
