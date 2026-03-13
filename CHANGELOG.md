@@ -12,6 +12,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.40.0] - 2026-03-12
+
+### Added
+
+- **`--check` flag for issue prep skills** - Added check-only evaluation mode with exit code routing for FSM loop evaluators across 8 skills (ENH-668)
+- **`--auto` flag for issue prep skills** - Non-interactive mode for verify-issues, map-dependencies, and issue-size-review with conservative defaults (ENH-669)
+- **`count` sub-command for `ll-issues`** - Lightweight issue volume queries with `--type`, `--priority` filters and `--json` output (ENH-677)
+- **`issue-discovery-triage` builtin loop** - New FSM loop for automated issue discovery and triage (2a515c6)
+
+### Fixed
+
+- **FSM diagram branch edges to terminal states not rendered** - Added right-margin forward-skip edge renderer for edges spanning 2+ layers (BUG-678)
+- **FSM diagram main-path cycle edges not rendered** - Extended edge reclassification to scan forward_edge_labels for backward-pointing main-path edges (BUG-679)
+- **`init --interactive` does not create .issues directory structure** - Refactored interactive init to auto-detect and create issue directories (BUG-656)
+- **Dependency mapper inflated default scores** - Applied overlap guards and fixed scoring in dependency mapper (30a0453)
+- **Refine-status table too wide for narrow terminals** - Reduced column widths saving ~21 chars per row (ENH-676)
+- **`ll-loop show` States section visibility** - Gated States section behind `--verbose` flag (0f87a97)
+- **Test: add issue-discovery-triage to expected builtin loops set** (00b639c)
+
+### Changed
+
+- **Optimize FSM diagram edge classification** - Replaced O(n) `bfs_order.index()` calls with O(1) dict lookup (ENH-542)
+- **Add `/ll:review-loop` to COMMANDS.md reference** (ENH-680)
+- **Documentation updates** - Fixed stale counts, paths, and missing entries in ARCHITECTURE and CONTRIBUTING (a57e67c)
+
 ## [1.39.0] - 2026-03-11
 
 ### Added
@@ -1145,6 +1170,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.40.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.39.0...v1.40.0
 [1.39.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.38.0...v1.39.0
 [1.38.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.37.3...v1.38.0
 [1.34.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.33.1...v1.34.0
