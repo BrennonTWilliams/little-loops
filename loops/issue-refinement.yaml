@@ -43,7 +43,15 @@ states:
     evaluate:
       type: exit_code
     on_success: done
-    on_failure: route_format
+    on_failure: parse_id
+    on_error: evaluate
+  parse_id:
+    action: echo "${captured.classify.output}" | awk '{printf $2}'
+    action_type: shell
+    capture: "issue_id"
+    evaluate:
+      type: exit_code
+    on_success: route_format
     on_error: evaluate
   route_format:
     evaluate:
@@ -62,39 +70,23 @@ states:
   format_issues:
     action_type: prompt
     action: |
-      The classifier output is:
-      ${captured.classify.output}
-
-      Extract the issue ID from that output line. Then execute these commands
-      in order for that single issue:
-      1. /ll:format-issue [ISSUE_ID] --auto
-      2. /ll:verify-issues [ISSUE_ID] --auto
-
-      Replace [ISSUE_ID] with the actual ID from the classifier output.
+      Run these commands in order for issue ${captured.issue_id.output}:
+      1. /ll:format-issue ${captured.issue_id.output} --auto
+      2. /ll:verify-issues ${captured.issue_id.output} --auto
     next: check_commit
   score_issues:
     action_type: prompt
     action: |
-      The classifier output is:
-      ${captured.classify.output}
-
-      Extract the issue ID from that output line. Then run:
-      /ll:confidence-check [ISSUE_ID] --auto
-
-      Replace [ISSUE_ID] with the actual ID from the classifier output.
+      Run this command for issue ${captured.issue_id.output}:
+      /ll:confidence-check ${captured.issue_id.output} --auto
     next: check_commit
   refine_issues:
     action_type: prompt
     timeout: 600
     action: |
-      The classifier output is:
-      ${captured.classify.output}
-
-      Extract the issue ID from that output line. Run these two commands in order:
-      1. /ll:refine-issue [ISSUE_ID] --auto
-      2. /ll:confidence-check [ISSUE_ID] --auto
-
-      Replace [ISSUE_ID] with the actual ID from the classifier output.
+      Run these commands in order for issue ${captured.issue_id.output}:
+      1. /ll:refine-issue ${captured.issue_id.output} --auto
+      2. /ll:confidence-check ${captured.issue_id.output} --auto
     next: check_commit
   check_commit:
     action: |
