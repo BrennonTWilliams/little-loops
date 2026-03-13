@@ -64,14 +64,14 @@ if run_config.scope_mode:
 
 ### Files to Modify
 - `scripts/little_loops/parallel/orchestrator.py` — add scope-lock execution mode
-- `scripts/little_loops/parallel/worker.py` — acquire/release scope locks instead of worktree setup
+- `scripts/little_loops/parallel/worker_pool.py` — acquire/release scope locks instead of worktree setup
 - `scripts/little_loops/cli/parallel.py` — add `--scope-mode` flag
 - `scripts/little_loops/cli/sprint/run.py` — add `--scope-mode` flag
 - `scripts/little_loops/fsm/concurrency.py` — may need enhancements for issue-level use
 
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/parallel/types.py` — WorkerConfig may need scope field
-- `scripts/little_loops/sprint/executor.py` — sprint wave execution
+- `scripts/little_loops/sprint.py` — sprint wave execution (note: no `sprint/executor.py`; sprint logic lives in `sprint.py` + `cli/sprint/run.py`)
 
 ### Similar Patterns
 - `scripts/little_loops/cli/loop/run.py` — existing LockManager integration
@@ -139,6 +139,8 @@ ll-sprint run my-sprint --scope-mode
 ## Session Log
 - `/ll:capture-issue` - 2026-03-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd0a8bb6-7595-4676-9582-a0e3f4962033.jsonl`
 - `/ll:format-issue` - 2026-03-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ebe5424-4390-42c8-a840-ac8166b02550.jsonl`
+- `/ll:format-issue` - 2026-03-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:verify-issues` - 2026-03-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 
 ---
 
