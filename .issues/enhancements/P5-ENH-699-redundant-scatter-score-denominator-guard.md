@@ -9,7 +9,11 @@ discovered_by: scan-codebase
 
 ## Summary
 
-In `detect_cross_cutting_smells`, line 109 sets `total_dirs = 1` when `all_directories` is empty, making the `total_dirs > 0` guard on line 114 always true by construction. The redundant check is untested and obscures the invariant.
+In `detect_cross_cutting_smells`, line 109 sets `total_dirs = 1` when `all_directories` is empty, making the `total_dirs > 0` guard on line 114 always true by construction.
+
+## Motivation
+
+A guard that can never be reached is dead code that misleads readers into thinking `total_dirs` could be zero at that point. Removing it clarifies the invariant and tests document the empty-directories behavior explicitly. The redundant check is untested and obscures the invariant.
 
 ## Location
 
@@ -24,6 +28,17 @@ Redundant `if total_dirs > 0 else 0.0` guard that can never reach the `0.0` bran
 ## Expected Behavior
 
 Simplify line 114 to `scatter_score = len(dirs) / total_dirs` and add a test documenting the empty-directories case.
+
+## Implementation Steps
+
+1. In `debt.py`, locate `detect_cross_cutting_smells` at line 109
+2. Replace `scatter_score = len(dirs) / total_dirs if total_dirs > 0 else 0.0` with `scatter_score = len(dirs) / total_dirs`
+3. Add a test case to the existing test file documenting the empty-directories case
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/issue_history/debt.py` — `detect_cross_cutting_smells()` (lines 109-114)
+- **Test file**: `scripts/tests/` — existing debt/smell tests
 
 ## Scope Boundaries
 
@@ -42,6 +57,7 @@ Simplify line 114 to `scatter_score = len(dirs) / total_dirs` and add a test doc
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

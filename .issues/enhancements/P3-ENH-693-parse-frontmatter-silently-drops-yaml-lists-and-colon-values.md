@@ -9,7 +9,11 @@ discovered_by: scan-codebase
 
 ## Summary
 
-The custom frontmatter parser in `frontmatter.py` processes line-by-line and splits on the first `:`. It silently drops YAML list items (lines starting with `- `), misparses values containing colons, and ignores multi-line block scalars. There is no validation or warning for unsupported syntax.
+The custom frontmatter parser in `frontmatter.py` processes line-by-line and splits on the first `:`.
+
+## Motivation
+
+Silent data loss is worse than a clear error. Future frontmatter additions using YAML lists or colon-containing values (e.g., URLs, timestamps) will be silently dropped without any warning, causing hard-to-debug downstream failures. Making the parser either correct or explicitly limited prevents this class of silent bug. It silently drops YAML list items (lines starting with `- `), misparses values containing colons, and ignores multi-line block scalars. There is no validation or warning for unsupported syntax.
 
 ## Location
 
@@ -30,6 +34,23 @@ Either:
 1. Document the parser as "simple key: value only" and raise/warn when list-item lines are encountered, OR
 2. Use PyYAML for correct YAML parsing
 
+## Implementation Steps
+
+**Option A — Add PyYAML:**
+1. Add `pyyaml` to `scripts/pyproject.toml` dependencies
+2. Replace line-by-line parsing in `parse_frontmatter` with `yaml.safe_load(frontmatter_block)`
+3. Run tests to verify all existing frontmatter parses identically
+
+**Option B — Validate and warn:**
+1. In `parse_frontmatter`, detect list-item lines (`line.startswith("- ")`) and log a warning
+2. Detect values containing colons and split only on the first `:` (already done — verify edge cases)
+3. Document the supported subset in a docstring
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/frontmatter.py` — `parse_frontmatter()` (lines 36-51)
+- **Consumers**: All modules importing `parse_frontmatter` (config, issue_parser, issue_history, etc.)
+
 ## Scope Boundaries
 
 - Focus on making the parser either correct or explicit about its limitations
@@ -48,6 +69,7 @@ Either:
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

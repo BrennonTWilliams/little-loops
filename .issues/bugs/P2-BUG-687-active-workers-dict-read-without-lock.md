@@ -54,6 +54,17 @@ All reads and writes to `_active_workers` should be protected by `_process_lock`
 
 Add `with self._process_lock:` guards around all `_active_workers` reads in `active_count()` and `get_active_stages()`, and around the write in `submit()`.
 
+## Implementation Steps
+
+1. In `worker_pool.py`, add `with self._process_lock:` around `self._active_workers[issue_id] = future` in `submit()` (line 184)
+2. Add `with self._process_lock:` around the `sum(...)` comprehension in `active_count()` (line 1273)
+3. Add `with self._process_lock:` around `set(self._active_workers.keys())` in `get_active_stages()` (line 1308)
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/parallel/worker_pool.py` — `submit()` (line 184), `active_count()` (line 1273), `get_active_stages()` (line 1308)
+- **Lock reused**: `self._process_lock` (already used for `_active_worktrees`, `_active_processes`, `_worker_stages`)
+
 ## Impact
 
 - **Priority**: P2 - Thread safety issue that could cause crashes under concurrent load
@@ -67,6 +78,7 @@ Add `with self._process_lock:` guards around all `_active_workers` reads in `act
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

@@ -66,6 +66,12 @@ The `skill` subcommand is mutually exclusive with category-based alignment (e.g.
 - [ ] Works for both individual issues and batch (all active issues)
 - [ ] Fallback to `commands/<name>.md` when `skills/<name>/SKILL.md` is absent
 
+## Integration Map
+
+- **Modified**: `commands/align-issues.md` — add `skill <skill-name>` subcommand parsing and resolution logic
+- **Reads**: `skills/<name>/SKILL.md` or `commands/<name>.md` (fallback) as alignment reference document
+- **Reused**: existing document-based alignment scoring logic in `align-issues.md`
+
 ## Impact
 
 - **Priority**: P3 - Useful quality-of-life improvement for issue readiness workflows; does not block other work
@@ -101,3 +107,4 @@ The `skill` subcommand is mutually exclusive with category-based alignment (e.g.
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no skill subcommand in align-issues
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `commands/align-issues.md` still has no `skill` subcommand
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`

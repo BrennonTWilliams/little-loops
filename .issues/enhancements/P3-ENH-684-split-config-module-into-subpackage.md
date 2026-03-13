@@ -14,6 +14,10 @@ Architectural issue found by `/ll:audit-architecture`.
 
 `config.py` contains 20+ dataclasses totaling 1,012 lines, covering project config, CLI config, scan config, parallel config, sync config, and more.
 
+## Motivation
+
+A 1,012-line file with 20+ unrelated dataclasses is difficult to navigate, creates merge conflict hot spots as multiple features touch config simultaneously, and makes it hard to understand which components own which configuration. Splitting into domain-specific submodules improves discoverability and reduces contention.
+
 ## Location
 
 - **File**: `scripts/little_loops/config.py`
@@ -53,6 +57,26 @@ Convert `config.py` into a `config/` subpackage with domain-specific modules.
 3. Re-export from `config/__init__.py` with `__all__` for backwards compatibility
 4. Run tests to verify nothing breaks
 
+## Scope Boundaries
+
+- Re-export all existing names from `config/__init__.py` for backwards compatibility — no call site changes required
+- Do not change any dataclass definitions, field names, or defaults during the split
+- Run full test suite after each submodule extraction to catch regressions
+
+## Implementation Steps
+
+1. Create `scripts/little_loops/config/` package directory
+2. Split into domain files: `core.py` (ProjectConfig, BRConfig), `cli.py` (CliConfig, CliColors*), `features.py` (IssuesConfig, ScanConfig, SprintsConfig, LoopsConfig, SyncConfig), `automation.py` (AutomationConfig, ParallelAutomationConfig, ConfidenceGateConfig)
+3. Add `__init__.py` with `__all__` re-exporting all existing public names
+4. Update `scripts/little_loops/config.py` to import from the new package (or replace with the package)
+5. Run `python -m pytest` and verify no import errors
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/config.py` → replaced by `scripts/little_loops/config/`
+- **New files**: `scripts/little_loops/config/core.py`, `config/cli.py`, `config/features.py`, `config/automation.py`, `config/__init__.py`
+- **All importers unchanged**: re-exports from `config/__init__.py` preserve `from little_loops.config import BRConfig` etc.
+
 ## Impact Assessment
 
 - **Severity**: Medium
@@ -63,6 +87,9 @@ Convert `config.py` into a `config/` subpackage with domain-specific modules.
 ## Labels
 
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
+
+## Session Log
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

@@ -9,7 +9,11 @@ discovered_by: scan-codebase
 
 ## Summary
 
-The 4-line pattern `if contents is not None and issue.path in contents: content = contents[issue.path] else: try: content = issue.path.read_text(...) except: continue` appears identically in at least 10 locations across `issue_history/` sub-modules. There is no shared helper for this lookup-or-read operation.
+The 4-line pattern `if contents is not None and issue.path in contents: content = contents[issue.path] else: try: content = issue.path.read_text(...) except: continue` appears identically in at least 10 locations across `issue_history/` sub-modules.
+
+## Motivation
+
+10+ identical code blocks across 5 files creates significant maintenance burden: any bug fix or behavioral change must be applied to each copy. A single extracted helper reduces this to one authoritative location and makes the intent clearer at each call site. There is no shared helper for this lookup-or-read operation.
 
 ## Location
 
@@ -43,6 +47,17 @@ def get_issue_content(
 
 Callers replace the 4-line block with `content = get_issue_content(issue, contents); if content is None: continue`.
 
+## Implementation Steps
+
+1. Add `get_issue_content(issue: CompletedIssue, contents: dict[Path, str] | None) -> str | None` to a shared utility module in `issue_history/` (e.g., `_utils.py`)
+2. Replace the 4-line inline block at each of the 10+ call sites with `content = get_issue_content(issue, contents); if content is None: continue`
+3. Run `python -m pytest` to verify no behavioral changes
+
+## Integration Map
+
+- **New helper**: `scripts/little_loops/issue_history/_utils.py` — `get_issue_content()`
+- **Modified (10+ call sites)**: `hotspots.py` (lines 32-39), `coupling.py` (lines 34-41), `regressions.py` (lines 42-53), `debt.py` (lines 83-90, 168-175, 285-292), `quality.py` (lines 144-150, 312-318), `summary.py` (lines 227-233)
+
 ## Scope Boundaries
 
 - Extract helper only; no behavior change
@@ -61,6 +76,7 @@ Callers replace the 4-line block with `content = get_issue_content(issue, conten
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

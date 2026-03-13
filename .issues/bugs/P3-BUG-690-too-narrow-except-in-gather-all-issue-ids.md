@@ -57,6 +57,17 @@ except Exception:
     pass
 ```
 
+## Implementation Steps
+
+1. In `issue_manager.py`, locate `IssueManager.__init__` at line 723
+2. Replace `except (AttributeError, TypeError):` with `except Exception:`
+3. Optionally add `logger.debug("Dependency mapping unavailable", exc_info=True)` inside the except block for observability
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/issue_manager.py` — `IssueManager.__init__()` (lines 723-729)
+- **Module guarded**: `scripts/little_loops/dependency_mapper` — import protected by the broadened except clause
+
 ## Impact
 
 - **Priority**: P3 - Edge case that mainly affects corrupted installations or unusual filesystem states
@@ -70,6 +81,8 @@ except Exception:
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

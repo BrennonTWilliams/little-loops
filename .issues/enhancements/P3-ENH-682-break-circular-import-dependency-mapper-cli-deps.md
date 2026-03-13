@@ -15,6 +15,10 @@ Architectural issue found by `/ll:audit-architecture`.
 Circular dependency between library and CLI layer:
 `dependency_mapper` -> `cli.deps` -> `dependency_mapper`
 
+## Motivation
+
+Library modules (`dependency_mapper`) should never depend on CLI modules (`cli.deps`). This violates the clean layering where CLI depends on library but not vice versa. The cycle prevents using `dependency_mapper` as a standalone library and makes the CLI/library boundary undefined.
+
 ## Location
 
 - **File**: `scripts/little_loops/dependency_mapper/__init__.py`, `scripts/little_loops/cli/deps.py`
@@ -43,6 +47,24 @@ Move any shared functionality from `cli.deps` into the `dependency_mapper` packa
 3. Update `cli.deps` to import from `dependency_mapper` only
 4. Verify with import cycle detection
 
+## Scope Boundaries
+
+- Only move or reorganize shared functionality; no behavior changes
+- `cli.deps` public interface must remain intact after the refactor
+- Do not modify `dependency_mapper`'s public API
+
+## Implementation Steps
+
+1. Identify what `dependency_mapper` imports from `cli.deps`
+2. Move that shared functionality into `dependency_mapper` or a new shared utility module
+3. Update `cli.deps` to import from `dependency_mapper` only (not vice versa)
+4. Verify with import cycle detection and `python -m pytest`
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/dependency_mapper/__init__.py`, `scripts/little_loops/cli/deps.py`
+- **Direction after fix**: `cli.deps` → `dependency_mapper` (one-way only)
+
 ## Impact Assessment
 
 - **Severity**: Medium
@@ -53,6 +75,9 @@ Move any shared functionality from `cli.deps` into the `dependency_mapper` packa
 ## Labels
 
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
+
+## Session Log
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

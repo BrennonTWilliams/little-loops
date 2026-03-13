@@ -9,7 +9,11 @@ discovered_by: scan-codebase
 
 ## Summary
 
-The `ll-issues show` and `ll-issues sequence` subcommands lack `--json` output mode, while sibling subcommands (`list`, `count`, `refine-status`) all support it. Both commands already produce structured data internally (`_parse_card_fields` returns a dict, `cmd_sequence` produces `IssueInfo` objects with `blockers`) that could be directly serialized.
+The `ll-issues show` and `ll-issues sequence` subcommands lack `--json` output mode, while sibling subcommands (`list`, `count`, `refine-status`) all support it.
+
+## Motivation
+
+Inconsistency across subcommands creates friction for automation: a developer building a tool around `ll-issues` must handle human-formatted output for `show` and `sequence` while other subcommands emit machine-readable JSON. The internal data structures already exist; the only gap is an output path. Both commands already produce structured data internally (`_parse_card_fields` returns a dict, `cmd_sequence` produces `IssueInfo` objects with `blockers`) that could be directly serialized.
 
 ## Location
 
@@ -29,12 +33,29 @@ Both subcommands accept `--json` flag and emit structured JSON to stdout when se
 
 A developer building automation around `ll-issues` wants to parse issue details or dependency ordering programmatically. They pipe `ll-issues show --json BUG-685` or `ll-issues sequence --json` to `jq` for processing.
 
+## Proposed Solution
+
+Add `--json` argument to both subparsers and add a JSON output branch in `cmd_show` and `cmd_sequence`. Use `json.dumps(..., indent=2)` with the existing internal data structures (`_parse_card_fields` dict and `IssueInfo` objects).
+
 ## Acceptance Criteria
 
 - [ ] `ll-issues show --json <issue-id>` outputs the card fields dict as JSON
 - [ ] `ll-issues sequence --json` outputs the ordered list with blockers as JSON
 - [ ] JSON output matches the structure of the internal data models
 - [ ] Human-readable output remains the default (no `--json` flag)
+
+## Implementation Steps
+
+1. In `scripts/little_loops/cli/issues/__init__.py`, add `--json` flag to the `show` and `sequence` subparsers
+2. In `show.py`, add `if args.json: print(json.dumps(_parse_card_fields(content), indent=2)); return` branch in `cmd_show`
+3. In `sequence.py`, add `if args.json: print(json.dumps([dataclasses.asdict(i) for i in ordered], indent=2)); return` branch in `cmd_sequence`
+4. Add tests covering `--json` output for both subcommands
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/cli/issues/__init__.py` — subparser definitions (add `--json` to `show` and `sequence`)
+- **Modified**: `scripts/little_loops/cli/issues/show.py` — `cmd_show()` (add JSON branch using `_parse_card_fields`)
+- **Modified**: `scripts/little_loops/cli/issues/sequence.py` — `cmd_sequence()` (add JSON branch using `IssueInfo` objects)
 
 ## Impact
 
@@ -49,6 +70,7 @@ A developer building automation around `ll-issues` wants to parse issue details 
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

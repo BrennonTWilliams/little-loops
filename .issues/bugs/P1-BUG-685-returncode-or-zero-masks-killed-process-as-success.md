@@ -57,6 +57,17 @@ returncode = process.returncode if process.returncode is not None else -9
 
 This ensures killed/unreapable processes report a non-zero exit code (`-9` for SIGKILL convention).
 
+## Implementation Steps
+
+1. In `subprocess_utils.py`, locate `run_claude_command` at line 172
+2. Replace `process.returncode or 0` with `process.returncode if process.returncode is not None else -9`
+3. Verify callers in `worker_pool.py` and `merge_coordinator.py` check `result.returncode != 0` correctly
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/subprocess_utils.py` — `run_claude_command()` (lines 172-186)
+- **Callers checking returncode**: `scripts/little_loops/parallel/worker_pool.py`, `scripts/little_loops/parallel/merge_coordinator.py`
+
 ## Impact
 
 - **Priority**: P1 - Can cause silent data corruption: a failed worker is treated as successful, potentially skipping retries or marking issues as completed when they weren't processed
@@ -70,6 +81,7 @@ This ensures killed/unreapable processes report a non-zero exit code (`-9` for S
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

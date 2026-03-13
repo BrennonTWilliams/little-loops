@@ -74,6 +74,18 @@ def _process_merge(self, result: WorkerResult) -> None:
         self._current_issue_id = None
 ```
 
+## Implementation Steps
+
+1. In `merge_coordinator.py`, locate `_process_merge` starting at line 710
+2. Wrap the entire method body in `try/finally`, moving `self._current_issue_id = result.issue_id` inside the `try`
+3. Ensure `self._current_issue_id = None` remains in the `finally` block, covering all exit paths
+4. Verify `wait_for_completion` loop terminates correctly after circuit breaker and lifecycle failure paths
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/parallel/merge_coordinator.py` — `_process_merge()` (lines 710-745, 925)
+- **Affected**: `scripts/little_loops/parallel/merge_coordinator.py` — `wait_for_completion()` (line 1232) reads `_current_issue_id`
+
 ## Impact
 
 - **Priority**: P1 - Can cause the orchestrator to hang indefinitely, requiring manual kill of `ll-parallel`/`ll-sprint` runs
@@ -87,6 +99,7 @@ def _process_merge(self, result: WorkerResult) -> None:
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

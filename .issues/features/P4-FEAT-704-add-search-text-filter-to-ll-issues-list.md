@@ -9,7 +9,11 @@ discovered_by: scan-codebase
 
 ## Summary
 
-`ll-issues list` supports `--type` and `--priority` filters but has no text-search capability. Users cannot filter issues by title or content keywords. The `IssueInfo` objects carry a `title` field that could be matched against a search pattern.
+`ll-issues list` supports `--type` and `--priority` filters but has no text-search capability.
+
+## Motivation
+
+When a backlog grows beyond ~50 issues, scanning the full list for a keyword (e.g., "thread", "parallel", "frontmatter") is tedious. Text search combined with existing `--type` and `--priority` filters makes targeted issue lookup practical without leaving the terminal. Users cannot filter issues by title or content keywords. The `IssueInfo` objects carry a `title` field that could be matched against a search pattern.
 
 ## Location
 
@@ -28,12 +32,29 @@ Issues can only be filtered by type prefix and priority level. No text-based fil
 
 A developer wants to find all issues related to "parallel" or "thread safety": `ll-issues list --search thread` quickly narrows the list without manually scanning.
 
+## Proposed Solution
+
+Add `--search <term>` argument to the `list` subparser. In `cmd_list`, after `find_issues()` returns `IssueInfo` objects, filter with `[i for i in issues if term.lower() in i.title.lower()]` before rendering.
+
 ## Acceptance Criteria
 
 - [ ] `ll-issues list --search <term>` filters by case-insensitive title match
 - [ ] Combinable with existing filters: `--type BUG --search lock`
 - [ ] Empty results show a clear message
 - [ ] Works with `--json` output mode
+
+## Implementation Steps
+
+1. In `scripts/little_loops/cli/issues/__init__.py`, add `--search` argument to the `list` subparser (type=str, optional)
+2. In `list_cmd.py`, after `find_issues()`, add `if args.search: issues = [i for i in issues if args.search.lower() in i.title.lower()]`
+3. If `issues` is empty after filtering, print a "No issues matching '...' found" message
+4. Verify `--search` composes correctly with `--type`, `--priority`, and `--json`
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/cli/issues/__init__.py` — `list` subparser (lines 63-77)
+- **Modified**: `scripts/little_loops/cli/issues/list_cmd.py` — `cmd_list()` (add filter after `find_issues()` call)
+- **Data used**: `IssueInfo.title` field (already populated by `find_issues()`)
 
 ## Impact
 
@@ -48,6 +69,7 @@ A developer wants to find all issues related to "parallel" or "thread safety": `
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

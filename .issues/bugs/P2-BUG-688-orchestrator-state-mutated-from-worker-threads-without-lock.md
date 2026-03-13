@@ -49,6 +49,18 @@ Access to `self.state` should be synchronized, either by adding a lock around st
 
 Add a `threading.Lock` to protect `self.state` mutations. Apply it in `_on_worker_complete` and in `_save_state`/`_report_results` when reading state.
 
+## Implementation Steps
+
+1. In `orchestrator.py`, add `self._state_lock = threading.Lock()` to `ParallelOrchestrator.__init__`
+2. Wrap `self.state.corrections[...]` and `self.state.timing[...]` writes in `_on_worker_complete` with `with self._state_lock:`
+3. Wrap `self.state.timing` reads in `_report_results` with `with self._state_lock:`
+4. Wrap state serialization in `_save_state` with `with self._state_lock:`
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/parallel/orchestrator.py` — `__init__()`, `_on_worker_complete()` (lines 836, 848), `_report_results()`, `_save_state()`
+- **New lock**: `self._state_lock = threading.Lock()` (separate from any existing worker locks)
+
 ## Impact
 
 - **Priority**: P2 - Can cause state corruption or crashes during concurrent parallel runs
@@ -62,6 +74,7 @@ Add a `threading.Lock` to protect `self.state` mutations. Apply it in `_on_worke
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

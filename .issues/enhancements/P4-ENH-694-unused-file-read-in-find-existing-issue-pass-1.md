@@ -11,6 +11,10 @@ discovered_by: scan-codebase
 
 In Pass 1 of `find_existing_issue`, each matching issue file is read via `issue_path.read_text()` at line 191, but the resulting `content` variable is never used — the type-match check on the next line only uses the file path. The same file was already read internally by `search_issues_by_file_path`. Each matching file gets read twice with the second read discarded.
 
+## Motivation
+
+Dead code that performs I/O is costly and misleading — it suggests content is used downstream when it isn't, and it doubles the file reads for every Pass 1 match. Removing it eliminates confusion for future readers and avoids unnecessary disk I/O.
+
 ## Location
 
 - **File**: `scripts/little_loops/issue_discovery/search.py`
@@ -24,6 +28,16 @@ In Pass 1 of `find_existing_issue`, each matching issue file is read via `issue_
 ## Expected Behavior
 
 Remove the unused `content = issue_path.read_text(...)` line. If content is needed for future logic, thread it through from the single read in `search_issues_by_file_path`.
+
+## Implementation Steps
+
+1. In `search.py`, locate `find_existing_issue` Pass 1 loop at line 191
+2. Delete the line `content = issue_path.read_text(encoding="utf-8")`
+3. Run `python -m pytest` to confirm no tests break
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/issue_discovery/search.py` — `find_existing_issue()` (line 191, Pass 1 loop)
 
 ## Scope Boundaries
 
@@ -42,6 +56,7 @@ Remove the unused `content = issue_path.read_text(...)` line. If content is need
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

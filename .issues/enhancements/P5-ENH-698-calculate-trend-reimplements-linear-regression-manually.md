@@ -11,6 +11,10 @@ discovered_by: scan-codebase
 
 `_calculate_trend` manually computes the OLS slope using four intermediate sums. Python 3.11+ (the project's minimum version) provides `statistics.linear_regression()` which returns a `LinearRegression(slope, intercept)` named tuple and handles the zero-denominator case internally.
 
+## Motivation
+
+The manual OLS implementation adds 10 lines of boilerplate that must be maintained and tested separately. The stdlib function is well-tested, handles edge cases, and signals intent more clearly to readers unfamiliar with the formula.
+
 ## Location
 
 - **File**: `scripts/little_loops/issue_history/summary.py`
@@ -24,6 +28,17 @@ Manual summation of `sum_x`, `sum_y`, `sum_xy`, `sum_x2` to compute OLS slope. W
 ## Expected Behavior
 
 Delegate slope computation to `statistics.linear_regression(range(n), values).slope`.
+
+## Implementation Steps
+
+1. In `summary.py`, replace the `sum_x/sum_y/sum_xy/sum_x2` computation in `_calculate_trend` with `statistics.linear_regression(range(n), values).slope`
+2. Handle the edge case where `n < 2` (stdlib requires at least 2 points) before calling
+3. Run `python -m pytest` to verify identical slope values
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/issue_history/summary.py` — `_calculate_trend()` (lines 169-204)
+- **Stdlib used**: `statistics.linear_regression` (Python 3.11+, already minimum version)
 
 ## Scope Boundaries
 
@@ -42,6 +57,7 @@ Delegate slope computation to `statistics.linear_regression(range(n), values).sl
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 

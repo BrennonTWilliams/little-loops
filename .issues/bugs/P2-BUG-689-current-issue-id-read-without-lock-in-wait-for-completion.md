@@ -48,6 +48,17 @@ while not self._queue.empty() or self._current_issue_id:
 
 Add `with self._lock:` guard around `_current_issue_id` reads in `wait_for_completion` and writes in `_process_merge`.
 
+## Implementation Steps
+
+1. In `merge_coordinator.py`, add `with self._lock:` around `self._current_issue_id = result.issue_id` write in `_process_merge` (line 710)
+2. Add `with self._lock:` around `self._current_issue_id = None` in the `finally` block (line 925)
+3. Add `with self._lock:` around the `self._current_issue_id` read in `wait_for_completion` (line 1232)
+
+## Integration Map
+
+- **Modified**: `scripts/little_loops/parallel/merge_coordinator.py` — `_process_merge()` (lines 710, 925), `wait_for_completion()` (line 1232)
+- **Lock reused**: `self._lock` (already used for `_merged` and `_failed` in `MergeCoordinator`)
+
 ## Impact
 
 - **Priority**: P2 - Could cause premature wait termination leading to incomplete merges
@@ -61,6 +72,7 @@ Add `with self._lock:` guard around `_current_issue_id` reads in `wait_for_compl
 
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+- `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 
