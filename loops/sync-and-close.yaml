@@ -33,6 +33,7 @@ states:
     on_failure: check_sync
     on_error: check_sync
   check_completed:
+    action_type: decision
     evaluate:
       type: output_contains
       source: "${captured.sync_status.output}"

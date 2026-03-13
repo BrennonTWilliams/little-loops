@@ -15,8 +15,9 @@ states:
     action_type: shell
     capture: worktree_count
     evaluate:
-      type: output_contains
-      pattern: "0"
+      type: output_numeric
+      operator: eq
+      target: 0
     on_success: check_branches
     on_failure: cleanup_worktrees
     on_error: check_branches
@@ -35,8 +36,9 @@ states:
     action_type: shell
     capture: stale_branches
     evaluate:
-      type: output_contains
-      pattern: "0"
+      type: output_numeric
+      operator: eq
+      target: 0
     on_success: done
     on_failure: prune_branches
     on_error: done

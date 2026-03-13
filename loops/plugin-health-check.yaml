@@ -12,13 +12,26 @@ states:
     action: |
       python3 -c "
       import json, sys
-      try:
-          data = json.load(open('.claude-plugin/plugin.json'))
-          print('VALID')
-          print(f'commands: {len(data.get(\"commands\", []))}')
-          print(f'skills: {len(data.get(\"skills\", []))}')
-      except Exception as e:
-          print(f'INVALID: {e}')
+      errors = 0
+      for path, label in [
+          ('.claude-plugin/plugin.json', 'plugin.json'),
+          ('.claude/ll-config.json', 'll-config.json'),
+          ('hooks/hooks.json', 'hooks.json'),
+          ('config-schema.json', 'config-schema.json'),
+      ]:
+          try:
+              data = json.load(open(path))
+              print(f'{label}: VALID')
+              if label == 'plugin.json':
+                  print(f'  commands: {len(data.get(\"commands\", []))}')
+                  print(f'  skills: {len(data.get(\"skills\", []))}')
+          except FileNotFoundError:
+              print(f'{label}: MISSING')
+              errors += 1
+          except Exception as e:
+              print(f'{label}: INVALID: {e}')
+              errors += 1
+      if errors:
           sys.exit(1)
       "
     action_type: shell
@@ -75,7 +88,10 @@ states:
     action_type: prompt
     timeout: 600
     action: |
-      Plugin configuration issues found:
+      Plugin validation output:
+      ${captured.plugin_state.output}
+
+      Audit results (if available):
       ${captured.audit_result.output}
 
       Fix all identified issues:

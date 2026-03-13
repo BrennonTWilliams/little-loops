@@ -62,16 +62,9 @@ states:
       echo "$COUNT"
     action_type: shell
     evaluate:
-      type: llm_structured
-      prompt: |
-        The baseline issue count was: ${captured.baseline.output}
-        The current issue count is shown in the action output.
-
-        Compare the two numbers:
-        - Return "success" if the current count is STRICTLY GREATER than the
-          baseline count (new issues were discovered this cycle).
-        - Return "failure" if the current count is LESS THAN OR EQUAL to the
-          baseline count (no net-new issues — diminishing returns, time to stop).
+      type: output_numeric
+      operator: gt
+      target: ${captured.baseline.output}
     on_success: commit
     on_failure: done
     on_error: done

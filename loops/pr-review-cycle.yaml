@@ -84,9 +84,9 @@ states:
       git diff main...HEAD | grep -ciE '(api[_-]?key|secret|password|token)\s*[=:]\s*["'"'"'][A-Za-z0-9+/]{16,}' || echo "0"
     action_type: shell
     evaluate:
-      type: output_contains
-      pattern: "0"
-      negate: false
+      type: output_numeric
+      operator: eq
+      target: 0
     on_success: open_pr
     on_failure: done
     on_error: open_pr

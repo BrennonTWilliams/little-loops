@@ -9,7 +9,7 @@ context:
 states:
   find_stale:
     action: |
-      find .issues -maxdepth 2 -name '*.md' -not -path '.issues/completed/*' -not -path '.issues/templates/*' -mtime +30 2>/dev/null | head -10
+      find .issues -maxdepth 2 -name '*.md' -not -path '.issues/completed/*' -not -path '.issues/templates/*' -mtime +${context.stale_days} 2>/dev/null | head -10
     action_type: shell
     capture: stale_list
     evaluate:

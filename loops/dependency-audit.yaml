@@ -9,7 +9,7 @@ scope:
   - ".issues/"
 states:
   check_deps:
-    action: "ll-deps validate --json 2>&1 || true"
+    action: "ll-deps validate --json 2>&1"
     action_type: shell
     capture: dep_results
     evaluate:
@@ -51,7 +51,7 @@ states:
       - Stale references: remove dependencies on completed/closed issues
     next: verify
   verify:
-    action: "ll-deps validate 2>&1 || true"
+    action: "ll-deps validate 2>&1"
     action_type: shell
     evaluate:
       type: exit_code
