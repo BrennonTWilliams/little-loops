@@ -3,6 +3,8 @@ discovered_commit: 3e9beeaf2bbe8608104beb89fbc7e2e2259310d8
 discovered_branch: main
 discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-688: `self.state` mutated from worker threads without lock in orchestrator
@@ -31,6 +33,10 @@ self.state.timing[result.issue_id] = {"total": result.duration} # line 848
 
 Access to `self.state` should be synchronized, either by adding a lock around state mutations and reads, or by queuing state updates for the main thread to process.
 
+## Motivation
+
+`ll-parallel` is the primary concurrent execution tool. Under concurrent worker completions, unsynchronized dict writes from multiple threads can silently corrupt `self.state.corrections` and `self.state.timing`, causing state data loss during `_save_state()` serialization or raising a `RuntimeError` at runtime. This makes parallel runs unreliable and difficult to diagnose — results may appear to succeed while quietly dropping correction data.
+
 ## Steps to Reproduce
 
 1. Run `ll-parallel` with 3+ concurrent workers
@@ -58,8 +64,23 @@ Add a `threading.Lock` to protect `self.state` mutations. Apply it in `_on_worke
 
 ## Integration Map
 
-- **Modified**: `scripts/little_loops/parallel/orchestrator.py` — `__init__()`, `_on_worker_complete()` (lines 836, 848), `_report_results()`, `_save_state()`
-- **New lock**: `self._state_lock = threading.Lock()` (separate from any existing worker locks)
+### Files to Modify
+- `scripts/little_loops/parallel/orchestrator.py` — `ParallelOrchestrator.__init__()`, `_on_worker_complete()`, `_report_results()`, `_save_state()`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/parallel/orchestrator.py` — self-contained; `_on_worker_complete` is registered internally via `future.add_done_callback`, not called externally
+
+### Similar Patterns
+- Check `orchestrator.py` for any other `future.add_done_callback` registrations that access shared state; apply the same lock pattern for consistency
+
+### Tests
+- `scripts/tests/test_orchestrator.py` — add a concurrent-completion scenario test that fires multiple `_on_worker_complete` callbacks simultaneously to assert no state corruption
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
 
 ## Impact
 
@@ -68,6 +89,10 @@ Add a `threading.Lock` to protect `self.state` mutations. Apply it in `_on_worke
 - **Risk**: Low - Standard thread-safety fix
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+- N/A
+
 ## Labels
 
 `bug`, `parallel`, `thread-safety`
@@ -75,6 +100,9 @@ Add a `threading.Lock` to protect `self.state` mutations. Apply it in `_on_worke
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:format-issue` - 2026-03-13T02:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:verify-issues` - 2026-03-13T02:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-13T02:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 
 ---
 
