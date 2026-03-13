@@ -6,11 +6,13 @@ status: open
 type: BUG
 discovered_date: 2026-03-13
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # BUG-730: Transition lines occlude state boxes in FSM box diagram
 
-## Description
+## Summary
 
 In the FSM Box Diagram Generator, horizontal transition lines are drawn across the canvas in a way that can visually overlap and occlude state boxes. When a transition spans multiple columns, the connector line passes through the area occupied by intermediate state boxes, making the diagram hard to read.
 
@@ -40,7 +42,7 @@ The `next` transition label and arrow are drawn through the middle box rather th
 
 Transition lines should route around (above or below) any state boxes they would otherwise cross. Alternatively, lines passing behind boxes should be clipped so that box borders take visual precedence.
 
-## Actual Behavior
+## Current Behavior
 
 Transition lines are drawn over state box contents, occluding labels and making affected states difficult to read.
 
@@ -59,13 +61,41 @@ Transition lines are drawn over state box contents, occluding labels and making 
 - [ ] Box borders and labels remain fully visible when a transition spans multiple columns.
 - [ ] Existing diagram snapshot tests continue to pass.
 
+## Verification Notes
+
+- **Verified**: 2026-03-13 — VALID
+- `scripts/little_loops/cli/loop/layout.py` exists (1438 lines)
+- `_render_layered_diagram` confirmed at line 569
+- Horizontal connector rendering logic confirmed at ~lines 928–1214; unconditional `grid[conn_row][c] = "─"` writes without checking for box characters (confirmed bug)
+- `scripts/tests/test_ll_loop_display.py` exists
+- `scripts/tests/test_ll_loop_commands.py` exists
+- Related completed issue BUG-708 (disconnected connectors at shared nodes) is distinct — different rendering path and failure mode
+
 ## Related Files
 
 - `scripts/little_loops/cli/loop/layout.py` — rendering engine
 - `scripts/tests/test_ll_loop_display.py` — display tests
 - `scripts/tests/test_ll_loop_commands.py` — integration tests
 
+## Impact
+
+- **Priority**: P3 - Visual-only defect; diagrams remain functional but are harder to read when transitions span multiple columns
+- **Effort**: Small - Fix is scoped to the horizontal connector rendering logic in `layout.py`; no protocol or data changes
+- **Risk**: Low - Affects only diagram rendering output; does not touch loop execution, state machine logic, or file I/O
+- **Breaking Change**: No
+
+## Labels
+
+`bug`, `diagram`, `fsm`, `rendering`, `captured`
+
+---
+
+**Open** | Created: 2026-03-13 | Priority: P3
+
 ---
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T21:34:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`

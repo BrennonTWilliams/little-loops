@@ -5,6 +5,8 @@ type: FEAT
 status: active
 discovered_date: 2026-03-13
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 71
 ---
 
 # FEAT-729: Dedicated mcp_tool Action Type for FSM Loops
@@ -12,6 +14,14 @@ discovered_by: capture-issue
 ## Summary
 
 Add `action_type: mcp_tool` to the FSM loop schema for direct, parameterized MCP tool invocation — bypassing the Claude CLI entirely and enabling deterministic, structured tool calls with MCP-aware evaluation and routing.
+
+## Current Behavior
+
+MCP tools can only be used in FSM loops via `action_type: prompt`, which runs a full Claude CLI session — conflating tool invocation semantics with agentic reasoning semantics. This carries significant costs: 10–30s latency per state, LLM overhead (two model calls for a deterministic function call), nondeterminism (Claude may rephrase, call a different tool, or decline), unstructured output, and no tool-specific error routing (`rate_limited`, `auth_error`, `tool_not_found` all collapse into generic `failure`).
+
+## Expected Behavior
+
+FSM loops support `action_type: mcp_tool` to invoke specific MCP tools directly with structured parameters, yielding: deterministic execution (~500ms latency), structured MCP response envelope output, evaluation via the new `mcp_result` evaluator, and granular error routing (`success`, `tool_error`, `not_found`, `timeout`). The `action` field holds `"server/tool-name"` and `params` holds tool arguments with `${variable}` interpolation.
 
 ## Motivation
 
@@ -58,7 +68,19 @@ states:
     # Runs full Claude session + llm_structured eval — slow, costly, nondeterministic
 ```
 
-## Proposed Changes
+## Acceptance Criteria
+
+- [ ] `action_type: mcp_tool` is a valid value in `StateConfig` (Python dataclass + JSON Schema)
+- [ ] `params` field on states supports `${variable}` interpolation for MCP tool arguments
+- [ ] `mcp_result` evaluator routes to `success`, `tool_error`, `not_found`, `timeout` based on MCP response envelope (`isError`, transport errors, missing server)
+- [ ] `mcp-call` wrapper script reads `.mcp.json`, performs JSON-RPC handshake, calls `tools/call`, and writes MCP envelope to stdout
+- [ ] `DefaultActionRunner` executes `mcp_tool` states without invoking the Claude CLI
+- [ ] Validation rejects `params` field on states where `action_type != mcp_tool`
+- [ ] Unit tests cover all `mcp_result` evaluator routing branches
+- [ ] Integration test verifies end-to-end `mcp_tool` state execution with a mock MCP server
+- [ ] FSM loop documentation and YAML examples updated
+
+## Proposed Solution
 
 ### Schema: New `action_type` value
 
@@ -148,8 +170,9 @@ states:
 - Use `action_type: prompt` when Claude should *decide how to use* tools (reasoning, judgment required)
 - Use `action_type: mcp_tool` when tool, server, and parameters are all known at loop-author time
 
-## Files to Modify
+## Integration Map
 
+### Files to Modify
 - `scripts/little_loops/fsm/schema.py` — `StateConfig`, `EvaluateConfig`
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — JSON Schema
 - `scripts/little_loops/fsm/executor.py` — `DefaultActionRunner`, `_is_prompt_action`
@@ -158,6 +181,32 @@ states:
 - `scripts/little_loops/fsm/validation.py` — schema validation updates
 - `scripts/tests/` — new unit and integration tests
 - `docs/` — FSM loop documentation
+
+### Dependent Files (Callers/Importers)
+- TBD - use grep to find references: `grep -r "action_type\|DefaultActionRunner\|_is_prompt_action" scripts/`
+
+### Similar Patterns
+- TBD - check how `shell` action type is implemented as the nearest analog: `grep -r "shell" scripts/little_loops/fsm/`
+
+### Tests
+- `scripts/tests/` — unit tests for `mcp_result` evaluator branches; integration test with mock MCP server
+
+### Documentation
+- `docs/` — FSM loop documentation and loop YAML examples with `mcp_tool` states
+
+### Configuration
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — JSON Schema updates (new `action_type` enum value and `params` field)
+
+## Impact
+
+- **Priority**: P3 - Meaningful optimization for MCP-integrated loops; reduces per-state cost from 10–30s to ~500ms, but existing `prompt` approach remains functional
+- **Effort**: Medium - New action type, evaluator, executor branch, and wrapper script; `shell` action type provides a clear analog; near-term shell wrapper keeps scope contained
+- **Risk**: Medium - New execution path requiring subprocess management and JSON-RPC handling; existing `prompt` behavior is entirely unchanged
+- **Breaking Change**: No
+
+## Labels
+
+`fsm-loops`, `mcp`, `feature`, `performance`
 
 ## Related Issues
 
@@ -173,3 +222,6 @@ Active — not started.
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T21:15:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2acb782e-c208-43f1-8534-96bfd95ced6e.jsonl`
