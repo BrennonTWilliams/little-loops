@@ -94,6 +94,28 @@ history misleading.
 4. Add a test using the `--scenario` mechanism to simulate a killed prompt action
    and verify shutdown is triggered instead of `next` routing
 
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/fsm/executor.py` — `FSMExecutor._execute_state()` — add negative exit code check before returning `state.next`
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/fsm/runner.py` — calls `_execute_state` in the main loop; shutdown signal from this fix will propagate via existing `request_shutdown()` mechanism
+- Any FSM loop YAML configs using prompt states with `next` transitions (all existing loops affected)
+
+### Similar Patterns
+- `scripts/little_loops/subprocess_utils.py` — related BUG-685 pattern (`returncode or 0` mask); fix here should mirror detection logic for consistency
+- `scripts/little_loops/fsm/executor.py` — `_process_merge` early-return pattern (BUG-686) — same class of cleanup-skip-on-abnormal-exit
+
+### Tests
+- `scripts/tests/test_fsm_executor.py` — add `--scenario` test simulating SIGKILL on a prompt action, verify `request_shutdown()` is called and `next` routing does not occur
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
+
 ## Related Issues
 
 - **BUG-685**: `process.returncode or 0` masks killed process in `subprocess_utils.py`
@@ -108,5 +130,21 @@ history misleading.
 3. Observe history: `action_complete ✗ exit=-9` followed by a normal `next` route
 4. The FSM advances to the next state despite the kill
 
+## Impact
+
+- **Priority**: P2 — SIGKILL silently corrupts loop execution integrity; downstream states operate on absent data, producing unpredictable results and misleading history
+- **Effort**: Small — targeted ~5-10 line fix in `FSMExecutor._execute_state()`; reuses existing `request_shutdown()` mechanism
+- **Risk**: Low — new behavior only triggers on negative exit codes (process killed by signal), a path currently always treated as normal success; does not affect positive or zero exit codes
+- **Breaking Change**: No — all existing loops with prompt states continue to behave identically unless a SIGKILL occurs
+
+## Labels
+
+`fsm`, `executor`, `signal-handling`, `loop-integrity`, `captured`
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T06:00:00Z - analysis of `ll-loop history issue-refinement-git`
+- `/ll:format-issue` - 2026-03-13T06:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1bce590-015a-4862-aabe-11dcbf71a389.jsonl`
+
+---
+
+**Open** | Created: 2026-03-13 | Priority: P2

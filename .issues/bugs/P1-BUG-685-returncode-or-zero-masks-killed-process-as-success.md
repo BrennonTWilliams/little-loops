@@ -3,6 +3,8 @@ discovered_commit: 3e9beeaf2bbe8608104beb89fbc7e2e2259310d8
 discovered_branch: main
 discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # BUG-685: `process.returncode or 0` masks killed process as success
@@ -47,6 +49,10 @@ A killed or timed-out process should report a non-zero return code (e.g., `-9` f
 - **Anchor**: `in function run_claude_command()`
 - **Cause**: Python's `or` operator returns the right operand when the left is falsy. `None or 0` is `0`. The code intended a fallback for when returncode is not set, but `0` is also the success code.
 
+## Motivation
+
+Silent misreporting of failed process exits corrupts the integrity of `ll-parallel` and `ll-auto` runs. When a worker Claude process is killed mid-execution and its exit is masked as `0`, the orchestrator marks the issue as completed. The issue remains unprocessed but is removed from the active queue, causing silent data loss in automated workflows. This is a reliability hazard for any unattended run.
+
 ## Proposed Solution
 
 Replace `process.returncode or 0` with an explicit check:
@@ -59,14 +65,30 @@ This ensures killed/unreapable processes report a non-zero exit code (`-9` for S
 
 ## Implementation Steps
 
-1. In `subprocess_utils.py`, locate `run_claude_command` at line 172
-2. Replace `process.returncode or 0` with `process.returncode if process.returncode is not None else -9`
-3. Verify callers in `worker_pool.py` and `merge_coordinator.py` check `result.returncode != 0` correctly
+1. In `subprocess_utils.py`, in `run_claude_command()`, replace `process.returncode or 0` with `process.returncode if process.returncode is not None else -9`
+2. Verify callers in `worker_pool.py` and `merge_coordinator.py` check `result.returncode != 0` correctly
+3. Add or update a test covering the timeout-then-kill path to assert `returncode != 0`
 
 ## Integration Map
 
-- **Modified**: `scripts/little_loops/subprocess_utils.py` — `run_claude_command()` (lines 172-186)
-- **Callers checking returncode**: `scripts/little_loops/parallel/worker_pool.py`, `scripts/little_loops/parallel/merge_coordinator.py`
+### Files to Modify
+- `scripts/little_loops/subprocess_utils.py` — `run_claude_command()` (the `or 0` expression in the `CompletedProcess` constructor)
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/parallel/worker_pool.py` — checks `result.returncode != 0` to detect worker failure
+- `scripts/little_loops/parallel/merge_coordinator.py` — checks `result.returncode != 0` to detect merge failure
+
+### Similar Patterns
+- Search for other `process.returncode or` uses in `scripts/` to ensure no similar masking exists elsewhere
+
+### Tests
+- `scripts/tests/` — add or update test for the timeout-then-kill path in `run_claude_command()`; assert `returncode != 0`
+
+### Documentation
+- N/A
+
+### Configuration
+- N/A
 
 ## Impact
 
@@ -75,6 +97,10 @@ This ensures killed/unreapable processes report a non-zero exit code (`-9` for S
 - **Risk**: Low - Only changes behavior for the edge case where a process was killed and couldn't be reaped
 - **Breaking Change**: No
 
+## Related Key Documentation
+
+_No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
+
 ## Labels
 
 `bug`, `parallel`, `subprocess`
@@ -82,6 +108,9 @@ This ensures killed/unreapable processes report a non-zero exit code (`-9` for S
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:format-issue` - 2026-03-13T03:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01fe4a89-e3a7-4642-aa87-40682ae1517c.jsonl`
+- `/ll:verify-issues` - 2026-03-13T03:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01fe4a89-e3a7-4642-aa87-40682ae1517c.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/611a4ae6-c639-4f26-8bd4-6c9cc190fff8.jsonl`
 
 ---
 

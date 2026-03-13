@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-12
 discovered_by: capture-issue
+confidence_score: 98
+outcome_confidence: 86
 ---
 
 # FEAT-712: Add "Harness" Loop Type to create-loop
@@ -117,7 +119,8 @@ For skill targets, introspect `SKILL.md` for description and `allowed-tools` to 
 - `issue-refinement.yaml` — Real-world example of what a generated harness would produce
 
 ### Tests
-- TBD - skill is markdown-based, test via `ll-loop validate` on generated output
+- Skill is markdown-based; validate generated FSM YAML via `ll-loop validate <generated-file>`
+- Manual test: generate harnesses for `refine-issue` and `check-code` skills, confirm valid + runnable via `ll-loop test`
 
 ### Documentation
 - `skills/create-loop/reference.md` — Add harness type reference
@@ -155,6 +158,9 @@ For skill targets, introspect `SKILL.md` for description and `allowed-tools` to 
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b28391f-b086-4d28-86cb-448201c8b40e.jsonl`
+- `/ll:format-issue` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/611a4ae6-c639-4f26-8bd4-6c9cc190fff8.jsonl`
+- `/ll:verify-issues` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/611a4ae6-c639-4f26-8bd4-6c9cc190fff8.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/611a4ae6-c639-4f26-8bd4-6c9cc190fff8.jsonl`
 
 ---
 
