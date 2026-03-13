@@ -1015,18 +1015,41 @@ def _render_layered_diagram(
                     grid[r][col] = "\u2502"
 
             # Horizontal connector from source box to margin
+            # Draw right-to-left, crossing existing pipes with junction chars
             if 0 <= src_row < total_height:
                 src_left = col_start.get(src, col + 1)
                 for c in range(col + 1, src_left):
                     if c < total_width:
-                        grid[src_row][c] = "\u2500"
+                        cell = grid[src_row][c]
+                        if cell == " ":
+                            grid[src_row][c] = "\u2500"  # ─
+                        elif cell == "\u2502":  # │ → ┼
+                            grid[src_row][c] = "\u253c"
+                        elif cell == "\u2514":  # └ → ┴
+                            grid[src_row][c] = "\u2534"
+                        elif cell == "\u250c":  # ┌ → ┬
+                            grid[src_row][c] = "\u252c"
+                        elif cell == "\u251c":  # ├ → ┼
+                            grid[src_row][c] = "\u253c"
+                        # Leave ─, ▶, box chars unchanged
 
             # Horizontal connector from margin to target box
+            # Draw right-to-left, crossing existing pipes with junction chars
             dst_left = col_start.get(dst, col + 1)
             if 0 <= dst_row < total_height:
                 for c in range(col + 1, dst_left):
                     if c < total_width:
-                        grid[dst_row][c] = "\u2500"
+                        cell = grid[dst_row][c]
+                        if cell == " ":
+                            grid[dst_row][c] = "\u2500"  # ─
+                        elif cell == "\u2502":  # │ → ┼
+                            grid[dst_row][c] = "\u253c"
+                        elif cell == "\u2514":  # └ → ┴
+                            grid[dst_row][c] = "\u2534"
+                        elif cell == "\u250c":  # ┌ → ┬
+                            grid[dst_row][c] = "\u252c"
+                        elif cell == "\u251c":  # ├ → ┼
+                            grid[dst_row][c] = "\u253c"
 
             # Corner characters at pipe-to-horizontal turn points
             for row in (src_row, dst_row):
@@ -1086,23 +1109,40 @@ def _render_layered_diagram(
                     grid[r][col] = "\u2502"
 
             # Horizontal connector from source box right side to margin
-            # Draw from pipe inward, stopping at first non-empty cell
+            # Draw left-to-right, crossing existing pipes with junction chars
             src_right = col_start.get(src, 0) + box_width.get(src, 0)
             if 0 <= src_row < total_height:
-                for c in range(col - 1, src_right - 1, -1):
+                for c in range(src_right, col):
                     if 0 <= c < total_width:
-                        if grid[src_row][c] != " ":
-                            break
-                        grid[src_row][c] = "\u2500"
+                        cell = grid[src_row][c]
+                        if cell == " ":
+                            grid[src_row][c] = "\u2500"  # ─
+                        elif cell == "\u2502":  # │ → ┼
+                            grid[src_row][c] = "\u253c"
+                        elif cell == "\u2518":  # ┘ → ┴
+                            grid[src_row][c] = "\u2534"
+                        elif cell == "\u2510":  # ┐ → ┬
+                            grid[src_row][c] = "\u252c"
+                        elif cell == "\u2524":  # ┤ → ┼
+                            grid[src_row][c] = "\u253c"
+                        # Leave ─, ◀, box chars unchanged
 
             # Horizontal connector from margin to destination box right side
             dst_right = col_start.get(dst, 0) + box_width.get(dst, 0)
             if 0 <= dst_row < total_height:
-                for c in range(col - 1, dst_right - 1, -1):
+                for c in range(dst_right, col):
                     if 0 <= c < total_width:
-                        if grid[dst_row][c] != " ":
-                            break
-                        grid[dst_row][c] = "\u2500"
+                        cell = grid[dst_row][c]
+                        if cell == " ":
+                            grid[dst_row][c] = "\u2500"  # ─
+                        elif cell == "\u2502":  # │ → ┼
+                            grid[dst_row][c] = "\u253c"
+                        elif cell == "\u2518":  # ┘ → ┴
+                            grid[dst_row][c] = "\u2534"
+                        elif cell == "\u2510":  # ┐ → ┬
+                            grid[dst_row][c] = "\u252c"
+                        elif cell == "\u2524":  # ┤ → ┼
+                            grid[dst_row][c] = "\u253c"
 
             # Corner characters at pipe-to-horizontal turn points
             for row in (src_row, dst_row):

@@ -1100,6 +1100,57 @@ class TestRenderFsmDiagram:
             f"Offset inter-layer edge should have ┐ or ┌ corner.\n{result}"
         )
 
+    def test_skip_layer_forward_edges_sharing_node_connected(self) -> None:
+        """Two skip-layer forward edges sharing a node render connected horizontals.
+
+        Regression test (BUG-686): when two forward skip-layer edges share
+        a common node, the horizontal connector for the outer pipe must cross
+        the inner pipe with a junction character (┴ or ┼), not stop short.
+
+        Topology (main path): a → b → c → d → e → f → g → h
+          Edge 1: b --fail--> e  (skips c, d — forward skip-layer)
+          Edge 2: e --fail--> h  (skips f, g — forward skip-layer)
+        Both are right-margin pipes sharing node e. At e's row, Edge 2's
+        horizontal must cross Edge 1's vertical pipe with a junction char.
+        Extra layers (f, g) between e and h prevent layer merge.
+        """
+        fsm = self._make_fsm(
+            initial="a",
+            states={
+                "a": StateConfig(action="step_a", on_success="b"),
+                "b": StateConfig(action="step_b", on_success="c", on_failure="e"),
+                "c": StateConfig(action="step_c", on_success="d"),
+                "d": StateConfig(action="step_d", on_success="e"),
+                "e": StateConfig(action="step_e", on_success="f", on_failure="h"),
+                "f": StateConfig(action="step_f", on_success="g"),
+                "g": StateConfig(action="step_g", on_success="h"),
+                "h": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+
+        # Both ◀ arrows should render (one per skip-layer target)
+        arrow_count = result.count("\u25c0")
+        assert arrow_count >= 2, (
+            f"Expected at least 2 ◀ arrows for two skip-layer edges, "
+            f"found {arrow_count}.\n{result}"
+        )
+
+        # No disconnected gap pattern: ┘ followed by spaces then ┐
+        # (this is the symptom of the bug — inner pipe corner stops outer horizontal)
+        import re
+
+        for ln in result.split("\n"):
+            gap_match = re.search(r"\u2518\s+\u2510", ln)
+            assert not gap_match, (
+                f"Disconnected gap between inner and outer pipe detected: {ln!r}\n{result}"
+            )
+
+        # Junction characters (┴ or ┼) should appear where outer pipe crosses inner
+        assert "\u2534" in result or "\u253c" in result, (
+            f"Expected ┴ or ┼ crossing junction where outer pipe crosses inner.\n{result}"
+        )
+
     def test_highlighted_state_uses_configured_color(self) -> None:
         """highlight_state box uses the configured ANSI color; other boxes do not."""
         import little_loops.cli.output as output_mod
