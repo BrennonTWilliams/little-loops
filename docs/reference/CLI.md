@@ -230,6 +230,7 @@ Run a loop.
 | `--verbose` | `-v` | Show full prompt text and more output lines |
 | `--queue` | | Wait for conflicting loops to finish |
 | `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step |
+| `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
 
 #### `ll-loop validate <loop>` / `ll-loop val <loop>`
@@ -262,6 +263,7 @@ Resume an interrupted loop.
 | `--background` | `-b` | Resume as a detached background process |
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
 | `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step |
+| `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
 
 #### `ll-loop history <loop>` / `ll-loop h <loop>`
 

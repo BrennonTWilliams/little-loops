@@ -12,6 +12,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+### Added
+
+- **`--clear` flag for `ll-loop run` and `resume`** — Emits ANSI clear-screen before each iteration; combine with `--show-diagrams` for a live in-place FSM dashboard. Suppressed when stdout is not a tty (ENH-718)
+
 ## [1.40.0] - 2026-03-12
 
 ### Added

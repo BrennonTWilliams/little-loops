@@ -293,6 +293,7 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 | `-v` / `--verbose` | Show full prompt text and more output lines |
 | `-b` / `--background` | Run as a background daemon |
 | `--show-diagrams` | Display FSM box diagram with active state highlighted after each step |
+| `--clear` | Clear terminal before each iteration; combine with `--show-diagrams` for a live in-place dashboard |
 | `--context KEY=VALUE` | Override a context variable at runtime (repeatable) |
 
 ### Simulate Scenarios
