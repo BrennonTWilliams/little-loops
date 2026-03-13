@@ -91,6 +91,11 @@ _MODIFICATION_TYPES: dict[str, frozenset[str]] = {
 }
 
 
+def _basename(path: str) -> str:
+    """Extract the basename from a file path."""
+    return path.rsplit("/", 1)[-1] if "/" in path else path
+
+
 def _extract_semantic_targets(content: str) -> set[str]:
     """Extract component and function references from issue content.
 
@@ -221,13 +226,13 @@ def compute_conflict_score(
         target_union = len(targets_a | targets_b)
         target_score = len(targets_a & targets_b) / target_union if target_union > 0 else 0.0
     else:
-        target_score = 0.5  # Unknown — default to moderate
+        target_score = 0.0  # Unknown — default to no conflict
 
     # Signal 2: Section overlap (0.0 or 1.0)
     if sections_a and sections_b:
         section_score = 1.0 if sections_a & sections_b else 0.0
     else:
-        section_score = 0.5  # Unknown
+        section_score = 0.0  # Unknown — default to no conflict
 
     # Signal 3: Modification type match (0.0 or 1.0)
     type_score = 1.0 if type_a == type_b else 0.0
@@ -264,13 +269,23 @@ def find_file_overlaps(
         for blocker_id in issue.blocked_by:
             existing_deps.add((issue.issue_id, blocker_id))
 
-    # Extract file paths per issue
+    # Resolve overlap thresholds from config or defaults
+    min_files = config.overlap_min_files if config else 2
+    min_ratio = config.overlap_min_ratio if config else 0.25
+    exclude_files = frozenset(config.exclude_common_files) if config else frozenset(
+        {"__init__.py", "pyproject.toml", "setup.py", "setup.cfg",
+         "CHANGELOG.md", "README.md", "conftest.py"}
+    )
+
+    # Extract file paths per issue, filtering common infrastructure files
     issue_paths: dict[str, set[str]] = {}
     for issue in issues:
         content = issue_contents.get(issue.issue_id, "")
         paths = extract_file_paths(content)
         if paths:
-            issue_paths[issue.issue_id] = paths
+            filtered = {p for p in paths if _basename(p) not in exclude_files}
+            if filtered:
+                issue_paths[issue.issue_id] = filtered
 
     proposals: list[DependencyProposal] = []
     parallel_safe: list[ParallelSafePair] = []
@@ -282,6 +297,12 @@ def find_file_overlaps(
         for id_b in issue_ids[i + 1 :]:
             overlap = issue_paths[id_a] & issue_paths[id_b]
             if not overlap:
+                continue
+
+            # Apply minimum overlap guards (matching FileHints.overlaps_with)
+            smaller_set = min(len(issue_paths[id_a]), len(issue_paths[id_b]))
+            ratio = len(overlap) / smaller_set if smaller_set > 0 else 0.0
+            if len(overlap) < min_files and ratio < min_ratio:
                 continue
 
             # Skip if dependency already exists (in either direction)

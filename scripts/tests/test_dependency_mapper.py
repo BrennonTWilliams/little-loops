@@ -137,16 +137,16 @@ class TestComputeConflictScore:
         assert score < 0.4
 
     def test_empty_content(self) -> None:
-        """Empty content should return moderate default score."""
+        """Empty content should return low default score (missing data = no conflict)."""
         score = compute_conflict_score("", "")
-        assert 0.3 <= score <= 0.7
+        assert score <= 0.3
 
-    def test_no_semantic_signals_moderate_score(self) -> None:
-        """Content with no extractable targets defaults to moderate."""
+    def test_no_semantic_signals_low_score(self) -> None:
+        """Content with no extractable targets defaults to low conflict."""
         content_a = "fix the bug in the config file"
         content_b = "update the config settings"
         score = compute_conflict_score(content_a, content_b)
-        assert 0.2 <= score <= 0.8
+        assert score <= 0.3
 
     def test_structural_vs_enhancement_different_types(self) -> None:
         """Different modification types should reduce conflict score."""
@@ -198,8 +198,8 @@ class TestFindFileOverlaps:
         assert len(proposals) == 0
         assert len(parallel_safe) == 0
 
-    def test_single_file_overlap(self) -> None:
-        """Test with two issues referencing the same file."""
+    def test_single_file_overlap_low_conflict_becomes_parallel_safe(self) -> None:
+        """Single shared file with no semantic signals produces parallel-safe, not proposal."""
         issues = [
             make_issue("FEAT-001", priority="P1"),
             make_issue("FEAT-002", priority="P2"),
@@ -208,22 +208,20 @@ class TestFindFileOverlaps:
             "FEAT-001": "Fix `scripts/config.py`",
             "FEAT-002": "Update `scripts/config.py`",
         }
-        proposals, _ = find_file_overlaps(issues, contents)
-        assert len(proposals) == 1
-        p = proposals[0]
-        assert p.target_id == "FEAT-001"  # Higher priority = blocker
-        assert p.source_id == "FEAT-002"  # Lower priority = blocked
-        assert "scripts/config.py" in p.overlapping_files
+        proposals, parallel_safe = find_file_overlaps(issues, contents)
+        # No semantic targets → conflict score too low for dependency proposal
+        assert len(proposals) == 0
+        assert len(parallel_safe) == 1
 
     def test_multiple_file_overlap(self) -> None:
-        """Test with multiple overlapping files."""
+        """Test with multiple overlapping files meeting min_files threshold."""
         issues = [
             make_issue("FEAT-001", priority="P1"),
             make_issue("FEAT-002", priority="P2"),
         ]
         contents = {
-            "FEAT-001": "Fix `scripts/config.py` and `scripts/utils.py`",
-            "FEAT-002": "Update `scripts/config.py` and `scripts/utils.py` and `scripts/extra.py`",
+            "FEAT-001": "Fix ConfigParser in `scripts/config.py` and `scripts/utils.py`",
+            "FEAT-002": "Update ConfigParser in `scripts/config.py` and `scripts/utils.py` and `scripts/extra.py`",
         }
         proposals, _ = find_file_overlaps(issues, contents)
         assert len(proposals) == 1
@@ -236,8 +234,8 @@ class TestFindFileOverlaps:
             make_issue("FEAT-002", priority="P2", blocked_by=["FEAT-001"]),
         ]
         contents = {
-            "FEAT-001": "Fix `scripts/config.py`",
-            "FEAT-002": "Update `scripts/config.py`",
+            "FEAT-001": "Fix ConfigParser in `scripts/config.py` and `scripts/utils.py`",
+            "FEAT-002": "Update ConfigParser in `scripts/config.py` and `scripts/utils.py`",
         }
         proposals, _ = find_file_overlaps(issues, contents)
         assert len(proposals) == 0
@@ -249,8 +247,8 @@ class TestFindFileOverlaps:
             make_issue("FEAT-001", priority="P0"),
         ]
         contents = {
-            "FEAT-001": "Fix `scripts/config.py`",
-            "FEAT-002": "Update `scripts/config.py`",
+            "FEAT-001": "Fix ConfigParser in `scripts/config.py` and `scripts/utils.py`",
+            "FEAT-002": "Update ConfigParser in `scripts/config.py` and `scripts/utils.py`",
         }
         proposals, _ = find_file_overlaps(issues, contents)
         assert len(proposals) == 1
@@ -264,8 +262,8 @@ class TestFindFileOverlaps:
             make_issue("FEAT-001", priority="P1"),
         ]
         contents = {
-            "FEAT-001": "Fix `scripts/config.py`",
-            "FEAT-002": "Update `scripts/config.py`",
+            "FEAT-001": "Fix ConfigParser in `scripts/config.py` and `scripts/utils.py`",
+            "FEAT-002": "Update ConfigParser in `scripts/config.py` and `scripts/utils.py`",
         }
         proposals, _ = find_file_overlaps(issues, contents)
         # Should still produce a proposal (or parallel_safe depending on content)
@@ -279,8 +277,8 @@ class TestFindFileOverlaps:
             make_issue("FEAT-002", priority="P2"),
         ]
         contents = {
-            "FEAT-001": "Fix `scripts/config.py` and `scripts/utils.py`",
-            "FEAT-002": "Update `scripts/config.py`",  # 1 of 1 overlap
+            "FEAT-001": "Fix ConfigParser in `scripts/config.py` and `scripts/utils.py` and `scripts/models.py`",
+            "FEAT-002": "Update ConfigParser in `scripts/config.py` and `scripts/utils.py`",
         }
         proposals, _ = find_file_overlaps(issues, contents)
         assert len(proposals) == 1
@@ -314,8 +312,8 @@ class TestFindFileOverlaps:
             make_issue("FEAT-002", priority="P2", blocked_by=["FEAT-001"]),
         ]
         contents = {
-            "FEAT-001": "Fix `scripts/config.py`",
-            "FEAT-002": "Update `scripts/config.py`",
+            "FEAT-001": "Fix ConfigParser in `scripts/config.py` and `scripts/utils.py`",
+            "FEAT-002": "Update ConfigParser in `scripts/config.py` and `scripts/utils.py`",
         }
         proposals, _ = find_file_overlaps(issues, contents)
         assert len(proposals) == 0
@@ -336,8 +334,8 @@ class TestFindFileOverlapsSemanticAnalysis:
             make_issue("ENH-033", priority="P2", title="Header stats"),
         ]
         contents = {
-            "ENH-032": "Add empty state to droppable body in `src/day-columns.tsx`",
-            "ENH-033": "Add stats to day column header in `src/day-columns.tsx`",
+            "ENH-032": "Add empty state to droppable body in `src/day-columns.tsx` and `src/styles.tsx`",
+            "ENH-033": "Add stats to day column header in `src/day-columns.tsx` and `src/styles.tsx`",
         }
         proposals, parallel_safe = find_file_overlaps(issues, contents)
         assert len(proposals) == 0
@@ -352,8 +350,8 @@ class TestFindFileOverlapsSemanticAnalysis:
             make_issue("FEAT-031", priority="P2", title="Star toggle"),
         ]
         contents = {
-            "FEAT-030": "Add duplicate button to ActivityCard in `src/day-columns.tsx`",
-            "FEAT-031": "Add star toggle to ActivityCard in `src/day-columns.tsx`",
+            "FEAT-030": "Add duplicate button to ActivityCard in `src/day-columns.tsx` and `src/styles.tsx`",
+            "FEAT-031": "Add star toggle to ActivityCard in `src/day-columns.tsx` and `src/styles.tsx`",
         }
         proposals, parallel_safe = find_file_overlaps(issues, contents)
         assert len(proposals) == 1
@@ -366,8 +364,8 @@ class TestFindFileOverlapsSemanticAnalysis:
             make_issue("FEAT-031", priority="P3", title="Add star toggle"),
         ]
         contents = {
-            "FEAT-028": "Extract ActivityCard into `src/activity-card.tsx` from `src/day-columns.tsx`",
-            "FEAT-031": "Add star toggle button to ActivityCard in `src/day-columns.tsx`",
+            "FEAT-028": "Extract ActivityCard into `src/activity-card.tsx` from `src/day-columns.tsx` and `src/styles.tsx`",
+            "FEAT-031": "Add star toggle button to ActivityCard in `src/day-columns.tsx` and `src/styles.tsx`",
         }
         proposals, parallel_safe = find_file_overlaps(issues, contents)
         assert len(proposals) == 1
@@ -381,8 +379,8 @@ class TestFindFileOverlapsSemanticAnalysis:
             make_issue("FEAT-002", priority="P2"),
         ]
         contents = {
-            "FEAT-001": "Add button to ActivityCard in `scripts/config.py`",
-            "FEAT-002": "Update ActivityCard styling in `scripts/config.py`",
+            "FEAT-001": "Add button to ActivityCard in `scripts/config.py` and `scripts/utils.py`",
+            "FEAT-002": "Update ActivityCard styling in `scripts/config.py` and `scripts/utils.py`",
         }
         proposals, _ = find_file_overlaps(issues, contents)
         assert len(proposals) == 1
@@ -395,8 +393,8 @@ class TestFindFileOverlapsSemanticAnalysis:
             make_issue("ENH-002", priority="P2"),
         ]
         contents = {
-            "ENH-001": "Update SidebarNav component in the sidebar drawer in `src/layout.tsx`",
-            "ENH-002": "Refactor FooterLinks component in the footer in `src/layout.tsx`",
+            "ENH-001": "Update SidebarNav component in the sidebar drawer in `src/layout.tsx` and `src/nav.tsx`",
+            "ENH-002": "Refactor FooterLinks component in the footer in `src/layout.tsx` and `src/nav.tsx`",
         }
         proposals, parallel_safe = find_file_overlaps(issues, contents)
         assert len(parallel_safe) == 1
@@ -415,15 +413,79 @@ class TestFindFileOverlapsSemanticAnalysis:
         ]
         # Different PascalCase components → target_score = 0.0.
         # Generic words (list, input, table, field) should NOT produce section
-        # matches, keeping section_score at the 0.5 default rather than 1.0.
+        # matches, keeping section_score at 0.0 default (no conflict).
         contents = {
-            "ENH-050": "Fix the list rendering and input handling in ConfigParser in `scripts/config.py`",
-            "ENH-051": "Update table field and event handler in LogManager for `scripts/config.py`",
+            "ENH-050": "Fix the list rendering and input handling in ConfigParser in `scripts/config.py` and `scripts/utils.py`",
+            "ENH-051": "Update table field and event handler in LogManager for `scripts/config.py` and `scripts/utils.py`",
         }
         proposals, parallel_safe = find_file_overlaps(issues, contents)
         # Different components + no false section overlap → parallel-safe
         assert len(proposals) == 0
         assert len(parallel_safe) == 1
+
+
+# =============================================================================
+# BUG-680: overlap guard and default score tests
+# =============================================================================
+
+
+class TestOverlapGuardsAndDefaultScores:
+    """Tests for overlap minimum thresholds and semantic default scores (BUG-680)."""
+
+    def test_common_files_excluded_from_overlap(self) -> None:
+        """Common infrastructure files like __init__.py should not trigger overlap."""
+        issues = [
+            make_issue("FEAT-001", priority="P1"),
+            make_issue("FEAT-002", priority="P2"),
+        ]
+        contents = {
+            "FEAT-001": "Fix ConfigParser in `scripts/__init__.py` and `scripts/conftest.py`",
+            "FEAT-002": "Update ConfigParser in `scripts/__init__.py` and `scripts/conftest.py`",
+        }
+        proposals, parallel_safe = find_file_overlaps(issues, contents)
+        assert len(proposals) == 0
+        assert len(parallel_safe) == 0
+
+    def test_overlap_min_ratio_allows_high_ratio_single_file(self) -> None:
+        """A single shared file can pass if ratio >= overlap_min_ratio (0.25)."""
+        from little_loops.config import DependencyMappingConfig
+
+        config = DependencyMappingConfig(overlap_min_files=2, overlap_min_ratio=0.25)
+        issues = [
+            make_issue("FEAT-001", priority="P1"),
+            make_issue("FEAT-002", priority="P2"),
+        ]
+        # FEAT-002 has only 1 file, so ratio = 1/1 = 1.0 >= 0.25
+        contents = {
+            "FEAT-001": "Fix ConfigParser in `scripts/config.py` and `scripts/utils.py`",
+            "FEAT-002": "Update ConfigParser in `scripts/config.py`",
+        }
+        proposals, parallel_safe = find_file_overlaps(issues, contents, config=config)
+        # 1 shared file < min_files=2, but ratio 1.0 >= 0.25, so it passes
+        assert len(proposals) + len(parallel_safe) >= 1
+
+    def test_missing_semantic_targets_score_zero(self) -> None:
+        """Issues with no PascalCase targets should get target_score=0.0, not 0.5."""
+        score = compute_conflict_score(
+            "Fix something in the config module",
+            "Update something else in the utils module",
+        )
+        # No PascalCase targets, no section keywords → target=0.0, section=0.0
+        # Both default to "enhancement" type → type_score=1.0
+        # Total: 0.0*0.5 + 0.0*0.3 + 1.0*0.2 = 0.2
+        assert score < 0.4  # Below conflict threshold
+
+    def test_missing_section_mentions_score_zero(self) -> None:
+        """Issues with no section keywords should get section_score=0.0, not 0.5."""
+        score = compute_conflict_score(
+            "Fix ConfigParser issues with loading",
+            "Update ConfigParser issues with saving",
+        )
+        # Same PascalCase targets {configparser} → target_score=1.0
+        # No section keywords → section_score=0.0 (not 0.5)
+        # Both "enhancement" → type_score=1.0
+        # Total: 1.0*0.5 + 0.0*0.3 + 1.0*0.2 = 0.7
+        assert score == 0.7
 
 
 # =============================================================================
