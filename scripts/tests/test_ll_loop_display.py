@@ -1100,6 +1100,34 @@ class TestRenderFsmDiagram:
             f"Offset inter-layer edge should have ┐ or ┌ corner.\n{result}"
         )
 
+    def test_cross_column_forward_edge_connects_to_source_center(self) -> None:
+        """Cross-column forward edge renders corner at source box center.
+
+        When a source box is offset from the destination (e.g. source is in a
+        multi-box layer and destination is centered in a single-box layer),
+        the horizontal connector must extend to the source box center with
+        a └ or ┘ corner character, not stop at the source box edge.
+        """
+        # a branches to b and c on layer 2.
+        # c (right side) transitions to d (single box, centered layer 3).
+        # The c→d edge is cross-column: d's center is left of c's left edge.
+        fsm = self._make_fsm(
+            initial="a",
+            states={
+                "a": StateConfig(action="step_a", on_success="b", on_failure="c"),
+                "b": StateConfig(terminal=True),
+                "c": StateConfig(action="step_c", on_success="d"),
+                "d": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+
+        # The connector from d's center to c's center should have └ or ┘
+        assert "\u2518" in result or "\u2514" in result, (
+            f"Cross-column forward edge should have └ or ┘ corner at source "
+            f"box center.\n{result}"
+        )
+
     def test_skip_layer_forward_edges_sharing_node_connected(self) -> None:
         """Two skip-layer forward edges sharing a node render connected horizontals.
 

@@ -97,9 +97,23 @@ def _process_merge(self, result: WorkerResult) -> None:
 
 `bug`, `parallel`, `merge-coordinator`
 
+## Verification Notes
+
+**Verdict: VALID** — Verified 2026-03-12
+
+The bug is accurate and reproducible by code inspection:
+- `_current_issue_id` is set at line 710, before the `try` block starting at line 750
+- Three early-return paths (not two as stated) bypass the `finally` cleanup at line 925:
+  1. Circuit breaker (`_paused`) — line 720
+  2. Git index recovery failure (`_check_and_recover_index`) — line 734
+  3. Lifecycle moves failure (`_commit_pending_lifecycle_moves`) — line 745
+- `wait_for_completion` at line 1232 checks `self._current_issue_id` in its loop condition
+- Minor discrepancy: issue says method signature is `result: WorkerResult` but it's now `request: MergeRequest` (with `result = request.worker_result` on line 709). Does not affect the bug.
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:verify-issues` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/000d1e34-e885-4aae-83d4-999718fb8e90.jsonl`
 
 ---
 
