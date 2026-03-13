@@ -127,10 +127,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c86a5056-7391-48c4-89c7-a1ee90c46ccb.jsonl`
 - `/ll:refine-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f350e6bc-336a-44c3-8a3b-81c0c9c69795.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f27e2da-59cc-4ccf-a9a7-f55ce3418ad1.jsonl`
+- `/ll:ready-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2e85f17e-3bf6-49c7-a987-8bcc25562c84.jsonl`
+- `/ll:manage-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/manage-issue.jsonl`
+
+## Resolution
+
+- **Date**: 2026-03-13
+- **Status**: Completed
+- **Changes**:
+  - `scripts/little_loops/cli/loop/__init__.py`: Added `--clear` argument to `run` and `resume` subparsers
+  - `scripts/little_loops/cli/loop/_helpers.py`: Read `clear_screen` flag; emit `\033[2J\033[H` at top of `state_enter` branch when stdout is a tty
+  - `scripts/tests/test_ll_loop_display.py`: Added two tests (`test_clear_flag_emits_ansi_clear_when_tty`, `test_clear_flag_suppressed_when_not_tty`) and updated `_make_args` to include `clear` param
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P4
+**Completed** | Created: 2026-03-13 | Priority: P4
 
 ## Verification Notes
 

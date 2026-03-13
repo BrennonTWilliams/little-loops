@@ -116,6 +116,11 @@ Examples:
         help="Display the FSM box diagram with the active state highlighted after each step",
     )
     run_parser.add_argument(
+        "--clear",
+        action="store_true",
+        help="Clear terminal before each iteration (useful with --show-diagrams)",
+    )
+    run_parser.add_argument(
         "--queue", action="store_true", help="Wait for conflicting loops to finish"
     )
     run_parser.add_argument(
@@ -176,6 +181,11 @@ Examples:
         "--show-diagrams",
         action="store_true",
         help="Display the FSM box diagram with the active state highlighted after each step",
+    )
+    resume_parser.add_argument(
+        "--clear",
+        action="store_true",
+        help="Clear terminal before each iteration (useful with --show-diagrams)",
     )
 
     # History subcommand

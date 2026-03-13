@@ -1388,9 +1388,15 @@ class TestDisplayProgressEvents:
     """Tests for display_progress event formatting in run_foreground."""
 
     def _make_args(
-        self, quiet: bool = False, verbose: bool = False, show_diagrams: bool = False
+        self,
+        quiet: bool = False,
+        verbose: bool = False,
+        show_diagrams: bool = False,
+        clear: bool = False,
     ) -> argparse.Namespace:
-        return argparse.Namespace(quiet=quiet, verbose=verbose, show_diagrams=show_diagrams)
+        return argparse.Namespace(
+            quiet=quiet, verbose=verbose, show_diagrams=show_diagrams, clear=clear
+        )
 
     def _make_fsm(self) -> FSMLoop:
         return make_test_fsm()
@@ -1570,12 +1576,38 @@ class TestDisplayProgressEvents:
         assert "\u250c" in out
         assert "verbose output line" in out
 
+    def test_clear_flag_emits_ansi_clear_when_tty(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--clear flag emits ANSI clear-screen escape when stdout is a tty."""
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch("sys.stdout.isatty", return_value=True):
+            run_foreground(executor, self._make_fsm(), self._make_args(clear=True))
+        out = capsys.readouterr().out
+        assert "\033[2J\033[H" in out
+
+    def test_clear_flag_suppressed_when_not_tty(
+        self, capsys: pytest.CaptureFixture[str]
+    ) -> None:
+        """--clear flag does not emit ANSI sequences when stdout is not a tty."""
+        events = [
+            {"event": "state_enter", "state": "start", "iteration": 1},
+        ]
+        executor = MockExecutor(events)
+        with patch("sys.stdout.isatty", return_value=False):
+            run_foreground(executor, self._make_fsm(), self._make_args(clear=True))
+        out = capsys.readouterr().out
+        assert "\033[2J" not in out
+
 
 class TestRunForegroundExitCodes:
     """Tests for run_foreground exit code mapping (BUG-605)."""
 
     def _make_args(self) -> argparse.Namespace:
-        return argparse.Namespace(quiet=False, verbose=False, show_diagrams=False)
+        return argparse.Namespace(quiet=False, verbose=False, show_diagrams=False, clear=False)
 
     def _make_fsm(self) -> FSMLoop:
         return make_test_fsm()
