@@ -98,7 +98,6 @@ Active
 
 ## Blocked By
 ## Blocks
-- FEAT-638
 - ENH-507
 - ENH-470
 - ENH-459

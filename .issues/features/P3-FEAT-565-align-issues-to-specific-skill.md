@@ -84,8 +84,6 @@ The `skill` subcommand is mutually exclusive with category-based alignment (e.g.
 
 ## Blocked By
 ## Blocks
-- FEAT-638
-- ENH-668
 
 - ENH-493
 - ENH-494

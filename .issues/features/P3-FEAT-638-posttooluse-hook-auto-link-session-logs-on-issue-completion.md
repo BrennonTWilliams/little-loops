@@ -318,6 +318,7 @@ Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 - `/ll:confidence-check` - 2026-03-07T23:59:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62b97a68-6d3e-4460-993f-59940ca0029c.jsonl`
 - `/ll:verify-issues` - 2026-03-08T00:06:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001bb4dd-80ce-42a1-916a-56a833487d5b.jsonl`
 - `/ll:verify-issues` - 2026-03-08T00:07:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fec81786-b516-44bf-9948-e40b47c082de.jsonl`
+- `/ll:verify-issues` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29eaf7fd-f2f5-415a-b3ef-d822dcb68d93.jsonl` — VALID: all claims verified; no `append_session_log_entry` calls in `issue_lifecycle.py` or `orchestrator.py`; hook script still unimplemented; dependencies consistent
 
 ---
 
@@ -327,9 +328,6 @@ Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 
 
 ## Blocked By
-- FEAT-565
-- ENH-665
 ## Blocks
-- ENH-668
 - ENH-493
 - ENH-494
