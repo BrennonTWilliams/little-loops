@@ -294,11 +294,12 @@ def run_foreground(
         if event_type == "state_enter":
             current_iteration[0] = event.get("iteration", 0)
             state = event.get("state", "")
-            elapsed_int = int(time.monotonic() - loop_start_time)
-            if elapsed_int < 60:
-                elapsed_str = f"{elapsed_int}s"
-            else:
-                elapsed_str = f"{elapsed_int // 60}m {elapsed_int % 60}s"
+            if not quiet:
+                elapsed_int = int(time.monotonic() - loop_start_time)
+                if elapsed_int < 60:
+                    elapsed_str = f"{elapsed_int}s"
+                else:
+                    elapsed_str = f"{elapsed_int // 60}m {elapsed_int % 60}s"
             if clear_screen and sys.stdout.isatty():
                 print("\033[2J\033[H", end="", flush=True)
             if show_diagrams:
@@ -308,105 +309,110 @@ def run_foreground(
                     fsm, highlight_state=state, highlight_color=highlight_color
                 )
                 print(diagram, flush=True)
-            print(
-                f"[{current_iteration[0]}/{fsm.max_iterations}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",
-                end="",
-                flush=True,
-            )
-
-        elif event_type == "action_start":
-            action = event.get("action", "")
-            is_prompt = event.get("is_prompt", False)
-            if is_prompt:
-                lines = action.strip().splitlines()
-                line_count = len(lines)
+            if not quiet:
                 print(
-                    f" -> {colorize('[prompt]', '2')} {colorize(f'({line_count} lines)', '2')}",
+                    f"[{current_iteration[0]}/{fsm.max_iterations}] {colorize(state, '1')} ({colorize(elapsed_str, '2')})",
+                    end="",
                     flush=True,
                 )
-                show_count = line_count if verbose else min(5, line_count)
-                for line in lines[:show_count]:
-                    display = line[:max_line] + "..." if len(line) > max_line else line
-                    print(f"       {display}", flush=True)
-                if line_count > show_count:
-                    print(f"       ... ({line_count - show_count} more lines)", flush=True)
-            else:
-                action_display = action[:max_line] + "..." if len(action) > max_line else action
-                print(f" -> {colorize(action_display, '2')}", flush=True)
+
+        elif event_type == "action_start":
+            if not quiet:
+                action = event.get("action", "")
+                is_prompt = event.get("is_prompt", False)
+                if is_prompt:
+                    lines = action.strip().splitlines()
+                    line_count = len(lines)
+                    print(
+                        f" -> {colorize('[prompt]', '2')} {colorize(f'({line_count} lines)', '2')}",
+                        flush=True,
+                    )
+                    show_count = line_count if verbose else min(5, line_count)
+                    for line in lines[:show_count]:
+                        display = line[:max_line] + "..." if len(line) > max_line else line
+                        print(f"       {display}", flush=True)
+                    if line_count > show_count:
+                        print(f"       ... ({line_count - show_count} more lines)", flush=True)
+                else:
+                    action_display = action[:max_line] + "..." if len(action) > max_line else action
+                    print(f" -> {colorize(action_display, '2')}", flush=True)
 
         elif event_type == "action_output":
-            if verbose:
+            if not quiet and verbose:
                 line = event.get("line", "")
                 if line.strip():
                     display = line[:max_line] + "..." if len(line) > max_line else line
                     print(f"       {display}", flush=True)
 
         elif event_type == "action_complete":
-            duration_ms = event.get("duration_ms", 0)
-            exit_code = event.get("exit_code", 0)
-            output_preview = event.get("output_preview")
-            is_prompt = event.get("is_prompt", False)
-            duration_sec = duration_ms / 1000
-            if duration_sec < 60:
-                duration_str = f"{duration_sec:.1f}s"
-            else:
-                minutes = int(duration_sec // 60)
-                seconds = duration_sec % 60
-                duration_str = f"{minutes}m {seconds:.0f}s"
-            parts = [f"       ({colorize(duration_str, '2')})"]
-            if exit_code == 124:
-                parts.append(colorize("timed out", "38;5;208"))
-            elif exit_code != 0:
-                parts.append(colorize(f"exit: {exit_code}", "38;5;208"))
-            print("  ".join(parts), flush=True)
-            # Skip output preview for prompt states (already streamed) and in verbose mode
-            # (lines already shown via action_output events). In non-verbose mode, show
-            # a tail summary for shell states.
-            if output_preview and not is_prompt and not verbose:
-                lines = [ln for ln in output_preview.splitlines() if ln.strip()]
-                show_lines = lines[-8:] if lines else []
-                for line in show_lines:
-                    display = line[:max_line] + "..." if len(line) > max_line else line
-                    print(f"       {display}", flush=True)
+            if not quiet:
+                duration_ms = event.get("duration_ms", 0)
+                exit_code = event.get("exit_code", 0)
+                output_preview = event.get("output_preview")
+                is_prompt = event.get("is_prompt", False)
+                duration_sec = duration_ms / 1000
+                if duration_sec < 60:
+                    duration_str = f"{duration_sec:.1f}s"
+                else:
+                    minutes = int(duration_sec // 60)
+                    seconds = duration_sec % 60
+                    duration_str = f"{minutes}m {seconds:.0f}s"
+                parts = [f"       ({colorize(duration_str, '2')})"]
+                if exit_code == 124:
+                    parts.append(colorize("timed out", "38;5;208"))
+                elif exit_code != 0:
+                    parts.append(colorize(f"exit: {exit_code}", "38;5;208"))
+                print("  ".join(parts), flush=True)
+                # Skip output preview for prompt states (already streamed) and in verbose mode
+                # (lines already shown via action_output events). In non-verbose mode, show
+                # a tail summary for shell states.
+                if output_preview and not is_prompt and not verbose:
+                    lines = [ln for ln in output_preview.splitlines() if ln.strip()]
+                    show_lines = lines[-8:] if lines else []
+                    for line in show_lines:
+                        display = line[:max_line] + "..." if len(line) > max_line else line
+                        print(f"       {display}", flush=True)
 
         elif event_type == "evaluate":
-            verdict = event.get("verdict", "")
-            confidence = event.get("confidence")
-            reason = event.get("reason", "")
-            error = event.get("error", "")
-            if verdict in ("success", "target", "progress"):
-                symbol = colorize("\u2713", "32")  # green checkmark
-                verdict_colored = colorize(verdict, "32")
-            else:
-                symbol = colorize("\u2717", "38;5;208")  # orange x mark
-                verdict_colored = (
-                    colorize(verdict, "38;5;208")
-                    if verdict in ("fail", "error")
-                    else colorize(verdict, "2")
-                )
-            # Build verdict line
-            if error and verdict == "error":
-                verdict_line = f"{symbol} {verdict_colored}: {error}"
-            elif confidence is not None:
-                verdict_line = f"{symbol} {verdict_colored} {colorize(f'({confidence:.2f})', '2')}"
-            else:
-                verdict_line = f"{symbol} {verdict_colored}"
-            print(f"       {verdict_line}", flush=True)
-            # Show raw_preview for error verdicts to aid diagnosis
-            raw_preview = event.get("raw_preview", "")
-            if raw_preview and verdict == "error":
-                print(f"         raw: {raw_preview[:200]}", flush=True)
-            # Show reason on a second line if present (and not already shown as error)
-            if reason and not (error and verdict == "error"):
-                reason_display = reason[:300] + "..." if len(reason) > 300 else reason
-                print(f"         {reason_display}", flush=True)
+            if not quiet:
+                verdict = event.get("verdict", "")
+                confidence = event.get("confidence")
+                reason = event.get("reason", "")
+                error = event.get("error", "")
+                if verdict in ("success", "target", "progress"):
+                    symbol = colorize("\u2713", "32")  # green checkmark
+                    verdict_colored = colorize(verdict, "32")
+                else:
+                    symbol = colorize("\u2717", "38;5;208")  # orange x mark
+                    verdict_colored = (
+                        colorize(verdict, "38;5;208")
+                        if verdict in ("fail", "error")
+                        else colorize(verdict, "2")
+                    )
+                # Build verdict line
+                if error and verdict == "error":
+                    verdict_line = f"{symbol} {verdict_colored}: {error}"
+                elif confidence is not None:
+                    verdict_line = f"{symbol} {verdict_colored} {colorize(f'({confidence:.2f})', '2')}"
+                else:
+                    verdict_line = f"{symbol} {verdict_colored}"
+                print(f"       {verdict_line}", flush=True)
+                # Show raw_preview for error verdicts to aid diagnosis
+                raw_preview = event.get("raw_preview", "")
+                if raw_preview and verdict == "error":
+                    print(f"         raw: {raw_preview[:200]}", flush=True)
+                # Show reason on a second line if present (and not already shown as error)
+                if reason and not (error and verdict == "error"):
+                    reason_display = reason[:300] + "..." if len(reason) > 300 else reason
+                    print(f"         {reason_display}", flush=True)
 
         elif event_type == "route":
-            to_state = event.get("to", "")
-            print(f"       {colorize('->', '2')} {colorize(to_state, '1')}", flush=True)
+            if not quiet:
+                to_state = event.get("to", "")
+                print(f"       {colorize('->', '2')} {colorize(to_state, '1')}", flush=True)
 
     # Wire progress display via the proper observer slot on PersistentExecutor
-    if not quiet:
+    if not quiet or show_diagrams:
         executor._on_event = display_progress
 
     result = executor.run()
