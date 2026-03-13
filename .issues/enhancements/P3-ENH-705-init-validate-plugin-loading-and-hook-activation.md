@@ -26,19 +26,21 @@ Silent failure is confusing. A user who follows the init wizard and enables hand
 
 ## Proposed Solution
 
-Add a validation step (Step 10 or after Step 9: Write Configuration) in `skills/init/SKILL.md`:
+Add a **Step 9.5** validation step in `skills/init/SKILL.md` (after Step 9: Update .gitignore, before Step 10: Display Completion Message), following the same non-blocking pattern as the existing Step 7.5 command availability check (`SKILL.md:212-243`):
 
-1. Check for indicators that little-loops is loaded as a plugin:
-   - Look for `${CLAUDE_PLUGIN_ROOT}` environment variable being set
-   - Or check if `.claude/settings.json` references the little-loops plugin
-2. If hook-dependent features are enabled but plugin loading can't be confirmed, output a warning block:
+1. Check `.claude/settings.json` (or `.claude/settings.local.json`) for a plugin entry referencing `little-loops` or `.claude-plugin/plugin.json`. Note: `CLAUDE_PLUGIN_ROOT` env var is only available at hook runtime, not during init execution, so settings file inspection is the reliable detection method.
+2. Determine which hook-dependent features are active:
+   - Explicitly enabled: `context_monitor.enabled: true` (set in interactive Round 3a, `interactive.md:457-462`)
+   - Implicitly enabled by schema default: `continuation.enabled: true` and `continuation.auto_detect_on_session_start: true` (`config-schema.json:369-375`) — these are never configured during init because Round 9 is auto-skipped (`interactive.md:590-596`)
+3. If any hook-dependent features are active but plugin loading can't be confirmed, output a warning block:
    ```
    ⚠ Hook-dependent features enabled but plugin loading not confirmed.
-     Features: context_monitor, handoff auto-trigger
+     Features: context_monitor, continuation/handoff auto-trigger
      These features require little-loops to be registered as a Claude Code plugin.
+     Hooks affected: PostToolUse (context-monitor.sh), SessionStart (session-start.sh)
      See: https://docs.anthropic.com/claude-code/plugins
    ```
-3. Do not block init — warn and continue
+4. Do not block init — warn and continue (consistent with Step 7.5 behavior)
 
 ## Scope Boundaries
 
@@ -47,10 +49,23 @@ Add a validation step (Step 10 or after Step 9: Write Configuration) in `skills/
 
 ## Implementation Steps
 
-1. Identify which config keys signal hook-dependent features (`context_monitor.enabled`, `context_monitor.auto_handoff_threshold`, `continuation.auto_detect_on_session_start`)
-2. After writing config, check if `CLAUDE_PLUGIN_ROOT` env var is set (reliable indicator when running inside the plugin)
-3. If hook features enabled and plugin not detected, emit structured warning
-4. Add test coverage for the warning condition
+1. **Add Step 9.5 to `skills/init/SKILL.md`** (insert between Step 9 at ~line 320 and Step 10 at ~line 324):
+   - Title: "### 9.5. Plugin Loading Validation"
+   - Follow the structure of Step 7.5 (`SKILL.md:212-243`): non-blocking, skipped for `--dry-run`
+   - Check `.claude/settings.json` and `.claude/settings.local.json` for plugin registration
+   - Detect hook-dependent features: check written config for `context_monitor.enabled: true`, and note that `continuation` is implicitly enabled by schema defaults (`config-schema.json:369-375`)
+   - If features active but plugin not confirmed, emit structured warning block
+
+2. **Determine detection logic for plugin registration**:
+   - Read `.claude/settings.json` (if it exists) and look for a `plugins` array or `permissions` entries referencing the little-loops plugin path
+   - Fallback: check if `.claude-plugin/plugin.json` exists in the project root (confirms manifest exists, but not that Claude Code has loaded it)
+   - Model after the `validate_enabled_features()` pattern in `hooks/scripts/session-start.sh:101-144` — check condition, emit warning, continue
+
+3. **Update Step 10 completion message** (`SKILL.md:324-352`):
+   - If the plugin warning was emitted in Step 9.5, include a reminder in the "Next steps" section about plugin registration
+
+4. **Optionally update `skills/init/interactive.md`**:
+   - In the wizard summary output, if hook-dependent features were selected in Round 3a (`interactive.md:183-204`), include the plugin status note
 
 ## Impact
 
@@ -62,23 +77,32 @@ Add a validation step (Step 10 or after Step 9: Write Configuration) in `skills/
 ## Integration Map
 
 ### Files to Modify
-- `skills/init/SKILL.md` — add validation step after config write
-- `skills/init/interactive.md` — optionally surface warning in wizard summary
+- `skills/init/SKILL.md` — add Step 9.5 plugin validation (insert between ~line 320 and ~line 324)
+- `skills/init/interactive.md` — optionally add plugin status note to wizard summary when hook features selected in Round 3a
 
 ### Dependent Files (Callers/Importers)
 - N/A — init skill is invoked directly by users, not imported
 
 ### Similar Patterns
-- N/A — no existing plugin-loading validation patterns to follow
+- `skills/init/SKILL.md:212-243` — Step 7.5 command availability check: non-blocking, post-confirm, warn-and-continue pattern (direct structural analog)
+- `hooks/scripts/session-start.sh:101-144` — `validate_enabled_features()`: checks enabled feature flags against sub-config completeness, emits `[little-loops] Warning:` to stderr
+- `commands/align-issues.md:32-56` — Pre-check gate with remediation steps (blocking variant, shows both wizard and manual JSON paths)
 
 ### Tests
-- TBD — identify test coverage for init skill validation logic
+- No existing test coverage for init skill validation logic
+- `scripts/tests/test_hooks_integration.py` — hook integration tests (model for testing hook-dependent behavior)
+- `scripts/tests/test_config.py` — config module tests (model for testing config key detection)
 
 ### Documentation
-- N/A — warning is self-documenting in init output
+- Warning is self-documenting in init output
+- `docs/guides/GETTING_STARTED.md` — could reference the plugin validation warning
 
 ### Configuration
-- N/A — reads existing `ll-config.json` keys, no new config added
+- Reads: `context_monitor.enabled` (`config-schema.json:413-416`, default `false`)
+- Reads: `continuation.enabled` (`config-schema.json:369-372`, default `true`)
+- Reads: `continuation.auto_detect_on_session_start` (`config-schema.json:373-375`, default `true`)
+- Inspects: `.claude/settings.json` for plugin registration entries
+- No new config keys added
 
 ## Labels
 
@@ -87,6 +111,7 @@ Add a validation step (Step 10 or after Step 9: Write Configuration) in `skills/
 ## Session Log
 - `/ll:capture-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4922c4e9-2029-4f68-b0a3-04ae4dbcd620.jsonl`
 - `/ll:format-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/515ca590-73cd-40a5-bdc2-fd93b84ad7b4.jsonl`
+- `/ll:refine-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bbd0bb4e-1acc-4e46-9be4-546db972de6a.jsonl`
 
 ---
 

@@ -24,7 +24,7 @@ Silent data loss is worse than a clear error. Future frontmatter additions using
 ## Current Behavior
 
 - YAML list items (`- item`) are silently skipped because they have no `:`
-- Values containing colons (`title: "foo: bar"`) are incorrectly split
+- Values containing colons are handled correctly for simple cases (parser splits on first `:` only via `split(":", 1)`)
 - Multi-line block scalars (`|`, `>`) only capture the header line
 - No warning or error is raised for unsupported syntax
 
@@ -67,9 +67,18 @@ Either:
 
 `enhancement`, `frontmatter`, `parser`
 
+## Verification Notes
+
+**Verdict**: NEEDS_UPDATE — 2026-03-12
+
+- Parser correctly splits on first `:` via `split(":", 1)` (line 42) — "misparses values containing colons" claim is partially incorrect for simple cases
+- YAML list items genuinely dropped (no `:` means `if ":" in line` fails) — this is the primary issue
+- Multi-line block scalar limitation is accurate
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
+- `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl`
 
 ---
 

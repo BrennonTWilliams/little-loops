@@ -121,12 +121,22 @@ _Codebase Research: full call chain with line refs:_
 
 `enhancement`, `ux`, `ll-loop`, `diagrams`, `terminal`
 
+## Verification Notes
+
+**Verdict**: OUTDATED — 2026-03-12
+
+- `_render_2d_diagram()` no longer exists in `info.py`; diagram rendering was refactored into `layout.py` with `_render_layered_diagram()` (line 569) and `_render_fsm_diagram()` (line 1151)
+- `info.py` is now 570 lines (was referenced as 463-964); all implementation step line references are invalid
+- ENH-638 referenced as prerequisite does not exist in any .issues directory
+- **Action needed**: Rewrite implementation steps to target `layout.py` functions; remove or update ENH-638 dependency reference
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb1dacf-d3dc-4461-88d7-450e60c8640a.jsonl`
 - `/ll:format-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a9e18cb-659a-48f7-9438-2e4c4fdddd25.jsonl`
 - `/ll:confidence-check` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a53c6fa-fc4b-421b-b487-38a43f4dff4a.jsonl`
 - `/ll:refine-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f46a5b1-a489-4906-a03e-8e3d129e5c8a.jsonl`
 - `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/12d9282f-0d38-4934-975d-426a4e8789d4.jsonl`
+- `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl` — OUTDATED: `_render_2d_diagram()` refactored to `layout.py`; all line refs invalid; ENH-638 dep missing
 
 ## Status
 

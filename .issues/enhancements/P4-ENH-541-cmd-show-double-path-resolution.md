@@ -139,12 +139,12 @@ fsm, spec = load_loop_with_spec(loop_name, loops_dir, logger)
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl` — VALID: `cmd_show` at `info.py:985`; double `resolve_loop_path()` call confirmed at lines 993–994; line numbers updated
 - `/ll:format-issue` - 2026-03-06T08:42:00Z - Agent task — Formatted to v2.0 template; added API/Interface, Success Metrics, restructured Scope Boundaries
 - `/ll:confidence-check` - 2026-03-06T08:42:49Z - Agent task — Readiness: 100/100 PROCEED; Outcome: 100/100 HIGH CONFIDENCE
+- `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl` — DEP_ISSUES: removed completed ENH-668 from Blocked By; double resolve confirmed at lines 378-379 (shifted from 1053-1054)
 
 ---
 
 
 ## Blocked By
-- ENH-668
 ## Blocks
 - FEAT-543
 

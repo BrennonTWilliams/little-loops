@@ -58,7 +58,7 @@ _Added by `/ll:refine-issue` — Skill line count audit:_
 **Current line counts (descending):**
 ```
 708  skills/audit-claude-config/SKILL.md  ← EXCEEDS by 208 lines
-533  skills/confidence-check/SKILL.md     ← EXCEEDS by 33 lines
+554  skills/confidence-check/SKILL.md     ← EXCEEDS by 54 lines
 500  skills/manage-issue/SKILL.md         ← AT the 500-line limit
 386  skills/init/SKILL.md
 371  skills/capture-issue/SKILL.md
@@ -126,6 +126,7 @@ Note: `manage-issue/SKILL.md` has grown to exactly 500 lines — at the boundary
 - `/ll:refine-issue` + `/ll:confidence-check` - 2026-03-06 - Re-assessed knowledge gaps: none new. Line counts re-confirmed (708, 533). `references/` pattern is clear; implementation steps fully specified. Raised confidence_score 80→86 (all research done, no open unknowns) and outcome_confidence 68→72 (slight residual uncertainty from ENH-493 blocker — reorganization needs to align with trigger description style before splitting content).
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: audit-claude-config(708L), confidence-check(533L) exceed limit
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: audit-claude-config (708L) and confidence-check (533L) still exceed 500-line limit; no `references/` subdirs exist
+- `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl` — NEEDS_UPDATE: removed FEAT-638 (missing) and ENH-668 (completed) from Blocked By; updated confidence-check line count 533→554
 
 ---
 
@@ -152,8 +153,6 @@ Note: `manage-issue/SKILL.md` has grown to exactly 500 lines — at the boundary
 Update first - Only 2 skills exceed the 500-line limit (audit-claude-config: 708, confidence-check: 524), making scope smaller than expected. However, the `references/` subdirectory pattern needs to be defined and documented before extracting content. Blocked by ENH-493 (trigger descriptions), ENH-491, and FEAT-441. Implement after those resolve and the pattern convention is established in CONTRIBUTING.md.
 
 ## Blocked By
-- FEAT-638
-- ENH-668
 - ENH-495
 - ENH-493
 - FEAT-565

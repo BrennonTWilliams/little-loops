@@ -97,6 +97,7 @@ Also consider adding `.claude/ll.local.md` to the `.gitignore` entries in Step 9
 - `/ll:confidence-check` - 2026-03-06 - Verified: `skills/init/SKILL.md` Step 9 gitignore block confirmed — `.claude/ll.local.md` absent (only `.auto-manage-state.json`, `.parallel-manage-state.json`, `.claude/ll-context-state.json`, `.claude/ll-sync-state.json` present). Step 10 completion message confirmed to not mention `ll.local.md`. Issue is minimal scope (two-line addition), fully specified with exact target lines. Scored confidence_score=90, outcome_confidence=88.
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: still missing from gitignore and completion message
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `.claude/ll.local.md` still absent from Step 9 gitignore and Step 10 completion message
+- `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl` — VALID: removed completed FEAT-488 from Blocks
 
 ---
 
@@ -109,5 +110,3 @@ Also consider adding `.claude/ll.local.md` to the `.gitignore` entries in Step 9
 - ENH-493
 - ENH-665
 ## Blocks
-
-- FEAT-488
