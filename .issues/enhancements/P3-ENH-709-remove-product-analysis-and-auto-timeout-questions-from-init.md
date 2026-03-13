@@ -1,6 +1,8 @@
 ---
 discovered_date: "2026-03-12"
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-709: Remove Product Analysis and Auto-Timeout Questions from Init Interactive
@@ -54,6 +56,15 @@ Edit `skills/init/interactive.md`:
 ### Configuration
 - N/A
 
+## API/Interface
+
+N/A - No public API changes (skill definition file edit only)
+
+## Success Metrics
+
+- Interaction rounds reduced: `/ll:init --interactive` completes with 2 fewer prompts
+- No config regression: `product_analysis` defaults to disabled, `auto_timeout` defaults to 3600 (same as current recommended answers)
+
 ## Scope Boundaries
 
 - **Not** removing or changing any other init interactive rounds (Rounds 1–3, 5 parallel questions, Round 6 docs)
@@ -81,6 +92,9 @@ Edit `skills/init/interactive.md`:
 ## Session Log
 - `/ll:capture-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0f02fc6-1ba7-4fc8-9e31-5f723e7e51ef.jsonl`
 - `/ll:format-issue` - 2026-03-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4b6ece1e-87fe-49b2-b766-58bab5968326.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 
 ---
 

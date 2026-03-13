@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-12
 discovered_by: capture-issue
+confidence_score: 98
+outcome_confidence: 72
 ---
 
 # ENH-713: Per-Item Retry Limits for FSM Loop States
@@ -54,6 +56,46 @@ This requires changes to:
 **Option B: Reset-on-transition tracking**
 
 Track retries per state independently, only reset when the state succeeds (transitions via `on_success`). This handles cases where a state is re-entered after visiting other states (e.g., evaluate → fix → evaluate → fix). More complex but handles non-consecutive retry patterns.
+
+## API/Interface
+
+New optional fields on `StateConfig` (`schema.py`):
+
+```python
+@dataclass
+class StateConfig:
+    # ... existing fields ...
+    max_retries: int | None = None          # Max consecutive entries before on_retry_exhausted
+    on_retry_exhausted: str | None = None   # State to transition to when retries exceeded
+```
+
+Corresponding additions to `fsm-loop-schema.json` state object:
+
+```json
+"max_retries": {
+  "type": "integer",
+  "minimum": 1,
+  "description": "Max consecutive re-entries before transitioning to on_retry_exhausted"
+},
+"on_retry_exhausted": {
+  "type": "string",
+  "description": "State to transition to when max_retries is exceeded"
+}
+```
+
+YAML loop config usage (no breaking change — both fields are optional):
+
+```yaml
+states:
+  execute:
+    action: "/ll:refine-issue ${current_item}"
+    max_retries: 3
+    on_retry_exhausted: skip_item
+    on_success: evaluate
+    on_failure: execute
+```
+
+Validation constraint: if `max_retries` is set, `on_retry_exhausted` must also be set and must reference a valid state.
 
 ## Scope Boundaries
 
@@ -120,6 +162,9 @@ Track retries per state independently, only reset when the state succeeds (trans
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b28391f-b086-4d28-86cb-448201c8b40e.jsonl`
+- `/ll:format-issue` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:verify-issues` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 
 ---
 
