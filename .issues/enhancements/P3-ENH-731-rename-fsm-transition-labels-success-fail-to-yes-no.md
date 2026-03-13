@@ -6,6 +6,8 @@ title: Rename FSM transition labels from success/fail to yes/no
 status: open
 discovered_date: 2026-03-13
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 43
 ---
 
 # ENH-731: Rename FSM transition labels from success/fail to yes/no
@@ -16,79 +18,130 @@ FSM loop transition labels currently use "success" and "fail" as the standard ou
 
 ## Current Behavior
 
-FSM loop YAML configurations use `success` and `fail` as transition outcome labels:
+FSM loop YAML states use `on_success` and `on_failure` as shorthand routing properties (internal verdict strings are `"success"` and `"failure"`):
 
 ```yaml
-transitions:
-  - from: check_quality
-    on: success
-    to: done
-  - from: check_quality
-    on: fail
-    to: fix_issue
+states:
+  check-quality:
+    action: "Run /ll:check-code lint,format,types"
+    evaluate:
+      type: exit_code
+    on_success: done
+    on_failure: fix-quality
 ```
 
-The terms "success" and "fail" carry connotations of task outcome (pass/fail), which is misleading for states that are simply evaluating a condition rather than completing a task.
+The `on_success`/`on_failure` property names carry pass/fail connotations, which is misleading for states that are simply evaluating a condition (e.g., "did the check pass?", "is there more work?"). The internal verdict strings `"success"` and `"failure"` propagate through the evaluators (`scripts/little_loops/fsm/evaluators.py`) and executor (`scripts/little_loops/fsm/executor.py`).
 
 ## Expected Behavior
 
-FSM loop YAML configurations use `yes` and `no` as transition outcome labels:
+FSM loop YAML states use neutral routing properties (e.g., `on_yes`/`on_no`) that reflect conditional branching rather than task outcome:
 
 ```yaml
-transitions:
-  - from: check_quality
-    on: yes
-    to: done
-  - from: check_quality
-    on: no
-    to: fix_issue
+states:
+  check-quality:
+    action: "Run /ll:check-code lint,format,types"
+    evaluate:
+      type: exit_code
+    on_yes: done
+    on_no: fix-quality
 ```
 
 This language is neutral and works equally well for condition-checking states, decision gates, and terminal states.
 
+## Acceptance Criteria
+
+- [ ] FSM schema (`scripts/little_loops/fsm/schema.py`) accepts `on_yes`/`on_no` as routing properties
+- [ ] FSM evaluators (`scripts/little_loops/fsm/evaluators.py`) emit `"yes"`/`"no"` verdict strings instead of `"success"`/`"failure"`
+- [ ] FSM executor (`scripts/little_loops/fsm/executor.py`) routes on `"yes"`/`"no"` verdicts
+- [ ] All 19 built-in loop YAML files in `loops/` migrated from `on_success`/`on_failure` to `on_yes`/`on_no`
+- [ ] `ll-loop` status output and diagrams display `yes`/`no` instead of `success`/`failure`
+- [ ] `create-loop` skill generates YAML with `on_yes`/`on_no` properties
+- [ ] `review-loop` skill validates `on_yes`/`on_no` and flags `on_success`/`on_failure` as deprecated
+- [ ] Documentation and skill examples updated with `on_yes`/`on_no` throughout
+- [ ] Backwards compat shim or migration path for any user-authored loops using `on_success`/`on_failure`
+
 ## Motivation
 
-The "success"/"fail" terminology creates a conceptual mismatch: a state like `has_more_issues` routing to `process_next` on "success" is confusing — it's not that the state succeeded, it's that the answer is "yes". Using "yes"/"no" maps naturally to how FSM states are described in documentation and conversations, reduces cognitive overhead when authoring loops, and avoids misleading implications in state diagrams and logs.
+The `on_success`/`on_failure` property names (and internal `"success"`/`"failure"` verdict strings) create a conceptual mismatch: a state like `has_more_issues` routing to `process_next` via `on_success` is confusing — it's not that the state succeeded, it's that the answer is "yes". Using `on_yes`/`on_no` maps naturally to how FSM states are described in documentation and conversations, reduces cognitive overhead when authoring loops, and avoids misleading implications in state diagrams and logs.
 
 ## Proposed Solution
 
-1. Update the FSM engine to recognize `yes`/`no` as valid transition outcomes (in addition to or instead of `success`/`fail`)
-2. Update all built-in loop YAML files to use `yes`/`no`
+1. Update `schema.py`: rename `on_success`/`on_failure` fields to `on_yes`/`on_no`; update evaluators to emit `"yes"`/`"no"` verdicts; update executor routing logic
+2. Update all 19 loop YAML files in `loops/` from `on_success`/`on_failure` to `on_yes`/`on_no`
 3. Update `ll-loop` display/rendering (status output, diagrams, history) to show `yes`/`no`
-4. Update `create-loop` skill and `review-loop` skill to generate/validate `yes`/`no` labels
+4. Update `create-loop` skill and `review-loop` skill to generate/validate `on_yes`/`on_no` properties
 5. Update documentation (loop authoring guides, examples)
-6. Consider deprecation path for `success`/`fail` if backwards compatibility needed
+6. Consider deprecation path for `on_success`/`on_failure` if backwards compatibility needed (user-authored loops)
 
 ## Integration Map
 
 ### Files to Modify
-- TBD - requires codebase analysis of FSM engine transition handling
+- `scripts/little_loops/fsm/schema.py` — `StateConfig.on_success`/`on_failure` fields (lines 195–196); `to_dict` keys (lines 217–220); `from_dict` lookups (lines 254–255); `get_referenced_states` checks (lines 273–276). **Note**: no Pydantic — plain `@dataclass` with hand-written `from_dict`/`to_dict`, no alias machinery exists.
+- `scripts/little_loops/fsm/evaluators.py` — `DEFAULT_LLM_SCHEMA` `enum` at line 54 lists `"success"/"failure"`; `evaluate_exit_code` returns at lines 92/94; `evaluate_output_numeric` line 144; `_compare_values` line 211; `evaluate_output_json` lines 258/260; `evaluate_output_contains` lines 302/304
+- `scripts/little_loops/fsm/executor.py` — default verdict `"success"` at line 535; `_route` method shorthand dispatch at lines 722/724 (`verdict == "success"` / `verdict == "failure"`)
+- `scripts/little_loops/fsm/validation.py` — `has_shorthand` field checks at lines 178–182; warning message string at line 189 that names `on_success`/`on_failure` literally
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — JSON Schema property definitions for `on_success`/`on_failure` at lines ~87–93
+- `scripts/little_loops/cli/loop/layout.py` — `_EDGE_LABEL_COLORS` dict (`"success"` at line 23, `"fail"` at line 24); edge collection labels at lines 139/141; `_colorize_label` checks at lines 37/43; happy-path tracer reads `on_success` at line 187
+- `scripts/little_loops/cli/loop/info.py` — event log `verdict == "success"` at line 199; compact transition table uses `"success"`/`"fail"` at lines 272–273; verbose transition table uses `"success"`/`"failure"` at lines 531–532 (**inconsistency**: compact uses `"fail"`, verbose uses `"failure"` — both need to become `"no"`); stats counter at lines 398–399
+- `scripts/little_loops/cli/loop/_helpers.py` — `print_execution_plan` prints `on_success`/`on_failure` labels verbatim at lines 174–178; evaluate verdict check at line 382 uses `verdict in ("success", "target", "progress")`
+- `scripts/little_loops/cli/loop/testing.py` — verdict routing `verdict == "success"` / `verdict == "failure"` with `state_config.on_success`/`on_failure` at lines 148–153
+- `loops/*.yaml` — 18 of 19 loop files (81 occurrences) use `on_success:`/`on_failure:` YAML keys; **additionally, LLM `evaluate.prompt` text inside many loops instructs the model to `Return "success"` / `Return "failure"` — these string literals also need updating to `"yes"`/`"no"`** (e.g., `fix-quality-and-tests.yaml:15-16`, `issue-staleness-review.yaml:41-43`, `plugin-health-check.yaml:76-77`, etc.)
+- `skills/create-loop/reference.md`, `skills/create-loop/templates.md`, `skills/create-loop/loop-types.md` — YAML examples and prose descriptions
+- `skills/review-loop/SKILL.md` — references `on_success`/`on_failure` in QC check logic at lines 155/186
+- `skills/review-loop/reference.md` — references at line 469 in `--auto` mode restriction list
+- `docs/generalized-fsm-loop.md` — 30+ occurrences in YAML examples and prose
+- `docs/guides/LOOPS_GUIDE.md` — user-facing guide examples
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find `success`/`fail` references in loop YAML and engine code
+- `scripts/tests/test_fsm_schema.py` — `make_state` helper uses `on_success`/`on_failure` as kwargs; direct property assertions; roundtrip `from_dict`/`to_dict` assertions; `test_dangling_state_reference` docstring
+- `scripts/tests/test_fsm_executor.py` — every FSM fixture + `EvaluationResult(verdict="success")` mocks
+- `scripts/tests/test_fsm_evaluators.py` — parametrized verdict assertions `(0, "success")`, `(1, "failure")`; `EvaluationResult(verdict="success"/"failure")` direct assertions; LLM mock stdout uses `"success"`/`"failure"` verdict values
+- `scripts/tests/test_ll_loop_commands.py`, `test_ll_loop_display.py`, `test_ll_loop_execution.py`, `test_ll_loop_integration.py`, `test_ll_loop_state.py`, `test_ll_loop_parsing.py`
+- `scripts/tests/test_builtin_loops.py`, `test_create_loop.py`, `test_review_loop.py`
+- `scripts/tests/fixtures/fsm/valid-loop.yaml` — uses `on_success: done`, `on_failure: done` at lines 6–7
+- `scripts/tests/fixtures/fsm/loop-with-unreachable-state.yaml` — uses `on_success`/`on_failure` at lines 6–7
 
-### Similar Patterns
-- All existing loop YAML files in `loops/` or equivalent directory
-- FSM diagram rendering code
+### Potential Additional Scope
+- `scripts/little_loops/parallel/tasks/*.yaml` (4 files: `health-check.yaml`, `build-assets.yaml`, `test-suite.yaml`, `lint-all.yaml`) — may also use `on_success`/`on_failure`; confirm whether parallel task YAMLs share the FSM schema or are a separate format
 
 ### Tests
-- TBD - tests that assert on transition outcome names
+- All `test_fsm_*.py` files assert on verdict string values and routing property names — all will need updates
 
 ### Documentation
-- `docs/` loop authoring documentation
-- Skill files that show YAML examples (`create-loop`, `review-loop`)
+- `docs/generalized-fsm-loop.md` — primary architecture doc, 30+ occurrences
+- `docs/guides/LOOPS_GUIDE.md` — user-facing guide
 
 ### Configuration
-- N/A
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — JSON Schema for loop YAML validation
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **No aliasing mechanism exists**: `StateConfig.from_dict` calls `data.get("on_success")` with no fallback. Backwards-compat shim requires adding `data.get("on_yes") or data.get("on_success")` pattern in `from_dict` (lines 254–255).
+- **Display label inconsistency**: `info.py` compact view uses `"fail"` (line 273) but verbose view uses `"failure"` (line 532). `layout.py` uses `"fail"` (line 141). After rename, all should standardize to `"no"`.
+- **LLM prompt text in loop YAMLs**: Many loops contain `evaluate.prompt` text like `Return "success" only if...` / `Return "failure" if...`. These are separate from the YAML routing keys and must also be updated to `"yes"`/`"no"`.
+- **`DEFAULT_LLM_SCHEMA` in evaluators.py:52–58**: The JSON schema enum sent to Claude for LLM-structured evaluation hardcodes `["success", "failure", "blocked", "partial"]` — needs updating to `["yes", "no", "blocked", "partial"]`.
 
 ## Implementation Steps
 
-1. Audit all uses of `success`/`fail` as FSM transition labels in engine, YAML files, skills, and docs
-2. Update FSM engine to accept `yes`/`no` outcomes
-3. Migrate existing YAML loop configs and skill examples to `yes`/`no`
-4. Update rendering/display code (status, diagrams, history output)
-5. Update tests
-6. Verify with `ll-loop run` on a sample loop
+1. **Audit scope** — run `grep -rn "on_success\|on_failure\|\"success\"\|\"failure\"" scripts/little_loops/fsm/ scripts/little_loops/cli/loop/ loops/ skills/ docs/` to confirm all touch points
+2. **Update FSM schema** (`schema.py:195–196, 217–220, 254–255, 273–276`) — rename fields to `on_yes`/`on_no`; in `from_dict` add backwards-compat: `on_yes=data.get("on_yes") or data.get("on_success")` (and same for `on_no`/`on_failure`)
+3. **Update JSON Schema** (`fsm-loop-schema.json:~87–93`) — rename `on_success`/`on_failure` properties to `on_yes`/`on_no`
+4. **Update evaluators** (`evaluators.py:54, 92, 94, 144, 211, 258, 260, 302, 304`) — change all `"success"`/`"failure"` verdict returns to `"yes"`/`"no"`; update `DEFAULT_LLM_SCHEMA` enum from `["success", "failure", "blocked", "partial"]` to `["yes", "no", "blocked", "partial"]`
+5. **Update executor** (`executor.py:535, 722, 724`) — change default verdict `"success"` → `"yes"`; change `verdict == "success"` → `"yes"` and `verdict == "failure"` → `"no"` in `_route`
+6. **Update validation** (`validation.py:178–182, 189`) — update `has_shorthand` field checks and warning message string
+7. **Update CLI rendering** (all in `cli/loop/`):
+   - `layout.py:22–43, 139–141, 187` — update `_EDGE_LABEL_COLORS` keys, edge labels `"success"`→`"yes"` / `"fail"`→`"no"`, colorize checks, path tracer
+   - `info.py:199, 272–273, 398–399, 531–532` — update all display labels, standardizing compact (`"fail"`→`"no"`) and verbose (`"failure"`→`"no"`)
+   - `_helpers.py:174–178, 382` — update `print_execution_plan` output strings and verdict check
+   - `testing.py:148–153` — update `verdict == "success"`/`"failure"` routing comparisons
+8. **Migrate loop YAMLs** (`loops/*.yaml`, 18 files) — rename `on_success:`→`on_yes:` and `on_failure:`→`on_no:` YAML keys; also update LLM evaluate prompt text (`Return "success"` → `Return "yes"`, `Return "failure"` → `Return "no"`)
+9. **Migrate test fixtures** (`scripts/tests/fixtures/fsm/valid-loop.yaml`, `loop-with-unreachable-state.yaml`)
+10. **Update skills** (`create-loop/reference.md`, `create-loop/templates.md`, `create-loop/loop-types.md`, `review-loop/SKILL.md`, `review-loop/reference.md`)
+11. **Update docs** (`docs/generalized-fsm-loop.md`, `docs/guides/LOOPS_GUIDE.md`)
+12. **Update all tests** — `test_fsm_schema.py`, `test_fsm_evaluators.py`, `test_fsm_executor.py`, and all `test_ll_loop_*.py` files
+13. **Verify** — run `python -m pytest scripts/tests/ -v` and `ll-loop run loops/fix-quality-and-tests.yaml --dry-run`
 
 ## Impact
 
@@ -96,6 +149,12 @@ The "success"/"fail" terminology creates a conceptual mismatch: a state like `ha
 - **Effort**: Medium - Requires finding all uses of success/fail across engine, YAMLs, skills, docs, and tests
 - **Risk**: Low - Rename with potential backwards compat shim; no logic changes
 - **Breaking Change**: Yes (if `success`/`fail` removed without migration period)
+
+## Success Metrics
+
+- **YAML authoring clarity**: `on_yes`/`on_no` properties used in 100% of built-in loop configs after migration
+- **Zero regressions**: All existing loops execute correctly after rename (pass existing test suite)
+- **Terminology consistency**: No remaining `on_success`/`on_failure`/`"success"`/`"failure"` in engine, skills, or docs (or all behind deprecation shim)
 
 ## Scope Boundaries
 
@@ -114,6 +173,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2acb782e-c208-43f1-8534-96bfd95ced6e.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f511c85-9ee7-4764-8b06-753e10552cf2.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f511c85-9ee7-4764-8b06-753e10552cf2.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6421f7c-9303-4c44-9f2e-e1b31accf453.jsonl`
+- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c48b158-3a38-42ea-9974-fb89dfaa60bc.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c48b158-3a38-42ea-9974-fb89dfaa60bc.jsonl`
 
 ---
 
