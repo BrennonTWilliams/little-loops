@@ -930,19 +930,31 @@ def _render_layered_diagram(
                 conn_row = arrow_start_row
                 if 0 <= conn_row < total_height:
                     if dst_cc >= src_right:
-                        # Pipe right of source: ───┐
-                        for c in range(src_right, dst_cc):
+                        # Pipe right of source: └───┐
+                        src_cc = col_center[src]
+                        if 0 <= src_cc < total_width and grid[conn_row][src_cc] == " ":
+                            grid[conn_row][src_cc] = "\u2514"  # └
+                            start_c = src_cc + 1
+                        else:
+                            start_c = src_right
+                        for c in range(start_c, dst_cc):
                             if 0 <= c < total_width:
                                 grid[conn_row][c] = "\u2500"
                         if 0 <= dst_cc < total_width:
-                            grid[conn_row][dst_cc] = "\u2510"
+                            grid[conn_row][dst_cc] = "\u2510"  # ┐
                     else:
-                        # Pipe left of source: ┌───
-                        for c in range(dst_cc + 1, src_left):
+                        # Pipe left of source: ┌───┘
+                        src_cc = col_center[src]
+                        if 0 <= src_cc < total_width and grid[conn_row][src_cc] == " ":
+                            end_c = src_cc
+                            grid[conn_row][src_cc] = "\u2518"  # ┘
+                        else:
+                            end_c = src_left
+                        for c in range(dst_cc + 1, end_c):
                             if 0 <= c < total_width:
                                 grid[conn_row][c] = "\u2500"
                         if 0 <= dst_cc < total_width:
-                            grid[conn_row][dst_cc] = "\u250c"
+                            grid[conn_row][dst_cc] = "\u250c"  # ┌
                 pipe_start = arrow_start_row + 1
             else:
                 pipe_start = arrow_start_row
@@ -976,8 +988,20 @@ def _render_layered_diagram(
                 left = min(centers)
                 right = max(centers)
                 for c in range(left + 1, right):
-                    if 0 <= c < total_width and grid[arrow_start_row][c] == " ":
-                        grid[arrow_start_row][c] = "\u2500"  # ─
+                    if 0 <= c < total_width:
+                        cell = grid[arrow_start_row][c]
+                        if cell == " ":
+                            grid[arrow_start_row][c] = "\u2500"  # ─
+                        elif cell == "\u2502":  # │ → ┼
+                            grid[arrow_start_row][c] = "\u253c"
+                        elif cell == "\u2518":  # ┘ → ┴
+                            grid[arrow_start_row][c] = "\u2534"
+                        elif cell == "\u2514":  # └ → ┴
+                            grid[arrow_start_row][c] = "\u2534"
+                        elif cell == "\u2510":  # ┐ → ┬
+                            grid[arrow_start_row][c] = "\u252c"
+                        elif cell == "\u250c":  # ┌ → ┬
+                            grid[arrow_start_row][c] = "\u252c"
 
     # Draw same-layer edges (horizontal arrows between states on same layer)
     # Includes both branches and reclassified back-edges within same layer
@@ -1064,7 +1088,11 @@ def _render_layered_diagram(
             # Draw vertical line in margin (exclude corner rows handled below)
             for r in range(top_row + 1, bot_row):
                 if 0 <= r < total_height and col < total_width:
-                    grid[r][col] = "\u2502"
+                    cell = grid[r][col]
+                    if cell == "\u2500":  # ─ → ┼
+                        grid[r][col] = "\u253c"
+                    elif cell == " ":
+                        grid[r][col] = "\u2502"
 
             # Horizontal connector from source box to margin
             # Draw right-to-left, crossing existing pipes with junction chars
@@ -1158,7 +1186,11 @@ def _render_layered_diagram(
             # Draw vertical line in right margin (exclude corner rows handled below)
             for r in range(top_row + 1, bot_row):
                 if 0 <= r < total_height and col < total_width:
-                    grid[r][col] = "\u2502"
+                    cell = grid[r][col]
+                    if cell == "\u2500":  # ─ → ┼
+                        grid[r][col] = "\u253c"
+                    elif cell == " ":
+                        grid[r][col] = "\u2502"
 
             # Horizontal connector from source box right side to margin
             # Draw left-to-right, crossing existing pipes with junction chars
