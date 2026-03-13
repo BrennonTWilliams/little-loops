@@ -44,7 +44,7 @@ states:
     on_error: done
   prune_branches:
     action: |
-      git branch --merged main | grep -v '^\*' | grep -v 'main' | xargs -r git branch -d 2>&1
+      git branch --merged main | grep -v '^\*' | grep -v 'main' | while read -r b; do git branch -d "$b"; done 2>&1
     action_type: shell
     next: done
   done:

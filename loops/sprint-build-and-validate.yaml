@@ -49,9 +49,9 @@ states:
       type: llm_structured
       source: "${captured.validation_result.output}"
       prompt: |
-        Are all sprint issues implementation-ready (readiness >= 85,
-        outcome confidence >= 70)?
-        Return "success" if all issues pass.
+        Do any sprint issues fail readiness checks (readiness < 85
+        or outcome confidence < 70)?
+        Return "success" if all issues pass and are implementation-ready.
         Return "failure" if any issues need fixing.
     on_success: review_sprint
     on_failure: fix_issues
@@ -86,8 +86,8 @@ states:
       type: llm_structured
       source: "${captured.review_result.output}"
       prompt: |
-        Is the sprint healthy and ready for execution?
-        Return "success" if the sprint is good to go.
+        Did the sprint review find critical issues that block execution?
+        Return "success" if the sprint is healthy and ready to go.
         Return "failure" if the review found critical issues.
     on_success: commit
     on_failure: fix_issues

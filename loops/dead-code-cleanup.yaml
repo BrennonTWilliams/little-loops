@@ -16,6 +16,9 @@ states:
       - Unused imports
       - Unreferenced functions and classes
       - Dead variables and constants
+
+      If /tmp/ll-dead-code-excluded.txt exists, filter out any items listed
+      there — those were previously reverted because removal broke tests.
     capture: scan_results
     next: count_findings
   count_findings:
@@ -79,8 +82,11 @@ states:
       to see the failures.
 
       Revert the most recent dead code removal that caused the failure using
-      `git checkout -- <file>`. Then move on to the next scan cycle — the
-      reverted item will be skipped in future iterations.
+      `git checkout -- <file>`.
+
+      Then append the reverted item (function/class/import name and file path)
+      to /tmp/ll-dead-code-excluded.txt (one item per line) so future scan
+      cycles skip it.
     next: scan
   commit:
     action_type: prompt

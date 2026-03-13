@@ -17,7 +17,7 @@ states:
       except Exception:
           print(0)
       ")
-      echo "$COUNT"
+      printf '%s' "$COUNT"
     action_type: shell
     capture: baseline
     next: discover

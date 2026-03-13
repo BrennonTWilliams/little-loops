@@ -38,22 +38,17 @@ states:
     capture: plugin_state
     evaluate:
       type: exit_code
-    on_success: count_commands
+    on_success: count_assets
     on_failure: fix_config
     on_error: fix_config
-  count_commands:
+  count_assets:
     action: |
-      ACTUAL=$(ls commands/*.md 2>/dev/null | wc -l | tr -d ' ')
-      echo "ACTUAL_COMMANDS: $ACTUAL"
+      CMD_COUNT=$(ls commands/*.md 2>/dev/null | wc -l | tr -d ' ')
+      SKILL_COUNT=$(ls skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')
+      echo "ACTUAL_COMMANDS: $CMD_COUNT"
+      echo "ACTUAL_SKILLS: $SKILL_COUNT"
     action_type: shell
-    capture: command_count
-    next: count_skills
-  count_skills:
-    action: |
-      ACTUAL=$(ls skills/*/SKILL.md 2>/dev/null | wc -l | tr -d ' ')
-      echo "ACTUAL_SKILLS: $ACTUAL"
-    action_type: shell
-    capture: skill_count
+    capture: asset_counts
     next: audit_config
   audit_config:
     action_type: prompt
@@ -62,8 +57,7 @@ states:
       Plugin state:
       ${captured.plugin_state.output}
 
-      Actual command count: ${captured.command_count.output}
-      Actual skill count: ${captured.skill_count.output}
+      Asset counts: ${captured.asset_counts.output}
 
       Run `/ll:audit-claude-config` to perform a comprehensive audit of
       the plugin configuration. Check:
@@ -78,11 +72,11 @@ states:
       type: llm_structured
       source: "${captured.audit_result.output}"
       prompt: |
-        Did the plugin audit find any issues that need fixing?
-        Return "success" if there are issues to fix.
-        Return "failure" if everything is healthy.
-    on_success: fix_config
-    on_failure: verify_hooks
+        Is the plugin configuration healthy with no issues to fix?
+        Return "success" if everything is healthy.
+        Return "failure" if there are issues to fix.
+    on_success: verify_hooks
+    on_failure: fix_config
     on_error: verify_hooks
   fix_config:
     action_type: prompt

@@ -37,7 +37,6 @@ states:
     on_failure: route_format
     on_error: evaluate
   route_format:
-    action_type: decision
     evaluate:
       type: output_contains
       source: "${captured.classify.output}"
@@ -45,7 +44,6 @@ states:
     on_success: format_issues
     on_failure: route_score
   route_score:
-    action_type: decision
     evaluate:
       type: output_contains
       source: "${captured.classify.output}"

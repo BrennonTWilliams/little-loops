@@ -45,9 +45,25 @@ class TestBuiltinLoopFiles:
     def test_expected_loops_exist(self) -> None:
         """The expected set of built-in loops exists."""
         expected = {
+            "changelog-and-tag",
+            "dead-code-cleanup",
+            "dependency-audit",
+            "docs-sync",
             "fix-quality-and-tests",
             "issue-discovery-triage",
             "issue-refinement",
+            "issue-size-split",
+            "issue-staleness-review",
+            "issue-throughput-monitor",
+            "plugin-health-check",
+            "pr-review-cycle",
+            "priority-rebalance",
+            "readme-freshness",
+            "secret-scan",
+            "sprint-build-and-validate",
+            "sync-and-close",
+            "type-error-fix",
+            "worktree-health",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

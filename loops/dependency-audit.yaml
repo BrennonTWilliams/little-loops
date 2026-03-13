@@ -17,6 +17,7 @@ states:
     on_success: done
     on_failure: analyze_cycles
     on_error: analyze_cycles
+  # Decision state: routes based on captured output, no action needed
   analyze_cycles:
     evaluate:
       type: output_contains

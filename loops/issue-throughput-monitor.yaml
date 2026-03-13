@@ -57,5 +57,5 @@ states:
     next: done
   done:
     terminal: true
-max_iterations: 3
+max_iterations: 1
 timeout: 1200

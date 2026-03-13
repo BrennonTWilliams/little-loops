@@ -41,11 +41,12 @@ states:
       type: llm_structured
       source: "${captured.analysis.output}"
       prompt: |
-        Does the analysis identify any issues that need reprioritization?
-        Return "success" if there are issues to reprioritize.
-        Return "failure" if the current distribution is healthy.
-    on_success: reprioritize
-    on_failure: done
+        Is the current priority distribution healthy with no issues
+        needing reprioritization?
+        Return "success" if the distribution is healthy.
+        Return "failure" if issues need reprioritization.
+    on_success: done
+    on_failure: reprioritize
     on_error: done
   reprioritize:
     action_type: prompt
@@ -70,7 +71,28 @@ states:
     action: |
       Run `/ll:commit` to commit the priority rebalancing.
       Use message: "chore(issues): rebalance priority distribution"
-    next: done
+    next: verify
+  verify:
+    action: |
+      echo "=== Post-Rebalance Distribution ==="
+      for P in P0 P1 P2 P3 P4 P5; do
+        COUNT=$(ls .issues/bugs/${P}-* .issues/features/${P}-* .issues/enhancements/${P}-* 2>/dev/null | wc -l | tr -d ' ')
+        echo "$P: $COUNT"
+      done
+    action_type: shell
+    capture: after_snapshot
+    next: check_healthy
+  check_healthy:
+    evaluate:
+      type: llm_structured
+      source: "${captured.after_snapshot.output}"
+      prompt: |
+        Review the priority distribution. Is it healthy?
+        - P0: 0-2 issues, P1: 3-5 issues, P2: 5-10 issues
+        Return "success" if the distribution looks reasonable.
+        Return "failure" if it still needs adjustment.
+    on_success: done
+    on_failure: analyze_balance
   done:
     terminal: true
 max_iterations: 5

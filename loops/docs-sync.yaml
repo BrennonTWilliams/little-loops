@@ -15,17 +15,24 @@ states:
     evaluate:
       type: exit_code
     on_success: check_links
-    on_failure: fix_docs
-    on_error: fix_docs
+    on_failure: check_links
+    on_error: check_links
   check_links:
     action: "ll-check-links 2>&1"
     action_type: shell
     capture: link_results
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: fix_docs
-    on_error: done
+    on_success: route_results
+    on_failure: route_results
+    on_error: route_results
+  route_results:
+    evaluate:
+      type: output_contains
+      source: "${captured.verify_results.output}${captured.link_results.output}"
+      pattern: "FAIL\\|ERROR\\|BROKEN\\|MISMATCH"
+    on_success: fix_docs
+    on_failure: done
   fix_docs:
     action_type: prompt
     timeout: 600

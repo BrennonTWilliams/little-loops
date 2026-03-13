@@ -88,8 +88,23 @@ states:
       operator: eq
       target: 0
     on_success: open_pr
-    on_failure: done
+    on_failure: secrets_found
     on_error: open_pr
+  secrets_found:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Potential secrets or API keys were detected in the diff:
+      ${captured.branch_info.output}
+
+      Review each match in `git diff main...HEAD` to confirm whether they are
+      real secrets or false positives. Report what was found and recommend:
+      - Replace hardcoded secrets with environment variable references
+      - Add affected variable names to .env.example
+      - Ensure .env is in .gitignore
+
+      Do NOT open the PR until secrets are resolved.
+    next: done
   open_pr:
     action_type: prompt
     timeout: 120

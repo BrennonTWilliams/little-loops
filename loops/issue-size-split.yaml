@@ -21,12 +21,12 @@ states:
       type: llm_structured
       source: "${captured.size_report.output}"
       prompt: |
-        Review the issue size report. Are there any issues flagged as
-        too large or recommended for splitting?
-        Return "success" if issues need splitting.
-        Return "failure" if all issues are appropriately sized.
-    on_success: split_issue
-    on_failure: done
+        Review the issue size report. Are all issues appropriately sized
+        for a single implementation session?
+        Return "success" if all issues are appropriately sized.
+        Return "failure" if any issues need splitting.
+    on_success: done
+    on_failure: split_issue
     on_error: done
   split_issue:
     action_type: prompt

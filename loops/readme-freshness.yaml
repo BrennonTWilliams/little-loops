@@ -47,11 +47,12 @@ states:
       type: llm_structured
       source: "${captured.discrepancies.output}"
       prompt: |
-        Review the discrepancy report. Are there any discrepancies that need fixing?
-        Return "success" if there are discrepancies to fix.
-        Return "failure" if everything is already up to date.
-    on_success: update_docs
-    on_failure: done
+        Review the discrepancy report. Is everything already up to date
+        with no discrepancies to fix?
+        Return "success" if everything is up to date.
+        Return "failure" if there are discrepancies that need fixing.
+    on_success: done
+    on_failure: update_docs
     on_error: done
   update_docs:
     action_type: prompt
