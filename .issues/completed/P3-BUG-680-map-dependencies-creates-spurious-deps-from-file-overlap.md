@@ -96,11 +96,25 @@ Both were likely linked because all three issues reference `orchestrator.py` or 
 
 `bug`, `map-dependencies`, `dependency-analysis`
 
+## Verification Notes
+
+**Verdict: VALID** — All five root cause claims verified against current codebase on 2026-03-12. File paths, line numbers, and described behavior are accurate. Config fields `overlap_min_files`/`overlap_min_ratio`/`exclude_common_files` remain unwired in `find_file_overlaps()`. Default scores of `0.5` for missing signals confirmed. `FileHints.overlaps_with()` pattern reference is correct.
+
 ## Session Log
 - `/ll:refine-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b9abf4ea-ec20-4f60-acc1-924aff82a162.jsonl`
+- `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/24e047d3-fd6c-4840-9034-44f1410f82a8.jsonl`
+- `/ll:ready-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+
+## Resolution
+
+**Fixed** on 2026-03-12.
+
+### Changes Made
+- `scripts/little_loops/dependency_mapper/analysis.py`: Added `_basename()` helper; applied `overlap_min_files`/`overlap_min_ratio` guards and `exclude_common_files` filtering in `find_file_overlaps()`; changed default scores from 0.5 to 0.0 in `compute_conflict_score()` for missing semantic/section signals
+- `scripts/tests/test_dependency_mapper.py`: Updated 12 existing tests to account for new guards and lower default scores; added 4 new tests in `TestOverlapGuardsAndDefaultScores` class
 
 ---
 
 ## Status
 
-**Open** | Created: 2026-03-12 | Priority: P3
+**Completed** | Created: 2026-03-12 | Resolved: 2026-03-12 | Priority: P3

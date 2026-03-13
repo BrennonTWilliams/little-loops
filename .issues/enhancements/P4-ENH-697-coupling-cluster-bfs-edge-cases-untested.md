@@ -1,0 +1,53 @@
+---
+discovered_commit: 3e9beeaf2bbe8608104beb89fbc7e2e2259310d8
+discovered_branch: main
+discovered_date: 2026-03-13T00:36:53Z
+discovered_by: scan-codebase
+---
+
+# ENH-697: Coupling cluster BFS edge cases untested
+
+## Summary
+
+The `_build_coupling_clusters` BFS implementation in `coupling.py` has tests for the happy path (two files with coupling_strength >= 0.5 across 2+ issues) but lacks tests for disconnected components, boundary coupling_strength values (exactly 0.5), pairs below threshold (excluded from clusters), and single-node components (filtered out by `len(cluster) >= 2`).
+
+## Location
+
+- **File**: `scripts/little_loops/issue_history/coupling.py`
+- **Line(s)**: 99-145 (at scan commit: 3e9beea)
+- **Anchor**: `in function _build_coupling_clusters()`
+- **Test file**: `scripts/tests/test_issue_history_advanced_analytics.py`
+
+## Current Behavior
+
+`test_cluster_formation` covers only the happy path. The BFS traversal, disconnected subgraphs, the `len(cluster) >= 2` filter, and the 0.5 boundary are not explicitly tested.
+
+## Expected Behavior
+
+Additional test cases in `TestAnalyzeCoupling` for:
+- Two independent clusters (disconnected components yield separate clusters)
+- `coupling_strength` exactly 0.5 (boundary — included)
+- `coupling_strength` below 0.5 (excluded from clusters)
+- Single-node component (filtered out)
+
+## Scope Boundaries
+
+- Test-only changes in `test_issue_history_advanced_analytics.py`
+
+## Impact
+
+- **Priority**: P4 - Improves test coverage for graph algorithm edge cases
+- **Effort**: Small - Add 3-4 test cases
+- **Risk**: Low - Test-only change
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `testing`, `issue-history`
+
+## Session Log
+- `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
+
+---
+
+**Open** | Created: 2026-03-13 | Priority: P4
