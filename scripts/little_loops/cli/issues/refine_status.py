@@ -17,11 +17,11 @@ _MIN_TITLE_WIDTH = 20
 # Fixed column widths for non-title columns
 _ID_WIDTH = 8  # "BUG-525 "
 _PRI_WIDTH = 4  # "P2  "
-_SCORE_WIDTH = 7  # "ready" col
-_CONF_WIDTH = 10  # "confidence" col
+_SCORE_WIDTH = 5  # "ready" col
+_CONF_WIDTH = 5  # "conf" col
 _TOTAL_WIDTH = 5  # "total"
-# Width of each command column: longest alias is "tradeoff" = 8 chars
-_CMD_WIDTH = 8
+# Width of each command column
+_CMD_WIDTH = 6
 _NORM_WIDTH = 4  # "norm" / "✓" / "✗"
 _FMT_WIDTH = 4  # "fmt" / "✓" / "✗"
 _SOURCE_WIDTH = 7  # "source" header / "capture" value max
@@ -67,7 +67,7 @@ _STATIC_COLUMN_SPECS: dict[str, tuple[int, str, bool]] = {
     "norm": (_NORM_WIDTH, "norm", False),
     "fmt": (_FMT_WIDTH, "fmt", False),
     "ready": (_SCORE_WIDTH, "ready", True),
-    "confidence": (_CONF_WIDTH, "confidence", True),
+    "confidence": (_CONF_WIDTH, "conf", True),
     "total": (_TOTAL_WIDTH, "total", True),
 }
 
@@ -388,5 +388,5 @@ def _print_key(all_cmds: list[str]) -> None:
         else:
             print(f"  {label:<12} {cmd}")
     print(f"  {'ready':<12} Readiness score (0\u2013100)")
-    print(f"  {'confidence':<12} Outcome confidence score (0\u2013100)")
+    print(f"  {'conf':<12} Outcome confidence score (0\u2013100)")
     print(f"  {'total':<12} Number of /ll:* skills applied")

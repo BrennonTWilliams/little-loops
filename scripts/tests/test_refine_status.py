@@ -516,8 +516,8 @@ class TestRefineStatusTable:
         assert result == 0
         out = capsys.readouterr().out
         # Header should contain (at least the prefix of) the short command name
-        # "my-custom-cmd" stripped of "/ll:" is "my-custom-cmd"; truncated to _CMD_WIDTH=8 → "my-cust…"
-        assert "my-cust" in out
+        # "my-custom-cmd" stripped of "/ll:" is "my-custom-cmd"; truncated to _CMD_WIDTH=6 → "my-cu…"
+        assert "my-cu" in out
 
     def test_tradeoff_column_shows_checkmark(
         self,
