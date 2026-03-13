@@ -242,6 +242,9 @@ def run_background(
         cmd.append("--queue")
     for kv in getattr(args, "context", None) or []:
         cmd.extend(["--context", kv])
+    delay = getattr(args, "delay", None)
+    if delay is not None:
+        cmd.extend(["--delay", str(delay)])
 
     with open(log_file, "w") as log_fh:
         process = subprocess.Popen(

@@ -28,6 +28,7 @@ class TestLoopArgumentParsing:
         parser = argparse.ArgumentParser(prog="ll-loop run")
         parser.add_argument("loop")
         parser.add_argument("--max-iterations", "-n", type=int)
+        parser.add_argument("--delay", type=float, default=None, metavar="SECONDS")
         parser.add_argument("--dry-run", action="store_true")
         parser.add_argument("--quiet", "-q", action="store_true")
         parser.add_argument("--no-llm", action="store_true")
@@ -190,6 +191,24 @@ class TestLoopArgumentParsing:
         parser = self._create_run_parser()
         args = parser.parse_args(["test-loop"])
         assert args.context == []
+
+    def test_delay_flag_accepts_float(self) -> None:
+        """--delay accepts a float value in seconds."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop", "--delay", "0.5"])
+        assert args.delay == 0.5
+
+    def test_delay_flag_accepts_zero(self) -> None:
+        """--delay 0 is accepted and distinct from not set."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop", "--delay", "0"])
+        assert args.delay == 0.0
+
+    def test_delay_default_is_none(self) -> None:
+        """--delay defaults to None when not specified."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["test-loop"])
+        assert args.delay is None
 
 
 class TestResolveLoopPath:

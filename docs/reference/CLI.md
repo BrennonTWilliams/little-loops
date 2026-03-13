@@ -222,6 +222,7 @@ Run a loop.
 |---------------|-------|-------------|
 | `loop` | | Loop name or path |
 | `--max-iterations` | `-n` | Override iteration limit |
+| `--delay` | | Sleep N seconds between iterations (useful for recording) |
 | `--no-llm` | | Disable LLM evaluation |
 | `--llm-model` | | Override LLM model |
 | `--dry-run` | | Show execution plan without running |
@@ -264,6 +265,7 @@ Resume an interrupted loop.
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
 | `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step |
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
+| `--delay` | | Sleep N seconds between iterations (useful for recording) |
 
 #### `ll-loop history <loop>` / `ll-loop h <loop>`
 

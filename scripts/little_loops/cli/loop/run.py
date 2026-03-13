@@ -41,6 +41,8 @@ def cmd_run(
     # Apply overrides
     if args.max_iterations:
         fsm.max_iterations = args.max_iterations
+    if args.delay is not None:
+        fsm.backoff = args.delay
     if args.no_llm:
         fsm.llm.enabled = False
     if args.llm_model:

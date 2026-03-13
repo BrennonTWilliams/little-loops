@@ -177,6 +177,9 @@ def cmd_resume(
         key, _, value = kv.partition("=")
         fsm.context[key.strip()] = value.strip()
 
+    if getattr(args, "delay", None) is not None:
+        fsm.backoff = args.delay
+
     # Check state before resuming to show context
     persistence = StatePersistence(loop_name, loops_dir)
     state = persistence.load_state()

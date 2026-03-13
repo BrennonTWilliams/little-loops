@@ -93,6 +93,10 @@ Examples:
     run_parser.set_defaults(command="run")
     run_parser.add_argument("loop", help="Loop name or path")
     run_parser.add_argument("--max-iterations", "-n", type=int, help="Override iteration limit")
+    run_parser.add_argument(
+        "--delay", type=float, default=None, metavar="SECONDS",
+        help="Sleep N seconds between iterations (useful for recording)",
+    )
     run_parser.add_argument("--no-llm", action="store_true", help="Disable LLM evaluation")
     run_parser.add_argument("--llm-model", type=str, help="Override LLM model")
     run_parser.add_argument(
@@ -186,6 +190,10 @@ Examples:
         "--clear",
         action="store_true",
         help="Clear terminal before each iteration (useful with --show-diagrams)",
+    )
+    resume_parser.add_argument(
+        "--delay", type=float, default=None, metavar="SECONDS",
+        help="Sleep N seconds between iterations (useful for recording)",
     )
 
     # History subcommand
