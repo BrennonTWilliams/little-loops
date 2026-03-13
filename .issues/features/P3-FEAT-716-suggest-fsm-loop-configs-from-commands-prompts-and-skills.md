@@ -72,6 +72,17 @@ A developer installs little-loops on a new project and runs:
 ```
 They see 4 proposals like "issue-lifecycle (scan → refine → implement → verify)" and "code-quality (check-code → run-tests → commit)". They pick one, it's written to `.loops/issue-lifecycle.yaml`, and they can immediately run `ll-loop run issue-lifecycle`.
 
+## Acceptance Criteria
+
+- All `skills/*/SKILL.md` files are enumerated and their names, descriptions, and trigger keywords are extracted
+- All `ll-*` CLI entry points from `scripts/pyproject.toml` are enumerated with their descriptions
+- Commands/skills are grouped into at least 3 workflow themes (e.g., issue management, code quality, git/release)
+- At least 3 FSM loop proposals are generated, each with 3–7 states referencing real command/skill names
+- Proposals are presented in a reviewable format (table or list with state details) before any file is written
+- On user selection, a valid YAML file is written to `.loops/` and passes existing loop schema validation
+- The feature works on a fresh installation with zero Claude Code message history
+- Running `/ll:loop-suggester --from-commands` (or equivalent) does not require or read message history files
+
 ## API/Interface
 
 ```bash
@@ -110,6 +121,15 @@ states:
 - **Risk**: Low - Additive feature, no existing behavior changed
 - **Breaking Change**: No
 
+## Verification Notes
+
+Verified 2026-03-13 against codebase. Two path inaccuracies in Integration Map:
+
+1. **`skills/loop-suggester/SKILL.md`** — does not exist as a skill. The current implementation is `commands/loop-suggester.md`. If extending it, modify that file (not a skill directory).
+2. **`scripts/little_loops/loops/`** — directory does not exist. Loop schema validation lives in `scripts/little_loops/fsm/` (`schema.py`, `validation.py`, `fsm-loop-schema.json`). Generated loop YAMLs are written to `.loops/` (project root), which does exist.
+
+All other claims and references are accurate.
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -126,3 +146,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c4727e9-091f-4035-98d1-bd60d48ebc28.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`

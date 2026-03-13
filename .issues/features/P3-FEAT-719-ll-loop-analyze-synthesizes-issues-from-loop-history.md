@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-13
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # FEAT-719: ll-loop analyze synthesizes issues from loop history
@@ -53,16 +55,23 @@ Create a new skill `ll:analyze-loop` (or extend `ll-loop` with an `analyze` subc
 - `skills/analyze-loop/skill.py` (optional) — structured event parsing logic
 
 ### Files to Modify
-- `scripts/little_loops/fsm/history.py` (or equivalent) — expose structured event access if needed
+- `scripts/little_loops/fsm/persistence.py` — exposes `get_loop_history()` (line ~455) and `StatePersistence.read_events()`; no changes likely needed but this is the authoritative event source
 - `skills/capture-issue/SKILL.md` — no changes needed; skill is a consumer
+
+### Dependent Files (Callers/Importers)
+- N/A — new skill; nothing imports it yet. `ll-loop` CLI and FSM runner are consumed, not modified.
 
 ### Similar Patterns
 - `skills/loop-suggester/SKILL.md` — adjacent loop-analysis skill
 - `skills/scan-codebase/SKILL.md` — same "analyze → propose issues" pattern
-- `scripts/skills/analyze_log/SKILL.md` — analyzes log files for issues (closest analog)
+- `/ll:analyze_log` (plugin command) — analyzes log files for issues (closest analog; not a local file)
 
 ### Tests
 - `scripts/tests/` — mock `ll-loop list` and `ll-loop history` output, verify issue proposal logic
+
+### Documentation
+- `.claude-plugin/plugin.json` — register new `analyze-loop` skill
+- `docs/` — update skill inventory if maintained
 
 ### Configuration
 - No new config keys; respects existing `issues.*` settings for duplicate detection and templates
@@ -74,6 +83,18 @@ A developer runs a nightly `ll-loop run issue-fixer` loop. In the morning they r
 /ll:analyze-loop
 ```
 The skill finds the interrupted `issue-fixer` loop, sees that state `verify` failed 3 times with SIGKILL before succeeding, and proposes BUG-720: "verify state killed by SIGKILL in issue-fixer loop". The developer approves and the bug is filed with the loop history snippet as context.
+
+## Acceptance Criteria
+
+- [ ] Running `/ll:analyze-loop` with no args auto-selects the most recently run/interrupted loop via `ll-loop list --running --json`
+- [ ] When multiple candidate loops exist, the user is prompted to select one
+- [ ] `ll-loop history <name> --verbose` output is parsed into a structured event list (timestamp, state, event type, exit code)
+- [ ] `ERROR`/`SIGKILL` terminations produce BUG candidates; repeated retries produce ENH candidates; consistently slow states produce ENH candidates
+- [ ] Proposed issues are deduplicated against active issues using loop name + state as a key (no duplicate files created)
+- [ ] User must confirm before any issue files are written (interactive prompt with `[Y/n/select]`)
+- [ ] Approved issues are created with loop history excerpt as context via `/ll:capture-issue` or direct file write
+- [ ] Explicit loop name (`/ll:analyze-loop issue-fixer`) bypasses loop selection and goes directly to history analysis
+- [ ] `--tail N` flag limits history events analyzed to the N most recent entries
 
 ## API/Interface
 
@@ -120,6 +141,21 @@ Create all 3 issues? [Y/n/select]
 - **Risk**: Low - Read-only loop interaction; only creates/updates issue files
 - **Breaking Change**: No
 
+## Verification Notes
+
+**Verdict**: NEEDS_UPDATE — two file path references corrected. All CLI flags verified accurate.
+
+**Verified accurate:**
+- `ll-loop list --running --json` — both flags present in `scripts/little_loops/cli/loop/__init__.py` (lines 139, 143)
+- `ll-loop history <name> --verbose` — exists (`--verbose`/`-v` on history subparser, line 191)
+- `ll-loop history <name> --tail N` — exists as `--tail`/`-n`, default 50 (line 188)
+- `skills/capture-issue/SKILL.md` — exists
+- `.claude-plugin/plugin.json` — exists
+
+**Corrected:**
+- `scripts/little_loops/fsm/history.py` → does not exist; replaced with `persistence.py` which contains `get_loop_history()` (the actual event source)
+- `scripts/skills/analyze_log/SKILL.md` → does not exist in repo; it's a plugin command, not a local file
+
 ## Related Key Documentation
 
 _No documents linked. Run `/ll:normalize-issues` to discover and link relevant docs._
@@ -136,3 +172,6 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1bce590-015a-4862-aabe-11dcbf71a389.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
