@@ -165,7 +165,14 @@ history misleading.
 
 `fsm`, `executor`, `signal-handling`, `loop-integrity`, `captured`
 
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/fsm/executor.py` lines 504–512 confirm the `if state.next:` branch runs `_run_action` and then returns `interpolate(state.next, ctx)` unconditionally, with no check of `result.exit_code`. A negative exit code from SIGKILL is silently swallowed. Bug is still present.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:capture-issue` - 2026-03-13T06:00:00Z - analysis of `ll-loop history issue-refinement-git`
 - `/ll:format-issue` - 2026-03-13T06:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1bce590-015a-4862-aabe-11dcbf71a389.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc8374e-5f2d-475d-9631-d7487ab7323f.jsonl`

@@ -130,6 +130,7 @@ fsm, spec = load_loop_with_spec(loop_name, loops_dir, logger)
 `enhancement`, `ll-loop`, `performance`, `scan-codebase`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: double calls at info.py:993-994
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: double `resolve_loop_path()` call confirmed at `info.py:1053-1054` (lines shifted from 993-994)
 
@@ -143,6 +144,12 @@ fsm, spec = load_loop_with_spec(loop_name, loops_dir, logger)
 
 ---
 
+
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/cli/loop/info.py` lines 378-379 confirm both `load_loop_with_spec(loop_name, loops_dir, logger)` and then `resolve_loop_path(loop_name, loops_dir)` are called consecutively in `cmd_show`. The `load_loop_with_spec` helper calls `resolve_loop_path` internally, confirming the double-resolution. Enhancement not yet applied.
 
 ## Blocked By
 ## Blocks

@@ -120,6 +120,7 @@ _Added by `/ll:refine-issue` — reduces implementation ambiguity:_
 `enhancement`, `skills`, `context-engineering`, `ux`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 - `/ll:refine-issue` - 2026-02-25 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b0f00b27-06ea-419f-bf8b-cab2ce74db4f.jsonl` - Audited all 15 SKILL.md descriptions; identified 8 needing rewrite (summary-style) and 7 already trigger-phrase-oriented
 - `/ll:refine-issue` - 2026-03-03 - Batch re-assessment: no new knowledge gaps; research findings from 2026-02-25 remain current
@@ -135,6 +136,12 @@ _Added by `/ll:refine-issue` — reduces implementation ambiguity:_
 - `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl` — NEEDS_UPDATE: removed completed ENH-668 from Blocked By; skill count now 16 (was 15)
 
 ---
+
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- All 7 skills identified as needing rewrites (`audit-claude-config`, `audit-docs`, `configure`, `create-loop`, `format-issue`, `init`, `manage-issue`) still have summary-style descriptions (confirmed by grepping `description:` in each SKILL.md). The skill count is now 16 (not 15 — `review-loop` added). Issue scope remains at 7 skills needing rewrites.
 
 ## Status
 

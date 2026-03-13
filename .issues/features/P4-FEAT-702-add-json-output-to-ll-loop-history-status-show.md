@@ -69,9 +69,16 @@ Add `--json` argument to the `history`, `status`, and `show` subparsers. In each
 `feature`, `cli`, `ll-loop`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 
 **Open** | Created: 2026-03-13 | Priority: P4
+
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/cli/loop/__init__.py` line 143 confirms `ll-loop list` has `--json`. `scripts/little_loops/cli/loop/info.py` `cmd_history` and `cmd_show` functions have no JSON output branch (no `--json` arg found in `info.py` besides the `list` command). `lifecycle.py` `cmd_status` has no JSON output. Feature not yet implemented for `history`, `status`, and `show`.

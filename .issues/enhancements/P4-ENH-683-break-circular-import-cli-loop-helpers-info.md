@@ -77,9 +77,16 @@ Extract shared utilities/constants into a dedicated module or reorganize so `_he
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
+
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/cli/loop/_helpers.py` line 302 has `from little_loops.cli.loop.info import _render_fsm_diagram` (lazy import inside a function). `scripts/little_loops/cli/loop/info.py` line 10 imports from `_helpers`. The mutual import is confirmed. It's a lazy import so doesn't currently cause `ImportError` at module load, but the circular dependency exists as described.
 
 ## Status
 

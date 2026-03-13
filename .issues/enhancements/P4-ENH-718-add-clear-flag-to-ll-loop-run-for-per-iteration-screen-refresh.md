@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-13
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # ENH-718: Add --clear Flag to ll-loop run for Per-Iteration Screen Refresh
@@ -66,18 +68,20 @@ New flag: `--clear` (boolean, default false). No changes to existing flags or pr
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/loop/__init__.py` — add `--clear` argument to `run` subparser (and `resume` subparser for consistency)
-- `scripts/little_loops/cli/loop/_helpers.py` — read `clear_screen` flag, emit ANSI clear in `display_progress()` `state_enter` branch
+- `scripts/little_loops/cli/loop/__init__.py` — add `--clear` argument to `run` subparser (after `--show-diagrams` at line 113) and `resume` subparser (after `--show-diagrams` at line 175)
+- `scripts/little_loops/cli/loop/_helpers.py` — read `clear_screen` flag at line 278 (next to `show_diagrams`); emit ANSI clear at line 293 inside `state_enter` branch of `display_progress()` closure, before the `if show_diagrams:` check at line 301
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/run.py` — calls `run_foreground(executor, fsm, args, ...)`, `args` passed through; no change needed
-- `scripts/little_loops/cli/loop/resume.py` — same pattern; add `--clear` to its subparser too for consistency
+- `scripts/little_loops/cli/loop/run.py:113` — calls `run_foreground(executor, fsm, args, highlight_color=...)`, `args` passed through; no change needed
+- `scripts/little_loops/cli/loop/lifecycle.py:198` — `cmd_resume()` calls `executor.resume()` directly, **not** `run_foreground()`. The `--show-diagrams` argument on the resume subparser is currently dead code for foreground resume. Adding `--clear` to the resume subparser will have no effect unless `cmd_resume()` is also wired to call `run_foreground()` (out of scope for this issue; file the gap separately if needed).
 
 ### Similar Patterns
-- `--show-diagrams` flag: same subparsers, same `getattr(args, ...)` read pattern in `run_foreground()`
+- `--show-diagrams` flag (`__init__.py:113–117`, `__init__.py:175–179`): exact same subparser pattern to follow
+- `show_diagrams = getattr(args, "show_diagrams", False)` at `_helpers.py:278`: exact read pattern for the new `clear_screen` variable
+- `display_progress()` nested closure at `_helpers.py:287`: `state_enter` branch at lines 293–312; `if show_diagrams:` check at line 301 is the insertion point
 
 ### Tests
-- `scripts/tests/` — check for existing `run_foreground` or `display_progress` tests; add a test that `--clear` emits `\033[2J` only when stdout is a TTY
+- `scripts/tests/test_ll_loop_display.py` — existing tests import and call `run_foreground()` directly using a `MockExecutor` that emits events; add a test here that emits a `state_enter` event with `--clear` set and asserts `\033[2J\033[H` is printed when `sys.stdout.isatty()` returns `True`, and is suppressed when it returns `False`
 
 ### Documentation
 - N/A
@@ -87,11 +91,15 @@ New flag: `--clear` (boolean, default false). No changes to existing flags or pr
 
 ## Implementation Steps
 
-1. Add `--clear` argument to `run` and `resume` subparsers in `__init__.py`
-2. Read `clear_screen = getattr(args, "clear", False)` in `run_foreground()` next to `show_diagrams`
-3. Emit `\033[2J\033[H` at top of `state_enter` branch in `display_progress()`, gated on `sys.stdout.isatty()`
-4. Verify behavior manually with `ll-loop run <loop> --clear --show-diagrams`
-5. Add/update tests for the new flag
+1. In `scripts/little_loops/cli/loop/__init__.py`, add `--clear` argument to `run` subparser after `--show-diagrams` (currently lines 113–117); add same argument to `resume` subparser after `--show-diagrams` (currently lines 175–179)
+2. In `scripts/little_loops/cli/loop/_helpers.py`, add `clear_screen = getattr(args, "clear", False)` at line 279 (immediately after `show_diagrams = getattr(args, "show_diagrams", False)` at line 278)
+3. In `_helpers.py`, insert ANSI clear at the top of the `state_enter` branch (line 293), before the `if show_diagrams:` check at line 301:
+   ```python
+   if clear_screen and sys.stdout.isatty():
+       print("\033[2J\033[H", end="", flush=True)
+   ```
+4. Add test to `scripts/tests/test_ll_loop_display.py` using the existing `MockExecutor` pattern: call `run_foreground()` with `--clear` set, patch `sys.stdout.isatty`, assert escape sequence presence/absence
+5. Verify manually: `ll-loop run <loop> --clear --show-diagrams`
 
 ## Impact
 
@@ -117,7 +125,15 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c86a5056-7391-48c4-89c7-a1ee90c46ccb.jsonl`
+- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f350e6bc-336a-44c3-8a3b-81c0c9c69795.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f27e2da-59cc-4ccf-a9a7-f55ce3418ad1.jsonl`
 
 ---
 
 **Open** | Created: 2026-03-13 | Priority: P4
+
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/cli/loop/__init__.py` has no `--clear` argument on the `run` or `resume` subparsers. `scripts/little_loops/cli/loop/_helpers.py` has no `clear_screen` flag or ANSI clear-screen escape emit in `display_progress()`. Feature not yet implemented.

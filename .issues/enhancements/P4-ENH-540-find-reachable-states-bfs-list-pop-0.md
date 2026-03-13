@@ -123,6 +123,7 @@ Internal implementation detail only — no external impact.
 `enhancement`, `ll-loop`, `performance`, `scan-codebase`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: pop(0) at validation.py:279
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `to_visit.pop(0)` confirmed at `validation.py:321` (line shifted from 279)
 
@@ -134,6 +135,12 @@ Internal implementation detail only — no external impact.
 - `/ll:confidence-check` - 2026-03-06 - Readiness: 92/100 PROCEED; Outcome: 88/100 HIGH CONFIDENCE. Single 3-line change, well-understood algorithm, identical pattern in codebase (info.py), zero breaking changes
 
 ---
+
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/fsm/validation.py` line 339 confirms `to_visit.pop(0)` is present. No `deque` import found in `validation.py`. The `info.py` already uses `deque` for BFS (as noted in the issue). Enhancement not yet applied.
 
 ## Blocks
 - ENH-654

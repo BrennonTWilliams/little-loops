@@ -68,9 +68,16 @@ Add `--search <term>` argument to the `list` subparser. In `cmd_list`, after `fi
 `feature`, `cli`, `ll-issues`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 
 **Open** | Created: 2026-03-13 | Priority: P4
+
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/cli/issues/__init__.py` subparser for `list` has no `--search` argument. `scripts/little_loops/cli/issues/list_cmd.py` `cmd_list` has no search/filter on `IssueInfo.title`. `list_cmd.py` supports `--json` (confirmed at line 36). Feature not yet implemented.

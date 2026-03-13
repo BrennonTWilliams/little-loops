@@ -74,7 +74,14 @@ Callers replace the 4-line block with `content = get_issue_content(issue, conten
 
 `enhancement`, `refactoring`, `issue-history`
 
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- Confirmed: `issue_history/hotspots.py` has the `if contents is not None and issue.path in contents:` pattern at lines 33-34. `coupling.py` also confirmed. All referenced files (`hotspots.py`, `coupling.py`, `regressions.py`, `debt.py`, `quality.py`, `summary.py`) exist in `scripts/little_loops/issue_history/`. No `_utils.py` helper exists yet.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 

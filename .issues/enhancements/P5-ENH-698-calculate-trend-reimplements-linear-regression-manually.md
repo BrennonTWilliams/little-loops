@@ -56,9 +56,16 @@ Delegate slope computation to `statistics.linear_regression(range(n), values).sl
 `enhancement`, `code-quality`, `issue-history`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 
 ---
 
 **Open** | Created: 2026-03-13 | Priority: P5
+
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/issue_history/summary.py` lines 183-192 confirm the manual OLS computation using `sum_x`, `sum_y`, `sum_xy`, `sum_x2` is present in `_calculate_trend`. `statistics.linear_regression` is not imported or used. Python 3.11+ is the project minimum. Enhancement not yet applied.

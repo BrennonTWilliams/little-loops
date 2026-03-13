@@ -117,6 +117,7 @@ _(FEAT-558 removed from Blocks — completed)_
 `enhancement`, `performance`, `workflow-analyzer`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: sliding-window redundancy at lines 592-593
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `extract_entities` called twice per interior message in `_compute_boundaries` loop; removed stale Blocks: FEAT-558 (completed)
 
@@ -129,6 +130,12 @@ _(FEAT-558 removed from Blocks — completed)_
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 
 ---
+
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/workflow_sequence_analyzer.py` lines 592-593 confirm `extract_entities(msg_a.get("content", ""))` and `extract_entities(msg_b.get("content", ""))` are both called inside the sliding-window loop in `_compute_boundaries`, causing every interior message to be processed twice. No pre-computed entity list exists. Enhancement not yet applied.
 
 ## Status
 

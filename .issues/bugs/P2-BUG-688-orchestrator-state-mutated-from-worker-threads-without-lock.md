@@ -97,7 +97,14 @@ Add a `threading.Lock` to protect `self.state` mutations. Apply it in `_on_worke
 
 `bug`, `parallel`, `thread-safety`
 
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/parallel/orchestrator.py` lines 836 and 848 confirm `self.state.corrections[result.issue_id]` and `self.state.timing[result.issue_id]` are mutated in `_on_worker_complete`. The state is also read at lines 964, 983, 984, 997 in `_report_results`. No `threading.Lock` found protecting these accesses. Bug is still present.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 - `/ll:format-issue` - 2026-03-13T02:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`

@@ -105,7 +105,14 @@ Emit findings as `Suggestion` severity (non-blocking) with a suggested alternati
 
 **Open** | Created: 2026-03-13 | Priority: P3
 
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `skills/review-loop/SKILL.md` exists (404 lines) and has no section detecting replaceable LLM prompt states. `skills/review-loop/reference.md` exists but contains no heuristics for deterministic-state detection. The feature is not yet implemented.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - captured from user description
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`

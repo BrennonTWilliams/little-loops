@@ -105,7 +105,14 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `bug`, `parallel`, `subprocess`
 
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/subprocess_utils.py` line 186 confirms `process.returncode or 0` is present. The expression `None or 0` evaluates to `0`, masking a killed process as success. `worker_pool.py` and `merge_coordinator.py` are confirmed callers that check `result.returncode != 0`. Bug is still present and unresolved.
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 - `/ll:format-issue` - 2026-03-13T03:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01fe4a89-e3a7-4642-aa87-40682ae1517c.jsonl`

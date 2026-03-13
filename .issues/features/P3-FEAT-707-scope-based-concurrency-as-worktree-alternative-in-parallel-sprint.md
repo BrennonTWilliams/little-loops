@@ -137,12 +137,19 @@ ll-sprint run my-sprint --scope-mode
 `feature`, `parallel`, `concurrency`, `captured`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:capture-issue` - 2026-03-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cd0a8bb6-7595-4676-9582-a0e3f4962033.jsonl`
 - `/ll:format-issue` - 2026-03-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ebe5424-4390-42c8-a840-ac8166b02550.jsonl`
 - `/ll:format-issue` - 2026-03-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:verify-issues` - 2026-03-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 
 ---
+
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/fsm/concurrency.py` confirms `LockManager` (line 82) and `ScopeLock` (line 47) exist and are used by `ll-loop run`. `scripts/little_loops/cli/parallel.py` and `scripts/little_loops/cli/sprint/run.py` have no `--scope-mode` flag. `parallel/orchestrator.py` has no scope-lock execution path. Feature not yet implemented.
 
 ## Status
 
