@@ -9,6 +9,17 @@ discovered_by: capture-issue
 
 Little-loops has no tooling to read, evaluate, or install hooks in a target project's `.claude/settings.json`. Users who don't load little-loops as a Claude Code plugin have no supported path to configure hooks, and there's no way to inspect or repair hook configuration through little-loops tooling.
 
+## Current Behavior
+
+Little-loops has no tooling to read, evaluate, or install hooks in a target project's `.claude/settings.json`. Users who load little-loops via CLAUDE.md (rather than as a registered plugin) have no supported path to configure hooks. There is no way to inspect what hooks are active, diagnose why a hook-dependent feature isn't working, or validate that configured hooks point to real scripts.
+
+## Expected Behavior
+
+A `/ll:configure hooks` command (or sub-command) provides three modes:
+- **show**: Display a unified table of all hooks (plugin-level and settings.json), their event types, script paths, and enabled status, flagging any broken paths
+- **install**: Generate and merge hook entries into `.claude/settings.json` from the plugin's `hooks/hooks.json`, preserving existing unrelated keys
+- **validate**: Check each configured hook for script existence, executable bit, and timeout reasonableness, reporting issues by severity
+
 ## Use Case
 
 A developer installs little-loops, runs `/ll:init`, enables context monitoring and handoff, but is using little-loops via CLAUDE.md rather than as a registered plugin. Currently, there is no command to:
@@ -61,13 +72,49 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 
 ## Integration Map
 
-### Files to Create/Modify
+### Files to Modify
 - `skills/configure/SKILL.md` — add `hooks` subcommand dispatch
 - `skills/configure/hooks.md` — new file implementing hook management logic
 - `hooks/hooks.json` — source of truth for plugin hook definitions (read-only from this tool)
 
+### Dependent Files (Callers/Importers)
+- `skills/configure/SKILL.md` — dispatcher that routes to sub-commands
+- `hooks/hooks.json` — source of truth for plugin hook definitions (read-only)
+
+### Similar Patterns
+- Existing `/ll:configure` sub-command dispatch pattern
+
+### Tests
+- TBD — manual validation of show/install/validate modes against a test project
+
+### Documentation
+- `docs/ARCHITECTURE.md` — update if hook management becomes a new subsystem
+- `/ll:help` output — new sub-command needs listing
+
+### Configuration
+- `.claude/settings.json` — target file for hook installation
+- `hooks/hooks.json` — read-only source for hook definitions
+
 ### Related Issues
 - ENH-705: Init should validate plugin loading and hook activation (complementary — ENH-705 warns, this FEAT fixes)
 
+## Impact
+
+- **Priority**: P3 - Quality-of-life improvement for non-plugin users; not blocking core functionality
+- **Effort**: Medium - Requires new skill file with three modes, JSON merging logic, and path validation
+- **Risk**: Low - Additive only; writes to `.claude/settings.json` are guarded by `--dry-run` and preserve existing keys
+- **Breaking Change**: No
+
+## Labels
+
+`feature`, `hooks`, `tooling`, `configure`
+
+---
+
+## Status
+
+**Open** | Created: 2026-03-12 | Priority: P3
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4922c4e9-2029-4f68-b0a3-04ae4dbcd620.jsonl`
+- `/ll:format-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5037113-2ca1-4048-ba39-278c6ef9c09c.jsonl`
