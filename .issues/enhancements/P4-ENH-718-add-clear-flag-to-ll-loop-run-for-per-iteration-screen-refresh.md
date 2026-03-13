@@ -49,6 +49,12 @@ if event_type == "state_enter":
 
 `\033[2J` clears the screen; `\033[H` moves the cursor to the top-left. The `isatty()` guard prevents escape sequences from being written into log files when output is redirected (e.g. background mode or piped output).
 
+## Success Metrics
+
+- `ll-loop run <loop> --clear --show-diagrams` renders the FSM diagram at the top of the screen each iteration with no scroll accumulation
+- `ll-loop run <loop> --clear > output.log` produces no ANSI escape sequences in the log file (isatty() guard confirmed)
+- Existing behavior without `--clear` is unchanged (no regression)
+
 ## API/Interface
 
 ```
@@ -110,6 +116,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c86a5056-7391-48c4-89c7-a1ee90c46ccb.jsonl`
 
 ---
 
