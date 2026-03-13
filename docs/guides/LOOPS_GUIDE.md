@@ -294,6 +294,7 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 | `-b` / `--background` | Run as a background daemon |
 | `--show-diagrams` | Display FSM box diagram with active state highlighted after each step |
 | `--clear` | Clear terminal before each iteration; combine with `--show-diagrams` for a live in-place dashboard |
+| `--delay <SECONDS>` | Sleep N seconds between iterations; overrides `backoff:` from YAML |
 | `--context KEY=VALUE` | Override a context variable at runtime (repeatable) |
 
 ### Simulate Scenarios

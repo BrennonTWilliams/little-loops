@@ -267,6 +267,7 @@ ll-loop run <loop-name>                   # Execute a loop by name
 ll-loop run <loop-name> -b               # Run as background daemon
 ll-loop run <loop-name> --show-diagrams  # Show FSM diagram after each step
 ll-loop run <loop-name> --clear --show-diagrams  # Live in-place FSM diagram dashboard
+ll-loop run <loop-name> --delay 2    # Pause 2s between iterations
 ll-loop list                     # List all available loops
 ll-loop list --json              # JSON array of available loops
 ll-loop stop <loop-name>         # Stop a running loop

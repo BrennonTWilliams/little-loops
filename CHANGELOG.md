@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **`--clear` flag for `ll-loop run` and `resume`** — Emits ANSI clear-screen before each iteration; combine with `--show-diagrams` for a live in-place FSM dashboard. Suppressed when stdout is not a tty (ENH-718)
+- **`--delay <SECONDS>` flag for `ll-loop run` and `resume`** — Inserts an interruptible pause between FSM iterations; useful for recording terminal sessions. Overrides `backoff:` from the loop YAML. (ENH-735)
 
 ## [1.40.0] - 2026-03-12
 
