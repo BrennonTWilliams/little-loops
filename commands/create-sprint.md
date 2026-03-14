@@ -3,6 +3,7 @@ description: Create a sprint definition with a curated list of issues
 argument-hint: "[sprint-name]"
 allowed-tools:
   - Bash(mkdir:*)
+  - Bash(ll-issues:*)
 arguments:
   - name: name
     description: Sprint name (e.g., "sprint-1", "q1-bug-fixes")
@@ -142,6 +143,9 @@ For each issue file found, extract:
 - **File Paths**: Backtick-enclosed file paths found in issue content (e.g., from `## Integration Map` or `### Files to Modify` sections). Extract the top-level directory from each path (e.g., `commands/create-sprint.md` → `commands/`).
 - **Goal Alignment**: From frontmatter `goal_alignment` field (if exists)
 - **Blocked By**: From `## Blocked By` section (if exists)
+- **Confidence Score**: From frontmatter `confidence_score` field (integer or null if absent)
+- **Outcome Confidence**: From frontmatter `outcome_confidence` field (integer or null if absent)
+- **Is Normalized**: Derived from filename — `true` if filename matches `^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$`, otherwise `false`
 
 Store parsed issues in a list for analysis.
 
@@ -199,6 +203,12 @@ Analyze the parsed issues and generate 2-4 distinct groupings. Skip any grouping
 - Description: "Issues aligned to [goal name]"
 - Only suggest if 2+ issues match a goal
 
+**Grouping Strategy 7: Refined-Ready**
+- Name: `refined-ready`
+- Description: "Issues with confidence score ≥ threshold (implementation-ready)"
+- Criteria: Issues where `confidence_score >= config.commands.confidence_gate.readiness_threshold` (default `85` from `config-schema.json`)
+- Only suggest if 3+ issues match
+
 **Scoring & Selection:**
 - Prioritize groupings by distinctiveness (issues not in other groupings)
 - When more than 4 groupings qualify, prefer a mix: up to 2 mechanical (Strategies 1-3) + up to 2 theme/component/goal-based (Strategies 4-6), selecting the largest from each category
@@ -223,12 +233,14 @@ questions:
         description: "Skip suggestions and choose issues yourself"
 ```
 
+When formatting issue IDs in the `description` field of each option, append `⚠ unscored` after any issue ID where `confidence_score` is null. For example: `ENH-387, ENH-276 ⚠ unscored, ENH-346...`
+
 **Example output:**
 ```
 Based on 23 active issues, here are suggested sprint groupings:
 
 1. cli-polish (5 issues)
-   CLI and command improvements: ENH-387, ENH-276, ENH-346...
+   CLI and command improvements: ENH-387, ENH-276 ⚠ unscored, ENH-346...
 
 2. config-cleanup (4 issues)
    Configuration and settings improvements: ENH-374, ENH-370, ENH-377...
@@ -340,6 +352,25 @@ If a pattern returns no results, the issue is missing. Report any missing issues
 - Continue without missing issues
 - Remove missing issues from list
 - Cancel and fix the list
+
+After confirming all issues exist, run a refinement status check on the selected issues:
+
+```bash
+ll-issues refine-status --json
+```
+
+Parse the JSON array output. For each selected issue ID, find the matching entry and check:
+- `confidence_score: null` → issue is unscored
+- `normalized: false` → issue is not normalized
+
+Count the unscored and unnormalized issues among the selected set, then emit warnings (only if count > 0):
+
+```
+⚠ X of Y selected issues have no confidence score — run /ll:confidence-check first
+⚠ Z of Y selected issues are not normalized — run /ll:normalize-issues first
+```
+
+These are warnings only — do not block sprint creation.
 
 ### 4.5 Dependency Analysis for Sprint Issues
 
