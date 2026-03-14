@@ -228,7 +228,9 @@ def _format_history_event(
             output_preview = event.get("output_preview", "")
             if output_preview:
                 avail_w = width - len(_indent) - 2
-                preview_text = output_preview if full else _truncate(output_preview, max(avail_w, 40))
+                preview_text = (
+                    output_preview if full else _truncate(output_preview, max(avail_w, 40))
+                )
                 for preview_line in preview_text.splitlines()[:5]:
                     extra_lines.append(colorize(_indent + "\u2502 " + preview_line, "2"))
 
@@ -264,14 +266,12 @@ def _format_history_event(
                 avail_w = width - len(_indent) - len("Prompt:   ") - 2
                 if llm_prompt:
                     prompt_text = llm_prompt if full else _truncate(llm_prompt, max(avail_w, 40))
-                    extra_lines.append(
-                        colorize(_indent + "Prompt:   " + prompt_text, "2")
-                    )
+                    extra_lines.append(colorize(_indent + "Prompt:   " + prompt_text, "2"))
                 if llm_raw_output:
-                    resp_text = llm_raw_output if full else _truncate(llm_raw_output, max(avail_w, 40))
-                    extra_lines.append(
-                        colorize(_indent + "Response: " + resp_text, "2")
+                    resp_text = (
+                        llm_raw_output if full else _truncate(llm_raw_output, max(avail_w, 40))
                     )
+                    extra_lines.append(colorize(_indent + "Response: " + resp_text, "2"))
 
     elif event_type == "route":
         etype_color = "2"

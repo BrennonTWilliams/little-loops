@@ -221,7 +221,9 @@ Examples:
         "--verbose", "-v", action="store_true", help="Show action output lines and LLM call details"
     )
     history_parser.add_argument(
-        "--full", action="store_true", help="Show untruncated prompts and output (implies --verbose)"
+        "--full",
+        action="store_true",
+        help="Show untruncated prompts and output (implies --verbose)",
     )
     history_parser.add_argument("--json", action="store_true", help="Output events as JSON array")
 

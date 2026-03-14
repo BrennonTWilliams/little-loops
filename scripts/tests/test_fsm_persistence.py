@@ -469,9 +469,7 @@ class TestArchiveRun:
         assert events[0]["event"] == "loop_start"
         assert events[1]["event"] == "state_enter"
 
-    def test_get_archived_events_returns_empty_for_missing_run(
-        self, tmp_loops_dir: Path
-    ) -> None:
+    def test_get_archived_events_returns_empty_for_missing_run(self, tmp_loops_dir: Path) -> None:
         """get_archived_events() returns [] for a nonexistent run ID."""
         events = get_archived_events("test-loop", "2024-01-15T103000", tmp_loops_dir)
         assert events == []

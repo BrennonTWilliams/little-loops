@@ -1027,7 +1027,9 @@ class TestAnalyzeWorkflows:
                 assert "msg-002" in handoff_uuids, (
                     "msg-002 contains /ll:handoff and should appear in handoff_points"
                 )
-                handoff_entry = next(hp for hp in workflow.handoff_points if hp["uuid"] == "msg-002")
+                handoff_entry = next(
+                    hp for hp in workflow.handoff_points if hp["uuid"] == "msg-002"
+                )
                 assert handoff_entry["type"] == "explicit_handoff"
 
 

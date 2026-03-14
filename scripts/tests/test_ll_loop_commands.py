@@ -404,7 +404,9 @@ class TestHistoryTail:
     ) -> None:
         """--tail N should show only last N events."""
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "3"]):
+        with patch.object(
+            sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "3"]
+        ):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -430,7 +432,9 @@ class TestHistoryTail:
     ) -> None:
         """--tail 0 shows all events (Python list[-0:] returns full list)."""
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "0"]):
+        with patch.object(
+            sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "0"]
+        ):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -452,7 +456,9 @@ class TestHistoryTail:
     ) -> None:
         """--tail N where N > total events shows all events."""
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "100"]):
+        with patch.object(
+            sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "100"]
+        ):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -494,7 +500,9 @@ class TestHistoryTail:
     ) -> None:
         """Tail should show events in chronological order."""
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "3"]):
+        with patch.object(
+            sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "3"]
+        ):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -522,7 +530,9 @@ class TestHistoryTail:
         events_file.write_text("")
 
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "5"]):
+        with patch.object(
+            sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "5"]
+        ):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -575,7 +585,9 @@ class TestHistoryTail:
                 f.write(json.dumps(event) + "\n")
 
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "5"]):
+        with patch.object(
+            sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "5"]
+        ):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -628,7 +640,9 @@ class TestHistoryTail:
         monkeypatch.chdir(tmp_path)
         # --tail 3 in verbose mode: only last 3 raw events (all action_output from iter2)
         with patch.object(
-            sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "3", "--verbose"]
+            sys,
+            "argv",
+            ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "3", "--verbose"],
         ):
             from little_loops.cli import main_loop
 
