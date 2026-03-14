@@ -12,19 +12,19 @@ states:
     timeout: 300
     action: |
       Run `/ll:find-dead-code` to scan for unused code in the codebase.
-      Save findings to /tmp/ll-dead-code-report.txt. Focus on:
+      Save findings to .loops/tmp/ll-dead-code-report.txt. Focus on:
       - Unused imports
       - Unreferenced functions and classes
       - Dead variables and constants
 
-      If /tmp/ll-dead-code-excluded.txt exists, filter out any items listed
+      If .loops/tmp/ll-dead-code-excluded.txt exists, filter out any items listed
       there — those were previously reverted because removal broke tests.
-      (To retry excluded items in a fresh run, delete /tmp/ll-dead-code-excluded.txt first.)
+      (To retry excluded items in a fresh run, delete .loops/tmp/ll-dead-code-excluded.txt first.)
     capture: scan_results
     next: count_findings
   count_findings:
     action: |
-      REPORT="/tmp/ll-dead-code-report.txt"
+      REPORT=".loops/tmp/ll-dead-code-report.txt"
       if [ -f "$REPORT" ]; then
         COUNT=$(grep -c '^[[:space:]]*-' "$REPORT" 2>/dev/null || echo 0)
       else
@@ -68,8 +68,9 @@ states:
       cfg = json.loads(p.read_text()) if p.exists() else {}
       print(cfg.get('project', {}).get('test_cmd', 'pytest'))
       ")
+      mkdir -p .loops/tmp
       set -o pipefail
-      eval "$CMD" 2>&1 | tee /tmp/ll-dead-code-tests.txt
+      eval "$CMD" 2>&1 | tee .loops/tmp/ll-dead-code-tests.txt
     evaluate:
       type: exit_code
     on_success: commit
@@ -79,14 +80,14 @@ states:
     action_type: prompt
     timeout: 120
     action: |
-      Tests failed after dead code removal. Read /tmp/ll-dead-code-tests.txt
+      Tests failed after dead code removal. Read .loops/tmp/ll-dead-code-tests.txt
       to see the failures.
 
       Revert the most recent dead code removal that caused the failure using
       `git checkout -- <file>`.
 
       Then append the reverted item (function/class/import name and file path)
-      to /tmp/ll-dead-code-excluded.txt (one item per line) so future scan
+      to .loops/tmp/ll-dead-code-excluded.txt (one item per line) so future scan
       cycles skip it.
     next: scan
   commit:

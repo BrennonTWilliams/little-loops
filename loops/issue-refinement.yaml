@@ -6,7 +6,7 @@ description: |
 initial: init
 states:
   init:
-    action: rm -f /tmp/issue-refinement-commit-count
+    action: mkdir -p .loops/tmp && rm -f .loops/tmp/issue-refinement-commit-count
     action_type: shell
     next: evaluate
   evaluate:
@@ -90,7 +90,8 @@ states:
     next: check_commit
   check_commit:
     action: |
-      FILE="/tmp/issue-refinement-commit-count"
+      mkdir -p .loops/tmp
+      FILE=".loops/tmp/issue-refinement-commit-count"
       N=$(cat "$FILE" 2>/dev/null || echo 0)
       N=$((N + 1))
       printf '%s' "$N" > "$FILE"

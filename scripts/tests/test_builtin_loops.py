@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -207,3 +208,49 @@ class TestBuiltinLoopInstall:
 
             result = main_loop()
         assert result == 1
+
+
+class TestBuiltinLoopScratchIsolation:
+    """Tests that built-in loops use project-scoped scratch paths, not global /tmp names."""
+
+    AFFECTED_LOOPS = [
+        "issue-refinement",
+        "fix-quality-and-tests",
+        "dead-code-cleanup",
+        "pr-review-cycle",
+    ]
+
+    # Bare /tmp paths that must not appear in any action text
+    FORBIDDEN_PATTERNS = [
+        "/tmp/issue-refinement-commit-count",
+        "/tmp/ll-test-results.txt",
+        "/tmp/ll-dead-code-report.txt",
+        "/tmp/ll-dead-code-excluded.txt",
+        "/tmp/ll-dead-code-tests.txt",
+        "/tmp/ll-pr-test-results.txt",
+    ]
+
+    def _collect_action_text(self, data: dict) -> list[str]:
+        """Recursively collect all action strings from an FSM data dict."""
+        texts: list[str] = []
+        for state_data in data.get("states", {}).values():
+            action = state_data.get("action", "")
+            if isinstance(action, str):
+                texts.append(action)
+        return texts
+
+    @pytest.mark.parametrize("loop_name", AFFECTED_LOOPS)
+    def test_no_global_tmp_paths(self, loop_name: str) -> None:
+        """Action text in affected loops must not reference bare /tmp scratch paths."""
+        loop_file = BUILTIN_LOOPS_DIR / f"{loop_name}.yaml"
+        assert loop_file.exists(), f"Loop file not found: {loop_file}"
+        data = yaml.safe_load(loop_file.read_text())
+        action_texts = self._collect_action_text(data)
+        combined = "\n".join(action_texts)
+        for forbidden in self.FORBIDDEN_PATTERNS:
+            # Use negative lookbehind so ".loops/tmp/foo" does not trigger a
+            # false positive when checking for the bare "/tmp/foo" pattern.
+            bare_pattern = r"(?<!\.loops)" + re.escape(forbidden)
+            assert not re.search(bare_pattern, combined), (
+                f"{loop_name}.yaml still references global tmp path: {forbidden!r}"
+            )

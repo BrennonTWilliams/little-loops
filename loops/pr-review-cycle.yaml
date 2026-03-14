@@ -55,8 +55,9 @@ states:
       cfg = json.loads(p.read_text()) if p.exists() else {}
       print(cfg.get('project', {}).get('test_cmd', 'pytest'))
       ")
+      mkdir -p .loops/tmp
       set -o pipefail
-      eval "$CMD" 2>&1 | tee /tmp/ll-pr-test-results.txt
+      eval "$CMD" 2>&1 | tee .loops/tmp/ll-pr-test-results.txt
     capture: test_result
     evaluate:
       type: exit_code
@@ -67,7 +68,7 @@ states:
     action_type: prompt
     timeout: 600
     action: |
-      Read /tmp/ll-pr-test-results.txt to see test failures.
+      Read .loops/tmp/ll-pr-test-results.txt to see test failures.
       Diagnose each failure and fix the root cause.
       Never delete tests. Fix one at a time, re-verify.
     next: quality_gate

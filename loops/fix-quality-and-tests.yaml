@@ -71,8 +71,9 @@ states:
       cfg = json.loads(p.read_text()) if p.exists() else {}
       print(cfg.get('project', {}).get('test_cmd', 'pytest'))
       ")
+      mkdir -p .loops/tmp
       set -o pipefail
-      eval "$CMD" 2>&1 | tee /tmp/ll-test-results.txt
+      eval "$CMD" 2>&1 | tee .loops/tmp/ll-test-results.txt
     evaluate:
       type: exit_code
     on_success: done
@@ -82,7 +83,7 @@ states:
     action_type: prompt
     timeout: 1800
     action: |
-      Read /tmp/ll-test-results.txt to see the current test failures captured
+      Read .loops/tmp/ll-test-results.txt to see the current test failures captured
       from the last test run.
 
       For each failing test, diagnose BEFORE making any changes:
