@@ -707,7 +707,8 @@ class MergeCoordinator:
             request: Merge request to process
         """
         result = request.worker_result
-        self._current_issue_id = result.issue_id
+        with self._lock:
+            self._current_issue_id = result.issue_id
         self.logger.info(f"Processing merge for {result.issue_id}")
         had_local_changes = False
 
@@ -923,7 +924,8 @@ class MergeCoordinator:
             # Always restore state file tracking
             self._restore_state_file_tracking()
             # Clear current issue tracking
-            self._current_issue_id = None
+            with self._lock:
+                self._current_issue_id = None
 
     def _handle_conflict(self, request: MergeRequest, used_merge_strategy: bool = False) -> None:
         """Handle a merge conflict with retry logic.
@@ -1230,8 +1232,11 @@ class MergeCoordinator:
             True if all merges completed, False if timeout
         """
         start_time = time.time()
-        while not self._queue.empty() or self._current_issue_id:
+        while True:
+            with self._lock:
+                active = self._current_issue_id
+            if self._queue.empty() and not active:
+                return True
             if timeout and (time.time() - start_time) > timeout:
                 return False
             time.sleep(0.5)
-        return True

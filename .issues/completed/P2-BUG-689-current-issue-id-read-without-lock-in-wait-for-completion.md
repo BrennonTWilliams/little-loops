@@ -16,7 +16,7 @@ outcome_confidence: 93
 ## Location
 
 - **File**: `scripts/little_loops/parallel/merge_coordinator.py`
-- **Line(s)**: 710, 925, 1232 (at scan commit: 3e9beea)
+- **Line(s)**: 710, 926, 1233 (at scan commit: 3e9beea)
 - **Anchor**: `in methods MergeCoordinator._process_merge()` and `MergeCoordinator.wait_for_completion()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/3e9beeaf2bbe8608104beb89fbc7e2e2259310d8/scripts/little_loops/parallel/merge_coordinator.py#L1232)
 - **Code**:
@@ -102,13 +102,26 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - **Test file path corrected**: `scripts/tests/test_merge_coordinator.py` (not in a `parallel/` subdirectory)
 - **Verified**: 2026-03-13
 
+## Resolution
+
+- **Status**: Fixed
+- **Fixed in**: `scripts/little_loops/parallel/merge_coordinator.py`
+- **Changes**:
+  - Wrapped `self._current_issue_id = result.issue_id` write in `_process_merge` with `with self._lock:`
+  - Wrapped `self._current_issue_id = None` clear in `_process_merge` finally block with `with self._lock:`
+  - Restructured `wait_for_completion` loop to read `_current_issue_id` under `with self._lock:` before evaluating the loop condition
+  - Added `TestCurrentIssueIdLocking` test class with 3 thread-safety tests in `scripts/tests/test_merge_coordinator.py`
+- **Tests**: 3335 passed, 4 skipped
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:35:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:verify-issues` - 2026-03-13T01:35:30Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:ready-issue` - 2026-03-13T19:43:10Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
+- `/ll:manage-issue` - 2026-03-13T19:43:10Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/.ll-session-41181`
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P2
+**Completed** | Created: 2026-03-13 | Priority: P2
