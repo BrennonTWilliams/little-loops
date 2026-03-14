@@ -171,13 +171,24 @@ history misleading.
 - **Verdict**: VALID
 - `scripts/little_loops/fsm/executor.py` lines 504–512 confirm the `if state.next:` branch runs `_run_action` and then returns `interpolate(state.next, ctx)` unconditionally, with no check of `result.exit_code`. A negative exit code from SIGKILL is silently swallowed. Bug is still present.
 
+## Resolution
+
+- **Date**: 2026-03-13
+- **Status**: RESOLVED
+- **Fix**: Added negative exit code check in `FSMExecutor._execute_state()` after `_run_action` returns for states with `state.next`. When `result.exit_code < 0` (killed by signal), the FSM now routes to `state.on_error` if configured, otherwise calls `request_shutdown()` and returns `None`. Also added a targeted shutdown check in the main `run()` loop to convert a `None` return + active shutdown flag into a `"signal"` termination instead of `"error"`.
+- **Files changed**:
+  - `scripts/little_loops/fsm/executor.py` — `_execute_state()` (negative exit code check) and `run()` (signal termination for None+shutdown)
+  - `scripts/tests/test_fsm_executor.py` — 3 new tests in `TestSignalHandling`
+
 ## Session Log
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:capture-issue` - 2026-03-13T06:00:00Z - analysis of `ll-loop history issue-refinement-git`
 - `/ll:format-issue` - 2026-03-13T06:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f1bce590-015a-4862-aabe-11dcbf71a389.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc8374e-5f2d-475d-9631-d7487ab7323f.jsonl`
-- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc8374e-5f2d-475d-9631-d7487ab7323f.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0dc8734e-5f2d-475d-9631-d7487ab7323f.jsonl`
+- `/ll:ready-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
+- `/ll:manage-issue` - 2026-03-13T00:00:00Z - fixed and verified
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P2
+**Resolved** | Created: 2026-03-13 | Priority: P2

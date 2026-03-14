@@ -461,6 +461,10 @@ class FSMExecutor:
                 if next_state is None and self.fsm.maintain:
                     next_state = state_config.on_maintain or self.fsm.initial
 
+                # SIGKILL in _execute_state sets shutdown flag and returns None
+                if next_state is None and self._shutdown_requested:
+                    return self._finish("signal")
+
                 if next_state is None:
                     return self._finish("error", error="No valid transition")
 
@@ -509,6 +513,12 @@ class FSMExecutor:
                     "exit_code": result.exit_code,
                     "state": self.current_state,
                 }
+                if result.exit_code is not None and result.exit_code < 0:
+                    # Process killed by signal — do not silently advance via next
+                    if state.on_error:
+                        return interpolate(state.on_error, ctx)
+                    self.request_shutdown()
+                    return None
             return interpolate(state.next, ctx)
 
         # Execute action if present
