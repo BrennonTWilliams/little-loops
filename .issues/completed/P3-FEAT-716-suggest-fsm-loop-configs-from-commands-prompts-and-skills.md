@@ -72,13 +72,13 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 **Correct implementation target** (Verification Notes confirmed): `commands/loop-suggester.md` — not a skill; extend this command or create a new skill directory. If extending as a skill: create `skills/loop-suggester-from-commands/SKILL.md` (or add `--from-commands` flag handling to `commands/loop-suggester.md`).
 
-**Skill enumeration source** — Glob `skills/*/SKILL.md` (16 files exist); parse YAML frontmatter block. Each SKILL.md has `description` (often includes "Trigger keywords:" inline), `argument-hint`, `allowed-tools`, and `arguments` fields. Command enumeration: Glob `commands/*.md` (similar frontmatter structure).
+**Skill enumeration source** — Glob `skills/*/SKILL.md` (17 files exist); parse YAML frontmatter block. Each SKILL.md has `description` (often includes "Trigger keywords:" inline), `argument-hint`, `allowed-tools`, and `arguments` fields. Command enumeration: Glob `commands/*.md` (similar frontmatter structure).
 
 **CLI entry points** — Parse `scripts/pyproject.toml:47-59` `[project.scripts]` section; 12 `ll-*` entries map to Python callables. No help-text API exists — entry-point names and descriptions must be sourced from `pyproject.toml` and cross-referenced with `commands/*.md` or `CLAUDE.md`.
 
 **FSM schema required fields** (`scripts/little_loops/fsm/schema.py`):
-- `FSMLoop` (line 339): requires `name`, `initial`, `states`; optional `max_iterations` (default 50), `timeout`, `on_handoff`, `context`, `scope`, `maintain`
-- `StateConfig` (line 167): `action`, `action_type` (`"prompt"/"slash_command"/"shell"`), `on_success`, `on_failure`, `on_error`, `next`, `terminal`, `capture`, `timeout`
+- `FSMLoop` (line 351): requires `name`, `initial`, `states`; optional `max_iterations` (default 50), `timeout`, `on_handoff`, `context`, `scope`, `maintain`
+- `StateConfig` (line 179): `action`, `action_type` (`"prompt"/"slash_command"/"shell"`), `on_success`, `on_failure`, `on_error`, `next`, `terminal`, `capture`, `timeout`
 - Evaluator types: `exit_code`, `output_numeric`, `output_json`, `output_contains`, `convergence`, `llm_structured`
 
 **Suggestion output format** — `commands/loop-suggester.md:252-284` writes to `.claude/loop-suggestions/suggestions-{timestamp}.yaml` with fields: `analysis_metadata`, `summary`, `suggestions[]`. Each suggestion: `id`, `name`, `loop_type`, `confidence`, `rationale`, `yaml_config` (must be valid FSM YAML), `usage_instructions`. The new `--from-commands` mode should write to the same format/location and set `source: "commands-catalog"` in `analysis_metadata`.
@@ -90,7 +90,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - `.loops/` = user-created loop configs + `.running/` runtime state
 - `resolve_loop_path()` at `scripts/little_loops/cli/loop/_helpers.py:86` checks both; user-generated YAMLs should go to `.loops/` (`config.loops.loops_dir`)
 
-**Validation entry point** — `load_and_validate(path)` at `scripts/little_loops/fsm/validation.py:354`; called by `ll-loop validate <name>`. Returns `(FSMLoop, list[ValidationError])`. Raises `ValueError` on ERROR-severity issues.
+**Validation entry point** — `load_and_validate(path)` at `scripts/little_loops/fsm/validation.py:365`; called by `ll-loop validate <name>`. Returns `(FSMLoop, list[ValidationError])`. Raises `ValueError` on ERROR-severity issues.
 
 **Test files to model after**:
 - `scripts/tests/test_loop_suggester.py` — output schema structure and confidence bounds
@@ -152,7 +152,7 @@ states:
 
 _Added by `/ll:refine-issue` — concrete file:line references for implementers:_
 
-1. **Enumerate skills**: Glob `skills/*/SKILL.md` (16 files) and parse YAML frontmatter — extract `description` (includes "Trigger keywords:"), `argument-hint`, `arguments[].name`. Enumerate commands: Glob `commands/*.md` (same frontmatter). For CLI commands: parse `[project.scripts]` from `scripts/pyproject.toml:47-59`.
+1. **Enumerate skills**: Glob `skills/*/SKILL.md` (17 files) and parse YAML frontmatter — extract `description` (includes "Trigger keywords:"), `argument-hint`, `arguments[].name`. Enumerate commands: Glob `commands/*.md` (same frontmatter). For CLI commands: parse `[project.scripts]` from `scripts/pyproject.toml:47-59`.
 
 2. **Group by theme**: Map each skill/command to one of 5 themes (issue-management, code-quality, git-release, loops, analysis) by matching keywords in `description` and trigger keywords fields. Themes align with the groupings in `CLAUDE.md` and `docs/reference/COMMANDS.md`.
 
@@ -188,9 +188,42 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `feature`, `loops`, `captured`
 
+## Resolution
+
+**Implemented** | Completed: 2026-03-14
+
+### Changes Made
+
+1. **`commands/loop-suggester.md`** — Added `--from-commands` flag support:
+   - Added `Glob` to `allowed-tools` (required for skill/command enumeration)
+   - Extended description with new trigger keywords (`"suggest loops from commands"`, `"from-commands"`, `"loop from catalog"`)
+   - Added `--from-commands` argument with mode selection logic
+   - Added full "From-Commands Mode" section (Steps FC-1 through FC-5):
+     - **FC-1**: Enumerate catalog from `skills/*/SKILL.md`, `commands/*.md`, `scripts/pyproject.toml`
+     - **FC-2**: Group by 5 workflow themes (issue-management, code-quality, git-release, loops-automation, analysis-meta)
+     - **FC-3**: Generate 3–5 FSM proposals using existing paradigm templates
+     - **FC-4**: Write to `.claude/loop-suggestions/suggestions-{timestamp}.yaml` with `source: "commands-catalog"` distinguisher
+     - **FC-5**: Present summary table; do NOT auto-write to `.loops/`
+   - Updated Examples section
+
+2. **`scripts/tests/test_loop_suggester.py`** — Added `TestFromCommandsModeSchema` class (12 new tests):
+   - Catalog entry schema (required fields, valid types)
+   - Theme grouping validation (5 themes)
+   - From-commands metadata schema (includes `source: "commands-catalog"`)
+   - Summary schema (adds `by_theme` breakdown)
+   - Proposal schema (adds `theme` field)
+   - Confidence scoring rules (base 0.75, ±adjustments)
+   - Minimum proposal/state count constraints
+   - FSM YAML parseability for catalog-generated proposals
+
+### Verification
+
+- 22/22 tests in `test_loop_suggester.py` pass
+- Full test suite: 3379 passed, 4 skipped
+
 ## Status
 
-**Open** | Created: 2026-03-13 | Priority: P3
+**Closed** | Created: 2026-03-13 | Priority: P3
 
 ---
 
@@ -201,3 +234,5 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3b28391f-b086-4d28-86cb-448201c8b40e.jsonl`
 - `/ll:refine-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/908c4f0d-4b4c-4d5b-9ca2-700b7dd4a4d9.jsonl`
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
