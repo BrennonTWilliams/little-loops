@@ -1985,6 +1985,67 @@ class TestSignalHandling:
         # Signal takes precedence over timeout
         assert result.terminated_by == "signal"
 
+    def test_sigkill_on_next_state_triggers_shutdown(self) -> None:
+        """SIGKILL (exit_code=-9) on a prompt action with state.next triggers shutdown, not next routing."""
+        fsm = FSMLoop(
+            name="test",
+            initial="score_issues",
+            states={
+                "score_issues": StateConfig(action="/score", next="refine_issues"),
+                "refine_issues": StateConfig(action="/refine", next="score_issues"),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/score", output="", exit_code=-9)  # SIGKILL
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        # Should terminate via signal, not route to refine_issues
+        assert result.terminated_by == "signal"
+        assert result.final_state == "score_issues"
+        # refine_issues must never have been entered
+        assert all("/refine" not in call for call in mock_runner.calls)
+
+    def test_sigkill_on_next_state_routes_via_on_error_if_configured(self) -> None:
+        """SIGKILL on a state with state.next and on_error routes to on_error, not next."""
+        fsm = FSMLoop(
+            name="test",
+            initial="score_issues",
+            states={
+                "score_issues": StateConfig(action="/score", next="refine_issues", on_error="handle_error"),
+                "refine_issues": StateConfig(action="/refine", next="score_issues"),
+                "handle_error": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/score", output="", exit_code=-9)  # SIGKILL
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.final_state == "handle_error"
+        assert all("/refine" not in call for call in mock_runner.calls)
+
+    def test_normal_exit_on_next_state_still_routes_normally(self) -> None:
+        """Non-negative exit codes on a state.next action still route to next normally."""
+        fsm = FSMLoop(
+            name="test",
+            initial="step1",
+            states={
+                "step1": StateConfig(action="/step1", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/step1", output="ok", exit_code=0)
+
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert result.terminated_by != "signal"
+
 
 class TestSimulationActionRunner:
     """Tests for SimulationActionRunner."""
