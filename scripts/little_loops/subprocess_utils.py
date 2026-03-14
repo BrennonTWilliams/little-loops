@@ -183,7 +183,7 @@ def run_claude_command(
 
     return subprocess.CompletedProcess(
         cmd_args,
-        process.returncode or 0,
+        process.returncode if process.returncode is not None else -9,
         stdout="\n".join(stdout_lines),
         stderr="\n".join(stderr_lines),
     )

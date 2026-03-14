@@ -413,8 +413,8 @@ class TestRunClaudeCommandOutputCapture:
 
         assert result.returncode == 42
 
-    def test_none_returncode_becomes_zero(self) -> None:
-        """None returncode becomes 0."""
+    def test_none_returncode_becomes_negative_nine(self) -> None:
+        """None returncode (killed/unreapable process) becomes -9, not 0."""
         mock_process = Mock()
         mock_process.stdout = io.StringIO("")
         mock_process.stderr = io.StringIO("")
@@ -427,7 +427,30 @@ class TestRunClaudeCommandOutputCapture:
                 mock_selector.return_value.get_map.return_value = {}
                 result = run_claude_command("test")
 
-        assert result.returncode == 0
+        assert result.returncode == -9
+        assert result.returncode != 0
+
+    def test_killed_process_double_timeout_returns_nonzero(self) -> None:
+        """When process is killed and second wait also times out, returncode is -9."""
+        mock_process = Mock()
+        mock_process.stdout = io.StringIO("")
+        mock_process.stderr = io.StringIO("")
+        mock_process.returncode = None
+        # First wait (post-stream) times out, second wait (after kill) also times out
+        mock_process.wait.side_effect = [
+            subprocess.TimeoutExpired(cmd="test", timeout=30),
+            subprocess.TimeoutExpired(cmd="test", timeout=10),
+        ]
+        mock_process.kill = Mock()
+
+        with patch("subprocess.Popen", return_value=mock_process):
+            with patch("selectors.DefaultSelector") as mock_selector:
+                _patch_selector_cm(mock_selector)
+                mock_selector.return_value.get_map.return_value = {}
+                result = run_claude_command("test")
+
+        mock_process.kill.assert_called_once()
+        assert result.returncode == -9, "Killed process must not report success"
 
 
 # =============================================================================
