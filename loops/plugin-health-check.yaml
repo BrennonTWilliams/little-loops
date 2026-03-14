@@ -84,6 +84,7 @@ states:
         Return "failure" if there are issues to fix.
     on_success: verify_hooks
     on_failure: fix_config
+    on_partial: audit_counts
     on_error: verify_hooks
   fix_config:
     action_type: prompt
@@ -96,7 +97,8 @@ states:
       - Update plugin.json to match actual command/skill files
       - Remove references to non-existent files
       - Add missing entries for new commands/skills
-    next: validate_plugin
+    next: audit_counts
+    on_error: failed
   verify_hooks:
     action: |
       python3 -c "
@@ -137,6 +139,7 @@ states:
       referenced by hooks.json. Either create the missing files or update
       hooks.json to remove broken references.
     next: verify_hooks
+    on_error: failed
   commit:
     action_type: prompt
     action: |
@@ -145,5 +148,8 @@ states:
     next: done
   done:
     terminal: true
-max_iterations: 5
+  failed:
+    terminal: true
+max_iterations: 15
+on_handoff: spawn
 timeout: 2400
