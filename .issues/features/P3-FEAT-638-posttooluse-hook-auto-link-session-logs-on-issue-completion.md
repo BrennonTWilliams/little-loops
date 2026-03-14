@@ -288,7 +288,27 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Verification Notes
 
-Re-verified 2026-03-14 (auto, post-format). Verdict: **DEP_ISSUES**.
+Re-verified 2026-03-14 (auto, post-format x5). Verdict: **VALID**.
+
+- `issue-completion-log.sh` still does not exist ✓ (expected for open feature)
+- `_move_issue_to_completed()` at line 285, `complete_issue_lifecycle()` at line 603 ✓
+- `_complete_issue_lifecycle_if_needed()` at line 1044; git mv at lines 1104–1119 ✓
+- No `append_session_log_entry` calls in `issue_lifecycle.py` or `orchestrator.py` ✓ (gap still present)
+- `session_log.py:append_session_log_entry()` at line 85, `get_current_session_jsonl()` at line 62 ✓
+- `context-monitor.sh` exists as reference pattern ✓
+- ENH-493 `## Blocked By` correctly lists FEAT-638 ✓ (backlink valid; no dependency issues)
+
+Previously: Re-verified 2026-03-14 (auto, post-format x3). Verdict: **VALID**.
+
+- `issue-completion-log.sh` still does not exist ✓ (expected for open feature)
+- `complete_issue_lifecycle()` confirmed at line 603; `_move_issue_to_completed()` at line 285 ✓
+- `_complete_issue_lifecycle_if_needed()` confirmed at line 1044; git mv at lines 1104–1106 ✓
+- No `append_session_log_entry` calls in `issue_lifecycle.py` or `orchestrator.py` ✓ (gap still present)
+- `session_log.py:append_session_log_entry()` at line 85, `get_current_session_jsonl()` at line 62 ✓
+- `context-monitor.sh` exists as reference pattern ✓
+- **Dependency resolved**: Removed ENH-494 from `## Blocks`. ENH-494's prior verify run (2026-03-12) removed FEAT-638 from its `## Blocked By` (calling it "missing" — incorrect, but now the dependency no longer appears in either direction). ENH-493 correctly lists FEAT-638 in its `## Blocked By` ✓
+
+Previously: Re-verified 2026-03-14 (auto, post-format x2). Verdict: **DEP_ISSUES**.
 
 - `issue-completion-log.sh` still does not exist ✓ (expected for open feature)
 - `complete_issue_lifecycle()` confirmed at line 603; `_move_issue_to_completed()` call at line 646 ✓ (matches issue claim)
@@ -358,6 +378,16 @@ Previously: Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 - `/ll:verify-issues` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl` — DEP_ISSUES: MISSING_BACKLINK for ENH-494 (see Verification Notes)
 - `/ll:format-issue` - 2026-03-14T00:01:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 - `/ll:verify-issues` - 2026-03-14T00:02:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl` — DEP_ISSUES: ENH-494 Blocked By does not list FEAT-638 (MISSING_BACKLINK)
+- `/ll:format-issue` - 2026-03-14T03:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:verify-issues` - 2026-03-14T03:31:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl` — DEP_ISSUES: ENH-494 Blocked By still does not list FEAT-638 (MISSING_BACKLINK); all code claims re-verified: `complete_issue_lifecycle()` at line 603, `_move_issue_to_completed()` at line 646, `_complete_issue_lifecycle_if_needed()` at line 1044, git mv at line 1104; no `append_session_log_entry` in lifecycle/orchestrator; hook script still unimplemented
+- `/ll:format-issue` - 2026-03-14T09:54:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:verify-issues` - 2026-03-14T09:54:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl` — VALID: all code claims confirmed; removed ENH-494 from Blocks (stale — ENH-494 already removed FEAT-638 from its Blocked By on 2026-03-12)
+- `/ll:format-issue` - 2026-03-14T09:54:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:verify-issues` - 2026-03-14T09:54:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl` — VALID: all code claims confirmed; no `append_session_log_entry` in lifecycle/orchestrator; ENH-493 backlink valid; hook script still unimplemented
+- `/ll:format-issue` - 2026-03-14T09:54:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:verify-issues` - 2026-03-14T09:54:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl` — VALID: `issue-completion-log.sh` still absent; `_move_issue_to_completed()` line 285, `complete_issue_lifecycle()` line 603/646 ✓; `_complete_issue_lifecycle_if_needed()` line 1044, git mv line 1104 ✓; no `append_session_log_entry` in lifecycle/orchestrator ✓; `session_log.py` functions at lines 62/85 ✓; `context-monitor.sh` ✓; `manage-issue` Phase 5 Step 1.5 at line 385 ✓
+- `/ll:format-issue` - 2026-03-14T09:54:33Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:verify-issues` - 2026-03-14T09:54:34Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl` — VALID: `issue-completion-log.sh` still absent; `_move_issue_to_completed()` line 285, `complete_issue_lifecycle()` line 603 ✓; `_complete_issue_lifecycle_if_needed()` line 1044, git mv line 1104 ✓; no `append_session_log_entry` in lifecycle/orchestrator ✓; `session_log.py` functions at lines 62/85 ✓; `context-monitor.sh` ✓; `manage-issue` Phase 5 Step 1.5 at line 385 ✓; ENH-493 backlink valid ✓
 
 ---
 
@@ -369,4 +399,3 @@ Previously: Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 ## Blocked By
 ## Blocks
 - ENH-493
-- ENH-494
