@@ -19,6 +19,7 @@ states:
 
       If /tmp/ll-dead-code-excluded.txt exists, filter out any items listed
       there — those were previously reverted because removal broke tests.
+      (To retry excluded items in a fresh run, delete /tmp/ll-dead-code-excluded.txt first.)
     capture: scan_results
     next: count_findings
   count_findings:
