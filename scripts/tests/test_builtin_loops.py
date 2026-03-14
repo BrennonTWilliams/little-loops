@@ -54,7 +54,7 @@ class TestBuiltinLoopFiles:
             "issue-refinement",
             "issue-size-split",
             "issue-staleness-review",
-            "issue-throughput-monitor",
+            "backlog-flow-optimizer",
             "plugin-health-check",
             "pr-review-cycle",
             "priority-rebalance",

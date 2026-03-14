@@ -23,15 +23,11 @@ states:
     action_type: prompt
     timeout: 600
     action: |
-      Run `/ll:check-code all` to see current lint, format, and type errors.
+      Run `/ll:check-code all` to check and auto-fix lint and format violations.
 
-      Step 1 — Auto-fix lint and format:
-      Run `/ll:check-code fix` to auto-fix lint and format violations.
-
-      Step 2 — Fix remaining type errors manually:
-      If type errors remain, investigate each one: read the error and the
-      affected file, apply a targeted fix. Do NOT suppress with `# type: ignore`
-      unless genuinely unavoidable and documented why.
+      If type errors remain after the above, investigate each one: read the error
+      and the affected file, apply a targeted fix. Do NOT suppress with
+      `# type: ignore` unless genuinely unavoidable and documented why.
     next: check-quality
   check-tests:
     action_type: shell

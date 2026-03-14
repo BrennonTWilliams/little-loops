@@ -1,0 +1,133 @@
+name: backlog-flow-optimizer
+description: |
+  Iteratively diagnose the primary throughput bottleneck in the issue backlog
+  and take targeted action. Detects whether bloat, oversized issues, or
+  priority imbalance is the main drag, then acts: closes dead-weight issues,
+  splits large ones, or promotes quick wins. Loops until backlog is healthy.
+initial: measure
+context:
+  target_active_max: 20
+  target_weekly_completion: 5
+  stale_threshold_days: 21
+states:
+  measure:
+    action: |
+      echo "=== Active Issues ==="
+      ACTIVE=$(find .issues -maxdepth 2 -name '*.md' \
+        -not -path '.issues/completed/*' \
+        -not -path '.issues/templates/*' 2>/dev/null | wc -l | tr -d ' ')
+      echo "active: $ACTIVE"
+      echo ""
+      echo "=== Priority Distribution ==="
+      for P in P0 P1 P2 P3 P4 P5; do
+        COUNT=$(ls .issues/bugs/${P}-* .issues/features/${P}-* .issues/enhancements/${P}-* 2>/dev/null | wc -l | tr -d ' ')
+        echo "$P: $COUNT"
+      done
+      echo ""
+      echo "=== Completion History ==="
+      ll-history summary 2>/dev/null || echo "(no history available)"
+    action_type: shell
+    capture: metrics
+    next: diagnose
+  diagnose:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Analyze this backlog snapshot and identify the single primary throughput bottleneck:
+
+      ${captured.metrics.output}
+
+      Targets:
+      - Active issues: ≤ ${context.target_active_max} (healthy backlog size)
+      - Weekly completion: ≥ ${context.target_weekly_completion}
+      - P0: 0-2, P1: 3-5, P2: 5-10 (priority distribution)
+
+      Diagnose using this hierarchy (first bottleneck found wins):
+      1. BOTTLENECK_BLOAT — active > ${context.target_active_max} OR
+         the number of P3+ issues dwarfs P0-P2 (backlog is cluttered with low-priority items)
+      2. BOTTLENECK_SIZE — count is manageable but velocity is low
+         (likely too many large/complex issues that cannot complete in one session)
+      3. BOTTLENECK_PRIORITY — distribution is skewed but count is manageable
+         (quick wins buried under low priority labels, slowing perceived progress)
+      4. THROUGHPUT_HEALTHY — all metrics within targets
+
+      End your response with exactly one of these tags on its own line:
+      BOTTLENECK_BLOAT
+      BOTTLENECK_SIZE
+      BOTTLENECK_PRIORITY
+      THROUGHPUT_HEALTHY
+    capture: diagnosis
+    next: route_bloat
+  route_bloat:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "BOTTLENECK_BLOAT"
+    on_success: close_dead_weight
+    on_failure: route_size
+    on_error: done
+  route_size:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "BOTTLENECK_SIZE"
+    on_success: fix_oversized
+    on_failure: route_priority
+    on_error: done
+  route_priority:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "BOTTLENECK_PRIORITY"
+    on_success: promote_quick_wins
+    on_failure: done
+    on_error: done
+  close_dead_weight:
+    action_type: prompt
+    timeout: 600
+    action: |
+      The backlog is bloated. Run `/ll:tradeoff-review-issues --auto` to identify
+      and close low-value issues. Focus on:
+      - P3+ issues older than ${context.stale_threshold_days} days with low utility scores
+      - Issues that are duplicates, superseded, or no longer relevant
+      - Speculative features with no clear use case
+
+      Close at least 3 issues to meaningfully reduce backlog size.
+    next: commit
+  fix_oversized:
+    action_type: prompt
+    timeout: 600
+    action: |
+      Low completion velocity suggests issues are too large to finish in one session.
+      Run `/ll:issue-size-review` to find oversized issues.
+
+      For the single largest issue found:
+      1. Read the full issue file
+      2. Split it into 2-3 independently implementable sub-issues
+      3. Update or close the original
+      4. Run `/ll:normalize-issues` to fix filenames
+
+      Focus on the one issue with the highest size/effort rating.
+    next: commit
+  promote_quick_wins:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Priority distribution is imbalanced — quick wins are buried in low-priority labels.
+      Read 5-10 issues from .issues/enhancements/ and .issues/features/ at P3 or P4, then:
+
+      1. Identify issues with low implementation effort but meaningful user or developer value
+      2. Reprioritize them to P1 or P2 (rename file, update frontmatter priority field)
+
+      Aim to promote 2-4 issues that can be quickly completed to boost velocity.
+    next: commit
+  commit:
+    action_type: prompt
+    action: |
+      Run `/ll:commit` to commit the backlog changes.
+      Use message: "chore(issues): optimize backlog flow"
+    next: measure
+  done:
+    terminal: true
+max_iterations: 15
+timeout: 7200
