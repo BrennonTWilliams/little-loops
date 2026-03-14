@@ -1,8 +1,9 @@
 name: fix-quality-and-tests
 description: |
   Sequential quality gate: lint + format + types must be clean before tests are
-  checked. Auto-fixes lint/format violations; investigates type errors manually.
-  After fixing test failures, loops back to check-quality to catch regressions.
+  checked. Auto-fixes lint/format violations; analyzes and fixes type errors with
+  a dedicated investigation pass. After fixing test failures, loops back to
+  check-quality to catch regressions.
 initial: check-quality
 states:
   check-quality:
@@ -16,18 +17,49 @@ states:
         Return "failure" if any check found errors.
         Return "partial" if the output is ambiguous or incomplete.
     on_success: check-tests
-    on_failure: fix-quality
+    on_failure: fix-lint-format
     on_partial: check-quality
-    on_error: fix-quality
-  fix-quality:
+    on_error: fix-lint-format
+  fix-lint-format:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Run `/ll:check-code fix` to auto-fix any lint and format violations.
+    next: analyze-type-errors
+  analyze-type-errors:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Run `/ll:check-code types` to get the current type errors.
+
+      If mypy exits cleanly (no errors), state: "No type errors found."
+
+      Otherwise, categorize the errors found:
+      - Missing type annotations
+      - Incompatible types
+      - Missing imports / stubs
+      - Other
+
+      List the top 5 highest-impact errors (those most likely to cause cascading
+      failures when fixed). We will fix these first.
+    capture: type_analysis
+    next: fix-type-errors
+  fix-type-errors:
     action_type: prompt
     timeout: 600
     action: |
-      Run `/ll:check-code all` to check and auto-fix lint and format violations.
+      Based on the type error analysis:
+      ${captured.type_analysis.output}
 
-      If type errors remain after the above, investigate each one: read the error
-      and the affected file, apply a targeted fix. Do NOT suppress with
-      `# type: ignore` unless genuinely unavoidable and documented why.
+      If the analysis says "No type errors found", skip this step and proceed.
+
+      Otherwise, fix the identified type errors in priority order. For each error:
+      1. Read the affected file
+      2. Understand what the correct type should be
+      3. Apply a targeted fix — prefer accurate types over broad Any/ignore
+      4. Do NOT use # type: ignore unless genuinely unavoidable and documented why
+
+      Fix up to 5 errors per iteration to keep changes reviewable.
     next: check-quality
   check-tests:
     action_type: shell
