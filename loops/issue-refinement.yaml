@@ -58,6 +58,7 @@ states:
       pattern: "NEEDS_FORMAT"
     on_success: format_issues
     on_failure: route_score
+    on_error: evaluate
   route_score:
     evaluate:
       type: output_contains
@@ -65,6 +66,7 @@ states:
       pattern: "NEEDS_SCORE"
     on_success: score_issues
     on_failure: refine_issues
+    on_error: evaluate
   format_issues:
     action_type: prompt
     action: |

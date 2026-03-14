@@ -49,30 +49,37 @@ states:
       echo "ACTUAL_SKILLS: $SKILL_COUNT"
     action_type: shell
     capture: asset_counts
-    next: audit_config
-  audit_config:
+    next: audit_counts
+  audit_counts:
     action_type: prompt
-    timeout: 300
+    timeout: 180
     action: |
       Plugin state:
       ${captured.plugin_state.output}
 
       Asset counts: ${captured.asset_counts.output}
 
-      Run `/ll:audit-claude-config` to perform a comprehensive audit of
-      the plugin configuration. Check:
-      1. plugin.json command list matches files in commands/
-      2. plugin.json skill list matches files in skills/
-      3. All referenced files exist
-      4. No orphaned command/skill files
-    capture: audit_result
+      Run `/ll:audit-claude-config` to check that plugin.json command list
+      and skill list exactly match the actual files in commands/ and skills/.
+      Report any missing entries or extra entries.
+    capture: counts_result
+    next: audit_refs
+  audit_refs:
+    action_type: prompt
+    timeout: 180
+    action: |
+      Now check:
+      - All files referenced in plugin.json actually exist on disk
+      - No orphaned command/skill files exist without a plugin.json entry
+      Report any issues found.
+    capture: refs_result
     next: route_audit
   route_audit:
     evaluate:
       type: llm_structured
-      source: "${captured.audit_result.output}"
+      source: "${captured.counts_result.output}\n${captured.refs_result.output}"
       prompt: |
-        Is the plugin configuration healthy with no issues to fix?
+        Based on both audit results, is the plugin configuration healthy?
         Return "success" if everything is healthy.
         Return "failure" if there are issues to fix.
     on_success: verify_hooks

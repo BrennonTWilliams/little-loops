@@ -93,6 +93,7 @@ states:
         Return "failure" if it still needs adjustment.
     on_success: done
     on_failure: analyze_balance
+    on_error: done
   done:
     terminal: true
 max_iterations: 5

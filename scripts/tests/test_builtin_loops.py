@@ -57,7 +57,6 @@ class TestBuiltinLoopFiles:
             "pr-review-cycle",
             "priority-rebalance",
             "readme-freshness",
-            "secret-scan",
             "sprint-build-and-validate",
             "worktree-health",
         }

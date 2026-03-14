@@ -52,3 +52,4 @@ states:
     on_maintain: check_worktrees
 max_iterations: 50
 timeout: 86400
+on_handoff: pause
