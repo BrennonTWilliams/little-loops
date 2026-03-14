@@ -717,6 +717,203 @@ class TestHistoryTail:
         assert "No history" in out  # plain-text path still taken when no events
 
 
+class TestHistoryVerboseLLM:
+    """Tests for --verbose LLM call details rendering in ll-loop history."""
+
+    def _write_events(self, tmp_path: Path, events: list[dict[str, Any]]) -> None:
+        running_dir = tmp_path / ".loops" / ".running"
+        running_dir.mkdir(parents=True)
+        events_file = running_dir / "test-loop.events.jsonl"
+        with open(events_file, "w") as f:
+            for event in events:
+                f.write(json.dumps(event) + "\n")
+
+    def test_verbose_evaluate_shows_llm_block(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--verbose shows LLM call block (model, latency, prompt, response) for evaluate events."""
+        from little_loops.cli.loop.info import cmd_history
+
+        self._write_events(
+            tmp_path,
+            [
+                {
+                    "event": "evaluate",
+                    "ts": "2026-01-13T10:00:03",
+                    "verdict": "success",
+                    "confidence": 0.9,
+                    "reason": "Looks good",
+                    "llm_model": "claude-sonnet-4-6",
+                    "llm_latency_ms": 1234,
+                    "llm_prompt": "Evaluate this output",
+                    "llm_raw_output": '{"verdict":"success"}',
+                }
+            ],
+        )
+
+        args = argparse.Namespace(tail=50, verbose=True, full=False, json=False)
+        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        assert result == 0
+
+        out = capsys.readouterr().out
+        assert "claude-sonnet-4-6" in out
+        assert "1234ms" in out
+        assert "Evaluate this output" in out
+        assert '{"verdict":"success"}' in out
+
+    def test_non_verbose_evaluate_hides_llm_block(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Without --verbose, LLM call details are not shown."""
+        from little_loops.cli.loop.info import cmd_history
+
+        self._write_events(
+            tmp_path,
+            [
+                {
+                    "event": "evaluate",
+                    "ts": "2026-01-13T10:00:03",
+                    "verdict": "success",
+                    "llm_model": "claude-sonnet-4-6",
+                    "llm_latency_ms": 1234,
+                    "llm_prompt": "Evaluate this output",
+                    "llm_raw_output": '{"verdict":"success"}',
+                }
+            ],
+        )
+
+        args = argparse.Namespace(tail=50, verbose=False, full=False, json=False)
+        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        assert result == 0
+
+        out = capsys.readouterr().out
+        assert "claude-sonnet-4-6" not in out
+        assert "1234ms" not in out
+        assert "Evaluate this output" not in out
+
+    def test_verbose_action_complete_shows_output_preview(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--verbose shows output_preview for action_complete events."""
+        from little_loops.cli.loop.info import cmd_history
+
+        self._write_events(
+            tmp_path,
+            [
+                {
+                    "event": "action_complete",
+                    "ts": "2026-01-13T10:00:02",
+                    "exit_code": 0,
+                    "duration_ms": 500,
+                    "output_preview": "All tests passed",
+                    "is_prompt": False,
+                }
+            ],
+        )
+
+        args = argparse.Namespace(tail=50, verbose=True, full=False, json=False)
+        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        assert result == 0
+
+        out = capsys.readouterr().out
+        assert "All tests passed" in out
+
+    def test_non_verbose_action_complete_hides_output_preview(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Without --verbose, output_preview is not shown in action_complete."""
+        from little_loops.cli.loop.info import cmd_history
+
+        self._write_events(
+            tmp_path,
+            [
+                {
+                    "event": "action_complete",
+                    "ts": "2026-01-13T10:00:02",
+                    "exit_code": 0,
+                    "duration_ms": 500,
+                    "output_preview": "All tests passed",
+                    "is_prompt": False,
+                }
+            ],
+        )
+
+        args = argparse.Namespace(tail=50, verbose=False, full=False, json=False)
+        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        assert result == 0
+
+        out = capsys.readouterr().out
+        assert "All tests passed" not in out
+
+    def test_full_implies_verbose_and_shows_llm_block(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--full implies --verbose and shows LLM call details."""
+        from little_loops.cli.loop.info import cmd_history
+
+        self._write_events(
+            tmp_path,
+            [
+                {
+                    "event": "evaluate",
+                    "ts": "2026-01-13T10:00:03",
+                    "verdict": "success",
+                    "llm_model": "claude-sonnet-4-6",
+                    "llm_latency_ms": 800,
+                    "llm_prompt": "Evaluate this",
+                    "llm_raw_output": '{"verdict":"success"}',
+                }
+            ],
+        )
+
+        args = argparse.Namespace(tail=50, verbose=False, full=True, json=False)
+        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        assert result == 0
+
+        out = capsys.readouterr().out
+        assert "claude-sonnet-4-6" in out
+        assert "800ms" in out
+
+    def test_evaluate_without_llm_fields_no_extra_block(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """evaluate events without llm_model/llm_prompt don't render LLM block."""
+        from little_loops.cli.loop.info import cmd_history
+
+        self._write_events(
+            tmp_path,
+            [
+                {
+                    "event": "evaluate",
+                    "ts": "2026-01-13T10:00:03",
+                    "verdict": "success",
+                    "confidence": 0.9,
+                    "reason": "exit code 0",
+                }
+            ],
+        )
+
+        args = argparse.Namespace(tail=50, verbose=True, full=False, json=False)
+        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        assert result == 0
+
+        out = capsys.readouterr().out
+        assert "LLM Call" not in out
+        assert "Prompt:" not in out
+
+
 class TestCmdListRunningJson:
     """Tests for list --running --json."""
 

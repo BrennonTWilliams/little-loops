@@ -23,6 +23,7 @@ import hashlib
 import json
 import re
 import subprocess
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -516,6 +517,7 @@ def evaluate_llm_structured(
         "--no-session-persistence",
     ]
 
+    t0 = time.monotonic()
     try:
         proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
     except subprocess.TimeoutExpired:
@@ -531,6 +533,7 @@ def evaluate_llm_structured(
                 "missing_dependency": True,
             },
         )
+    llm_latency_ms = int((time.monotonic() - t0) * 1000)
 
     if proc.returncode != 0:
         return EvaluationResult(
@@ -615,6 +618,10 @@ def evaluate_llm_structured(
             "confident": confident,
             "reason": llm_result.get("reason", ""),
             "raw": llm_result,
+            "llm_model": model,
+            "llm_latency_ms": llm_latency_ms,
+            "llm_prompt": user_prompt[:500],
+            "llm_raw_output": proc.stdout[:500] if proc.stdout else "",
         },
     )
 

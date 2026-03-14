@@ -149,7 +149,9 @@ def _truncate(text: str, max_len: int) -> str:
     return text[: max_len - 1] + "\u2026"
 
 
-def _format_history_event(event: dict[str, Any], verbose: bool, width: int) -> str | None:
+def _format_history_event(
+    event: dict[str, Any], verbose: bool, width: int, full: bool = False
+) -> str | None:
     """Format a single history event. Returns None to skip the event."""
     raw_ts = event.get("ts", "")
     try:
@@ -166,6 +168,10 @@ def _format_history_event(event: dict[str, Any], verbose: bool, width: int) -> s
     etype_padded = event_type.ljust(_EVENT_TYPE_WIDTH)
     etype_color = "0"
     detail = ""
+    extra_lines: list[str] = []
+
+    # Indentation prefix for verbose sub-lines (aligns under event detail column)
+    _indent = " " * (8 + 2 + _EVENT_TYPE_WIDTH + 2)
 
     if event_type == "loop_start":
         etype_color = "1"
@@ -218,6 +224,13 @@ def _format_history_event(event: dict[str, Any], verbose: bool, width: int) -> s
             etype_color = "38;5;208"
             status_str = colorize(f"\u2717 exit={exit_code}", "38;5;208")
         detail = f"{status_str}  {duration_ms}ms"
+        if verbose:
+            output_preview = event.get("output_preview", "")
+            if output_preview:
+                avail_w = width - len(_indent) - 2
+                preview_text = output_preview if full else _truncate(output_preview, max(avail_w, 40))
+                for preview_line in preview_text.splitlines()[:5]:
+                    extra_lines.append(colorize(_indent + "\u2502 " + preview_line, "2"))
 
     elif event_type == "evaluate":
         verdict = event.get("verdict", "")
@@ -233,6 +246,32 @@ def _format_history_event(event: dict[str, Any], verbose: bool, width: int) -> s
         avail = width - 8 - 2 - _EVENT_TYPE_WIDTH - 2 - len("\u2713 success") - len(conf_part) - 2
         reason_part = f"  {_truncate(reason, max(avail, 20))}" if reason else ""
         detail = f"{verdict_str}{conf_part}{reason_part}"
+        if verbose:
+            llm_model = event.get("llm_model", "")
+            llm_latency_ms = event.get("llm_latency_ms", "")
+            llm_prompt = event.get("llm_prompt", "")
+            llm_raw_output = event.get("llm_raw_output", "")
+            if llm_model or llm_prompt:
+                meta_parts = []
+                if llm_model:
+                    meta_parts.append(f"model={llm_model}")
+                if llm_latency_ms != "":
+                    meta_parts.append(f"latency={llm_latency_ms}ms")
+                meta_str = "  ".join(meta_parts)
+                extra_lines.append(
+                    colorize(_indent + colorize("LLM Call", "2") + "  " + meta_str, "2")
+                )
+                avail_w = width - len(_indent) - len("Prompt:   ") - 2
+                if llm_prompt:
+                    prompt_text = llm_prompt if full else _truncate(llm_prompt, max(avail_w, 40))
+                    extra_lines.append(
+                        colorize(_indent + "Prompt:   " + prompt_text, "2")
+                    )
+                if llm_raw_output:
+                    resp_text = llm_raw_output if full else _truncate(llm_raw_output, max(avail_w, 40))
+                    extra_lines.append(
+                        colorize(_indent + "Response: " + resp_text, "2")
+                    )
 
     elif event_type == "route":
         etype_color = "2"
@@ -249,7 +288,10 @@ def _format_history_event(event: dict[str, Any], verbose: bool, width: int) -> s
         detail = "  ".join(f"{k}={v}" for k, v in details.items())
 
     etype_str = colorize(etype_padded, etype_color)
-    return f"{ts_str}  {etype_str}  {detail}"
+    main_line = f"{ts_str}  {etype_str}  {detail}"
+    if extra_lines:
+        return "\n".join([main_line] + extra_lines)
+    return main_line
 
 
 def cmd_history(
@@ -267,7 +309,8 @@ def cmd_history(
         return 0
 
     tail = getattr(args, "tail", 50)
-    verbose = getattr(args, "verbose", False)
+    full = getattr(args, "full", False)
+    verbose = getattr(args, "verbose", False) or full
     w = terminal_width()
     if not verbose:
         events = [e for e in events if e.get("event") != "action_output"]
@@ -275,7 +318,7 @@ def cmd_history(
         print_json(events[-tail:])
         return 0
     for event in events[-tail:]:
-        line = _format_history_event(event, verbose, w)
+        line = _format_history_event(event, verbose, w, full=full)
         if line is not None:
             print(line)
 

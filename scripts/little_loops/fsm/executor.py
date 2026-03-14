@@ -656,6 +656,7 @@ class FSMExecutor:
                     {
                         "type": "default",
                         "verdict": result.verdict,
+                        **result.details,
                     },
                 )
                 return result
