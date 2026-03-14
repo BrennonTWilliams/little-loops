@@ -45,9 +45,7 @@ class TestBuiltinLoopFiles:
     def test_expected_loops_exist(self) -> None:
         """The expected set of built-in loops exists."""
         expected = {
-            "changelog-and-tag",
             "dead-code-cleanup",
-            "dependency-audit",
             "docs-sync",
             "fix-quality-and-tests",
             "issue-discovery-triage",
@@ -61,8 +59,6 @@ class TestBuiltinLoopFiles:
             "readme-freshness",
             "secret-scan",
             "sprint-build-and-validate",
-            "sync-and-close",
-            "type-error-fix",
             "worktree-health",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
