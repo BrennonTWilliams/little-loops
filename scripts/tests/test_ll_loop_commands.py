@@ -373,10 +373,10 @@ class TestHistoryTail:
 
     @pytest.fixture
     def many_events_file(self, tmp_path: Path) -> Path:
-        """Create an events file with 10 events for tail testing."""
-        running_dir = tmp_path / ".loops" / ".running"
-        running_dir.mkdir(parents=True)
-        events_file = running_dir / "test-loop.events.jsonl"
+        """Create an archived events file with 10 events for tail testing."""
+        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir.mkdir(parents=True)
+        events_file = archive_dir / "events.jsonl"
 
         # Create 10 events with unique identifiers
         events = [
@@ -404,7 +404,7 @@ class TestHistoryTail:
     ) -> None:
         """--tail N should show only last N events."""
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "--tail", "3"]):
+        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "3"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -430,7 +430,7 @@ class TestHistoryTail:
     ) -> None:
         """--tail 0 shows all events (Python list[-0:] returns full list)."""
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "--tail", "0"]):
+        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "0"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -452,7 +452,7 @@ class TestHistoryTail:
     ) -> None:
         """--tail N where N > total events shows all events."""
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "--tail", "100"]):
+        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "100"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -473,7 +473,7 @@ class TestHistoryTail:
     ) -> None:
         """Without --tail (default 50), all events shown when < 50."""
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop"]):
+        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -494,7 +494,7 @@ class TestHistoryTail:
     ) -> None:
         """Tail should show events in chronological order."""
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "--tail", "3"]):
+        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "3"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -515,21 +515,21 @@ class TestHistoryTail:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """--tail with empty events file handles gracefully."""
-        # Create empty events file
-        running_dir = tmp_path / ".loops" / ".running"
-        running_dir.mkdir(parents=True)
-        events_file = running_dir / "test-loop.events.jsonl"
+        # Create empty archived events file
+        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir.mkdir(parents=True)
+        events_file = archive_dir / "events.jsonl"
         events_file.write_text("")
 
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "--tail", "5"]):
+        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "5"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
 
-        assert result == 0
+        assert result == 1
         captured = capsys.readouterr()
-        assert "No history" in captured.out
+        assert "No events found" in captured.out
 
     def test_history_tail_excludes_action_output_from_count(
         self,
@@ -543,9 +543,9 @@ class TestHistoryTail:
         those action_output events should not consume the tail budget, hiding earlier
         iterations from the user.
         """
-        running_dir = tmp_path / ".loops" / ".running"
-        running_dir.mkdir(parents=True)
-        events_file = running_dir / "test-loop.events.jsonl"
+        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir.mkdir(parents=True)
+        events_file = archive_dir / "events.jsonl"
 
         # Simulate 3 iterations, each with 1 visible event + 10 action_output events.
         # Total raw events: 3 * 11 = 33. With --tail 5 applied to raw events (old bug),
@@ -575,7 +575,7 @@ class TestHistoryTail:
                 f.write(json.dumps(event) + "\n")
 
         monkeypatch.chdir(tmp_path)
-        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "--tail", "5"]):
+        with patch.object(sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "5"]):
             from little_loops.cli import main_loop
 
             result = main_loop()
@@ -597,9 +597,9 @@ class TestHistoryTail:
         capsys: pytest.CaptureFixture[str],
     ) -> None:
         """In verbose mode, action_output events count toward --tail as before."""
-        running_dir = tmp_path / ".loops" / ".running"
-        running_dir.mkdir(parents=True)
-        events_file = running_dir / "test-loop.events.jsonl"
+        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir.mkdir(parents=True)
+        events_file = archive_dir / "events.jsonl"
 
         # 2 iterations: 1 state_enter + 3 action_output each = 8 raw events total
         events = []
@@ -628,7 +628,7 @@ class TestHistoryTail:
         monkeypatch.chdir(tmp_path)
         # --tail 3 in verbose mode: only last 3 raw events (all action_output from iter2)
         with patch.object(
-            sys, "argv", ["ll-loop", "history", "test-loop", "--tail", "3", "--verbose"]
+            sys, "argv", ["ll-loop", "history", "test-loop", "test-run-id", "--tail", "3", "--verbose"]
         ):
             from little_loops.cli import main_loop
 
@@ -652,19 +652,19 @@ class TestHistoryTail:
         """--json outputs a valid JSON array of events."""
         from little_loops.cli.loop.info import cmd_history
 
-        running_dir = tmp_path / ".loops" / ".running"
-        running_dir.mkdir(parents=True)
+        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir.mkdir(parents=True)
         events = [
             {"event": "loop_start", "ts": "2026-01-13T10:00:00", "loop": "test-loop"},
             {"event": "state_enter", "ts": "2026-01-13T10:00:01", "state": "check", "iteration": 1},
         ]
-        events_file = running_dir / "test-loop.events.jsonl"
+        events_file = archive_dir / "events.jsonl"
         with open(events_file, "w") as f:
             for event in events:
                 f.write(json.dumps(event) + "\n")
 
         args = argparse.Namespace(tail=50, verbose=False, json=True)
-        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
 
         assert result == 0
         data = json.loads(capsys.readouterr().out)
@@ -681,16 +681,16 @@ class TestHistoryTail:
         """--json with --tail N returns only the last N events."""
         from little_loops.cli.loop.info import cmd_history
 
-        running_dir = tmp_path / ".loops" / ".running"
-        running_dir.mkdir(parents=True)
+        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir.mkdir(parents=True)
         events = [{"event": f"evt_{i}", "ts": f"2026-01-13T10:00:{i:02d}"} for i in range(5)]
-        events_file = running_dir / "test-loop.events.jsonl"
+        events_file = archive_dir / "events.jsonl"
         with open(events_file, "w") as f:
             for event in events:
                 f.write(json.dumps(event) + "\n")
 
         args = argparse.Namespace(tail=2, verbose=False, json=True)
-        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
 
         assert result == 0
         data = json.loads(capsys.readouterr().out)
@@ -710,20 +710,20 @@ class TestHistoryTail:
         loops_dir.mkdir()
 
         args = argparse.Namespace(tail=50, verbose=False, json=True)
-        result = cmd_history("nonexistent", args, loops_dir)
+        result = cmd_history("nonexistent", None, args, loops_dir)
 
         assert result == 0
         out = capsys.readouterr().out
-        assert "No history" in out  # plain-text path still taken when no events
+        assert "No history" in out
 
 
 class TestHistoryVerboseLLM:
     """Tests for --verbose LLM call details rendering in ll-loop history."""
 
     def _write_events(self, tmp_path: Path, events: list[dict[str, Any]]) -> None:
-        running_dir = tmp_path / ".loops" / ".running"
-        running_dir.mkdir(parents=True)
-        events_file = running_dir / "test-loop.events.jsonl"
+        archive_dir = tmp_path / ".loops" / ".history" / "test-loop" / "test-run-id"
+        archive_dir.mkdir(parents=True)
+        events_file = archive_dir / "events.jsonl"
         with open(events_file, "w") as f:
             for event in events:
                 f.write(json.dumps(event) + "\n")
@@ -754,7 +754,7 @@ class TestHistoryVerboseLLM:
         )
 
         args = argparse.Namespace(tail=50, verbose=True, full=False, json=False)
-        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
         assert result == 0
 
         out = capsys.readouterr().out
@@ -787,7 +787,7 @@ class TestHistoryVerboseLLM:
         )
 
         args = argparse.Namespace(tail=50, verbose=False, full=False, json=False)
-        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
         assert result == 0
 
         out = capsys.readouterr().out
@@ -818,7 +818,7 @@ class TestHistoryVerboseLLM:
         )
 
         args = argparse.Namespace(tail=50, verbose=True, full=False, json=False)
-        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
         assert result == 0
 
         out = capsys.readouterr().out
@@ -847,7 +847,7 @@ class TestHistoryVerboseLLM:
         )
 
         args = argparse.Namespace(tail=50, verbose=False, full=False, json=False)
-        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
         assert result == 0
 
         out = capsys.readouterr().out
@@ -877,7 +877,7 @@ class TestHistoryVerboseLLM:
         )
 
         args = argparse.Namespace(tail=50, verbose=False, full=True, json=False)
-        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
         assert result == 0
 
         out = capsys.readouterr().out
@@ -906,7 +906,7 @@ class TestHistoryVerboseLLM:
         )
 
         args = argparse.Namespace(tail=50, verbose=True, full=False, json=False)
-        result = cmd_history("test-loop", args, tmp_path / ".loops")
+        result = cmd_history("test-loop", "test-run-id", args, tmp_path / ".loops")
         assert result == 0
 
         out = capsys.readouterr().out

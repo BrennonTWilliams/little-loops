@@ -69,12 +69,12 @@ A developer runs `ll-loop run issue-refinement` overnight. In the morning it com
 
 ## Acceptance Criteria
 
-- [ ] Before `clear_all()` destroys existing files, the state and events are archived to `.loops/.history/<loop-name>/<run-id>/`
-- [ ] Archive only occurs when there are files to archive (no empty dirs created for fresh runs)
-- [ ] The archive directory structure is documented
-- [ ] `.loops/.history/` is listed in `.gitignore` (or at least documented as a local artifact)
-- [ ] `ll-loop history <name>` (or similar) can list available archived runs with status/duration
-- [ ] No change to existing `ll-loop run` CLI interface
+- [x] Before `clear_all()` destroys existing files, the state and events are archived to `.loops/.history/<loop-name>/<run-id>/`
+- [x] Archive only occurs when there are files to archive (no empty dirs created for fresh runs)
+- [x] The archive directory structure is documented
+- [x] `.loops/.history/` is listed in `.gitignore` (or at least documented as a local artifact)
+- [x] `ll-loop history <name>` (or similar) can list available archived runs with status/duration
+- [x] No change to existing `ll-loop run` CLI interface
 
 ## API/Interface
 
@@ -157,7 +157,18 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/371cab6e-a538-4133-b755-4913bc7438c4.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/371cab6e-a538-4133-b755-4913bc7438c4.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78cb24e4-1ece-44e7-8ec9-f08350ad008b.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13d273a4-bdb3-4c08-85db-9d7893a38c32.jsonl`
+
+## Resolution
+
+Implemented in full. Core changes:
+
+- `persistence.py`: Added `archive_run()` to `StatePersistence` — copies `.state.json` and `.events.jsonl` to `.loops/.history/<loop_name>/<run_id>/` (run_id is compact ISO from `started_at`). Modified `clear_all()` to call `archive_run()` before deleting. Added `list_run_history()` and `get_archived_events()` utility functions.
+- `cli/loop/__init__.py`: Extended `history` subcommand with optional positional `run_id` argument.
+- `cli/loop/info.py`: `cmd_history()` now lists archived runs when no `run_id` given, or shows events for a specific archived run.
+- `.gitignore`: Added `.loops/.history/` entry.
+- Tests: 14 new tests in `TestArchiveRun` class covering all acceptance criteria.
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P3
+**Completed** | Created: 2026-03-13 | Completed: 2026-03-14 | Priority: P3

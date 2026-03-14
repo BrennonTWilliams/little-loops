@@ -89,9 +89,9 @@ class TestLoopHistoryTimestamp:
             {"ts": "2026-03-04T14:30:00.123456", "event": "start", "loop": "my-loop"},
         ]
 
-        args = argparse.Namespace(tail=50, verbose=False)
-        with patch("little_loops.fsm.persistence.get_loop_history", return_value=events):
-            result = cmd_history("my-loop", args, loops_dir)
+        args = argparse.Namespace(tail=50, verbose=False, full=False, json=False)
+        with patch("little_loops.fsm.persistence.get_archived_events", return_value=events):
+            result = cmd_history("my-loop", "test-run-id", args, loops_dir)
 
         assert result == 0
         captured = capsys.readouterr()
@@ -112,9 +112,9 @@ class TestLoopHistoryTimestamp:
             {"ts": "not-a-timestamp", "event": "start"},
         ]
 
-        args = argparse.Namespace(tail=50, verbose=False)
-        with patch("little_loops.fsm.persistence.get_loop_history", return_value=events):
-            result = cmd_history("my-loop", args, loops_dir)
+        args = argparse.Namespace(tail=50, verbose=False, full=False, json=False)
+        with patch("little_loops.fsm.persistence.get_archived_events", return_value=events):
+            result = cmd_history("my-loop", "test-run-id", args, loops_dir)
 
         assert result == 0
         captured = capsys.readouterr()
@@ -131,9 +131,9 @@ class TestLoopHistoryTimestamp:
 
         events = [{"event": "start", "loop": "my-loop"}]
 
-        args = argparse.Namespace(tail=50, verbose=False)
-        with patch("little_loops.fsm.persistence.get_loop_history", return_value=events):
-            result = cmd_history("my-loop", args, loops_dir)
+        args = argparse.Namespace(tail=50, verbose=False, full=False, json=False)
+        with patch("little_loops.fsm.persistence.get_archived_events", return_value=events):
+            result = cmd_history("my-loop", "test-run-id", args, loops_dir)
 
         assert result == 0
 

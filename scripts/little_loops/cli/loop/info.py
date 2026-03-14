@@ -294,27 +294,132 @@ def _format_history_event(
     return main_line
 
 
-def cmd_history(
-    loop_name: str,
-    args: argparse.Namespace,
-    loops_dir: Path,
-) -> int:
-    """Show loop history."""
-    from little_loops.fsm.persistence import get_loop_history
+def _format_duration(ms: int) -> str:
+    """Format milliseconds as a human-readable duration."""
+    if ms < 1000:
+        return f"{ms}ms"
+    s = ms // 1000
+    if s < 60:
+        return f"{s}s"
+    m, s = divmod(s, 60)
+    if m < 60:
+        return f"{m}m{s:02d}s"
+    h, m = divmod(m, 60)
+    return f"{h}h{m:02d}m{s:02d}s"
 
-    events = get_loop_history(loop_name, loops_dir)
 
-    if not events:
+def _list_archived_runs(loop_name: str, loops_dir: Path, as_json: bool) -> int:
+    """List archived runs for a loop."""
+    import json as _json
+
+    from little_loops.fsm.persistence import HISTORY_DIR, LoopState
+
+    history_base = loops_dir / HISTORY_DIR / loop_name
+    if not history_base.exists():
         print(f"No history for: {loop_name}")
         return 0
 
+    # Collect (run_id, state_or_None) pairs sorted newest first by run_id
+    runs: list[tuple[str, LoopState | None]] = []
+    for run_dir in sorted(history_base.iterdir(), key=lambda d: d.name, reverse=True):
+        if not run_dir.is_dir():
+            continue
+        state_file = run_dir / "state.json"
+        state: LoopState | None = None
+        if state_file.exists():
+            try:
+                data = _json.loads(state_file.read_text())
+                state = LoopState.from_dict(data)
+            except (ValueError, KeyError):
+                pass
+        runs.append((run_dir.name, state))
+
+    if not runs:
+        print(f"No history for: {loop_name}")
+        return 0
+
+    if as_json:
+        print(
+            _json.dumps(
+                [
+                    {
+                        "run_id": rid,
+                        "status": s.status if s else None,
+                        "started_at": s.started_at if s else None,
+                        "iterations": s.iteration if s else None,
+                        "duration_ms": s.accumulated_ms if s else None,
+                    }
+                    for rid, s in runs
+                ],
+                indent=2,
+            )
+        )
+        return 0
+
+    status_colors = {
+        "completed": "\033[32m",
+        "failed": "\033[31m",
+        "interrupted": "\033[33m",
+        "awaiting_continuation": "\033[36m",
+        "timed_out": "\033[33m",
+        "running": "\033[34m",
+    }
+    reset = "\033[0m"
+
+    print(f"Archived runs for: {loop_name} ({len(runs)} total)")
+    print()
+
+    for run_id, state in runs:
+        if state is not None:
+            color = status_colors.get(state.status, "")
+            status_str = f"{color}{state.status}{reset}"
+            duration_str = _format_duration(state.accumulated_ms) if state.accumulated_ms else "?"
+            started = state.started_at[:19].replace("T", " ") if state.started_at else "?"
+            iters = f"{state.iteration} iters"
+        else:
+            status_str = "unknown"
+            duration_str = "?"
+            started = "?"
+            iters = "?"
+        print(f"  {run_id}  {status_str}  {started}  {iters}  {duration_str}")
+
+    print()
+    print(f"To view events: ll-loop history {loop_name} <run-id>")
+    return 0
+
+
+def cmd_history(
+    loop_name: str,
+    run_id: str | None,
+    args: argparse.Namespace,
+    loops_dir: Path,
+) -> int:
+    """Show loop history.
+
+    Without run_id: lists all archived runs with status and duration.
+    With run_id: shows events for that specific archived run.
+    """
     tail = getattr(args, "tail", 50)
     full = getattr(args, "full", False)
     verbose = getattr(args, "verbose", False) or full
+    as_json = getattr(args, "json", False)
+
+    if run_id is None:
+        return _list_archived_runs(loop_name, loops_dir, as_json)
+
+    # Show events for a specific archived run
+    from little_loops.fsm.persistence import get_archived_events
+
+    events = get_archived_events(loop_name, run_id, loops_dir)
+
+    if not events:
+        print(f"No events found for run: {loop_name}/{run_id}")
+        return 1
+
     w = terminal_width()
     if not verbose:
         events = [e for e in events if e.get("event") != "action_output"]
-    if getattr(args, "json", False):
+    if as_json:
         print_json(events[-tail:])
         return 0
     for event in events[-tail:]:

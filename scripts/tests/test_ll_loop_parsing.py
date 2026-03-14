@@ -140,9 +140,9 @@ class TestLoopArgumentParsing:
 
         assert result == 0
         mock_history.assert_called_once()
-        # cmd_history(loop_name, args, loops_dir) — args is the second positional argument
+        # cmd_history(loop_name, run_id, args, loops_dir) — args is the third positional argument
         call_args = mock_history.call_args
-        history_args = call_args[0][1]
+        history_args = call_args[0][2]
         assert getattr(history_args, "json", False) is True
 
     def test_status_subcommand(self) -> None:

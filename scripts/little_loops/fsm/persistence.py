@@ -9,15 +9,21 @@ This module provides persistence capabilities for FSM loop execution:
 File structure:
     .loops/
     ├── fix-types.yaml          # Loop definition
-    └── .running/               # Runtime state (auto-managed)
-        ├── fix-types.state.json
-        └── fix-types.events.jsonl
+    ├── .running/               # Runtime state (auto-managed)
+    │   ├── fix-types.state.json
+    │   └── fix-types.events.jsonl
+    └── .history/               # Archived run logs (auto-populated)
+        └── fix-types/
+            └── 2024-01-15T103000/
+                ├── state.json
+                └── events.jsonl
 """
 
 from __future__ import annotations
 
 import json
 import logging
+import shutil
 import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -28,6 +34,7 @@ from little_loops.fsm.executor import EventCallback, ExecutionResult, FSMExecuto
 from little_loops.fsm.schema import FSMLoop
 
 RUNNING_DIR = ".running"
+HISTORY_DIR = ".history"
 
 logger = logging.getLogger(__name__)
 
@@ -219,8 +226,47 @@ class StatePersistence:
         if self.events_file.exists():
             self.events_file.unlink()
 
+    def archive_run(self) -> Path | None:
+        """Archive current run files to .history/ before clearing.
+
+        Reads the current state to derive the run timestamp, then copies
+        both state.json and events.jsonl into:
+            <loops_dir>/.history/<loop_name>/<run_id>/
+
+        where run_id is a compact ISO timestamp derived from started_at
+        (e.g. "2024-01-15T103000" from "2024-01-15T10:30:00.123456+00:00").
+
+        Returns:
+            Path to the archive directory if files were archived, None if
+            there were no files to archive (fresh run).
+        """
+        has_state = self.state_file.exists()
+        has_events = self.events_file.exists()
+        if not has_state and not has_events:
+            return None
+
+        # Derive run ID from started_at in state file, or fall back to now
+        state = self.load_state()
+        if state is not None and state.started_at:
+            # Compact ISO: strip colons, dots, plus signs; take first 19 chars
+            # e.g. "2024-01-15T10:30:00.123+00:00" → "2024-01-15T103000"
+            run_id = state.started_at.replace(":", "").replace(".", "").replace("+", "")[:17]
+        else:
+            run_id = datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S")
+
+        archive_dir = self.loops_dir / HISTORY_DIR / self.loop_name / run_id
+        archive_dir.mkdir(parents=True, exist_ok=True)
+
+        if has_state:
+            shutil.copy2(self.state_file, archive_dir / "state.json")
+        if has_events:
+            shutil.copy2(self.events_file, archive_dir / "events.jsonl")
+
+        return archive_dir
+
     def clear_all(self) -> None:
-        """Clear both state and events files (for new run)."""
+        """Archive current run files then clear state and events (for new run)."""
+        self.archive_run()
         self.clear_state()
         self.clear_events()
 
@@ -450,6 +496,69 @@ def list_running_loops(loops_dir: Path | None = None) -> list[LoopState]:
             continue  # Skip malformed files
 
     return states
+
+
+def list_run_history(loop_name: str, loops_dir: Path | None = None) -> list[LoopState]:
+    """List archived runs for a loop, newest first.
+
+    Reads state files from .loops/.history/<loop_name>/*/state.json and returns
+    them sorted by started_at descending (most recent run first).
+
+    Args:
+        loop_name: Name of the loop
+        loops_dir: Base directory for loops (default: .loops)
+
+    Returns:
+        List of LoopState objects for all archived runs, newest first.
+        Returns an empty list if no history exists.
+    """
+    base_dir = loops_dir or Path(".loops")
+    history_loop_dir = base_dir / HISTORY_DIR / loop_name
+
+    if not history_loop_dir.exists():
+        return []
+
+    states: list[LoopState] = []
+    for state_file in history_loop_dir.glob("*/state.json"):
+        try:
+            data = json.loads(state_file.read_text())
+            states.append(LoopState.from_dict(data))
+        except (json.JSONDecodeError, KeyError):
+            continue
+
+    states.sort(key=lambda s: s.started_at, reverse=True)
+    return states
+
+
+def get_archived_events(
+    loop_name: str, run_id: str, loops_dir: Path | None = None
+) -> list[dict[str, Any]]:
+    """Read events for a specific archived run.
+
+    Args:
+        loop_name: Name of the loop
+        run_id: The run directory name (compact timestamp)
+        loops_dir: Base directory for loops (default: .loops)
+
+    Returns:
+        List of event dictionaries, empty if not found.
+    """
+    base_dir = loops_dir or Path(".loops")
+    events_file = base_dir / HISTORY_DIR / loop_name / run_id / "events.jsonl"
+
+    if not events_file.exists():
+        return []
+
+    events: list[dict[str, Any]] = []
+    with open(events_file, encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if line:
+                try:
+                    events.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+    return events
 
 
 def get_loop_history(loop_name: str, loops_dir: Path | None = None) -> list[dict[str, Any]]:

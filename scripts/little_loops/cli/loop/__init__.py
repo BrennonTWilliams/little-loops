@@ -204,10 +204,16 @@ Examples:
 
     # History subcommand
     history_parser = subparsers.add_parser(
-        "history", aliases=["h"], help="Show loop execution history"
+        "history", aliases=["h"], help="List archived loop runs or show events for a specific run"
     )
     history_parser.set_defaults(command="history")
     history_parser.add_argument("loop", help="Loop name")
+    history_parser.add_argument(
+        "run_id",
+        nargs="?",
+        default=None,
+        help="Run ID (compact timestamp) to show events for; omit to list archived runs",
+    )
     history_parser.add_argument(
         "--tail", "-n", type=int, default=50, help="Last N events (default: 50)"
     )
@@ -289,7 +295,7 @@ Examples:
     elif args.command == "resume":
         return cmd_resume(args.loop, args, loops_dir, logger)
     elif args.command == "history":
-        return cmd_history(args.loop, args, loops_dir)
+        return cmd_history(args.loop, getattr(args, "run_id", None), args, loops_dir)
     elif args.command == "test":
         return cmd_test(args.loop, args, loops_dir, logger)
     elif args.command == "simulate":

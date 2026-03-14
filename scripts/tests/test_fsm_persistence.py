@@ -13,7 +13,9 @@ from little_loops.fsm.persistence import (
     LoopState,
     PersistentExecutor,
     StatePersistence,
+    get_archived_events,
     get_loop_history,
+    list_run_history,
     list_running_loops,
 )
 from little_loops.fsm.schema import FSMLoop, StateConfig
@@ -270,6 +272,209 @@ class TestStatePersistence:
 
         assert not persistence.state_file.exists()
         assert not persistence.events_file.exists()
+
+
+class TestArchiveRun:
+    """Tests for StatePersistence.archive_run() and related history utilities."""
+
+    @pytest.fixture
+    def tmp_loops_dir(self, tmp_path: Path) -> Path:
+        return tmp_path / ".loops"
+
+    def _make_state(self, started_at: str = "2024-01-15T10:30:00+00:00") -> LoopState:
+        return LoopState(
+            loop_name="test-loop",
+            current_state="done",
+            iteration=5,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at=started_at,
+            updated_at="",
+            status="completed",
+            accumulated_ms=3600000,
+        )
+
+    def test_archive_run_copies_state_and_events(self, tmp_loops_dir: Path) -> None:
+        """archive_run() copies state.json and events.jsonl to .history/."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+
+        persistence.save_state(self._make_state())
+        persistence.append_event({"event": "loop_start", "ts": "2024-01-15T10:30:00Z"})
+
+        archive_path = persistence.archive_run()
+
+        assert archive_path is not None
+        assert (archive_path / "state.json").exists()
+        assert (archive_path / "events.jsonl").exists()
+
+    def test_archive_run_directory_structure(self, tmp_loops_dir: Path) -> None:
+        """archive_run() creates .history/<loop_name>/<run_id>/ structure."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state("2024-01-15T10:30:00+00:00"))
+
+        archive_path = persistence.archive_run()
+
+        assert archive_path is not None
+        # Should be inside .history/test-loop/
+        assert archive_path.parent.name == "test-loop"
+        assert archive_path.parent.parent.name == ".history"
+
+    def test_archive_run_run_id_from_started_at(self, tmp_loops_dir: Path) -> None:
+        """archive_run() derives run_id from started_at timestamp."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state("2024-01-15T10:30:00+00:00"))
+
+        archive_path = persistence.archive_run()
+
+        assert archive_path is not None
+        # run_id is compact form of "2024-01-15T10:30:00+00:00"
+        # → strip :, ., + → "2024-01-15T103000000000"[:17] = "2024-01-15T103000"
+        assert archive_path.name == "2024-01-15T103000"
+
+    def test_archive_run_returns_none_for_fresh_run(self, tmp_loops_dir: Path) -> None:
+        """archive_run() returns None when there are no files to archive."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+
+        result = persistence.archive_run()
+
+        assert result is None
+
+    def test_archive_run_only_state_no_events(self, tmp_loops_dir: Path) -> None:
+        """archive_run() archives state.json even if events file doesn't exist."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state())
+
+        archive_path = persistence.archive_run()
+
+        assert archive_path is not None
+        assert (archive_path / "state.json").exists()
+        assert not (archive_path / "events.jsonl").exists()
+
+    def test_archive_run_only_events_no_state(self, tmp_loops_dir: Path) -> None:
+        """archive_run() archives events.jsonl even if state file doesn't exist."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.append_event({"event": "test"})
+
+        archive_path = persistence.archive_run()
+
+        assert archive_path is not None
+        assert not (archive_path / "state.json").exists()
+        assert (archive_path / "events.jsonl").exists()
+
+    def test_archive_run_does_not_delete_originals(self, tmp_loops_dir: Path) -> None:
+        """archive_run() copies files; running files still exist afterward."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state())
+        persistence.append_event({"event": "test"})
+
+        persistence.archive_run()
+
+        assert persistence.state_file.exists()
+        assert persistence.events_file.exists()
+
+    def test_clear_all_archives_before_clearing(self, tmp_loops_dir: Path) -> None:
+        """clear_all() archives existing files before deleting them."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state())
+        persistence.append_event({"event": "loop_start"})
+
+        persistence.clear_all()
+
+        # Running files are gone
+        assert not persistence.state_file.exists()
+        assert not persistence.events_file.exists()
+
+        # But history exists
+        history_base = tmp_loops_dir / ".history" / "test-loop"
+        assert history_base.exists()
+        run_dirs = list(history_base.iterdir())
+        assert len(run_dirs) == 1
+        assert (run_dirs[0] / "state.json").exists()
+        assert (run_dirs[0] / "events.jsonl").exists()
+
+    def test_clear_all_no_archive_for_fresh_run(self, tmp_loops_dir: Path) -> None:
+        """clear_all() does not create empty history dirs when no files exist."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+
+        persistence.clear_all()
+
+        history_base = tmp_loops_dir / ".history" / "test-loop"
+        assert not history_base.exists()
+
+    def test_multiple_archive_runs_coexist(self, tmp_loops_dir: Path) -> None:
+        """Multiple archived runs coexist under different run IDs."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+
+        # First run
+        persistence.save_state(self._make_state("2024-01-15T10:00:00+00:00"))
+        persistence.append_event({"event": "run1"})
+        persistence.clear_all()
+
+        # Second run
+        persistence.save_state(self._make_state("2024-01-15T11:00:00+00:00"))
+        persistence.append_event({"event": "run2"})
+        persistence.clear_all()
+
+        history_base = tmp_loops_dir / ".history" / "test-loop"
+        run_dirs = sorted(history_base.iterdir())
+        assert len(run_dirs) == 2
+
+    def test_list_run_history_returns_newest_first(self, tmp_loops_dir: Path) -> None:
+        """list_run_history() returns archived runs sorted newest first."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+
+        # Simulate two archived runs
+        persistence.save_state(self._make_state("2024-01-15T10:00:00+00:00"))
+        persistence.clear_all()
+
+        persistence.save_state(self._make_state("2024-01-15T11:00:00+00:00"))
+        persistence.clear_all()
+
+        runs = list_run_history("test-loop", tmp_loops_dir)
+
+        assert len(runs) == 2
+        assert runs[0].started_at == "2024-01-15T11:00:00+00:00"
+        assert runs[1].started_at == "2024-01-15T10:00:00+00:00"
+
+    def test_list_run_history_empty_when_no_history(self, tmp_loops_dir: Path) -> None:
+        """list_run_history() returns [] when no history exists."""
+        runs = list_run_history("nonexistent-loop", tmp_loops_dir)
+        assert runs == []
+
+    def test_get_archived_events_returns_events(self, tmp_loops_dir: Path) -> None:
+        """get_archived_events() returns events for a specific run."""
+        persistence = StatePersistence("test-loop", tmp_loops_dir)
+        persistence.initialize()
+        persistence.save_state(self._make_state("2024-01-15T10:30:00+00:00"))
+        persistence.append_event({"event": "loop_start", "ts": "t1"})
+        persistence.append_event({"event": "state_enter", "ts": "t2"})
+        archive_path = persistence.archive_run()
+        assert archive_path is not None
+
+        events = get_archived_events("test-loop", archive_path.name, tmp_loops_dir)
+
+        assert len(events) == 2
+        assert events[0]["event"] == "loop_start"
+        assert events[1]["event"] == "state_enter"
+
+    def test_get_archived_events_returns_empty_for_missing_run(
+        self, tmp_loops_dir: Path
+    ) -> None:
+        """get_archived_events() returns [] for a nonexistent run ID."""
+        events = get_archived_events("test-loop", "2024-01-15T103000", tmp_loops_dir)
+        assert events == []
 
 
 class MockActionRunner:
