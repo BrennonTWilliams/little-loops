@@ -12,6 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.42.0] - 2026-03-13
+
+### Added
+
+- **Parallel merge coordinator** — New merge coordinator for `ll-parallel` enabling concurrent issue processing with safe state transitions (76cb72d)
+
+### Fixed
+
+- **FSM layout: same-layer connectors occluding intermediate state boxes** — Prevented connectors on the same layer from drawing over intermediate state boxes (6057136)
+- **`IssueManager`: too-narrow except clause in `gather_all_issue_ids`** — Broadened except to catch `ImportError`, `OSError`, and all other exceptions to prevent `IssueManager` construction crashes (BUG-690, 548c386)
+- **FSM: SIGKILL'd prompt actions route to next state instead of shutdown** — Route prompt actions terminated by SIGKILL to the shutdown state (6c33e5f)
+- **Merge coordinator: unprotected `_current_issue_id` reads and writes** — Added locking around `_current_issue_id` access for thread safety (dc5470b)
+- **Orchestrator: unprotected concurrent state mutations** — Added `_state_lock` to protect concurrent state mutations in the orchestrator (76b0a52)
+- **WorkerPool: unprotected `_active_workers` reads and writes** — Added locking to `_active_workers` for thread-safe worker pool management (1bbdd99)
+- **Merge coordinator: `_current_issue_id` not cleared on error exit** — Wrapped `_process_merge` in outer try/finally to guarantee `_current_issue_id` is cleared (e1652dd)
+- **Subprocess: ambiguous returncode check** — Replaced `returncode or 0` with explicit `None` check to correctly handle zero exit codes (fc0b331)
+
 ## [1.41.0] - 2026-03-13
 
 ### Added
@@ -1190,6 +1207,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.42.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.41.0...v1.42.0
 [1.41.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.40.0...v1.41.0
 [1.40.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.39.0...v1.40.0
 [1.39.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.38.0...v1.39.0
