@@ -804,6 +804,32 @@ def analyze_workflows(
     if verbose:
         print(f"      → {len(workflows)} workflow(s) detected", file=sys.stderr)
 
+    # Cross-reference: link workflows to entity clusters and populate handoff_points
+    uuid_to_cluster: dict[str, str] = {}
+    for cluster in entity_clusters:
+        for msg in cluster.messages:
+            uuid = msg.get("uuid", "")
+            if uuid:
+                uuid_to_cluster[uuid] = cluster.cluster_id
+
+    uuid_to_content: dict[str, str] = {
+        m.get("uuid", ""): m.get("content", "") for m in messages if m.get("uuid", "")
+    }
+
+    for workflow in workflows:
+        cluster_votes: dict[str, int] = {}
+        for msg in workflow.messages:
+            cluster_id = uuid_to_cluster.get(msg.get("uuid", ""))
+            if cluster_id:
+                cluster_votes[cluster_id] = cluster_votes.get(cluster_id, 0) + 1
+        if cluster_votes:
+            workflow.entity_cluster = max(cluster_votes, key=cluster_votes.__getitem__)
+
+        for msg in workflow.messages:
+            uuid = msg.get("uuid", "")
+            if uuid and _detect_handoff(uuid_to_content.get(uuid, "")):
+                workflow.handoff_points.append({"uuid": uuid, "type": "explicit_handoff"})
+
     # Compute handoff analysis
     handoff_count = sum(
         1

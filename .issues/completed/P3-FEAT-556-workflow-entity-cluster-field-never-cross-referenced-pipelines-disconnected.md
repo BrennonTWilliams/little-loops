@@ -16,7 +16,7 @@ The `Workflow` dataclass has `entity_cluster` and `semantic_cluster` fields inte
 ## Location
 
 - **File**: `scripts/little_loops/workflow_sequence_analyzer.py`
-- **Line(s)**: 149–178 (`Workflow` dataclass), 621–700 (`_detect_workflows`), 770–772 (`analyze_workflows` pipeline calls) (at verification: 2026-03-05; scan commit: a574ea0)
+- **Line(s)**: 150–178 (`Workflow` dataclass), 630–745 (`_detect_workflows`), 793–803 (`analyze_workflows` pipeline calls) (at verification: 2026-03-14; scan commit: HEAD)
 - **Anchor**: `class Workflow`, `in function _detect_workflows`, `in function analyze_workflows`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/a574ea0ec555811db2490fece9aaf0819b3e3065/scripts/little_loops/workflow_sequence_analyzer.py#L158-L175)
 - **Code**:
@@ -53,11 +53,11 @@ A developer opens the analysis YAML to understand why two sessions were linked. 
 
 ## Acceptance Criteria
 
-- [ ] After analysis, each `Workflow` with message UUIDs overlapping an `EntityCluster` has `entity_cluster` set to that cluster's `cluster_id`
-- [ ] When multiple clusters overlap, the cluster with highest entity overlap wins
-- [ ] Workflows with no cluster overlap have `entity_cluster: null`
-- [ ] `handoff_points` is populated from `_detect_handoff` on workflow message content
-- [ ] Output YAML schema is backward compatible
+- [x] After analysis, each `Workflow` with message UUIDs overlapping an `EntityCluster` has `entity_cluster` set to that cluster's `cluster_id`
+- [x] When multiple clusters overlap, the cluster with highest entity overlap wins
+- [x] Workflows with no cluster overlap have `entity_cluster: null`
+- [x] `handoff_points` is populated from `_detect_handoff` on workflow message content
+- [x] Output YAML schema is backward compatible
 
 ## Proposed Solution
 
@@ -151,7 +151,7 @@ _(FEAT-558 removed from Blocks — completed)_
 
 ## Blocked By
 
-- ENH-553
+_(None — ENH-553 completed)_
 
 ## Labels
 
@@ -160,6 +160,7 @@ _(FEAT-558 removed from Blocks — completed)_
 ## Session Log
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: pipelines completely disconnected
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `entity_cluster` and `semantic_cluster` still always None in `analyze_workflows`; removed stale Blocks: FEAT-558 (completed)
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b42c11f4-0043-41b6-a29a-8101a412d7f5.jsonl` — CORRECTED: updated line numbers (line drift); cleared blocker ENH-553 (completed)
 
 - `/ll:scan-codebase` - 2026-03-04T02:11:48Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c5ddf56-1cf2-4ecc-a316-e01380324f20.jsonl`
 - `/ll:format-issue` - 2026-03-03 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c342da13-af7c-45e2-907d-7258a66682e8.jsonl`
@@ -170,6 +171,20 @@ _(FEAT-558 removed from Blocks — completed)_
 - `/ll:confidence-check` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/077cb097-03ba-4238-821d-bce751e9786d.jsonl`
 - `/ll:verify-issues` - 2026-03-05T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7e4136f8-62b5-4ca5-a35a-929d4c59fd71.jsonl`
 
+## Resolution
+
+Implemented cross-reference step in `analyze_workflows` (`workflow_sequence_analyzer.py:806–829`):
+- Builds a `uuid → cluster_id` index from all entity clusters
+- Builds a `uuid → content` index from raw messages for handoff detection
+- For each workflow, votes on clusters by UUID intersection and assigns the winner to `entity_cluster`
+- For each workflow, scans message content via `_detect_handoff` and appends `{"uuid": ..., "type": "explicit_handoff"}` entries to `handoff_points`
+
+Added two tests to `TestAnalyzeWorkflows` in `test_workflow_sequence_analyzer.py`:
+- `test_entity_cluster_cross_referenced_on_workflows` — asserts `workflow.entity_cluster` is set when messages share an entity with a cluster
+- `test_workflow_handoff_points_populated` — asserts `handoff_points` contains the UUID of a message with `/ll:handoff`
+
+All 107 tests pass.
+
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P3
+**Completed** | Created: 2026-03-04 | Completed: 2026-03-14 | Priority: P3

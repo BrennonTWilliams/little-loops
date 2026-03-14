@@ -893,6 +893,142 @@ class TestAnalyzeWorkflows:
             assert "analysis_metadata" in output_data
             assert "entity_clusters" in output_data
 
+    def test_entity_cluster_cross_referenced_on_workflows(self) -> None:
+        """Workflows whose messages overlap an entity cluster have entity_cluster set."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            # Three messages sharing "checkout.py" entity — form a cluster and a workflow
+            messages = [
+                {
+                    "content": "Debug the bug in checkout.py",
+                    "timestamp": "2026-01-15T10:00:00",
+                    "session_id": "s1",
+                    "uuid": "msg-001",
+                },
+                {
+                    "content": "Fix the null pointer in checkout.py",
+                    "timestamp": "2026-01-15T10:05:00",
+                    "session_id": "s1",
+                    "uuid": "msg-002",
+                },
+                {
+                    "content": "Run tests for checkout.py changes",
+                    "timestamp": "2026-01-15T10:10:00",
+                    "session_id": "s1",
+                    "uuid": "msg-003",
+                },
+            ]
+
+            patterns = {
+                "category_distribution": [
+                    {
+                        "category": "debugging",
+                        "count": 1,
+                        "example_messages": [{"uuid": "msg-001", "content": "Debug..."}],
+                    },
+                    {
+                        "category": "code_modification",
+                        "count": 1,
+                        "example_messages": [{"uuid": "msg-002", "content": "Fix..."}],
+                    },
+                    {
+                        "category": "testing",
+                        "count": 1,
+                        "example_messages": [{"uuid": "msg-003", "content": "Run..."}],
+                    },
+                ]
+            }
+
+            messages_file = tmpdir_path / "messages.jsonl"
+            with open(messages_file, "w") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+            patterns_file = tmpdir_path / "patterns.yaml"
+            with open(patterns_file, "w") as f:
+                yaml.dump(patterns, f)
+
+            result = analyze_workflows(messages_file=messages_file, patterns_file=patterns_file)
+
+            # Entity clusters should exist (all 3 messages share "checkout.py")
+            assert len(result.entity_clusters) >= 1, "Expected at least one entity cluster"
+
+            # Any detected workflows should be linked to the cluster
+            if result.workflows:
+                workflow = result.workflows[0]
+                assert workflow.entity_cluster is not None, (
+                    "workflow.entity_cluster should be set when messages overlap a cluster"
+                )
+                cluster_ids = {c.cluster_id for c in result.entity_clusters}
+                assert workflow.entity_cluster in cluster_ids
+
+    def test_workflow_handoff_points_populated(self) -> None:
+        """Workflow messages containing handoff markers populate handoff_points."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmpdir_path = Path(tmpdir)
+
+            messages = [
+                {
+                    "content": "Debug the issue in runner.py",
+                    "timestamp": "2026-01-15T10:00:00",
+                    "session_id": "s1",
+                    "uuid": "msg-001",
+                },
+                {
+                    "content": "/ll:handoff — fix applied, continuing next session",
+                    "timestamp": "2026-01-15T10:05:00",
+                    "session_id": "s1",
+                    "uuid": "msg-002",
+                },
+                {
+                    "content": "Run tests for runner.py",
+                    "timestamp": "2026-01-15T10:10:00",
+                    "session_id": "s1",
+                    "uuid": "msg-003",
+                },
+            ]
+
+            patterns = {
+                "category_distribution": [
+                    {
+                        "category": "debugging",
+                        "count": 1,
+                        "example_messages": [{"uuid": "msg-001", "content": "Debug..."}],
+                    },
+                    {
+                        "category": "code_modification",
+                        "count": 1,
+                        "example_messages": [{"uuid": "msg-002", "content": "/ll:handoff..."}],
+                    },
+                    {
+                        "category": "testing",
+                        "count": 1,
+                        "example_messages": [{"uuid": "msg-003", "content": "Run..."}],
+                    },
+                ]
+            }
+
+            messages_file = tmpdir_path / "messages.jsonl"
+            with open(messages_file, "w") as f:
+                for msg in messages:
+                    f.write(json.dumps(msg) + "\n")
+
+            patterns_file = tmpdir_path / "patterns.yaml"
+            with open(patterns_file, "w") as f:
+                yaml.dump(patterns, f)
+
+            result = analyze_workflows(messages_file=messages_file, patterns_file=patterns_file)
+
+            if result.workflows:
+                workflow = result.workflows[0]
+                handoff_uuids = [hp["uuid"] for hp in workflow.handoff_points]
+                assert "msg-002" in handoff_uuids, (
+                    "msg-002 contains /ll:handoff and should appear in handoff_points"
+                )
+                handoff_entry = next(hp for hp in workflow.handoff_points if hp["uuid"] == "msg-002")
+                assert handoff_entry["type"] == "explicit_handoff"
+
 
 class TestLinkSessions:
     """Tests for _link_sessions internal function."""
