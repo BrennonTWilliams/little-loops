@@ -12,6 +12,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.44.0] - 2026-03-14
+
+### Added
+
+- **`ll-issues append-log` subcommand** — New CLI subcommand for appending session log entries; five commands (`refine-issue`, `verify-issues`, `scan-codebase`, `tradeoff-review-issues`, `ready-issue`) now use the CLI instead of direct Bash calls (ENH-747)
+
+### Changed
+
+- **Sprint planner worktree safety** — Separated `overlaps_with()` and `contends_with()` in `FileHints`; `ll-parallel` now uses the more conservative `contends_with()` to prevent false positive file-overlap serialization (ENH-746)
+
 ## [1.43.0] - 2026-03-14
 
 ### Added
@@ -1237,6 +1247,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.44.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.43.0...v1.44.0
 [1.43.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.42.0...v1.43.0
 [1.42.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.41.0...v1.42.0
 [1.41.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.40.0...v1.41.0
