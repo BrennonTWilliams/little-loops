@@ -7,7 +7,7 @@ allowed-tools:
 # Create Loop
 
 Interactive command for creating new automation loop configurations. This command guides you through:
-1. Choosing a loop type (fix-until-clean, maintain constraints, drive a metric, or run a sequence)
+1. Choosing a loop type (fix-until-clean, maintain constraints, drive a metric, run a sequence, or harness a skill/prompt)
 2. Gathering type-specific parameters
 3. Naming the loop
 4. Generating and previewing FSM YAML
@@ -65,6 +65,8 @@ questions:
         description: "Measure a value and apply fixes until it reaches goal. Best for: reducing error counts, coverage"
       - label: "Run a sequence of steps"
         description: "Execute steps in order, repeat until condition met. Best for: multi-stage builds"
+      - label: "Harness a skill or prompt"
+        description: "Wrap a skill/prompt with plan-evaluate-iterate. Auto-generates evaluation from project context."
 ```
 
 **Type Mapping:**
@@ -72,6 +74,7 @@ questions:
 - "Maintain code quality continuously" -> `maintain-constraints` type (check/fix pairs + terminal)
 - "Drive a metric toward a target" -> `drive-metric` type (states: measure, apply, done)
 - "Run a sequence of steps" -> `run-sequence` type (step_0...step_N, check_done, done)
+- "Harness a skill or prompt" -> `harness` type (states: discover, execute, check_concrete, check_semantic, check_invariants, advance, done)
 
 ### Step 2: Type-Specific Questions
 
@@ -100,6 +103,7 @@ questions:
 - Maintain constraints: `<constraint-names>-guardian` (e.g., `tests-types-lint-guardian`)
 - Drive a metric: `reduce-<metric>` or `increase-<metric>` (e.g., `reduce-lint-errors`)
 - Run a sequence: `<step-summary>-loop` (e.g., `fix-test-check-loop`)
+- Harness a skill/prompt: `harness-<skill-name>` or `<skill-name>-loop` (e.g., `harness-refine-issue`)
 
 ### Step 4: Preview and Confirm
 
@@ -288,7 +292,7 @@ If confirmed:
 /ll:create-loop
 
 # The command will guide you through:
-# 1. Selecting a loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence)
+# 1. Selecting a loop type (fix-until-clean, maintain-constraints, drive-metric, run-sequence, harness)
 # 2. Configuring type-specific options
 # 3. Naming the loop
 # 4. Previewing and saving the FSM YAML

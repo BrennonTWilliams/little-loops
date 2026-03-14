@@ -86,6 +86,51 @@ Transitions:
   done: [terminal]
 ```
 
+### Harness (Multi-Item variant)
+```
+States: discover, execute, [check_concrete], [check_semantic], [check_invariants], advance, done
+Initial: discover
+
+Transitions:
+  discover:
+    - on_success -> execute
+    - on_failure -> done
+  execute:
+    - next -> check_concrete (or check_semantic / check_invariants / advance if earlier phases omitted)
+  check_concrete:          (present if tool-based gates enabled)
+    - on_success -> check_semantic (or check_invariants / advance / done)
+    - on_failure -> execute
+  check_semantic:          (present if LLM-as-judge enabled)
+    - on_success -> check_invariants (or advance / done)
+    - on_failure -> execute
+  check_invariants:        (present if diff invariants enabled)
+    - on_success -> advance
+    - on_failure -> execute
+  advance:
+    - next -> discover
+  done: [terminal]
+```
+
+### Harness (Single-Shot variant)
+```
+States: execute, [check_concrete], [check_semantic], [check_invariants], done
+Initial: execute
+
+Transitions:
+  execute:
+    - next -> check_concrete (or check_semantic / check_invariants / done)
+  check_concrete:          (present if tool-based gates enabled)
+    - on_success -> check_semantic (or check_invariants / done)
+    - on_failure -> execute
+  check_semantic:          (present if LLM-as-judge enabled)
+    - on_success -> check_invariants (or done)
+    - on_failure -> execute
+  check_invariants:        (present if diff invariants enabled)
+    - on_success -> done
+    - on_failure -> execute
+  done: [terminal]
+```
+
 ---
 
 ## FSM Summary Examples

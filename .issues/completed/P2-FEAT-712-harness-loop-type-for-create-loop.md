@@ -162,6 +162,7 @@ For skill targets, introspect `SKILL.md` for description and `allowed-tools` to 
 - `/ll:format-issue` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/611a4ae6-c639-4f26-8bd4-6c9cc190fff8.jsonl`
 - `/ll:verify-issues` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/611a4ae6-c639-4f26-8bd4-6c9cc190fff8.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/611a4ae6-c639-4f26-8bd4-6c9cc190fff8.jsonl`
+- `/ll:ready-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f6aca76b-7737-4c9f-83ff-9ef9a8fa2783.jsonl`
 
 ---
 
@@ -171,6 +172,23 @@ For skill targets, introspect `SKILL.md` for description and `allowed-tools` to 
 - **Verdict**: VALID
 - `skills/create-loop/SKILL.md` Step 1 lists only 4 loop types (`fix-until-clean`, `maintain-constraints`, `drive-metric`, `run-sequence`). No "Harness" option exists. `skills/create-loop/loop-types.md` contains no "Harness Questions" section. Feature not yet implemented.
 
+## Resolution
+
+- Added "Harness a skill or prompt" as the 5th loop type in `skills/create-loop/SKILL.md` Step 1
+- Added full "Harness Questions" section to `skills/create-loop/loop-types.md` with:
+  - Step H1: Skill discovery (scans `skills/*/SKILL.md`)
+  - Step H2: Work item discovery (single-shot, issues list, glob, manual)
+  - Step H3: Evaluation phase selection (tool-based gates, LLM-as-judge, diff invariants)
+  - Step H4: Iteration budget (per-item retries, max_iterations)
+  - FSM YAML templates for both single-shot and multi-item variants
+  - Project-aware tool-gate command priority from `ll-config.json`
+  - Full worked example (harness `refine-issue` over active issues)
+- Added harness state structures to `skills/create-loop/reference.md`
+- Validated generated YAML passes `ll-loop validate`
+
+## Session Log
+- `/ll:manage-issue` - 2026-03-13 - implement FEAT-712
+
 ## Status
 
-**Open** | Created: 2026-03-12 | Priority: P2
+**Completed** | Created: 2026-03-12 | Priority: P2

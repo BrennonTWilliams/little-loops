@@ -542,3 +542,302 @@ states:
   done:
     terminal: true
 ```
+
+---
+
+## Harness Questions
+
+If user selected "Harness a skill or prompt":
+
+### Step H1: Discover Available Skills
+
+Before asking questions, scan the skills directory:
+
+```bash
+ls skills/*/SKILL.md 2>/dev/null | sed 's|skills/||' | sed 's|/SKILL.md||'
+```
+
+For each skill found, read its `SKILL.md` to extract the first line of the `description:` frontmatter field.
+
+**Question H1** (single AskUserQuestion call):
+
+```yaml
+questions:
+  - question: "What do you want to harness?"
+    header: "Target"
+    multiSelect: false
+    options:
+      - label: "<skill-name>"
+        description: "<skill description from SKILL.md frontmatter>"
+      # ... one entry per discovered skill ...
+      - label: "Custom prompt"
+        description: "Enter a free-form natural language prompt to repeat"
+```
+
+**If "Custom prompt"**: Ask via Other input for the prompt text. Also ask: "What does 'done' look like?" (free text via Other) to derive the LLM-as-judge evaluation prompt.
+
+---
+
+### Step H2: Work Item Discovery
+
+```yaml
+questions:
+  - question: "How are work items discovered?"
+    header: "Work items"
+    multiSelect: false
+    options:
+      - label: "Single-shot (no item iteration)"
+        description: "Run the skill/prompt once; no discover state needed"
+      - label: "Active issues list (Recommended for issue skills)"
+        description: "Discover via: ll-issues list --json"
+      - label: "File glob pattern"
+        description: "Find files matching a pattern (e.g. .issues/**/*.md)"
+      - label: "Manual list"
+        description: "Hard-code a list of items in the loop"
+```
+
+**If "File glob pattern"**: Ask for the pattern via Other.
+
+**If "Manual list"**: Ask for comma-separated items via Other.
+
+---
+
+### Step H3: Evaluation Phases
+
+Read `.claude/ll-config.json` to detect configured tool commands (`test_cmd`, `lint_cmd`, `type_cmd`). Present only phases that are relevant:
+
+```yaml
+questions:
+  - question: "Which evaluation phases should be included?"
+    header: "Evaluation phases"
+    multiSelect: true
+    options:
+      - label: "Tool-based gates (Recommended)"
+        description: "Shell checks using configured test/lint/type commands"
+        # Show only if at least one of test_cmd, lint_cmd, type_cmd is configured
+      - label: "LLM-as-judge"
+        description: "Claude assesses output quality against skill description"
+      - label: "Diff invariants"
+        description: "Check git diff --stat to catch runaway or off-scope changes"
+```
+
+**Default selection**: All available phases are pre-selected (Recommended).
+
+---
+
+### Step H4: Iteration Budget
+
+```yaml
+questions:
+  - question: "How many retries per item before giving up?"
+    header: "Per-item retries"
+    multiSelect: false
+    options:
+      - label: "3 retries (Recommended)"
+        description: "Good balance for most skills"
+      - label: "5 retries"
+        description: "For complex or slow-converging skills"
+      - label: "1 retry (strict)"
+        description: "Fail fast; skip items that don't resolve immediately"
+
+  - question: "What is the total iteration budget?"
+    header: "Max iterations"
+    multiSelect: false
+    options:
+      - label: "50 (Recommended)"
+        description: "For up to ~15 items with 3 retries each"
+      - label: "100"
+        description: "For larger item sets"
+      - label: "200"
+        description: "For long-running batch operations"
+```
+
+**Auto-calculate total if omitted**: `max_iterations = estimated_items * per_item_retries * evaluation_states + buffer`
+
+---
+
+### Generate Harness FSM YAML
+
+Use the answers from Steps H1–H4 to generate the YAML. Two structural variants:
+
+#### Variant A: Single-Shot (no item discovery)
+
+For "Single-shot" work item mode:
+
+```yaml
+name: "<loop-name>"
+initial: execute
+max_iterations: <per-item-retries>
+states:
+  execute:
+    action: "<skill-or-prompt>"
+    action_type: prompt
+    next: check_concrete         # omit if no tool gates selected
+  check_concrete:                # include if tool-based gates selected
+    action: "<highest-priority configured cmd: test_cmd > lint_cmd > type_cmd>"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_success: check_semantic   # or check_invariants or done if later phases omitted
+    on_failure: execute
+  check_semantic:                # include if LLM-as-judge selected
+    action: "echo 'Evaluating output quality'"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      prompt: "<auto-derived: 'Did the previous action successfully complete: <skill-description>? Answer YES or NO with brief rationale.'>"
+    on_success: check_invariants # or done if diff invariants omitted
+    on_failure: execute
+  check_invariants:              # include if diff invariants selected
+    action: "git diff --stat HEAD | wc -l | tr -d ' '"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 50
+    on_success: done
+    on_failure: execute
+  done:
+    terminal: true
+```
+
+#### Variant B: Multi-Item (discover → iterate)
+
+For "Active issues list", "File glob pattern", or "Manual list" work item modes:
+
+```yaml
+name: "<loop-name>"
+initial: discover
+max_iterations: <max-iterations>
+states:
+  discover:
+    action: "<discovery-command>"   # see Discovery Commands table below
+    action_type: shell
+    capture: "current_item"
+    evaluate:
+      type: exit_code
+    on_success: execute
+    on_failure: done
+  execute:
+    action: "<skill-or-prompt> ${captured.current_item.output}"
+    action_type: prompt
+    next: check_concrete         # or check_semantic / check_invariants / advance
+  check_concrete:                # include if tool-based gates selected
+    action: "<highest-priority configured cmd>"
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_success: check_semantic   # or check_invariants or advance
+    on_failure: execute
+  check_semantic:                # include if LLM-as-judge selected
+    action: "echo 'Evaluating output quality'"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      prompt: "<auto-derived: 'Did the previous action successfully complete: <skill-description>? Answer YES or NO with brief rationale.'>"
+    on_success: check_invariants # or advance
+    on_failure: execute
+  check_invariants:              # include if diff invariants selected
+    action: "git diff --stat HEAD | wc -l | tr -d ' '"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 50
+    on_success: advance
+    on_failure: execute
+  advance:
+    action: "echo 'Item complete'"
+    action_type: shell
+    next: discover
+  done:
+    terminal: true
+```
+
+**Discovery Commands by work item mode:**
+
+| Mode | Discovery Command |
+|------|------------------|
+| Active issues list | `ll-issues list --json \| python3 -c "import json,sys; issues=[i for i in json.load(sys.stdin) if i.get('status')=='open']; print(issues[0]['id']) if issues else sys.exit(1)"` |
+| File glob pattern | `find . -name '<pattern>' -not -path './.git/*' \| sort \| head -1` |
+| Manual list | `python3 -c "items='<item1>,<item2>,...'.split(','); [open('/tmp/harness-items.txt','w').write('\n'.join(items))]; print(items[0])"` (first-run seeding) |
+
+**Tool-gate command priority** (use highest-priority configured command):
+1. `test_cmd` (most comprehensive)
+2. `lint_cmd` (fast feedback)
+3. `type_cmd` (type safety)
+4. If none configured: omit `check_concrete` state entirely
+
+**Convergence defaults by action type:**
+
+| Skill category | Suggested max_iterations | Per-item retries |
+|----------------|--------------------------|------------------|
+| Issue refinement/analysis | 200 | 3 |
+| Code quality / fix | 50 | 5 |
+| Documentation | 100 | 3 |
+| Custom prompt | 50 | 3 |
+
+---
+
+**Example: Harness `refine-issue` over all active issues**
+
+```yaml
+name: "harness-refine-issue"
+initial: discover
+max_iterations: 200
+timeout: 14400
+states:
+  discover:
+    action: |
+      ll-issues list --json | python3 -c "
+      import json, sys
+      issues = json.load(sys.stdin)
+      open_issues = [i for i in issues if i.get('status') == 'open']
+      if not open_issues:
+          sys.exit(1)
+      print(open_issues[0]['id'])
+      "
+    action_type: shell
+    capture: "current_item"
+    evaluate:
+      type: exit_code
+    on_success: execute
+    on_failure: done
+  execute:
+    action: /ll:refine-issue ${captured.current_item.output} --auto
+    action_type: prompt
+    next: check_concrete
+  check_concrete:
+    action: python -m pytest scripts/tests/ -q --tb=no
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_success: check_semantic
+    on_failure: execute
+  check_semantic:
+    action: echo 'Evaluating refinement quality'
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      prompt: >
+        Did the previous /ll:refine-issue action successfully refine the issue?
+        Check that: the issue file was updated with new content, confidence scores
+        were added or improved, and no errors occurred. Answer YES or NO.
+    on_success: check_invariants
+    on_failure: execute
+  check_invariants:
+    action: "git diff --stat HEAD | wc -l | tr -d ' '"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: lt
+      target: 50
+    on_success: advance
+    on_failure: execute
+  advance:
+    action: echo 'Issue refined'
+    action_type: shell
+    next: discover
+  done:
+    terminal: true
+```
