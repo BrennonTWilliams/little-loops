@@ -324,6 +324,7 @@ Analyze user message history to suggest FSM loop configurations automatically.
 
 **Arguments:**
 - `file` (optional): Path to ll-messages JSONL file (runs extraction if omitted)
+- `--from-commands` (optional flag): Analyze the command/skill catalog instead of message history — works on fresh installations with no session history
 
 **Features:**
 - Detects repeated tool sequences (check-fix cycles, multi-constraint patterns)
@@ -338,9 +339,12 @@ Analyze user message history to suggest FSM loop configurations automatically.
 
 # Analyze specific JSONL file
 /ll:loop-suggester messages.jsonl
+
+# Suggest loops from available commands/skills catalog (no history required)
+/ll:loop-suggester --from-commands
 ```
 
-**Trigger keywords:** "suggest loops", "loop from history", "automate workflow"
+**Trigger keywords:** "suggest loops", "loop from history", "automate workflow", "suggest loops from commands", "loop from catalog"
 
 ### `/ll:review-loop`
 Review an existing FSM loop configuration for quality, correctness, consistency, and potential improvements. Analyzes all states and transitions, reports findings by severity (Error/Warning/Suggestion), proposes concrete fixes with before/after diffs, and applies approved changes.

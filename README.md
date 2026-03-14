@@ -157,7 +157,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `/ll:create-loop` | Interactive FSM loop creation |
 | `/ll:review-loop` | Review and improve existing FSM loop configurations |
 | `/ll:analyze-loop` | Analyze loop execution history for actionable issues |
-| `/ll:loop-suggester [file]` | Suggest FSM loops from message history |
+| `/ll:loop-suggester [file|--from-commands]` | Suggest FSM loops from message history or command catalog |
 | `/ll:workflow-automation-proposer` | Synthesize workflow patterns into automation proposals |
 
 ### Meta-Analysis
@@ -276,7 +276,8 @@ ll-loop stop <loop-name>         # Stop a running loop
 ll-loop status <loop-name>       # Show loop status
 ll-loop resume <loop-name>       # Resume an interrupted loop
 ll-loop validate <loop-name>     # Validate loop definition
-ll-loop history <loop-name>      # Show loop execution history
+ll-loop history <loop-name>      # Show loop execution history (lists archived runs)
+ll-loop history <loop-name> <run_id>  # Inspect a specific archived run
 ll-loop test <loop-name>         # Run a single test iteration
 ll-loop simulate <loop-name>     # Trace execution interactively
 ll-loop install <loop-name>      # Copy built-in loop to .loops/

@@ -156,8 +156,21 @@ ll-loop install <name>       # Copies to .loops/ for editing
 
 | Loop | Description |
 |------|-------------|
-| `fix-quality-and-tests` | Sequential quality gate: fix lint, format, and types before running tests; loops back after test fixes to catch regressions |
-| `issue-refinement` | Progressively refine all active issues through format, verify, and confidence scoring |
+| `backlog-flow-optimizer` | Iteratively diagnose the primary throughput bottleneck in the issue backlog |
+| `dead-code-cleanup` | Find dead code, remove high-confidence items, and verify tests pass |
+| `docs-sync` | Verify documentation matches the codebase and check for broken links |
+| `fix-quality-and-tests` | Sequential quality gate: lint + format + types must be clean before tests run |
+| `issue-discovery-triage` | Automated issue discovery and triage cycle |
+| `issue-refinement` | Progressively refine all active issues through format → score → refine pipeline |
+| `issue-size-split` | Review issues for sizing and split oversized ones |
+| `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
+| `plugin-health-check` | Audit plugin configuration and check command and skill definitions |
+| `pr-review-cycle` | Full pre-PR pipeline: quality checks, test run, PR description generation |
+| `priority-rebalance` | Review P0-P5 priority distribution across active issues |
+| `readme-freshness` | Compare README and CLAUDE.md against actual project state |
+| `secret-scan` | Scan for accidentally committed secrets and API keys |
+| `sprint-build-and-validate` | Create a sprint from the backlog and validate all included issues |
+| `worktree-health` | Continuous monitoring of orphaned worktrees and stale branches |
 
 ## Beyond the Basics
 
@@ -174,6 +187,7 @@ Evaluators interpret action output and produce a **verdict** string used for rou
 | `output_json` | `success` / `failure` / `error` | — | Extract a JSON path value and compare |
 | `output_contains` | `success` / `failure` | — | Regex or substring match on stdout |
 | `convergence` | `target` / `progress` / `stall` | metric-tracking states | Track a metric toward a goal value |
+| `diff_stall` | `stall` / `progress` | — | Detect when consecutive iterations produce no git diff changes |
 | `llm_structured` | `success` / `failure` / `blocked` / `partial` | slash commands | Natural-language judgment via LLM |
 
 Override the default by adding an `evaluate:` block to a state:
@@ -277,8 +291,16 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 | `ll-loop status <name>` | Show current state and iteration count |
 | `ll-loop stop <name>` | Stop a running loop |
 | `ll-loop resume <name>` | Resume an interrupted loop from saved state |
-| `ll-loop history <name>` | Show execution history (`-n` for last N events) |
+| `ll-loop history <name>` | Show history; pass `run_id` to view a specific archived run |
 | `ll-loop install <name>` | Copy a built-in loop to `.loops/` for customization |
+
+### History Flags
+
+| Flag | Effect |
+|------|--------|
+| `--verbose` / `-v` | Show action output preview and LLM call details (model, latency, prompt, response) |
+| `--full` | Show untruncated prompts and output (implies --verbose) |
+| `--json` | Output events as JSON array |
 
 ### Run Flags
 
@@ -381,6 +403,7 @@ Each `check-*` state uses `evaluate: type: exit_code` to route on the skill's ex
 - **Use `backoff:`** to add delay between iterations — useful for rate-limited APIs or CI systems.
 - **State is persisted to disk** after every transition. If a loop is interrupted, `ll-loop resume` picks up where it left off.
 - **Convergence loops** use `direction:` to control whether the metric should go down (`minimize`, default) or up (`maximize`).
+- **Loop run state and event logs are automatically archived** to `.loops/.history/<loop-name>/<timestamp>/` when a new run starts. Use `ll-loop history <name>` without a `run_id` to list archived runs, or `ll-loop history <name> <run_id>` to inspect a specific one.
 
 ## Troubleshooting
 

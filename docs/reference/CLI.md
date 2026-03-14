@@ -273,8 +273,11 @@ Show execution history for a loop.
 
 | Flag | Short | Description |
 |------|-------|-------------|
+| `run_id` | | (Optional positional) Archived run ID to inspect; omit to list archived runs or show live state |
 | `--tail` | `-n` | Last N events to show (default: 50) |
-| `--verbose` | `-v` | Show action output lines and full prompts |
+| `--verbose` | `-v` | Show action output preview and LLM call details (model, latency, prompt, response) |
+| `--full` | | Show untruncated prompts and output (implies `--verbose`) |
+| `--json` | | Output events as JSON array |
 
 #### `ll-loop test <loop>` / `ll-loop t <loop>`
 
@@ -313,6 +316,10 @@ ll-loop stop fix-types                # Stop a running loop
 ll-loop resume fix-types              # Resume interrupted loop
 ll-loop history fix-types             # Show execution history
 ll-loop history fix-types --tail 20   # Last 20 events
+ll-loop history fix-types --verbose   # Include LLM call details
+ll-loop history fix-types --full      # Untruncated output
+ll-loop history fix-types --json      # JSON output
+ll-loop history fix-types <run_id>    # Inspect a specific archived run
 ll-loop install fix-types             # Install built-in loop
 ll-loop show fix-types                # Show loop details
 ```
