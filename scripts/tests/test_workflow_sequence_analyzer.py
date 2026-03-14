@@ -19,9 +19,13 @@ from little_loops.workflow_sequence_analyzer import (
     WorkflowBoundary,
     _cluster_by_entities,
     _compute_boundaries,
+    _detect_handoff,
     _detect_workflows,
+    _get_message_category,
+    _group_by_session,
     _link_sessions,
     _load_messages,
+    _load_patterns,
     analyze_workflows,
     calculate_boundary_weight,
     entity_overlap,
@@ -1536,3 +1540,122 @@ class TestLoadMessages:
             f.write("\n\n\n")
             path = Path(f.name)
         assert _load_messages(path) == []
+
+
+class TestDetectHandoff:
+    """Tests for _detect_handoff function."""
+
+    def test_handoff_marker_detected(self) -> None:
+        """Returns True when content contains a known handoff marker."""
+        assert _detect_handoff("/ll:handoff — wrapping up this session") is True
+
+    def test_no_marker_returns_false(self) -> None:
+        """Returns False when content has no handoff markers."""
+        assert _detect_handoff("Fix the bug in checkout.py") is False
+
+    def test_marker_mid_sentence(self) -> None:
+        """Returns True when marker appears mid-sentence."""
+        assert _detect_handoff("Please continuation of the work above") is True
+
+    def test_case_insensitive(self) -> None:
+        """Marker matching is case-insensitive."""
+        assert _detect_handoff("RESUMING FROM last session") is True
+
+    def test_empty_string(self) -> None:
+        """Returns False for empty content."""
+        assert _detect_handoff("") is False
+
+
+class TestGroupBySession:
+    """Tests for _group_by_session function."""
+
+    def test_groups_by_session_id(self) -> None:
+        """Groups messages under their session_id key."""
+        messages = [
+            {"session_id": "abc", "content": "hello"},
+            {"session_id": "abc", "content": "world"},
+            {"session_id": "xyz", "content": "other"},
+        ]
+        result = _group_by_session(messages)
+        assert set(result.keys()) == {"abc", "xyz"}
+        assert len(result["abc"]) == 2
+        assert len(result["xyz"]) == 1
+
+    def test_missing_session_id_defaults_to_unknown(self) -> None:
+        """Message without session_id is grouped under 'unknown'."""
+        messages = [{"content": "no session"}]
+        result = _group_by_session(messages)
+        assert "unknown" in result
+        assert result["unknown"][0]["content"] == "no session"
+
+    def test_empty_messages(self) -> None:
+        """Returns empty dict for empty input."""
+        assert _group_by_session([]) == {}
+
+
+class TestLoadPatterns:
+    """Tests for _load_patterns function."""
+
+    def test_loads_valid_yaml(self) -> None:
+        """Returns parsed dict from a valid YAML file."""
+        data = {"category_distribution": [{"category": "fix", "count": 3}]}
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            yaml.dump(data, f)
+            path = Path(f.name)
+        result = _load_patterns(path)
+        assert result == data
+
+    def test_empty_file_returns_empty_dict(self) -> None:
+        """Returns empty dict when YAML file is empty (yaml.safe_load returns None)."""
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as f:
+            f.write("")
+            path = Path(f.name)
+        assert _load_patterns(path) == {}
+
+    def test_missing_file_raises(self) -> None:
+        """Raises FileNotFoundError when file does not exist."""
+        with pytest.raises(FileNotFoundError):
+            _load_patterns(Path("/nonexistent/path/patterns.yaml"))
+
+
+class TestGetMessageCategory:
+    """Tests for _get_message_category function."""
+
+    def _patterns(self) -> dict:
+        return {
+            "category_distribution": [
+                {
+                    "category": "fix",
+                    "example_messages": [{"uuid": "msg-1", "content": "Fix bug"}],
+                },
+                {
+                    "category": "review",
+                    "example_messages": [{"uuid": "msg-2", "content": "Review PR"}],
+                },
+            ]
+        }
+
+    def test_finds_category_by_uuid(self) -> None:
+        """Returns category string when uuid is found in example_messages."""
+        assert _get_message_category("msg-1", self._patterns()) == "fix"
+        assert _get_message_category("msg-2", self._patterns()) == "review"
+
+    def test_returns_none_for_unknown_uuid(self) -> None:
+        """Returns None when uuid does not match any example message."""
+        assert _get_message_category("msg-99", self._patterns()) is None
+
+    def test_returns_none_when_category_not_str(self) -> None:
+        """Returns None when category field is not a string (isinstance guard)."""
+        patterns: dict = {
+            "category_distribution": [
+                {
+                    "category": 42,
+                    "example_messages": [{"uuid": "msg-x"}],
+                }
+            ]
+        }
+        assert _get_message_category("msg-x", patterns) is None
+
+    def test_empty_patterns(self) -> None:
+        """Returns None when patterns dict is empty."""
+        assert _get_message_category("msg-1", {}) is None
