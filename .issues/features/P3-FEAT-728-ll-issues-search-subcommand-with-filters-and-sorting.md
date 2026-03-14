@@ -3,6 +3,8 @@ discovered_commit: 1cc2673
 discovered_branch: main
 discovered_date: 2026-03-13T21:11:34Z
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # FEAT-728: Add `ll-issues search` subcommand with filters and sorting
@@ -152,3 +154,4 @@ Output:
 - `/ll:capture-issue` - 2026-03-13T21:11:34Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3b3d882-e2fb-41a6-9b04-cfc872701991.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de0aec6f-4d8a-4d72-9519-a12883d491ba.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de0aec6f-4d8a-4d72-9519-a12883d491ba.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`

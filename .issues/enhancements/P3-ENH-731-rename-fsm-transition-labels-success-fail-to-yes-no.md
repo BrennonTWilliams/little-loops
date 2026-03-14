@@ -132,13 +132,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Persistence backwards compat**: Stored `.loops/.running/<name>.events.jsonl` and `.state.json` files written by prior runs will contain old `"success"`/`"failure"` verdict strings. This is cosmetically inconsistent but **not functionally broken** — `LoopState.from_dict` only round-trips `last_result` for display; on resume the executor re-enters at `current_state` and re-runs the action (stored verdict is not fed back into routing). No migration of existing history files is needed.
 - **Additional missing test files**: `scripts/tests/test_fsm_persistence.py` (StateConfig fixture construction), `scripts/tests/test_ll_loop_errors.py` (inline YAML and StateConfig usage), and `scripts/tests/conftest.py` (shared YAML fixtures at lines 244, 262) were not listed in the Integration Map but require updates.
 - **Additional missing skills/commands files**: `skills/analyze-loop/SKILL.md:234` (references `on_failure` in signal type descriptions), `skills/workflow-automation-proposer/SKILL.md:145–155` (example YAML snippets), and `commands/loop-suggester.md:128–226` (example YAML output templates) all need updating and were not in the Integration Map.
+- **`evaluate_diff_stall` in evaluators.py not listed**: `evaluate_diff_stall()` at lines 439, 448, 453, 461 returns `"success"`/`"failure"` verdict strings and was **not included** in Implementation Step 4's line list. Must be updated alongside the other evaluator functions.
+- **JSON Schema is editor-only, not runtime-enforced**: `fsm-loop-schema.json`'s `additionalProperties: false` on `stateConfig` (line 126) would reject `on_yes`/`on_no` in IDE validators, but the Python runtime never invokes the JSON Schema — `StateConfig.from_dict()` uses plain `data.get()` calls. Unknown state-level keys are silently ignored at runtime. This means the **backwards compat shim is purely a Python `from_dict` concern** (`on_yes=data.get("on_yes") or data.get("on_success")`), and the JSON Schema just needs both old and new keys listed during any migration period.
+- **`test_loop_suggester.py` and `test_cli.py:1784,1797` not listed**: Both files reference `on_success`/`on_failure` as `StateConfig` kwargs or inline YAML strings and will need updating along with the other test files.
+- **`.claude/loop-suggestions/suggestions-2026-02-02.yaml:70`**: A generated loop suggestion file contains `on_success:` key. This is a user-generated artifact (not a built-in), so it's likely out of scope for this rename, but worth noting as a real-world example of user-authored content that would be affected by any hard removal of `on_success`/`on_failure`.
 
 ## Implementation Steps
 
 1. **Audit scope** — run `grep -rn "on_success\|on_failure\|\"success\"\|\"failure\"" scripts/little_loops/fsm/ scripts/little_loops/cli/loop/ loops/ skills/ docs/` to confirm all touch points
 2. **Update FSM schema** (`schema.py:195–196, 217–220, 254–255, 273–276`) — rename fields to `on_yes`/`on_no`; in `from_dict` add backwards-compat: `on_yes=data.get("on_yes") or data.get("on_success")` (and same for `on_no`/`on_failure`)
 3. **Update JSON Schema** (`fsm-loop-schema.json:~87–93`) — rename `on_success`/`on_failure` properties to `on_yes`/`on_no`
-4. **Update evaluators** (`evaluators.py:54, 92, 94, 144, 211, 258, 260, 302, 304`) — change all `"success"`/`"failure"` verdict returns to `"yes"`/`"no"`; update `DEFAULT_LLM_SCHEMA` enum from `["success", "failure", "blocked", "partial"]` to `["yes", "no", "blocked", "partial"]`
+4. **Update evaluators** (`evaluators.py:54, 92, 94, 144, 211, 258, 260, 302, 304, 439, 448, 453, 461`) — change all `"success"`/`"failure"` verdict returns to `"yes"`/`"no"` (includes `evaluate_diff_stall` at lines 439, 448, 453, 461); update `DEFAULT_LLM_SCHEMA` enum from `["success", "failure", "blocked", "partial"]` to `["yes", "no", "blocked", "partial"]`
 5. **Update executor** (`executor.py:535, 722, 724`) — change default verdict `"success"` → `"yes"`; change `verdict == "success"` → `"yes"` and `verdict == "failure"` → `"no"` in `_route`
 6. **Update validation** (`validation.py:178–182, 189`) — update `has_shorthand` field checks and warning message string
 7. **Update CLI rendering** (all in `cli/loop/`):
@@ -150,7 +154,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 9. **Migrate test fixtures** (`scripts/tests/fixtures/fsm/valid-loop.yaml`, `loop-with-unreachable-state.yaml`)
 10. **Update skills and commands** (`create-loop/reference.md`, `create-loop/templates.md`, `create-loop/loop-types.md`, `review-loop/SKILL.md`, `review-loop/reference.md`, `skills/analyze-loop/SKILL.md:234`, `skills/workflow-automation-proposer/SKILL.md:145–155`, `commands/loop-suggester.md:128–226`)
 11. **Update docs** (`docs/generalized-fsm-loop.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/reference/API.md`, `docs/development/TESTING.md`)
-12. **Update all tests** — `test_fsm_schema.py`, `test_fsm_evaluators.py`, `test_fsm_executor.py`, and all `test_ll_loop_*.py` files
+12. **Update all tests** — `test_fsm_schema.py`, `test_fsm_evaluators.py`, `test_fsm_executor.py`, all `test_ll_loop_*.py` files, `test_loop_suggester.py`, and `test_cli.py:1784,1797`
 13. **Verify** — run `python -m pytest scripts/tests/ -v` and `ll-loop run loops/fix-quality-and-tests.yaml --dry-run`
 
 ## Impact
@@ -201,6 +205,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
 - `/ll:refine-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad3c78eb-1f87-4a98-8d6f-f869076e256b.jsonl`
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad3c78eb-1f87-4a98-8d6f-f869076e256b.jsonl`
+- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 
 ---
 
