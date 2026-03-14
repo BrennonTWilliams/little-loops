@@ -75,6 +75,7 @@ VALID_OPERATORS = {"eq", "ne", "lt", "le", "gt", "ge"}
 KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
     {
         "name",
+        "description",
         "initial",
         "states",
         "context",

@@ -370,6 +370,7 @@ class FSMLoop:
     name: str
     initial: str
     states: dict[str, StateConfig]
+    description: str | None = None
     context: dict[str, Any] = field(default_factory=dict)
     scope: list[str] = field(default_factory=list)
     max_iterations: int = 50
@@ -387,6 +388,8 @@ class FSMLoop:
             "states": {name: state.to_dict() for name, state in self.states.items()},
         }
 
+        if self.description is not None:
+            result["description"] = self.description
         if self.context:
             result["context"] = self.context
         if self.scope:
@@ -424,6 +427,7 @@ class FSMLoop:
             name=data["name"],
             initial=data["initial"],
             states=states,
+            description=data.get("description"),
             context=data.get("context", {}),
             scope=data.get("scope", []),
             max_iterations=data.get("max_iterations", 50),
