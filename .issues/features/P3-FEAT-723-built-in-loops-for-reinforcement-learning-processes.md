@@ -30,9 +30,33 @@ Loops run iteratively until a convergence condition or max-iterations is reached
 
 Reinforcement learning workflows are inherently iterative and well-suited to FSM modeling. Adding RL-native loop types would make little-loops useful for ML experimentation and prompt optimization — high-value use cases that align with the tool's automation philosophy.
 
+## Use Case
+
+**Who**: ML researcher or automation engineer using little-loops for iterative experimentation
+
+**Context**: They want to run a reinforcement learning-style cycle (e.g., prompt optimization, bandit experiment, or policy iteration) without manually writing FSM YAML from scratch.
+
+**Goal**: Select a built-in RL loop template from `/ll:create-loop`, configure parameters (max iterations, convergence threshold), and launch the loop autonomously.
+
+**Outcome**: The RL-style loop runs iteratively, tracking reward/score across episodes, and terminates when a convergence condition or `max_iterations` limit is reached.
+
+## Acceptance Criteria
+
+- [ ] `/ll:create-loop` wizard lists at least 3 RL loop types: `rl-bandit`, `rl-rlhf`, `rl-policy`
+- [ ] Each RL loop type produces a valid, runnable FSM YAML configuration
+- [ ] RL loops support a configurable `max_iterations` parameter to bound execution
+- [ ] RL loops support a convergence condition (e.g., `min_improvement_threshold`) that terminates early when met
+- [ ] RL loop YAML templates pass existing FSM schema validation
+- [ ] Existing non-RL loop types are unaffected (no regression)
+
 ## Proposed Solution
 
-TBD - requires investigation
+Extend `ll-loop` and `/ll:create-loop` with built-in RL loop templates by introducing new loop type definitions following the pattern established in `P2-FEAT-712-harness-loop-type-for-create-loop.md`:
+
+1. Audit the loop type registry in `scripts/little_loops/loop/` to understand the extension point
+2. Define 3 RL YAML templates with pre-configured states (reward, convergence, iteration counter)
+3. Register them in the `create-loop` wizard under a new "RL Loops" category
+4. Add RL-specific field validation (`max_iterations`, `convergence_threshold`, `reward`)
 
 ## Integration Map
 
@@ -97,3 +121,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75ab9873-e77b-46a5-b50b-85782d3bc37c.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09173b5b-d72c-42cc-87ef-609e8e998bce.jsonl`
