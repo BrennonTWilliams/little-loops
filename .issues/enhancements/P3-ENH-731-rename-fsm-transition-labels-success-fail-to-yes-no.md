@@ -101,8 +101,8 @@ The `on_success`/`on_failure` property names (and internal `"success"`/`"failure
 - `scripts/tests/fixtures/fsm/valid-loop.yaml` — uses `on_success: done`, `on_failure: done` at lines 6–7
 - `scripts/tests/fixtures/fsm/loop-with-unreachable-state.yaml` — uses `on_success`/`on_failure` at lines 6–7
 
-### Potential Additional Scope
-- `scripts/little_loops/parallel/tasks/*.yaml` (4 files: `health-check.yaml`, `build-assets.yaml`, `test-suite.yaml`, `lint-all.yaml`) — may also use `on_success`/`on_failure`; confirm whether parallel task YAMLs share the FSM schema or are a separate format
+### Parallel Task YAMLs (Confirmed Out of Scope)
+- `scripts/little_loops/parallel/tasks/*.yaml` (4 files) use `on_failure: continue` as a **subtask error directive** (continue vs stop behavior), not an FSM state routing property. These are a completely separate schema and do **not** need to be updated as part of this rename.
 
 ### Tests
 - All `test_fsm_*.py` files assert on verdict string values and routing property names — all will need updates
@@ -178,6 +178,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d6421f7c-9303-4c44-9f2e-e1b31accf453.jsonl`
 - `/ll:refine-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c48b158-3a38-42ea-9974-fb89dfaa60bc.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c48b158-3a38-42ea-9974-fb89dfaa60bc.jsonl`
+- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 

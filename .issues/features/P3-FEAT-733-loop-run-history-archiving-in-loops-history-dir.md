@@ -4,6 +4,8 @@ type: FEAT
 priority: P3
 discovered_date: 2026-03-13
 discovered_by: capture-issue
+confidence_score: 98
+outcome_confidence: 83
 ---
 
 # FEAT-733: Loop Run History Archiving in `.loops/.history/`
@@ -59,7 +61,7 @@ def archive_run(self) -> Path | None:
 
 `clear_all()` should call `archive_run()` first (or `PersistentExecutor.run` should call it before `clear_all`).
 
-Also add a `ll-loop history` subcommand to list/inspect archived runs (see FEAT-543).
+Also extend the existing `ll-loop history` subcommand (currently reads `.running/` events for the active run) to list/inspect archived runs from `.loops/.history/` (see FEAT-543).
 
 ## Use Case
 
@@ -99,7 +101,7 @@ ll-loop history <loop-name> <run-id> # show events for a specific run
 - `scripts/little_loops/cli/loop/run.py` — no change if archiving is in persistence layer
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/lifecycle.py` — calls `persistence.clear_state/events` directly in some paths; review for consistency
+- `scripts/little_loops/cli/loop/lifecycle.py` — uses `persistence.load_state()`/`save_state()` but does NOT call `clear_state`/`clear_events` directly; no consistency concern here
 - `scripts/little_loops/cli/loop/_helpers.py` — uses `StatePersistence`
 
 ### Similar Patterns
@@ -121,7 +123,7 @@ ll-loop history <loop-name> <run-id> # show events for a specific run
 1. Add `archive_run()` to `StatePersistence` — copy state+events to `.loops/.history/<name>/<ts>/`
 2. Call `archive_run()` from `clear_all()` before deleting files
 3. Add `list_run_history()` utility function (reads archived state files)
-4. Add `ll-loop history` subcommand in CLI (list + show)
+4. Extend existing `ll-loop history` subcommand in CLI to list archived runs from `.history/` (currently reads `.running/` events for current run only)
 5. Update `.gitignore` and docs
 6. Write tests
 
@@ -140,11 +142,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `feature`, `fsm-loops`, `persistence`, `captured`
 
+## Verification Notes
+
+- `/ll:verify-issues` - 2026-03-13 - **NEEDS_UPDATE** (corrections applied)
+- `StatePersistence.clear_all()` confirmed at `persistence.py:222`; `PersistentExecutor.run()` calls it at line 349
+- `archive_run()` and `list_run_history()` confirmed absent — feature not yet implemented
+- **Corrected**: `ll-loop history` subcommand already exists (`cli/loop/__init__.py:206-210`); it reads `.running/` events for the current run only — step 4 updated to "extend" rather than "add"
+- **Corrected**: `lifecycle.py` only calls `load_state()`/`save_state()`, not `clear_state/clear_events` directly — integration note updated
+
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62cb2f0e-8b9d-493f-88c2-0873e713ce70.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78cb24e4-1ece-44e7-8ec9-f08350ad008b.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/371cab6e-a538-4133-b755-4913bc7438c4.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/371cab6e-a538-4133-b755-4913bc7438c4.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78cb24e4-1ece-44e7-8ec9-f08350ad008b.jsonl`
 
 ---
 
