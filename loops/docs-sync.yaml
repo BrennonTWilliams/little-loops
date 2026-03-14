@@ -34,6 +34,7 @@ states:
       negate: true
     on_success: done
     on_failure: fix_docs
+    on_error: verify_docs
   fix_docs:
     action_type: prompt
     timeout: 600
