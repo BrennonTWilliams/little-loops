@@ -174,6 +174,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 `enhancement`, `fsm`, `loops`, `captured`
 
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/fsm/schema.py` has `on_success`/`on_failure` fields at lines 195–196, 217–220, 254–255, 273–276 — no `on_yes`/`on_no` fields exist. `evaluators.py` still returns `"success"`/`"failure"` verdict strings at lines 54, 92, 94, 144, 211, 258, 260, 302, 304. All built-in loop YAMLs in `loops/` use `on_success:`/`on_failure:` YAML keys. Feature not yet implemented.
+
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2acb782e-c208-43f1-8534-96bfd95ced6e.jsonl`
@@ -186,6 +192,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:refine-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c96e34f-66f6-47a9-8e06-75aea65c7264.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c96e34f-66f6-47a9-8e06-75aea65c7264.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
 
 ---
 

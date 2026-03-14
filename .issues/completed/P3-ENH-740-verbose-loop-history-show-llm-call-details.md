@@ -2,7 +2,7 @@
 id: ENH-740
 priority: P3
 type: ENH
-status: active
+status: completed
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 93
@@ -77,14 +77,54 @@ ll-loop history issue-refinement --verbose
 
 `enhancement`, `loop-history`, `verbose`, `debugging`, `captured`
 
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/fsm/executor.py` emits `action_complete` at line 583 with `is_prompt` field but no `session_jsonl` field. `scripts/little_loops/cli/loop/info.py` handles `--verbose` mode (lines 125, 243-251) but shows no LLM call input/output, token counts, or latency per state. Feature not yet implemented.
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c96e34f-66f6-47a9-8e06-75aea65c7264.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3777c8ff-1714-43df-b4e3-5fada0728038.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3777c8ff-1714-43df-b4e3-5fada0728038.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d69664f2-c580-4a55-b04c-9cddea5b7fc0.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/14afb5fd-1b91-4652-91a5-92cf08c7de6a.jsonl`
+
+---
+
+## Resolution
+
+- **Date**: 2026-03-14
+- **Status**: Completed
+
+### Changes Made
+
+1. **`scripts/little_loops/fsm/evaluators.py`** — Added `import time`; measure `llm_latency_ms` around `subprocess.run`; include `llm_model`, `llm_latency_ms`, `llm_prompt` (500-char truncation), and `llm_raw_output` (500-char truncation) in `EvaluationResult.details` for the success path.
+
+2. **`scripts/little_loops/fsm/executor.py`** — Fixed default evaluate emit (line ~654) to spread `result.details` into the event payload, matching the explicit eval path. Previously `confidence`, `reason`, and LLM metadata were dropped for default LLM evaluations.
+
+3. **`scripts/little_loops/cli/loop/info.py`** — Updated `_format_history_event` to accept `full: bool`; added verbose sub-lines for:
+   - `action_complete`: shows `output_preview` (up to 5 lines, truncated unless `--full`)
+   - `evaluate`: shows LLM Call block with model, latency, prompt, and raw response when `llm_model`/`llm_prompt` present
+   - `--full` implies `--verbose`; untruncated output when `full=True`
+
+4. **`scripts/little_loops/cli/loop/__init__.py`** — Added `--full` flag to `history` subcommand.
+
+5. **`scripts/tests/test_ll_loop_commands.py`** — Added `TestHistoryVerboseLLM` class with 6 tests covering verbose LLM block rendering, `output_preview` display, `--full` implies `--verbose`, and non-verbose hiding.
+
+### Success Criteria Met
+- `ll-loop history <loop-name> --verbose` shows LLM call model, latency, prompt, and response per evaluate event
+- `action_complete` verbose mode shows `output_preview`
+- `--full` flag shows untruncated content
+- Evaluate events without LLM fields render unchanged
+- 269 tests pass, no regressions
+
+## Session Log
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/`
 
 ---
 
 ## Status
 
-Active — not yet started.
+Completed — 2026-03-14

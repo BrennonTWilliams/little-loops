@@ -50,9 +50,16 @@ The `mcp` action type is not yet implemented (tracked in FEAT-729), but the badg
 - ENH-731: Rename FSM transition labels success/fail → yes/no (related diagram label cleanup)
 
 ---
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/cli/loop/layout.py` constructs badges as `f"[{state.action_type}]"` at lines 85, 464-465, with `"[shell]"` as fallback at lines 87, 467. No `_ACTION_TYPE_BADGES` dict exists. Feature not yet implemented.
+
 ## Status
 
 Active — not yet started.
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T22:51:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`

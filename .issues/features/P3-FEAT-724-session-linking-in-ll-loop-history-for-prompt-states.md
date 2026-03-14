@@ -76,5 +76,12 @@ After a `prompt`/`slash_command` state completes:
 
 `backlog`
 
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/fsm/executor.py` emits `action_complete` at lines 583–588 with `is_prompt` but no `session_jsonl` field. `scripts/little_loops/session_log.py` exists with `get_current_session_jsonl()` available for reuse but not yet called from `executor.py`. Feature not yet implemented.
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/711e6b32-70cb-4d26-8b4e-bc302750cb79.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`

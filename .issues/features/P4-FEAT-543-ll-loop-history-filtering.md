@@ -11,35 +11,38 @@ outcome_confidence: 93
 
 ## Summary
 
-`ll-loop history <name>` accepts only `--tail N` and renders all events as raw dict strings. The executor emits 8 distinct event types (`loop_start`, `state_enter`, `action_start`, `action_complete`, `evaluate`, `route`, `loop_complete`, `handoff_detected`) with different fields. There is no way to filter by event type, state name, timestamp range, or emit structured JSON output for piping.
+`ll-loop history <name>` now accepts `--tail N`, `--verbose`, `--full`, and `--json` (added via ENH-740). However, there is still no way to filter by event type (`--event`), state name (`--state`), or timestamp range (`--since`). The executor emits 8 distinct event types with different fields, and filtering still requires manual grep piping.
 
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/info.py`
-- **Line(s)**: 215–237 (updated from 62–84 at scan commit: 47c81c8)
+- **Line(s)**: 297–325 (updated from 215–237)
 - **Anchor**: `in function cmd_history()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/cli/loop/info.py#L62-L84)
 
 - **File**: `scripts/little_loops/cli/loop/__init__.py`
-- **Line(s)**: 189–197 (updated from 127–131 at scan commit: 47c81c8)
+- **Line(s)**: 205–220 (updated from 189–197)
 - **Anchor**: `history_parser` argument definition
 - **Code**:
 ```python
 history_parser.add_argument("loop", ...)
 history_parser.add_argument("--tail", "-n", type=int, default=50, ...)
-# No --event, --state, --json, --since flags
+history_parser.add_argument("--verbose", "-v", action="store_true", ...)  # Added (ENH-740)
+history_parser.add_argument("--full", action="store_true", ...)           # Added (ENH-740)
+history_parser.add_argument("--json", action="store_true", ...)           # Added (ENH-740)
+# No --event, --state, --since flags
 ```
 
 ## Current Behavior
 
-`ll-loop history my-loop` prints the last 50 events as:
+`ll-loop history my-loop` prints the last 50 events with optional `--verbose`/`--full` detail and `--json` output (the latter two added via ENH-740). However, all event types are still mixed together with no filtering:
 ```
 2026-03-03T21:00:00 state_enter: {'state': 'check', ...}
 2026-03-03T21:00:01 action_start: {'state': 'check', ...}
 ...
 ```
 
-All 8 event types are mixed together with no filtering. Output is human-readable only — not parseable for scripting.
+There is still no way to filter to a specific event type or state name, or filter by time window.
 
 ## Expected Behavior
 
@@ -67,10 +70,10 @@ A user runs `ll-loop history issue-fixer --event evaluate --tail 20` to review t
 
 ## Acceptance Criteria
 
-- `--event <type>` filters output to only events of the given type (e.g., `evaluate`, `route`, `loop_complete`)
-- `--state <name>` filters to events where the `state` field matches (applicable to `state_enter`, `action_start`, `action_complete`, `evaluate`, `route`)
-- `--json` emits newline-delimited JSON (one event object per line) instead of the current human-readable format
-- `--since <duration>` accepts values like `1h`, `30m`, `2d` and filters to events within that window from now
+- `--event <type>` filters output to only events of the given type (e.g., `evaluate`, `route`, `loop_complete`) — **not yet implemented**
+- `--state <name>` filters to events where the `state` field matches (applicable to `state_enter`, `action_start`, `action_complete`, `evaluate`, `route`) — **not yet implemented**
+- `--json` emits events as a JSON array — **already implemented (ENH-740)**
+- `--since <duration>` accepts values like `1h`, `30m`, `2d` and filters to events within that window from now — **not yet implemented**
 - All flags are combinable
 - `--tail` still applies as the final limit after filtering
 - Existing behavior (no flags → last 50 events, human-readable) is unchanged
@@ -78,10 +81,9 @@ A user runs `ll-loop history issue-fixer --event evaluate --tail 20` to review t
 ## API/Interface
 
 ```bash
-# Updated history_parser in __init__.py:
+# Remaining flags to add to history_parser in __init__.py (--json already exists):
 history_parser.add_argument("--event", "-e", help="Filter by event type")
 history_parser.add_argument("--state", "-s", help="Filter by state name")
-history_parser.add_argument("--json", "-j", action="store_true", help="JSON output")
 history_parser.add_argument("--since", help="Time window (e.g. 1h, 30m, 2d)")
 ```
 
@@ -109,8 +111,8 @@ In `cmd_history()`:
 - `ll-history` (`scripts/little_loops/cli/history.py`) — filtering patterns
 
 ### Tests
-- `scripts/tests/test_ll_loop_commands.py:251` (`TestCmdHistory` class) — add: `--event evaluate` filters to only evaluate events
-- `scripts/tests/test_ll_loop_commands.py:298` (`TestHistoryTail` class) — add: `--json` emits valid JSON lines; `--state check` filters to check-state events
+- `scripts/tests/test_ll_loop_commands.py:324` (`TestCmdHistory` class) — add: `--event evaluate` filters to only evaluate events
+- `scripts/tests/test_ll_loop_commands.py:371` (`TestHistoryTail` class) — add: `--state check` filters to check-state events (note: `--json` tests should already exist or be added here)
 - Pattern: `many_events_file` fixture at `conftest.py:296` provides 10-event JSONL file; follow `TestHistoryTail` pattern for filter tests
 
 ### Documentation
@@ -183,6 +185,7 @@ Update first — HIGH utility (debugging 200+ event logs is a real pain point), 
 - `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bc8b254-8ac0-409d-b79d-9795de6dc39e.jsonl` — BLOCKED: ENH-537 and ENH-538 still active; corrected line numbers (info.py 62-84→215-237, __init__.py 127-131→189-197, test classes 135/182→251/298)
 - `/ll:ready-issue` - 2026-03-09T01:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/74f9e39e-c3bf-48c6-aaac-9fe47e01c93e.jsonl` — CORRECTED: ENH-537 and ENH-538 confirmed completed; removed from Blocked By
 - `/ll:verify-issues` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9511adcf-591f-4199-b7c1-7ff5d368c8f0.jsonl` — DEP_ISSUES: removed completed ENH-668 from Blocked By
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b127a26e-89b4-4ff9-9b9c-bfe355a44c02.jsonl` — BLOCKED: ENH-541 still active; corrected line numbers (info.py 215-237→297-325, __init__.py 189-197→205-220, tests 251/298→324/371); noted --json/--verbose/--full already implemented via ENH-740
 
 - `/ll:scan-codebase` — 2026-03-03T21:56:26Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e92cdbc5-332d-41d2-89ed-2d48dd0a91ec.jsonl`
 - `/ll:refine-issue` — 2026-03-03T23:10:00Z — `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c3cb1f4-f971-445f-9de1-5971204cbe4e.jsonl` — Linked `docs/generalized-fsm-loop.md`; updated test refs to `test_ll_loop_commands.py:101` (TestCmdHistory) and `:148` (TestHistoryTail)

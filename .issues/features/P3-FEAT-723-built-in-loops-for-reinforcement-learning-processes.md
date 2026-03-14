@@ -119,6 +119,13 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 **Open** | Created: 2026-03-13 | Priority: P3
 
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- No RL loop YAML files (`rl-bandit`, `rl-rlhf`, `rl-policy`, etc.) exist in `loops/`. `skills/create-loop/SKILL.md` lists only 4 loop types with no RL category. Feature not yet implemented.
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75ab9873-e77b-46a5-b50b-85782d3bc37c.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09173b5b-d72c-42cc-87ef-609e8e998bce.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`

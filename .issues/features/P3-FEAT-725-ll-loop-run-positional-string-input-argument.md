@@ -93,5 +93,12 @@ ll-loop run <loop-name> [input] [options]
 
 **Active** — not yet started
 
+## Verification Notes
+
+- **Date**: 2026-03-13
+- **Verdict**: VALID
+- `scripts/little_loops/cli/loop/__init__.py:94` registers only `"loop"` as a positional argument for the `run` subparser — no second positional `input` argument exists. `run.py` has no `args.input` injection logic. Feature not yet implemented.
+
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/582c29ac-d327-46f4-8794-3433874ce5c2.jsonl`
+- `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
