@@ -181,7 +181,8 @@ class WorkerPool:
             raise RuntimeError("Worker pool not started")
 
         future = self._executor.submit(self._process_issue, issue)
-        self._active_workers[issue.issue_id] = future
+        with self._process_lock:
+            self._active_workers[issue.issue_id] = future
 
         if on_complete:
             future.add_done_callback(
@@ -1270,7 +1271,8 @@ class WorkerPool:
         Includes both workers with running futures AND workers whose futures
         are done but callbacks haven't completed yet.
         """
-        running_futures = sum(1 for f in self._active_workers.values() if not f.done())
+        with self._process_lock:
+            running_futures = sum(1 for f in self._active_workers.values() if not f.done())
         with self._callback_lock:
             pending_callback_count = len(self._pending_callbacks)
         return running_futures + pending_callback_count
