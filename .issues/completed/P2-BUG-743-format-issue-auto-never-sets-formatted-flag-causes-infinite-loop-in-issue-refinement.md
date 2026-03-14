@@ -122,10 +122,10 @@ A new `ll-issues append-session-log` CLI subcommand is **not** needed; a `python
 
 ## Acceptance Criteria
 
-- [ ] `/ll:format-issue <id> --auto` appends a `` `/ll:format-issue` `` session log entry to the issue file on successful completion — in both the "changes made" and "no changes needed" paths
-- [ ] `ll-issues refine-status --json` reports `"formatted": true` for the issue after the skill runs
-- [ ] The `issue-refinement` loop can advance past `evaluate` for a fully formatted issue
-- [ ] A regression test in `TestRefineStatusFormatColumn` verifies that `is_formatted()` returns `True` after `append_session_log_entry()` writes the entry
+- [x] `/ll:format-issue <id> --auto` appends a `` `/ll:format-issue` `` session log entry to the issue file on successful completion — in both the "changes made" and "no changes needed" paths
+- [x] `ll-issues refine-status --json` reports `"formatted": true` for the issue after the skill runs
+- [x] The `issue-refinement` loop can advance past `evaluate` for a fully formatted issue
+- [x] A regression test in `TestRefineStatusFormatColumn` verifies that `is_formatted()` returns `True` after `append_session_log_entry()` writes the entry
 
 ## Impact
 
@@ -138,12 +138,20 @@ A new `ll-issues append-session-log` CLI subcommand is **not** needed; a `python
 
 `bug`, `loops`, `format-issue`, `captured`
 
+## Resolution
+
+**Fixed** in `skills/format-issue/SKILL.md` Step 5: replaced the prose session log append instruction with a mandatory `python3 -c` programmatic step that calls `append_session_log_entry(Path('ISSUE_FILE_PATH'), '/ll:format-issue')`. This guarantees the session log entry is written in all auto-mode code paths (both "changes made" and "no changes needed"), so `is_formatted()` returns `True` on subsequent `ll-issues refine-status` calls.
+
+Regression test added: `TestRefineStatusFormatColumn::test_fmt_checkmark_after_append_session_log_entry` in `scripts/tests/test_refine_status.py`.
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-14T00:00:00+00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/86422cd6-ac6a-4b1c-b13b-fae2af2adb05.jsonl`
 - `/ll:confidence-check` - 2026-03-14T20:03:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f16e4a20-5873-4d7d-9a4a-82d5a5d37c9a.jsonl`
 - `/ll:ready-issue` - 2026-03-14T00:00:00+00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f16e4a20-5873-4d7d-9a4a-82d5a5d37c9a.jsonl`
 - `/ll:format-issue` - 2026-03-14T00:00:00+00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0663da45-6636-4175-96f3-89f820bfc0cb.jsonl`
 - `/ll:refine-issue` - 2026-03-14T00:00:00+00:00 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:manage-issue` - 2026-03-14T00:00:00+00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
 
 ## Status
 
-**Open** | Created: 2026-03-14 | Priority: P2
+**Completed** | Created: 2026-03-14 | Priority: P2

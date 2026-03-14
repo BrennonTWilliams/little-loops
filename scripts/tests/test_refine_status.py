@@ -1018,6 +1018,56 @@ class TestRefineStatusFormatColumn:
             "/ll:format-issue must not create a dynamic 'format' column header"
         )
 
+    def test_fmt_checkmark_after_append_session_log_entry(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """is_formatted() returns True after append_session_log_entry() writes /ll:format-issue.
+
+        Regression test for BUG-743: format-issue --auto never sets the formatted flag.
+        The fix requires a programmatic append_session_log_entry() call (not prose instructions)
+        so the session log entry is always written in both the "changes made" and
+        "no changes needed" code paths.
+        """
+        import json as json_module
+
+        _write_config(temp_project_dir, sample_config)
+        bugs_dir = temp_project_dir / ".issues" / "bugs"
+        bugs_dir.mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "completed").mkdir(parents=True, exist_ok=True)
+        (temp_project_dir / ".issues" / "deferred").mkdir(parents=True, exist_ok=True)
+
+        # Sparse issue: no /ll:format-issue in session log, no required sections
+        _make_issue(bugs_dir, "P2-BUG-304-append-log.md", "BUG-304: Append log test")
+        issue_path = bugs_dir / "P2-BUG-304-append-log.md"
+
+        # Simulate what the fixed format-issue skill does: programmatic session log write
+        from little_loops.session_log import append_session_log_entry
+
+        written = append_session_log_entry(
+            issue_path, "/ll:format-issue", Path("/mock/session.jsonl")
+        )
+        assert written is True, "append_session_log_entry should succeed with explicit session_jsonl"
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "refine-status", "--format", "json", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        lines = [ln for ln in capsys.readouterr().out.splitlines() if ln.strip()]
+        record = json_module.loads(lines[0])
+        assert record["id"] == "BUG-304"
+        assert record["formatted"] is True, (
+            "append_session_log_entry('/ll:format-issue') must make refine-status report formatted=True"
+        )
+
 
 class TestRefineStatusConfigColumns:
     """Tests for refine-status configurable columns via refine_status.columns config."""

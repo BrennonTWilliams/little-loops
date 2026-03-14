@@ -289,22 +289,26 @@ For each selected item, gather the information interactively:
 
 ### 5. Update Issue File and Append Session Log
 
-After updating the issue, append a session log entry:
-
-```markdown
-## Session Log
-- `/ll:format-issue` - [ISO timestamp] - `[path to current session JSONL]`
-```
-
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
-
-1. Use Edit tool to add/update sections with gathered information
+1. Use Edit tool to add/update sections with gathered information (if any changes are needed)
 2. Preserve existing frontmatter and content
 3. Add new sections in appropriate locations:
    - For BUGs: After "## Summary" or "## Current Behavior"
    - For FEATs: After "## Expected Behavior" or before "## Proposed Solution"
    - For ENHs: After "## Context" or before "## Impact"
 4. Format additions consistently with existing content
+
+**MANDATORY — append session log entry programmatically (required in ALL code paths, including "no changes needed"):**
+
+```bash
+python3 -c "
+from pathlib import Path
+from little_loops.session_log import append_session_log_entry
+result = append_session_log_entry(Path('ISSUE_FILE_PATH'), '/ll:format-issue')
+print('Session log entry written.' if result else 'WARNING: session JSONL not found — session log entry skipped.')
+"
+```
+
+Replace `ISSUE_FILE_PATH` with the absolute path to the issue file being formatted. **Never skip this step**, even when the issue is already fully compliant and no structural changes were made. This programmatic write guarantees `is_formatted()` returns `True` for this issue in subsequent `ll-issues refine-status` calls.
 
 See [templates.md](templates.md) for example additions by issue type (BUG, FEAT, ENH).
 
