@@ -22,7 +22,7 @@ import json
 import re
 import subprocess
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, Callable
 
 from little_loops.fsm.interpolation import (
     InterpolationContext,
@@ -75,6 +75,15 @@ DEFAULT_LLM_SCHEMA: dict[str, Any] = {
 
 DEFAULT_LLM_PROMPT = "Evaluate whether this action succeeded based on its output."
 
+_NUMERIC_OPERATORS: dict[str, Callable[[float, float], bool]] = {
+    "eq": lambda v, t: v == t,
+    "ne": lambda v, t: v != t,
+    "lt": lambda v, t: v < t,
+    "le": lambda v, t: v <= t,
+    "gt": lambda v, t: v > t,
+    "ge": lambda v, t: v >= t,
+}
+
 
 def evaluate_exit_code(exit_code: int) -> EvaluationResult:
     """Map Unix exit code to verdict.
@@ -124,22 +133,13 @@ def evaluate_output_numeric(
             details={"error": f"Cannot parse as number: {output[:100]}"},
         )
 
-    operators = {
-        "eq": lambda v, t: v == t,
-        "ne": lambda v, t: v != t,
-        "lt": lambda v, t: v < t,
-        "le": lambda v, t: v <= t,
-        "gt": lambda v, t: v > t,
-        "ge": lambda v, t: v >= t,
-    }
-
-    if operator not in operators:
+    if operator not in _NUMERIC_OPERATORS:
         return EvaluationResult(
             verdict="error",
             details={"error": f"Unknown operator: {operator}"},
         )
 
-    condition_met = operators[operator](value, target)
+    condition_met = _NUMERIC_OPERATORS[operator](value, target)
     return EvaluationResult(
         verdict="success" if condition_met else "failure",
         details={"value": value, "target": target, "operator": operator},
@@ -191,22 +191,13 @@ def _compare_values(
     Returns:
         EvaluationResult with comparison result
     """
-    operators = {
-        "eq": lambda v, t: v == t,
-        "ne": lambda v, t: v != t,
-        "lt": lambda v, t: v < t,
-        "le": lambda v, t: v <= t,
-        "gt": lambda v, t: v > t,
-        "ge": lambda v, t: v >= t,
-    }
-
-    if operator not in operators:
+    if operator not in _NUMERIC_OPERATORS:
         return EvaluationResult(
             verdict="error",
             details={"error": f"Unknown operator: {operator}"},
         )
 
-    condition_met = operators[operator](value, target)
+    condition_met = _NUMERIC_OPERATORS[operator](value, target)
     return EvaluationResult(
         verdict="success" if condition_met else "failure",
         details={"value": value, "path": path, "target": target, "operator": operator},
