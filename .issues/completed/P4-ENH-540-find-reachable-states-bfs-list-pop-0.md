@@ -11,7 +11,7 @@ outcome_confidence: 88
 
 ## Summary
 
-`_find_reachable_states` in `scripts/little_loops/fsm/validation.py` (line 264–279) implements BFS using a plain `list` with `pop(0)`. The operation is O(n) because it shifts all remaining elements left. For FSMs with N states, total dequeue cost is O(N²/2). Replacing with `collections.deque` and `popleft()` gives O(1) dequeue with identical semantics and O(N) total traversal cost.
+`_find_reachable_states` in `scripts/little_loops/fsm/validation.py` (line 323–338) implements BFS using a plain `list` with `pop(0)`. The operation is O(n) because it shifts all remaining elements left. For FSMs with N states, total dequeue cost is O(N²/2). Replacing with `collections.deque` and `popleft()` gives O(1) dequeue with identical semantics and O(N) total traversal cost.
 
 ## Current Behavior
 
@@ -123,6 +123,7 @@ Internal implementation detail only — no external impact.
 `enhancement`, `ll-loop`, `performance`, `scan-codebase`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl` — CORRECTED: updated line ref 264–279 → 323–338; `to_visit.pop(0)` confirmed at line 338
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: pop(0) at validation.py:279
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `to_visit.pop(0)` confirmed at `validation.py:321` (line shifted from 279)
@@ -147,6 +148,19 @@ Internal implementation detail only — no external impact.
 
 ---
 
+## Resolution
+
+- **Date**: 2026-03-14
+- **Action**: improve
+- **Outcome**: Applied 3-line change in `scripts/little_loops/fsm/validation.py`:
+  1. Added `from collections import deque` to imports
+  2. Changed `to_visit: list[str] = [fsm.initial]` → `to_visit: deque[str] = deque([fsm.initial])`
+  3. Changed `to_visit.pop(0)` → `to_visit.popleft()`
+- **Verification**: 3354/3355 tests passed; 1 failure (`test_sprint_stranded_issues_not_marked_completed`) is a pre-existing flaky test (passes in isolation, unrelated to FSM validation)
+
+## Session Log
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - Implemented deque optimization; all validation tests pass
+
 ## Status
 
-**Open** | Created: 2026-03-03 | Priority: P4
+**Completed** | Created: 2026-03-03 | Priority: P4

@@ -15,6 +15,7 @@ Validation checks:
 from __future__ import annotations
 
 import logging
+from collections import deque
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -332,10 +333,10 @@ def _find_reachable_states(fsm: FSMLoop) -> set[str]:
         Set of reachable state names
     """
     reachable: set[str] = set()
-    to_visit: list[str] = [fsm.initial]
+    to_visit: deque[str] = deque([fsm.initial])
 
     while to_visit:
-        current = to_visit.pop(0)
+        current = to_visit.popleft()
         if current in reachable or current not in fsm.states:
             continue
 
