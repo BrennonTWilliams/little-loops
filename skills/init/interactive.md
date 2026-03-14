@@ -10,9 +10,9 @@ Before starting the wizard, initialize these counters:
 
 ```
 STEP = 0      # Current round number (incremented before each round)
-TOTAL = 6     # Working total (mandatory rounds: 1, 2, 3a, 4, 5a, 6)
+TOTAL = 4     # Working total (mandatory rounds: 1, 2, 3a, 6)
               # Round 3b is silent (automation always enabled, no user prompt)
-              # Round 5a always runs (auto_timeout always active); Round 5b never shown
+              # Round 5a is conditional (only if parallel processing selected)
               # Round 7 is silent (advanced settings always skipped)
 ```
 
@@ -22,7 +22,7 @@ Before each round's `AskUserQuestion` call, increment STEP and output:
 **Step [STEP] of [TOTAL]** — [Round Name]
 ```
 
-Use `~[TOTAL]` (tilde prefix) for Rounds 1–3a to signal the total may grow (Round 5a adds 1 based on parallel processing selection). Starting with Round 4, the total is known exactly (6 total).
+Use `~[TOTAL]` (tilde prefix) for Rounds 1–3a to signal the total may grow (Round 5a adds 1 if parallel processing is selected). Starting with Round 6, the total is known exactly.
 
 ## Wizard Introduction
 
@@ -33,7 +33,7 @@ Before starting Round 1, display the following introduction:
 
 ## Round 1: Core Project Settings
 
-Increment STEP to 1 and output: **Step 1 of ~6** — Core Settings
+Increment STEP to 1 and output: **Step 1 of ~4** — Core Settings
 
 Use a SINGLE AskUserQuestion call with 4 questions:
 
@@ -127,7 +127,7 @@ Populate options based on detected project type. Use these alternatives by langu
 
 ## Round 2: Additional Configuration
 
-Increment STEP to 2 and output: **Step 2 of ~6** — Additional Configuration
+Increment STEP to 2 and output: **Step 2 of ~4** — Additional Configuration
 
 **First, detect existing issues directory:**
 ```bash
@@ -181,7 +181,7 @@ questions:
 
 ## Round 3a: Core Features Selection
 
-Increment STEP to 3 and output: **Step 3 of ~6** — Core Features
+Increment STEP to 3 and output: **Step 3 of ~4** — Core Features
 
 Use a SINGLE AskUserQuestion call with the features multi-select:
 
@@ -221,150 +221,10 @@ Treat all automation features as selected:
 Count active conditions for Round 5:
   ACTIVE = 0
   if Round 3a → "Parallel processing":     ACTIVE += 2  # worktree_files + parallel_workers (ll-parallel)
-  ALWAYS (sequential automation enabled):  ACTIVE += 1  # auto_timeout
 
-  TOTAL += 1   # Round 5a always runs (auto_timeout always active); max ACTIVE = 3
-  # Round 5b and 5c are never shown (max ACTIVE never exceeds 4)
+  if ACTIVE > 0: TOTAL += 1   # Round 5a only runs if parallel processing selected; max ACTIVE = 2
+  # Round 5b and 5c are never shown (max ACTIVE never exceeds 2)
 ```
-
-## Round 4: Product Analysis
-
-Increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Product Analysis
-
-Use a SINGLE AskUserQuestion call:
-
-```yaml
-questions:
-  - header: "Product"
-    question: "Enable product-focused issue analysis? (Optional)"
-    options:
-      - label: "No, skip (Recommended)"
-        description: "Technical analysis only - standard issue tracking"
-      - label: "Yes, enable"
-        description: "Add product goals, user impact, and business value to issues"
-    multiSelect: false
-```
-
-**If "Yes, enable" selected:**
-
-### Goals Discovery (Interactive Mode)
-
-In interactive mode, offer auto-discovery from existing documentation:
-
-```yaml
-questions:
-  - header: "Goals"
-    question: "How would you like to set up product goals?"
-    options:
-      - label: "Auto-discover from docs (Recommended)"
-        description: "Extract goals from README.md and other documentation"
-      - label: "Start from template"
-        description: "Create blank goals file to fill in manually"
-    multiSelect: false
-```
-
-**If "Auto-discover from docs" selected:**
-
-1. **Scan documentation files** (max 5 by default):
-   - README.md (required - warn if missing)
-   - CLAUDE.md or .claude/CLAUDE.md
-   - docs/README.md
-   - CONTRIBUTING.md
-   - Any additional .md files in root
-
-2. **Extract product context using LLM analysis**:
-   Read the documentation files and extract:
-   - Project purpose and vision
-   - Target users/audience
-   - Key goals or priorities mentioned
-   - Explicit non-goals or scope limitations
-
-3. **Generate `.claude/ll-goals.md`**:
-   - Populate YAML frontmatter with extracted persona and priorities
-   - Fill markdown sections with discovered content
-   - Mark uncertain fields with `[NEEDS REVIEW]` placeholder
-
-4. **Present findings for confirmation**:
-   ```
-   I analyzed your project documentation and extracted these product goals:
-
-   Primary User: [Extracted persona name] - [Role description]
-
-   Priorities I identified:
-   1. [Priority 1 name]
-   2. [Priority 2 name]
-
-   Does this look correct?
-   ```
-
-   Use AskUserQuestion:
-   ```yaml
-   questions:
-     - header: "Confirm"
-       question: "I extracted these goals from your docs. Accept them?"
-       options:
-         - label: "Yes, looks good"
-           description: "Save the extracted goals"
-         - label: "No, let me edit"
-           description: "Open the goals file for manual editing"
-       multiSelect: false
-   ```
-
-5. **Warn if incomplete**:
-   ```
-   Product goals auto-generated from documentation.
-   Review and update: .claude/ll-goals.md
-
-   Extracted:
-   - Primary persona: [Name]
-   - Priorities: [N] identified
-   - Pain points: Not found in docs (please add manually)
-   ```
-
-**If "Start from template" selected:**
-
-1. Create `.claude/ll-goals.md` from the goals template. Read the template content from `templates/ll-goals-template.md` (relative to the little-loops plugin directory) and write it to `.claude/ll-goals.md` in the user's project.
-
-### Goals Discovery (Non-Interactive Mode with --yes)
-
-When `--yes` flag is set (non-interactive), automatically attempt goal discovery:
-
-1. **Scan for README.md** - If missing, warn but continue
-2. **Analyze documentation** using LLM to extract:
-   - Project purpose
-   - Target users
-   - Key priorities
-3. **Generate `.claude/ll-goals.md`** with extracted content
-4. **Mark uncertain sections** with `[NEEDS REVIEW]`
-5. **Display warning**:
-   ```
-   Product goals auto-generated from documentation.
-   Review and update: .claude/ll-goals.md
-   ```
-
-**Configuration:**
-
-Add to configuration:
-```json
-{
-  "product": {
-    "enabled": true,
-    "goals_file": ".claude/ll-goals.md"
-  }
-}
-```
-
-**If "No, skip" selected:**
-- Omit the `product` section entirely (disabled is the default)
-
-**Configuration notes:**
-- Only include `product` section if enabled
-- `analyze_user_impact` and `analyze_business_value` default to `true` and can be omitted
-- The goals file location can be customized via `goals_file` property
-- `goals_discovery.max_files` controls how many docs to scan (default: 5)
-- `goals_discovery.required_files` lists files that must exist (default: `["README.md"]`)
-
-**After completing Round 4, proceed to Round 5 (Advanced Settings).**
 
 ## Round 5: Advanced Settings (Dynamic)
 
@@ -374,11 +234,12 @@ If Round 5a is presented, increment STEP by 1 and output: **Step [STEP] of [TOTA
 If Round 5b is presented, increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Advanced Settings (continued)
 If Round 5c is presented, increment STEP by 1 and output: **Step [STEP] of [TOTAL]** — Advanced Settings (continued)
 
-**Include questions based on these conditions (ordered list, max 3 active):**
+**Include questions based on these conditions (ordered list, max 2 active):**
 
 1. **worktree_files** - If user selected "Parallel processing" in Round 3a
 2. **parallel_workers** - If user selected "Parallel processing" in Round 3a
-3. **auto_timeout** - Always (sequential automation is always enabled from Round 3b)
+
+**Skip Round 5 entirely if neither condition is active** (i.e., user did not select "Parallel processing").
 
 The following questions have been removed and their defaults applied silently:
 - `issues_path` — not applicable (Round 2 no longer offers "custom directory"; existing dir or `.issues` used automatically)
@@ -390,18 +251,20 @@ The following questions have been removed and their defaults applied silently:
 - `gate_readiness` → always 85 (# Default: commands.confidence_gate.readiness_threshold = 85)
 - `gate_outcome` → always 70 (# Default: commands.confidence_gate.outcome_threshold = 70)
 - `sprints_workers` → always 2 (# Default: sprints.default_max_workers = 2)
+- `auto_timeout` → always 3600 (# Default: automation.timeout_seconds = 3600)
 
-Round 5a always runs (auto_timeout is always active). Maximum 3 conditions can be active simultaneously, so Round 5b and 5c are never shown.
+Round 5a only runs if parallel processing was selected. Maximum 2 conditions can be active simultaneously, so Round 5b and 5c are never shown.
 
-**Overflow handling**: Not applicable — active conditions never exceed 3. All questions fit in a single Round 5a call.
+**Overflow handling**: Not applicable — active conditions never exceed 2. All questions fit in a single Round 5a call.
 
 ### Round 5a: Advanced Settings
 
-Use a SINGLE AskUserQuestion call with up to 4 questions (only active conditions from the ordered list):
+**Only run if user selected "Parallel processing" in Round 3a.** If parallel processing was not selected, skip Round 5 entirely and proceed to Round 6.
+
+Use a SINGLE AskUserQuestion call with 2 questions:
 
 ```yaml
 questions:
-  # ONLY include if user selected "Parallel processing" in Round 3a:
   - header: "Worktree"
     question: "Which additional files should be copied to each git worktree? (Note: .claude/ is always copied automatically)"
     options:
@@ -413,7 +276,6 @@ questions:
         description: "Secrets file"
     multiSelect: true
 
-  # ONLY include if user selected "Parallel processing" in Round 3a:
   - header: "Workers"
     question: "How many parallel workers should ll-parallel use?"
     options:
@@ -424,23 +286,11 @@ questions:
       - label: "4"
         description: "Higher parallelism — needs more CPU/memory"
     multiSelect: false
-
-  # ALWAYS include (sequential automation always enabled from Round 3b):
-  - header: "Auto Timeout"
-    question: "What timeout should ll-auto use per issue (seconds)?"
-    options:
-      - label: "3600 (Recommended)"
-        description: "1 hour per issue — default"
-      - label: "1800"
-        description: "30 minutes — faster workflows"
-      - label: "7200"
-        description: "2 hours — complex or long-running issues"
-    multiSelect: false
 ```
 
 ### Round 5b and 5c
 
-**Not used.** After removing prompted questions, the maximum active condition count is 3 (worktree_files + parallel_workers + auto_timeout). All questions fit in Round 5a. Rounds 5b and 5c are never shown.
+**Not used.** The maximum active condition count is 2 (worktree_files + parallel_workers). All questions fit in Round 5a. Rounds 5b and 5c are never shown.
 
 **Configuration from Round 5 responses:**
 
@@ -485,11 +335,6 @@ Sprint management is always enabled — always include:
 ```
 - `sprints.default_max_workers` is hardcoded to 2, which differs from schema default (4); always include this key
 
-If sequential automation is configured with non-default timeout:
-```json
-{ "automation": { "timeout_seconds": 1800 } }
-```
-
 **Notes:**
 - Omit `issues.completed_dir` — "completed" is the schema default
 - Omit `auto_handoff_threshold` — 80 is the schema default
@@ -497,12 +342,12 @@ If sequential automation is configured with non-default timeout:
 - The `.claude/` directory is always copied automatically regardless of `worktree_copy_files` setting
 - Only include `parallel.max_workers` if user selected a non-default value (not 2); if 2 is selected, omit the key
 - Omit `parallel.timeout_per_issue` — 3600 is the schema default
+- Omit `automation.timeout_seconds` — 3600 is the schema default; always omit (hardcoded)
 - Omit `sync.github.priority_labels` — true is the schema default
 - Omit `sync.github.sync_completed` — false is the schema default
 - Omit `commands.confidence_gate.readiness_threshold` — 85 is the schema default
 - Omit `commands.confidence_gate.outcome_threshold` — 70 is the schema default
 - Always include `sprints.default_max_workers: 2` (differs from schema default of 4); if user selected a non-default value (not 2), use their value instead
-- Only include `automation.timeout_seconds` if user selected a non-default value (not 3600); if 3600 is selected, omit the automation section
 - FSM loops (`loops_dir` default is `.loops`) has no non-default settings to configure via init; the `.loops` directory is used automatically
 
 **MANDATORY NEXT STEP - DO NOT SKIP:**
@@ -758,7 +603,7 @@ questions:
 
 ## Interactive Mode Summary
 
-**Total interaction rounds: 6 (fixed)**
+**Total interaction rounds: 4–5 (5 only if parallel processing selected)**
 
 | Round | Group | Questions | Conditions |
 |-------|-------|-----------|------------|
@@ -766,8 +611,7 @@ questions:
 | 2 | Additional Config | format_cmd, scan_dirs, excludes (issues dir: silent) | Always |
 | 3a | Core Features | features (multi-select: parallel, context_monitor, sync, confidence_gate, tdd_mode) | Always |
 | 3b | Automation Features | **Silent** — sprint_management, fsm_loops, sequential_auto always enabled | Always (no prompt) |
-| **4** | **Product Analysis** | **product (opt-in for product-focused analysis)** | **Always** |
-| 5a | Advanced (dynamic) | worktree_files?, parallel_workers?, auto_timeout | Always (auto_timeout always active) |
+| 5a | Advanced (dynamic) | worktree_files, parallel_workers | Only if "Parallel processing" selected in Round 3a |
 | **6** | **Document Tracking** | **docs (auto-detect or custom categories)** | **Always** |
 | 7 | Extended Config Gate | **Silent** — always skips; Rounds 8–10 never shown | Always (no prompt) |
 | 8 | Project Advanced (optional) | test_dir, build_cmd, run_cmd, impl_hooks | Never shown (use /ll:configure) |

@@ -90,12 +90,14 @@ N/A - No public API changes (skill definition file edit only)
 `enhancement`, `init`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92cc5a47-5ebb-4b45-b45a-b3b34d9f7a83.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:capture-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0f02fc6-1ba7-4fc8-9e31-5f723e7e51ef.jsonl`
 - `/ll:format-issue` - 2026-03-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4b6ece1e-87fe-49b2-b766-58bab5968326.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:manage-issue improve` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 
@@ -105,6 +107,30 @@ N/A - No public API changes (skill definition file edit only)
 - **Verdict**: VALID
 - `skills/init/interactive.md` confirms Round 4 (Product Analysis) exists at line 230, and `auto_timeout` is still in Round 5a (lines 224, 381, 398). Both questions are still present. Enhancement not yet applied.
 
+## Resolution
+
+**Resolved** | 2026-03-14
+
+### Changes Made
+
+- `skills/init/interactive.md`:
+  - Removed **Round 4: Product Analysis** section entirely (opt-in prompt + Goals Discovery sub-flow + all conditional config-writing logic)
+  - Removed **auto_timeout** question from Round 5a; hardcoded 3600 as silent default
+  - Updated `TOTAL` from 6 to 4 (mandatory rounds: 1, 2, 3a, 6)
+  - Round 5a is now conditional (only runs if parallel processing selected), not always-active
+  - Updated "recalculate TOTAL" block: removed auto_timeout contribution; TOTAL += 1 only when ACTIVE > 0
+  - Updated ordered conditions list (max 2 active, down from 3)
+  - Updated Round 5b/5c note (max 2, down from 3)
+  - Updated Interactive Mode Summary table: removed Round 4 row; updated Round 5a to show conditional behavior
+  - Added `auto_timeout` to the silently-applied defaults list
+  - Removed duplicate/conflicting config note about `automation.timeout_seconds`
+
+### Verification
+
+- `product_analysis` defaults to disabled (no `product` section in generated config) — same as previous "No, skip (Recommended)" answer
+- `auto_timeout` defaults to 3600 (omitted from config per schema default) — same as previous "3600 (Recommended)" answer
+- 2 fewer interaction rounds for all users running `/ll:init --interactive`
+
 ## Status
 
-**Open** | Created: 2026-03-12 | Priority: P3
+**Completed** | Created: 2026-03-12 | Resolved: 2026-03-14 | Priority: P3
