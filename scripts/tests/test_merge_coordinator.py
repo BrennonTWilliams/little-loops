@@ -1979,6 +1979,81 @@ class TestCircuitBreaker:
         assert request.status == MergeStatus.FAILED
         assert "circuit breaker" in request.error.lower()
 
+    def test_pause_early_return_clears_current_issue_id(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """BUG-686: circuit breaker early return must clear _current_issue_id."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+        coordinator._paused = True
+
+        worktree_path = temp_git_repo / ".worktrees" / "test"
+        worktree_path.mkdir(parents=True)
+        request = MergeRequest(
+            worker_result=WorkerResult(
+                issue_id="TEST-001",
+                branch_name="parallel/test",
+                worktree_path=worktree_path,
+                success=True,
+            )
+        )
+
+        coordinator._process_merge(request)
+
+        assert coordinator._current_issue_id is None
+
+    def test_index_recovery_failure_clears_current_issue_id(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """BUG-686: git index recovery early return must clear _current_issue_id."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+        coordinator._check_and_recover_index = lambda: False
+
+        worktree_path = temp_git_repo / ".worktrees" / "test"
+        worktree_path.mkdir(parents=True)
+        request = MergeRequest(
+            worker_result=WorkerResult(
+                issue_id="TEST-002",
+                branch_name="parallel/test",
+                worktree_path=worktree_path,
+                success=True,
+            )
+        )
+
+        coordinator._process_merge(request)
+
+        assert coordinator._current_issue_id is None
+
+    def test_lifecycle_commit_failure_clears_current_issue_id(
+        self,
+        default_config: ParallelConfig,
+        mock_logger: MagicMock,
+        temp_git_repo: Path,
+    ) -> None:
+        """BUG-686: lifecycle moves early return must clear _current_issue_id."""
+        coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
+        coordinator._commit_pending_lifecycle_moves = lambda: False
+
+        worktree_path = temp_git_repo / ".worktrees" / "test"
+        worktree_path.mkdir(parents=True)
+        request = MergeRequest(
+            worker_result=WorkerResult(
+                issue_id="TEST-003",
+                branch_name="parallel/test",
+                worktree_path=worktree_path,
+                success=True,
+            )
+        )
+
+        coordinator._process_merge(request)
+
+        assert coordinator._current_issue_id is None
+
     def test_consecutive_failures_trip_circuit_breaker(
         self,
         default_config: ParallelConfig,

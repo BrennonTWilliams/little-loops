@@ -709,45 +709,46 @@ class MergeCoordinator:
         result = request.worker_result
         self._current_issue_id = result.issue_id
         self.logger.info(f"Processing merge for {result.issue_id}")
-
-        # Circuit breaker check
-        if self._paused:
-            self.logger.warning(
-                f"Merge coordinator paused due to repeated failures. "
-                f"Skipping {result.issue_id}. Manual intervention required."
-            )
-            self._handle_failure(request, "Merge coordinator paused - circuit breaker tripped")
-            return
-
-        request.status = MergeStatus.IN_PROGRESS
-
-        # Health check: ensure git index is clean before proceeding
-        if not self._check_and_recover_index():
-            self._consecutive_failures += 1
-            if self._consecutive_failures >= 3:
-                self._paused = True
-                self.logger.error(
-                    f"Circuit breaker tripped after {self._consecutive_failures} consecutive failures. "
-                    "Merge coordinator paused. Manual recovery required."
-                )
-            self._handle_failure(request, "Git index recovery failed")
-            return
-
-        # Mark state file as assume-unchanged to prevent pull --rebase conflicts
-        # The orchestrator continuously updates the state file during processing
-        self._mark_state_file_assume_unchanged()
-
-        # Commit any uncommitted lifecycle file moves before stash/merge
-        # These are excluded from stash to prevent pop conflicts, so they must
-        # be committed to avoid blocking the merge (BUG-018 fix)
-        if not self._commit_pending_lifecycle_moves():
-            self._handle_failure(request, "Failed to commit pending lifecycle moves")
-            return
-
-        # Stash any local changes before merge operations
-        had_local_changes = self._stash_local_changes()
+        had_local_changes = False
 
         try:
+            # Circuit breaker check
+            if self._paused:
+                self.logger.warning(
+                    f"Merge coordinator paused due to repeated failures. "
+                    f"Skipping {result.issue_id}. Manual intervention required."
+                )
+                self._handle_failure(request, "Merge coordinator paused - circuit breaker tripped")
+                return
+
+            request.status = MergeStatus.IN_PROGRESS
+
+            # Health check: ensure git index is clean before proceeding
+            if not self._check_and_recover_index():
+                self._consecutive_failures += 1
+                if self._consecutive_failures >= 3:
+                    self._paused = True
+                    self.logger.error(
+                        f"Circuit breaker tripped after {self._consecutive_failures} consecutive failures. "
+                        "Merge coordinator paused. Manual recovery required."
+                    )
+                self._handle_failure(request, "Git index recovery failed")
+                return
+
+            # Mark state file as assume-unchanged to prevent pull --rebase conflicts
+            # The orchestrator continuously updates the state file during processing
+            self._mark_state_file_assume_unchanged()
+
+            # Commit any uncommitted lifecycle file moves before stash/merge
+            # These are excluded from stash to prevent pop conflicts, so they must
+            # be committed to avoid blocking the merge (BUG-018 fix)
+            if not self._commit_pending_lifecycle_moves():
+                self._handle_failure(request, "Failed to commit pending lifecycle moves")
+                return
+
+            # Stash any local changes before merge operations
+            had_local_changes = self._stash_local_changes()
+
             # Ensure we're on base branch in the main repo
             base = self.config.base_branch
             checkout_result = self._git_lock.run(

@@ -112,12 +112,24 @@ The bug is accurate and reproducible by code inspection:
 - `wait_for_completion` at line 1232 checks `self._current_issue_id` in its loop condition
 - Minor discrepancy: issue says method signature is `result: WorkerResult` but it's now `request: MergeRequest` (with `result = request.worker_result` on line 709). Does not affect the bug.
 
+## Resolution
+
+**Status**: Fixed — 2026-03-13
+
+**Approach**: Wrapped the entire `_process_merge` method body in an outer `try/finally` block. The `_current_issue_id = None` cleanup is now in the outer `finally`, guaranteeing it runs on all exit paths including the three early-return guards (circuit breaker, index recovery failure, lifecycle moves failure). Initialized `had_local_changes = False` before the outer `try` so the inner stash-restore logic in the same `finally` is always safe. Removed the now-redundant inner `try/finally` structure, flattening to a single `try/except/finally`.
+
+**Files changed**:
+- `scripts/little_loops/parallel/merge_coordinator.py` — restructured `_process_merge()` try/finally
+- `scripts/tests/test_merge_coordinator.py` — added 3 regression tests for each early-return path
+
 ## Session Log
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 - `/ll:verify-issues` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/000d1e34-e885-4aae-83d4-999718fb8e90.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/01fe4a89-e3a7-4642-aa87-40682ae1517c.jsonl`
+- `/ll:ready-issue` - 2026-03-13T19:29:22Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
+- `/ll:manage-issue` - 2026-03-13T19:29:22Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P1
+**Completed** | Created: 2026-03-13 | Priority: P1
