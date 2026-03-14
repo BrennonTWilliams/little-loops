@@ -126,7 +126,18 @@ The existing template has these sections: `## Conversation Summary` (with subsec
 
 - **2026-03-05** — VALID. `commands/handoff.md` and `commands/resume.md` both exist; current 3-section prose schema (Conversation Summary / Resume Point / Important Context) confirmed at `handoff.md:124–174`; 4-section schema not yet implemented. `ll-session-state.json` structured fields confirmed in `resume.md:47–56`, `106–120`.
 
+## Resolution
+
+**Resolved**: 2026-03-14
+**Implementation**:
+- `commands/handoff.md`: Replaced 3-section prose template with 4-section anchored schema (Intent, File Modifications, Decisions Made, Next Steps) + YAML frontmatter (session_date, session_branch, issues_in_progress). Updated Process step 1 to guide extraction of each section. `--deep` mode now appends `## Artifact Validation` after `## Next Steps` (unchanged behavior, updated placement).
+- `commands/resume.md`: Added structured vs. legacy schema detection. For structured schema, extracts Intent and Next Steps and surfaces them prominently above the full content. Falls back to full blob display for old 3-section format.
+
+**Verification**: lint passes (`ruff check`), tests pass (1 pre-existing unrelated failure in `test_ll_loop_display.py`). Prompt-only changes with no Python code modified.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c164620c-22bc-4248-a765-689616546d6f.jsonl`
+- `/ll:ready-issue` - 2026-03-14T23:40:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3f6e32fe-a201-4ea2-a48c-b6348486250c.jsonl`
 - `/ll:confidence-check` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3841e46b-d9f5-443d-9411-96dee7befc6b.jsonl` — readiness: 98/100 PROCEED, outcome: 78/100 MODERATE (up from 68 — improved change surface assessment: 2 isolated command files, docs refs not callers)
 - `/ll:format-issue` - 2026-02-24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cfefb72b-eeff-42e5-8aa5-7184aca87595.jsonl`
 - `/ll:verify-issues` - 2026-02-25 - Corrected file paths: `skills/handoff/SKILL.md` → `commands/handoff.md`; `skills/resume/SKILL.md` → `commands/resume.md` (handoff/resume are commands, not skills)
@@ -143,7 +154,7 @@ The existing template has these sections: `## Conversation Summary` (with subsec
 
 ## Status
 
-**Open** | Created: 2026-02-24 | Priority: P3
+**Completed** | Created: 2026-02-24 | Resolved: 2026-03-14 | Priority: P3
 
 ---
 

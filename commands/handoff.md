@@ -50,27 +50,27 @@ When conversation says one thing but artifacts show another:
 
 ### 1. Summarize the Conversation (Default - Always)
 
-Review the entire conversation history above and extract:
+Review the entire conversation history above and extract the four anchored fields:
 
-#### User Requests
-- **Primary intent**: What was the user trying to accomplish?
-- **Explicit requests**: All specific requests made by the user
+#### Intent
+- **Primary intent**: What was the user trying to accomplish? (1–3 sentences)
 - **Scope changes**: Did the user shift focus or refine requirements?
 
-#### Chronological Flow
-- **Key phases**: What major phases of work were undertaken?
-- **Decisions made**: What choices were made and why?
-- **Pivot points**: Where did the approach change based on discoveries?
+#### File Modifications
+- **Files modified**: What files were actually created or changed?
+- **What changed**: The specific edit or addition made in each file
+- **Why**: The reason the change was made (tied to the issue, user request, or decision)
 
-#### Errors and Fixes
-- **Errors encountered**: What went wrong?
-- **How fixed**: What was done to resolve each error?
-- **User feedback**: Did the user provide corrections or guidance?
+#### Decisions Made
+- **Architectural/design choices**: What patterns or approaches were chosen and why?
+- **Explicit rejections**: What alternatives were considered and discarded?
+- **User-specified constraints**: Any requirements or constraints the user stated
+- **Gotchas discovered**: Things that could trip up the next session
 
-#### Code Changes
-- **Files modified**: What files were actually changed?
-- **Code snippets**: Key code that was written or discussed
-- **Architectural decisions**: What patterns or approaches were chosen?
+#### Next Steps
+- **Immediate action**: The single most important thing to do when resuming
+- **Ordered continuation**: 2–5 concrete follow-on actions in priority order
+- **Blockers**: Any known blockers or open questions to resolve
 
 ### 2. Validate with Artifacts (Only with --deep flag)
 
@@ -121,61 +121,45 @@ Compare conversation claims to artifact reality:
 
 Write to `$(pwd)/.claude/ll-continue-prompt.md` — use an absolute path derived from the current working directory (the project root where Claude Code is running). **Never write to `~/.claude/ll-continue-prompt.md`.**
 
-**If `--deep` flag was NOT passed** (default mode):
+Before writing, gather the following from the conversation and (in `--deep` mode) from artifacts:
+
+- **session_date**: Today's date in YYYY-MM-DD format
+- **session_branch**: Current git branch (from `--deep` artifacts, or infer from conversation)
+- **issues_in_progress**: List of issue IDs actively worked on this session (e.g. `[ENH-495]`), or `[]` if none
+- **Intent**: 1–3 sentences summarizing what this session was trying to accomplish
+- **File Modifications**: Each file actually created or modified, with a brief note on what changed and why
+- **Decisions Made**: Each significant decision or architectural choice, with its rationale
+- **Next Steps**: Concrete, ordered actions for the next session to continue immediately
+
+**Default mode output** (with or without `--deep` flag):
 
 ```markdown
+---
+session_date: YYYY-MM-DD
+session_branch: <branch-name>
+issues_in_progress: [ISSUE-ID, ...]
+---
+
 # Session Continuation: [Primary Intent from Conversation]
 
-## Conversation Summary
+## Intent
+[1–3 sentences: what this session was trying to accomplish]
 
-### Primary Intent
-[From conversation: what the user was trying to accomplish]
+## File Modifications
+- `path/to/file.py` — what changed and why
+- `path/to/other.md` — what changed and why
 
-### What Happened
-[Chronological summary of key phases, decisions, and discoveries]
+## Decisions Made
+- Decision: [what was decided] — Rationale: [why]
 
-### User Feedback
-[Specific corrections or guidance the user provided, if any]
-
-### Errors and Resolutions
-| Error | How Fixed | User Feedback |
-|-------|-----------|---------------|
-| [Error encountered] | [Resolution applied] | [Any user input] |
-
-### Code Changes
-| File | Changes Made | Discussion Context |
-|------|--------------|-------------------|
-| `path/to/file.ts:45` | [What changed] | [Why it was discussed] |
-
-## Resume Point
-
-### What Was Being Worked On
-[Precise description from conversation end]
-
-### Direct Quote
-> [Verbatim quote from most recent work or user request]
-
-### Next Step
-[Immediate next action based on conversation]
-
-## Important Context
-
-### Decisions Made
-- **[Decision]**: [Reasoning from conversation]
-
-### Gotchas Discovered
-- **[Gotcha]**: [How discovered, what to watch for]
-
-### User-Specified Constraints
-[Any specific requirements or constraints the user gave]
-
-### Patterns Being Followed
-- Following pattern from `[file:line]` - [why this pattern was chosen]
+## Next Steps
+1. [First concrete next action]
+2. [Second concrete next action]
 ```
 
 **If `--deep` flag WAS passed** (deep mode):
 
-Include all sections from default mode above, PLUS add this section after "Important Context":
+Include all sections from default mode above, PLUS append this section after `## Next Steps`:
 
 ```markdown
 ## Artifact Validation

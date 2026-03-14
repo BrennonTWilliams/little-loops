@@ -53,6 +53,28 @@ If continuation prompt found:
 
 #### If Continuation Prompt Found (Fresh)
 
+First, check whether the prompt uses the **structured schema** (has `## Intent` and `## Next Steps` sections) or the **legacy prose schema** (has `## Conversation Summary` / `## Resume Point`).
+
+**For structured schema** (preferred — extract and surface key fields):
+
+```
+Resuming from previous session
+─────────────────────────────────────────────────────────────────
+
+Intent:       [Content of ## Intent section]
+
+Next Steps:
+  1. [First item from ## Next Steps]
+  2. [Second item from ## Next Steps]
+  ...
+
+─────────────────────────────────────────────────────────────────
+[Display full continuation prompt content]
+─────────────────────────────────────────────────────────────────
+```
+
+**For legacy prose schema** (fallback — display full content without extraction):
+
 ```
 Resuming from previous session
 ─────────────────────────────────────────────────────────────────
@@ -66,11 +88,13 @@ Resuming from previous session
 
 #### If Continuation Prompt Found (Stale)
 
+Apply the same structured vs. legacy detection above, then:
+
 ```
 Resuming from previous session (stale: <N> hours old)
 ─────────────────────────────────────────────────────────────────
 
-[Display full continuation prompt content]
+[Structured summary header OR full legacy content]
 
 ─────────────────────────────────────────────────────────────────
 
