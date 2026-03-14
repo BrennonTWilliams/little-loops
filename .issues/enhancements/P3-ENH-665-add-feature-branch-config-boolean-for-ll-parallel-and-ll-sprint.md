@@ -5,6 +5,8 @@ priority: P3
 status: active
 discovered_date: 2026-03-10
 discovered_by: capture-issue
+confidence_score: 90
+outcome_confidence: 72
 ---
 
 # ENH-665: Add Feature Branch Config Boolean for ll-parallel and ll-sprint
@@ -95,6 +97,7 @@ Active
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:capture-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eec31a4c-27c6-4b78-bafd-8496b3a68d4a.jsonl`
 - `/ll:format-issue` - 2026-03-10T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/644cb258-98f9-4276-9d10-660523431e43.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 
 
 ## Verification Notes

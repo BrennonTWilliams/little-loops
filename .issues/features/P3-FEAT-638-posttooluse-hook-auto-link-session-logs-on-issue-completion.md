@@ -144,6 +144,21 @@ Add a new `PostToolUse` hook with matcher `Bash`:
 
 A developer runs `ll-auto` to batch-process a sprint of 10 issues overnight. Each issue is completed by the automation moving it to `completed/` via `git mv`. In the morning, the developer reviews completed issues and finds every one has a `## Session Log` entry pointing to the exact session JSONL that produced it — enabling them to trace decisions, reproduce context, or diagnose issues without knowing which automation run handled each issue.
 
+## API/Interface
+
+N/A - No public API changes. This feature calls the existing internal function:
+
+```python
+# scripts/little_loops/session_log.py
+def append_session_log_entry(
+    issue_path: Path,
+    command: str,
+    session_jsonl: Path | None = None,
+) -> bool: ...
+```
+
+The hook script (`issue-completion-log.sh`) is an internal infrastructure component invoked by Claude Code's hook system, not a user-facing API.
+
 ## Acceptance Criteria
 
 - [ ] New hook script `hooks/scripts/issue-completion-log.sh` exists and is executable
@@ -273,7 +288,27 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Verification Notes
 
-Re-verified 2026-03-08 (auto). Verdict: **VALID**.
+Re-verified 2026-03-14 (auto, post-format). Verdict: **DEP_ISSUES**.
+
+- `issue-completion-log.sh` still does not exist ✓ (expected for open feature)
+- `complete_issue_lifecycle()` confirmed at line 603; `_move_issue_to_completed()` call at line 646 ✓ (matches issue claim)
+- `_complete_issue_lifecycle_if_needed()` confirmed at line 1044; git mv at lines 1105-1108 (issue's "~1096" estimate close) ✓
+- No `append_session_log_entry` calls in `issue_lifecycle.py` or `orchestrator.py` ✓ (implementation gap still present)
+- `session_log.py:append_session_log_entry()` at line 85, `get_current_session_jsonl()` at line 62 ✓
+- `context-monitor.sh` exists as reference pattern ✓
+- **MISSING_BACKLINK**: ENH-494 `## Blocked By` does not list FEAT-638 (ENH-493 correctly lists FEAT-638; ENH-494 does not). Either add FEAT-638 to ENH-494's Blocked By, or remove ENH-494 from this issue's `## Blocks` if the dependency no longer applies.
+
+Previously: Re-verified 2026-03-14 (auto). Verdict: **DEP_ISSUES**.
+
+- `issue-completion-log.sh` still does not exist ✓ (expected for open feature)
+- `complete_issue_lifecycle()` confirmed at line 603 (`_move_issue_to_completed` call at line 646) ✓
+- `_complete_issue_lifecycle_if_needed()` confirmed at line 1044 (git mv at lines 1104–1106, ~1096 estimate close) ✓
+- No `append_session_log_entry` calls in `issue_lifecycle.py` or `orchestrator.py` ✓ (implementation gap still present)
+- `append_session_log_entry()` exists at `session_log.py:85`, `get_current_session_jsonl()` at `session_log.py:62` ✓
+- `context-monitor.sh` exists as reference pattern ✓
+- **MISSING_BACKLINK**: FEAT-638 claims to block ENH-494, but ENH-494's `## Blocked By` no longer lists FEAT-638 (removed by a prior verify run that incorrectly reported FEAT-638 as "missing"). Either restore FEAT-638 in ENH-494's Blocked By, or remove ENH-494 from this issue's `## Blocks` if the dependency is no longer valid.
+
+Previously: Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 
 - `hooks/hooks.json` exists; PostToolUse section confirmed ✓
 - `hooks/scripts/` directory exists with reference scripts ✓
@@ -319,6 +354,10 @@ Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 - `/ll:verify-issues` - 2026-03-08T00:06:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/001bb4dd-80ce-42a1-916a-56a833487d5b.jsonl`
 - `/ll:verify-issues` - 2026-03-08T00:07:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fec81786-b516-44bf-9948-e40b47c082de.jsonl`
 - `/ll:verify-issues` - 2026-03-12T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/29eaf7fd-f2f5-415a-b3ef-d822dcb68d93.jsonl` — VALID: all claims verified; no `append_session_log_entry` calls in `issue_lifecycle.py` or `orchestrator.py`; hook script still unimplemented; dependencies consistent
+- `/ll:format-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:verify-issues` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl` — DEP_ISSUES: MISSING_BACKLINK for ENH-494 (see Verification Notes)
+- `/ll:format-issue` - 2026-03-14T00:01:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:verify-issues` - 2026-03-14T00:02:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl` — DEP_ISSUES: ENH-494 Blocked By does not list FEAT-638 (MISSING_BACKLINK)
 
 ---
 
