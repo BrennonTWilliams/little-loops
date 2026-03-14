@@ -168,7 +168,6 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `pr-review-cycle` | Full pre-PR pipeline: quality checks, test run, PR description generation |
 | `priority-rebalance` | Review P0-P5 priority distribution across active issues |
 | `readme-freshness` | Compare README and CLAUDE.md against actual project state |
-| `secret-scan` | Scan for accidentally committed secrets and API keys |
 | `sprint-build-and-validate` | Create a sprint from the backlog and validate all included issues |
 | `worktree-health` | Continuous monitoring of orphaned worktrees and stale branches |
 

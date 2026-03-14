@@ -95,7 +95,7 @@ little-loops/
 │       ├── user-prompt-check.sh
 │       └── lib/
 │           └── common.sh    # Shared shell functions
-├── loops/                   # Built-in FSM loop definitions (19 YAML files)
+├── loops/                   # Built-in FSM loop definitions (14 YAML files)
 ├── skills/                  # 17 skill definitions
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
