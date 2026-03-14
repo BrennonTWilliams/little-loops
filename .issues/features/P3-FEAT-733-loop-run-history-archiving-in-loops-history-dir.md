@@ -143,6 +143,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Session Log
 
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/62cb2f0e-8b9d-493f-88c2-0873e713ce70.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/78cb24e4-1ece-44e7-8ec9-f08350ad008b.jsonl`
+- `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/371cab6e-a538-4133-b755-4913bc7438c4.jsonl`
 
 ---
 

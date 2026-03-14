@@ -156,6 +156,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 |---------|-------------|
 | `/ll:create-loop` | Interactive FSM loop creation |
 | `/ll:review-loop` | Review and improve existing FSM loop configurations |
+| `/ll:analyze-loop` | Analyze loop execution history for actionable issues |
 | `/ll:loop-suggester [file]` | Suggest FSM loops from message history |
 | `/ll:workflow-automation-proposer` | Synthesize workflow patterns into automation proposals |
 
