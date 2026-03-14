@@ -26,6 +26,7 @@ from little_loops.workflow_sequence_analyzer import (
     _link_sessions,
     _load_messages,
     _load_patterns,
+    _parse_timestamps,
     analyze_workflows,
     calculate_boundary_weight,
     entity_overlap,
@@ -1795,3 +1796,65 @@ class TestGetMessageCategory:
     def test_empty_patterns(self) -> None:
         """Returns None when patterns dict is empty."""
         assert _get_message_category("msg-1", {}) is None
+
+
+class TestParseTimestamps:
+    """Tests for _parse_timestamps internal function."""
+
+    def test_empty_list(self) -> None:
+        """Empty message list returns empty timestamp list."""
+        assert _parse_timestamps([]) == []
+
+    def test_z_suffix_input(self) -> None:
+        """Z-suffix timestamps are parsed and returned as naive datetimes."""
+        messages = [{"timestamp": "2026-01-15T10:00:00Z"}]
+        result = _parse_timestamps(messages)
+        assert len(result) == 1
+        assert result[0] == datetime(2026, 1, 15, 10, 0, 0)
+        assert result[0].tzinfo is None
+
+    def test_naive_input(self) -> None:
+        """Naive ISO timestamps (no timezone) are parsed correctly."""
+        messages = [{"timestamp": "2026-01-15T10:00:00"}]
+        result = _parse_timestamps(messages)
+        assert len(result) == 1
+        assert result[0] == datetime(2026, 1, 15, 10, 0, 0)
+        assert result[0].tzinfo is None
+
+    def test_none_timestamp_value(self) -> None:
+        """Messages with a None timestamp value are skipped."""
+        messages = [{"timestamp": None}]
+        result = _parse_timestamps(messages)
+        assert result == []
+
+    def test_mixed_valid_and_invalid(self) -> None:
+        """Only valid timestamps are returned; invalid ones are silently skipped."""
+        messages = [
+            {"timestamp": "2026-01-15T10:00:00"},
+            {"timestamp": "not-a-timestamp"},
+            {"timestamp": "2026-01-15T11:00:00"},
+        ]
+        result = _parse_timestamps(messages)
+        assert len(result) == 2
+        assert result[0] == datetime(2026, 1, 15, 10, 0, 0)
+        assert result[1] == datetime(2026, 1, 15, 11, 0, 0)
+
+    def test_all_invalid(self) -> None:
+        """All-invalid timestamps returns empty list."""
+        messages = [
+            {"timestamp": "bad"},
+            {"timestamp": "also-bad"},
+        ]
+        assert _parse_timestamps(messages) == []
+
+    def test_missing_timestamp_key(self) -> None:
+        """Messages without a timestamp key are skipped."""
+        messages = [{"content": "no timestamp here"}]
+        assert _parse_timestamps(messages) == []
+
+    def test_tzinfo_stripped(self) -> None:
+        """Timezone-aware inputs are stripped to naive datetimes."""
+        messages = [{"timestamp": "2026-01-15T10:00:00+05:30"}]
+        result = _parse_timestamps(messages)
+        assert len(result) == 1
+        assert result[0].tzinfo is None

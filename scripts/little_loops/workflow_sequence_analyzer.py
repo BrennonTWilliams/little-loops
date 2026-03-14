@@ -393,6 +393,22 @@ def _detect_handoff(content: str) -> bool:
     return any(marker in content_lower for marker in handoff_markers)
 
 
+def _parse_timestamps(messages: list[dict[str, Any]]) -> list[datetime]:
+    """Parse valid ISO timestamps from a list of messages, stripping timezone info."""
+    timestamps = []
+    for msg in messages:
+        ts_str = msg.get("timestamp", "")
+        if ts_str:
+            try:
+                ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
+                if ts.tzinfo is not None:
+                    ts = ts.replace(tzinfo=None)
+                timestamps.append(ts)
+            except (ValueError, AttributeError, TypeError):
+                pass
+    return timestamps
+
+
 def _link_sessions(sessions: dict[str, list[dict[str, Any]]]) -> list[SessionLink]:
     """Identify sessions that are part of the same workflow."""
     links: list[SessionLink] = []
@@ -449,17 +465,7 @@ def _link_sessions(sessions: dict[str, list[dict[str, Any]]]) -> list[SessionLin
                 link_counter += 1
 
                 # Calculate span
-                timestamps: list[datetime] = []
-                for msg in session_a + session_b:
-                    ts_str = msg.get("timestamp", "")
-                    if ts_str:
-                        try:
-                            ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                            if ts.tzinfo is not None:
-                                ts = ts.replace(tzinfo=None)
-                            timestamps.append(ts)
-                        except (ValueError, TypeError):
-                            pass
+                timestamps = _parse_timestamps(session_a + session_b)
 
                 span_hours = 0.0
                 if len(timestamps) >= 2:
@@ -571,18 +577,10 @@ def _compute_boundaries(
         msg_b = sorted_msgs[i + 1]
 
         # Parse timestamps
-        ts_a_str = msg_a.get("timestamp", "")
-        ts_b_str = msg_b.get("timestamp", "")
-
-        try:
-            ts_a = datetime.fromisoformat(ts_a_str.replace("Z", "+00:00"))
-            if ts_a.tzinfo is not None:
-                ts_a = ts_a.replace(tzinfo=None)
-            ts_b = datetime.fromisoformat(ts_b_str.replace("Z", "+00:00"))
-            if ts_b.tzinfo is not None:
-                ts_b = ts_b.replace(tzinfo=None)
-            gap_seconds = int((ts_b - ts_a).total_seconds())
-        except (ValueError, AttributeError, TypeError):
+        pair_timestamps = _parse_timestamps([msg_a, msg_b])
+        if len(pair_timestamps) == 2:
+            gap_seconds = int((pair_timestamps[1] - pair_timestamps[0]).total_seconds())
+        else:
             gap_seconds = 0
 
         # Calculate time gap weight
@@ -695,17 +693,7 @@ def _detect_workflows(
             workflow_counter += 1
 
             # Calculate duration
-            timestamps: list[datetime] = []
-            for msg in segment:
-                ts_str = msg.get("timestamp", "")
-                if ts_str:
-                    try:
-                        ts = datetime.fromisoformat(ts_str.replace("Z", "+00:00"))
-                        if ts.tzinfo is not None:
-                            ts = ts.replace(tzinfo=None)
-                        timestamps.append(ts)
-                    except (ValueError, TypeError):
-                        pass
+            timestamps = _parse_timestamps(segment)
 
             duration_minutes = 0
             if len(timestamps) >= 2:
