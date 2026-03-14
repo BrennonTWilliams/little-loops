@@ -96,8 +96,10 @@ The `on_success`/`on_failure` property names (and internal `"success"`/`"failure
 - `scripts/tests/test_fsm_schema.py` — `make_state` helper uses `on_success`/`on_failure` as kwargs; direct property assertions; roundtrip `from_dict`/`to_dict` assertions; `test_dangling_state_reference` docstring
 - `scripts/tests/test_fsm_executor.py` — every FSM fixture + `EvaluationResult(verdict="success")` mocks
 - `scripts/tests/test_fsm_evaluators.py` — parametrized verdict assertions `(0, "success")`, `(1, "failure")`; `EvaluationResult(verdict="success"/"failure")` direct assertions; LLM mock stdout uses `"success"`/`"failure"` verdict values
-- `scripts/tests/test_ll_loop_commands.py`, `test_ll_loop_display.py`, `test_ll_loop_execution.py`, `test_ll_loop_integration.py`, `test_ll_loop_state.py`, `test_ll_loop_parsing.py`
+- `scripts/tests/test_fsm_persistence.py` — `StateConfig` fixture construction with `on_success`/`on_failure` kwargs
+- `scripts/tests/test_ll_loop_commands.py`, `test_ll_loop_display.py`, `test_ll_loop_execution.py`, `test_ll_loop_errors.py`, `test_ll_loop_integration.py`, `test_ll_loop_state.py`, `test_ll_loop_parsing.py`
 - `scripts/tests/test_builtin_loops.py`, `test_create_loop.py`, `test_review_loop.py`
+- `scripts/tests/conftest.py` — shared YAML fixtures at lines 244, 262 use `on_success`/`on_failure`
 - `scripts/tests/fixtures/fsm/valid-loop.yaml` — uses `on_success: done`, `on_failure: done` at lines 6–7
 - `scripts/tests/fixtures/fsm/loop-with-unreachable-state.yaml` — uses `on_success`/`on_failure` at lines 6–7
 
@@ -126,6 +128,10 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **`DEFAULT_LLM_SCHEMA` in evaluators.py:52–58**: The JSON schema enum sent to Claude for LLM-structured evaluation hardcodes `["success", "failure", "blocked", "partial"]` — needs updating to `["yes", "no", "blocked", "partial"]`.
 - **`_helpers.py:393` additional `"fail"` string**: Beyond the `("success", "target", "progress")` tuple at line 385, the else-branch at line 393 checks `verdict in ("fail", "error")` for orange colorization. After rename, `"fail"` must become `"no"` here as well. The full display colorization update for `_helpers.py` therefore touches lines 385 AND 393.
 - **`docs/reference/API.md` and `docs/development/TESTING.md` untracked**: Both contain `on_success`/`on_failure` in `StateConfig` code examples and need updating — now documented in the Integration Map.
+- **`info.py:248` hardcoded width calculation**: `len("\u2713 success")` is used as a terminal column width anchor. "success" (7 chars) vs "yes" (3 chars) — this width difference may affect terminal alignment in the info display; must be updated to `len("\u2713 yes")` or recalculated.
+- **Persistence backwards compat**: Stored `.loops/.running/<name>.events.jsonl` and `.state.json` files written by prior runs will contain old `"success"`/`"failure"` verdict strings. This is cosmetically inconsistent but **not functionally broken** — `LoopState.from_dict` only round-trips `last_result` for display; on resume the executor re-enters at `current_state` and re-runs the action (stored verdict is not fed back into routing). No migration of existing history files is needed.
+- **Additional missing test files**: `scripts/tests/test_fsm_persistence.py` (StateConfig fixture construction), `scripts/tests/test_ll_loop_errors.py` (inline YAML and StateConfig usage), and `scripts/tests/conftest.py` (shared YAML fixtures at lines 244, 262) were not listed in the Integration Map but require updates.
+- **Additional missing skills/commands files**: `skills/analyze-loop/SKILL.md:234` (references `on_failure` in signal type descriptions), `skills/workflow-automation-proposer/SKILL.md:145–155` (example YAML snippets), and `commands/loop-suggester.md:128–226` (example YAML output templates) all need updating and were not in the Integration Map.
 
 ## Implementation Steps
 
@@ -142,7 +148,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    - `testing.py:148–153` — update `verdict == "success"`/`"failure"` routing comparisons
 8. **Migrate loop YAMLs** (`loops/*.yaml`, 18 files) — rename `on_success:`→`on_yes:` and `on_failure:`→`on_no:` YAML keys; also update LLM evaluate prompt text (`Return "success"` → `Return "yes"`, `Return "failure"` → `Return "no"`)
 9. **Migrate test fixtures** (`scripts/tests/fixtures/fsm/valid-loop.yaml`, `loop-with-unreachable-state.yaml`)
-10. **Update skills** (`create-loop/reference.md`, `create-loop/templates.md`, `create-loop/loop-types.md`, `review-loop/SKILL.md`, `review-loop/reference.md`)
+10. **Update skills and commands** (`create-loop/reference.md`, `create-loop/templates.md`, `create-loop/loop-types.md`, `review-loop/SKILL.md`, `review-loop/reference.md`, `skills/analyze-loop/SKILL.md:234`, `skills/workflow-automation-proposer/SKILL.md:145–155`, `commands/loop-suggester.md:128–226`)
 11. **Update docs** (`docs/generalized-fsm-loop.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/reference/API.md`, `docs/development/TESTING.md`)
 12. **Update all tests** — `test_fsm_schema.py`, `test_fsm_evaluators.py`, `test_fsm_executor.py`, and all `test_ll_loop_*.py` files
 13. **Verify** — run `python -m pytest scripts/tests/ -v` and `ll-loop run loops/fix-quality-and-tests.yaml --dry-run`
@@ -193,6 +199,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:refine-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c96e34f-66f6-47a9-8e06-75aea65c7264.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c96e34f-66f6-47a9-8e06-75aea65c7264.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
+- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad3c78eb-1f87-4a98-8d6f-f869076e256b.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ad3c78eb-1f87-4a98-8d6f-f869076e256b.jsonl`
 
 ---
 
