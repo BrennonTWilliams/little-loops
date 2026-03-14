@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-13
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # FEAT-724: Session Linking in ll-loop History for Prompt States
@@ -12,6 +14,16 @@ Add session linking to `ll-loop history` output so that Claude Code log files (J
 ## Context
 
 **Direct mode**: User description: "Add session linking (like we do for Issues) to the output of ll-loop history, so that we can tie claude code log files to any FSM loop state execution that uses a claude call (eg 'prompt' states)"
+
+## Use Case
+
+**Who**: Developer running FSM loops with `prompt` or `slash_command` states
+
+**Context**: After a loop run completes (or during debugging), the developer needs to inspect what Claude actually did during a specific state execution — e.g., why a prompt state produced unexpected output or what commands were run in a given iteration.
+
+**Goal**: Trace the Claude Code JSONL session file that corresponds to a specific loop state execution directly from `ll-loop history`.
+
+**Outcome**: `ll-loop history <loop>` shows the session file path alongside `action_complete` events for prompt states, enabling direct inspection of the Claude conversation for that iteration without manual correlation.
 
 ## Motivation
 
@@ -44,6 +56,15 @@ After a `prompt`/`slash_command` state completes:
 {"event": "action_complete", "ts": "...", "exit_code": 0, "duration_ms": 12400, "is_prompt": true, "session_jsonl": "/Users/.../.claude/projects/.../abc123.jsonl"}
 ```
 
+## Acceptance Criteria
+
+- [ ] `action_complete` events for `is_prompt=True` states in `.events.jsonl` include a `session_jsonl` field (string path or null)
+- [ ] `ll-loop history <loop>` displays session JSONL basename alongside `action_complete` events for prompt states in default mode
+- [ ] `ll-loop history <loop> --verbose` displays the full session JSONL path
+- [ ] Non-prompt states (`shell` action types) do not emit a `session_jsonl` field
+- [ ] Existing history files without `session_jsonl` display without errors (graceful degradation)
+- [ ] `get_current_session_jsonl()` from `session_log.py` is reused without modification
+
 ## Implementation Steps
 
 1. **Capture session JSONL at action completion** (`fsm/executor.py`): After `action_runner.run()` returns for a prompt/slash_command state, call `get_current_session_jsonl()` (from `session_log.py`) and include the result in the `action_complete` event payload under key `session_jsonl`.
@@ -58,19 +79,48 @@ After a `prompt`/`slash_command` state completes:
 - `scripts/little_loops/cli/loop/info.py` — display `session_jsonl` in `_format_history_event`
 - `scripts/little_loops/session_log.py` — reuse `get_current_session_jsonl()` (no changes needed)
 
-## API / Interface Changes
+## API/Interface
 
 - New optional field `session_jsonl: str | None` added to `action_complete` events in `.events.jsonl` files when `is_prompt=True`.
 - No CLI flag changes required; display is automatic in existing `history` output.
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/fsm/executor.py` — emit `session_jsonl` in `action_complete` event for prompt/slash_command states
+- `scripts/little_loops/cli/loop/info.py` — display `session_jsonl` in `_format_history_event` for `action_complete` events
+
+### Dependent Files (Callers/Importers)
+- `scripts/little_loops/session_log.py` — `get_current_session_jsonl()` reused as-is (no changes needed)
+
+### Similar Patterns
+- `.issues/` session log pattern managed by `session_log.py` — same JSONL path resolution approach used for issue session links
+
+### Tests
+- TBD — add test for `executor.py` `action_complete` payload including `session_jsonl` field when `is_prompt=True`
+- TBD — add test for `info.py` `_format_history_event` rendering session path with/without `session_jsonl` key
+
+### Documentation
+- FSM loop events documentation — note new optional `session_jsonl` field on `action_complete` events
+
+### Configuration
+- N/A
 
 ## Out of Scope
 
 - Linking sessions for `shell` action types (those don't spawn Claude).
 - Back-filling existing history files.
 
-## Status
+## Impact
 
----
+- **Priority**: P3 — Developer quality-of-life improvement; debugging prompt state outputs currently requires manual JSONL correlation
+- **Effort**: Small — Reuses existing `get_current_session_jsonl()` from `session_log.py`; only 2 files need modification
+- **Risk**: Low — Additive change; new optional field on existing events; no breaking changes to existing history format
+- **Breaking Change**: No
+
+## Labels
+
+`feature`, `ll-loop`, `session-linking`, `captured`
 
 ## Status
 
@@ -78,10 +128,13 @@ After a `prompt`/`slash_command` state completes:
 
 ## Verification Notes
 
-- **Date**: 2026-03-13
+- **Date**: 2026-03-14
 - **Verdict**: VALID
-- `scripts/little_loops/fsm/executor.py` emits `action_complete` at lines 583–588 with `is_prompt` but no `session_jsonl` field. `scripts/little_loops/session_log.py` exists with `get_current_session_jsonl()` available for reuse but not yet called from `executor.py`. Feature not yet implemented.
+- `scripts/little_loops/fsm/executor.py` emits `action_complete` at lines 583–588 with `is_prompt` (line 588) but no `session_jsonl` field — confirmed by grep. `scripts/little_loops/session_log.py` has `get_current_session_jsonl()` at line 62, not yet called from `executor.py`. `scripts/little_loops/cli/loop/info.py` has `_format_history_event` at line 152 with no `session_jsonl` handling. Feature not yet implemented.
 
 ## Session Log
 - `/ll:capture-issue` - 2026-03-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/711e6b32-70cb-4d26-8b4e-bc302750cb79.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
+- `/ll:format-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:verify-issues` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`

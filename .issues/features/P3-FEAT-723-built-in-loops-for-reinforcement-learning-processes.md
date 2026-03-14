@@ -5,6 +5,8 @@ priority: P3
 status: open
 discovered_date: 2026-03-13
 discovered_by: capture-issue
+confidence_score: 73
+outcome_confidence: 71
 ---
 
 # FEAT-723: Built-in Loops for Reinforcement Learning Processes
@@ -129,3 +131,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75ab9873-e77b-46a5-b50b-85782d3bc37c.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/09173b5b-d72c-42cc-87ef-609e8e998bce.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
