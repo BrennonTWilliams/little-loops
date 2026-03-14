@@ -61,6 +61,10 @@ In Passes 2 and 3, track `(issue_path, is_completed, match_score, matched_terms)
 
 `enhancement`, `performance`, `issue-discovery`
 
+## Blocks
+
+- ENH-694
+
 ## Verification Notes
 
 - **Date**: 2026-03-13
