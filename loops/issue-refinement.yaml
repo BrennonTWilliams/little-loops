@@ -27,9 +27,9 @@ states:
               print(f'NEEDS_SCORE {issue[\"id\"]}')
               sys.exit(1)
           rc = issue.get('refine_count', 0)
-          # Cap: after 5 refinements with cs>=85, graduate even if oc is still low.
-          # Prevents infinite refinement loops on stubborn issues.
-          if cs >= 85 and rc >= 5:
+          # Hard cap: graduate after 5 refinements regardless of score.
+          # Prevents a stubborn issue from consuming the entire iteration budget.
+          if rc >= 5:
               continue
           if cs < 85 or oc < 70:
               print(f'NEEDS_REFINE {issue[\"id\"]}')
@@ -42,7 +42,7 @@ states:
       type: exit_code
     on_success: done
     on_failure: parse_id
-    on_error: evaluate
+    on_error: done
   parse_id:
     action: echo "${captured.classify.output}" | awk 'NR==1{printf $2}'
     action_type: shell
@@ -106,6 +106,6 @@ states:
     next: evaluate
   done:
     terminal: true
-max_iterations: 50
+max_iterations: 200
 timeout: 14400
 on_handoff: spawn
