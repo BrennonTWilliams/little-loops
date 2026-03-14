@@ -326,6 +326,28 @@ states:
     terminal: true
 ```
 
+**Stall detection (diff_stall evaluator):**
+```yaml
+# Add to any harness loop to skip items that produce no code changes
+check_stall:
+  action: "echo checking"
+  action_type: shell
+  evaluate:
+    type: diff_stall
+    scope: ["scripts/"]  # optional: limit to specific paths
+    max_stall: 2         # optional: default 1
+  on_success: advance
+  on_failure: skip_item  # stalled — move to next item
+```
+
+| Verdict | Meaning |
+|---------|---------|
+| `success` | Diff changed since last call, or below max_stall threshold |
+| `failure` | Diff identical for max_stall consecutive iterations (stalled) |
+| `error` | `git` command unavailable or returned non-zero |
+
+---
+
 ### Advanced State Configuration
 
 #### action_type (Optional)

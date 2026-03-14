@@ -779,6 +779,41 @@ states:
 
 ---
 
+**Stall Detection (native `diff_stall` evaluator)**
+
+Use the `diff_stall` evaluator to automatically terminate retries when no code changes are being produced. Unlike `convergence` (which tracks numeric metrics), `diff_stall` works with any action type by comparing `git diff --stat` between iterations.
+
+Add a `check_stall` state after the action that retries — if the working tree is unchanged for `max_stall` consecutive iterations, the loop skips to the next item instead of retrying indefinitely:
+
+```yaml
+# In a harness loop, add check_stall between execute and advance:
+check_stall:
+  action: "echo 'checking stall'"      # action output is ignored by diff_stall
+  action_type: shell
+  evaluate:
+    type: diff_stall
+    scope: ["scripts/"]  # optional: limit diff to specific paths; omit for repo root
+    max_stall: 2         # optional: consecutive no-change iterations before stall; default 1
+  on_success: advance    # progress detected — move on
+  on_failure: skip_item  # stalled — skip without exhausting max_iterations
+```
+
+**When to add stall detection:**
+- The action is prompt-based (`action_type: prompt`) and may loop without making changes
+- You observe a harness loop exhausting `max_iterations` without commits
+- The skill being harnessed sometimes produces no output (e.g., "already done")
+
+**YAML field reference:**
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `scope` | `list[str]` | *(entire repo)* | Paths to limit `git diff --stat` to |
+| `max_stall` | `int` | `1` | Consecutive no-change iterations before `failure` verdict |
+
+**Verdicts:** `success` (progress or below threshold), `failure` (stalled at max_stall), `error` (git unavailable)
+
+---
+
 **Example: Harness `refine-issue` over all active issues**
 
 ```yaml

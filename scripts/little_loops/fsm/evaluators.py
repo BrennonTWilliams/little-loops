@@ -11,6 +11,7 @@ Tier 1 (Deterministic - no API calls):
     output_json: Extract and compare JSON path values
     output_contains: Pattern matching on stdout
     convergence: Track progress toward a target value
+    diff_stall: Detect stalled iterations via git diff comparison
 
 Tier 2 (LLM-based):
     llm_structured: Use LLM with structured output for natural language evaluation
@@ -18,11 +19,14 @@ Tier 2 (LLM-based):
 
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any, Callable
+from pathlib import Path
+from typing import Any
 
 from little_loops.fsm.interpolation import (
     InterpolationContext,
@@ -365,6 +369,99 @@ def evaluate_convergence(
     )
 
 
+def evaluate_diff_stall(
+    scope: list[str] | None = None,
+    max_stall: int = 1,
+) -> EvaluationResult:
+    """Detect stalled iterations by comparing git diff --stat between runs.
+
+    On first call, snapshots the current diff and returns 'success'.
+    On subsequent calls, compares current diff to the previous snapshot.
+    If the diff is identical for max_stall consecutive iterations, returns
+    'failure' (stalled). If different, resets the stall counter and returns
+    'success' (progress).
+
+    State is persisted in /tmp using a key derived from the scope argument,
+    so different loops with different scopes maintain independent stall counters.
+
+    Args:
+        scope: Optional list of paths to limit the git diff to. Defaults to
+            the entire working tree.
+        max_stall: Number of consecutive no-change iterations before stall
+            verdict. Defaults to 1.
+
+    Returns:
+        EvaluationResult with verdict:
+            - success: diff changed since last iteration (progress made)
+            - failure: diff unchanged for max_stall iterations (stalled)
+            - error: git command failed or timed out
+    """
+    cmd = ["git", "diff", "--stat"]
+    if scope:
+        cmd += ["--"] + scope
+
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+    except subprocess.TimeoutExpired:
+        return EvaluationResult(verdict="error", details={"error": "git diff timed out"})
+    except FileNotFoundError:
+        return EvaluationResult(verdict="error", details={"error": "git not found in PATH"})
+
+    if proc.returncode != 0:
+        return EvaluationResult(
+            verdict="error",
+            details={"error": f"git diff failed: {proc.stderr[:200]}"},
+        )
+
+    current_diff = proc.stdout
+
+    # Derive a stable cache key from the scope so independent loops don't collide
+    scope_str = "|".join(sorted(scope)) if scope else "_root_"
+    cache_key = hashlib.md5(scope_str.encode()).hexdigest()[:12]
+    state_file = Path(f"/tmp/ll-diff-stall-{cache_key}.txt")
+    count_file = Path(f"/tmp/ll-diff-stall-{cache_key}.count")
+
+    # Read previous snapshot and stall count
+    previous_diff: str | None = None
+    stall_count = 0
+    try:
+        previous_diff = state_file.read_text()
+        stall_count = int(count_file.read_text().strip())
+    except (FileNotFoundError, ValueError):
+        pass
+
+    # First iteration: save snapshot and report progress
+    if previous_diff is None:
+        state_file.write_text(current_diff)
+        count_file.write_text("0")
+        return EvaluationResult(
+            verdict="success",
+            details={"stall_count": 0, "max_stall": max_stall, "diff_changed": True},
+        )
+
+    if current_diff == previous_diff:
+        stall_count += 1
+        count_file.write_text(str(stall_count))
+        if stall_count >= max_stall:
+            return EvaluationResult(
+                verdict="failure",
+                details={"stall_count": stall_count, "max_stall": max_stall, "diff_changed": False},
+            )
+        # Not yet at max_stall threshold — still report success so loop continues
+        return EvaluationResult(
+            verdict="success",
+            details={"stall_count": stall_count, "max_stall": max_stall, "diff_changed": False},
+        )
+    else:
+        # Progress: update snapshot and reset counter
+        state_file.write_text(current_diff)
+        count_file.write_text("0")
+        return EvaluationResult(
+            verdict="success",
+            details={"stall_count": 0, "max_stall": max_stall, "diff_changed": True},
+        )
+
+
 def evaluate_llm_structured(
     output: str,
     prompt: str | None = None,
@@ -632,6 +729,12 @@ def evaluate(
             target=convergence_target,
             tolerance=tolerance,
             direction=config.direction,
+        )
+
+    elif eval_type == "diff_stall":
+        return evaluate_diff_stall(
+            scope=config.scope,
+            max_stall=config.max_stall,
         )
 
     elif eval_type == "llm_structured":

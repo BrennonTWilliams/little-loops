@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import subprocess
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -15,6 +16,7 @@ from little_loops.fsm.evaluators import (
     _extract_json_path,
     evaluate,
     evaluate_convergence,
+    evaluate_diff_stall,
     evaluate_exit_code,
     evaluate_llm_structured,
     evaluate_output_contains,
@@ -928,3 +930,156 @@ class TestEvaluateDispatcherLLM:
 
         assert result.verdict == "success_uncertain"
         assert result.details["confident"] is False
+
+
+class TestDiffStallEvaluator:
+    """Tests for diff_stall evaluator."""
+
+    @pytest.fixture
+    def mock_git(self):
+        """Patch subprocess.run for git diff commands."""
+        with patch("little_loops.fsm.evaluators.subprocess.run") as mock_run:
+            mock_result = MagicMock()
+            mock_result.returncode = 0
+            mock_result.stderr = ""
+            mock_run.return_value = mock_result
+            yield mock_run, mock_result
+
+    @pytest.fixture(autouse=True)
+    def clean_state_files(self, tmp_path, monkeypatch):
+        """Redirect state files to a temp directory for test isolation."""
+        import little_loops.fsm.evaluators as ev_module
+
+        original_path = Path
+
+        def patched_path(p: str) -> Path:
+            if p.startswith("/tmp/ll-diff-stall-"):
+                filename = original_path(p).name
+                return tmp_path / filename
+            return original_path(p)
+
+        monkeypatch.setattr(ev_module, "Path", patched_path)
+
+    def test_first_iteration_returns_success(self, mock_git) -> None:
+        """First call always returns success (no previous snapshot)."""
+        _, mock_result = mock_git
+        mock_result.stdout = "scripts/foo.py | 3 +++"
+
+        result = evaluate_diff_stall()
+        assert result.verdict == "success"
+        assert result.details["stall_count"] == 0
+        assert result.details["diff_changed"] is True
+
+    def test_different_diff_returns_success(self, mock_git) -> None:
+        """Progress (diff changed) returns success and resets stall counter."""
+        _, mock_result = mock_git
+        mock_result.stdout = "scripts/foo.py | 3 +++"
+
+        # First call (baseline)
+        evaluate_diff_stall()
+
+        # Second call with different diff
+        mock_result.stdout = "scripts/bar.py | 5 +++++"
+        result = evaluate_diff_stall()
+        assert result.verdict == "success"
+        assert result.details["diff_changed"] is True
+        assert result.details["stall_count"] == 0
+
+    def test_identical_diff_at_threshold_returns_failure(self, mock_git) -> None:
+        """Identical diff for max_stall consecutive iterations returns failure."""
+        _, mock_result = mock_git
+        mock_result.stdout = "scripts/foo.py | 3 +++"
+
+        # First call (baseline)
+        evaluate_diff_stall(max_stall=1)
+
+        # Second call — same diff, max_stall=1 triggers failure
+        result = evaluate_diff_stall(max_stall=1)
+        assert result.verdict == "failure"
+        assert result.details["stall_count"] == 1
+        assert result.details["diff_changed"] is False
+
+    def test_identical_diff_below_threshold_returns_success(self, mock_git) -> None:
+        """Identical diff below max_stall threshold still returns success."""
+        _, mock_result = mock_git
+        mock_result.stdout = "scripts/foo.py | 3 +++"
+
+        # First call (baseline)
+        evaluate_diff_stall(max_stall=2)
+
+        # Second call — same diff, but max_stall=2 so not yet at threshold
+        result = evaluate_diff_stall(max_stall=2)
+        assert result.verdict == "success"
+        assert result.details["stall_count"] == 1
+        assert result.details["diff_changed"] is False
+
+    def test_stall_then_progress_resets_counter(self, mock_git) -> None:
+        """After stall, a diff change resets stall count."""
+        _, mock_result = mock_git
+        mock_result.stdout = "scripts/foo.py | 3 +++"
+
+        # Baseline
+        evaluate_diff_stall(max_stall=3)
+        # Same diff (stall_count -> 1)
+        evaluate_diff_stall(max_stall=3)
+        # Progress: diff changes, counter resets
+        mock_result.stdout = "scripts/bar.py | 5 +++++"
+        result = evaluate_diff_stall(max_stall=3)
+        assert result.verdict == "success"
+        assert result.details["stall_count"] == 0
+        assert result.details["diff_changed"] is True
+
+    def test_scope_passed_to_git(self, mock_git) -> None:
+        """scope parameter is forwarded to git diff command."""
+        mock_run, mock_result = mock_git
+        mock_result.stdout = ""
+
+        evaluate_diff_stall(scope=["scripts/"])
+
+        call_args = mock_run.call_args[0][0]
+        assert "--" in call_args
+        assert "scripts/" in call_args
+
+    def test_git_failure_returns_error(self, mock_git) -> None:
+        """Non-zero git exit code returns error verdict."""
+        mock_run, mock_result = mock_git
+        mock_result.returncode = 128
+        mock_result.stderr = "not a git repository"
+
+        result = evaluate_diff_stall()
+        assert result.verdict == "error"
+        assert "git diff failed" in result.details["error"]
+
+    def test_git_timeout_returns_error(self) -> None:
+        """Subprocess timeout returns error verdict."""
+        with patch(
+            "little_loops.fsm.evaluators.subprocess.run",
+            side_effect=subprocess.TimeoutExpired("git", 30),
+        ):
+            result = evaluate_diff_stall()
+        assert result.verdict == "error"
+        assert "timed out" in result.details["error"]
+
+    def test_dispatch_diff_stall(self, mock_git) -> None:
+        """evaluate() dispatcher routes diff_stall type correctly."""
+        _, mock_result = mock_git
+        mock_result.stdout = ""
+
+        config = EvaluateConfig(type="diff_stall")
+        ctx = InterpolationContext()
+        result = evaluate(config, "", 0, ctx)
+
+        assert result.verdict == "success"
+        assert "stall_count" in result.details
+
+    def test_dispatch_diff_stall_with_options(self, mock_git) -> None:
+        """evaluate() passes scope and max_stall to diff_stall evaluator."""
+        _, mock_result = mock_git
+        mock_result.stdout = "scripts/foo.py | 1 +"
+
+        config = EvaluateConfig(type="diff_stall", scope=["scripts/"], max_stall=2)
+        ctx = InterpolationContext()
+        result = evaluate(config, "", 0, ctx)
+
+        assert result.verdict == "success"
+        assert result.details["max_stall"] == 2

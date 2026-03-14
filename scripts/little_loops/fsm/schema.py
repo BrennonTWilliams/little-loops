@@ -49,6 +49,8 @@ class EvaluateConfig:
         source: Override default source (current action output)
         previous: Previous value reference for convergence
         direction: Optimization direction for convergence (minimize/maximize)
+        scope: Paths to limit git diff to for diff_stall evaluator
+        max_stall: Consecutive no-change iterations before failure (diff_stall)
     """
 
     type: Literal[
@@ -57,6 +59,7 @@ class EvaluateConfig:
         "output_json",
         "output_contains",
         "convergence",
+        "diff_stall",
         "llm_structured",
     ]
     operator: str | None = None
@@ -72,6 +75,8 @@ class EvaluateConfig:
     source: str | None = None
     previous: str | None = None
     direction: Literal["minimize", "maximize"] = "minimize"
+    scope: list[str] | None = None  # for diff_stall: limit git diff to these paths
+    max_stall: int = 1  # for diff_stall: consecutive no-change iterations before failure
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -104,6 +109,10 @@ class EvaluateConfig:
             result["previous"] = self.previous
         if self.direction != "minimize":
             result["direction"] = self.direction
+        if self.scope is not None:
+            result["scope"] = self.scope
+        if self.max_stall != 1:
+            result["max_stall"] = self.max_stall
 
         return result
 
@@ -125,6 +134,8 @@ class EvaluateConfig:
             source=data.get("source"),
             previous=data.get("previous"),
             direction=data.get("direction", "minimize"),
+            scope=data.get("scope"),
+            max_stall=data.get("max_stall", 1),
         )
 
 

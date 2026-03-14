@@ -64,6 +64,7 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
     "output_json": ["path", "operator", "target"],
     "output_contains": ["pattern"],
     "convergence": ["target"],
+    "diff_stall": [],
     "llm_structured": [],
 }
 
@@ -153,6 +154,16 @@ def _validate_evaluator(state_name: str, evaluate: EvaluateConfig) -> list[Valid
                 ValidationError(
                     message="min_confidence must be between 0 and 1",
                     path=f"{path}.min_confidence",
+                )
+            )
+
+    # Validate diff_stall-specific fields
+    if evaluate.type == "diff_stall":
+        if evaluate.max_stall < 1:
+            errors.append(
+                ValidationError(
+                    message="max_stall must be >= 1",
+                    path=f"{path}.max_stall",
                 )
             )
 

@@ -178,9 +178,28 @@ New schema fields would be validated in `schema.py` and `validation.py`.
 - `/ll:format-issue` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:verify-issues` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:confidence-check` - 2026-03-13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/13cbf42e-fac3-467d-b775-6936f04a3727.jsonl`
 
 ---
 
+## Resolution
+
+**Completed: 2026-03-14**
+
+Both paths implemented:
+
+**Path A — Shell state template (loop-types.md)**
+- Added `Stall Detection` section to the Harness archetype in `skills/create-loop/loop-types.md` documenting the `diff_stall` evaluator pattern with YAML example, field reference table, and usage guidance.
+- Added `diff_stall` verdict reference to `skills/create-loop/reference.md` Common Configurations section.
+
+**Path B — Native `diff_stall` evaluator**
+- `scripts/little_loops/fsm/evaluators.py`: Added `evaluate_diff_stall()` function and `diff_stall` dispatch branch in `evaluate()`. Uses temp files at `/tmp/ll-diff-stall-<scope-hash>.{txt,count}` for cross-iteration state persistence.
+- `scripts/little_loops/fsm/schema.py`: Added `"diff_stall"` to `EvaluateConfig.type` Literal, and `scope: list[str] | None` and `max_stall: int` fields with `to_dict()`/`from_dict()` support.
+- `scripts/little_loops/fsm/validation.py`: Added `"diff_stall": []` to `EVALUATOR_REQUIRED_FIELDS` and `max_stall >= 1` validation.
+- `scripts/tests/test_fsm_evaluators.py`: Added `TestDiffStallEvaluator` class (11 tests covering first iteration, progress, stall threshold, counter reset, scope forwarding, error paths, and dispatcher integration).
+
+All 116 evaluator tests pass. Ruff and mypy clean.
+
 ## Status
 
-**Open** | Created: 2026-03-12 | Priority: P3
+**Completed** | Created: 2026-03-12 | Completed: 2026-03-14 | Priority: P3
