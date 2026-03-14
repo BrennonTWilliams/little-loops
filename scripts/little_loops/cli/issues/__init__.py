@@ -14,6 +14,7 @@ def main_issues() -> int:
     Returns:
         Exit code (0 = success, 1 = error)
     """
+    from little_loops.cli.issues.append_log import cmd_append_log
     from little_loops.cli.issues.count_cmd import cmd_count
     from little_loops.cli.issues.impact_effort import cmd_impact_effort
     from little_loops.cli.issues.list_cmd import cmd_list
@@ -37,6 +38,7 @@ Sub-commands:
   sequence       Suggest dependency-ordered implementation sequence
   impact-effort  Display impact vs effort matrix for active issues
   refine-status  Show refinement depth table sorted by commands touched
+  append-log     Append a session log entry to an issue file
 
 Examples:
   %(prog)s next-id
@@ -51,6 +53,7 @@ Examples:
   %(prog)s refine-status --type BUG
   %(prog)s refine-status --format json
   %(prog)s refine-status --json
+  %(prog)s append-log .issues/bugs/P2-BUG-123-foo.md /ll:refine-issue
 """,
     )
 
@@ -132,6 +135,16 @@ Examples:
     )
     add_config_arg(refine_s)
 
+    al = subs.add_parser(
+        "append-log",
+        aliases=["al"],
+        help="Append a session log entry to an issue file",
+    )
+    al.set_defaults(command="append-log")
+    al.add_argument("issue_path", help="Path to the issue markdown file")
+    al.add_argument("log_command", help="Command name (e.g., /ll:refine-issue)")
+    add_config_arg(al)
+
     args = parser.parse_args()
 
     if not args.command:
@@ -159,4 +172,6 @@ Examples:
         return cmd_impact_effort(config, args)
     if args.command == "refine-status":
         return cmd_refine_status(config, args)
+    if args.command == "append-log":
+        return cmd_append_log(config, args)
     return 1

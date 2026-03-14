@@ -248,14 +248,17 @@ git mv "{{config.issues.base_dir}}/[category]/[file].md" \
        "{{config.issues.base_dir}}/{{config.issues.completed_dir}}/"
 ```
 
-3. Append a session log entry to the issue file before moving it:
+3. Append a session log entry to the issue file before moving it, using the Bash tool:
 
-```markdown
-## Session Log
-- `/ll:tradeoff-review-issues` - [ISO timestamp] - `[path to current session JSONL]`
+```bash
+ll-issues append-log <path-to-issue-file> /ll:tradeoff-review-issues
 ```
 
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
+
+```
+- `/ll:tradeoff-review-issues` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
 #### For Approved Updates
 
@@ -282,14 +285,17 @@ Append review notes to the issue file:
 Update first - [specific suggestion from rationale]
 ```
 
-After appending the review note, append a session log entry to the issue file:
+After appending the review note, use the Bash tool to append a session log entry:
 
-```markdown
-## Session Log
-- `/ll:tradeoff-review-issues` - [ISO timestamp] - `[path to current session JSONL]`
+```bash
+ll-issues append-log <path-to-issue-file> /ll:tradeoff-review-issues
 ```
 
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
+
+```
+- `/ll:tradeoff-review-issues` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
 #### Stage All Changes
 

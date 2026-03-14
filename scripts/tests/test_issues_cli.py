@@ -1202,6 +1202,83 @@ class TestIssuesCLICount:
         assert captured.out.strip() == "5"
 
 
+class TestIssuesAppendLog:
+    """Tests for ll-issues append-log sub-command."""
+
+    def test_append_log_writes_entry(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """append-log writes a correctly-formatted entry parseable by count_session_commands."""
+        import tempfile
+        from unittest.mock import patch as mock_patch
+
+        from little_loops.session_log import count_session_commands
+
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+
+        with tempfile.NamedTemporaryFile(suffix=".jsonl", delete=False) as f:
+            jsonl_path = Path(f.name)
+
+        try:
+            with mock_patch(
+                "little_loops.session_log.get_current_session_jsonl",
+                return_value=jsonl_path,
+            ):
+                with patch.object(
+                    sys,
+                    "argv",
+                    ["ll-issues", "append-log", str(issue_file), "/ll:refine-issue", "--config", str(temp_project_dir)],
+                ):
+                    from little_loops.cli import main_issues
+
+                    result = main_issues()
+
+            assert result == 0
+            content = issue_file.read_text()
+            counts = count_session_commands(content)
+            assert counts.get("/ll:refine-issue", 0) == 1
+        finally:
+            jsonl_path.unlink(missing_ok=True)
+
+    def test_append_log_returns_1_when_no_jsonl(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+    ) -> None:
+        """append-log returns exit code 1 when session JSONL cannot be resolved."""
+        from unittest.mock import patch as mock_patch
+
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        issue_file = issues_dir / "bugs" / "P0-BUG-001-critical-crash.md"
+        original_content = issue_file.read_text()
+
+        with mock_patch(
+            "little_loops.session_log.get_current_session_jsonl",
+            return_value=None,
+        ):
+            with patch.object(
+                sys,
+                "argv",
+                ["ll-issues", "append-log", str(issue_file), "/ll:refine-issue", "--config", str(temp_project_dir)],
+            ):
+                from little_loops.cli import main_issues
+
+                result = main_issues()
+
+        assert result == 1
+        # File should be unmodified when session JSONL can't be resolved
+        assert issue_file.read_text() == original_content
+
+
 class TestIssuesCLIHelp:
     """Tests for ll-issues help and no-command behavior."""
 

@@ -243,14 +243,17 @@ If issues found, attempt to fix:
 4. **Update code snippets** to match current code
 5. **Add verification notes** documenting changes
 6. **Save the corrected issue file** with your changes
-7. **Append Session Log entry** to the issue file:
+7. **Append Session Log entry** to the issue file using the Bash tool:
 
-```markdown
-## Session Log
-- `/ll:ready-issue` - [ISO timestamp] - `[path to current session JSONL]`
+```bash
+ll-issues append-log <path-to-issue-file> /ll:ready-issue
 ```
 
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
+
+```
+- `/ll:ready-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
 After making corrections, use verdict CORRECTED (not READY or NOT_READY).
 

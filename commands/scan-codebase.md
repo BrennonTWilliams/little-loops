@@ -313,14 +313,17 @@ git add "{{config.issues.base_dir}}/"
 
 ### 5.5. Append Session Log Entries
 
-For each newly created issue file, append a session log entry:
+For each newly created issue file, use the Bash tool to append a session log entry:
 
-```markdown
-## Session Log
-- `/ll:scan-codebase` - [ISO timestamp] - `[path to current session JSONL]`
+```bash
+ll-issues append-log <path-to-issue-file> /ll:scan-codebase
 ```
 
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). Add the `## Session Log` section before the `---` / `## Status` footer.
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
+
+```
+- `/ll:scan-codebase` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
 ### 6. Output Report
 

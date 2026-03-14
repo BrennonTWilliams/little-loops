@@ -145,14 +145,17 @@ For resolved issues:
 
 ### 4.5 Append Session Log Entries
 
-After updating each issue file, append a session log entry:
+After updating each issue file, use the Bash tool to append a session log entry:
 
-```markdown
-## Session Log
-- `/ll:verify-issues` - [ISO timestamp] - `[path to current session JSONL]`
+```bash
+ll-issues append-log <path-to-issue-file> /ll:verify-issues
 ```
 
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
+
+```
+- `/ll:verify-issues` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
 ### 5. Output Report
 

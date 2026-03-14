@@ -6,7 +6,7 @@ allowed-tools:
   - Glob
   - Edit
   - Task
-  - Bash(git:*)
+  - Bash(git:*, ll-issues:*)
 arguments:
   - name: issue_id
     description: Issue ID to refine (e.g., BUG-071, FEAT-225, ENH-042)
@@ -383,14 +383,17 @@ After gathering answers, update the issue file with both research findings and u
 
 ### 7. Append Session Log
 
-After updating the issue, append a session log entry:
+After updating the issue, use the Bash tool to append a session log entry:
 
-```markdown
-## Session Log
-- `/ll:refine-issue` - [ISO timestamp] - `[path to current session JSONL]`
+```bash
+ll-issues append-log <path-to-issue-file> /ll:refine-issue
 ```
 
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
+If `ll-issues` is not available, fall back to manually appending with **exactly** this format (backticks required):
+
+```
+- `/ll:refine-issue` - YYYY-MM-DDTHH:MM:SS - `<absolute path to session JSONL>`
+```
 
 ### 8. Output Report
 
