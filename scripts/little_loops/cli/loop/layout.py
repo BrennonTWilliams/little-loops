@@ -1006,6 +1006,11 @@ def _render_layered_diagram(
                             grid[arrow_start_row][c] = "\u252c"
                         elif cell == "\u250c":  # ┌ → ┬
                             grid[arrow_start_row][c] = "\u252c"
+                # Update boundary junction chars where the horizontal bar meets a pipe
+                if 0 <= left < total_width and grid[arrow_start_row][left] == "\u2502":  # │ → ├
+                    grid[arrow_start_row][left] = "\u251c"
+                if 0 <= right < total_width and grid[arrow_start_row][right] == "\u2502":  # │ → ┤
+                    grid[arrow_start_row][right] = "\u2524"
 
     # Draw same-layer edges (horizontal arrows between states on same layer)
     # Includes both branches and reclassified back-edges within same layer
@@ -1115,8 +1120,9 @@ def _render_layered_diagram(
             # Draw right-to-left, crossing existing pipes with junction chars
             if 0 <= src_row < total_height:
                 src_left = col_start.get(src, col + 1)
+                _src_row_boxes = _box_occ.get(src_row, set())
                 for c in range(col + 1, src_left):
-                    if c < total_width:
+                    if c < total_width and c not in _src_row_boxes:
                         cell = grid[src_row][c]
                         if cell == " ":
                             grid[src_row][c] = "\u2500"  # ─
@@ -1134,8 +1140,9 @@ def _render_layered_diagram(
             # Draw right-to-left, crossing existing pipes with junction chars
             dst_left = col_start.get(dst, col + 1)
             if 0 <= dst_row < total_height:
+                _dst_row_boxes = _box_occ.get(dst_row, set())
                 for c in range(col + 1, dst_left):
-                    if c < total_width:
+                    if c < total_width and c not in _dst_row_boxes:
                         cell = grid[dst_row][c]
                         if cell == " ":
                             grid[dst_row][c] = "\u2500"  # ─
