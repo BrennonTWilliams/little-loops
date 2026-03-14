@@ -12,6 +12,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.43.0] - 2026-03-14
+
+### Added
+
+- **Suggest FSM loop configs from commands, prompts, and workflows** — `loop-suggester --from-commands` mode analyzes the command and skill catalog to propose ready-to-use FSM loop configurations (FEAT-716)
+- **Loop run history archiving** — Loop runs are now archived to `.loops/.history/` before clearing, enabling persistent history retrieval across sessions (FEAT-733)
+- **Harness loop type for `create-loop`** — New `Harness` loop type wraps existing skills and prompts into FSM loops without custom state logic (469a98f)
+- **plugin-health-check convergence FSM loop** — Extended the `plugin-health-check` built-in loop into a full convergence FSM loop with self-healing transitions (bc2f910)
+- **`description` field for FSMLoop schema** — FSM loop definitions now support an optional human-readable description field (c7ed2b8)
+- **Workflow analyzer cross-references** — Workflow analyzer cross-references workflows to entity clusters and populates `handoff_points` for richer handoff context (27f482d)
+- **backlog-flow-optimizer built-in loop** — New `backlog-flow-optimizer` loop replaces `issue-throughput-monitor` with improved flow-based optimization (81500eb)
+
+### Fixed
+
+- **Loop scratch files use project-scoped directory** — Scratch files now write to `.loops/tmp/` instead of system `/tmp/`, preventing cross-project collisions (9ddd8d1)
+- **`format-issue` session log in auto mode** — Fixed programmatic session log write in auto mode (0b7fccb)
+- **FSM diagram back-edge connector rendering** — Fixed rendering glitches in back-edge connectors (c5704ca)
+- **Built-in loop configs audit** — Removed `secret-scan` loop and updated semantics across multiple built-in loop configs (10f9873, 09562b7)
+- **`docs-sync` loop `on_error` routing** — Added missing `on_error` routing to `route_results` state in the docs-sync loop (35d39c4)
+- **Issue refinement budget exhaustion** — Prevented budget exhaustion on stubborn issues in the `issue-refinement` loop (9a0abf3)
+
+### Changed
+
+- **Stall detection via diff comparison** — New `diff_stall` evaluator detects FSM iteration stalls by comparing successive diffs (ENH-714)
+- **`ll-loop list` visual polish** — Colorized output matches `ll-issues` quality with priority and status indicators (ENH-715)
+- **`ll-loop history --verbose` LLM details** — Verbose history output now includes LLM call counts and token details per iteration (8a881e6)
+- **`create-sprint` surfaces refinement status** — Sprint creation now shows issue refinement status to help curate sprint candidates (1ddae71)
+- **`ll-loop init` wizard simplified** — Removed product analysis and auto-timeout prompts from the interactive initialization wizard (6a333fb)
+- **FSM BFS optimization** — Replaced `list.pop(0)` with `deque.popleft()` for O(1) BFS traversal (c452331)
+
 ## [1.42.0] - 2026-03-13
 
 ### Added
@@ -1207,6 +1237,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.43.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.42.0...v1.43.0
 [1.42.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.41.0...v1.42.0
 [1.41.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.40.0...v1.41.0
 [1.40.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.39.0...v1.40.0
