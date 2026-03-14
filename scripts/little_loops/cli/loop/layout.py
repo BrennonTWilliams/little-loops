@@ -153,9 +153,7 @@ def _collect_edges(fsm: FSMLoop) -> list[tuple[str, str, str]]:
     return edges
 
 
-def _bfs_order(
-    initial: str, edges: list[tuple[str, str, str]]
-) -> tuple[list[str], dict[str, int]]:
+def _bfs_order(initial: str, edges: list[tuple[str, str, str]]) -> tuple[list[str], dict[str, int]]:
     """BFS from initial state. Returns (order, depth_map)."""
     order: list[str] = []
     depth: dict[str, int] = {initial: 0}
@@ -700,9 +698,7 @@ def _render_layered_diagram(
     # --- Compute a common center column for alignment ---
     # For layers with single boxes, we want vertical alignment through a
     # shared center column. Use the widest single-state layer's center.
-    max_single_w = max(
-        (box_width[layer[0]] for layer in layers if len(layer) == 1), default=0
-    )
+    max_single_w = max((box_width[layer[0]] for layer in layers if len(layer) == 1), default=0)
     # The common center is at content_left + max_single_w // 2
     common_center = content_left + max_single_w // 2
 
@@ -990,7 +986,7 @@ def _render_layered_diagram(
             for src, dst, _ in inter_edges:
                 if dst in col_center:
                     src_targets.setdefault(src, []).append(col_center[dst])
-            for src, centers in src_targets.items():
+            for _src, centers in src_targets.items():
                 if len(centers) < 2:
                     continue
                 left = min(centers)
@@ -1031,7 +1027,7 @@ def _render_layered_diagram(
         dst_right = col_start[dst] + box_width[dst]
         dst_left = col_start[dst]
         src_left = col_start[src]
-        _row_boxes = _box_occ.get(name_row, frozenset())
+        _row_boxes = _box_occ.get(name_row, set())
         if dst_left >= src_right:
             # Left to right horizontal arrow: src ──label──▶ dst
             start = src_right
@@ -1039,7 +1035,7 @@ def _render_layered_diagram(
             edge_text = "\u2500" + label + "\u2500\u2500\u25b6"
             available = end - start
             if available < len(edge_text):
-                edge_text = edge_text[:max(1, available)]
+                edge_text = edge_text[: max(1, available)]
             left_dashes = max(0, available - len(edge_text))
             for k in range(left_dashes):
                 pos = start + k
@@ -1047,7 +1043,12 @@ def _render_layered_diagram(
                     grid[name_row][pos] = "\u2500"
             for k, ch in enumerate(edge_text):
                 pos = start + left_dashes + k
-                if 0 <= pos < end and pos < total_width and name_row < total_height and pos not in _row_boxes:
+                if (
+                    0 <= pos < end
+                    and pos < total_width
+                    and name_row < total_height
+                    and pos not in _row_boxes
+                ):
                     grid[name_row][pos] = ch
         elif dst_right <= src_left:
             # Right to left: dst is left of src: src → dst drawn as dst ◀──label── src
@@ -1056,7 +1057,7 @@ def _render_layered_diagram(
             edge_text = "\u2500" + label + "\u2500\u2500\u25b6"
             available = end - start
             if available < len(edge_text):
-                edge_text = edge_text[:max(1, available)]
+                edge_text = edge_text[: max(1, available)]
             left_dashes = max(0, available - len(edge_text))
             for k in range(left_dashes):
                 pos = start + k
@@ -1064,7 +1065,12 @@ def _render_layered_diagram(
                     grid[name_row][pos] = "\u2500"
             for k, ch in enumerate(edge_text):
                 pos = start + left_dashes + k
-                if 0 <= pos < end and pos < total_width and name_row < total_height and pos not in _row_boxes:
+                if (
+                    0 <= pos < end
+                    and pos < total_width
+                    and name_row < total_height
+                    and pos not in _row_boxes
+                ):
                     grid[name_row][pos] = ch
 
     # Back-edges: left-margin vertical arrows with labels
@@ -1206,7 +1212,7 @@ def _render_layered_diagram(
             # Horizontal connector from source box right side to margin
             # Draw left-to-right, crossing existing pipes with junction chars
             src_right = col_start.get(src, 0) + box_width.get(src, 0)
-            _src_row_boxes = _box_occ.get(src_row, frozenset())
+            _src_row_boxes = _box_occ.get(src_row, set())
             if 0 <= src_row < total_height:
                 for c in range(src_right, col):
                     if 0 <= c < total_width and c not in _src_row_boxes:
@@ -1225,7 +1231,7 @@ def _render_layered_diagram(
 
             # Horizontal connector from margin to destination box right side
             dst_right = col_start.get(dst, 0) + box_width.get(dst, 0)
-            _dst_row_boxes = _box_occ.get(dst_row, frozenset())
+            _dst_row_boxes = _box_occ.get(dst_row, set())
             if 0 <= dst_row < total_height:
                 for c in range(dst_right, col):
                     if 0 <= c < total_width and c not in _dst_row_boxes:
@@ -1332,9 +1338,18 @@ def _render_fsm_diagram(
     if topology == "linear" and len(all_states) <= 1:
         # Single state or empty — use simple horizontal
         return _render_horizontal_simple(
-            main_path, edges, main_edge_set, branches, back_edges,
-            bfs_order_list, fsm.initial, terminal_states, fsm.states,
-            verbose, highlight_state, highlight_color,
+            main_path,
+            edges,
+            main_edge_set,
+            branches,
+            back_edges,
+            bfs_order_list,
+            fsm.initial,
+            terminal_states,
+            fsm.states,
+            verbose,
+            highlight_state,
+            highlight_color,
         )
 
     # Compute max node width to determine width constraint
@@ -1366,9 +1381,17 @@ def _render_fsm_diagram(
     layers = minimizer.minimize()
 
     return _render_layered_diagram(
-        layers, edges, main_edge_set, branches, back_edges,
-        fsm.initial, terminal_states, fsm.states,
-        verbose, highlight_state, highlight_color,
+        layers,
+        edges,
+        main_edge_set,
+        branches,
+        back_edges,
+        fsm.initial,
+        terminal_states,
+        fsm.states,
+        verbose,
+        highlight_state,
+        highlight_color,
     )
 
 
@@ -1423,8 +1446,14 @@ def _render_horizontal_simple(
     for sname in main_path:
         is_highlighted = highlight_state is not None and sname == highlight_state
         _draw_box(
-            rows, 0, col_start[sname], box_width[sname], main_height,
-            box_inner[sname], is_highlighted, highlight_color,
+            rows,
+            0,
+            col_start[sname],
+            box_width[sname],
+            main_height,
+            box_inner[sname],
+            is_highlighted,
+            highlight_color,
         )
 
     # Self-loops

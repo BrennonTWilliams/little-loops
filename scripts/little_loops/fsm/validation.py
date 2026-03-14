@@ -75,7 +75,6 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "name",
         "initial",
         "states",
-
         "context",
         "scope",
         "max_iterations",

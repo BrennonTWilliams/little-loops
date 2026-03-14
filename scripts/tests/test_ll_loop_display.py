@@ -889,9 +889,7 @@ class TestRenderFsmDiagram:
 
         # In layered layout, off-path states are at different vertical depths (top-to-bottom)
         fix_row = next(i for i, ln in enumerate(lines) if "fix" in ln and "\u2502" in ln)
-        cc_row = next(
-            i for i, ln in enumerate(lines) if "check_commit" in ln and "\u2502" in ln
-        )
+        cc_row = next(i for i, ln in enumerate(lines) if "check_commit" in ln and "\u2502" in ln)
         commit_row = next(
             i
             for i, ln in enumerate(lines)
@@ -961,8 +959,7 @@ class TestRenderFsmDiagram:
             f"Full diagram:\n{result}"
         )
         assert "\u2514" in result, (
-            f"Expected \u2514 (└) corner where pipe ends. "
-            f"Full diagram:\n{result}"
+            f"Expected \u2514 (└) corner where pipe ends. Full diagram:\n{result}"
         )
 
         # 3. Combined label "fail/error" or "error/fail" should appear for the merged edge
@@ -990,12 +987,8 @@ class TestRenderFsmDiagram:
 
         # 7. States appear in top-to-bottom vertical order
         eval_row = next(i for i, ln in enumerate(lines) if "evaluate" in ln and "\u2502" in ln)
-        fmt_row = next(
-            i for i, ln in enumerate(lines) if "format_issues" in ln and "\u2502" in ln
-        )
-        score_row = next(
-            i for i, ln in enumerate(lines) if "score_issues" in ln and "\u2502" in ln
-        )
+        fmt_row = next(i for i, ln in enumerate(lines) if "format_issues" in ln and "\u2502" in ln)
+        score_row = next(i for i, ln in enumerate(lines) if "score_issues" in ln and "\u2502" in ln)
         assert eval_row < fmt_row < score_row, "States should appear top-to-bottom"
 
     def test_main_path_cycle_renders_back_edge(self) -> None:
@@ -1010,9 +1003,7 @@ class TestRenderFsmDiagram:
             states={
                 "start": StateConfig(action="count", next="work"),
                 "work": StateConfig(action="do", on_success="decide"),
-                "decide": StateConfig(
-                    action="eval", on_success="commit", on_failure="done"
-                ),
+                "decide": StateConfig(action="eval", on_success="commit", on_failure="done"),
                 "commit": StateConfig(action="save", next="start"),
                 "done": StateConfig(terminal=True),
             },
@@ -1024,9 +1015,7 @@ class TestRenderFsmDiagram:
             f"Main-path cycle should render as back-edge with top corner.\n{result}"
         )
         # The ▶ connector entering the target box
-        assert "▶" in result, (
-            f"Main-path cycle back-edge should have ▶ connector.\n{result}"
-        )
+        assert "▶" in result, f"Main-path cycle back-edge should have ▶ connector.\n{result}"
         # All states should be visible
         for state in ("start", "work", "decide", "commit", "done"):
             box_lines = [ln for ln in result.split("\n") if state in ln and "│" in ln]
@@ -1049,9 +1038,7 @@ class TestRenderFsmDiagram:
             states={
                 "start": StateConfig(action="scan", on_success="work"),
                 "work": StateConfig(action="do", on_success="evaluate"),
-                "evaluate": StateConfig(
-                    action="check", on_success="commit", on_failure="done"
-                ),
+                "evaluate": StateConfig(action="check", on_success="commit", on_failure="done"),
                 "commit": StateConfig(action="save", on_success="cleanup"),
                 "cleanup": StateConfig(action="tidy", on_success="done"),
                 "done": StateConfig(terminal=True),
@@ -1064,9 +1051,7 @@ class TestRenderFsmDiagram:
             f"Forward skip-layer edge should render right-margin corners.\n{result}"
         )
         # The ◀ connector entering the target box from the right
-        assert "◀" in result, (
-            f"Forward skip-layer edge should have ◀ connector.\n{result}"
-        )
+        assert "◀" in result, f"Forward skip-layer edge should have ◀ connector.\n{result}"
         # All states should be visible
         for state in ("start", "work", "evaluate", "commit", "cleanup", "done"):
             box_lines = [ln for ln in result.split("\n") if state in ln and "│" in ln]
@@ -1124,8 +1109,7 @@ class TestRenderFsmDiagram:
 
         # The connector from d's center to c's center should have └ or ┘
         assert "\u2518" in result or "\u2514" in result, (
-            f"Cross-column forward edge should have └ or ┘ corner at source "
-            f"box center.\n{result}"
+            f"Cross-column forward edge should have └ or ┘ corner at source box center.\n{result}"
         )
 
     def test_skip_layer_forward_edges_sharing_node_connected(self) -> None:
@@ -1160,8 +1144,7 @@ class TestRenderFsmDiagram:
         # Both ◀ arrows should render (one per skip-layer target)
         arrow_count = result.count("\u25c0")
         assert arrow_count >= 2, (
-            f"Expected at least 2 ◀ arrows for two skip-layer edges, "
-            f"found {arrow_count}.\n{result}"
+            f"Expected at least 2 ◀ arrows for two skip-layer edges, found {arrow_count}.\n{result}"
         )
 
         # No disconnected gap pattern: ┘ followed by spaces then ┐
@@ -1328,9 +1311,7 @@ class TestAdaptiveLayoutTopologies:
         lines = result.split("\n")
         rows = {}
         for state in ("s1", "s2", "s3", "s4"):
-            rows[state] = next(
-                i for i, ln in enumerate(lines) if state in ln and "\u2502" in ln
-            )
+            rows[state] = next(i for i, ln in enumerate(lines) if state in ln and "\u2502" in ln)
         assert rows["s1"] < rows["s2"] < rows["s3"] < rows["s4"]
 
     def test_diamond_pattern(self) -> None:
@@ -1620,9 +1601,7 @@ class TestDisplayProgressEvents:
         assert "\u250c" in out
         assert "verbose output line" in out
 
-    def test_clear_flag_emits_ansi_clear_when_tty(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_clear_flag_emits_ansi_clear_when_tty(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--clear flag emits ANSI clear-screen escape when stdout is a tty."""
         events = [
             {"event": "state_enter", "state": "start", "iteration": 1},
@@ -1633,9 +1612,7 @@ class TestDisplayProgressEvents:
         out = capsys.readouterr().out
         assert "\033[2J\033[H" in out
 
-    def test_clear_flag_suppressed_when_not_tty(
-        self, capsys: pytest.CaptureFixture[str]
-    ) -> None:
+    def test_clear_flag_suppressed_when_not_tty(self, capsys: pytest.CaptureFixture[str]) -> None:
         """--clear flag does not emit ANSI sequences when stdout is not a tty."""
         events = [
             {"event": "state_enter", "state": "start", "iteration": 1},

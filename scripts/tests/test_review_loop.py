@@ -382,7 +382,6 @@ class TestReviewLoopQualityChecks:
         assert has_on_handoff  # → no QC-6 flag
 
 
-
 # =============================================================================
 # TestReviewLoopAutoFix — auto-apply logic from reference.md
 # =============================================================================

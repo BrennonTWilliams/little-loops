@@ -2013,7 +2013,9 @@ class TestSignalHandling:
             name="test",
             initial="score_issues",
             states={
-                "score_issues": StateConfig(action="/score", next="refine_issues", on_error="handle_error"),
+                "score_issues": StateConfig(
+                    action="/score", next="refine_issues", on_error="handle_error"
+                ),
                 "refine_issues": StateConfig(action="/refine", next="score_issues"),
                 "handle_error": StateConfig(terminal=True),
             },

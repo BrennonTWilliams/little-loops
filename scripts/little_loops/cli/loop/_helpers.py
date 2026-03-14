@@ -396,7 +396,9 @@ def run_foreground(
                 if error and verdict == "error":
                     verdict_line = f"{symbol} {verdict_colored}: {error}"
                 elif confidence is not None:
-                    verdict_line = f"{symbol} {verdict_colored} {colorize(f'({confidence:.2f})', '2')}"
+                    verdict_line = (
+                        f"{symbol} {verdict_colored} {colorize(f'({confidence:.2f})', '2')}"
+                    )
                 else:
                     verdict_line = f"{symbol} {verdict_colored}"
                 print(f"       {verdict_line}", flush=True)

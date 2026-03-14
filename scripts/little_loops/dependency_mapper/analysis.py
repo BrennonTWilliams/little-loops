@@ -272,9 +272,20 @@ def find_file_overlaps(
     # Resolve overlap thresholds from config or defaults
     min_files = config.overlap_min_files if config else 2
     min_ratio = config.overlap_min_ratio if config else 0.25
-    exclude_files = frozenset(config.exclude_common_files) if config else frozenset(
-        {"__init__.py", "pyproject.toml", "setup.py", "setup.cfg",
-         "CHANGELOG.md", "README.md", "conftest.py"}
+    exclude_files = (
+        frozenset(config.exclude_common_files)
+        if config
+        else frozenset(
+            {
+                "__init__.py",
+                "pyproject.toml",
+                "setup.py",
+                "setup.cfg",
+                "CHANGELOG.md",
+                "README.md",
+                "conftest.py",
+            }
+        )
     )
 
     # Extract file paths per issue, filtering common infrastructure files

@@ -121,10 +121,10 @@ little-loops/
 │   ├── web-search-researcher.md
 │   └── workflow-pattern-analyzer.md
 ├── hooks/                # Lifecycle hooks
-├── loops/                # Built-in FSM loop definitions
-│   └── issue-refinement-git.yaml
-├── skills/               # 16 skill definitions (user-invocable workflows)
+├── loops/                # Built-in FSM loop definitions (19 YAML files)
+├── skills/               # 17 skill definitions (user-invocable workflows)
 │   ├── analyze-history/              # Analyze issue history and trends
+│   ├── analyze-loop/                 # Analyze loop execution history
 │   ├── audit-claude-config/          # Audit plugin configuration
 │   ├── audit-docs/                   # Audit documentation accuracy
 │   ├── capture-issue/                # Capture issues from conversation

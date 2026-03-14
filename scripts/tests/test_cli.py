@@ -1683,7 +1683,6 @@ class TestMainLoopAdditionalCoverage:
 
             mock_fsm = FSMLoop(
                 name="test",
-
                 initial="start",
                 states={"start": StateConfig(terminal=True)},
                 max_iterations=50,
@@ -1737,7 +1736,6 @@ class TestMainLoopAdditionalCoverage:
 
             mock_fsm = FSMLoop(
                 name="compiled",
-
                 initial="start",
                 states={"start": StateConfig(terminal=True)},
                 max_iterations=50,
@@ -1794,7 +1792,6 @@ states:
 
             mock_fsm = FSMLoop(
                 name="test-loop",
-
                 initial="start",
                 states={
                     "start": StateConfig(action='echo "test"', on_success="done"),
@@ -1837,7 +1834,6 @@ states:
 
             mock_fsm = FSMLoop(
                 name="test",
-
                 initial="start",
                 states={"start": StateConfig(terminal=True)},
                 max_iterations=50,
@@ -1890,7 +1886,6 @@ states:
 
             mock_fsm = FSMLoop(
                 name="test",
-
                 initial="start",
                 states={"start": StateConfig(terminal=True)},
                 max_iterations=50,
@@ -1966,7 +1961,6 @@ states:
 
             mock_fsm = FSMLoop(
                 name="test",
-
                 initial="start",
                 states={"start": StateConfig(terminal=True)},
                 max_iterations=50,
@@ -2046,7 +2040,6 @@ states:
 
             mock_fsm = FSMLoop(
                 name="test",
-
                 initial="start",
                 states={"start": StateConfig(terminal=True)},
                 max_iterations=50,

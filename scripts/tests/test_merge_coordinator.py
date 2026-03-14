@@ -1419,8 +1419,6 @@ class TestCurrentIssueIdLocking:
         coordinator = MergeCoordinator(default_config, mock_logger, temp_git_repo)
 
         # Simulate merge thread: set, hold briefly, then clear _current_issue_id
-        observed_early_return: list[bool] = []
-
         def merge_thread() -> None:
             with coordinator._lock:
                 coordinator._current_issue_id = "BUG-689"

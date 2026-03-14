@@ -32,7 +32,12 @@ def cmd_count(config: BRConfig, args: argparse.Namespace) -> int:
     if getattr(args, "json", False):
         by_type: dict[str, int] = {"BUG": 0, "FEAT": 0, "ENH": 0}
         by_priority: dict[str, int] = {
-            "P0": 0, "P1": 0, "P2": 0, "P3": 0, "P4": 0, "P5": 0,
+            "P0": 0,
+            "P1": 0,
+            "P2": 0,
+            "P3": 0,
+            "P4": 0,
+            "P5": 0,
         }
         for issue in issues:
             prefix = issue.issue_id.split("-", 1)[0]

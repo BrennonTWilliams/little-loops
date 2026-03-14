@@ -16,6 +16,8 @@ Documentation for using little-loops in your projects.
 
 - [Configuration Reference](reference/CONFIGURATION.md) - Full config options, variable substitution, and command overrides
 - [Command Reference](reference/COMMANDS.md) - Complete reference for all slash commands with usage examples
+- [CLI Reference](reference/CLI.md) - All `ll-` CLI tools with flags and examples
+- [Output Styling Reference](reference/OUTPUT_STYLING.md) - Terminal output formatting and styling conventions
 - [Troubleshooting](development/TROUBLESHOOTING.md) - Common issues, diagnostic commands, and solutions
 - [Session Handoff](guides/SESSION_HANDOFF.md) - Context management and session continuation guide
 - [Issue Management Guide](guides/ISSUE_MANAGEMENT_GUIDE.md) - End-to-end issue workflow: discovery, refinement, validation, and implementation

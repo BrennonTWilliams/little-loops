@@ -122,7 +122,9 @@ class TestLoopArgumentParsing:
         args = parser.parse_args(["history", "fix-types", "--tail", "20"])
         assert args.tail == 20
 
-    def test_history_json_accepted_by_real_parser(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_history_json_accepted_by_real_parser(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """history --json is accepted by the actual ll-loop parser (not rejected as unrecognized)."""
         import sys
         from unittest.mock import patch

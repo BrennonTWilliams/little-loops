@@ -204,22 +204,24 @@ def cmd_refine_status(config: BRConfig, args: argparse.Namespace) -> int:
     fmt = getattr(args, "format", "table")
 
     if use_json_array:
-        print_json([
-            {
-                "id": issue.issue_id,
-                "priority": issue.priority,
-                "title": issue.title,
-                "source": issue.discovered_by,
-                "commands": issue.session_commands,
-                "confidence_score": issue.confidence_score,
-                "outcome_confidence": issue.outcome_confidence,
-                "total": len(issue.session_commands),
-                "normalized": is_normalized(issue.path.name),
-                "formatted": is_formatted(issue.path),
-                "refine_count": issue.session_command_counts.get("/ll:refine-issue", 0),
-            }
-            for issue in sorted_issues
-        ])
+        print_json(
+            [
+                {
+                    "id": issue.issue_id,
+                    "priority": issue.priority,
+                    "title": issue.title,
+                    "source": issue.discovered_by,
+                    "commands": issue.session_commands,
+                    "confidence_score": issue.confidence_score,
+                    "outcome_confidence": issue.outcome_confidence,
+                    "total": len(issue.session_commands),
+                    "normalized": is_normalized(issue.path.name),
+                    "formatted": is_formatted(issue.path),
+                    "refine_count": issue.session_command_counts.get("/ll:refine-issue", 0),
+                }
+                for issue in sorted_issues
+            ]
+        )
         return 0
 
     if fmt == "json":

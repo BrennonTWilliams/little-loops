@@ -142,9 +142,7 @@ class TestCmdList:
 
         loops_dir = tmp_path / ".loops"
         loops_dir.mkdir()
-        (loops_dir / "my-loop.yaml").write_text(
-            "name: my-loop\ndescription: Ensure tests pass\n"
-        )
+        (loops_dir / "my-loop.yaml").write_text("name: my-loop\ndescription: Ensure tests pass\n")
         (loops_dir / "bare-loop.yaml").write_text("name: bare\n")
 
         args = argparse.Namespace(running=False, status=None)
@@ -645,7 +643,6 @@ class TestHistoryTail:
         assert "line2-0" in captured.out
         assert "line2-1" in captured.out
         assert "line2-2" in captured.out
-
 
     def test_history_json_output(
         self,
