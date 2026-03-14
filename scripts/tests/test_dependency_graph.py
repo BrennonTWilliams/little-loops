@@ -777,6 +777,23 @@ class TestRefineWavesForContention:
         assert len(result) == 1
         assert [i.issue_id for i in result[0]] == ["FEAT-001", "FEAT-002", "FEAT-003"]
 
+    def test_shared_scope_no_file_overlap_not_split(self) -> None:
+        """Issues sharing a scope name but different files stay in one wave.
+
+        Regression test for ENH-746: scope matching in overlaps_with() was
+        causing ll-sprint to serialize every pair in focused sprints where all
+        issues share a component scope (e.g. 'scope: fsm').
+        """
+        a = _make_issue_with_content("FEAT-001", "scope: fsm\nscripts/loop_runner.py")
+        b = _make_issue_with_content("FEAT-002", "scope: fsm\nscripts/sprint_show.py")
+        waves: list[list[IssueInfo]] = [[a, b]]
+
+        result, notes = refine_waves_for_contention(waves)
+
+        assert len(result) == 1
+        assert {i.issue_id for i in result[0]} == {"FEAT-001", "FEAT-002"}
+        assert notes[0] is None
+
     def test_empty_waves_input(self) -> None:
         """Empty input returns empty output."""
         result, notes = refine_waves_for_contention([])

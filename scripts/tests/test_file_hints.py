@@ -318,17 +318,50 @@ class TestFileHintsOverlap:
         hints2 = FileHints(directories={"src/components/"})
         assert not hints1.overlaps_with(hints2)
 
-    def test_scope_match(self) -> None:
-        """Should detect scope matches."""
+    def test_scope_only_no_file_overlap(self) -> None:
+        """overlaps_with() should NOT match on scope alone (ENH-746).
+
+        Scope names are too coarse for sprint scheduling — all FSM/loop issues
+        share the same scope, which was causing every pair to serialize.
+        Use contends_with() when scope matching is required.
+        """
         hints1 = FileHints(scopes={"sidebar"})
         hints2 = FileHints(scopes={"sidebar", "auth"})
-        assert hints1.overlaps_with(hints2)
+        assert not hints1.overlaps_with(hints2)
 
     def test_scope_no_match(self) -> None:
-        """Should not match different scopes."""
+        """Should not match different scopes via overlaps_with()."""
         hints1 = FileHints(scopes={"sidebar"})
         hints2 = FileHints(scopes={"auth"})
         assert not hints1.overlaps_with(hints2)
+
+
+class TestFileHintsContendsWithScope:
+    """Tests for FileHints.contends_with — scope matching for worktree safety."""
+
+    def test_scope_match_detected(self) -> None:
+        """contends_with() detects shared scope names."""
+        hints1 = FileHints(scopes={"sidebar"})
+        hints2 = FileHints(scopes={"sidebar", "auth"})
+        assert hints1.contends_with(hints2)
+
+    def test_scope_no_match(self) -> None:
+        """contends_with() does not match unrelated scopes."""
+        hints1 = FileHints(scopes={"sidebar"})
+        hints2 = FileHints(scopes={"auth"})
+        assert not hints1.contends_with(hints2)
+
+    def test_file_overlap_still_detected(self) -> None:
+        """contends_with() also detects file overlaps (delegates to overlaps_with)."""
+        hints1 = FileHints(files={"src/cli.py", "src/config.py"})
+        hints2 = FileHints(files={"src/cli.py", "src/config.py"})
+        assert hints1.contends_with(hints2)
+
+    def test_empty_hints_no_contention(self) -> None:
+        """Empty hints don't contend."""
+        hints1 = FileHints()
+        hints2 = FileHints(scopes={"fsm"})
+        assert not hints1.contends_with(hints2)
 
     def test_empty_hints_no_overlap(self) -> None:
         """Empty hints should not overlap."""

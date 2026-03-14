@@ -87,13 +87,16 @@ class FileHints:
         *,
         config: DependencyMappingConfig | None = None,
     ) -> bool:
-        """Check if this hint set overlaps with another.
+        """Check if this hint set overlaps with another via file/directory signals.
 
         Uses graduated thresholds rather than binary matching:
         - Common infrastructure files are excluded from file checks
         - File overlap requires minimum count or ratio threshold
         - Directory overlap requires minimum path depth
-        - Scope matches are kept as-is (intentional semantic signals)
+        - Scope matches are intentionally excluded — scope names are too coarse
+          for sprint scheduling (all FSM/loop issues share the same scope) and
+          cause every pair to serialize. Use ``contends_with()`` when scope
+          matching is required for safety (e.g. worktree isolation).
 
         Args:
             other: FileHints to compare against
@@ -139,7 +142,34 @@ class FileHints:
                 if _file_in_directory(f, d, min_depth=min_depth):
                     return True
 
-        # Scope matches
+        return False
+
+    def contends_with(
+        self,
+        other: FileHints,
+        *,
+        config: DependencyMappingConfig | None = None,
+    ) -> bool:
+        """Check if this hint set contends with another, including scope signals.
+
+        Extends ``overlaps_with()`` with scope/component name matching.
+        Scope matching is intentionally kept here for paths that require
+        conservative safety (e.g. worktree isolation in ``ll-parallel``) where
+        a shared component name is a meaningful risk signal even without
+        confirmed file overlap.
+
+        Use ``overlaps_with()`` for sprint scheduling to avoid over-serialization
+        of focused sprints where all issues share a scope name by design.
+
+        Args:
+            other: FileHints to compare against
+            config: Optional dependency mapping config for custom thresholds.
+                Falls back to module-level constants when not provided.
+        """
+        if self.overlaps_with(other, config=config):
+            return True
+
+        # Scope matches — kept for worktree safety even without file overlap
         if self.scopes & other.scopes:
             return True
 

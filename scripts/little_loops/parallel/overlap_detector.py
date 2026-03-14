@@ -122,7 +122,7 @@ class OverlapDetector:
             result = OverlapResult()
 
             for active_id, active_hints in self._active_hints.items():
-                if new_hints.overlaps_with(active_hints, config=self._config):
+                if new_hints.contends_with(active_hints, config=self._config):
                     result.has_overlap = True
                     result.overlapping_issues.append(active_id)
                     # Find specific overlapping paths
