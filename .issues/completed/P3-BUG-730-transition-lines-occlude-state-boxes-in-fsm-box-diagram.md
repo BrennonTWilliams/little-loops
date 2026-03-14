@@ -2,7 +2,7 @@
 id: BUG-730
 title: Transition lines occlude state boxes in FSM box diagram
 priority: P3
-status: open
+status: completed
 type: BUG
 discovered_date: 2026-03-13
 discovered_by: capture-issue
@@ -57,9 +57,9 @@ Transition lines are drawn over state box contents, occluding labels and making 
 
 ## Acceptance Criteria
 
-- [ ] Horizontal transition lines do not visually cross through state boxes.
-- [ ] Box borders and labels remain fully visible when a transition spans multiple columns.
-- [ ] Existing diagram snapshot tests continue to pass.
+- [x] Horizontal transition lines do not visually cross through state boxes.
+- [x] Box borders and labels remain fully visible when a transition spans multiple columns.
+- [x] Existing diagram snapshot tests continue to pass.
 
 ## Verification Notes
 
@@ -90,7 +90,11 @@ Transition lines are drawn over state box contents, occluding labels and making 
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P3
+**Completed** | Created: 2026-03-13 | Resolved: 2026-03-13 | Priority: P3
+
+## Resolution
+
+Precomputed a `_box_occ` dict (row → set of occupied columns) after the box-drawing phase in `_render_layered_diagram`. Same-layer edge connectors and skip-forward-edge horizontal connectors now skip any cell that belongs to a box, so intermediate state boxes retain their borders and content. Added regression test `test_same_layer_edge_does_not_occlude_intermediate_box`; all 91 tests pass.
 
 ---
 
@@ -99,3 +103,5 @@ Transition lines are drawn over state box contents, occluding labels and making 
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9b17321b-fc43-48b2-a2d7-478ef2d7ba48.jsonl`
+- `/ll:ready-issue` - 2026-03-13T19:53:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
+- `/ll:manage-issue` - 2026-03-13T19:53:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`

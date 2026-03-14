@@ -1179,6 +1179,50 @@ class TestRenderFsmDiagram:
             f"Expected ┴ or ┼ crossing junction where outer pipe crosses inner.\n{result}"
         )
 
+    def test_same_layer_edge_does_not_occlude_intermediate_box(self) -> None:
+        """Same-layer transition does not draw connector through intermediate state boxes.
+
+        Regression test (BUG-730): when states A, B, C share a layer and there
+        is a same-layer transition from A to C, the horizontal connector must
+        not overwrite the borders or interior of B.
+
+        Topology: start → a → [b, c, d] (same layer), a --next--> d (same layer,
+        skips over b and c).  All three share a row; the A→D connector must not
+        write through B or C's cells.
+        """
+        fsm = self._make_fsm(
+            initial="start",
+            states={
+                "start": StateConfig(
+                    action="init",
+                    on_success="b",
+                    on_failure="c",
+                    on_error="d",
+                ),
+                "b": StateConfig(action="step_b", on_success="end"),
+                "c": StateConfig(action="step_c", on_success="end", next="d"),
+                "d": StateConfig(action="step_d", on_success="end"),
+                "end": StateConfig(terminal=True),
+            },
+        )
+        result = _render_fsm_diagram(fsm)
+
+        # All states must appear in their own boxes (name visible inside │...│)
+        for state in ("start", "b", "c", "d", "end"):
+            box_lines = [ln for ln in result.split("\n") if state in ln and "│" in ln]
+            assert box_lines, f"{state!r} should be rendered in a box.\n{result}"
+
+        # The intermediate states (b, c) must have their names readable on their
+        # name row — not replaced by ─ connector characters from a same-layer edge.
+        for state in ("b", "c", "d"):
+            # A name-row line looks like: │ state_name ... │
+            # If occluded, the line containing the state name would be absent or
+            # the state name would be replaced by ─ characters.
+            name_lines = [ln for ln in result.split("\n") if state in ln and "│" in ln]
+            assert name_lines, (
+                f"State {state!r} name occluded by connector: not visible in any box line.\n{result}"
+            )
+
     def test_highlighted_state_uses_configured_color(self) -> None:
         """highlight_state box uses the configured ANSI color; other boxes do not."""
         import little_loops.cli.output as output_mod

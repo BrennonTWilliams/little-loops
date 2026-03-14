@@ -890,6 +890,14 @@ def _render_layered_diagram(
             highlight_color,
         )
 
+    # Precompute box-occupied (row, col) pairs so connector lines can avoid overwriting box cells
+    _box_occ: dict[int, set[int]] = {}
+    for _s in all_states:
+        for _r in range(row_start[_s], row_start[_s] + box_height[_s]):
+            _row_set = _box_occ.setdefault(_r, set())
+            for _c in range(col_start[_s], col_start[_s] + box_width[_s]):
+                _row_set.add(_c)
+
     # Draw self-loop markers immediately below their boxes
     for sname, labels in self_loops.items():
         marker = "\u21ba " + ", ".join(labels)
@@ -1023,6 +1031,7 @@ def _render_layered_diagram(
         dst_right = col_start[dst] + box_width[dst]
         dst_left = col_start[dst]
         src_left = col_start[src]
+        _row_boxes = _box_occ.get(name_row, frozenset())
         if dst_left >= src_right:
             # Left to right horizontal arrow: src ──label──▶ dst
             start = src_right
@@ -1033,11 +1042,12 @@ def _render_layered_diagram(
                 edge_text = edge_text[:max(1, available)]
             left_dashes = max(0, available - len(edge_text))
             for k in range(left_dashes):
-                if start + k < total_width and name_row < total_height:
-                    grid[name_row][start + k] = "\u2500"
+                pos = start + k
+                if pos < total_width and name_row < total_height and pos not in _row_boxes:
+                    grid[name_row][pos] = "\u2500"
             for k, ch in enumerate(edge_text):
                 pos = start + left_dashes + k
-                if 0 <= pos < end and pos < total_width and name_row < total_height:
+                if 0 <= pos < end and pos < total_width and name_row < total_height and pos not in _row_boxes:
                     grid[name_row][pos] = ch
         elif dst_right <= src_left:
             # Right to left: dst is left of src: src → dst drawn as dst ◀──label── src
@@ -1049,11 +1059,12 @@ def _render_layered_diagram(
                 edge_text = edge_text[:max(1, available)]
             left_dashes = max(0, available - len(edge_text))
             for k in range(left_dashes):
-                if start + k < total_width and name_row < total_height:
-                    grid[name_row][start + k] = "\u2500"
+                pos = start + k
+                if pos < total_width and name_row < total_height and pos not in _row_boxes:
+                    grid[name_row][pos] = "\u2500"
             for k, ch in enumerate(edge_text):
                 pos = start + left_dashes + k
-                if 0 <= pos < end and pos < total_width and name_row < total_height:
+                if 0 <= pos < end and pos < total_width and name_row < total_height and pos not in _row_boxes:
                     grid[name_row][pos] = ch
 
     # Back-edges: left-margin vertical arrows with labels
@@ -1195,9 +1206,10 @@ def _render_layered_diagram(
             # Horizontal connector from source box right side to margin
             # Draw left-to-right, crossing existing pipes with junction chars
             src_right = col_start.get(src, 0) + box_width.get(src, 0)
+            _src_row_boxes = _box_occ.get(src_row, frozenset())
             if 0 <= src_row < total_height:
                 for c in range(src_right, col):
-                    if 0 <= c < total_width:
+                    if 0 <= c < total_width and c not in _src_row_boxes:
                         cell = grid[src_row][c]
                         if cell == " ":
                             grid[src_row][c] = "\u2500"  # ─
@@ -1213,9 +1225,10 @@ def _render_layered_diagram(
 
             # Horizontal connector from margin to destination box right side
             dst_right = col_start.get(dst, 0) + box_width.get(dst, 0)
+            _dst_row_boxes = _box_occ.get(dst_row, frozenset())
             if 0 <= dst_row < total_height:
                 for c in range(dst_right, col):
-                    if 0 <= c < total_width:
+                    if 0 <= c < total_width and c not in _dst_row_boxes:
                         cell = grid[dst_row][c]
                         if cell == " ":
                             grid[dst_row][c] = "\u2500"  # ─
