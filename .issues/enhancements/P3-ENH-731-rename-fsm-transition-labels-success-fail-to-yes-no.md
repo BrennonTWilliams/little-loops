@@ -110,6 +110,8 @@ The `on_success`/`on_failure` property names (and internal `"success"`/`"failure
 ### Documentation
 - `docs/generalized-fsm-loop.md` — primary architecture doc, 30+ occurrences
 - `docs/guides/LOOPS_GUIDE.md` — user-facing guide
+- `docs/reference/API.md` — `StateConfig` examples and evaluator output comments (~10 occurrences; lines 3464–3465, 3487–3488, 3552, 3668, 3672, 3675, 3713, 3880, 4005)
+- `docs/development/TESTING.md` — `StateConfig` constructor examples with `on_success`/`on_failure` (~5 occurrences; lines 447, 673–674, 701–702)
 
 ### Configuration
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — JSON Schema for loop YAML validation
@@ -122,6 +124,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - **Display label inconsistency**: `info.py` compact view uses `"fail"` (line 273) but verbose view uses `"failure"` (line 532). `layout.py` uses `"fail"` (line 141). After rename, all should standardize to `"no"`.
 - **LLM prompt text in loop YAMLs**: Many loops contain `evaluate.prompt` text like `Return "success" only if...` / `Return "failure" if...`. These are separate from the YAML routing keys and must also be updated to `"yes"`/`"no"`.
 - **`DEFAULT_LLM_SCHEMA` in evaluators.py:52–58**: The JSON schema enum sent to Claude for LLM-structured evaluation hardcodes `["success", "failure", "blocked", "partial"]` — needs updating to `["yes", "no", "blocked", "partial"]`.
+- **`_helpers.py:393` additional `"fail"` string**: Beyond the `("success", "target", "progress")` tuple at line 385, the else-branch at line 393 checks `verdict in ("fail", "error")` for orange colorization. After rename, `"fail"` must become `"no"` here as well. The full display colorization update for `_helpers.py` therefore touches lines 385 AND 393.
+- **`docs/reference/API.md` and `docs/development/TESTING.md` untracked**: Both contain `on_success`/`on_failure` in `StateConfig` code examples and need updating — now documented in the Integration Map.
 
 ## Implementation Steps
 
@@ -134,12 +138,12 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 7. **Update CLI rendering** (all in `cli/loop/`):
    - `layout.py:22–43, 139–141, 187` — update `_EDGE_LABEL_COLORS` keys, edge labels `"success"`→`"yes"` / `"fail"`→`"no"`, colorize checks, path tracer
    - `info.py:199, 272–273, 398–399, 531–532` — update all display labels, standardizing compact (`"fail"`→`"no"`) and verbose (`"failure"`→`"no"`)
-   - `_helpers.py:174–178, 382` — update `print_execution_plan` output strings and verdict check
+   - `_helpers.py:174–178, 385, 393` — update `print_execution_plan` output strings; update `("success", "target", "progress")` tuple to `("yes", "target", "progress")`; update `"fail"` in colorize conditional to `"no"`
    - `testing.py:148–153` — update `verdict == "success"`/`"failure"` routing comparisons
 8. **Migrate loop YAMLs** (`loops/*.yaml`, 18 files) — rename `on_success:`→`on_yes:` and `on_failure:`→`on_no:` YAML keys; also update LLM evaluate prompt text (`Return "success"` → `Return "yes"`, `Return "failure"` → `Return "no"`)
 9. **Migrate test fixtures** (`scripts/tests/fixtures/fsm/valid-loop.yaml`, `loop-with-unreachable-state.yaml`)
 10. **Update skills** (`create-loop/reference.md`, `create-loop/templates.md`, `create-loop/loop-types.md`, `review-loop/SKILL.md`, `review-loop/reference.md`)
-11. **Update docs** (`docs/generalized-fsm-loop.md`, `docs/guides/LOOPS_GUIDE.md`)
+11. **Update docs** (`docs/generalized-fsm-loop.md`, `docs/guides/LOOPS_GUIDE.md`, `docs/reference/API.md`, `docs/development/TESTING.md`)
 12. **Update all tests** — `test_fsm_schema.py`, `test_fsm_evaluators.py`, `test_fsm_executor.py`, and all `test_ll_loop_*.py` files
 13. **Verify** — run `python -m pytest scripts/tests/ -v` and `ll-loop run loops/fix-quality-and-tests.yaml --dry-run`
 
@@ -180,6 +184,8 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6c48b158-3a38-42ea-9974-fb89dfaa60bc.jsonl`
 - `/ll:refine-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:refine-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c96e34f-66f6-47a9-8e06-75aea65c7264.jsonl`
+- `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4c96e34f-66f6-47a9-8e06-75aea65c7264.jsonl`
 
 ---
 
