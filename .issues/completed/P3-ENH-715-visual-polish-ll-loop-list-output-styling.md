@@ -53,7 +53,7 @@ Reference implementation: `scripts/little_loops/cli/issues/list_cmd.py` — see 
 - `scripts/little_loops/cli/loop/info.py` — `cmd_list()` function (handles both regular listing and running-loops display)
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/loop/__init__.py` — calls `cmd_list()` at line 256
+- `scripts/little_loops/cli/loop/__init__.py` — calls `cmd_list()` at line 281
 
 ### Similar Patterns
 - `scripts/little_loops/cli/issues/list_cmd.py` — reference implementation for styled list output
@@ -102,6 +102,7 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:ready-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c15dbafa-1c2e-4769-95a6-e06346330b69.jsonl`
 
 ---
 
@@ -111,6 +112,15 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - **Verdict**: VALID
 - `scripts/little_loops/cli/loop/info.py` confirms `cmd_list` uses plain `print(f"  {path.stem}{desc_str}")` with no colorization for the static loop listing. `colorize` is imported in the file but only used in `cmd_history` output, not in `cmd_list`. Enhancement not yet applied.
 
+## Resolution
+
+- **Date**: 2026-03-14
+- **Outcome**: Completed
+- Modified `scripts/little_loops/cli/loop/info.py` (`cmd_list` function):
+  - Static list: Added group headers ("Project loops:", "Built-in loops:") with bold styling when both types exist; loop names colorized bold cyan (`36;1`); descriptions dim (`2`); `[built-in]` tag dim (`2`)
+  - Running loops: "Running loops:" header bold; loop name bold; state name blue (`34`); status colored by value (running=green, interrupted=yellow, others=dim); elapsed time dim (`2`)
+- All 3355 tests pass
+
 ## Status
 
-**Open** | Created: 2026-03-13 | Priority: P3
+**Completed** | Created: 2026-03-13 | Completed: 2026-03-14 | Priority: P3

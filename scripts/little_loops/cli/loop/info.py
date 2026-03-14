@@ -58,15 +58,21 @@ def cmd_list(
         if getattr(args, "json", False):
             print_json([s.to_dict() for s in states])
             return 0
-        print("Running loops:")
+        print(colorize("Running loops:", "1"))
+        _STATUS_COLORS = {"running": "32", "interrupted": "33", "stopped": "2"}
         for state in states:
             elapsed_s = (state.accumulated_ms or 0) // 1000
             elapsed_str = (
                 f"{elapsed_s}s" if elapsed_s < 60 else f"{elapsed_s // 60}m {elapsed_s % 60}s"
             )
+            name_str = colorize(state.loop_name, "1")
+            state_str = colorize(state.current_state, "34")
+            status_color = _STATUS_COLORS.get(state.status, "2")
+            status_str = colorize(f"[{state.status}]", status_color)
+            elapsed_colored = colorize(elapsed_str, "2")
             print(
-                f"  {state.loop_name}: {state.current_state} (iteration {state.iteration})"
-                f" [{state.status}] {elapsed_str}"
+                f"  {name_str}: {state_str} (iteration {state.iteration})"
+                f" {status_str} {elapsed_colored}"
             )
         return 0
 
@@ -98,15 +104,36 @@ def cmd_list(
         print_json(items)
         return 0
 
-    print("Available loops:")
-    for path in sorted(yaml_files):
-        desc = _load_loop_meta(path)
-        desc_str = f"  {desc}" if desc else ""
-        print(f"  {path.stem}{desc_str}")
-    for path in builtin_files:
-        desc = _load_loop_meta(path)
-        desc_str = f"  {desc}" if desc else ""
-        print(f"  {path.stem}{desc_str}  [built-in]")
+    if yaml_files and builtin_files:
+        print(colorize(f"Project loops ({len(yaml_files)}):", "1"))
+        for path in sorted(yaml_files):
+            desc = _load_loop_meta(path)
+            name_str = colorize(path.stem, "36;1")
+            desc_str = f"  {colorize(desc, '2')}" if desc else ""
+            print(f"  {name_str}{desc_str}")
+        print()
+        print(colorize(f"Built-in loops ({len(builtin_files)}):", "1"))
+        for path in builtin_files:
+            desc = _load_loop_meta(path)
+            name_str = colorize(path.stem, "36;1")
+            desc_str = f"  {colorize(desc, '2')}" if desc else ""
+            tag_str = colorize("[built-in]", "2")
+            print(f"  {name_str}{desc_str}  {tag_str}")
+    elif yaml_files:
+        print(colorize("Available loops:", "1"))
+        for path in sorted(yaml_files):
+            desc = _load_loop_meta(path)
+            name_str = colorize(path.stem, "36;1")
+            desc_str = f"  {colorize(desc, '2')}" if desc else ""
+            print(f"  {name_str}{desc_str}")
+    else:
+        print(colorize("Available loops:", "1"))
+        for path in builtin_files:
+            desc = _load_loop_meta(path)
+            name_str = colorize(path.stem, "36;1")
+            desc_str = f"  {colorize(desc, '2')}" if desc else ""
+            tag_str = colorize("[built-in]", "2")
+            print(f"  {name_str}{desc_str}  {tag_str}")
     return 0
 
 
