@@ -110,7 +110,20 @@ Add a `threading.Lock` to protect `self.state` mutations. Apply it in `_on_worke
 - `/ll:format-issue` - 2026-03-13T02:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:verify-issues` - 2026-03-13T02:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:confidence-check` - 2026-03-13T02:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:ready-issue` - 2026-03-13T19:36:28Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
+
+## Resolution
+
+- Added `import threading` to `orchestrator.py`
+- Added `self._state_lock = threading.Lock()` in `ParallelOrchestrator.__init__`
+- Wrapped `self.state.corrections[...]` write in `_on_worker_complete` with `with self._state_lock:`
+- Wrapped `self.state.timing[...]` write in `_on_worker_complete` with `with self._state_lock:`
+- Wrapped full `_save_state` body with `with self._state_lock:`
+- In `_report_results`, snapshot `state.timing` and `state.corrections` under lock before reading
+- Added `test_state_lock_prevents_lost_updates` to `TestOrchestratorConcurrency`
+
+All 96 existing tests pass; all 7 concurrency tests pass.
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P2
+**Completed** | Created: 2026-03-13 | Priority: P2 | Resolved: 2026-03-13

@@ -2160,3 +2160,25 @@ class TestOrchestratorConcurrency:
         # No errors
         assert len(errors) == 0, f"Errors occurred: {errors}"
         assert save_count[0] == 5
+
+    def test_state_lock_prevents_lost_updates(self, orchestrator: ParallelOrchestrator) -> None:
+        """_state_lock ensures concurrent timing writes are not lost (BUG-688)."""
+        n = 20
+        errors: list[Exception] = []
+
+        def write_timing(worker_id: int) -> None:
+            try:
+                with orchestrator._state_lock:
+                    orchestrator.state.timing[f"BUG-{worker_id:03d}"] = {"total": float(worker_id)}
+            except Exception as e:
+                errors.append(e)
+
+        threads = [threading.Thread(target=write_timing, args=(i,)) for i in range(n)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert len(errors) == 0, f"Errors occurred: {errors}"
+        # All writes must be preserved — no lost updates
+        assert len(orchestrator.state.timing) == n

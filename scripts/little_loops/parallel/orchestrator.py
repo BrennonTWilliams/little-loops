@@ -11,6 +11,7 @@ import os
 import re
 import shutil
 import signal
+import threading
 import time
 from datetime import datetime
 from pathlib import Path
@@ -92,6 +93,7 @@ class ParallelOrchestrator:
 
         # State management
         self.state = OrchestratorState()
+        self._state_lock = threading.Lock()
         self._shutdown_requested = False
         self._original_sigint: Any = None
         self._original_sigterm: Any = None
@@ -496,13 +498,14 @@ class ParallelOrchestrator:
 
     def _save_state(self) -> None:
         """Save current state to file."""
-        self.state.last_checkpoint = datetime.now().isoformat()
-        self.state.completed_issues = self.queue.completed_ids
-        self.state.failed_issues = dict.fromkeys(self.queue.failed_ids, "Failed")
-        self.state.in_progress_issues = self.queue.in_progress_ids
+        with self._state_lock:
+            self.state.last_checkpoint = datetime.now().isoformat()
+            self.state.completed_issues = self.queue.completed_ids
+            self.state.failed_issues = dict.fromkeys(self.queue.failed_ids, "Failed")
+            self.state.in_progress_issues = self.queue.in_progress_ids
 
-        state_file = self.repo_path / self.parallel_config.state_file
-        state_file.write_text(json.dumps(self.state.to_dict(), indent=2))
+            state_file = self.repo_path / self.parallel_config.state_file
+            state_file.write_text(json.dumps(self.state.to_dict(), indent=2))
 
     def _cleanup_state(self) -> None:
         """Remove state file on successful completion."""
@@ -833,7 +836,8 @@ class ParallelOrchestrator:
                 for correction in result.corrections:
                     self.logger.info(f"  Correction: {correction}")
                 if result.corrections:
-                    self.state.corrections[result.issue_id] = result.corrections
+                    with self._state_lock:
+                        self.state.corrections[result.issue_id] = result.corrections
             self.merge_coordinator.queue_merge(result)
             # Wait for merge to complete before returning from callback.
             # This prevents dispatch of next worker while merge is in progress,
@@ -845,9 +849,10 @@ class ParallelOrchestrator:
             self.queue.mark_failed(result.issue_id)
 
         # Update timing
-        self.state.timing[result.issue_id] = {
-            "total": result.duration,
-        }
+        with self._state_lock:
+            self.state.timing[result.issue_id] = {
+                "total": result.duration,
+            }
 
         # Clean up stage tracking after callback completes (ENH-262)
         # Delay briefly so status reporter can show completion
@@ -960,8 +965,12 @@ class ParallelOrchestrator:
         if self._interrupted_issues:
             self.logger.info(f"Interrupted: {len(self._interrupted_issues)}")
 
+        with self._state_lock:
+            timing_snapshot = dict(self.state.timing)
+            corrections_snapshot = dict(self.state.corrections)
+
         if self.queue.completed_count > 0:
-            total_issue_time = sum(t.get("total", 0) for t in self.state.timing.values())
+            total_issue_time = sum(t.get("total", 0) for t in timing_snapshot.values())
             if total_issue_time > 0:
                 speedup = total_issue_time / total_time
                 self.logger.info(f"Estimated speedup: {speedup:.2f}x")
@@ -980,8 +989,8 @@ class ParallelOrchestrator:
                 self.logger.info(f"  - {issue_id}")
 
         # Report correction statistics for quality tracking (ENH-010)
-        if self.state.corrections:
-            total_corrected = len(self.state.corrections)
+        if corrections_snapshot:
+            total_corrected = len(corrections_snapshot)
             total_issues = self.queue.completed_count + self.queue.failed_count
             correction_rate = (total_corrected / total_issues * 100) if total_issues > 0 else 0
             self.logger.info("")
@@ -994,7 +1003,7 @@ class ParallelOrchestrator:
 
             all_corrections: list[str] = []
             by_category: dict[str, int] = defaultdict(int)
-            for corrections in self.state.corrections.values():
+            for corrections in corrections_snapshot.values():
                 all_corrections.extend(corrections)
                 for correction in corrections:
                     # Extract category from [category] prefix if present
