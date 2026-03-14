@@ -1,6 +1,8 @@
 ---
 discovered_date: 2026-03-12
 discovered_by: capture-issue
+confidence_score: 93
+outcome_confidence: 78
 ---
 
 # FEAT-706: Hook management tooling for target projects
@@ -122,6 +124,7 @@ Add a `/ll:configure hooks` sub-command (or extend `/ll:configure`) with the fol
 **Open** | Created: 2026-03-12 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:capture-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4922c4e9-2029-4f68-b0a3-04ae4dbcd620.jsonl`
 - `/ll:format-issue` - 2026-03-12T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/e5037113-2ca1-4048-ba39-278c6ef9c09c.jsonl`

@@ -1,6 +1,8 @@
 ---
 discovered_date: "2026-03-12"
 discovered_by: capture-issue
+confidence_score: 95
+outcome_confidence: 74
 ---
 
 # FEAT-707: Scope-Based Concurrency as Worktree Alternative in ll-parallel/ll-sprint
@@ -142,6 +144,7 @@ ll-sprint run my-sprint --scope-mode
 - `/ll:format-issue` - 2026-03-12 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/9ebe5424-4390-42c8-a840-ac8166b02550.jsonl`
 - `/ll:format-issue` - 2026-03-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
 - `/ll:verify-issues` - 2026-03-13 - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/979c9695-36c6-4165-bbbc-4639795e9b05.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 
 ---
 

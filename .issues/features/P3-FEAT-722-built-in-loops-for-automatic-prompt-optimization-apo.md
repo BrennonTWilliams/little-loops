@@ -5,8 +5,8 @@ type: FEAT
 status: open
 discovered_date: 2026-03-13
 discovered_by: capture-issue
-confidence_score: null
-outcome_confidence: null
+confidence_score: 90
+outcome_confidence: 79
 ---
 
 # FEAT-722: Built-in Loops for Automatic Prompt Optimization (APO) Techniques
@@ -65,44 +65,61 @@ ll-loop show --builtin apo-contrastive
 
 ## Proposed Solution
 
-1. Define a `builtins/` directory inside the `ll-loop` package (e.g., `scripts/little_loops/loop/builtins/`)
-2. Each built-in is a YAML loop config with documented variable substitution placeholders
-3. Extend `ll-loop run` with a `--builtin <name>` flag that resolves the YAML from the package's builtin directory
-4. Extend `ll-loop list` with `--builtin` to enumerate available built-ins with descriptions
-5. APO loop states would use Claude API calls (via `claude` CLI or subprocess) to generate/evaluate prompt variants
+1. Add APO YAML files to the **existing** `loops/` directory at repo root — `get_builtin_loops_dir()` (`_helpers.py:81`) already resolves here; no new `builtins/` subdirectory needed
+2. Each built-in is a YAML loop config with `context: {}` variable slots (overridable via `--context KEY=VALUE`)
+3. Optionally extend `ll-loop run` with a `--builtin` flag for explicit disambiguation (not required — `resolve_loop_path()` fallback at `_helpers.py:102-105` already resolves from `loops/`)
+4. Optionally extend `ll-loop list` with `--builtin` to filter to built-ins only (`cmd_list()` at `info.py:87-92` already shows built-ins in human-readable output)
+5. APO loop states use `action_type: prompt` with `evaluate.type: llm_structured` — the standard pattern for Claude-driven evaluation (see `loops/fix-quality-and-tests.yaml`)
 
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/loop/` - core loop execution engine
-- `scripts/little_loops/cli/loop.py` - CLI entry point for `ll-loop`
+- `loops/` (repo root) — **primary deliverable**: add new APO YAML files here (e.g., `apo-feedback-refinement.yaml`, `apo-contrastive.yaml`). No Python changes required for basic `ll-loop run apo-*` functionality.
+- `scripts/little_loops/cli/loop/__init__.py:149-155` — optionally add `--builtin` filter flag to `list` subparser
+- `scripts/little_loops/cli/loop/info.py:79-92` — optionally modify `cmd_list()` to filter output to built-ins only when `--builtin` is passed
+- `scripts/little_loops/cli/loop/__init__.py:92-139` — optionally add `--builtin` flag to `run` subparser for explicit disambiguation (not required — fallback already exists)
 
 ### Dependent Files (Callers/Importers)
-- TBD - use grep to find `ll-loop` invocations in skills and hooks
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `scripts/little_loops/cli/loop/_helpers.py:81-83` — `get_builtin_loops_dir()` returns `<repo-root>/loops/`; **no changes needed**, already handles resolution
+- `scripts/little_loops/cli/loop/_helpers.py:86-107` — `resolve_loop_path()` already falls back to `get_builtin_loops_dir()` as step 4 of its lookup chain; `ll-loop run apo-feedback-refinement` works once YAML exists
+- `scripts/little_loops/cli/loop/info.py:87-92` — `cmd_list()` already discovers and displays built-ins labeled `[built-in]`; `--builtin` filter is a UX improvement, not a blocker
+- `scripts/little_loops/cli/loop/config_cmds.py:37-66` — `cmd_install()` already copies built-in loops to project `.loops/`; APO loops get `ll-loop install apo-*` for free
 
 ### Similar Patterns
-- Existing FSM loop YAML configs in user projects (reference structure)
-- `P3-FEAT-659-hierarchical-fsm-loops.md` - related loop enhancement
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `loops/fix-quality-and-tests.yaml` — gold standard model for `action_type: prompt` + `evaluate.type: llm_structured` pattern; use for APO evaluate states
+- `loops/issue-refinement.yaml` — model for `context: {}` variable slots, `capture:` for storing intermediate outputs, and `${captured.*.output}` interpolation in subsequent states
+- `loops/pr-review-cycle.yaml:86-93` — `output_numeric` evaluator example (for scoring/iteration-count checks in APO loops)
+- `scripts/little_loops/fsm/interpolation.py:65` — `InterpolationContext.resolve()`: supported namespaces are `context`, `captured`, `prev`, `result`, `state`, `loop`, `env`; APO loops should use `${context.prompt_file}` and `${captured.eval_result.output}` patterns
 
 ### Tests
-- `scripts/tests/` - add tests for builtin resolution and `--builtin` flag
+- `scripts/tests/test_builtin_loops.py` — **auto-covers new YAML files**: `test_all_parse_as_yaml` and `test_all_validate_as_valid_fsm` iterate all files in `BUILTIN_LOOPS_DIR`; new APO files are tested for free
+- `scripts/tests/test_ll_loop_commands.py` — add tests for new `--builtin` CLI flags if added
+- `scripts/tests/test_ll_loop_parsing.py:26-37` — `_create_run_parser()` helper pattern to follow for testing new flag definitions
 
 ### Documentation
-- `docs/reference/API.md` - document new `--builtin` flag
-- Loop documentation or README section on APO built-ins
+- `docs/guides/LOOPS_GUIDE.md` — primary user-facing doc; add APO technique descriptions and when-to-use guidance
+- `docs/reference/CLI.md` — update `ll-loop list` and `ll-loop run` flag documentation
+- `docs/reference/API.md` — may need `--builtin` flag documentation if added
 
 ### Configuration
-- N/A (built-ins are package-level, not user-config)
+- N/A (built-ins live in repo-root `loops/`; no user config changes needed)
 
 ## Implementation Steps
 
-1. Research 2-3 APO techniques and design their FSM state machines
-2. Create `scripts/little_loops/loop/builtins/` with YAML configs for each technique
-3. Extend `ll-loop run` to support `--builtin <name>` flag
-4. Extend `ll-loop list` with `--builtin` enumeration
-5. Add `ll-loop show --builtin` for inspection
-6. Write tests for builtin loading and execution
-7. Document APO techniques and usage examples
+_Enriched by `/ll:refine-issue` — infrastructure already exists; core work is YAML authoring:_
+
+1. **Author `loops/apo-feedback-refinement.yaml`** — FSM: `generate_candidate → evaluate_candidate → refine → check_convergence → [loop|done]`. Model after `loops/fix-quality-and-tests.yaml` using `action_type: prompt` + `evaluate.type: llm_structured`. Required `context` slots: `prompt_file`, `eval_criteria`, `iterations` (default 5).
+2. **Author `loops/apo-contrastive.yaml`** — FSM: `generate_variants → score_variants → select_best → check_convergence → [loop|done]`. Use `capture: scored_variants` to store scoring output and `${captured.scored_variants.output}` in the select state.
+3. **Add `--builtin` filter to `ll-loop list`** (optional, UX improvement) — add `store_true` arg at `cli/loop/__init__.py:149-155`; modify `cmd_list()` at `info.py:101-136` to skip project loops section when `--builtin` is set.
+4. **Add `--builtin` flag to `ll-loop run`** (optional) — add `store_true` arg at `cli/loop/__init__.py:92-139`; modify `cmd_run()` at `run.py:32` to call `get_builtin_loops_dir() / f"{loop_name}.yaml"` directly when flag is set, bypassing `resolve_loop_path()`.
+5. **Tests** — new APO YAML files are auto-validated by `scripts/tests/test_builtin_loops.py:28-43`; add `--builtin` flag tests to `scripts/tests/test_ll_loop_commands.py` if flags are added.
+6. **Document APO techniques** in `docs/guides/LOOPS_GUIDE.md` — add technique descriptions, required variables, and `ll-loop run` invocation examples.
 
 ## Impact
 
@@ -129,6 +146,9 @@ ll-loop show --builtin apo-contrastive
 - No APO loop YAML files exist in `loops/` (confirmed by filename search). No `builtins/` directory exists under `scripts/little_loops/`. `ll-loop list` and `ll-loop run` have no `--builtin` flag. Feature not yet implemented.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:refine-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75ab9873-e77b-46a5-b50b-85782d3bc37c.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2503a31-5075-415e-95d5-959cac6eec58.jsonl`
