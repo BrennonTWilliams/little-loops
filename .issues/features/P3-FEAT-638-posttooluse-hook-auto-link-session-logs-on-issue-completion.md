@@ -496,6 +496,7 @@ Previously: Re-verified 2026-03-08 (auto). Verdict: **VALID**.
 - **Implementation note**: `ll-auto`, `ll-parallel`, and `ll-sprint` complete issues via Python subprocess `git mv` (see `scripts/little_loops/issue_lifecycle.py:291` and `parallel/orchestrator.py`), **not** via Claude's Bash tool call. A PostToolUse hook on `Bash` would NOT fire for those paths. Only `manage-issue` (which uses the Bash tool for `git mv`) would be covered. Implementation should consider a Python-level callback in `issue_lifecycle.py` or a separate approach (e.g., a git post-move hook or lifecycle callback) to cover all paths.
 
 ## Session Log
+- `/ll:format-issue` - 2026-03-14T20:30:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7d48379d-c159-454c-aff3-e9b297f8024c.jsonl`
 - `/ll:verify-issues` - 2026-03-14T19:19:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl` — VALID: all code claims confirmed; `issue-completion-log.sh` absent ✓; line numbers stable ✓; ENH-493 backlink valid ✓
 - `/ll:format-issue` - 2026-03-14T19:19:29Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 - `/ll:verify-issues` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl` — VALID: all code claims confirmed; no regressions; dependencies clean
