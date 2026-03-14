@@ -87,13 +87,22 @@ except Exception:
 - **Verdict**: VALID
 - `scripts/little_loops/issue_manager.py` line 728 confirms `except (AttributeError, TypeError):` is still present around the `gather_all_issue_ids` import/call. `ImportError` and `OSError` are not caught. Bug is still present.
 
+## Resolution
+
+- **Status**: Completed
+- **Date**: 2026-03-13
+- **Change**: Broadened `except (AttributeError, TypeError):` to `except Exception:` in `AutoManager.__init__` (line 728), and added `self.logger.debug("Dependency mapping unavailable — skipping")` for observability.
+- **Tests**: 66 passed
+
 ## Session Log
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 - `/ll:confidence-check` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a7a2534d-f8f7-4407-8069-079e02c46eb5.jsonl`
+- `/ll:ready-issue` - 2026-03-13T19:52:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6cecfa03-19f5-4d9a-8854-ee9e4fc68966.jsonl`
+- `/ll:manage-issue` - 2026-03-13T19:52:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops--worktrees-worker-bug-690-20260313-195209/ffc9f543-14fb-4a3f-9565-9f2dd1026040.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P3
+**Completed** | Created: 2026-03-13 | Priority: P3
