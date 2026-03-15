@@ -121,6 +121,15 @@
         "on_partial": {
           "type": "string",
           "description": "Shorthand for partial verdict routing"
+        },
+        "max_retries": {
+          "type": "integer",
+          "minimum": 1,
+          "description": "Max consecutive re-entries before transitioning to on_retry_exhausted. A value of N allows N retries after the initial execution (N+1 total entries). Requires on_retry_exhausted."
+        },
+        "on_retry_exhausted": {
+          "type": "string",
+          "description": "State to transition to when max_retries consecutive re-entries are exceeded. Required when max_retries is set."
         }
       },
       "additionalProperties": false

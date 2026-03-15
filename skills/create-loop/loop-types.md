@@ -721,6 +721,8 @@ states:
   execute:
     action: "<skill-or-prompt> ${captured.current_item.output}"
     action_type: prompt
+    max_retries: <per-item-retries>        # optional: skip stuck items automatically
+    on_retry_exhausted: advance            # optional: route here when retries exceeded
     next: check_concrete         # or check_semantic / check_invariants / advance
   check_concrete:                # include if tool-based gates selected
     action: "<highest-priority configured cmd>"
@@ -753,6 +755,8 @@ states:
   done:
     terminal: true
 ```
+
+> **`max_retries` on harness states**: Use `max_retries` + `on_retry_exhausted` on any check state that routes back to `execute` on failure. This prevents a single bad item from exhausting the global `max_iterations` budget. See [reference.md](reference.md) for details.
 
 **Discovery Commands by work item mode:**
 

@@ -382,6 +382,14 @@ class FSMExecutor:
         # Pending error payload from FATAL_ERROR signal (set by _run_action, checked by main loop)
         self._pending_error: str | None = None
 
+        # Per-state retry tracking for max_retries support.
+        # _retry_counts[state_name] = number of consecutive re-entries into that state.
+        # Incremented each time we enter the same state as the previous iteration.
+        # Reset when a different state is entered, or after retry exhaustion.
+        self._retry_counts: dict[str, int] = {}
+        # State entered in the previous iteration (None on first iteration or after resume).
+        self._prev_state: str | None = None
+
     def request_shutdown(self) -> None:
         """Request graceful shutdown of the executor.
 
@@ -420,6 +428,17 @@ class FSMExecutor:
                 # Get current state config
                 state_config = self.fsm.states[self.current_state]
 
+                # Update per-state retry tracking based on transition from previous iteration.
+                # If re-entering the same state consecutively, increment retry count.
+                # If entering a different state, clear the previous state's retry count.
+                if self._prev_state is not None:
+                    if self.current_state == self._prev_state:
+                        self._retry_counts[self.current_state] = (
+                            self._retry_counts.get(self.current_state, 0) + 1
+                        )
+                    else:
+                        self._retry_counts.pop(self._prev_state, None)
+
                 # Check terminal
                 if state_config.terminal:
                     # Handle maintain mode - restart loop instead of terminating
@@ -434,9 +453,37 @@ class FSMExecutor:
                                 "reason": "maintain",
                             },
                         )
+                        self._prev_state = self.current_state
                         self.current_state = maintain_target
                         continue
                     return self._finish("terminal")
+
+                # Check per-state retry limit. If the consecutive re-entry count exceeds
+                # max_retries, skip execution and route to on_retry_exhausted instead.
+                if state_config.max_retries is not None:
+                    retry_count = self._retry_counts.get(self.current_state, 0)
+                    if retry_count > state_config.max_retries:
+                        # on_retry_exhausted is guaranteed non-None by validation when
+                        # max_retries is set, but we fall back to an error if misconfigured.
+                        exhausted_state: str = state_config.on_retry_exhausted or ""
+                        if not exhausted_state:
+                            return self._finish(
+                                "error",
+                                error=f"State '{self.current_state}' exceeded max_retries "
+                                "but on_retry_exhausted is not set",
+                            )
+                        self._emit(
+                            "retry_exhausted",
+                            {
+                                "state": self.current_state,
+                                "retries": retry_count,
+                                "next": exhausted_state,
+                            },
+                        )
+                        self._retry_counts.pop(self.current_state, None)
+                        self._prev_state = self.current_state
+                        self.current_state = exhausted_state
+                        continue
 
                 self.iteration += 1
                 self._emit(
@@ -480,6 +527,7 @@ class FSMExecutor:
                     },
                 )
 
+                self._prev_state = self.current_state
                 self.current_state = resolved_next
 
                 # Interruptible backoff sleep between iterations

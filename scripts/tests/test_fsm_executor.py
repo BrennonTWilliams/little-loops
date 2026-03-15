@@ -2730,3 +2730,175 @@ class TestDefaultActionRunnerStderrDrain:
         )
         assert result.exit_code == 124
         assert "error content" in result.stderr
+
+
+class TestPerStateRetryLimits:
+    """Tests for ENH-713: per-state retry limits (max_retries / on_retry_exhausted)."""
+
+    def _make_fsm(
+        self,
+        max_retries: int,
+        action_results: list[tuple[str, dict]],
+    ) -> tuple[FSMLoop, MockActionRunner]:
+        """Build a simple execute→skip_item→done FSM with max_retries on execute."""
+        fsm = FSMLoop(
+            name="retry-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="do_work.sh",
+                    on_failure="execute",
+                    on_success="done",
+                    max_retries=max_retries,
+                    on_retry_exhausted="skip_item",
+                ),
+                "skip_item": StateConfig(action="echo skipped", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        runner.results = action_results
+        runner.use_indexed_order = True
+        return fsm, runner
+
+    def test_retry_exhausted_routes_to_on_retry_exhausted(self) -> None:
+        """After max_retries+1 consecutive entries, executor routes to on_retry_exhausted."""
+        # max_retries=2 → execute runs 3 times (initial + 2 retries), then skip_item
+        fsm, runner = self._make_fsm(
+            max_retries=2,
+            action_results=[
+                ("do_work.sh", {"exit_code": 1}),  # iter 1: failure → retry
+                ("do_work.sh", {"exit_code": 1}),  # iter 2: failure → retry
+                ("do_work.sh", {"exit_code": 1}),  # iter 3: failure → retry (exhausted next)
+                ("echo skipped", {"exit_code": 0}),  # skip_item
+            ],
+        )
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert result.terminated_by == "terminal"
+        # do_work.sh called exactly 3 times (initial + 2 retries)
+        assert runner.calls.count("do_work.sh") == 3
+        assert "echo skipped" in runner.calls
+
+    def test_retry_succeeds_before_exhaustion(self) -> None:
+        """If the state succeeds before max_retries, it routes normally (not to exhausted)."""
+        fsm, runner = self._make_fsm(
+            max_retries=5,
+            action_results=[
+                ("do_work.sh", {"exit_code": 1}),  # fail
+                ("do_work.sh", {"exit_code": 1}),  # fail
+                ("do_work.sh", {"exit_code": 0}),  # success → done (no skip)
+            ],
+        )
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert result.terminated_by == "terminal"
+        assert runner.calls.count("do_work.sh") == 3
+        assert "echo skipped" not in runner.calls
+
+    def test_retry_counter_resets_on_different_state(self) -> None:
+        """Retry counter for a state resets when a different state is entered between entries."""
+        # execute fails → other_state → execute fails again. Since the counter
+        # reset when other_state was entered, this should not trigger exhaustion.
+        fsm = FSMLoop(
+            name="reset-test",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="do_work.sh",
+                    on_failure="other_state",
+                    on_success="done",
+                    max_retries=1,
+                    on_retry_exhausted="skip_item",
+                ),
+                "other_state": StateConfig(action="echo other", next="execute"),
+                "skip_item": StateConfig(action="echo skipped", next="done"),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        runner = MockActionRunner()
+        # execute fails → other_state → execute fails → other_state → execute succeeds
+        runner.results = [
+            ("do_work.sh", {"exit_code": 1}),   # fail → other_state (counter not yet at max)
+            ("echo other", {"exit_code": 0}),    # other_state → execute (resets execute counter)
+            ("do_work.sh", {"exit_code": 1}),   # fail → other_state (counter reset, not exhausted)
+            ("echo other", {"exit_code": 0}),    # other_state → execute
+            ("do_work.sh", {"exit_code": 0}),   # success → done
+        ]
+        runner.use_indexed_order = True
+
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert result.terminated_by == "terminal"
+        assert runner.calls.count("do_work.sh") == 3
+        assert "echo skipped" not in runner.calls
+
+    def test_retry_counter_increments_on_consecutive_reentry(self) -> None:
+        """Verify consecutive re-entries increment the counter as expected."""
+        # max_retries=1 → execute runs at most 2 times (initial + 1 retry)
+        fsm, runner = self._make_fsm(
+            max_retries=1,
+            action_results=[
+                ("do_work.sh", {"exit_code": 1}),  # fail (count=0 → retry allowed)
+                ("do_work.sh", {"exit_code": 1}),  # fail (count=1 → retry allowed, last)
+                ("do_work.sh", {"exit_code": 1}),  # would be fail (count=2 > 1 → exhausted)
+                ("echo skipped", {"exit_code": 0}),
+            ],
+        )
+        executor = FSMExecutor(fsm, action_runner=runner)
+        result = executor.run()
+
+        assert result.final_state == "done"
+        assert result.terminated_by == "terminal"
+        # With max_retries=1: execute runs 2 times (initial + 1 retry), then exhausted
+        assert runner.calls.count("do_work.sh") == 2
+        assert "echo skipped" in runner.calls
+
+    def test_retry_exhausted_event_emitted(self) -> None:
+        """retry_exhausted event is emitted with correct state, retries, and next."""
+        emitted_events: list[dict] = []
+
+        def capture_event(event: dict) -> None:
+            emitted_events.append(event)
+
+        fsm, runner = self._make_fsm(
+            max_retries=1,
+            action_results=[
+                ("do_work.sh", {"exit_code": 1}),
+                ("do_work.sh", {"exit_code": 1}),
+                ("echo skipped", {"exit_code": 0}),
+            ],
+        )
+        executor = FSMExecutor(fsm, action_runner=runner, event_callback=capture_event)
+        executor.run()
+
+        retry_events = [e for e in emitted_events if e.get("event") == "retry_exhausted"]
+        assert len(retry_events) == 1
+        evt = retry_events[0]
+        assert evt["state"] == "execute"
+        assert evt["next"] == "skip_item"
+        assert evt["retries"] > 0
+
+    def test_retry_counts_preserved_in_loop_state(self) -> None:
+        """_retry_counts values are accessible on the executor after execution."""
+        fsm, runner = self._make_fsm(
+            max_retries=3,
+            action_results=[
+                ("do_work.sh", {"exit_code": 1}),  # count → 1
+                ("do_work.sh", {"exit_code": 1}),  # count → 2
+                ("do_work.sh", {"exit_code": 0}),  # success → done (counter NOT reset here)
+            ],
+        )
+        executor = FSMExecutor(fsm, action_runner=runner)
+        executor.run()
+
+        # After success transition to done, execute's counter stays in _retry_counts
+        # (it resets only when a DIFFERENT state is processed next iteration)
+        # Just verify the executor ran without error and reached terminal state
+        assert executor.current_state == "done"

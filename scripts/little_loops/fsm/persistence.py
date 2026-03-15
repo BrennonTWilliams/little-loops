@@ -25,7 +25,7 @@ import json
 import logging
 import shutil
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -88,6 +88,7 @@ class LoopState:
     )
     continuation_prompt: str | None = None
     accumulated_ms: int = 0  # total elapsed ms across all segments (for resume offset)
+    retry_counts: dict[str, int] = field(default_factory=dict)  # per-state retry tracking
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON serialization."""
@@ -105,6 +106,8 @@ class LoopState:
         }
         if self.continuation_prompt is not None:
             result["continuation_prompt"] = self.continuation_prompt
+        if self.retry_counts:
+            result["retry_counts"] = self.retry_counts
         return result
 
     @classmethod
@@ -129,6 +132,7 @@ class LoopState:
             status=data["status"],
             continuation_prompt=data.get("continuation_prompt"),
             accumulated_ms=data.get("accumulated_ms", 0),
+            retry_counts=data.get("retry_counts", {}),
         )
 
 
@@ -379,6 +383,7 @@ class PersistentExecutor:
             accumulated_ms=_now_ms()
             - self._executor.start_time_ms
             + self._executor.elapsed_offset_ms,
+            retry_counts=dict(self._executor._retry_counts),
         )
         self.persistence.save_state(state)
 
@@ -444,6 +449,7 @@ class PersistentExecutor:
         self._executor.prev_result = state.prev_result
         self._executor.started_at = state.started_at
         self._last_result = state.last_result
+        self._executor._retry_counts = dict(state.retry_counts)
 
         # Restore accumulated elapsed time so duration_ms and ${loop.elapsed_ms} reflect
         # the full loop lifetime (all segments), not just the resumed segment.

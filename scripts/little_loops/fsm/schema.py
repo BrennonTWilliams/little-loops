@@ -197,6 +197,11 @@ class StateConfig:
         capture: Variable name to store action output
         timeout: Action-level timeout in seconds
         on_maintain: State to transition to when maintain=True and loop completes
+        max_retries: Max consecutive re-entries before transitioning to on_retry_exhausted.
+            A value of N allows N retries after the initial execution (N+1 total entries).
+            Requires on_retry_exhausted to also be set.
+        on_retry_exhausted: State to transition to when max_retries consecutive re-entries
+            are exceeded. Required when max_retries is set.
     """
 
     action: str | None = None
@@ -212,6 +217,8 @@ class StateConfig:
     capture: str | None = None
     timeout: int | None = None
     on_maintain: str | None = None
+    max_retries: int | None = None
+    on_retry_exhausted: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -243,6 +250,10 @@ class StateConfig:
             result["timeout"] = self.timeout
         if self.on_maintain is not None:
             result["on_maintain"] = self.on_maintain
+        if self.max_retries is not None:
+            result["max_retries"] = self.max_retries
+        if self.on_retry_exhausted is not None:
+            result["on_retry_exhausted"] = self.on_retry_exhausted
 
         return result
 
@@ -271,6 +282,8 @@ class StateConfig:
             capture=data.get("capture"),
             timeout=data.get("timeout"),
             on_maintain=data.get("on_maintain"),
+            max_retries=data.get("max_retries"),
+            on_retry_exhausted=data.get("on_retry_exhausted"),
         )
 
     def get_referenced_states(self) -> set[str]:
@@ -293,6 +306,8 @@ class StateConfig:
             refs.add(self.next)
         if self.on_maintain is not None:
             refs.add(self.on_maintain)
+        if self.on_retry_exhausted is not None:
+            refs.add(self.on_retry_exhausted)
         if self.route is not None:
             refs.update(self.route.routes.values())
             if self.route.default is not None:

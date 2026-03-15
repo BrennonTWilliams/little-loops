@@ -634,3 +634,51 @@ max_iterations: 10
 ```
 
 **Most users can omit this field** — capture is needed only when states must share dynamic data. For static configuration, use the `context:` block at the loop level instead.
+
+#### max_retries and on_retry_exhausted (Optional, paired)
+
+The `max_retries` and `on_retry_exhausted` fields provide first-class per-state retry limiting. When a state is entered consecutively more than `max_retries` times (i.e., it keeps routing back to itself), the executor automatically transitions to `on_retry_exhausted` instead of executing the state again.
+
+**Fields:**
+- `max_retries` (integer, minimum 1) — max number of retries allowed after the initial execution. A value of N means the state executes at most N+1 times consecutively before exhaustion.
+- `on_retry_exhausted` (string) — state to transition to when retry limit is exceeded. Required when `max_retries` is set.
+
+Both fields must be set together (one without the other is a validation error).
+
+**When to use:**
+- Your loop processes multiple items and one bad item might loop indefinitely
+- You want to skip a stuck item and move on rather than burning the global `max_iterations` budget
+- You are building a harness loop where each item gets a fixed number of attempts
+
+**How it works:**
+- The executor tracks consecutive re-entries per state in an internal counter
+- On each entry to a state, if the previous state was the same, the counter increments
+- If the counter exceeds `max_retries`, the state is skipped and `on_retry_exhausted` is used instead
+- The counter resets when a different state is entered
+
+**Example — Multi-item loop with per-item retry limit:**
+```yaml
+name: "refine-with-retry-limit"
+initial: execute
+max_iterations: 100
+states:
+  execute:
+    action: "/ll:refine-issue ${current_item}"
+    action_type: prompt
+    max_retries: 3
+    on_retry_exhausted: skip_item
+    on_success: evaluate
+    on_failure: execute   # retries up to 3 times before skip
+  evaluate:
+    action: "/ll:confidence-check ${current_item}"
+    on_success: done
+    on_failure: execute
+  skip_item:
+    action: echo "Skipping ${current_item} after 3 failed retries"
+    action_type: shell
+    next: done
+  done:
+    terminal: true
+```
+
+**Most users can omit these fields** — they are useful only when a state might loop indefinitely on bad input and you want automatic skip behavior instead of exhausting the global iteration budget.

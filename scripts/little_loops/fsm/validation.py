@@ -218,6 +218,29 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
             )
         )
 
+    # Validate retry field pairing: max_retries requires on_retry_exhausted and vice versa
+    if state.max_retries is not None and state.on_retry_exhausted is None:
+        errors.append(
+            ValidationError(
+                message="'max_retries' requires 'on_retry_exhausted' to also be set",
+                path=path,
+            )
+        )
+    if state.on_retry_exhausted is not None and state.max_retries is None:
+        errors.append(
+            ValidationError(
+                message="'on_retry_exhausted' requires 'max_retries' to also be set",
+                path=path,
+            )
+        )
+    if state.max_retries is not None and state.max_retries < 1:
+        errors.append(
+            ValidationError(
+                message=f"'max_retries' must be >= 1, got {state.max_retries}",
+                path=path,
+            )
+        )
+
     return errors
 
 
