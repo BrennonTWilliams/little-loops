@@ -46,16 +46,64 @@ Add `--json` argument to both subparsers and add a JSON output branch in `cmd_sh
 
 ## Implementation Steps
 
-1. In `scripts/little_loops/cli/issues/__init__.py`, add `--json` flag to the `show` and `sequence` subparsers
-2. In `show.py`, add `if args.json: print(json.dumps(_parse_card_fields(content), indent=2)); return` branch in `cmd_show`
-3. In `sequence.py`, add `if args.json: print(json.dumps([dataclasses.asdict(i) for i in ordered], indent=2)); return` branch in `cmd_sequence`
-4. Add tests covering `--json` output for both subcommands
+1. **`__init__.py` (lines 168–175 and 177–180)**: add `--json` to both subparsers:
+   ```python
+   seq.add_argument("--json", action="store_true", help="Output as JSON array")
+   show_p.add_argument("--json", action="store_true", help="Output as JSON")
+   ```
+
+2. **`show.py` (`cmd_show`, lines 360–380)**: add JSON branch before `_render_card`. `_parse_card_fields` returns `dict[str, str | None]` which is already JSON-serializable — pass directly to `print_json`. Add `from little_loops.cli.output import print_json` import:
+   ```python
+   if getattr(args, "json", False):
+       print_json(_parse_card_fields(path, config))
+       return 0
+   ```
+
+3. **`sequence.py` (`cmd_sequence`, lines 14–60)**: add JSON branch after `ordered = ...[:limit]`. **Do not use `dataclasses.asdict`** — `IssueInfo.path` is a `Path` and `product_impact` is a nested dataclass; use inline dict matching the `list_cmd` pattern. Include `blocked_by` from `graph.blocked_by.get(issue.issue_id, set())` (line 46). Add `from little_loops.cli.output import print_json` import:
+   ```python
+   if getattr(args, "json", False):
+       print_json([
+           {
+               "id": issue.issue_id,
+               "priority": issue.priority,
+               "title": issue.title,
+               "path": str(issue.path),
+               "blocked_by": sorted(graph.blocked_by.get(issue.issue_id, set())),
+               "blocks": issue.blocks,
+           }
+           for issue in ordered
+       ])
+       return 0
+   ```
+
+4. **`tests/test_issues_cli.py`**: add `--json` test cases to `TestShowSubcommand` (line 566+) and `TestSequenceSubcommand` (line 338+) following the `TestListSubcommand` pattern (lines 256–334): valid JSON, required fields, no ANSI codes, `return 0`
 
 ## Integration Map
 
-- **Modified**: `scripts/little_loops/cli/issues/__init__.py` — subparser definitions (add `--json` to `show` and `sequence`)
-- **Modified**: `scripts/little_loops/cli/issues/show.py` — `cmd_show()` (add JSON branch using `_parse_card_fields`)
-- **Modified**: `scripts/little_loops/cli/issues/sequence.py` — `cmd_sequence()` (add JSON branch using `IssueInfo` objects)
+### Files to Modify
+- `scripts/little_loops/cli/issues/__init__.py` — add `--json` to `show` (lines 177–180) and `sequence` (lines 168–175) subparsers
+- `scripts/little_loops/cli/issues/show.py` — add JSON branch in `cmd_show()` (lines 360–380); no new imports needed (`_parse_card_fields` at lines 86–205 already returns `dict[str, str | None]`, directly JSON-serializable)
+- `scripts/little_loops/cli/issues/sequence.py` — add JSON branch in `cmd_sequence()` (lines 14–60); needs `from little_loops.cli.output import print_json` import added
+
+### Dependent Files (Reference Patterns)
+- `scripts/little_loops/cli/issues/list_cmd.py:36–49` — canonical `--json` branch pattern (inline dict with `str(issue.path)`)
+- `scripts/little_loops/cli/issues/count_cmd.py:32–50` — `--json` pattern with early `return 0`
+- `scripts/little_loops/cli/output.py:97–99` — `print_json(data)` helper used by all JSON-enabled subcommands
+- `scripts/little_loops/issue_parser.py:200–265` — `IssueInfo` dataclass definition and `.to_dict()` method
+
+### Tests
+- `scripts/tests/test_issues_cli.py` — `TestShowSubcommand` (line 566+) and `TestSequenceSubcommand` (line 338+); add `--json` test cases here following `TestListSubcommand` patterns (lines 256–334)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- `__init__.py:84` — `list` uses `ls.add_argument("--json", action="store_true", help="Output as JSON array")` — minimal form to follow
+- `__init__.py:168–175` — `sequence` subparser currently only has `--limit` and `add_config_arg`; `--json` goes after `--limit`
+- `__init__.py:177–180` — `show` subparser currently only has `issue_id` positional and `add_config_arg`; `--json` goes before `add_config_arg`
+- `output.py:97–99` — `print_json` is a one-liner: `print(json.dumps(data, indent=2))`
+- `sequence.py:46` — `graph.blocked_by.get(issue.issue_id, set())` provides blocker data; must be included in JSON output (not present on `IssueInfo` fields directly)
+- `issue_parser.py:247–265` — `IssueInfo.to_dict()` exists as a hand-rolled method but no existing `--json` subcommand uses it; inline dict selection is the established pattern
 
 ## Impact
 
@@ -69,6 +117,8 @@ Add `--json` argument to both subparsers and add a JSON output branch in `cmd_sh
 `feature`, `cli`, `ll-issues`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-15T15:13:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eaa8d229-0594-4366-bff7-6d5160769e5e.jsonl`
+- `/ll:refine-issue` - 2026-03-15T15:11:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8e50bdc-90a5-4bb0-8be1-47f4a3403f55.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`

@@ -84,9 +84,9 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 
 ## What's Included
 
-- **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
+- **29 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
-- **17 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
+- **18 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
 - **12 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, etc.) for autonomous and parallel issue processing
 - **Configuration system** with project-type templates for Python, JavaScript, TypeScript, Go, Rust, Java (Maven/Gradle), .NET, and a generic fallback
 
@@ -137,6 +137,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `/ll:check-code [mode]` | Run linting, formatting, type checks |
 | `/ll:run-tests [scope]` | Run test suites |
 | `/ll:audit-docs [scope] [--fix]` | Audit documentation for accuracy and completeness |
+| `/ll:update-docs [--since <date\|ref>] [--fix]` | Identify stale or missing docs from recent commits and completed issues |
 | `/ll:find-dead-code` | Find unused code |
 
 ### Git & Release
@@ -207,6 +208,7 @@ Commands are organized by workflow capability. Skills (marked with `^` in `/ll:h
 | `confidence-check` | Planning & Implementation | Pre-implementation confidence check for readiness validation |
 | `manage-issue` | Planning & Implementation | Autonomously manage issues — plan, implement, verify, and complete |
 | `audit-docs` | Code Quality | Audit documentation for accuracy and completeness |
+| `update-docs` | Code Quality | Identify stale or missing docs from recent commits and completed issues |
 | `create-loop` | Automation & Loops | Create new FSM loop configuration interactively |
 | `review-loop` | Automation & Loops | Review and improve existing FSM loop configurations |
 | `analyze-loop` | Automation & Loops | Analyze loop execution history to synthesize actionable issues from failures |

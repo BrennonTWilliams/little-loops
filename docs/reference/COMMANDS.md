@@ -237,6 +237,16 @@ Audit documentation for accuracy and completeness. Auto-fixable findings (wrong 
 
 **Flags:** `--fix` (auto-apply fixable corrections without prompting)
 
+### `/ll:update-docs`
+Identify stale or missing documentation by analyzing git commits and completed issues since a given reference. Detects *coverage gaps* from recent work — complements `/ll:audit-docs` (which validates accuracy of existing content).
+
+**Arguments:**
+- `--since` (optional): Change window start — date (`YYYY-MM-DD`) or git ref (commit hash or branch). Defaults to last commit touching a doc file, or the watermark in `.claude/ll-update-docs.watermark` if present.
+
+**Flags:** `--fix` (draft stub documentation sections inline for all gaps rather than prompting)
+
+**Trigger keywords:** "update docs", "stale docs", "missing docs", "docs since sprint", "doc coverage", "documentation gaps"
+
 ### `/ll:audit-claude-config`
 Comprehensive audit of Claude Code plugin configuration with parallel sub-agents.
 
@@ -427,6 +437,7 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `map-dependencies` | Analyze cross-issue dependencies based on file overlap |
 | `audit-architecture` | Analyze code structure |
 | `audit-docs` | Check documentation accuracy |
+| `update-docs` | Identify stale or missing docs from recent commits and completed issues |
 | `audit-claude-config` | Comprehensive config audit |
 | `analyze-workflows` | Analyze user message patterns for automation |
 | `analyze-history` | Analyze issue history for project health and trends |

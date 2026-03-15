@@ -17,12 +17,12 @@ Sprint planning often focuses on a single issue type (e.g., "show me only bug di
 
 ## Location
 
-- **File**: `scripts/little_loops/cli/issues/impact_effort.py` — `cmd_impact_effort` (line 180)
-- **File**: `scripts/little_loops/cli/issues/__init__.py` — subparser (lines 104-106)
+- **File**: `scripts/little_loops/cli/issues/impact_effort.py` — `cmd_impact_effort` (line 166)
+- **File**: `scripts/little_loops/cli/issues/__init__.py` — `impact-effort` subparser (lines 182-184)
 
 ## Current Behavior
 
-`cmd_impact_effort` calls `find_issues(config)` with no type filtering. The `args` parameter is unused. All issue types are always shown.
+`cmd_impact_effort` (`impact_effort.py:166`) calls `find_issues(config)` at `impact_effort.py:185-187` with no type filtering. The docstring at `impact_effort.py:179-180` explicitly notes `args` is "unused, reserved for future flags". The subparser at `__init__.py:182-184` registers only `add_config_arg(ie)` — no `--type` argument. All issue types are always shown.
 
 ## Expected Behavior
 
@@ -34,25 +34,41 @@ A developer running sprint planning wants to see only bug impact-effort distribu
 
 ## Proposed Solution
 
-Add `--type` argument (same spec as other subcommands: `choices=["BUG", "FEAT", "ENH"]`, `nargs="*"`) to the `impact-effort` subparser. In `cmd_impact_effort`, convert `args.type` to `type_prefixes` and pass to `find_issues(config, type_prefixes=...)`.
+Add `--type` argument (same spec as `list`/`count`/`refine-status` subcommands: `choices=["BUG", "FEAT", "ENH"]`, single-value, no `nargs`) to the `impact-effort` subparser. In `cmd_impact_effort`, convert `args.type` to a `set[str]` and pass to `find_issues(config, type_prefixes=...)`.
+
+Exact pattern from sibling commands (`list_cmd.py:26-27`):
+```python
+type_prefixes = {args.type} if getattr(args, "type", None) else None
+issues = find_issues(config, type_prefixes=type_prefixes)
+```
 
 ## Acceptance Criteria
 
 - [ ] `ll-issues impact-effort --type BUG` shows only bugs in the matrix
-- [ ] Multiple types supported: `--type BUG --type FEAT`
+- [ ] `ll-issues impact-effort --type FEAT` shows only features
 - [ ] Default (no flag) shows all types (unchanged behavior)
+- [ ] Invalid type (e.g. `--type FOO`) rejected by argparse with exit code 2
 
 ## Implementation Steps
 
-1. In `scripts/little_loops/cli/issues/__init__.py`, add `--type` argument to the `impact-effort` subparser (same spec as `list` subparser: `nargs="*"`, `choices=["BUG", "FEAT", "ENH"]`)
-2. In `impact_effort.py`, update `cmd_impact_effort` (line 180) to pass `type_prefixes=args.type or []` to `find_issues(config, ...)`
-3. Verify empty `--type` list defaults to all types (no change to current behavior)
+1. In `scripts/little_loops/cli/issues/__init__.py` at lines 182-184, add `--type` argument to the `impact-effort` subparser — match `list` subparser spec at `__init__.py:73`:
+   ```python
+   ie.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
+   ```
+2. In `impact_effort.py`, update `cmd_impact_effort` (line 166) to build `type_prefixes` and pass to `find_issues(config, ...)` at line 185 — match sibling pattern from `list_cmd.py:26-27`:
+   ```python
+   type_prefixes = {args.type} if getattr(args, "type", None) else None
+   issues = find_issues(config, type_prefixes=type_prefixes)
+   ```
+3. Remove the "unused, reserved for future flags" docstring note at `impact_effort.py:179-180` since `args` is now used
+4. Add test `test_impact_effort_filter_by_type` in `TestIssuesCLIImpactEffort` class (`scripts/tests/test_issues_cli.py:411`) following the pattern from `TestIssuesCLIList.test_list_filter_by_type` (`test_issues_cli.py:166-188`): pass `["ll-issues", "impact-effort", "--type", "BUG", ...]`, assert BUG IDs in output and FEAT IDs not in output
 
 ## Integration Map
 
-- **Modified**: `scripts/little_loops/cli/issues/__init__.py` — `impact-effort` subparser (lines 104-106)
-- **Modified**: `scripts/little_loops/cli/issues/impact_effort.py` — `cmd_impact_effort()` (line 180)
-- **Reused**: `scripts/little_loops/issue_manager.py` — `find_issues(config, type_prefixes=...)` (already supports filtering)
+- **Modified**: `scripts/little_loops/cli/issues/__init__.py` — `impact-effort` subparser (lines 182-184): add `--type` argument
+- **Modified**: `scripts/little_loops/cli/issues/impact_effort.py` — `cmd_impact_effort()` (line 166): use `args.type`, pass `type_prefixes` to `find_issues` at line 185
+- **Reused**: `scripts/little_loops/issue_parser.py` — `find_issues(config, type_prefixes=...)` signature at line 597-603 (already supports filtering)
+- **Test**: `scripts/tests/test_issues_cli.py:411` — add `test_impact_effort_filter_by_type` in `TestIssuesCLIImpactEffort` class
 
 ## Impact
 
@@ -66,6 +82,8 @@ Add `--type` argument (same spec as other subcommands: `choices=["BUG", "FEAT", 
 `feature`, `cli`, `ll-issues`
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-15T15:13:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eaa8d229-0594-4366-bff7-6d5160769e5e.jsonl`
+- `/ll:refine-issue` - 2026-03-15T15:10:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71caa695-ccb2-4497-99ca-29e51e4c645f.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
