@@ -32,8 +32,8 @@ LOOPS_DIR = PROJECT_ROOT / "loops"
 
 def make_test_state(
     action: str | None = None,
-    on_success: str | None = None,
-    on_failure: str | None = None,
+    on_yes: str | None = None,
+    on_no: str | None = None,
     on_error: str | None = None,
     next: str | None = None,
     terminal: bool = False,
@@ -45,8 +45,8 @@ def make_test_state(
     """Create a StateConfig for testing."""
     kwargs: dict = {
         "action": action,
-        "on_success": on_success,
-        "on_failure": on_failure,
+        "on_yes": on_yes,
+        "on_no": on_no,
         "on_error": on_error,
         "next": next,
         "terminal": terminal,
@@ -68,7 +68,7 @@ def make_test_fsm(
     """Create an FSMLoop for testing."""
     if states is None:
         states = {
-            "start": make_test_state(action="echo start", on_success="done", on_failure="done"),
+            "start": make_test_state(action="echo start", on_yes="done", on_no="done"),
             "done": make_test_state(terminal=True),
         }
     return FSMLoop(name=name, initial=initial, states=states, max_iterations=max_iterations)
@@ -114,7 +114,7 @@ class TestReviewLoopChecks:
         """V-3: on_success pointing to nonexistent state → Error."""
         fsm = make_test_fsm(
             states={
-                "start": make_test_state(action="echo", on_success="nowhere", on_failure="done"),
+                "start": make_test_state(action="echo", on_yes="nowhere", on_no="done"),
                 "done": make_test_state(terminal=True),
             }
         )
@@ -170,8 +170,8 @@ class TestReviewLoopChecks:
             states={
                 "start": make_test_state(
                     action="echo",
-                    on_success="done",  # shorthand
-                    route=RouteConfig(routes={"success": "done"}),  # explicit route
+                    on_yes="done",  # shorthand
+                    route=RouteConfig(routes={"yes": "done"}),  # explicit route
                 ),
                 "done": make_test_state(terminal=True),
             }
@@ -244,8 +244,8 @@ class TestReviewLoopQualityChecks:
         state_spec = {
             "action": "ruff check .",
             "evaluate": {"type": "exit_code"},
-            "on_success": "done",
-            "on_failure": "fix",
+            "on_yes": "done",
+            "on_no": "fix",
             # on_error absent
         }
         has_evaluate = "evaluate" in state_spec
@@ -267,8 +267,8 @@ class TestReviewLoopQualityChecks:
         state_spec = {
             "action": "ruff check .",
             "evaluate": {"type": "exit_code"},
-            "on_success": "done",
-            "on_failure": "fix",
+            "on_yes": "done",
+            "on_no": "fix",
             "on_error": "fix",
         }
         has_on_error = "on_error" in state_spec
@@ -317,8 +317,8 @@ class TestReviewLoopQualityChecks:
         state_spec = {
             "action": "python measure.py",
             "evaluate": {"type": "convergence", "target": 0},
-            "on_success": "done",
-            "on_failure": "fix",
+            "on_yes": "done",
+            "on_no": "fix",
             # on_maintain absent
         }
         is_convergence = state_spec.get("evaluate", {}).get("type") == "convergence"
@@ -332,8 +332,8 @@ class TestReviewLoopQualityChecks:
         state_spec = {
             "action": "python measure.py",
             "evaluate": {"type": "convergence", "target": 0},
-            "on_success": "done",
-            "on_failure": "fix",
+            "on_yes": "done",
+            "on_no": "fix",
             "on_maintain": "fix",
         }
         is_convergence = state_spec.get("evaluate", {}).get("type") == "convergence"

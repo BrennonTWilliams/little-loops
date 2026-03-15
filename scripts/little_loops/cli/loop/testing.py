@@ -145,10 +145,10 @@ def cmd_test(
         elif state_config.route.default:
             next_state = state_config.route.default
     else:
-        if verdict == "success" and state_config.on_success:
-            next_state = state_config.on_success
-        elif verdict == "failure" and state_config.on_failure:
-            next_state = state_config.on_failure
+        if verdict == "yes" and state_config.on_yes:
+            next_state = state_config.on_yes
+        elif verdict == "no" and state_config.on_no:
+            next_state = state_config.on_no
         elif verdict == "error" and state_config.on_error:
             next_state = state_config.on_error
 

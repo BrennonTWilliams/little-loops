@@ -32,14 +32,14 @@ class TestEvaluationResult:
 
     def test_basic_result(self) -> None:
         """EvaluationResult holds verdict and details."""
-        result = EvaluationResult(verdict="success", details={"key": "value"})
-        assert result.verdict == "success"
+        result = EvaluationResult(verdict="yes", details={"key": "value"})
+        assert result.verdict == "yes"
         assert result.details == {"key": "value"}
 
     def test_empty_details(self) -> None:
         """EvaluationResult can have empty details."""
-        result = EvaluationResult(verdict="failure", details={})
-        assert result.verdict == "failure"
+        result = EvaluationResult(verdict="no", details={})
+        assert result.verdict == "no"
         assert result.details == {}
 
 
@@ -49,8 +49,8 @@ class TestExitCodeEvaluator:
     @pytest.mark.parametrize(
         ("exit_code", "expected"),
         [
-            (0, "success"),
-            (1, "failure"),
+            (0, "yes"),
+            (1, "no"),
             (2, "error"),
             (127, "error"),
             (255, "error"),
@@ -74,64 +74,64 @@ class TestOutputNumericEvaluator:
     def test_equal_passes(self) -> None:
         """eq operator passes when values equal."""
         result = evaluate_output_numeric("5", "eq", 5)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["value"] == 5
         assert result.details["target"] == 5
 
     def test_equal_fails(self) -> None:
         """eq operator fails when values differ."""
         result = evaluate_output_numeric("3", "eq", 5)
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
 
     def test_not_equal_passes(self) -> None:
         """ne operator passes when values differ."""
         result = evaluate_output_numeric("3", "ne", 5)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_not_equal_fails(self) -> None:
         """ne operator fails when values equal."""
         result = evaluate_output_numeric("5", "ne", 5)
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
 
     def test_less_than_passes(self) -> None:
         """lt operator passes when value < target."""
         result = evaluate_output_numeric("3", "lt", 5)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_less_than_fails(self) -> None:
         """lt operator fails when value >= target."""
         result = evaluate_output_numeric("5", "lt", 5)
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
 
     def test_less_equal_passes(self) -> None:
         """le operator passes when value <= target."""
         result = evaluate_output_numeric("5", "le", 5)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_less_equal_fails(self) -> None:
         """le operator fails when value > target."""
         result = evaluate_output_numeric("6", "le", 5)
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
 
     def test_greater_than_passes(self) -> None:
         """gt operator passes when value > target."""
         result = evaluate_output_numeric("7", "gt", 5)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_greater_than_fails(self) -> None:
         """gt operator fails when value <= target."""
         result = evaluate_output_numeric("5", "gt", 5)
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
 
     def test_greater_equal_passes(self) -> None:
         """ge operator passes when value >= target."""
         result = evaluate_output_numeric("5", "ge", 5)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_greater_equal_fails(self) -> None:
         """ge operator fails when value < target."""
         result = evaluate_output_numeric("4", "ge", 5)
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
 
     def test_parse_error(self) -> None:
         """Non-numeric output returns error verdict."""
@@ -142,12 +142,12 @@ class TestOutputNumericEvaluator:
     def test_whitespace_stripped(self) -> None:
         """Whitespace around number is handled."""
         result = evaluate_output_numeric("  5  \n", "eq", 5)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_float_values(self) -> None:
         """Float values are compared correctly."""
         result = evaluate_output_numeric("3.14", "lt", 3.15)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["value"] == 3.14
 
     def test_unknown_operator(self) -> None:
@@ -219,38 +219,38 @@ class TestOutputJsonEvaluator:
         """Simple numeric JSON comparison works."""
         output = '{"count": 5}'
         result = evaluate_output_json(output, ".count", "eq", 5)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["value"] == 5
 
     def test_nested_path(self) -> None:
         """Nested JSON path extraction works."""
         output = '{"summary": {"failed": 0}}'
         result = evaluate_output_json(output, ".summary.failed", "eq", 0)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_numeric_less_than(self) -> None:
         """Numeric comparison with lt operator."""
         output = '{"errors": 3}'
         result = evaluate_output_json(output, ".errors", "lt", 5)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_numeric_greater_than(self) -> None:
         """Numeric comparison with gt operator."""
         output = '{"score": 95}'
         result = evaluate_output_json(output, ".score", "gt", 90)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_string_equality(self) -> None:
         """String value comparison works."""
         output = '{"status": "ok"}'
         result = evaluate_output_json(output, ".status", "eq", "ok")
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_string_not_equal(self) -> None:
         """String ne comparison works."""
         output = '{"status": "error"}'
         result = evaluate_output_json(output, ".status", "ne", "ok")
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_string_with_numeric_operator_fails(self) -> None:
         """Numeric operator on string returns error."""
@@ -277,13 +277,13 @@ class TestOutputJsonEvaluator:
         """Array index access in JSON works."""
         output = '{"items": [1, 2, 3]}'
         result = evaluate_output_json(output, ".items.1", "eq", 2)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_boolean_value(self) -> None:
         """Boolean JSON value comparison works."""
         output = '{"enabled": true}'
         result = evaluate_output_json(output, ".enabled", "eq", True)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
 
 class TestOutputContainsEvaluator:
@@ -292,54 +292,54 @@ class TestOutputContainsEvaluator:
     def test_substring_match(self) -> None:
         """Substring found returns success."""
         result = evaluate_output_contains("Hello World", "World")
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["matched"] is True
 
     def test_substring_not_found(self) -> None:
         """Substring not found returns failure."""
         result = evaluate_output_contains("Hello World", "Goodbye")
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
         assert result.details["matched"] is False
 
     def test_regex_pattern(self) -> None:
         """Regex pattern matching works."""
         result = evaluate_output_contains("Error: 5 failures", r"\d+ failures")
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_regex_anchors(self) -> None:
         """Regex anchors work correctly."""
         result = evaluate_output_contains("test line", r"^test")
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
         result = evaluate_output_contains("line test", r"^test")
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
 
     def test_negate_found(self) -> None:
         """negate=True with match returns failure."""
         result = evaluate_output_contains("has error", "error", negate=True)
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
 
     def test_negate_not_found(self) -> None:
         """negate=True without match returns success."""
         result = evaluate_output_contains("All tests passed", "Error", negate=True)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_invalid_regex_fallback(self) -> None:
         """Invalid regex falls back to substring match."""
         # '[' is invalid regex but valid substring
         result = evaluate_output_contains("test[1]", "[1]")
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_empty_pattern(self) -> None:
         """Empty pattern matches (substring)."""
         result = evaluate_output_contains("any text", "")
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_multiline_output(self) -> None:
         """Pattern matching works on multiline output."""
         output = "line 1\nError on line 2\nline 3"
         result = evaluate_output_contains(output, "Error")
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
 
 class TestConvergenceEvaluator:
@@ -409,28 +409,28 @@ class TestEvaluateDispatcher:
         config = EvaluateConfig(type="exit_code")
         ctx = InterpolationContext()
         result = evaluate(config, "", 0, ctx)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_dispatch_output_numeric(self) -> None:
         """output_numeric type routes correctly."""
         config = EvaluateConfig(type="output_numeric", operator="lt", target=10)
         ctx = InterpolationContext()
         result = evaluate(config, "5", 0, ctx)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_dispatch_output_numeric_numeric_string_target(self) -> None:
         """output_numeric with a numeric string target converts correctly."""
         config = EvaluateConfig(type="output_numeric", operator="eq", target="5.0")
         ctx = InterpolationContext()
         result = evaluate(config, "5", 0, ctx)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_dispatch_output_numeric_interpolated_target(self) -> None:
         """output_numeric with interpolation template target resolves and compares."""
         config = EvaluateConfig(type="output_numeric", operator="eq", target="${context.threshold}")
         ctx = InterpolationContext(context={"threshold": "42"})
         result = evaluate(config, "42", 0, ctx)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_dispatch_output_numeric_non_numeric_string_target_raises(self) -> None:
         """output_numeric with non-numeric string target raises ValueError with diagnostic."""
@@ -451,21 +451,21 @@ class TestEvaluateDispatcher:
         config = EvaluateConfig(type="output_json", path=".count", operator="eq", target=0)
         ctx = InterpolationContext()
         result = evaluate(config, '{"count": 0}', 0, ctx)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_dispatch_output_contains(self) -> None:
         """output_contains type routes correctly."""
         config = EvaluateConfig(type="output_contains", pattern="success")
         ctx = InterpolationContext()
         result = evaluate(config, "operation success", 0, ctx)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_dispatch_output_contains_negate(self) -> None:
         """output_contains with negate routes correctly."""
         config = EvaluateConfig(type="output_contains", pattern="error", negate=True)
         ctx = InterpolationContext()
         result = evaluate(config, "all good", 0, ctx)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_dispatch_convergence(self) -> None:
         """convergence type routes correctly."""
@@ -589,11 +589,11 @@ class TestLLMStructuredEvaluator:
     def test_success_verdict(self, mock_cli) -> None:
         """LLM returns success verdict."""
         mock_run, mock_result = mock_cli
-        mock_result.stdout = self._cli_stdout("success", 0.9, "Action completed successfully")
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "Action completed successfully")
 
         result = evaluate_llm_structured("Fixed error in handlers.py")
 
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["confidence"] == 0.9
         assert result.details["confident"] is True
         assert result.details["reason"] == "Action completed successfully"
@@ -601,11 +601,11 @@ class TestLLMStructuredEvaluator:
     def test_failure_verdict(self, mock_cli) -> None:
         """LLM returns failure verdict."""
         mock_run, mock_result = mock_cli
-        mock_result.stdout = self._cli_stdout("failure", 0.8, "Tests still failing")
+        mock_result.stdout = self._cli_stdout("no", 0.8, "Tests still failing")
 
         result = evaluate_llm_structured("3 tests failed")
 
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
         assert result.details["confident"] is True
 
     def test_blocked_verdict(self, mock_cli) -> None:
@@ -629,21 +629,21 @@ class TestLLMStructuredEvaluator:
     def test_low_confidence_without_suffix(self, mock_cli) -> None:
         """Low confidence without uncertain_suffix keeps original verdict."""
         mock_run, mock_result = mock_cli
-        mock_result.stdout = self._cli_stdout("success", 0.4, "Maybe fixed")
+        mock_result.stdout = self._cli_stdout("yes", 0.4, "Maybe fixed")
 
         result = evaluate_llm_structured("...", min_confidence=0.7, uncertain_suffix=False)
 
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["confident"] is False
 
     def test_low_confidence_with_suffix(self, mock_cli) -> None:
         """Low confidence with uncertain_suffix appends _uncertain."""
         mock_run, mock_result = mock_cli
-        mock_result.stdout = self._cli_stdout("success", 0.4, "Maybe fixed")
+        mock_result.stdout = self._cli_stdout("yes", 0.4, "Maybe fixed")
 
         result = evaluate_llm_structured("...", min_confidence=0.7, uncertain_suffix=True)
 
-        assert result.verdict == "success_uncertain"
+        assert result.verdict == "yes_uncertain"
         assert result.details["confident"] is False
 
     def test_custom_schema(self, mock_cli) -> None:
@@ -677,7 +677,7 @@ class TestLLMStructuredEvaluator:
     def test_custom_prompt(self, mock_cli) -> None:
         """Custom prompt is passed to CLI."""
         mock_run, mock_result = mock_cli
-        mock_result.stdout = self._cli_stdout("success", 0.9, "Done")
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "Done")
 
         custom_prompt = "Check if the code review was approved."
         evaluate_llm_structured("LGTM, approved", prompt=custom_prompt)
@@ -746,12 +746,12 @@ class TestLLMStructuredEvaluator:
         """result field as dict (not string) is handled correctly."""
         mock_run, mock_result = mock_cli
         mock_result.stdout = json.dumps(
-            {"result": {"verdict": "success", "confidence": 0.9, "reason": "Done"}}
+            {"result": {"verdict": "yes", "confidence": 0.9, "reason": "Done"}}
         )
 
         result = evaluate_llm_structured("...")
 
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["confidence"] == 0.9
 
     def test_empty_result_field_includes_raw_preview(self, mock_cli) -> None:
@@ -802,7 +802,7 @@ class TestLLMStructuredEvaluator:
     def test_output_truncation(self, mock_cli) -> None:
         """Long output is truncated to last 4000 chars."""
         mock_run, mock_result = mock_cli
-        mock_result.stdout = self._cli_stdout("success", 1.0, "Done")
+        mock_result.stdout = self._cli_stdout("yes", 1.0, "Done")
 
         long_output = "x" * 10000
         evaluate_llm_structured(long_output)
@@ -817,18 +817,18 @@ class TestLLMStructuredEvaluator:
     def test_raw_response_in_details(self, mock_cli) -> None:
         """Raw LLM response is included in details."""
         mock_run, mock_result = mock_cli
-        mock_result.stdout = self._cli_stdout("success", 0.9, "Action completed")
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "Action completed")
 
         result = evaluate_llm_structured("Done")
 
         assert "raw" in result.details
-        assert result.details["raw"]["verdict"] == "success"
+        assert result.details["raw"]["verdict"] == "yes"
         assert result.details["raw"]["confidence"] == 0.9
 
     def test_default_values_used(self, mock_cli) -> None:
         """Default prompt and schema used when not specified."""
         mock_run, mock_result = mock_cli
-        mock_result.stdout = self._cli_stdout("success", 0.9, "Done")
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "Done")
 
         evaluate_llm_structured("test output")
 
@@ -845,12 +845,12 @@ class TestLLMStructuredEvaluator:
         mock_run, mock_result = mock_cli
         # Some CLI versions return JSON directly without a "result" wrapper
         mock_result.stdout = json.dumps(
-            {"verdict": "success", "confidence": 0.9, "reason": "All checks passed"}
+            {"verdict": "yes", "confidence": 0.9, "reason": "All checks passed"}
         )
 
         result = evaluate_llm_structured("test output")
 
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["confidence"] == 0.9
         assert result.details["reason"] == "All checks passed"
 
@@ -862,7 +862,7 @@ class TestLLMStructuredEvaluator:
         final_line = json.dumps(
             {
                 "result": json.dumps(
-                    {"verdict": "failure", "confidence": 0.8, "reason": "Tests failed"}
+                    {"verdict": "no", "confidence": 0.8, "reason": "Tests failed"}
                 )
             }
         )
@@ -870,7 +870,7 @@ class TestLLMStructuredEvaluator:
 
         result = evaluate_llm_structured("output")
 
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
         assert result.details["confidence"] == 0.8
 
 
@@ -905,19 +905,19 @@ class TestEvaluateDispatcherLLM:
     def test_dispatch_llm_structured(self, mock_cli) -> None:
         """llm_structured type routes correctly."""
         mock_run, mock_result = mock_cli
-        mock_result.stdout = self._cli_stdout("success", 0.9, "Done")
+        mock_result.stdout = self._cli_stdout("yes", 0.9, "Done")
 
         config = EvaluateConfig(type="llm_structured")
         ctx = InterpolationContext()
         result = evaluate(config, "test output", 0, ctx)
 
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["confident"] is True
 
     def test_dispatch_llm_with_config_options(self, mock_cli) -> None:
         """llm_structured uses config options."""
         mock_run, mock_result = mock_cli
-        mock_result.stdout = self._cli_stdout("success", 0.4, "Maybe")
+        mock_result.stdout = self._cli_stdout("yes", 0.4, "Maybe")
 
         config = EvaluateConfig(
             type="llm_structured",
@@ -928,7 +928,7 @@ class TestEvaluateDispatcherLLM:
         ctx = InterpolationContext()
         result = evaluate(config, "test output", 0, ctx)
 
-        assert result.verdict == "success_uncertain"
+        assert result.verdict == "yes_uncertain"
         assert result.details["confident"] is False
 
 
@@ -966,7 +966,7 @@ class TestDiffStallEvaluator:
         mock_result.stdout = "scripts/foo.py | 3 +++"
 
         result = evaluate_diff_stall()
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["stall_count"] == 0
         assert result.details["diff_changed"] is True
 
@@ -981,7 +981,7 @@ class TestDiffStallEvaluator:
         # Second call with different diff
         mock_result.stdout = "scripts/bar.py | 5 +++++"
         result = evaluate_diff_stall()
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["diff_changed"] is True
         assert result.details["stall_count"] == 0
 
@@ -995,7 +995,7 @@ class TestDiffStallEvaluator:
 
         # Second call — same diff, max_stall=1 triggers failure
         result = evaluate_diff_stall(max_stall=1)
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
         assert result.details["stall_count"] == 1
         assert result.details["diff_changed"] is False
 
@@ -1009,7 +1009,7 @@ class TestDiffStallEvaluator:
 
         # Second call — same diff, but max_stall=2 so not yet at threshold
         result = evaluate_diff_stall(max_stall=2)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["stall_count"] == 1
         assert result.details["diff_changed"] is False
 
@@ -1025,7 +1025,7 @@ class TestDiffStallEvaluator:
         # Progress: diff changes, counter resets
         mock_result.stdout = "scripts/bar.py | 5 +++++"
         result = evaluate_diff_stall(max_stall=3)
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["stall_count"] == 0
         assert result.details["diff_changed"] is True
 
@@ -1069,7 +1069,7 @@ class TestDiffStallEvaluator:
         ctx = InterpolationContext()
         result = evaluate(config, "", 0, ctx)
 
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert "stall_count" in result.details
 
     def test_dispatch_diff_stall_with_options(self, mock_git) -> None:
@@ -1081,5 +1081,5 @@ class TestDiffStallEvaluator:
         ctx = InterpolationContext()
         result = evaluate(config, "", 0, ctx)
 
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
         assert result.details["max_stall"] == 2

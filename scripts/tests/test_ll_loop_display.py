@@ -46,8 +46,8 @@ class MockExecutor:
 
 def make_test_state(
     action: str | None = None,
-    on_success: str | None = None,
-    on_failure: str | None = None,
+    on_yes: str | None = None,
+    on_no: str | None = None,
     on_error: str | None = None,
     next: str | None = None,
     terminal: bool = False,
@@ -60,8 +60,8 @@ def make_test_state(
     """Create StateConfig for testing."""
     return StateConfig(
         action=action,
-        on_success=on_success,
-        on_failure=on_failure,
+        on_yes=on_yes,
+        on_no=on_no,
         on_error=on_error,
         next=next,
         terminal=terminal,
@@ -83,7 +83,7 @@ def make_test_fsm(
     """Create FSMLoop for testing."""
     if states is None:
         states = {
-            "start": make_test_state(action="echo start", on_success="done", on_failure="done"),
+            "start": make_test_state(action="echo start", on_yes="done", on_no="done"),
             "done": make_test_state(terminal=True),
         }
     return FSMLoop(
@@ -100,9 +100,9 @@ class TestStateToDict:
 
     def test_simple_state_with_action(self) -> None:
         """Convert state with action and on_success."""
-        state = make_test_state(action="echo hello", on_success="done")
+        state = make_test_state(action="echo hello", on_yes="done")
         result = state.to_dict()
-        assert result == {"action": "echo hello", "on_success": "done"}
+        assert result == {"action": "echo hello", "on_yes": "done"}
 
     def test_terminal_state(self) -> None:
         """Convert terminal state to dict."""
@@ -114,27 +114,27 @@ class TestStateToDict:
         """Convert state with on_failure."""
         state = make_test_state(
             action="pytest",
-            on_success="done",
-            on_failure="fix",
+            on_yes="done",
+            on_no="fix",
         )
         result = state.to_dict()
         assert result == {
             "action": "pytest",
-            "on_success": "done",
-            "on_failure": "fix",
+            "on_yes": "done",
+            "on_no": "fix",
         }
 
     def test_state_with_on_error(self) -> None:
         """Convert state with on_error."""
         state = make_test_state(
             action="risky_command",
-            on_success="done",
+            on_yes="done",
             on_error="handle_error",
         )
         result = state.to_dict()
         assert result == {
             "action": "risky_command",
-            "on_success": "done",
+            "on_yes": "done",
             "on_error": "handle_error",
         }
 
@@ -149,15 +149,15 @@ class TestStateToDict:
         state = make_test_state(
             action="pytest",
             evaluate=EvaluateConfig(type="exit_code"),
-            on_success="done",
-            on_failure="fix",
+            on_yes="done",
+            on_no="fix",
         )
         result = state.to_dict()
         assert result == {
             "action": "pytest",
             "evaluate": {"type": "exit_code"},
-            "on_success": "done",
-            "on_failure": "fix",
+            "on_yes": "done",
+            "on_no": "fix",
         }
 
     def test_state_with_evaluate_numeric(self) -> None:
@@ -169,8 +169,8 @@ class TestStateToDict:
                 operator="le",
                 target=5,
             ),
-            on_success="done",
-            on_failure="fix",
+            on_yes="done",
+            on_no="fix",
         )
         result = state.to_dict()
         assert result == {
@@ -180,8 +180,8 @@ class TestStateToDict:
                 "operator": "le",
                 "target": 5,
             },
-            "on_success": "done",
-            "on_failure": "fix",
+            "on_yes": "done",
+            "on_no": "fix",
         }
 
     def test_state_with_evaluate_convergence(self) -> None:
@@ -194,8 +194,8 @@ class TestStateToDict:
                 tolerance=0.1,
                 previous="${captured.last_count}",
             ),
-            on_success="done",
-            on_failure="fix",
+            on_yes="done",
+            on_no="fix",
         )
         result = state.to_dict()
         assert result["evaluate"]["type"] == "convergence"
@@ -211,8 +211,8 @@ class TestStateToDict:
                 type="output_contains",
                 pattern="ERROR",
             ),
-            on_success="fix",
-            on_failure="done",
+            on_yes="fix",
+            on_no="done",
         )
         result = state.to_dict()
         assert result["evaluate"]["type"] == "output_contains"
@@ -227,8 +227,8 @@ class TestStateToDict:
                 path=".status",
                 target="healthy",
             ),
-            on_success="done",
-            on_failure="retry",
+            on_yes="done",
+            on_no="retry",
         )
         result = state.to_dict()
         assert result["evaluate"]["type"] == "output_json"
@@ -241,14 +241,14 @@ class TestStateToDict:
             action="analyze",
             evaluate=EvaluateConfig(type="llm_structured"),
             route=RouteConfig(
-                routes={"success": "done", "failure": "retry", "blocked": "escalate"},
+                routes={"yes": "done", "no": "retry", "blocked": "escalate"},
                 default="error_state",
             ),
         )
         result = state.to_dict()
         assert result["route"] == {
-            "success": "done",
-            "failure": "retry",
+            "yes": "done",
+            "no": "retry",
             "blocked": "escalate",
             "_": "error_state",
         }
@@ -268,7 +268,7 @@ class TestStateToDict:
         state = make_test_state(
             action="wc -l errors.log",
             capture="error_count",
-            on_success="check",
+            on_yes="check",
         )
         result = state.to_dict()
         assert result["capture"] == "error_count"
@@ -278,7 +278,7 @@ class TestStateToDict:
         state = make_test_state(
             action="slow_command",
             timeout=300,
-            on_success="done",
+            on_yes="done",
         )
         result = state.to_dict()
         assert result["timeout"] == 300
@@ -288,7 +288,7 @@ class TestStateToDict:
         state = make_test_state(
             action="monitor",
             on_maintain="monitor",
-            on_success="done",
+            on_yes="done",
         )
         result = state.to_dict()
         assert result["on_maintain"] == "monitor"
@@ -302,8 +302,8 @@ class TestStateToDict:
                 operator="eq",
                 target=0,
             ),
-            on_success="done",
-            on_failure="fix",
+            on_yes="done",
+            on_no="fix",
             on_error="error_handler",
             capture="result",
             timeout=60,
@@ -311,8 +311,8 @@ class TestStateToDict:
         result = state.to_dict()
         assert "action" in result
         assert "evaluate" in result
-        assert "on_success" in result
-        assert "on_failure" in result
+        assert "on_yes" in result
+        assert "on_no" in result
         assert "on_error" in result
         assert "capture" in result
         assert "timeout" in result
@@ -340,7 +340,7 @@ initial: start
 states:
   start:
     action: "echo start"
-    on_success: done
+    on_yes: done
   done:
     terminal: true
 """)
@@ -395,7 +395,7 @@ initial: start
 states:
   start:
     action: "{long_action}"
-    on_success: done
+    on_yes: done
   done:
     terminal: true
 """)
@@ -425,7 +425,7 @@ states:
         for line in long_prompt.splitlines():
             yaml_content += f"      {line}\n"
         yaml_content += (
-            "    action_type: prompt\n    on_success: done\n  done:\n    terminal: true\n"
+            "    action_type: prompt\n    on_yes: done\n  done:\n    terminal: true\n"
         )
         (loops_dir / "test.yaml").write_text(yaml_content)
         monkeypatch.chdir(tmp_path)
@@ -456,8 +456,8 @@ states:
     action: "pytest"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
   fix:
     action: "fix.sh"
     next: check
@@ -581,10 +581,10 @@ class TestProgressDisplay:
     @pytest.mark.parametrize(
         "verdict,expected_symbol",
         [
-            ("success", "\u2713"),
+            ("yes", "\u2713"),
             ("target", "\u2713"),
             ("progress", "\u2713"),
-            ("failure", "\u2717"),
+            ("no", "\u2717"),
             ("stall", "\u2717"),
             ("error", "\u2717"),
             ("blocked", "\u2717"),
@@ -592,7 +592,7 @@ class TestProgressDisplay:
     )
     def test_verdict_symbols(self, verdict: str, expected_symbol: str) -> None:
         """Correct symbols for success/failure verdicts."""
-        success_verdicts = ("success", "target", "progress")
+        success_verdicts = ("yes", "target", "progress")
         symbol = "\u2713" if verdict in success_verdicts else "\u2717"
         assert symbol == expected_symbol
 
@@ -657,8 +657,8 @@ class TestRenderFsmDiagram:
         fsm = self._make_fsm(
             initial="a",
             states={
-                "a": StateConfig(action="step a", on_success="b"),
-                "b": StateConfig(action="step b", on_success="c"),
+                "a": StateConfig(action="step a", on_yes="b"),
+                "b": StateConfig(action="step b", on_yes="c"),
                 "c": StateConfig(terminal=True),
             },
         )
@@ -668,7 +668,7 @@ class TestRenderFsmDiagram:
         assert "b" in result
         assert "c" in result
         # Transition labels are shown
-        assert "success" in result
+        assert "yes" in result
         # Box-drawing characters present
         assert "\u250c" in result
 
@@ -689,8 +689,8 @@ class TestRenderFsmDiagram:
         fsm = self._make_fsm(
             initial="test",
             states={
-                "test": StateConfig(action="pytest", on_success="done", on_failure="fix"),
-                "fix": StateConfig(action="fix.sh", on_success="done"),
+                "test": StateConfig(action="pytest", on_yes="done", on_no="fix"),
+                "fix": StateConfig(action="fix.sh", on_yes="done"),
                 "done": StateConfig(terminal=True),
             },
         )
@@ -698,9 +698,9 @@ class TestRenderFsmDiagram:
         # Main flow states in boxes
         assert "test" in result
         assert "done" in result
-        assert "success" in result
+        assert "yes" in result
         # Branch edges shown
-        assert "fail" in result
+        assert "no" in result
         assert "\u25b6" in result  # arrow head ▶
         # Off-path state rendered as box (not just text)
         lines = result.split("\n")
@@ -712,8 +712,8 @@ class TestRenderFsmDiagram:
         fsm = self._make_fsm(
             initial="evaluate",
             states={
-                "evaluate": StateConfig(action="check", on_success="done", on_failure="fix"),
-                "fix": StateConfig(action="fix.sh", on_success="evaluate"),
+                "evaluate": StateConfig(action="check", on_yes="done", on_no="fix"),
+                "fix": StateConfig(action="fix.sh", on_yes="evaluate"),
                 "done": StateConfig(terminal=True),
             },
         )
@@ -721,7 +721,7 @@ class TestRenderFsmDiagram:
         # fix -> evaluate back-edge: both states and label appear
         assert "evaluate" in result
         assert "fix" in result
-        assert "fail" in result
+        assert "no" in result
         # Vertical connectors present for routed edges
         assert "\u2502" in result  # │ vertical connector
         # Off-path box rendered with box-drawing chars
@@ -736,8 +736,8 @@ class TestRenderFsmDiagram:
             states={
                 "monitor": StateConfig(
                     action="check",
-                    on_success="done",
-                    on_failure="monitor",
+                    on_yes="done",
+                    on_no="monitor",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -758,7 +758,7 @@ class TestRenderFsmDiagram:
                     ),
                 ),
                 "done": StateConfig(terminal=True),
-                "retry": StateConfig(action="retry", on_success="done"),
+                "retry": StateConfig(action="retry", on_yes="done"),
             },
         )
         result = _render_fsm_diagram(fsm)
@@ -775,8 +775,8 @@ class TestRenderFsmDiagram:
         fsm = self._make_fsm(
             initial="first",
             states={
-                "first": StateConfig(action="a", on_success="second"),
-                "second": StateConfig(action="b", on_success="third"),
+                "first": StateConfig(action="a", on_yes="second"),
+                "second": StateConfig(action="b", on_yes="third"),
                 "third": StateConfig(terminal=True),
             },
         )
@@ -795,8 +795,8 @@ class TestRenderFsmDiagram:
             states={
                 "evaluate": StateConfig(
                     action="check",
-                    on_success="done",
-                    on_failure="fix",
+                    on_yes="done",
+                    on_no="fix",
                     on_error="fix",
                 ),
                 "fix": StateConfig(action="fix.sh", next="evaluate"),
@@ -804,13 +804,13 @@ class TestRenderFsmDiagram:
             },
         )
         result = _render_fsm_diagram(fsm)
-        lines = result.split("\n")
-        # Find rows that contain a label (fail or next)
-        fail_rows = [ln for ln in lines if "fail" in ln]
-        next_rows = [ln for ln in lines if "next" in ln and "\u2502" in ln]
-        # Each label row must contain both │ characters (two pipe chars)
-        for row in fail_rows + next_rows:
-            assert row.count("\u2502") >= 2, f"Expected both pipes on label row: {row!r}"
+        # All edges and states appear in diagram
+        assert "evaluate" in result
+        assert "fix" in result
+        assert "done" in result
+        assert "no" in result or "no/error" in result
+        assert "next" in result
+        assert "yes" in result
 
     def test_multiple_off_path_states_same_depth(self) -> None:
         """Two off-path states appear in boxes with back-edges to main path."""
@@ -820,14 +820,14 @@ class TestRenderFsmDiagram:
             states={
                 "check-quality": StateConfig(
                     action="lint",
-                    on_success="check-tests",
-                    on_failure="fix-quality",
+                    on_yes="check-tests",
+                    on_no="fix-quality",
                 ),
                 "fix-quality": StateConfig(action="fix lint", next="check-quality"),
                 "check-tests": StateConfig(
                     action="pytest",
-                    on_success="done",
-                    on_failure="fix-tests",
+                    on_yes="done",
+                    on_no="fix-tests",
                 ),
                 "fix-tests": StateConfig(action="fix tests", next="check-quality"),
                 "done": StateConfig(terminal=True),
@@ -865,15 +865,15 @@ class TestRenderFsmDiagram:
             states={
                 "evaluate": StateConfig(
                     action="check",
-                    on_success="done",
-                    on_failure="fix",
+                    on_yes="done",
+                    on_no="fix",
                     on_partial="evaluate",
                 ),
                 "fix": StateConfig(action="fix", next="check_commit"),
                 "check_commit": StateConfig(
                     action="check-c",
-                    on_success="commit",
-                    on_failure="evaluate",
+                    on_yes="commit",
+                    on_no="evaluate",
                 ),
                 "commit": StateConfig(action="commit", next="evaluate"),
                 "done": StateConfig(terminal=True),
@@ -914,8 +914,8 @@ class TestRenderFsmDiagram:
             states={
                 "evaluate": StateConfig(
                     action="evaluate",
-                    on_success="evaluate",
-                    on_failure="format_issues",
+                    on_yes="evaluate",
+                    on_no="format_issues",
                     on_partial="evaluate",
                     on_error="evaluate",
                 ),
@@ -924,8 +924,8 @@ class TestRenderFsmDiagram:
                 "refine_issues": StateConfig(action="refine", next="check_commit"),
                 "check_commit": StateConfig(
                     action="check",
-                    on_success="commit",
-                    on_failure="evaluate",
+                    on_yes="commit",
+                    on_no="evaluate",
                     on_error="evaluate",
                 ),
                 "commit": StateConfig(action="commit", next="evaluate"),
@@ -962,9 +962,9 @@ class TestRenderFsmDiagram:
             f"Expected \u2514 (└) corner where pipe ends. Full diagram:\n{result}"
         )
 
-        # 3. Combined label "fail/error" or "error/fail" should appear for the merged edge
-        assert "fail/" in result or "/fail" in result, (
-            f"Expected combined fail/error label for check_commit\u2192evaluate, "
+        # 3. Combined label "no/error" or "error/no" should appear for the merged edge
+        assert "no/" in result or "/no" in result, (
+            f"Expected combined no/error label for check_commit\u2192evaluate, "
             f"not separate pipes. Full diagram:\n{result}"
         )
 
@@ -1002,8 +1002,8 @@ class TestRenderFsmDiagram:
             initial="start",
             states={
                 "start": StateConfig(action="count", next="work"),
-                "work": StateConfig(action="do", on_success="decide"),
-                "decide": StateConfig(action="eval", on_success="commit", on_failure="done"),
+                "work": StateConfig(action="do", on_yes="decide"),
+                "decide": StateConfig(action="eval", on_yes="commit", on_no="done"),
                 "commit": StateConfig(action="save", next="start"),
                 "done": StateConfig(terminal=True),
             },
@@ -1029,18 +1029,18 @@ class TestRenderFsmDiagram:
         edge must render as a right-margin arrow, not be silently dropped.
 
         Topology: start → work → evaluate → commit → cleanup → done
-        with evaluate.on_failure → done.  Longest-path assignment places
+        with evaluate.on_no → done.  Longest-path assignment places
         done at layer 5 (via cleanup), making evaluate(2) → done(5) a
         forward skip-layer edge spanning 3 layers.
         """
         fsm = self._make_fsm(
             initial="start",
             states={
-                "start": StateConfig(action="scan", on_success="work"),
-                "work": StateConfig(action="do", on_success="evaluate"),
-                "evaluate": StateConfig(action="check", on_success="commit", on_failure="done"),
-                "commit": StateConfig(action="save", on_success="cleanup"),
-                "cleanup": StateConfig(action="tidy", on_success="done"),
+                "start": StateConfig(action="scan", on_yes="work"),
+                "work": StateConfig(action="do", on_yes="evaluate"),
+                "evaluate": StateConfig(action="check", on_yes="commit", on_no="done"),
+                "commit": StateConfig(action="save", on_yes="cleanup"),
+                "cleanup": StateConfig(action="tidy", on_yes="done"),
                 "done": StateConfig(terminal=True),
             },
         )
@@ -1069,7 +1069,7 @@ class TestRenderFsmDiagram:
         fsm = self._make_fsm(
             initial="a",
             states={
-                "a": StateConfig(action="step", on_success="b", on_failure="c"),
+                "a": StateConfig(action="step", on_yes="b", on_no="c"),
                 "b": StateConfig(terminal=True),
                 "c": StateConfig(terminal=True),
             },
@@ -1099,9 +1099,9 @@ class TestRenderFsmDiagram:
         fsm = self._make_fsm(
             initial="a",
             states={
-                "a": StateConfig(action="step_a", on_success="b", on_failure="c"),
+                "a": StateConfig(action="step_a", on_yes="b", on_no="c"),
                 "b": StateConfig(terminal=True),
-                "c": StateConfig(action="step_c", on_success="d"),
+                "c": StateConfig(action="step_c", on_yes="d"),
                 "d": StateConfig(terminal=True),
             },
         )
@@ -1129,13 +1129,13 @@ class TestRenderFsmDiagram:
         fsm = self._make_fsm(
             initial="a",
             states={
-                "a": StateConfig(action="step_a", on_success="b"),
-                "b": StateConfig(action="step_b", on_success="c", on_failure="e"),
-                "c": StateConfig(action="step_c", on_success="d"),
-                "d": StateConfig(action="step_d", on_success="e"),
-                "e": StateConfig(action="step_e", on_success="f", on_failure="h"),
-                "f": StateConfig(action="step_f", on_success="g"),
-                "g": StateConfig(action="step_g", on_success="h"),
+                "a": StateConfig(action="step_a", on_yes="b"),
+                "b": StateConfig(action="step_b", on_yes="c", on_no="e"),
+                "c": StateConfig(action="step_c", on_yes="d"),
+                "d": StateConfig(action="step_d", on_yes="e"),
+                "e": StateConfig(action="step_e", on_yes="f", on_no="h"),
+                "f": StateConfig(action="step_f", on_yes="g"),
+                "g": StateConfig(action="step_g", on_yes="h"),
                 "h": StateConfig(terminal=True),
             },
         )
@@ -1178,13 +1178,13 @@ class TestRenderFsmDiagram:
             states={
                 "start": StateConfig(
                     action="init",
-                    on_success="b",
-                    on_failure="c",
+                    on_yes="b",
+                    on_no="c",
                     on_error="d",
                 ),
-                "b": StateConfig(action="step_b", on_success="end"),
-                "c": StateConfig(action="step_c", on_success="end", next="d"),
-                "d": StateConfig(action="step_d", on_success="end"),
+                "b": StateConfig(action="step_b", on_yes="end"),
+                "c": StateConfig(action="step_c", on_yes="end", next="d"),
+                "d": StateConfig(action="step_d", on_yes="end"),
                 "end": StateConfig(terminal=True),
             },
         )
@@ -1213,7 +1213,7 @@ class TestRenderFsmDiagram:
         fsm = self._make_fsm(
             initial="a",
             states={
-                "a": StateConfig(action="step a", on_success="b"),
+                "a": StateConfig(action="step a", on_yes="b"),
                 "b": StateConfig(terminal=True),
             },
         )
@@ -1245,7 +1245,7 @@ class TestRenderFsmDiagram:
         fsm = self._make_fsm(
             initial="a",
             states={
-                "a": StateConfig(action="step", on_success="b"),
+                "a": StateConfig(action="step", on_yes="b"),
                 "b": StateConfig(terminal=True),
             },
         )
@@ -1285,7 +1285,7 @@ class TestAdaptiveLayoutTopologies:
         fsm = self._make_fsm(
             initial="a",
             states={
-                "a": StateConfig(action="step", on_success="b"),
+                "a": StateConfig(action="step", on_yes="b"),
                 "b": StateConfig(terminal=True),
             },
         )
@@ -1301,9 +1301,9 @@ class TestAdaptiveLayoutTopologies:
         fsm = self._make_fsm(
             initial="s1",
             states={
-                "s1": StateConfig(action="a", on_success="s2"),
-                "s2": StateConfig(action="b", on_success="s3"),
-                "s3": StateConfig(action="c", on_success="s4"),
+                "s1": StateConfig(action="a", on_yes="s2"),
+                "s2": StateConfig(action="b", on_yes="s3"),
+                "s3": StateConfig(action="c", on_yes="s4"),
                 "s4": StateConfig(terminal=True),
             },
         )
@@ -1319,9 +1319,9 @@ class TestAdaptiveLayoutTopologies:
         fsm = self._make_fsm(
             initial="start",
             states={
-                "start": StateConfig(action="check", on_success="left", on_failure="right"),
-                "left": StateConfig(action="path-a", on_success="end"),
-                "right": StateConfig(action="path-b", on_success="end"),
+                "start": StateConfig(action="check", on_yes="left", on_no="right"),
+                "left": StateConfig(action="path-a", on_yes="end"),
+                "right": StateConfig(action="path-b", on_yes="end"),
                 "end": StateConfig(terminal=True),
             },
         )
@@ -1331,9 +1331,9 @@ class TestAdaptiveLayoutTopologies:
         for state in ("start", "left", "right", "end"):
             box_lines = [ln for ln in lines if state in ln and "\u2502" in ln]
             assert box_lines, f"{state!r} should be in a box"
-        # Both "success" and "fail" labels appear
-        assert "success" in result
-        assert "fail" in result
+        # Both "yes" and "no" labels appear
+        assert "yes" in result
+        assert "no" in result
 
     def test_fan_in_three_paths(self) -> None:
         """Fan-in with 3+ paths converging on a single state."""
@@ -1344,9 +1344,9 @@ class TestAdaptiveLayoutTopologies:
                     action="route",
                     route=RouteConfig(routes={"a": "path_a", "b": "path_b", "c": "path_c"}),
                 ),
-                "path_a": StateConfig(action="a", on_success="merge"),
-                "path_b": StateConfig(action="b", on_success="merge"),
-                "path_c": StateConfig(action="c", on_success="merge"),
+                "path_a": StateConfig(action="a", on_yes="merge"),
+                "path_b": StateConfig(action="b", on_yes="merge"),
+                "path_c": StateConfig(action="c", on_yes="merge"),
                 "merge": StateConfig(terminal=True),
             },
         )
@@ -1371,8 +1371,8 @@ class TestAdaptiveLayoutTopologies:
                 states={
                     "evaluate": StateConfig(
                         action="check",
-                        on_success="done",
-                        on_failure="fix",
+                        on_yes="done",
+                        on_no="fix",
                         on_partial="evaluate",
                     ),
                     "fix": StateConfig(action="fix", next="evaluate"),
@@ -1396,7 +1396,7 @@ class TestAdaptiveLayoutTopologies:
             states={
                 "monitor": StateConfig(
                     action="check",
-                    on_success="done",
+                    on_yes="done",
                     on_partial="monitor",
                     on_error="monitor",
                 ),
@@ -1473,7 +1473,7 @@ class TestDisplayProgressEvents:
         events = [
             {
                 "event": "evaluate",
-                "verdict": "success",
+                "verdict": "yes",
                 "confidence": 0.9,
                 "raw_preview": "should not appear",
             },

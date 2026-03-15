@@ -37,8 +37,8 @@ def fsm_fixtures() -> Path:
 
 def make_state(
     action: str | None = None,
-    on_success: str | None = None,
-    on_failure: str | None = None,
+    on_yes: str | None = None,
+    on_no: str | None = None,
     terminal: bool = False,
     next: str | None = None,
     evaluate: EvaluateConfig | None = None,
@@ -47,8 +47,8 @@ def make_state(
     """Helper to create test StateConfig objects."""
     return StateConfig(
         action=action,
-        on_success=on_success,
-        on_failure=on_failure,
+        on_yes=on_yes,
+        on_no=on_no,
         terminal=terminal,
         next=next,
         evaluate=evaluate,
@@ -65,7 +65,7 @@ def make_fsm(
     """Helper to create test FSMLoop objects."""
     if states is None:
         states = {
-            "start": make_state(action="echo start", on_success="done", on_failure="done"),
+            "start": make_state(action="echo start", on_yes="done", on_no="done"),
             "done": make_state(terminal=True),
         }
     return FSMLoop(
@@ -184,37 +184,37 @@ class TestRouteConfig:
     def test_basic_routes(self) -> None:
         """Basic route mapping."""
         config = RouteConfig(
-            routes={"success": "deploy", "failure": "fix"},
+            routes={"yes": "deploy", "no": "fix"},
         )
 
-        assert config.routes == {"success": "deploy", "failure": "fix"}
+        assert config.routes == {"yes": "deploy", "no": "fix"}
         assert config.default is None
         assert config.error is None
 
     def test_with_special_keys(self) -> None:
         """Routes with default and error keys."""
         config = RouteConfig(
-            routes={"success": "done"},
+            routes={"yes": "done"},
             default="retry",
             error="alert",
         )
 
-        assert config.routes == {"success": "done"}
+        assert config.routes == {"yes": "done"}
         assert config.default == "retry"
         assert config.error == "alert"
 
     def test_to_dict(self) -> None:
         """to_dict includes special keys as _ and _error."""
         config = RouteConfig(
-            routes={"success": "done", "failure": "fix"},
+            routes={"yes": "done", "no": "fix"},
             default="retry",
             error="alert",
         )
         result = config.to_dict()
 
         assert result == {
-            "success": "done",
-            "failure": "fix",
+            "yes": "done",
+            "no": "fix",
             "_": "retry",
             "_error": "alert",
         }
@@ -222,14 +222,14 @@ class TestRouteConfig:
     def test_from_dict(self) -> None:
         """from_dict extracts special keys."""
         data = {
-            "success": "done",
-            "failure": "fix",
+            "yes": "done",
+            "no": "fix",
             "_": "retry",
             "_error": "alert",
         }
         config = RouteConfig.from_dict(data)
 
-        assert config.routes == {"success": "done", "failure": "fix"}
+        assert config.routes == {"yes": "done", "no": "fix"}
         assert config.default == "retry"
         assert config.error == "alert"
 
@@ -248,21 +248,21 @@ class TestStateConfig:
         """State with action and shorthand routing."""
         state = StateConfig(
             action="pytest",
-            on_success="deploy",
-            on_failure="fix",
+            on_yes="deploy",
+            on_no="fix",
         )
 
         assert state.action == "pytest"
-        assert state.on_success == "deploy"
-        assert state.on_failure == "fix"
+        assert state.on_yes == "deploy"
+        assert state.on_no == "fix"
 
     def test_action_with_full_route(self) -> None:
         """State with action and full route table."""
-        route = RouteConfig(routes={"success": "done", "blocked": "escalate"})
+        route = RouteConfig(routes={"yes": "done", "blocked": "escalate"})
         state = StateConfig(action="/ll:fix", route=route)
 
         assert state.route is not None
-        assert state.route.routes["success"] == "done"
+        assert state.route.routes["yes"] == "done"
 
     def test_get_referenced_states(self) -> None:
         """get_referenced_states returns all transition targets."""
@@ -271,8 +271,8 @@ class TestStateConfig:
             default="retry",
         )
         state = StateConfig(
-            on_success="done",
-            on_failure="fix",
+            on_yes="done",
+            on_no="fix",
             on_error="alert",
             route=route,
         )
@@ -284,8 +284,8 @@ class TestStateConfig:
         """StateConfig accepts on_partial field."""
         state = StateConfig(
             action="check.sh",
-            on_success="done",
-            on_failure="done",
+            on_yes="done",
+            on_no="done",
             on_partial="fix",
         )
         assert state.on_partial == "fix"
@@ -294,8 +294,8 @@ class TestStateConfig:
         """from_dict reads on_partial key from YAML data."""
         data = {
             "action": "check.sh",
-            "on_success": "done",
-            "on_failure": "retry",
+            "on_yes": "done",
+            "on_no": "retry",
             "on_partial": "fix",
         }
         state = StateConfig.from_dict(data)
@@ -305,7 +305,7 @@ class TestStateConfig:
         """to_dict serializes on_partial when set."""
         state = StateConfig(
             action="check.sh",
-            on_success="done",
+            on_yes="done",
             on_partial="fix",
         )
         d = state.to_dict()
@@ -313,15 +313,15 @@ class TestStateConfig:
 
     def test_on_partial_absent_from_to_dict_when_none(self) -> None:
         """to_dict omits on_partial key when not set."""
-        state = StateConfig(action="check.sh", on_success="done")
+        state = StateConfig(action="check.sh", on_yes="done")
         d = state.to_dict()
         assert "on_partial" not in d
 
     def test_on_partial_in_get_referenced_states(self) -> None:
         """get_referenced_states includes on_partial target."""
         state = StateConfig(
-            on_success="done",
-            on_failure="retry",
+            on_yes="done",
+            on_no="retry",
             on_partial="fix",
         )
         refs = state.get_referenced_states()
@@ -331,8 +331,8 @@ class TestStateConfig:
         """on_partial survives to_dict/from_dict roundtrip."""
         original = StateConfig(
             action="check.sh",
-            on_success="done",
-            on_failure="retry",
+            on_yes="done",
+            on_no="retry",
             on_partial="fix",
         )
         restored = StateConfig.from_dict(original.to_dict())
@@ -343,8 +343,8 @@ class TestStateConfig:
         original = StateConfig(
             action="npm test",
             evaluate=EvaluateConfig(type="exit_code"),
-            on_success="deploy",
-            on_failure="fix",
+            on_yes="deploy",
+            on_no="fix",
             capture="test_result",
             timeout=300,
         )
@@ -354,7 +354,7 @@ class TestStateConfig:
         assert restored.action == original.action
         assert restored.evaluate is not None
         assert restored.evaluate.type == "exit_code"
-        assert restored.on_success == original.on_success
+        assert restored.on_yes == original.on_yes
         assert restored.capture == original.capture
         assert restored.timeout == original.timeout
 
@@ -363,8 +363,8 @@ class TestStateConfig:
         state = StateConfig(
             action="Analyze the code and fix bugs",
             action_type="prompt",
-            on_success="done",
-            on_failure="retry",
+            on_yes="done",
+            on_no="retry",
         )
 
         assert state.action_type == "prompt"
@@ -374,7 +374,7 @@ class TestStateConfig:
         original = StateConfig(
             action="echo hello",
             action_type="shell",
-            on_success="done",
+            on_yes="done",
         )
 
         restored = StateConfig.from_dict(original.to_dict())
@@ -392,7 +392,7 @@ class TestStateConfig:
         state = StateConfig(
             action="/ll:commit",
             action_type="slash_command",
-            on_success="done",
+            on_yes="done",
         )
 
         assert state.action_type == "slash_command"
@@ -503,8 +503,8 @@ class TestFSMLoop:
             states={
                 "check": StateConfig(
                     action="pytest",
-                    on_success="done",
-                    on_failure="fix",
+                    on_yes="done",
+                    on_no="fix",
                 ),
                 "fix": StateConfig(
                     action="/ll:fix",
@@ -550,12 +550,12 @@ class TestFSMValidation:
         assert any("Initial state 'nonexistent' not found" in e.message for e in errors)
 
     def test_dangling_state_reference(self) -> None:
-        """Error when on_success references non-existent state."""
+        """Error when on_yes references non-existent state."""
         fsm = FSMLoop(
             name="test",
             initial="start",
             states={
-                "start": make_state(action="test", on_success="missing", on_failure="done"),
+                "start": make_state(action="test", on_yes="missing", on_no="done"),
                 "done": make_state(terminal=True),
             },
         )
@@ -577,15 +577,15 @@ class TestFSMValidation:
         assert any("No terminal state defined" in e.message for e in errors)
 
     def test_shorthand_and_route_mutual_exclusion(self) -> None:
-        """Warning when both on_success and route defined."""
-        route = RouteConfig(routes={"success": "done"})
+        """Warning when both on_yes and route defined."""
+        route = RouteConfig(routes={"yes": "done"})
         fsm = FSMLoop(
             name="test",
             initial="check",
             states={
                 "check": StateConfig(
                     action="test",
-                    on_success="done",  # shorthand
+                    on_yes="done",  # shorthand
                     route=route,  # also full route
                 ),
                 "done": make_state(terminal=True),
@@ -598,7 +598,7 @@ class TestFSMValidation:
 
     def test_current_state_reference_allowed(self) -> None:
         """$current is valid as state reference for retry."""
-        route = RouteConfig(routes={"success": "done", "failure": "$current"})
+        route = RouteConfig(routes={"yes": "done", "no": "$current"})
         fsm = FSMLoop(
             name="test",
             initial="check",
@@ -618,7 +618,7 @@ class TestFSMValidation:
             name="test",
             initial="start",
             states={
-                "start": make_state(action="test", on_success="done", on_failure="done"),
+                "start": make_state(action="test", on_yes="done", on_no="done"),
                 "done": make_state(terminal=True),
                 "orphan": make_state(action="never reached", next="done"),
             },
@@ -698,7 +698,7 @@ class TestFSMValidation:
             name="test",
             initial="start",
             states={
-                "start": make_state(action="test", on_success="end", on_failure="end"),
+                "start": make_state(action="test", on_yes="end", on_no="end"),
                 "end": StateConfig(terminal=True),  # no action, no routing
             },
         )
@@ -715,8 +715,8 @@ class TestFSMValidation:
             states={
                 "retry_state": StateConfig(
                     action="might-fail",
-                    on_success="done",
-                    on_failure="retry_state",  # self-reference
+                    on_yes="done",
+                    on_no="retry_state",  # self-reference
                 ),
                 "done": make_state(terminal=True),
             },
@@ -764,8 +764,8 @@ class TestFSMValidation:
             states={
                 "check": StateConfig(
                     action="test",
-                    on_success="success_end",
-                    on_failure="failure_end",
+                    on_yes="success_end",
+                    on_no="failure_end",
                 ),
                 "success_end": StateConfig(terminal=True),
                 "failure_end": StateConfig(terminal=True),
@@ -789,8 +789,8 @@ class TestEvaluatorValidation:
                 "check": StateConfig(
                     action="test",
                     evaluate=EvaluateConfig(type="output_numeric", target=5),  # no operator
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": make_state(terminal=True),
             },
@@ -813,8 +813,8 @@ class TestEvaluatorValidation:
                         target=0,
                         # no path
                     ),
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": make_state(terminal=True),
             },
@@ -832,8 +832,8 @@ class TestEvaluatorValidation:
                 "check": StateConfig(
                     action="test",
                     evaluate=EvaluateConfig(type="output_contains"),  # no pattern
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": make_state(terminal=True),
             },
@@ -851,8 +851,8 @@ class TestEvaluatorValidation:
                 "check": StateConfig(
                     action="test",
                     evaluate=EvaluateConfig(type="convergence"),  # no target
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": make_state(terminal=True),
             },
@@ -874,8 +874,8 @@ class TestEvaluatorValidation:
                         operator="invalid",
                         target=5,
                     ),
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": make_state(terminal=True),
             },
@@ -897,8 +897,8 @@ class TestEvaluatorValidation:
                         target=0,
                         tolerance=-1,  # invalid
                     ),
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": make_state(terminal=True),
             },
@@ -919,8 +919,8 @@ class TestEvaluatorValidation:
                         type="llm_structured",
                         min_confidence=1.5,  # invalid
                     ),
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": make_state(terminal=True),
             },
@@ -938,8 +938,8 @@ class TestEvaluatorValidation:
                 "check": StateConfig(
                     action="test",
                     evaluate=EvaluateConfig(type="output_numeric", operator="eq"),  # no target
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": make_state(terminal=True),
             },
@@ -962,8 +962,8 @@ class TestEvaluatorValidation:
                         target=0,
                         # no operator
                     ),
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": make_state(terminal=True),
             },
@@ -982,8 +982,8 @@ class TestEvaluatorValidation:
                     "check": StateConfig(
                         action="test",
                         evaluate=EvaluateConfig(type="output_numeric", operator=op, target=5),
-                        on_success="done",
-                        on_failure="done",
+                        on_yes="done",
+                        on_no="done",
                     ),
                     "done": make_state(terminal=True),
                 },
@@ -1006,8 +1006,8 @@ class TestEvaluatorValidation:
                         target=0,
                         direction="invalid",  # type: ignore[arg-type]
                     ),
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": make_state(terminal=True),
             },
@@ -1030,8 +1030,8 @@ class TestEvaluatorValidation:
                             target=0,
                             direction=direction,
                         ),
-                        on_success="done",
-                        on_failure="done",
+                        on_yes="done",
+                        on_no="done",
                     ),
                     "done": make_state(terminal=True),
                 },
@@ -1054,8 +1054,8 @@ class TestEvaluatorValidation:
                         target=0,
                         tolerance="${context.tolerance}",  # interpolation string
                     ),
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": make_state(terminal=True),
             },
@@ -1078,8 +1078,8 @@ class TestEvaluatorValidation:
                             type="llm_structured",
                             min_confidence=confidence,
                         ),
-                        on_success="done",
-                        on_failure="done",
+                        on_yes="done",
+                        on_no="done",
                     ),
                     "done": make_state(terminal=True),
                 },
@@ -1101,8 +1101,8 @@ class TestEvaluatorValidation:
                         type="llm_structured",
                         min_confidence=-0.1,
                     ),
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": make_state(terminal=True),
             },
@@ -1117,7 +1117,7 @@ class TestEvaluatorValidation:
             name="test",
             initial="check",
             states={
-                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "check": make_state(action="test", on_yes="done", on_no="done"),
                 "done": make_state(terminal=True),
             },
             max_iterations=0,
@@ -1133,7 +1133,7 @@ class TestEvaluatorValidation:
             name="test",
             initial="check",
             states={
-                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "check": make_state(action="test", on_yes="done", on_no="done"),
                 "done": make_state(terminal=True),
             },
             max_iterations=-1,
@@ -1149,7 +1149,7 @@ class TestEvaluatorValidation:
             name="test",
             initial="check",
             states={
-                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "check": make_state(action="test", on_yes="done", on_no="done"),
                 "done": make_state(terminal=True),
             },
             max_iterations=10,
@@ -1164,7 +1164,7 @@ class TestEvaluatorValidation:
             name="test",
             initial="check",
             states={
-                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "check": make_state(action="test", on_yes="done", on_no="done"),
                 "done": make_state(terminal=True),
             },
             backoff=-5.0,
@@ -1180,7 +1180,7 @@ class TestEvaluatorValidation:
             name="test",
             initial="check",
             states={
-                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "check": make_state(action="test", on_yes="done", on_no="done"),
                 "done": make_state(terminal=True),
             },
             backoff=0.0,
@@ -1195,7 +1195,7 @@ class TestEvaluatorValidation:
             name="test",
             initial="check",
             states={
-                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "check": make_state(action="test", on_yes="done", on_no="done"),
                 "done": make_state(terminal=True),
             },
             backoff=None,
@@ -1210,7 +1210,7 @@ class TestEvaluatorValidation:
             name="test",
             initial="check",
             states={
-                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "check": make_state(action="test", on_yes="done", on_no="done"),
                 "done": make_state(terminal=True),
             },
             timeout=0,
@@ -1226,7 +1226,7 @@ class TestEvaluatorValidation:
             name="test",
             initial="check",
             states={
-                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "check": make_state(action="test", on_yes="done", on_no="done"),
                 "done": make_state(terminal=True),
             },
             timeout=-1,
@@ -1242,7 +1242,7 @@ class TestEvaluatorValidation:
             name="test",
             initial="check",
             states={
-                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "check": make_state(action="test", on_yes="done", on_no="done"),
                 "done": make_state(terminal=True),
             },
             timeout=None,
@@ -1259,7 +1259,7 @@ class TestEvaluatorValidation:
             name="test",
             initial="check",
             states={
-                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "check": make_state(action="test", on_yes="done", on_no="done"),
                 "done": make_state(terminal=True),
             },
             llm=LLMConfig(max_tokens=0),
@@ -1277,7 +1277,7 @@ class TestEvaluatorValidation:
             name="test",
             initial="check",
             states={
-                "check": make_state(action="test", on_success="done", on_failure="done"),
+                "check": make_state(action="test", on_yes="done", on_no="done"),
                 "done": make_state(terminal=True),
             },
             llm=LLMConfig(timeout=0),

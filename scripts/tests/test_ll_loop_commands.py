@@ -31,8 +31,8 @@ initial: check
 states:
   check:
     action: "echo hello"
-    on_success: done
-    on_failure: done
+    on_yes: done
+    on_no: done
   done:
     terminal: true
 """)
@@ -90,8 +90,8 @@ states:
             "states:\n"
             "  start:\n"
             "    action: test\n"
-            "    on_success: done\n"
-            "    on_failure: done\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
             "  done:\n"
             "    terminal: true\n"
             "  orphan:\n"
@@ -335,7 +335,7 @@ class TestCmdHistory:
             {"event": "loop_start", "ts": "2026-01-13T10:00:00", "loop": "test-loop"},
             {"event": "state_enter", "ts": "2026-01-13T10:00:01", "state": "check", "iteration": 1},
             {"event": "action_start", "ts": "2026-01-13T10:00:02", "action": "echo hello"},
-            {"event": "evaluate", "ts": "2026-01-13T10:00:03", "verdict": "success"},
+            {"event": "evaluate", "ts": "2026-01-13T10:00:03", "verdict": "yes"},
         ]
 
         with open(events_file, "w") as f:
@@ -353,7 +353,7 @@ class TestCmdHistory:
 
         assert len(events) == 4
         assert events[0]["event"] == "loop_start"
-        assert events[-1]["verdict"] == "success"
+        assert events[-1]["verdict"] == "yes"
 
     def test_tail_events(self, events_file: Path) -> None:
         """Tail returns last N events."""
@@ -756,13 +756,13 @@ class TestHistoryVerboseLLM:
                 {
                     "event": "evaluate",
                     "ts": "2026-01-13T10:00:03",
-                    "verdict": "success",
+                    "verdict": "yes",
                     "confidence": 0.9,
                     "reason": "Looks good",
                     "llm_model": "claude-sonnet-4-6",
                     "llm_latency_ms": 1234,
                     "llm_prompt": "Evaluate this output",
-                    "llm_raw_output": '{"verdict":"success"}',
+                    "llm_raw_output": '{"verdict":"yes"}',
                 }
             ],
         )
@@ -775,7 +775,7 @@ class TestHistoryVerboseLLM:
         assert "claude-sonnet-4-6" in out
         assert "1234ms" in out
         assert "Evaluate this output" in out
-        assert '{"verdict":"success"}' in out
+        assert '{"verdict":"yes"}' in out
 
     def test_non_verbose_evaluate_hides_llm_block(
         self,
@@ -791,11 +791,11 @@ class TestHistoryVerboseLLM:
                 {
                     "event": "evaluate",
                     "ts": "2026-01-13T10:00:03",
-                    "verdict": "success",
+                    "verdict": "yes",
                     "llm_model": "claude-sonnet-4-6",
                     "llm_latency_ms": 1234,
                     "llm_prompt": "Evaluate this output",
-                    "llm_raw_output": '{"verdict":"success"}',
+                    "llm_raw_output": '{"verdict":"yes"}',
                 }
             ],
         )
@@ -881,11 +881,11 @@ class TestHistoryVerboseLLM:
                 {
                     "event": "evaluate",
                     "ts": "2026-01-13T10:00:03",
-                    "verdict": "success",
+                    "verdict": "yes",
                     "llm_model": "claude-sonnet-4-6",
                     "llm_latency_ms": 800,
                     "llm_prompt": "Evaluate this",
-                    "llm_raw_output": '{"verdict":"success"}',
+                    "llm_raw_output": '{"verdict":"yes"}',
                 }
             ],
         )
@@ -912,7 +912,7 @@ class TestHistoryVerboseLLM:
                 {
                     "event": "evaluate",
                     "ts": "2026-01-13T10:00:03",
-                    "verdict": "success",
+                    "verdict": "yes",
                     "confidence": 0.9,
                     "reason": "exit code 0",
                 }
@@ -1026,8 +1026,8 @@ class TestCmdShow:
             "states:\n"
             "  check:\n"
             '    action: "echo hello"\n'
-            "    on_success: done\n"
-            "    on_failure: check\n"
+            "    on_yes: done\n"
+            "    on_no: check\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1070,8 +1070,8 @@ class TestCmdShow:
             "states:\n"
             "  check:\n"
             '    action: "echo hello"\n'
-            "    on_success: done\n"
-            "    on_failure: check\n"
+            "    on_yes: done\n"
+            "    on_no: check\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1140,7 +1140,7 @@ class TestCmdShow:
             + "\n".join(f"      {line}" for line in long_prompt.splitlines())
             + "\n"
             "    action_type: prompt\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1175,7 +1175,7 @@ class TestCmdShow:
             "  run:\n"
             f'    action: "{long_shell}"\n'
             "    action_type: shell\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1209,7 +1209,7 @@ class TestCmdShow:
             + "\n".join(f"      {line}" for line in full_prompt.splitlines())
             + "\n"
             "    action_type: prompt\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1242,7 +1242,7 @@ class TestCmdShow:
             "    evaluate:\n"
             "      type: llm\n"
             "      prompt: Did the command succeed? Answer yes or no.\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1277,7 +1277,7 @@ class TestCmdShow:
             "      prompt: |\n"
             "        Examine the output carefully.\n"
             "        Second line detail.\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1311,7 +1311,7 @@ class TestCmdShow:
             "    evaluate:\n"
             "      type: llm_structured\n"
             f"      prompt: {long_prompt}\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1344,7 +1344,7 @@ class TestCmdShow:
             "    evaluate:\n"
             "      type: llm_structured\n"
             "      min_confidence: 0.8\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1375,7 +1375,7 @@ class TestCmdShow:
             '    action: "echo hello"\n'
             "    evaluate:\n"
             "      type: llm_structured\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1408,7 +1408,7 @@ class TestCmdShow:
             "      type: output_numeric\n"
             "      operator: gt\n"
             "      target: 3\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1440,7 +1440,7 @@ class TestCmdShow:
             "    evaluate:\n"
             "      type: output_contains\n"
             "      pattern: ERROR\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1472,7 +1472,7 @@ class TestCmdShow:
             "    capture: result\n"
             "    timeout: 60\n"
             "    on_maintain: check\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1503,7 +1503,7 @@ class TestCmdShow:
             "states:\n"
             "  check:\n"
             '    action: "echo hello"\n'
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1537,7 +1537,7 @@ class TestCmdShow:
             "states:\n"
             "  check:\n"
             '    action: "echo hello"\n'
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1568,7 +1568,7 @@ class TestCmdShow:
             "states:\n"
             "  check:\n"
             '    action: "echo hello"\n'
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1601,7 +1601,7 @@ class TestCmdShow:
             "      Second line of action.\n"
             "      Third line of action.\n"
             "    action_type: prompt\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1646,7 +1646,7 @@ class TestCmdShow:
             "states:\n"
             "  check:\n"
             '    action: "echo hello"\n'
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1680,7 +1680,7 @@ class TestCmdShow:
             "  run:\n"
             '    action: "echo hello"\n'
             "    action_type: shell\n"
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1711,7 +1711,7 @@ class TestCmdShow:
             "states:\n"
             "  check:\n"
             '    action: "echo hello"\n'
-            "    on_success: done\n"
+            "    on_yes: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1745,12 +1745,12 @@ class TestCmdTest:
             "states:\n"
             "  check_types:\n"
             '    action: "echo checking types"\n'
-            "    on_success: done\n"
-            "    on_failure: fix_types\n"
+            "    on_yes: done\n"
+            "    on_no: fix_types\n"
             "  fix_types:\n"
             '    action: "echo fixing types"\n'
-            "    on_success: done\n"
-            "    on_failure: done\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1816,12 +1816,12 @@ class TestCmdTest:
             "states:\n"
             "  evaluate:\n"
             '    action: "/ll:check-code"\n'
-            "    on_success: done\n"
-            "    on_failure: fix\n"
+            "    on_yes: done\n"
+            "    on_no: fix\n"
             "  fix:\n"
             '    action: "/ll:manage-issue bug fix"\n'
-            "    on_success: done\n"
-            "    on_failure: done\n"
+            "    on_yes: done\n"
+            "    on_no: done\n"
             "  done:\n"
             "    terminal: true\n"
         )
@@ -1832,7 +1832,7 @@ class TestCmdTest:
         slash_command_loop: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """--exit-code 0 simulates success and traces transition to on_success state."""
+        """--exit-code 0 simulates yes verdict and traces transition to on_yes state."""
         from little_loops.cli.loop.testing import cmd_test
         from little_loops.logger import Logger
 
@@ -1851,7 +1851,7 @@ class TestCmdTest:
         slash_command_loop: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        """--exit-code 1 simulates failure and traces transition to on_failure state."""
+        """--exit-code 1 simulates no verdict and traces transition to on_no state."""
         from little_loops.cli.loop.testing import cmd_test
         from little_loops.logger import Logger
 

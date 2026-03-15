@@ -43,8 +43,8 @@ def _make_mock_popen_factory(
 
 def make_test_state(
     action: str | None = None,
-    on_success: str | None = None,
-    on_failure: str | None = None,
+    on_yes: str | None = None,
+    on_no: str | None = None,
     on_error: str | None = None,
     next: str | None = None,
     terminal: bool = False,
@@ -57,8 +57,8 @@ def make_test_state(
     """Create StateConfig for testing."""
     return StateConfig(
         action=action,
-        on_success=on_success,
-        on_failure=on_failure,
+        on_yes=on_yes,
+        on_no=on_no,
         on_error=on_error,
         next=next,
         terminal=terminal,
@@ -80,7 +80,7 @@ def make_test_fsm(
     """Create FSMLoop for testing."""
     if states is None:
         states = {
-            "start": make_test_state(action="echo start", on_success="done", on_failure="done"),
+            "start": make_test_state(action="echo start", on_yes="done", on_no="done"),
             "done": make_test_state(terminal=True),
         }
     return FSMLoop(
@@ -126,8 +126,8 @@ states:
     action: "echo test"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: check
+    on_yes: done
+    on_no: check
   done:
     terminal: true
 """
@@ -170,8 +170,8 @@ states:
     action: "echo fail"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: check
+    on_yes: done
+    on_no: check
   done:
     terminal: true
 """
@@ -215,8 +215,8 @@ states:
     action: "echo fail"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: check
+    on_yes: done
+    on_no: check
   done:
     terminal: true
 """
@@ -253,8 +253,8 @@ states:
     action: "echo test"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: retry
+    on_yes: done
+    on_no: retry
   retry:
     action: "echo retry"
     next: check
@@ -364,8 +364,8 @@ states:
     action: "echo test"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: check
+    on_yes: done
+    on_no: check
   done:
     terminal: true
 """
@@ -408,8 +408,8 @@ states:
     action: "echo test"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: check
+    on_yes: done
+    on_no: check
   done:
     terminal: true
 """
@@ -517,8 +517,8 @@ states:
     action: "echo test"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: check
+    on_yes: done
+    on_no: check
   done:
     terminal: true
 """
@@ -673,8 +673,8 @@ states:
     action: "echo test"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: check
+    on_yes: done
+    on_no: check
   done:
     terminal: true
 """
@@ -726,8 +726,8 @@ states:
     action: "echo test"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: check
+    on_yes: done
+    on_no: check
   done:
     terminal: true
 """
@@ -785,8 +785,8 @@ states:
     action: "echo test"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: check
+    on_yes: done
+    on_no: check
   done:
     terminal: true
 """
@@ -846,8 +846,8 @@ states:
     action: "echo test"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: check
+    on_yes: done
+    on_no: check
   done:
     terminal: true
 """
@@ -901,7 +901,7 @@ states:
         state = make_test_state(
             action="echo test",
             evaluate=EvaluateConfig(type="llm_structured"),
-            on_success="done",
+            on_yes="done",
             on_error="done",
         )
         action_result = ActionResult(output="some output", stderr="", exit_code=0, duration_ms=10)
@@ -940,7 +940,7 @@ states:
         # No explicit evaluate config — slash command triggers default LLM evaluation
         state = make_test_state(
             action="/some-slash-command",
-            on_success="done",
+            on_yes="done",
             on_error="done",
         )
         action_result = ActionResult(output="some output", stderr="", exit_code=0, duration_ms=10)
@@ -986,8 +986,8 @@ class TestEvaluateSource:
                 pattern="captured-value",
                 source="${captured.prev_run.output}",
             ),
-            on_success="done",
-            on_failure="done",
+            on_yes="done",
+            on_no="done",
         )
         # Action output does NOT contain "captured-value"
         action_result = ActionResult(
@@ -1009,7 +1009,7 @@ class TestEvaluateSource:
 
         # The captured value "0" does not contain "captured-value", so failure
         assert result is not None
-        assert result.verdict == "failure"
+        assert result.verdict == "no"
 
     def test_source_with_valid_captured_value_matches_pattern(self) -> None:
         """When source resolves to a value matching the pattern, verdict is success."""
@@ -1030,8 +1030,8 @@ class TestEvaluateSource:
                 pattern="All checks passed",
                 source="${captured.scan.output}",
             ),
-            on_success="done",
-            on_failure="done",
+            on_yes="done",
+            on_no="done",
         )
         # Action output does NOT contain the pattern
         action_result = ActionResult(
@@ -1053,7 +1053,7 @@ class TestEvaluateSource:
 
         # source resolves to captured value which contains the pattern -> success
         assert result is not None
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
     def test_invalid_source_expression_falls_back_to_action_output(self) -> None:
         """When source interpolation fails, evaluator falls back to current action output."""
@@ -1073,8 +1073,8 @@ class TestEvaluateSource:
                 pattern="hello",
                 source="${captured.nonexistent.output}",
             ),
-            on_success="done",
-            on_failure="done",
+            on_yes="done",
+            on_no="done",
         )
         # Action output DOES contain "hello"
         action_result = ActionResult(output="hello world", stderr="", exit_code=0, duration_ms=10)
@@ -1094,7 +1094,7 @@ class TestEvaluateSource:
 
         # source fails -> falls back to action output "hello world" -> pattern "hello" matches
         assert result is not None
-        assert result.verdict == "success"
+        assert result.verdict == "yes"
 
 
 class TestCmdTest:
@@ -1136,8 +1136,8 @@ initial: evaluate
 states:
   evaluate:
     action: "echo hello"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
   fix:
     action: "echo fixed"
     next: evaluate
@@ -1155,7 +1155,7 @@ max_iterations: 5
 
         assert result == 0
         captured = capsys.readouterr()
-        assert "SUCCESS" in captured.out
+        assert "YES" in captured.out
         assert "evaluate → done" in captured.out or "evaluate" in captured.out
         assert "configured correctly" in captured.out
 
@@ -1175,8 +1175,8 @@ initial: evaluate
 states:
   evaluate:
     action: "exit 1"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
   fix:
     action: "echo fixed"
     next: evaluate
@@ -1194,7 +1194,7 @@ max_iterations: 5
 
         assert result == 0  # Test succeeds even if loop would fail
         captured = capsys.readouterr()
-        assert "FAILURE" in captured.out
+        assert "NO" in captured.out
         assert "evaluate → fix" in captured.out or "fix" in captured.out
         assert "configured correctly" in captured.out
 
@@ -1215,8 +1215,8 @@ states:
   evaluate:
     action: "/ll:check-code"
     action_type: slash_command
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
   fix:
     action: "/ll:check-code fix"
     action_type: slash_command
@@ -1258,8 +1258,8 @@ states:
       type: output_numeric
       operator: eq
       target: 0
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: done
   fix:
     action: "echo fixing"
@@ -1384,8 +1384,8 @@ initial: check
 states:
   check:
     action: "run_check"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
   fix:
     action: "run_fix"
     next: check
@@ -1423,8 +1423,8 @@ initial: check
 states:
   check:
     action: "run_check"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
   fix:
     action: "run_fix"
     next: check
@@ -1464,8 +1464,8 @@ initial: check
 states:
   check:
     action: "run_check"
-    on_success: done
-    on_failure: check
+    on_yes: done
+    on_no: check
   done:
     terminal: true
 max_iterations: 100
@@ -1498,8 +1498,8 @@ initial: check
 states:
   check:
     action: "run_check"
-    on_success: done
-    on_failure: check
+    on_yes: done
+    on_no: check
   done:
     terminal: true
 max_iterations: 100
@@ -1537,8 +1537,8 @@ initial: check
 states:
   check:
     action: "mypy src/"
-    on_success: done
-    on_failure: done
+    on_yes: done
+    on_no: done
   done:
     terminal: true
 """
@@ -1577,8 +1577,8 @@ states:
     next: check_done
   check_done:
     action: "echo done"
-    on_success: done
-    on_failure: step_0
+    on_yes: done
+    on_no: step_0
   done:
     terminal: true
 """

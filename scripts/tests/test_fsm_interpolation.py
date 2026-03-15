@@ -71,8 +71,8 @@ class TestInterpolationContext:
 
     def test_result_variable(self) -> None:
         """${result.verdict} resolves evaluation result."""
-        ctx = InterpolationContext(result={"verdict": "success", "confidence": 0.95})
-        assert ctx.resolve("result", "verdict") == "success"
+        ctx = InterpolationContext(result={"verdict": "yes", "confidence": 0.95})
+        assert ctx.resolve("result", "verdict") == "yes"
         assert ctx.resolve("result", "confidence") == 0.95
 
     def test_result_unavailable_raises(self) -> None:

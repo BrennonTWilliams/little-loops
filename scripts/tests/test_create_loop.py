@@ -40,8 +40,8 @@ initial: run
 states:
   run:
     action: pytest
-    on_success: done
-    on_failure: done
+    on_yes: done
+    on_no: done
   done:
     terminal: true
 max_iterations: 10
@@ -66,12 +66,12 @@ initial: lint
 states:
   lint:
     action: ruff check src/
-    on_success: done
-    on_failure: fix-lint
+    on_yes: done
+    on_no: fix-lint
   fix-lint:
     action: ruff check --fix src/
-    on_success: lint
-    on_failure: done
+    on_yes: lint
+    on_no: done
   done:
     terminal: true
 max_iterations: 20
@@ -96,8 +96,8 @@ initial: check
 states:
   check:
     action: "echo 5"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
   fix:
     action: echo fix
     next: check
@@ -187,7 +187,7 @@ class TestLoopFileCreation:
             "name": "test-loop",
             "initial": "run",
             "states": {
-                "run": {"action": "pytest", "on_success": "done", "on_failure": "done"},
+                "run": {"action": "pytest", "on_yes": "done", "on_no": "done"},
                 "done": {"terminal": True},
             },
         }
@@ -211,7 +211,7 @@ class TestLoopFileCreation:
                 "name": name,
                 "initial": "run",
                 "states": {
-                    "run": {"action": "cmd", "on_success": "done", "on_failure": "done"},
+                    "run": {"action": "cmd", "on_yes": "done", "on_no": "done"},
                     "done": {"terminal": True},
                 },
             }

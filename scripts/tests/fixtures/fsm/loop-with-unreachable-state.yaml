@@ -3,8 +3,8 @@ initial: start
 states:
   start:
     action: test
-    on_success: done
-    on_failure: done
+    on_yes: done
+    on_no: done
   done:
     terminal: true
   orphan:

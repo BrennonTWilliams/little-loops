@@ -241,7 +241,7 @@ initial: start
 states:
   start:
     action: echo "hello"
-    on_success: done
+    on_yes: done
   done:
     terminal: true
 """
@@ -259,7 +259,7 @@ initial: nonexistent
 states:
   start:
     action: echo "hello"
-    on_success: done
+    on_yes: done
   done:
     terminal: true
 """

@@ -453,8 +453,8 @@ states:
   check:
     action: /ll:check-code
     action_type: slash_command
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix
   fix:
     action: "Code quality checks failed. Review and fix all issues."

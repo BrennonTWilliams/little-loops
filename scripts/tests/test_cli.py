@@ -1781,7 +1781,7 @@ initial: start
 states:
   start:
     action: echo "test"
-    on_success: done
+    on_yes: done
   done:
     terminal: true
 """
@@ -1794,7 +1794,7 @@ states:
                 name="test-loop",
                 initial="start",
                 states={
-                    "start": StateConfig(action='echo "test"', on_success="done"),
+                    "start": StateConfig(action='echo "test"', on_yes="done"),
                     "done": StateConfig(terminal=True),
                 },
                 max_iterations=50,

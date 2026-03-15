@@ -32,7 +32,7 @@ class TestLoopState:
             iteration=3,
             captured={"errors": {"output": "4", "exit_code": 0}},
             prev_result={"output": "test", "exit_code": 1, "state": "check"},
-            last_result={"verdict": "failure", "details": {"confidence": 0.65}},
+            last_result={"verdict": "no", "details": {"confidence": 0.65}},
             started_at="2024-01-15T10:30:00Z",
             updated_at="2024-01-15T10:32:45Z",
             status="running",
@@ -511,8 +511,8 @@ class TestPersistentExecutor:
             states={
                 "check": StateConfig(
                     action="echo 'checking'",
-                    on_success="done",
-                    on_failure="fix",
+                    on_yes="done",
+                    on_no="fix",
                 ),
                 "fix": StateConfig(
                     action="echo 'fixing'",
@@ -777,8 +777,8 @@ class TestPersistentExecutor:
             states={
                 "check": StateConfig(
                     action="echo 'checking'",
-                    on_success="check",  # Always loop back
-                    on_failure="check",
+                    on_yes="check",  # Always loop back
+                    on_no="check",
                 ),
             },
         )
@@ -801,8 +801,8 @@ class TestPersistentExecutor:
             states={
                 "check": StateConfig(
                     action="echo 'checking'",
-                    on_success="check",  # Always loop back
-                    on_failure="check",
+                    on_yes="check",  # Always loop back
+                    on_no="check",
                 ),
             },
         )
@@ -937,8 +937,8 @@ class TestAcceptanceCriteria:
             states={
                 "check": StateConfig(
                     action="echo 'checking'",
-                    on_success="done",
-                    on_failure="check",
+                    on_yes="done",
+                    on_no="check",
                 ),
                 "done": StateConfig(terminal=True),
             },

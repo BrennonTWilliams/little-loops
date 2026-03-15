@@ -24,8 +24,8 @@ if TYPE_CHECKING:
 
 def make_test_state(
     action: str | None = None,
-    on_success: str | None = None,
-    on_failure: str | None = None,
+    on_yes: str | None = None,
+    on_no: str | None = None,
     on_error: str | None = None,
     next: str | None = None,
     terminal: bool = False,
@@ -38,8 +38,8 @@ def make_test_state(
     """Create StateConfig for testing."""
     return StateConfig(
         action=action,
-        on_success=on_success,
-        on_failure=on_failure,
+        on_yes=on_yes,
+        on_no=on_no,
         on_error=on_error,
         next=next,
         terminal=terminal,
@@ -61,7 +61,7 @@ def make_test_fsm(
     """Create FSMLoop for testing."""
     if states is None:
         states = {
-            "start": make_test_state(action="echo start", on_success="done", on_failure="done"),
+            "start": make_test_state(action="echo start", on_yes="done", on_no="done"),
             "done": make_test_state(terminal=True),
         }
     return FSMLoop(
@@ -216,8 +216,8 @@ initial: check
 states:
   check:
     action: "echo hello"
-    on_success: done
-    on_failure: done
+    on_yes: done
+    on_no: done
   done:
     terminal: true
 """
@@ -260,8 +260,8 @@ initial: nonexistent
 states:
   check:
     action: "echo hello"
-    on_success: done
-    on_failure: done
+    on_yes: done
+    on_no: done
   done:
     terminal: true
 """
@@ -291,8 +291,8 @@ initial: check
 states:
   check:
     action: "echo hello"
-    on_success: done
-    on_failure: done
+    on_yes: done
+    on_no: done
   done:
     terminal: true
 """
@@ -347,14 +347,14 @@ states:
     action: "echo step1"
     evaluate:
       type: exit_code
-    on_success: step2
-    on_failure: step1
+    on_yes: step2
+    on_no: step1
   step2:
     action: "echo step2"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: step2
+    on_yes: done
+    on_no: step2
   done:
     terminal: true
 """

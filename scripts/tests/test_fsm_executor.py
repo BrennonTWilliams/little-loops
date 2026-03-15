@@ -95,8 +95,8 @@ class TestFSMExecutorBasic:
             states={
                 "check": StateConfig(
                     action="pytest",
-                    on_success="done",
-                    on_failure="fix",
+                    on_yes="done",
+                    on_no="fix",
                 ),
                 "done": StateConfig(terminal=True),
                 "fix": StateConfig(action="fix.sh", next="check"),
@@ -121,8 +121,8 @@ class TestFSMExecutorBasic:
             states={
                 "check": StateConfig(
                     action="pytest",
-                    on_success="done",
-                    on_failure="fix",
+                    on_yes="done",
+                    on_no="fix",
                 ),
                 "fix": StateConfig(action="fix.sh", next="check"),
                 "done": StateConfig(terminal=True),
@@ -153,8 +153,8 @@ class TestFSMExecutorBasic:
             states={
                 "loop": StateConfig(
                     action="fail.sh",
-                    on_success="done",
-                    on_failure="loop",
+                    on_yes="done",
+                    on_no="loop",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -216,7 +216,7 @@ class TestFSMExecutorBasic:
             name="test",
             initial="decide",
             states={
-                "decide": StateConfig(on_success="done"),  # No action
+                "decide": StateConfig(on_yes="done"),  # No action
                 "done": StateConfig(terminal=True),
             },
         )
@@ -242,8 +242,8 @@ class TestActionType:
                 "analyze": StateConfig(
                     action="Analyze the code",
                     action_type="prompt",
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -255,7 +255,7 @@ class TestActionType:
 
         with patch(
             "little_loops.fsm.executor.evaluate_llm_structured",
-            return_value=EvaluationResult(verdict="success", details={}),
+            return_value=EvaluationResult(verdict="yes", details={}),
         ):
             executor = FSMExecutor(fsm, action_runner=mock_runner)
             executor.run()
@@ -271,8 +271,8 @@ class TestActionType:
                 "run": StateConfig(
                     action="/usr/bin/ls",
                     action_type="shell",
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -294,8 +294,8 @@ class TestActionType:
                 "commit": StateConfig(
                     action="/ll:commit",
                     action_type="slash_command",
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -307,7 +307,7 @@ class TestActionType:
 
         with patch(
             "little_loops.fsm.executor.evaluate_llm_structured",
-            return_value=EvaluationResult(verdict="success", details={}),
+            return_value=EvaluationResult(verdict="yes", details={}),
         ):
             executor = FSMExecutor(fsm, action_runner=mock_runner)
             executor.run()
@@ -322,8 +322,8 @@ class TestActionType:
             states={
                 "cmd": StateConfig(
                     action="/ll:help",
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -335,7 +335,7 @@ class TestActionType:
 
         with patch(
             "little_loops.fsm.executor.evaluate_llm_structured",
-            return_value=EvaluationResult(verdict="success", details={}),
+            return_value=EvaluationResult(verdict="yes", details={}),
         ):
             executor = FSMExecutor(fsm, action_runner=mock_runner)
             executor.run()
@@ -350,8 +350,8 @@ class TestActionType:
             states={
                 "cmd": StateConfig(
                     action="echo hello",
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -377,8 +377,8 @@ class TestVariableInterpolation:
             states={
                 "check": StateConfig(
                     action="mypy ${context.target_dir}",
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -400,8 +400,8 @@ class TestVariableInterpolation:
             states={
                 "log": StateConfig(
                     action="echo iteration ${state.iteration}",
-                    on_success="log",
-                    on_failure="log",
+                    on_yes="log",
+                    on_no="log",
                 ),
             },
         )
@@ -517,8 +517,8 @@ class TestCaptureWorkflow:
                 "check": StateConfig(
                     action="check.sh",
                     capture="result",
-                    on_success="done",
-                    on_failure="report",
+                    on_yes="done",
+                    on_no="report",
                 ),
                 "report": StateConfig(
                     action='echo "Exit was: ${captured.result.exit_code}"',
@@ -644,8 +644,8 @@ class TestCaptureWorkflow:
                 "run": StateConfig(
                     action="command.sh",
                     capture="cmd",
-                    on_success="done",
-                    on_failure="log_error",
+                    on_yes="done",
+                    on_no="log_error",
                 ),
                 "log_error": StateConfig(
                     action='echo "Error: ${captured.cmd.stderr}"',
@@ -715,7 +715,7 @@ class TestRouting:
                         pattern="BLOCKED",
                     ),
                     route=RouteConfig(
-                        routes={"success": "done", "failure": "blocked"},
+                        routes={"yes": "done", "no": "blocked"},
                     ),
                 ),
                 "done": StateConfig(terminal=True),
@@ -728,7 +728,7 @@ class TestRouting:
         executor = FSMExecutor(fsm, action_runner=mock_runner)
         result = executor.run()
 
-        # Pattern found = success, routes to "done"
+        # Pattern found = yes, routes to "done"
         assert result.final_state == "done"
 
     def test_route_default(self) -> None:
@@ -740,7 +740,7 @@ class TestRouting:
                 "check": StateConfig(
                     action="check.sh",
                     route=RouteConfig(
-                        routes={"success": "done"},
+                        routes={"yes": "done"},
                         default="fallback",
                     ),
                 ),
@@ -749,7 +749,7 @@ class TestRouting:
             },
         )
         mock_runner = MockActionRunner()
-        mock_runner.set_result("check.sh", exit_code=1)  # failure verdict
+        mock_runner.set_result("check.sh", exit_code=1)  # no verdict
 
         executor = FSMExecutor(fsm, action_runner=mock_runner)
         result = executor.run()
@@ -765,8 +765,8 @@ class TestRouting:
             states={
                 "retry": StateConfig(
                     action="flaky.sh",
-                    on_success="done",
-                    on_failure="$current",
+                    on_yes="done",
+                    on_no="$current",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -788,7 +788,7 @@ class TestRouting:
             states={
                 "check": StateConfig(
                     action="check.sh",
-                    on_success="done",
+                    on_yes="done",
                     # No on_failure route
                 ),
                 "done": StateConfig(terminal=True),
@@ -814,14 +814,14 @@ class TestRouting:
             states={
                 "evaluate": StateConfig(
                     action="check.sh",
-                    route=RouteConfig(routes={"partial": "fix", "success": "done"}),
+                    route=RouteConfig(routes={"partial": "fix", "yes": "done"}),
                     on_partial="fix",  # also set shorthand (unused when route present)
                 ),
                 "fix": StateConfig(terminal=True),
                 "done": StateConfig(terminal=True),
             },
         )
-        # Simulate output_contains returning "success" → routes to "done" via route table
+        # Simulate exit_code returning "yes" → routes to "done" via route table
         mock_runner = MockActionRunner()
         mock_runner.set_result("check.sh", exit_code=0)
         executor = FSMExecutor(fsm2, action_runner=mock_runner)
@@ -838,8 +838,8 @@ class TestRouting:
                 "evaluate": StateConfig(
                     action="/some-slash-command",
                     action_type="slash_command",
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                     on_partial="fix",
                 ),
                 "fix": StateConfig(terminal=True),
@@ -872,8 +872,8 @@ class TestRouting:
                 "evaluate": StateConfig(
                     action="/some-slash-command",
                     action_type="slash_command",
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                     # No on_partial — partial verdict should find no route
                 ),
                 "done": StateConfig(terminal=True),
@@ -909,8 +909,8 @@ class TestEvents:
             states={
                 "check": StateConfig(
                     action="test.sh",
-                    on_success="done",
-                    on_failure="done",
+                    on_yes="done",
+                    on_no="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -956,7 +956,7 @@ class TestEvents:
             name="test-loop",
             initial="check",
             states={
-                "check": StateConfig(action="test.sh", on_success="done"),
+                "check": StateConfig(action="test.sh", on_yes="done"),
                 "done": StateConfig(terminal=True),
             },
         )
@@ -985,8 +985,8 @@ class TestMaintainMode:
             states={
                 "check": StateConfig(
                     action="check.sh",
-                    on_success="done",
-                    on_failure="check",
+                    on_yes="done",
+                    on_no="check",
                 ),
                 "done": StateConfig(terminal=True, on_maintain="check"),
             },
@@ -1013,7 +1013,7 @@ class TestMaintainMode:
                 "start": StateConfig(action="start.sh", next="check"),
                 "check": StateConfig(
                     action="check.sh",
-                    on_success="done",
+                    on_yes="done",
                 ),
                 "done": StateConfig(terminal=True, on_maintain="check"),
             },
@@ -1037,7 +1037,7 @@ class TestMaintainMode:
             maintain=True,
             max_iterations=2,
             states={
-                "check": StateConfig(action="check.sh", on_success="done"),
+                "check": StateConfig(action="check.sh", on_yes="done"),
                 "done": StateConfig(terminal=True),
             },
         )
@@ -1063,8 +1063,8 @@ class TestEvaluators:
                 "check": StateConfig(
                     action="test.sh",
                     evaluate=EvaluateConfig(type="exit_code"),
-                    on_success="pass",
-                    on_failure="fail",
+                    on_yes="pass",
+                    on_no="fail",
                     on_error="error",
                 ),
                 "pass": StateConfig(terminal=True),
@@ -1104,8 +1104,8 @@ class TestEvaluators:
                         operator="eq",
                         target=0,
                     ),
-                    on_success="done",
-                    on_failure="fix",
+                    on_yes="done",
+                    on_no="fix",
                 ),
                 "done": StateConfig(terminal=True),
                 "fix": StateConfig(terminal=True),
@@ -1136,8 +1136,8 @@ class TestEvaluators:
                         type="output_contains",
                         pattern="SUCCESS",
                     ),
-                    on_success="done",
-                    on_failure="retry",
+                    on_yes="done",
+                    on_no="retry",
                 ),
                 "done": StateConfig(terminal=True),
                 "retry": StateConfig(terminal=True),
@@ -1170,8 +1170,8 @@ class TestEvaluators:
                         operator="eq",
                         target="ready",
                     ),
-                    on_success="done",
-                    on_failure="retry",
+                    on_yes="done",
+                    on_no="retry",
                 ),
                 "done": StateConfig(terminal=True),
                 "retry": StateConfig(terminal=True),
@@ -1204,8 +1204,8 @@ class TestEvaluators:
                         operator="eq",
                         target=42,
                     ),
-                    on_success="done",
-                    on_failure="retry",
+                    on_yes="done",
+                    on_no="retry",
                 ),
                 "done": StateConfig(terminal=True),
                 "retry": StateConfig(terminal=True),
@@ -1234,8 +1234,8 @@ class TestEvaluators:
                         operator="lt",
                         target=10,
                     ),
-                    on_success="done",
-                    on_failure="retry",
+                    on_yes="done",
+                    on_no="retry",
                 ),
                 "done": StateConfig(terminal=True),
                 "retry": StateConfig(terminal=True),
@@ -1370,8 +1370,8 @@ class TestEvaluators:
                         type="llm_structured",
                         prompt="Did the deployment succeed?",
                     ),
-                    on_success="done",
-                    on_failure="retry",
+                    on_yes="done",
+                    on_no="retry",
                 ),
                 "done": StateConfig(terminal=True),
                 "retry": StateConfig(terminal=True),
@@ -1385,7 +1385,7 @@ class TestEvaluators:
             {
                 "result": json.dumps(
                     {
-                        "verdict": "success",
+                        "verdict": "yes",
                         "confidence": 0.95,
                         "reason": "Deployment completed successfully",
                     }
@@ -1414,8 +1414,8 @@ class TestEvaluators:
                 "check": StateConfig(
                     action="test.sh",
                     evaluate=EvaluateConfig(type="llm_structured"),
-                    on_success="done",
-                    on_failure="retry",
+                    on_yes="done",
+                    on_no="retry",
                 ),
                 "done": StateConfig(terminal=True),
                 "retry": StateConfig(terminal=True),
@@ -1429,7 +1429,7 @@ class TestEvaluators:
             {
                 "result": json.dumps(
                     {
-                        "verdict": "failure",
+                        "verdict": "no",
                         "confidence": 0.9,
                         "reason": "Tests failed",
                     }
@@ -1456,8 +1456,8 @@ class TestEvaluators:
                     evaluate=EvaluateConfig(type="llm_structured"),
                     route=RouteConfig(
                         routes={
-                            "success": "done",
-                            "failure": "retry",
+                            "yes": "done",
+                            "no": "retry",
                             "blocked": "needs_help",
                         },
                     ),
@@ -1542,7 +1542,7 @@ class TestErrorHandling:
             states={
                 "check": StateConfig(
                     action="test.sh",
-                    on_success="done",
+                    on_yes="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -1573,8 +1573,8 @@ class TestTimeoutHandling:
             states={
                 "slow": StateConfig(
                     action="slow_command.sh",
-                    on_success="done",
-                    on_failure="retry",
+                    on_yes="done",
+                    on_no="retry",
                     on_error="error",
                 ),
                 "done": StateConfig(terminal=True),
@@ -1602,7 +1602,7 @@ class TestTimeoutHandling:
             states={
                 "slow": StateConfig(
                     action="slow_command.sh",
-                    on_success="done",
+                    on_yes="done",
                     on_error="done",
                 ),
                 "done": StateConfig(terminal=True),
@@ -1626,7 +1626,7 @@ class TestTimeoutHandling:
                 "slow": StateConfig(
                     action="slow_command.sh",
                     capture="slow_result",
-                    on_success="done",
+                    on_yes="done",
                     on_error="done",
                 ),
                 "done": StateConfig(terminal=True),
@@ -1657,8 +1657,8 @@ class TestTimeoutHandling:
             states={
                 "check": StateConfig(
                     action="check.sh",
-                    on_success="done",
-                    on_failure="check",
+                    on_yes="done",
+                    on_no="check",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -1693,8 +1693,8 @@ class TestTimeoutHandling:
             states={
                 "check": StateConfig(
                     action="check.sh",
-                    on_success="done",
-                    on_failure="check",
+                    on_yes="done",
+                    on_no="check",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -1785,7 +1785,7 @@ class TestSignalHandling:
             initial="check",
             max_iterations=10,
             states={
-                "check": StateConfig(action="pytest", on_success="done", on_failure="check"),
+                "check": StateConfig(action="pytest", on_yes="done", on_no="check"),
                 "done": StateConfig(terminal=True),
             },
         )
@@ -1858,7 +1858,7 @@ class TestSignalHandling:
             name="test-signal",
             initial="check",
             states={
-                "check": StateConfig(action="check.sh", on_success="done", on_failure="check"),
+                "check": StateConfig(action="check.sh", on_yes="done", on_no="check"),
                 "done": StateConfig(terminal=True),
             },
         )
@@ -1942,7 +1942,7 @@ class TestSignalHandling:
             initial="check",
             max_iterations=1,  # Would trigger max_iterations
             states={
-                "check": StateConfig(action="check.sh", on_success="done", on_failure="check"),
+                "check": StateConfig(action="check.sh", on_yes="done", on_no="check"),
                 "done": StateConfig(terminal=True),
             },
         )
@@ -1967,7 +1967,7 @@ class TestSignalHandling:
             max_iterations=100,
             timeout=1,  # 1 second timeout
             states={
-                "check": StateConfig(action="check.sh", on_success="done", on_failure="check"),
+                "check": StateConfig(action="check.sh", on_yes="done", on_no="check"),
                 "done": StateConfig(terminal=True),
             },
         )
@@ -2136,8 +2136,8 @@ class TestSimulationActionRunner:
             states={
                 "check": StateConfig(
                     action="run_check",
-                    on_success="done",
-                    on_failure="fix",
+                    on_yes="done",
+                    on_no="fix",
                 ),
                 "fix": StateConfig(action="run_fix", next="check"),
                 "done": StateConfig(terminal=True),
@@ -2214,7 +2214,7 @@ class TestHandoffDetection:
             states={
                 "work": StateConfig(
                     action="echo CONTEXT_HANDOFF: continue here",
-                    on_success="done",
+                    on_yes="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -2252,7 +2252,7 @@ class TestHandoffDetection:
             states={
                 "work": StateConfig(
                     action="echo CONTEXT_HANDOFF: prompt",
-                    on_success="done",
+                    on_yes="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -2298,7 +2298,7 @@ class TestFatalErrorAndStopSignals:
             states={
                 "work": StateConfig(
                     action="echo FATAL_ERROR: disk full",
-                    on_success="done",
+                    on_yes="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -2334,11 +2334,11 @@ class TestFatalErrorAndStopSignals:
             states={
                 "work": StateConfig(
                     action="echo FATAL_ERROR: abort",
-                    on_success="next",
+                    on_yes="next",
                 ),
                 "next": StateConfig(
                     action="echo should not run",
-                    on_success="done",
+                    on_yes="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -2375,7 +2375,7 @@ class TestFatalErrorAndStopSignals:
             states={
                 "work": StateConfig(
                     action="echo LOOP_STOP: goal achieved",
-                    on_success="done",
+                    on_yes="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -2413,7 +2413,7 @@ class TestRoutingEdgeCases:
                 "check": StateConfig(
                     action="check.sh",
                     route=RouteConfig(
-                        routes={"success": "done"},
+                        routes={"yes": "done"},
                         error="error_state",
                     ),
                 ),
@@ -2438,7 +2438,7 @@ class TestRoutingEdgeCases:
                 "check": StateConfig(
                     action="check.sh",
                     route=RouteConfig(
-                        routes={"success": "done"},
+                        routes={"yes": "done"},
                         default="fallback",
                     ),
                 ),
@@ -2491,7 +2491,7 @@ class TestMaintainModeExecutor:
             states={
                 "check": StateConfig(
                     action="check.sh",
-                    on_success="done",
+                    on_yes="done",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -2518,7 +2518,7 @@ class TestShutdownRequest:
             states={
                 "work": StateConfig(
                     action="work.sh",
-                    on_success="work",
+                    on_yes="work",
                 ),
             },
         )
@@ -2544,8 +2544,8 @@ class TestBackoff:
             states={
                 "check": StateConfig(
                     action="check.sh",
-                    on_success="check",
-                    on_failure="check",
+                    on_yes="check",
+                    on_no="check",
                 ),
             },
         )
@@ -2571,8 +2571,8 @@ class TestBackoff:
             states={
                 "check": StateConfig(
                     action="check.sh",
-                    on_success="done",
-                    on_failure="check",
+                    on_yes="done",
+                    on_no="check",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -2596,8 +2596,8 @@ class TestBackoff:
             states={
                 "check": StateConfig(
                     action="check.sh",
-                    on_success="done",
-                    on_failure="check",
+                    on_yes="done",
+                    on_no="check",
                 ),
                 "done": StateConfig(terminal=True),
             },
@@ -2621,8 +2621,8 @@ class TestBackoff:
             states={
                 "work": StateConfig(
                     action="work.sh",
-                    on_success="work",
-                    on_failure="work",
+                    on_yes="work",
+                    on_no="work",
                 ),
             },
         )
@@ -2747,8 +2747,8 @@ class TestPerStateRetryLimits:
             states={
                 "execute": StateConfig(
                     action="do_work.sh",
-                    on_failure="execute",
-                    on_success="done",
+                    on_no="execute",
+                    on_yes="done",
                     max_retries=max_retries,
                     on_retry_exhausted="skip_item",
                 ),
@@ -2810,8 +2810,8 @@ class TestPerStateRetryLimits:
             states={
                 "execute": StateConfig(
                     action="do_work.sh",
-                    on_failure="other_state",
-                    on_success="done",
+                    on_no="other_state",
+                    on_yes="done",
                     max_retries=1,
                     on_retry_exhausted="skip_item",
                 ),
