@@ -3,7 +3,7 @@ id: ENH-731
 type: ENH
 priority: P3
 title: Rename FSM transition labels from success/fail to yes/no
-status: open
+status: completed
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 100
@@ -190,7 +190,21 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - **Verdict**: CORRECTED
 - Feature not yet implemented; `on_success`/`on_failure` still present throughout. Integration Map line references updated to current state: `schema.py` fields at 211–212, `to_dict` at 235–238, `from_dict` at 276–277, `get_referenced_states` at 297–300; `evaluators.py` DEFAULT_LLM_SCHEMA at 59, `evaluate_exit_code` at 106/108, `evaluate_output_numeric` at 149, `_compare_values` at 207, `evaluate_output_json` at 254/256, `evaluate_output_contains` at 298/300; `executor.py` default verdict at 594, `_route` dispatch at 783/785; `validation.py` `has_shorthand` at 190–191, warning at 201; `info.py` verdict check at 247, compact table at 453–454, verbose table at 712–713, stats at 579–580.
 
+## Resolution
+
+Implemented the full rename from `on_success`/`on_failure` (verdict strings `"success"`/`"failure"`) to `on_yes`/`on_no` (verdict strings `"yes"`/`"no"`) across:
+
+- **FSM core**: `schema.py`, `evaluators.py`, `executor.py`, `validation.py`, `fsm-loop-schema.json` — including backwards-compat shim in `from_dict` (`on_yes=data.get("on_yes") or data.get("on_success")`)
+- **CLI rendering**: `layout.py`, `info.py`, `_helpers.py`, `testing.py` — all display labels updated
+- **Loop YAMLs**: All 14 built-in loops in `loops/` — YAML keys and LLM prompt text updated
+- **Test files**: All FSM test files, fixture YAMLs, and conftest updated
+- **Skills/commands**: `create-loop`, `review-loop`, `analyze-loop`, `workflow-automation-proposer`, `loop-suggester` updated
+- **Documentation**: `generalized-fsm-loop.md`, `LOOPS_GUIDE.md`, `API.md`, `TESTING.md` updated
+
+All 3442+ tests pass. Backwards compatibility maintained via `from_dict` shim for user-authored loops using old `on_success`/`on_failure` keys.
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6646689c-65e2-42d9-aa22-7d73408f8c39.jsonl`
 - `/ll:ready-issue` - 2026-03-15T00:51:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c37a3760-8a4a-47c7-b8f8-7c56ed5544de.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 

@@ -444,7 +444,7 @@ def fsm_spec(draw: st.DrawFn) -> dict:
         "name": name,
         "initial": "start",
         "states": {
-            "start": {"action": "echo check", "on_success": "done", "on_failure": "start"},
+            "start": {"action": "echo check", "on_yes": "done", "on_no": "start"},
             "done": {"terminal": True},
         },
         "max_iterations": max_iter,
@@ -670,8 +670,8 @@ def test_simple_success_path(self) -> None:
         states={
             "check": StateConfig(
                 action="pytest",
-                on_success="done",
-                on_failure="fix",
+                on_yes="done",
+                on_no="fix",
             ),
             "done": StateConfig(terminal=True),
             "fix": StateConfig(action="fix.sh", next="check"),
@@ -699,7 +699,7 @@ def test_context_interpolation(self) -> None:
         states={
             "check": StateConfig(
                 action="mypy ${context.target_dir}",
-                on_success="done",
+                on_yes="done",
             ),
             "done": StateConfig(terminal=True),
         },

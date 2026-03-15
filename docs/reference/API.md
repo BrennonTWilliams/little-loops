@@ -3502,8 +3502,8 @@ fsm = FSMLoop(
     states={
         "check": StateConfig(
             action="pytest",
-            on_success="done",
-            on_failure="fix",
+            on_yes="done",
+            on_no="fix",
         ),
         "fix": StateConfig(
             action="/ll:manage-issue bug fix",
@@ -3525,8 +3525,8 @@ class StateConfig:
     action: str | None = None          # Command to execute
     evaluate: EvaluateConfig | None    # Evaluator configuration
     route: RouteConfig | None          # Full routing table
-    on_success: str | None = None      # Shorthand routing
-    on_failure: str | None = None      # Shorthand routing
+    on_yes: str | None = None      # Shorthand routing
+    on_no: str | None = None      # Shorthand routing
     on_error: str | None = None        # Shorthand routing
     next: str | None = None            # Unconditional transition
     terminal: bool = False             # End state marker
@@ -3590,7 +3590,7 @@ state = StateConfig(
         target="ready",
     ),
     route=RouteConfig(
-        routes={"success": "proceed", "failure": "wait"},
+        routes={"yes": "proceed", "no": "wait"},
         default="error_state",
     ),
 )
@@ -3706,14 +3706,14 @@ from little_loops.fsm import evaluate_exit_code, evaluate_output_contains
 
 # Exit code evaluation
 result = evaluate_exit_code(0)
-print(result.verdict)  # "success"
+print(result.verdict)  # "yes"
 
 # Pattern matching
 result = evaluate_output_contains("All tests passed", "passed")
-print(result.verdict)  # "success"
+print(result.verdict)  # "yes"
 
 result = evaluate_output_contains("Error occurred", "Error", negate=True)
-print(result.verdict)  # "failure"
+print(result.verdict)  # "no"
 ```
 
 ---
@@ -3751,7 +3751,7 @@ fsm = FSMLoop(
     name="test",
     initial="check",
     states={
-        "check": StateConfig(action="pytest", on_success="done", on_failure="check"),
+        "check": StateConfig(action="pytest", on_yes="done", on_no="check"),
         "done": StateConfig(terminal=True),
     },
 )
@@ -3918,7 +3918,7 @@ fsm = FSMLoop(
     name="test",
     initial="start",
     states={
-        "start": StateConfig(action="echo", on_success="done", on_failure="done"),
+        "start": StateConfig(action="echo", on_yes="done", on_no="done"),
         "done": StateConfig(terminal=True),
     },
 )
@@ -4043,7 +4043,7 @@ fsm = FSMLoop(
     name="my-loop",
     initial="check",
     states={
-        "check": StateConfig(action="pytest", on_success="done", on_failure="check"),
+        "check": StateConfig(action="pytest", on_yes="done", on_no="check"),
         "done": StateConfig(terminal=True),
     },
 )

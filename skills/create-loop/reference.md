@@ -6,15 +6,15 @@ Reference for the state structures each loop type generates. Use this when gener
 
 > **Notation Legend:**
 > - `->` (arrow) means "transitions to" (conceptual representation)
-> - `on_success -> done` is equivalent to YAML: `on_success: done`
+> - `on_yes -> done` is equivalent to YAML: `on_yes: done`
 > - `route[target] -> done` represents a routing table entry: `route: { target: done }`
 > - `[terminal]` marks a state that ends the loop
 >
 > **Two YAML syntaxes for routing:**
 > 1. **Shorthand** (for standard success/failure/error verdicts):
 >    ```yaml
->    on_success: "done"
->    on_failure: "fix"
+>    on_yes: "done"
+>    on_no: "fix"
 >    ```
 > 2. **Full routing table** (for custom verdicts):
 >    ```yaml
@@ -32,8 +32,8 @@ Initial: evaluate
 
 Transitions:
   evaluate:
-    - on_success -> done
-    - on_failure -> fix
+    - on_yes -> done
+    - on_no -> fix
     - on_error -> fix
   fix:
     - next -> evaluate
@@ -63,8 +63,8 @@ Initial: check_{first_constraint}
 
 Transitions:
   check_{name}:
-    - on_success -> check_{next} (or all_valid if last)
-    - on_failure -> fix_{name}
+    - on_yes -> check_{next} (or all_valid if last)
+    - on_no -> fix_{name}
   fix_{name}:
     - next -> check_{name}
   all_valid: [terminal]
@@ -81,8 +81,8 @@ Transitions:
   step_N:
     - next -> step_{N+1} (or check_done if last)
   check_done:
-    - on_success -> done
-    - on_failure -> step_0
+    - on_yes -> done
+    - on_no -> step_0
   done: [terminal]
 ```
 
@@ -93,19 +93,19 @@ Initial: discover
 
 Transitions:
   discover:
-    - on_success -> execute
-    - on_failure -> done
+    - on_yes -> execute
+    - on_no -> done
   execute:
     - next -> check_concrete (or check_semantic / check_invariants / advance if earlier phases omitted)
   check_concrete:          (present if tool-based gates enabled)
-    - on_success -> check_semantic (or check_invariants / advance / done)
-    - on_failure -> execute
+    - on_yes -> check_semantic (or check_invariants / advance / done)
+    - on_no -> execute
   check_semantic:          (present if LLM-as-judge enabled)
-    - on_success -> check_invariants (or advance / done)
-    - on_failure -> execute
+    - on_yes -> check_invariants (or advance / done)
+    - on_no -> execute
   check_invariants:        (present if diff invariants enabled)
-    - on_success -> advance
-    - on_failure -> execute
+    - on_yes -> advance
+    - on_no -> execute
   advance:
     - next -> discover
   done: [terminal]
@@ -120,14 +120,14 @@ Transitions:
   execute:
     - next -> check_concrete (or check_semantic / check_invariants / done)
   check_concrete:          (present if tool-based gates enabled)
-    - on_success -> check_semantic (or check_invariants / done)
-    - on_failure -> execute
+    - on_yes -> check_semantic (or check_invariants / done)
+    - on_no -> execute
   check_semantic:          (present if LLM-as-judge enabled)
-    - on_success -> check_invariants (or done)
-    - on_failure -> execute
+    - on_yes -> check_invariants (or done)
+    - on_no -> execute
   check_invariants:        (present if diff invariants enabled)
-    - on_success -> done
-    - on_failure -> execute
+    - on_yes -> done
+    - on_no -> execute
   done: [terminal]
 ```
 
@@ -262,8 +262,8 @@ max_iterations: 5
 states:
   evaluate:
     action: "ruff check src/"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix
   fix:
     action: "ruff check --fix src/"
@@ -280,22 +280,22 @@ max_iterations: 30
 states:
   check_types:
     action: "mypy src/"
-    on_success: check_lint
-    on_failure: fix_types
+    on_yes: check_lint
+    on_no: fix_types
   fix_types:
     action: "/ll:manage-issue bug fix"
     next: check_types
   check_lint:
     action: "ruff check src/"
-    on_success: check_tests
-    on_failure: fix_lint
+    on_yes: check_tests
+    on_no: fix_lint
   fix_lint:
     action: "ruff check --fix src/"
     next: check_lint
   check_tests:
     action: "pytest"
-    on_success: all_valid
-    on_failure: fix_tests
+    on_yes: all_valid
+    on_no: fix_tests
   fix_tests:
     action: "/ll:manage-issue bug fix"
     next: check_tests
@@ -336,8 +336,8 @@ check_stall:
     type: diff_stall
     scope: ["scripts/"]  # optional: limit to specific paths
     max_stall: 2         # optional: default 1
-  on_success: advance
-  on_failure: skip_item  # stalled — move to next item
+  on_yes: advance
+  on_no: skip_item  # stalled — move to next item
 ```
 
 | Verdict | Meaning |
@@ -373,8 +373,8 @@ max_iterations: 10
 states:
   evaluate:
     action: "ruff check src/"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix
   fix:
     action: "Please fix all lint errors in the src/ directory"
@@ -393,8 +393,8 @@ states:
   evaluate:
     action: "/usr/local/bin/check.sh"
     action_type: shell  # Run via shell, not Claude CLI, despite leading /
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix
   fix:
     action: "/usr/local/bin/fix.sh"
@@ -429,8 +429,8 @@ on_handoff: "spawn"  # Automatically continue in new session if context runs out
 states:
   evaluate:
     action: "pytest && mypy src/ && ruff check src/"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix
   fix:
     action: "/ll:manage-issue bug fix"
@@ -448,8 +448,8 @@ on_handoff: "terminate"  # Stop if we run out of context
 states:
   check_types:
     action: "mypy src/"
-    on_success: all_valid
-    on_failure: fix_types
+    on_yes: all_valid
+    on_no: fix_types
   fix_types:
     action: "/ll:manage-issue bug fix"
     next: check_types
@@ -486,8 +486,8 @@ scope:
 states:
   evaluate:
     action: "mypy src/api/"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix
   fix:
     action: "/ll:manage-issue bug fix"
@@ -507,15 +507,15 @@ scope:
 states:
   check_lint:
     action: "npx eslint src/frontend/"
-    on_success: check_types
-    on_failure: fix_lint
+    on_yes: check_types
+    on_no: fix_lint
   fix_lint:
     action: "npx eslint --fix src/frontend/"
     next: check_lint
   check_types:
     action: "npx tsc --noEmit"
-    on_success: all_valid
-    on_failure: fix_types
+    on_yes: all_valid
+    on_no: fix_types
   fix_types:
     action: "/ll:manage-issue bug fix"
     next: check_types
@@ -527,7 +527,7 @@ states:
 
 #### on_partial (Optional)
 
-The `on_partial` field is a **state-level** shorthand for routing when an action returns a `partial` verdict. It works alongside `on_success`, `on_failure`, and `on_error` as a one-line alternative to a full `route:` block.
+The `on_partial` field is a **state-level** shorthand for routing when an action returns a `partial` verdict. It works alongside `on_yes`, `on_no`, and `on_error` as a one-line alternative to a full `route:` block.
 
 **Type:** `str` — name of the state to transition to on a `partial` verdict
 
@@ -548,8 +548,8 @@ max_iterations: 15
 states:
   evaluate:
     action: "/ll:verify-issues"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix
     evaluate:
       type: llm_structured
@@ -565,8 +565,8 @@ states:
 states:
   evaluate:
     action: "/ll:verify-issues"
-    on_success: done
-    on_failure: deep_fix
+    on_yes: done
+    on_no: deep_fix
     on_partial: quick_fix   # partial progress → lighter fix
   quick_fix:
     action: "/ll:refine-issue"
@@ -580,7 +580,7 @@ initial: evaluate
 max_iterations: 15
 ```
 
-**Most users can omit this field** — if you do not need distinct routing for partial progress, use `on_failure` to handle both failure and partial outcomes, or use a full `route:` block for fine-grained control.
+**Most users can omit this field** — if you do not need distinct routing for partial progress, use `on_no` to handle both failure and partial outcomes, or use a full `route:` block for fine-grained control.
 
 #### capture (Optional)
 
@@ -607,8 +607,8 @@ states:
   measure:
     action: "ruff check src/ 2>&1 | grep -c 'error' || echo 0"
     capture: lint_result
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
   fix:
     action: "echo 'Found ${captured.lint_result.output} errors, fixing...' && ruff check --fix src/"
     next: measure
@@ -667,12 +667,12 @@ states:
     action_type: prompt
     max_retries: 3
     on_retry_exhausted: skip_item
-    on_success: evaluate
-    on_failure: execute   # retries up to 3 times before skip
+    on_yes: evaluate
+    on_no: execute   # retries up to 3 times before skip
   evaluate:
     action: "/ll:confidence-check ${current_item}"
-    on_success: done
-    on_failure: execute
+    on_yes: done
+    on_no: execute
   skip_item:
     action: echo "Skipping ${current_item} after 3 failed retries"
     action_type: shell

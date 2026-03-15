@@ -69,8 +69,8 @@ max_iterations: 10
 states:
   evaluate:
     action: "pytest tests/"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix
   fix:
     action: "Fix failing tests based on the pytest output"
@@ -107,8 +107,8 @@ Source: .loops/fix-tests.yaml
 States:
   [evaluate] [INITIAL]
     action: pytest tests/
-    on_success ──→ done
-    on_failure ──→ fix
+    on_yes ──→ done
+    on_no ──→ fix
     on_error ──→ fix
   [fix]
     action: Fix failing tests based on the pytest output
@@ -229,7 +229,7 @@ The captured value is accessible as `${captured.lint_count.output}`, `${captured
 
 ### Routing
 
-States use **shorthand** (`on_success`, `on_failure`, `on_partial`) or a **route table** for verdict-to-state mapping:
+States use **shorthand** (`on_yes`, `on_no`, `on_partial`) or a **route table** for verdict-to-state mapping:
 
 ```yaml
 route:
@@ -349,8 +349,8 @@ states:
     action_type: slash_command
     evaluate:
       type: exit_code
-    on_success: check-verify
-    on_failure: fix-format
+    on_yes: check-verify
+    on_no: fix-format
   fix-format:
     action: "/ll:format-issue --all --auto"
     action_type: slash_command
@@ -360,8 +360,8 @@ states:
     action_type: slash_command
     evaluate:
       type: exit_code
-    on_success: check-size
-    on_failure: fix-verify
+    on_yes: check-size
+    on_no: fix-verify
   fix-verify:
     action: "Run /ll:verify-issues --auto to fix verification issues."
     action_type: prompt
@@ -371,8 +371,8 @@ states:
     action_type: slash_command
     evaluate:
       type: exit_code
-    on_success: check-deps
-    on_failure: fix-size
+    on_yes: check-deps
+    on_no: fix-size
   fix-size:
     action: "Run /ll:issue-size-review --auto to decompose oversized issues."
     action_type: prompt
@@ -382,8 +382,8 @@ states:
     action_type: slash_command
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: fix-deps
+    on_yes: done
+    on_no: fix-deps
   fix-deps:
     action: "/ll:map-dependencies --auto"
     action_type: slash_command

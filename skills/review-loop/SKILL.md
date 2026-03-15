@@ -152,7 +152,7 @@ Read top-level `on_handoff`. Read `max_iterations` (use 50 if absent).
 Collect all state action texts. Check if any downstream state action contains `$captured` or `{{captured}}`.
 - For each upstream state that has `evaluate.type` in `["output_contains", "output_numeric", "output_json"]` and lacks `capture:`: add Suggestion finding at path `states.<name>`
 
-Before running QC-8 through QC-13, build the FSM mental model from the YAML dict: record terminal states (where `terminal: true`), the transition map (all routing targets per non-terminal state), the inbound map (which states reach each state), and the happy path (trace `on_success`/`next` from `initial` to terminal). Use this model in the checks below.
+Before running QC-8 through QC-13, build the FSM mental model from the YAML dict: record terminal states (where `terminal: true`), the transition map (all routing targets per non-terminal state), the inbound map (which states reach each state), and the happy path (trace `on_yes`/`next` from `initial` to terminal). Use this model in the checks below.
 
 ### QC-8: Spin Detection
 
@@ -183,7 +183,7 @@ For each state not reachable via BFS from `initial` using all outbound transitio
 
 ### QC-13: Dead-End Non-Terminal States
 
-For each non-terminal state that has no outbound transitions (`on_success`, `on_failure`, `on_partial`, `on_error`, `next`, or any `route.*`):
+For each non-terminal state that has no outbound transitions (`on_yes`, `on_no`, `on_partial`, `on_error`, `next`, or any `route.*`):
 - Add Error finding at path `states.<name>` (check_id: FA-6)
 
 ### QC-14: Replaceable Prompt State Detection

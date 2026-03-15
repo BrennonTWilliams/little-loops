@@ -159,8 +159,8 @@ max_iterations: <selected-max>
 states:
   evaluate:
     action: "<check-command>"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix
     # Include evaluate block only if not using default (exit_code):
     # evaluate:             # Optional - omit for exit_code default
@@ -185,8 +185,8 @@ max_iterations: 10
 states:
   evaluate:
     action: "mypy src/ && ruff check src/"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix
   fix:
     action: "/ll:check-code fix"
@@ -274,8 +274,8 @@ max_iterations: 50
 states:
   check_<name1>:
     action: "<check-1-command>"
-    on_success: check_<name2>  # or all_valid if last constraint
-    on_failure: fix_<name1>
+    on_yes: check_<name2>  # or all_valid if last constraint
+    on_no: fix_<name1>
     # evaluate:               # Optional per-constraint
     #   type: "<output_contains|output_numeric|llm_structured>"
   fix_<name1>:
@@ -283,8 +283,8 @@ states:
     next: check_<name1>
   check_<name2>:
     action: "<check-2-command>"
-    on_success: all_valid      # or next constraint
-    on_failure: fix_<name2>
+    on_yes: all_valid      # or next constraint
+    on_no: fix_<name2>
   fix_<name2>:
     action: "<fix-2-command>"
     next: check_<name2>
@@ -301,22 +301,22 @@ max_iterations: 50
 states:
   check_tests:
     action: "pytest"
-    on_success: check_types
-    on_failure: fix_tests
+    on_yes: check_types
+    on_no: fix_tests
   fix_tests:
     action: "/ll:manage-issue bug fix"
     next: check_tests
   check_types:
     action: "mypy src/"
-    on_success: check_lint
-    on_failure: fix_types
+    on_yes: check_lint
+    on_no: fix_types
   fix_types:
     action: "/ll:manage-issue bug fix"
     next: check_types
   check_lint:
     action: "ruff check src/"
-    on_success: all_valid
-    on_failure: fix_lint
+    on_yes: all_valid
+    on_no: fix_lint
   fix_lint:
     action: "ruff check --fix src/"
     next: check_lint
@@ -507,8 +507,8 @@ states:
     next: check_done
   check_done:
     action: "<exit-condition-command>"
-    on_success: done
-    on_failure: step_0
+    on_yes: done
+    on_no: step_0
     # evaluate:               # Optional for exit condition
     #   type: "<output_contains|output_numeric|llm_structured>"
     #   pattern: "<pattern>"  # For output_contains only
@@ -537,8 +537,8 @@ states:
     next: check_done
   check_done:
     action: "mypy src/ && ruff check src/ && pytest"
-    on_success: done
-    on_failure: step_0
+    on_yes: done
+    on_no: step_0
   done:
     terminal: true
 ```
@@ -678,16 +678,16 @@ states:
     action_type: shell
     evaluate:
       type: exit_code
-    on_success: check_semantic   # or check_invariants or done if later phases omitted
-    on_failure: execute
+    on_yes: check_semantic   # or check_invariants or done if later phases omitted
+    on_no: execute
   check_semantic:                # include if LLM-as-judge selected
     action: "echo 'Evaluating output quality'"
     action_type: shell
     evaluate:
       type: llm_structured
       prompt: "<auto-derived: 'Did the previous action successfully complete: <skill-description>? Answer YES or NO with brief rationale.'>"
-    on_success: check_invariants # or done if diff invariants omitted
-    on_failure: execute
+    on_yes: check_invariants # or done if diff invariants omitted
+    on_no: execute
   check_invariants:              # include if diff invariants selected
     action: "git diff --stat HEAD | wc -l | tr -d ' '"
     action_type: shell
@@ -695,8 +695,8 @@ states:
       type: output_numeric
       operator: lt
       target: 50
-    on_success: done
-    on_failure: execute
+    on_yes: done
+    on_no: execute
   done:
     terminal: true
 ```
@@ -716,8 +716,8 @@ states:
     capture: "current_item"
     evaluate:
       type: exit_code
-    on_success: execute
-    on_failure: done
+    on_yes: execute
+    on_no: done
   execute:
     action: "<skill-or-prompt> ${captured.current_item.output}"
     action_type: prompt
@@ -729,16 +729,16 @@ states:
     action_type: shell
     evaluate:
       type: exit_code
-    on_success: check_semantic   # or check_invariants or advance
-    on_failure: execute
+    on_yes: check_semantic   # or check_invariants or advance
+    on_no: execute
   check_semantic:                # include if LLM-as-judge selected
     action: "echo 'Evaluating output quality'"
     action_type: shell
     evaluate:
       type: llm_structured
       prompt: "<auto-derived: 'Did the previous action successfully complete: <skill-description>? Answer YES or NO with brief rationale.'>"
-    on_success: check_invariants # or advance
-    on_failure: execute
+    on_yes: check_invariants # or advance
+    on_no: execute
   check_invariants:              # include if diff invariants selected
     action: "git diff --stat HEAD | wc -l | tr -d ' '"
     action_type: shell
@@ -746,8 +746,8 @@ states:
       type: output_numeric
       operator: lt
       target: 50
-    on_success: advance
-    on_failure: execute
+    on_yes: advance
+    on_no: execute
   advance:
     action: "echo 'Item complete'"
     action_type: shell
@@ -798,8 +798,8 @@ check_stall:
     type: diff_stall
     scope: ["scripts/"]  # optional: limit diff to specific paths; omit for repo root
     max_stall: 2         # optional: consecutive no-change iterations before stall; default 1
-  on_success: advance    # progress detected — move on
-  on_failure: skip_item  # stalled — skip without exhausting max_iterations
+  on_yes: advance    # progress detected — move on
+  on_no: skip_item  # stalled — skip without exhausting max_iterations
 ```
 
 **When to add stall detection:**
@@ -840,8 +840,8 @@ states:
     capture: "current_item"
     evaluate:
       type: exit_code
-    on_success: execute
-    on_failure: done
+    on_yes: execute
+    on_no: done
   execute:
     action: /ll:refine-issue ${captured.current_item.output} --auto
     action_type: prompt
@@ -851,8 +851,8 @@ states:
     action_type: shell
     evaluate:
       type: exit_code
-    on_success: check_semantic
-    on_failure: execute
+    on_yes: check_semantic
+    on_no: execute
   check_semantic:
     action: echo 'Evaluating refinement quality'
     action_type: shell
@@ -862,8 +862,8 @@ states:
         Did the previous /ll:refine-issue action successfully refine the issue?
         Check that: the issue file was updated with new content, confidence scores
         were added or improved, and no errors occurred. Answer YES or NO.
-    on_success: check_invariants
-    on_failure: execute
+    on_yes: check_invariants
+    on_no: execute
   check_invariants:
     action: "git diff --stat HEAD | wc -l | tr -d ' '"
     action_type: shell
@@ -871,8 +871,8 @@ states:
       type: output_numeric
       operator: lt
       target: 50
-    on_success: advance
-    on_failure: execute
+    on_yes: advance
+    on_no: execute
   advance:
     action: echo 'Issue refined'
     action_type: shell

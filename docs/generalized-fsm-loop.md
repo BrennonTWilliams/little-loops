@@ -26,8 +26,8 @@ Example - using `ll-auto` as a step:
 states:
   process_issues:
     action: "ll-auto --max-issues 5"
-    on_success: "verify"
-    on_failure: "done"
+    on_yes: "verify"
+    on_no: "done"
 ```
 
 ## Common Loop Patterns
@@ -56,8 +56,8 @@ max_iterations: 20
 states:
   evaluate:
     action: "/ll:check-code types"
-    on_success: "done"
-    on_failure: "fix"
+    on_yes: "done"
+    on_no: "fix"
   fix:
     action: "/ll:manage-issue bug fix"
     next: "evaluate"
@@ -109,22 +109,22 @@ initial: "check_tests"
 states:
   check_tests:
     action: "pytest"
-    on_success: "check_lint"
-    on_failure: "fix_tests"
+    on_yes: "check_lint"
+    on_no: "fix_tests"
   fix_tests:
     action: "/ll:manage-issue bug fix"
     next: "check_tests"
   check_lint:
     action: "ruff check src/"
-    on_success: "check_types"
-    on_failure: "fix_lint"
+    on_yes: "check_types"
+    on_no: "fix_lint"
   fix_lint:
     action: "/ll:check-code fix"
     next: "check_lint"
   check_types:
     action: "mypy src/"
-    on_success: "all_valid"
-    on_failure: "fix_types"
+    on_yes: "all_valid"
+    on_no: "fix_types"
   fix_types:
     action: "/ll:manage-issue bug fix"
     next: "check_types"
@@ -153,8 +153,8 @@ states:
     next: "check_done"
   check_done:
     action: "mypy src/"
-    on_success: "done"
-    on_failure: "step_0"
+    on_yes: "done"
+    on_no: "step_0"
   done:
     terminal: true
 max_iterations: 20
@@ -173,8 +173,8 @@ initial: "check"
 states:
   check:
     action: "/ll:check-code lint"
-    on_success: "done"
-    on_failure: "fix"
+    on_yes: "done"
+    on_no: "fix"
   fix:
     action: "/ll:check-code fix"
     next: "check"
@@ -266,8 +266,8 @@ def compile_invariants(spec: dict) -> dict:
 
         states[check_state] = {
             "action": constraint["check"],
-            "on_success": next_check,
-            "on_failure": fix_state,
+            "on_yes": next_check,
+            "on_no": fix_state,
         }
         states[fix_state] = {
             "action": constraint["fix"],
@@ -331,8 +331,8 @@ states:                         # State definitions
     
     # --- Routing Layer ---
     # Option 1: Shorthand for common cases
-    on_success: string          # Next state on success verdict
-    on_failure: string          # Next state on failure verdict
+    on_yes: string          # Next state on success verdict
+    on_no: string          # Next state on failure verdict
     on_error: string            # Next state on error verdict
     
     # Option 2: Full routing table (overrides shorthand)
@@ -402,7 +402,7 @@ The `evaluate` block defines how to interpret an action's output. Every evaluato
 
 ```yaml
 result:
-  verdict: string       # The routing key (e.g., "success", "failure", "target", "blocked")
+  verdict: string       # The routing key (e.g., "yes", "no", "target", "blocked")
   details: object       # Evaluator-specific data (available as ${result.*})
 ```
 
@@ -421,7 +421,7 @@ states:
     action: "pytest --tb=short"
     evaluate:
       type: exit_code
-    # Result: { verdict: "success" | "failure" | "error", details: { exit_code: 0 } }
+    # Result: { verdict: "yes" | "no" | "error", details: { exit_code: 0 } }
 ```
 
 ### Layer 2: Route
@@ -436,8 +436,8 @@ For simple success/failure routing, use the shorthand:
 states:
   check:
     action: "pytest"
-    on_success: "deploy"
-    on_failure: "fix"
+    on_yes: "deploy"
+    on_no: "fix"
     on_error: "alert"
 ```
 
@@ -482,7 +482,7 @@ states:
 
 1. If `next` is present → unconditional transition (no evaluation)
 2. If `route` is present → use full routing table
-3. If `on_success`/`on_failure`/`on_error` → use shorthand routing
+3. If `on_yes`/`on_no`/`on_error` → use shorthand routing
 4. If `terminal: true` → end loop
 5. Otherwise → error (no valid transition)
 
@@ -602,7 +602,7 @@ evaluate:
     properties:
       verdict:
         type: string
-        enum: ["success", "failure", "blocked", "partial"]
+        enum: ["yes", "no", "blocked", "partial"]
       confidence:
         type: number
       reason:
@@ -621,7 +621,7 @@ schema:
   properties:
     verdict:
       type: string
-      enum: ["success", "failure", "blocked", "partial"]
+      enum: ["yes", "no", "blocked", "partial"]
       description: |
         - success: The action completed its goal
         - failure: The action failed, should retry
@@ -644,7 +644,7 @@ The evaluator adds a `confident` flag to the result:
 
 ```yaml
 result:
-  verdict: "success"           # From LLM response
+  verdict: "yes"           # From LLM response
   details:
     confidence: 0.85
     confident: true            # confidence >= min_confidence
@@ -678,7 +678,7 @@ states:
       type: llm_structured
       min_confidence: 0.7
       # When confidence < min_confidence, verdict becomes "<verdict>_uncertain"
-      # e.g., "success" → "success_uncertain"
+      # e.g., "yes" → "yes_uncertain"
       uncertain_suffix: true
     route:
       success: "verify"
@@ -930,8 +930,8 @@ initial: "test"
 states:
   test:
     action: "pytest"
-    on_success: "done"
-    on_failure: "fix"
+    on_yes: "done"
+    on_no: "fix"
   fix:
     action: "git stash pop"    # Try a stashed fix
     next: "test"
@@ -948,14 +948,14 @@ initial: "check"
 states:
   check:
     action: "mypy src/"
-    on_success: "done"
-    on_failure: "fix"
+    on_yes: "done"
+    on_no: "fix"
   
   fix:
     action: "/ll:manage-issue bug fix"
     # Default: evaluate with llm_structured, route success/failure
-    on_success: "check"
-    on_failure: "check"    # Retry even on failure (up to max_iterations)
+    on_yes: "check"
+    on_no: "check"    # Retry even on failure (up to max_iterations)
   
   done:
     terminal: true
@@ -993,8 +993,8 @@ states:
 
   verify:
     action: "pytest tests/"
-    on_success: "done"
-    on_failure: "fix"
+    on_yes: "done"
+    on_no: "fix"
 
   escalate:
     action: "echo 'Blocked: ${result.details.reason}' | notify-team"
@@ -1049,8 +1049,8 @@ llm:
 states:
   lint:
     action: "ruff check src/"
-    on_success: "typecheck"
-    on_failure: "fix_lint"
+    on_yes: "typecheck"
+    on_no: "fix_lint"
 
   fix_lint:
     action: "ruff check src/ --fix"
@@ -1058,13 +1058,13 @@ states:
 
   typecheck:
     action: "mypy src/"
-    on_success: "test"
-    on_failure: "done"    # Can't auto-fix types
+    on_yes: "test"
+    on_no: "done"    # Can't auto-fix types
 
   test:
     action: "pytest --tb=short"
-    on_success: "done"
-    on_failure: "done"
+    on_yes: "done"
+    on_no: "done"
 
   done:
     terminal: true
@@ -1119,8 +1119,8 @@ states:
   verify:
     action: "pytest && mypy src/"
     timeout: 300
-    on_success: "done"
-    on_failure: "rollback"
+    on_yes: "done"
+    on_no: "rollback"
 
   manual_check:
     action: "echo 'Low confidence refactor - needs review: ${result.details.reason}'"
@@ -1145,8 +1145,8 @@ timeout: 1800
 
 | Outcome | Trigger | Default Behavior |
 |---------|---------|------------------|
-| **Success** | Evaluator returns success verdict | Route via `success` or `on_success` |
-| **Failure** | Evaluator returns failure verdict | Route via `failure` or `on_failure` |
+| **Success** | Evaluator returns success verdict | Route via `success` or `on_yes` |
+| **Failure** | Evaluator returns failure verdict | Route via `failure` or `on_no` |
 | **Error** | Execution crash, timeout, eval error | Route via `_error` or terminate loop |
 
 ### Customizing Error Handling
@@ -1155,8 +1155,8 @@ timeout: 1800
 states:
   check:
     action: "pytest"
-    on_success: "deploy"
-    on_failure: "fix"
+    on_yes: "deploy"
+    on_no: "fix"
     on_error: "alert"           # Go to recovery state
 
 # Or with full routing
@@ -1398,7 +1398,7 @@ ll-loop history fix-types
     "errors": { "output": "4", "exit_code": 0 }
   },
   "last_result": {
-    "verdict": "failure",
+    "verdict": "no",
     "details": { "confidence": 0.65, "reason": "..." }
   },
   "started_at": "2024-01-15T10:30:00Z"
@@ -1416,13 +1416,13 @@ Events stream to `.loops/.running/<name>.events.jsonl`:
 {"event": "state_enter", "state": "check", "iteration": 1, "ts": "..."}
 {"event": "action_start", "action": "mypy src/", "ts": "..."}
 {"event": "action_complete", "exit_code": 1, "duration_ms": 2340, "ts": "..."}
-{"event": "evaluate", "type": "exit_code", "verdict": "failure", "ts": "..."}
-{"event": "route", "from": "check", "to": "fix", "verdict": "failure", "ts": "..."}
+{"event": "evaluate", "type": "exit_code", "verdict": "no", "ts": "..."}
+{"event": "route", "from": "check", "to": "fix", "verdict": "no", "ts": "..."}
 {"event": "state_enter", "state": "fix", "iteration": 1, "ts": "..."}
 {"event": "action_start", "action": "/ll:manage-issue bug fix", "ts": "..."}
 {"event": "action_complete", "duration_ms": 45000, "ts": "..."}
-{"event": "evaluate", "type": "llm_structured", "verdict": "success", "confidence": 0.92, "ts": "..."}
-{"event": "route", "from": "fix", "to": "verify", "verdict": "success", "ts": "..."}
+{"event": "evaluate", "type": "llm_structured", "verdict": "yes", "confidence": 0.92, "ts": "..."}
+{"event": "route", "from": "fix", "to": "verify", "verdict": "yes", "ts": "..."}
 {"event": "loop_complete", "final_state": "done", "iterations": 3, "ts": "..."}
 ```
 
@@ -1517,8 +1517,8 @@ Tier 1 evaluators are pure functions—deterministic and fast.
 
 class TestExitCodeEvaluator:
     @pytest.mark.parametrize("exit_code,expected_verdict", [
-        (0, "success"),
-        (1, "failure"),
+        (0, "yes"),
+        (1, "no"),
         (2, "error"),
         (127, "error"),
     ])
@@ -1577,7 +1577,7 @@ def mock_llm_evaluator():
 class TestLLMEvaluator:
     def test_uncertain_suffix_applied(self, mock_anthropic):
         """Low confidence + uncertain_suffix=True → success_uncertain."""
-        mock_anthropic.return_value = {"verdict": "success", "confidence": 0.5}
+        mock_anthropic.return_value = {"verdict": "yes", "confidence": 0.5}
 
         result = evaluate_llm_structured(
             output="Fixed the bug",
@@ -1586,7 +1586,7 @@ class TestLLMEvaluator:
             uncertain_suffix=True
         )
 
-        assert result["verdict"] == "success_uncertain"
+        assert result["verdict"] == "yes_uncertain"
         assert result["details"]["confident"] is False
 ```
 
@@ -1624,7 +1624,7 @@ class TestExecutor:
             ("fix", {"stdout": "Fixed"}),
             ("check", {"exit_code": 0}),  # Second check passes
         ])
-        mock_llm_evaluator.set_verdict("fix", "success")
+        mock_llm_evaluator.set_verdict("fix", "yes")
 
         executor = FSMExecutor(fsm, ...)
         result = executor.run()
@@ -1752,15 +1752,15 @@ max_iterations: 10
 states:
   check_types:
     action: "mypy src/"
-    on_success: check_lint
-    on_failure: fix_types
+    on_yes: check_lint
+    on_no: fix_types
   fix_types:
     action: "/ll:manage-issue bug fix"
     next: check_types
   check_lint:
     action: "ruff check src/"
-    on_success: all_valid
-    on_failure: fix_lint
+    on_yes: all_valid
+    on_no: fix_lint
   fix_lint:
     action: "/ll:check-code fix"
     next: check_lint

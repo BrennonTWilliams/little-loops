@@ -142,8 +142,8 @@ max_iterations: 10
 states:
   run_tests:
     action: "python -m pytest scripts/tests/ -v"
-    on_success: check_lint
-    on_failure: fix_errors
+    on_yes: check_lint
+    on_no: fix_errors
     on_error: fix_errors
   fix_errors:
     action: "Fix the failing tests based on the error output"
@@ -151,8 +151,8 @@ states:
     next: run_tests
   check_lint:
     action: "ruff check scripts/"
-    on_success: done
-    on_failure: fix_lint
+    on_yes: done
+    on_no: fix_lint
     on_error: fix_lint
   fix_lint:
     action: "ruff check --fix scripts/"

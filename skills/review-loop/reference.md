@@ -84,8 +84,8 @@ states:
     action: "ruff check ."
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
 
 # After
 states:
@@ -93,8 +93,8 @@ states:
     action: "ruff check ."
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix      # or a dedicated error-handling state
 ```
 
@@ -153,8 +153,8 @@ states:
     evaluate:
       type: convergence
       target: 0
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
 
 # After
 states:
@@ -162,8 +162,8 @@ states:
     evaluate:
       type: convergence
       target: 0
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_maintain: fix   # treat stall same as failure, or route to a dedicated state
 ```
 
@@ -238,8 +238,8 @@ states:
       type: output_numeric
       operator: lt
       target: 10
-    on_success: done
-    on_failure: improve
+    on_yes: done
+    on_no: improve
 
 # After
 states:
@@ -250,8 +250,8 @@ states:
       operator: lt
       target: 10
     capture: current_value    # available as $captured in downstream states
-    on_success: done
-    on_failure: improve
+    on_yes: done
+    on_no: improve
 ```
 
 ---
@@ -286,16 +286,16 @@ For each non-terminal state: if ALL of its `on_error` and `on_partial` transitio
 # Before
 states:
   evaluate:
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_partial: evaluate   # loops back
     on_error: evaluate     # loops back — no escape
 
 # After
 states:
   evaluate:
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_partial: evaluate
     on_error: error-terminal   # dedicated escape for persistent errors
 ```
@@ -389,7 +389,7 @@ For each state not reachable via BFS from the `initial` state (using all outboun
 **Breaking**: false
 **When to auto-apply**: Never (cannot safely infer the missing transition target)
 
-For each non-terminal state that has no outbound transitions (`on_success`, `on_failure`, `on_partial`, `on_error`, `next`, or any `route.*` key):
+For each non-terminal state that has no outbound transitions (`on_yes`, `on_no`, `on_partial`, `on_error`, `next`, or any `route.*` key):
 
 **Finding**: `Error: states.<name>: Non-terminal state with no outbound transitions. The FSM will stall here with no way to proceed.`
 
@@ -519,8 +519,8 @@ states:
   check_config:
     action: "Does the file config.json exist in the current directory?"
     action_type: prompt
-    on_success: proceed
-    on_failure: error
+    on_yes: proceed
+    on_no: error
 
 # After:
 states:
@@ -530,8 +530,8 @@ states:
     evaluate:
       type: output_contains
       value: "yes"
-    on_success: proceed
-    on_failure: error
+    on_yes: proceed
+    on_no: error
 
 # Example — Group B (counting)
 # Before:
@@ -539,8 +539,8 @@ states:
   count_errors:
     action: "Count the number of lines containing ERROR in build.log"
     action_type: prompt
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
 
 # After:
 states:
@@ -551,8 +551,8 @@ states:
       type: output_numeric
       operator: eq
       target: 0
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
 ```
 
 ---
@@ -562,7 +562,7 @@ states:
 In `--auto` mode, apply only fixes that are:
 1. `breaking: false`
 2. Pure additions (adding a missing field, not changing an existing value)
-3. Not routing changes (do not auto-add `on_error`, `on_maintain`, or change `on_success`/`on_failure`)
+3. Not routing changes (do not auto-add `on_error`, `on_maintain`, or change `on_yes`/`on_no`)
 
 Eligible for auto-apply in `--auto` mode:
 - **QC-6**: Add explicit `on_handoff: pause` if `max_iterations > 20` and `on_handoff` is absent — safe since `pause` is already the default

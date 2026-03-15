@@ -188,8 +188,8 @@ class StateConfig:
             If None, uses heuristic: / prefix = slash_command, else = shell.
         evaluate: Evaluator configuration for result interpretation
         route: Full routing table (verdict -> state mapping)
-        on_success: Shorthand for success verdict routing
-        on_failure: Shorthand for failure verdict routing
+        on_yes: Shorthand for yes verdict routing
+        on_no: Shorthand for no verdict routing
         on_error: Shorthand for error verdict routing
         on_partial: Shorthand for partial verdict routing
         next: Unconditional transition (no evaluation)

@@ -35,22 +35,22 @@ max_iterations: {{max_iterations}}
 states:
   check_lint:
     action: "ruff check {{src_dir}}"
-    on_success: check_types
-    on_failure: fix_lint
+    on_yes: check_types
+    on_no: fix_lint
   fix_lint:
     action: "ruff check --fix {{src_dir}}"
     next: check_lint
   check_types:
     action: "mypy {{src_dir}}"
-    on_success: check_format
-    on_failure: fix_types
+    on_yes: check_format
+    on_no: fix_types
   fix_types:
     action: "echo 'Fix type errors manually or use /ll:manage-issue bug fix'"
     next: check_types
   check_format:
     action: "ruff format --check {{src_dir}}"
-    on_success: all_valid
-    on_failure: fix_format
+    on_yes: all_valid
+    on_no: fix_format
   fix_format:
     action: "ruff format {{src_dir}}"
     next: check_format
@@ -67,15 +67,15 @@ max_iterations: {{max_iterations}}
 states:
   check_lint:
     action: "npx eslint {{src_dir}}"
-    on_success: check_types
-    on_failure: fix_lint
+    on_yes: check_types
+    on_no: fix_lint
   fix_lint:
     action: "npx eslint --fix {{src_dir}}"
     next: check_lint
   check_types:
     action: "npx tsc --noEmit"
-    on_success: all_valid
-    on_failure: fix_types
+    on_yes: all_valid
+    on_no: fix_types
   fix_types:
     action: "echo 'Fix type errors manually'"
     next: check_types
@@ -92,8 +92,8 @@ max_iterations: {{max_iterations}}
 states:
   evaluate:
     action: "{{test_cmd}}"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix
   fix:
     action: "/ll:manage-issue bug fix"
@@ -116,22 +116,22 @@ max_iterations: {{max_iterations}}
 states:
   check_tests:
     action: "{{test_cmd}}"
-    on_success: check_types
-    on_failure: fix_tests
+    on_yes: check_types
+    on_no: fix_tests
   fix_tests:
     action: "/ll:manage-issue bug fix"
     next: check_tests
   check_types:
     action: "{{type_cmd}}"
-    on_success: check_lint
-    on_failure: fix_types
+    on_yes: check_lint
+    on_no: fix_types
   fix_types:
     action: "/ll:manage-issue bug fix"
     next: check_types
   check_lint:
     action: "{{lint_cmd}}"
-    on_success: all_valid
-    on_failure: fix_lint
+    on_yes: all_valid
+    on_no: fix_lint
   fix_lint:
     action: "{{lint_fix_cmd}}"
     next: check_lint

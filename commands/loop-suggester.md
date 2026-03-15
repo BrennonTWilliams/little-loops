@@ -125,8 +125,8 @@ max_iterations: 10
 states:
   evaluate:
     action: "{command that returns exit 0 on success, non-zero on failure}"
-    on_success: done
-    on_failure: fix
+    on_yes: done
+    on_no: fix
     on_error: fix
   fix:
     action: "The check command failed with the above output. Analyze the errors and fix them."
@@ -149,16 +149,16 @@ max_iterations: 15
 states:
   check_{check_1_name}:
     action: "{command_1}"
-    on_success: check_{check_2_name}
-    on_failure: fix_{check_1_name}
+    on_yes: check_{check_2_name}
+    on_no: fix_{check_1_name}
   fix_{check_1_name}:
     action: "One or more checks failed. Review and fix the underlying issues without breaking passing checks."
     action_type: prompt
     next: check_{check_1_name}
   check_{check_2_name}:
     action: "{command_2}"
-    on_success: check_{check_3_name}   # or all_valid if last
-    on_failure: fix_{check_2_name}
+    on_yes: check_{check_3_name}   # or all_valid if last
+    on_no: fix_{check_2_name}
   fix_{check_2_name}:
     action: "Fix the failing check."
     action_type: prompt
@@ -222,8 +222,8 @@ states:
     next: check_done
   check_done:
     action: "{optional final verification command}"
-    on_success: done
-    on_failure: step_0
+    on_yes: done
+    on_no: step_0
   done:
     terminal: true
 ```
