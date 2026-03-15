@@ -54,7 +54,9 @@ ll-loop run single-issue-refinement-loop FEAT-719
 ll-loop run single-issue-refinement-loop --context input=FEAT-719
 ```
 
-## Use Case
+## Use Cases
+
+### Structured IDs and file paths
 
 **Who**: A developer using `ll-loop` to run parameterized loops (e.g., single-issue refinement, file processors).
 
@@ -64,17 +66,44 @@ ll-loop run single-issue-refinement-loop --context input=FEAT-719
 
 **Outcome**: `ll-loop run single-issue-refinement-loop FEAT-719` runs the loop with `context["input"] = "FEAT-719"`, identical to the verbose `--context input=FEAT-719` form.
 
+### Natural language prompts
+
+**Who**: A developer using `ll-loop` to run prompt-driven loops (e.g., research, summarization, Q&A).
+
+**Context**: They have a loop YAML whose `init` state passes `{{context.input}}` directly into a Claude prompt. The "input" is a free-form instruction or question, not a structured ID.
+
+**Goal**: Inline a natural language string as the loop's driving prompt without needing `--context`.
+
+**Outcome**: `ll-loop run research-loop "What are the best practices for Python error handling?"` runs the loop with `context["input"]` set to the full question string, making prompt-driven loops feel like natural CLI tools.
+
+Example loop YAML for this pattern:
+```yaml
+name: research-loop
+initial: init
+context:
+  input: null   # natural language question, populated at runtime
+states:
+  init:
+    action: "Research and summarize: {{context.input}}"
+    on_success: done
+    on_failure: done
+  done:
+    terminal: true
+```
+
 ## Motivation
 
 Single-item loops (refine one issue, process one file, run one check) are a natural pattern but are awkward to invoke today — users must know the internal context key name and use the verbose `--context` flag. A positional input arg makes `ll-loop` feel like a natural CLI tool and unlocks reusable parameterized loop templates.
 
 ## Implementation Steps
 
-1. **CLI argument**: Add optional positional `input` to the `run` subparser in `scripts/little_loops/cli/loop/__init__.py` (after `loop`).
-2. **Injection in `cmd_run`**: In `scripts/little_loops/cli/loop/run.py`, after loading the FSM, inject `args.input` into `fsm.context["input"]` when present (before existing `--context` overrides are applied, so `--context` can still override).
-3. **Schema update**: Add optional `input_key` string field to FSM loop schema (`fsm-loop-schema.json`) — defaults to `"input"`. Allows loop authors to name the expected key something other than `input`.
-4. **Dry-run display**: Show the resolved input value in the execution plan printed by `print_execution_plan`.
-5. **Validation**: If loop YAML declares `context.input: null` and no input is provided at runtime, emit a warning (not an error, to keep loops runnable without input).
+1. **CLI argument**: In `scripts/little_loops/cli/loop/__init__.py:94`, add `run_parser.add_argument("input", nargs="?", default=None, help="Optional input string injected as context['input']")` after the existing `loop` positional.
+2. **Injection in `cmd_run`**: In `scripts/little_loops/cli/loop/run.py`, insert positional injection **before** the `for kv in getattr(args, "context", ...)` loop at line 50 — e.g., `if getattr(args, "input", None): fsm.context["input"] = args.input`. This ensures `--context input=X` can still override.
+3. **Schema update**: In `scripts/little_loops/fsm/fsm-loop-schema.json`, add `"input_key": {"type": "string", "description": "Context key populated by the positional input arg (default: 'input')"}` to the top-level `properties` object (the schema uses `"additionalProperties": false`, so the field must be explicitly declared).
+4. **`FSMLoop` dataclass**: Optionally add `input_key: str = "input"` to `scripts/little_loops/fsm/schema.py:FSMLoop` (line ~389) so `cmd_run` can use `fsm.input_key` instead of hardcoding `"input"`.
+5. **Dry-run display**: In `scripts/little_loops/cli/loop/_helpers.py:print_execution_plan` (line 148), add a `context` section after `Max iterations` that prints `fsm.context` when non-empty — shows the resolved `input` value.
+6. **Test helper sync**: In `scripts/tests/test_ll_loop_parsing.py:_create_run_parser` (line 26), add `parser.add_argument("input", nargs="?", default=None)` to keep it synchronized with the production parser.
+7. **Validation**: If `fsm.context.get(fsm.input_key) is None` after all injections (positional + `--context`), emit a warning via `logger.warning(...)` (not an error).
 
 ## API/Interface
 
@@ -112,13 +141,17 @@ ll-loop run <loop-name> [input] [options]
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — add optional `input_key` string field
 
 ### Dependent Files (Callers/Importers)
-- TBD — use `grep -r "cmd_run\|run subparser" scripts/` to find references
+- `scripts/little_loops/cli/loop/__init__.py:288` — dispatches to `cmd_run(args.loop, args, loops_dir, logger)`; `args.loop` becomes the first arg, new `args.input` will follow
+- `scripts/little_loops/fsm/schema.py:389` — `FSMLoop.context: dict[str, Any]` — positional input is injected here; no `input_key` field exists on `FSMLoop` yet
+- `scripts/little_loops/cli/loop/_helpers.py:148` — `print_execution_plan(fsm)` prints dry-run plan; currently prints `context` only implicitly via state actions; needs a `context` section showing resolved `input` value
 
 ### Similar Patterns
-- `--context key=value` parsing in `run.py` — positional injection should follow same pattern and apply before `--context` overrides
+- `run.py:50-54` — existing `--context` parsing loop (`for kv in getattr(args, "context", ...) or []`); positional injection should happen **before** this block so `--context input=X` can still override
+- `test_ll_loop_parsing.py:26-37` — `_create_run_parser()` mirrors the real run subparser; this helper must also get `input` added so parsing tests stay synchronized with production code
 
 ### Tests
-- `scripts/tests/` — add tests for: positional injection, `--context` override wins, no-input default
+- `scripts/tests/test_ll_loop_parsing.py` — primary test target; `_create_run_parser()` (line 26) and `TestLoopArgumentParsing` class (line 17) are where `input` parsing tests belong (see `test_context_single_flag` at line 179 for style guide)
+- `scripts/tests/test_ll_loop_commands.py` — integration-level `cmd_run` tests (currently no context tests); add tests covering: positional injection, `--context` override wins, no-input default behavior
 
 ### Documentation
 - `docs/` — update ll-loop CLI reference if positional arg docs exist
@@ -140,11 +173,13 @@ ll-loop run <loop-name> [input] [options]
 
 ## Verification Notes
 
-- **Date**: 2026-03-14
+- **Date**: 2026-03-14 (re-verified 2026-03-14)
 - **Verdict**: VALID
 - `scripts/little_loops/cli/loop/__init__.py:94` registers only `"loop"` as a positional argument for the `run` subparser — no second positional `input` argument exists. `run.py` has no `args.input` injection logic. `fsm-loop-schema.json` has no `input_key` field. Feature not yet implemented.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-15T03:26:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf30ff97-a5f9-4719-b28c-ab6580383ecd.jsonl`
+- `/ll:verify-issues` - 2026-03-15T03:23:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6cacfa2-fc65-45e7-9629-01c3fe3df856.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/582c29ac-d327-46f4-8794-3433874ce5c2.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
