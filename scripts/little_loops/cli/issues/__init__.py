@@ -20,6 +20,7 @@ def main_issues() -> int:
     from little_loops.cli.issues.list_cmd import cmd_list
     from little_loops.cli.issues.next_id import cmd_next_id
     from little_loops.cli.issues.refine_status import cmd_refine_status
+    from little_loops.cli.issues.search import cmd_search
     from little_loops.cli.issues.sequence import cmd_sequence
     from little_loops.cli.issues.show import cmd_show
     from little_loops.cli_args import add_config_arg
@@ -33,6 +34,7 @@ def main_issues() -> int:
 Sub-commands:
   next-id        Print next globally unique issue number
   list           List active issues with optional filters
+  search         Search issues with filters and sorting
   count          Count active issues (total or filtered)
   show           Show summary card for a single issue
   sequence       Suggest dependency-ordered implementation sequence
@@ -43,6 +45,9 @@ Sub-commands:
 Examples:
   %(prog)s next-id
   %(prog)s list --type FEAT --priority P2
+  %(prog)s search "caching" --include-completed
+  %(prog)s search --type BUG --priority P0-P2 --sort date
+  %(prog)s search --since 2026-01-01 --json
   %(prog)s count
   %(prog)s count --json
   %(prog)s count --type BUG
@@ -78,6 +83,71 @@ Examples:
     )
     ls.add_argument("--json", action="store_true", help="Output as JSON array")
     add_config_arg(ls)
+
+    sr = subs.add_parser("search", aliases=["sr"], help="Search issues with filters and sorting")
+    sr.set_defaults(command="search")
+    sr.add_argument("query", nargs="?", default=None, help="Text to match against title and body (case-insensitive)")
+    sr.add_argument(
+        "--type",
+        choices=["BUG", "FEAT", "ENH"],
+        action="append",
+        dest="type",
+        metavar="TYPE",
+        help="Filter by issue type: BUG, FEAT, ENH (repeatable)",
+    )
+    sr.add_argument(
+        "--priority",
+        action="append",
+        dest="priority",
+        metavar="P",
+        help="Filter by priority: P0-P5 or range e.g. P0-P2 (repeatable)",
+    )
+    sr.add_argument(
+        "--status",
+        choices=["active", "completed", "deferred", "all"],
+        default="active",
+        help="Filter by status (default: active)",
+    )
+    sr.add_argument(
+        "--include-completed",
+        action="store_true",
+        default=False,
+        dest="include_completed",
+        help="Include completed issues (alias for --status all)",
+    )
+    sr.add_argument(
+        "--label",
+        action="append",
+        dest="label",
+        metavar="LABEL",
+        help="Filter by label tag (repeatable)",
+    )
+    sr.add_argument("--since", metavar="DATE", help="Only issues on or after DATE (YYYY-MM-DD)")
+    sr.add_argument("--until", metavar="DATE", help="Only issues on or before DATE (YYYY-MM-DD)")
+    sr.add_argument(
+        "--date-field",
+        choices=["discovered", "updated"],
+        default="discovered",
+        dest="date_field",
+        help="Date field to filter on (default: discovered)",
+    )
+    sr.add_argument(
+        "--sort",
+        choices=["priority", "id", "date", "type", "title"],
+        default="priority",
+        help="Sort field (default: priority)",
+    )
+    sr.add_argument("--asc", action="store_true", default=False, help="Sort ascending")
+    sr.add_argument("--desc", action="store_true", default=False, help="Sort descending")
+    sr.add_argument("--json", action="store_true", help="Output as JSON array")
+    sr.add_argument(
+        "--format",
+        choices=["table", "list", "ids"],
+        default="table",
+        help="Output format: table (default), list, ids",
+    )
+    sr.add_argument("--limit", type=int, metavar="N", help="Cap results at N")
+    add_config_arg(sr)
 
     cnt = subs.add_parser("count", aliases=["c"], help="Count active issues")
     cnt.set_defaults(command="count")
@@ -162,6 +232,8 @@ Examples:
         return cmd_next_id(config)
     if args.command == "list":
         return cmd_list(config, args)
+    if args.command == "search":
+        return cmd_search(config, args)
     if args.command == "count":
         return cmd_count(config, args)
     if args.command == "sequence":

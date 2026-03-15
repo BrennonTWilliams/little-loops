@@ -118,13 +118,13 @@ Output:
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues search` without arguments lists all active issues (same as `ll-issues list`)
-- [ ] Text query matches issue title and body (case-insensitive substring)
-- [ ] `--type`, `--priority`, `--status`, `--label`, `--since`, `--until` filters all work independently and in combination
-- [ ] `--sort` and direction flags produce correctly ordered output
-- [ ] `--json` outputs a valid JSON array with all relevant fields
-- [ ] `--include-completed` (or `--status all`) searches completed issues too
-- [ ] Existing `ll-issues list` behavior is unchanged
+- [x] `ll-issues search` without arguments lists all active issues (same as `ll-issues list`)
+- [x] Text query matches issue title and body (case-insensitive substring)
+- [x] `--type`, `--priority`, `--status`, `--label`, `--since`, `--until` filters all work independently and in combination
+- [x] `--sort` and direction flags produce correctly ordered output
+- [x] `--json` outputs a valid JSON array with all relevant fields
+- [x] `--include-completed` (or `--status all`) searches completed issues too
+- [x] Existing `ll-issues list` behavior is unchanged
 
 ## Impact
 
@@ -139,7 +139,16 @@ Output:
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P3
+**Completed** | Created: 2026-03-13 | Closed: 2026-03-14 | Priority: P3
+
+## Resolution
+
+Implemented `ll-issues search` as a new subcommand in `scripts/little_loops/cli/issues/search.py` following the `list_cmd.py` pattern.
+
+- New file: `scripts/little_loops/cli/issues/search.py` — filter chain (text, type, priority, status, label, date), sort logic, three output modes (table, list, ids), plus `--json`
+- Updated: `scripts/little_loops/cli/issues/__init__.py` — registered `search` (alias `sr`) subcommand
+- New tests: `scripts/tests/test_issues_search.py` — 28 tests covering all filters, sorts, and output formats
+- Updated: `docs/reference/API.md` — added `search` to the `ll-issues` sub-commands table with full option reference
 
 ## Verification Notes
 
@@ -151,6 +160,8 @@ Output:
   - Implementation Step 3 should reference these instead of "reuse issue-parsing logic from `list_cmd.py` / `issue_discovery/`"
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`
+- `/ll:ready-issue` - 2026-03-15T00:24:21 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1e9fb4fb-f33a-414f-a38a-7ab5c2d50836.jsonl`
 - `/ll:capture-issue` - 2026-03-13T21:11:34Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c3b3d882-e2fb-41a6-9b04-cfc872701991.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de0aec6f-4d8a-4d72-9519-a12883d491ba.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/de0aec6f-4d8a-4d72-9519-a12883d491ba.jsonl`

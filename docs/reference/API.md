@@ -2777,11 +2777,52 @@ Entry point for `ll-issues` command. Issue management and visualization utilitie
 |-------------|-------------|
 | `next-id` | Print next globally unique issue number |
 | `list` | List active issues with optional type/priority filters |
+| `search` | Search issues with text query, filters, sorting, and multiple output formats |
 | `count` | Count active issues with optional filters (`--type`, `--priority`, `--json`) |
 | `show` | Show summary card for a single issue |
 | `sequence` | Suggest dependency-ordered implementation sequence |
 | `impact-effort` | Display impact vs effort matrix for active issues |
 | `refine-status` | Refinement depth table sorted by commands touched (`--type`, `--format json`) |
+
+#### search
+
+```
+ll-issues search [QUERY] [OPTIONS]
+```
+
+Search across active, completed, and/or deferred issues with rich filtering, sorting, and output options.
+
+**Arguments:**
+- `QUERY` - Optional text to match against title and body (case-insensitive substring)
+
+**Filters:**
+- `--type {BUG,FEAT,ENH}` - Filter by issue type (repeatable)
+- `--priority P` - Filter by priority P0–P5 or range e.g. `P0-P2` (repeatable)
+- `--status {active,completed,deferred,all}` - Filter by status (default: `active`)
+- `--include-completed` - Include completed issues (alias for `--status all`)
+- `--label LABEL` - Filter by label tag in the `## Labels` section (repeatable)
+- `--since DATE` - Only issues discovered on or after DATE (`YYYY-MM-DD`)
+- `--until DATE` - Only issues discovered on or before DATE (`YYYY-MM-DD`)
+- `--date-field {discovered,updated}` - Date field to filter on (default: `discovered`)
+
+**Sorting:**
+- `--sort {priority,id,date,type,title}` - Sort field (default: `priority`)
+- `--asc` / `--desc` - Sort direction (default: asc except date which defaults to desc)
+
+**Output:**
+- `--json` - Output as JSON array with fields: `id`, `priority`, `type`, `title`, `path`, `status`, `discovered_date`
+- `--format {table,list,ids}` - Output format (default: `table`)
+- `--limit N` - Cap results at N
+
+**Examples:**
+```bash
+ll-issues search                           # list all active issues
+ll-issues search "caching" --include-completed
+ll-issues search --type BUG --priority P0-P2
+ll-issues search --since 2026-01-01 --sort date
+ll-issues search --label api --json
+ll-issues search --type BUG --format ids
+```
 
 #### show
 
