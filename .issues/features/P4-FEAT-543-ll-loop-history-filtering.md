@@ -16,12 +16,12 @@ outcome_confidence: 93
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/info.py`
-- **Line(s)**: 297–325 (updated from 215–237)
+- **Line(s)**: 397– (updated from 297–325)
 - **Anchor**: `in function cmd_history()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/cli/loop/info.py#L62-L84)
 
 - **File**: `scripts/little_loops/cli/loop/__init__.py`
-- **Line(s)**: 205–220 (updated from 189–197)
+- **Line(s)**: 213–235 (updated from 205–220)
 - **Anchor**: `history_parser` argument definition
 - **Code**:
 ```python
@@ -155,9 +155,9 @@ _(ENH-539 removed — completed as duplicate of ENH-626)_
 
 ## Verification Notes
 
-**Verdict**: NEEDS_UPDATE — 2026-03-14
+**Verdict**: NEEDS_UPDATE — 2026-03-15
 
-- `cmd_history()` has drifted to `info.py:**391**` (issue body says 297–325). `history_parser` args span `__init__.py` lines **206–228** (issue body says 205–220; `--json` is at line 228, beyond the stated range). `--json`, `--verbose`, `--full` already implemented (via ENH-740); `--event`, `--state`, `--since` still absent.
+- `cmd_history()` is at `info.py:**397**` (issue body updated to reflect). `history_parser` args span `__init__.py` lines **213–235** (updated). `--json`, `--verbose`, `--full` already implemented (via ENH-740); `--event`, `--state`, `--since` still absent.
 
 ## Tradeoff Review Note
 
@@ -176,6 +176,7 @@ _(ENH-539 removed — completed as duplicate of ENH-626)_
 Update first — HIGH utility (debugging 200+ event logs is a real pain point), but the `--since` duration parser is a non-trivial utility that will also be needed by `ll-messages` and `ll-history`. Before implementing, extract the duration string parser (`"1h"` → seconds, `"30m"` → seconds, `"2d"` → seconds) as a shared utility in `little_loops/text_utils.py` or a new `time_utils.py`. This reduces maintenance overhead (one implementation vs three) and makes the feature scope cleaner. Once that utility exists, the filtering implementation is straightforward.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-15T17:23:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7c4b6f16-1629-4fbe-91ed-e715b7a19026.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no --event, --state, --json, --since flags
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: filters still absent; removed stale Blocked By ENH-539 (completed as duplicate of ENH-626)
