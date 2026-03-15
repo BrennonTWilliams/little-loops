@@ -75,16 +75,102 @@ Store last-run timestamp in `.claude/ll-update-docs.watermark` so subsequent run
 - `skills/update-docs/templates.md` — gap report and stub templates
 
 ### Files to Modify
-- `.claude-plugin/plugin.json` — register new skill
-- `.claude/CLAUDE.md` — add to skills list
-- `commands/help.md` or help skill — surface new command
+- `.claude/CLAUDE.md:54` — add `update-docs`^ to "Code Quality" category alongside `audit-docs`^ (line confirmed: `- **Code Quality**: \`check-code\`, \`run-tests\`, \`audit-docs\`^, \`find-dead-code\``)
+- `commands/help.md:114` — add full entry block in CODE QUALITY section (after `/ll:audit-docs` block ending at line 114, before the blank line preceding `GIT & RELEASE`)
+- `commands/help.md:231` — add `update-docs` to the Quick Reference comma-separated list (line currently reads: `**Code Quality**: \`check-code\`, \`run-tests\`, \`audit-docs\``)
+
+> **Note**: `.claude-plugin/plugin.json` does NOT need modification. Skill discovery is directory-based — `"skills": ["./skills"]` at `plugin.json:20` auto-discovers any new `skills/*/SKILL.md` subdirectory.
+
+### Reusable Code
+- `scripts/little_loops/issue_history/parsing.py:197` — `scan_completed_issues(completed_dir)` reads all `*.md` from `.issues/completed/`; extracts `completed_date` from `**Completed**: YYYY-MM-DD` pattern (with mtime fallback)
+- `scripts/little_loops/issue_history/parsing.py:222` — `_parse_discovered_date(fm)` — extracts `discovered_date` from YAML frontmatter dict
+- `scripts/little_loops/issue_discovery/extraction.py:105` — `_get_files_modified_since_commit(since_commit, target_files)` — batched `git log {since}..HEAD --name-only --pretty=format:"%H"` call; parses `\n\n`-separated blocks
+- `scripts/little_loops/cli/history.py:104` — `ll-history export` subcommand. **IMPORTANT**: requires a positional `topic` string argument (e.g., `ll-history export "docs" --since=<date>`). Without a topic, you cannot invoke it. The `--since` filter (line 219–221) uses `date.fromisoformat()` and passes the date to `synthesize_docs()` where issues with `completed_date < since` are skipped. The topic-relevance scorer (`score_relevance()`) uses word intersection, so a broad topic like `""` is not valid — use the skill's own glob of `.issues/completed/` via `scan_completed_issues()` when you need all issues without topic filtering.
+- `scripts/little_loops/issue_history/doc_synthesis.py:143` — `synthesize_docs(topic, issues, contents, format, min_relevance, since, issue_type, scoring)` — full pipeline: pre-filter by since/type, relevance-score by topic, sort by completed_date, render markdown. The `--since` filter is at line 179: `if since and issue.completed_date and issue.completed_date < since: continue`
 
 ### Similar Patterns
-- `skills/audit-docs/SKILL.md` — same doc-quality domain, complementary scope
-- `skills/capture-issue/SKILL.md` — similar "scan and create issues" flow
+- `skills/audit-docs/SKILL.md` — canonical reference: frontmatter with `argument-hint`, `allowed-tools: Bash(git:*)`, `--fix` flag pattern; same doc-quality domain
+- `skills/capture-issue/SKILL.md` — multi-line `description: |` with embedded trigger keywords; `Bash(ll-issues:*, git:*)` scoped tool permissions; `--quick` flag handling
+- `skills/format-issue/SKILL.md:49-79` — `--auto`/`--dry-run`/`--fix` flag parsing bash block pattern
 
 ### Related Issues
 - None — `audit-docs` is complementary, not overlapping
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**SKILL.md frontmatter structure** (model after `skills/capture-issue/SKILL.md:1-20`):
+```yaml
+---
+description: |
+  Identify stale or missing documentation based on git commits and completed issues since a given date.
+
+  Trigger keywords: "update docs", "stale docs", "missing docs", "docs since sprint", "doc coverage", "what docs need updating", "documentation gaps"
+argument-hint: "[--since <date|git-ref>] [--fix]"
+allowed-tools:
+  - Read
+  - Glob
+  - Grep
+  - Write
+  - Edit
+  - Bash(git:*, ll-history:*, ll-issues:*)
+arguments:
+  - name: since
+    description: Change window start — date (YYYY-MM-DD) or git ref (default: last commit touching a doc file)
+    required: false
+  - name: fix
+    description: Draft stub documentation sections inline rather than just reporting gaps
+    required: false
+---
+```
+
+**Default since-ref resolution** (as described in Proposed Solution):
+```bash
+git log --oneline -- docs/ README.md CONTRIBUTING.md CHANGELOG.md | head -1 | awk '{print $1}'
+```
+
+**Completed issues since-date** — prefer direct `scan_completed_issues()` for all-issues listing:
+```bash
+# Don't use ll-history export for this — it requires a topic arg and applies relevance scoring.
+# Instead, use a simple glob + date filter directly in the skill:
+python -c "
+from little_loops.issue_history.parsing import scan_completed_issues
+from pathlib import Path
+import sys
+issues = scan_completed_issues(Path('.issues/completed'))
+since = sys.argv[1]  # YYYY-MM-DD
+for i in issues:
+    if i.completed_date and str(i.completed_date) >= since:
+        print(i.path)
+" "$SINCE_DATE"
+```
+Or if a topic filter is useful, `ll-history export "<topic>" --since="$SINCE_DATE"` works but includes relevance scoring.
+`synthesize_docs()` date filter is at `scripts/little_loops/issue_history/doc_synthesis.py:179`.
+
+**help.md entry format** — two locations to update:
+
+1. Full entry block at `commands/help.md:114` (insert after `/ll:audit-docs` block in CODE QUALITY section):
+```
+/ll:update-docs [--since <date|git-ref>] [--fix]
+    Identify stale/missing docs from git commits and completed issues since a date
+    Default since: last commit touching a doc file
+```
+
+2. Quick Reference table at `commands/help.md:231` — append `update-docs` to the Code Quality list:
+```
+**Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
+```
+
+**audit-docs/templates.md structure** (model for update-docs/templates.md):
+- `skills/audit-docs/templates.md` contains an "Issue File Template" section (frontmatter + body) for docs issues auto-created by the skill
+- For `update-docs/templates.md`, provide: (a) gap report format grouped by source (git changes vs. completed issues), and (b) stub section template for inline doc drafts
+- Reference from SKILL.md body using: `[templates.md](templates.md) (see "Gap Report Format" section)`
+
+**Frontmatter `description:` format** — both single-line and multi-line (`|`) are valid:
+- `audit-docs/SKILL.md:1` uses single-line: `description: Audit documentation for accuracy and completeness`
+- `capture-issue/SKILL.md` uses multi-line `description: |` with embedded trigger keywords after a blank line
+- Prefer multi-line `description: |` to embed trigger keywords (improves discoverability)
 
 ## Impact
 
@@ -104,4 +190,7 @@ Store last-run timestamp in `.claude/ll-update-docs.watermark` so subsequent run
 **Open** | Created: 2026-03-14 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-15T05:08:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bd2338a-cb49-4e75-a5ae-a3ae2b55958e.jsonl`
+- `/ll:refine-issue` - 2026-03-15T04:57:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c186be22-701d-4c89-a0c1-5b746b4d0e5b.jsonl`
+- `/ll:refine-issue` - 2026-03-15T04:47:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/140d76f3-1325-4291-9c9d-17c281a9d0cf.jsonl`
 - `/ll:capture-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1c90f23-ff83-489f-b756-ad36ef9940cc.jsonl`
