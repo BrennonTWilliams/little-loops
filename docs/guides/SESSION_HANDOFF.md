@@ -257,6 +257,14 @@ Ready to continue. What would you like to do next?
 | `continuation.max_continuations` | `3` | Max auto-continuations per issue (automation) |
 | `continuation.prompt_expiry_hours` | `24` | Hours before prompt marked stale |
 
+The threshold can also be overridden per-run via the `--handoff-threshold` CLI flag (1-100), which takes precedence over the config value:
+
+```bash
+ll-auto --handoff-threshold 90      # Trigger handoff at 90% for this run
+ll-parallel --handoff-threshold 70  # Earlier warnings for parallel runs
+ll-sprint run my-sprint --handoff-threshold 85
+```
+
 ### Token Estimation Weights
 
 The context monitor estimates token usage based on tool activity:

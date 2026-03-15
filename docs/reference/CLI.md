@@ -23,6 +23,7 @@ These flags appear across multiple tools:
 | `--type` | | Comma-separated issue types: `BUG`, `FEAT`, `ENH` | `ll-auto`, `ll-parallel`, `ll-sprint` |
 | `--config` | | Path to project root (default: current directory) | `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-sync` |
 | `--timeout` | `-t` | Timeout in seconds per issue | `ll-parallel`, `ll-sprint run` |
+| `--handoff-threshold` | | Override auto-handoff context threshold (1-100, default: from config) | `ll-auto`, `ll-parallel`, `ll-sprint run` |
 | `--format` | `-f` | Output format: `text`, `json`, `markdown` | `ll-history`, `ll-deps`, `ll-sprint analyze`, `ll-verify-docs`, `ll-check-links` |
 
 ---
@@ -46,6 +47,7 @@ Process all backlog issues sequentially in priority order.
 | `--type` | | Process only these types: `BUG`, `FEAT`, `ENH` |
 | `--config` | | Path to project root |
 | `--category` | `-c` | Filter to category: `bugs`, `features`, `enhancements` |
+| `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 
 **Examples:**
 ```bash
@@ -58,6 +60,7 @@ ll-auto --only BUG-001,BUG-002   # Process only specific issues
 ll-auto --skip BUG-003           # Skip a specific issue
 ll-auto --type BUG               # Process only bugs
 ll-auto --type BUG,ENH           # Process bugs and enhancements
+ll-auto --handoff-threshold 90   # Trigger handoff at 90% context usage
 ```
 
 ---
@@ -90,6 +93,7 @@ Process issues concurrently using isolated git worktrees.
 | `--type` | | Process only these types: `BUG`, `FEAT`, `ENH` |
 | `--max-issues` | `-m` | Limit total issues processed |
 | `--config` | | Path to project root |
+| `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 
 **Examples:**
 ```bash
@@ -102,6 +106,7 @@ ll-parallel --stream-output         # Stream Claude output in real-time
 ll-parallel --only BUG-001,BUG-002  # Process only specific issues
 ll-parallel --type BUG,ENH          # Process bugs and enhancements
 ll-parallel --overlap-detection     # Reduce merge conflicts
+ll-parallel --handoff-threshold 85  # Override handoff threshold for this run
 ```
 
 ---
@@ -142,6 +147,7 @@ Execute a sprint.
 | `--skip` | | Issue IDs to skip during execution |
 | `--skip-analysis` | | Skip dependency analysis |
 | `--type` | | Filter by type |
+| `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 
 #### `ll-sprint list` / `ll-sprint l`
 
