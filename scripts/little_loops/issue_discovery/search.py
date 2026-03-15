@@ -232,7 +232,12 @@ def find_existing_issue(
                     overlap = _calculate_word_overlap(title_words, issue_words)
                     if overlap > 0.7 and overlap > best_pass2_score:
                         best_pass2_score = overlap
-                        best_pass2 = (issue_path, is_completed, overlap, list(title_words & issue_words))
+                        best_pass2 = (
+                            issue_path,
+                            is_completed,
+                            overlap,
+                            list(title_words & issue_words),
+                        )
             except Exception:
                 continue
 

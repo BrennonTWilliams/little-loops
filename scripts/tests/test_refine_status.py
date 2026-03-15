@@ -1049,7 +1049,9 @@ class TestRefineStatusFormatColumn:
         written = append_session_log_entry(
             issue_path, "/ll:format-issue", Path("/mock/session.jsonl")
         )
-        assert written is True, "append_session_log_entry should succeed with explicit session_jsonl"
+        assert written is True, (
+            "append_session_log_entry should succeed with explicit session_jsonl"
+        )
 
         with patch.object(
             sys,

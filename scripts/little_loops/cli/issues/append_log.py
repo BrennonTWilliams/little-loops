@@ -22,8 +22,8 @@ def cmd_append_log(config: BRConfig, args: object) -> int:
     """
     from little_loops.session_log import append_session_log_entry
 
-    issue_path = Path(args.issue_path)  # type: ignore[union-attr]
-    success = append_session_log_entry(issue_path, args.log_command)  # type: ignore[union-attr]
+    issue_path = Path(args.issue_path)  # type: ignore[attr-defined]
+    success = append_session_log_entry(issue_path, args.log_command)  # type: ignore[attr-defined]
     if not success:
         print(
             "Warning: could not resolve session JSONL; entry not written.",

@@ -86,7 +86,12 @@ Examples:
 
     sr = subs.add_parser("search", aliases=["sr"], help="Search issues with filters and sorting")
     sr.set_defaults(command="search")
-    sr.add_argument("query", nargs="?", default=None, help="Text to match against title and body (case-insensitive)")
+    sr.add_argument(
+        "query",
+        nargs="?",
+        default=None,
+        help="Text to match against title and body (case-insensitive)",
+    )
     sr.add_argument(
         "--type",
         choices=["BUG", "FEAT", "ENH"],

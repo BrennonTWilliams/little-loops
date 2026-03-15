@@ -99,9 +99,7 @@ class TestSearchNoArgs:
         search_issues_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        with patch.object(
-            sys, "argv", ["ll-issues", "search", "--config", str(temp_project_dir)]
-        ):
+        with patch.object(sys, "argv", ["ll-issues", "search", "--config", str(temp_project_dir)]):
             from little_loops.cli.issues import main_issues
 
             result = main_issues()
@@ -122,9 +120,7 @@ class TestSearchNoArgs:
         search_issues_dir: Path,
         capsys: pytest.CaptureFixture[str],
     ) -> None:
-        with patch.object(
-            sys, "argv", ["ll-issues", "search", "--config", str(temp_project_dir)]
-        ):
+        with patch.object(sys, "argv", ["ll-issues", "search", "--config", str(temp_project_dir)]):
             from little_loops.cli.issues import main_issues
 
             result = main_issues()
@@ -270,9 +266,14 @@ class TestSearchTypeFilter:
             sys,
             "argv",
             [
-                "ll-issues", "search",
-                "--type", "BUG", "--type", "FEAT",
-                "--config", str(temp_project_dir),
+                "ll-issues",
+                "search",
+                "--type",
+                "BUG",
+                "--type",
+                "FEAT",
+                "--config",
+                str(temp_project_dir),
             ],
         ):
             from little_loops.cli.issues import main_issues
@@ -412,8 +413,12 @@ class TestSearchStatusFilter:
             sys,
             "argv",
             [
-                "ll-issues", "search", "caching",
-                "--include-completed", "--config", str(temp_project_dir),
+                "ll-issues",
+                "search",
+                "caching",
+                "--include-completed",
+                "--config",
+                str(temp_project_dir),
             ],
         ):
             from little_loops.cli.issues import main_issues
@@ -477,7 +482,7 @@ class TestSearchDateFilter:
 
         captured = capsys.readouterr()
         assert result == 0
-        assert "BUG-002" in captured.out   # 2026-02-15
+        assert "BUG-002" in captured.out  # 2026-02-15
         assert "FEAT-011" in captured.out  # 2026-03-01
         assert "BUG-001" not in captured.out  # 2026-01-10
         assert "FEAT-010" not in captured.out  # 2026-01-20
@@ -499,7 +504,7 @@ class TestSearchDateFilter:
 
         captured = capsys.readouterr()
         assert result == 0
-        assert "BUG-001" in captured.out   # 2026-01-10
+        assert "BUG-001" in captured.out  # 2026-01-10
         assert "FEAT-010" in captured.out  # 2026-01-20
         assert "BUG-002" not in captured.out  # 2026-02-15
 
@@ -560,9 +565,14 @@ class TestSearchSorting:
             sys,
             "argv",
             [
-                "ll-issues", "search",
-                "--sort", "title", "--format", "ids",
-                "--config", str(temp_project_dir),
+                "ll-issues",
+                "search",
+                "--sort",
+                "title",
+                "--format",
+                "ids",
+                "--config",
+                str(temp_project_dir),
             ],
         ):
             from little_loops.cli.issues import main_issues
@@ -586,9 +596,15 @@ class TestSearchSorting:
             sys,
             "argv",
             [
-                "ll-issues", "search",
-                "--sort", "priority", "--desc", "--format", "ids",
-                "--config", str(temp_project_dir),
+                "ll-issues",
+                "search",
+                "--sort",
+                "priority",
+                "--desc",
+                "--format",
+                "ids",
+                "--config",
+                str(temp_project_dir),
             ],
         ):
             from little_loops.cli.issues import main_issues
@@ -650,9 +666,14 @@ class TestSearchOutputFormats:
             sys,
             "argv",
             [
-                "ll-issues", "search",
-                "--type", "BUG", "--format", "ids",
-                "--config", str(temp_project_dir),
+                "ll-issues",
+                "search",
+                "--type",
+                "BUG",
+                "--format",
+                "ids",
+                "--config",
+                str(temp_project_dir),
             ],
         ):
             from little_loops.cli.issues import main_issues
@@ -674,9 +695,14 @@ class TestSearchOutputFormats:
             sys,
             "argv",
             [
-                "ll-issues", "search",
-                "--type", "BUG", "--format", "list",
-                "--config", str(temp_project_dir),
+                "ll-issues",
+                "search",
+                "--type",
+                "BUG",
+                "--format",
+                "list",
+                "--config",
+                str(temp_project_dir),
             ],
         ):
             from little_loops.cli.issues import main_issues
@@ -699,9 +725,14 @@ class TestSearchOutputFormats:
             sys,
             "argv",
             [
-                "ll-issues", "search",
-                "--limit", "2", "--format", "ids",
-                "--config", str(temp_project_dir),
+                "ll-issues",
+                "search",
+                "--limit",
+                "2",
+                "--format",
+                "ids",
+                "--config",
+                str(temp_project_dir),
             ],
         ):
             from little_loops.cli.issues import main_issues
@@ -730,9 +761,14 @@ class TestSearchCombinedFilters:
             sys,
             "argv",
             [
-                "ll-issues", "search",
-                "--type", "BUG", "--priority", "P2",
-                "--config", str(temp_project_dir),
+                "ll-issues",
+                "search",
+                "--type",
+                "BUG",
+                "--priority",
+                "P2",
+                "--config",
+                str(temp_project_dir),
             ],
         ):
             from little_loops.cli.issues import main_issues
@@ -754,8 +790,13 @@ class TestSearchCombinedFilters:
             sys,
             "argv",
             [
-                "ll-issues", "search", "api",
-                "--type", "FEAT", "--config", str(temp_project_dir),
+                "ll-issues",
+                "search",
+                "api",
+                "--type",
+                "FEAT",
+                "--config",
+                str(temp_project_dir),
             ],
         ):
             from little_loops.cli.issues import main_issues

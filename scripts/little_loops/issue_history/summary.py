@@ -7,6 +7,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal
 
+from little_loops.issue_history._utils import get_issue_content
 from little_loops.issue_history.models import (
     CompletedIssue,
     HistorySummary,
@@ -14,7 +15,6 @@ from little_loops.issue_history.models import (
     SubsystemHealth,
 )
 from little_loops.issue_history.parsing import _extract_subsystem
-from little_loops.issue_history._utils import get_issue_content
 
 
 def calculate_summary(issues: list[CompletedIssue]) -> HistorySummary:

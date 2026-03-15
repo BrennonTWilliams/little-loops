@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 from typing import Any
 
+from little_loops.issue_history._utils import get_issue_content
 from little_loops.issue_history.models import (
     CompletedIssue,
     ConfigGap,
@@ -20,7 +21,6 @@ from little_loops.issue_history.models import (
     TestGapAnalysis,
 )
 from little_loops.issue_history.parsing import _find_test_file, _parse_resolution_action
-from little_loops.issue_history._utils import get_issue_content
 
 
 def analyze_test_gaps(

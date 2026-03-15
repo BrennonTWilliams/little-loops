@@ -1233,7 +1233,14 @@ class TestIssuesAppendLog:
                 with patch.object(
                     sys,
                     "argv",
-                    ["ll-issues", "append-log", str(issue_file), "/ll:refine-issue", "--config", str(temp_project_dir)],
+                    [
+                        "ll-issues",
+                        "append-log",
+                        str(issue_file),
+                        "/ll:refine-issue",
+                        "--config",
+                        str(temp_project_dir),
+                    ],
                 ):
                     from little_loops.cli import main_issues
 
@@ -1268,7 +1275,14 @@ class TestIssuesAppendLog:
             with patch.object(
                 sys,
                 "argv",
-                ["ll-issues", "append-log", str(issue_file), "/ll:refine-issue", "--config", str(temp_project_dir)],
+                [
+                    "ll-issues",
+                    "append-log",
+                    str(issue_file),
+                    "/ll:refine-issue",
+                    "--config",
+                    str(temp_project_dir),
+                ],
             ):
                 from little_loops.cli import main_issues
 

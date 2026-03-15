@@ -5,13 +5,13 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from little_loops.issue_history._utils import get_issue_content
 from little_loops.issue_history.models import (
     CompletedIssue,
     Hotspot,
     HotspotAnalysis,
 )
 from little_loops.issue_history.parsing import _extract_paths_from_issue
-from little_loops.issue_history._utils import get_issue_content
 
 
 def analyze_hotspots(

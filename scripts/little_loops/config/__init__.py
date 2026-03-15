@@ -19,11 +19,11 @@ from little_loops.config.automation import (
     ScoringWeightsConfig,
 )
 from little_loops.config.cli import (
-    CliConfig,
     CliColorsConfig,
     CliColorsLoggerConfig,
     CliColorsPriorityConfig,
     CliColorsTypeConfig,
+    CliConfig,
     RefineStatusConfig,
 )
 from little_loops.config.core import BRConfig, CLConfig, ProjectConfig

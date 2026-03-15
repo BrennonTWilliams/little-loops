@@ -448,10 +448,26 @@ class TestReplaceablePromptStateDetection:
     # (used to make individual tests self-documenting)
 
     EXEMPTION_KEYWORDS = {
-        "summarize", "summarise", "analyze", "analyse", "review", "evaluate",
-        "assess", "classify", "categorize", "categorise", "identify", "determine",
-        "generate", "suggest", "recommend", "explain", "describe", "reason",
-        "infer", "diagnose",
+        "summarize",
+        "summarise",
+        "analyze",
+        "analyse",
+        "review",
+        "evaluate",
+        "assess",
+        "classify",
+        "categorize",
+        "categorise",
+        "identify",
+        "determine",
+        "generate",
+        "suggest",
+        "recommend",
+        "explain",
+        "describe",
+        "reason",
+        "infer",
+        "diagnose",
     }
 
     SHELL_METACHARACTERS = set("|&;$><`")
@@ -470,6 +486,7 @@ class TestReplaceablePromptStateDetection:
     def _strip_template_vars(self, action: str) -> str:
         """Remove {{...}} and $identifier from action text."""
         import re
+
         text = re.sub(r"\{\{[^}]+\}\}", " ", action)
         text = re.sub(r"\$[A-Za-z_][A-Za-z0-9_]*", " ", text)
         return text.strip()
@@ -566,7 +583,9 @@ class TestReplaceablePromptStateDetection:
 
     def test_pr1_group_d_boolean_decision_flagged(self) -> None:
         """PR-1 Group D: 'Output yes or no based on value' prompt → flag as replaceable."""
-        action = "Output yes if the exit code is zero or output no if it is non-zero based on the result"
+        action = (
+            "Output yes if the exit code is zero or output no if it is non-zero based on the result"
+        )
         lower = action.lower()
 
         is_prompt = self._is_prompt_like(action)
@@ -583,7 +602,9 @@ class TestReplaceablePromptStateDetection:
 
     def test_pr1_group_e_template_only_flagged(self) -> None:
         """PR-1 Group E: Action is mostly template vars with fixed text → flag."""
-        action = "The current error count is {{error_count}} and the threshold is {{threshold}} value"
+        action = (
+            "The current error count is {{error_count}} and the threshold is {{threshold}} value"
+        )
         stripped = self._strip_template_vars(action)
         words = stripped.split()
 
@@ -601,7 +622,9 @@ class TestReplaceablePromptStateDetection:
 
     def test_pr1_group_f_basename_flagged(self) -> None:
         """PR-1 Group F: 'Get the basename of path' prompt → flag as replaceable."""
-        action = "Extract the filename without extension from the full path provided in the variable"
+        action = (
+            "Extract the filename without extension from the full path provided in the variable"
+        )
         lower = action.lower()
 
         is_prompt = self._is_prompt_like(action)
@@ -616,13 +639,17 @@ class TestReplaceablePromptStateDetection:
 
     def test_pr1_summarize_not_flagged(self) -> None:
         """PR-1 exemption: 'Summarize...' prompt requires LLM → do not flag."""
-        action = "Summarize the test failure output and identify the root cause of each failing test"
+        action = (
+            "Summarize the test failure output and identify the root cause of each failing test"
+        )
         has_exemption = self._has_exemption(action)
         assert has_exemption  # → skill must skip PR-1 check
 
     def test_pr1_classify_free_text_not_flagged(self) -> None:
         """PR-1 exemption: 'Classify...' prompt requires language understanding → do not flag."""
-        action = "Classify the user feedback as positive, negative, or neutral based on the text content"
+        action = (
+            "Classify the user feedback as positive, negative, or neutral based on the text content"
+        )
         has_exemption = self._has_exemption(action)
         assert has_exemption
 

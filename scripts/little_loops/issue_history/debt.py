@@ -6,6 +6,7 @@ from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
+from little_loops.issue_history._utils import get_issue_content
 from little_loops.issue_history.models import (
     AgentEffectivenessAnalysis,
     AgentOutcome,
@@ -22,7 +23,6 @@ from little_loops.issue_history.parsing import (
     _extract_paths_from_issue,
     _parse_resolution_action,
 )
-from little_loops.issue_history._utils import get_issue_content
 
 # Cross-cutting concern keywords for smell detection
 _CROSS_CUTTING_KEYWORDS: dict[str, list[str]] = {

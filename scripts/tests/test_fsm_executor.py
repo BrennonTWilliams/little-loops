@@ -2823,11 +2823,11 @@ class TestPerStateRetryLimits:
         runner = MockActionRunner()
         # execute fails → other_state → execute fails → other_state → execute succeeds
         runner.results = [
-            ("do_work.sh", {"exit_code": 1}),   # fail → other_state (counter not yet at max)
-            ("echo other", {"exit_code": 0}),    # other_state → execute (resets execute counter)
-            ("do_work.sh", {"exit_code": 1}),   # fail → other_state (counter reset, not exhausted)
-            ("echo other", {"exit_code": 0}),    # other_state → execute
-            ("do_work.sh", {"exit_code": 0}),   # success → done
+            ("do_work.sh", {"exit_code": 1}),  # fail → other_state (counter not yet at max)
+            ("echo other", {"exit_code": 0}),  # other_state → execute (resets execute counter)
+            ("do_work.sh", {"exit_code": 1}),  # fail → other_state (counter reset, not exhausted)
+            ("echo other", {"exit_code": 0}),  # other_state → execute
+            ("do_work.sh", {"exit_code": 0}),  # success → done
         ]
         runner.use_indexed_order = True
 
