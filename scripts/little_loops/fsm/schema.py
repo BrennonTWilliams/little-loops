@@ -216,6 +216,7 @@ class StateConfig:
     on_no: str | None = None
     on_error: str | None = None
     on_partial: str | None = None
+    on_blocked: str | None = None
     next: str | None = None
     terminal: bool = False
     capture: str | None = None
@@ -246,6 +247,8 @@ class StateConfig:
             result["on_error"] = self.on_error
         if self.on_partial is not None:
             result["on_partial"] = self.on_partial
+        if self.on_blocked is not None:
+            result["on_blocked"] = self.on_blocked
         if self.next is not None:
             result["next"] = self.next
         if self.terminal:
@@ -284,6 +287,7 @@ class StateConfig:
             on_no=data.get("on_no") or data.get("on_failure"),
             on_error=data.get("on_error"),
             on_partial=data.get("on_partial"),
+            on_blocked=data.get("on_blocked"),
             next=data.get("next"),
             terminal=data.get("terminal", False),
             capture=data.get("capture"),
@@ -309,6 +313,8 @@ class StateConfig:
             refs.add(self.on_error)
         if self.on_partial is not None:
             refs.add(self.on_partial)
+        if self.on_blocked is not None:
+            refs.add(self.on_blocked)
         if self.next is not None:
             refs.add(self.next)
         if self.on_maintain is not None:

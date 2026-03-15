@@ -58,6 +58,7 @@ states:
     on_yes: review_sprint
     on_no: fix_issues
     on_error: review_sprint
+    on_blocked: fix_issues
   fix_issues:
     action_type: prompt
     timeout: 600
@@ -94,6 +95,7 @@ states:
     on_yes: commit
     on_no: fix_issues
     on_error: commit
+    on_blocked: fix_issues
   commit:
     action_type: prompt
     action: |

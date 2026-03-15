@@ -52,8 +52,8 @@ An `llm_structured` evaluate that returns `blocked` should have a defined recove
 
 - **File**: `scripts/little_loops/fsm/executor.py`
 - **Anchor**: `_route()` at line 867 — `return None` fallthrough
-- **Cause**: `_route()` handles only four shorthand verdicts: `on_yes` (line 857), `on_no` (line 859), `on_error` (line 861), `on_partial` (line 863). When `verdict == "blocked"`, none of these branches match and the method returns `None`. The caller at `executor.py:523-524` treats `None` as fatal: `self._finish("error", error="No valid transition")` → `terminated_by="error"`.
-- **Contributing factor**: `evaluators.py:54-79` — `DEFAULT_LLM_SCHEMA` explicitly includes `"blocked"` in the verdict enum sent to the LLM on every `llm_structured` call. The engine invites the LLM to return `"blocked"` but has no field on `StateConfig` to receive it. `on_blocked` is absent from `schema.py:210-225` while `on_partial` was previously added as a field.
+- **Cause**: `_route()` handles only four shorthand verdicts: `on_yes` (line 858), `on_no` (line 860), `on_error` (line 862), `on_partial` (line 864). When `verdict == "blocked"`, none of these branches match and the method returns `None`. The caller at `executor.py:523-524` treats `None` as fatal: `self._finish("error", error="No valid transition")` → `terminated_by="error"`.
+- **Contributing factor**: `evaluators.py:54-79` — `DEFAULT_LLM_SCHEMA` explicitly includes `"blocked"` in the verdict enum sent to the LLM on every `llm_structured` call. The engine invites the LLM to return `"blocked"` but has no field on `StateConfig` to receive it. `on_blocked` is absent from `schema.py:215-225` while `on_partial` was previously added as a field at line 218.
 
 ## Proposed Fix
 
@@ -79,10 +79,10 @@ All `llm_structured` evaluate states in built-in loops that lack `on_blocked`:
 
 **Engine — add `on_blocked` shorthand field:**
 - `scripts/little_loops/fsm/schema.py:218` — add `on_blocked: str | None = None` to `StateConfig` dataclass (parallel to `on_partial`)
-- `scripts/little_loops/fsm/schema.py:244` — add `on_blocked` to `to_dict()` (parallel to `on_partial` block)
-- `scripts/little_loops/fsm/schema.py:287` — add `on_blocked=data.get("on_blocked")` to `from_dict()`
-- `scripts/little_loops/fsm/schema.py:307` — add `on_blocked` to `get_referenced_states()`
-- `scripts/little_loops/fsm/executor.py:863` — add `if verdict == "blocked" and state.on_blocked:` branch in `_route()` after `on_partial` check
+- `scripts/little_loops/fsm/schema.py:247` — add `on_blocked` to `to_dict()` (parallel to `on_partial` block)
+- `scripts/little_loops/fsm/schema.py:286` — add `on_blocked=data.get("on_blocked")` to `from_dict()`
+- `scripts/little_loops/fsm/schema.py:310` — add `on_blocked` to `get_referenced_states()`
+- `scripts/little_loops/fsm/executor.py:864` — add `if verdict == "blocked" and state.on_blocked:` branch in `_route()` after `on_partial` check
 
 **Loop YAMLs — add `on_blocked` handlers:**
 - `loops/sprint-build-and-validate.yaml:55` — add `on_blocked: fix_issues` after `on_error: review_sprint` in `route_validation`
@@ -98,7 +98,7 @@ All `llm_structured` evaluate states in built-in loops that lack `on_blocked`:
 ### Similar Patterns
 
 - `scripts/little_loops/fsm/schema.py:218` — `on_partial: str | None = None` is the exact precedent to replicate for `on_blocked`
-- `scripts/little_loops/fsm/executor.py:863-865` — `on_partial` branch is the template for the new `on_blocked` branch
+- `scripts/little_loops/fsm/executor.py:864-865` — `on_partial` branch is the template for the new `on_blocked` branch
 - `loops/fix-quality-and-tests.yaml:9` — only built-in loop with `on_partial` defined; demonstrates correct multi-verdict shorthand usage
 
 ### Tests
@@ -109,8 +109,8 @@ All `llm_structured` evaluate states in built-in loops that lack `on_blocked`:
 
 ## Implementation Steps
 
-1. **`schema.py` — add `on_blocked` field** (4 locations, mirror `on_partial` at lines 218, 244, 287, 307)
-2. **`executor.py:863` — add routing branch** — insert `if verdict == "blocked" and state.on_blocked: return self._resolve_route(state.on_blocked, ctx)` after the `on_partial` check
+1. **`schema.py` — add `on_blocked` field** (4 locations, mirror `on_partial` at lines 218, 247, 286, 310)
+2. **`executor.py:864` — add routing branch** — insert `if verdict == "blocked" and state.on_blocked: return self._resolve_route(state.on_blocked, ctx)` after the `on_partial` check
 3. **`fsm-loop-schema.json`** — add `"on_blocked": {"type": "string"}` to state object properties
 4. **`validation.py`** — confirm `on_blocked` is picked up via `get_referenced_states()` (automatic if step 1 is done correctly)
 5. **Loop YAMLs** — add `on_blocked` handlers to the 4 affected states listed in the Affected States table above
@@ -131,10 +131,31 @@ All `llm_structured` evaluate states in built-in loops that lack `on_blocked`:
 
 `bug`, `loops`, `captured`
 
+## Resolution
+
+**Fixed** | Resolved: 2026-03-15 | Priority: P2
+
+### Changes Made
+
+1. **`scripts/little_loops/fsm/schema.py`** — Added `on_blocked: str | None = None` field to `StateConfig` dataclass; updated `to_dict()`, `from_dict()`, and `get_referenced_states()` to include `on_blocked` (mirroring `on_partial`)
+2. **`scripts/little_loops/fsm/executor.py`** — Added `if verdict == "blocked" and state.on_blocked:` branch in `_route()` after the `on_partial` check
+3. **`scripts/little_loops/fsm/fsm-loop-schema.json`** — Added `"on_blocked"` as an optional string property in the `stateConfig` definition
+4. **`loops/sprint-build-and-validate.yaml`** — Added `on_blocked: fix_issues` to `route_validation` and `route_review` states
+5. **`loops/issue-staleness-review.yaml`** — Added `on_blocked: find_stale` to `triage` state
+6. **`loops/issue-size-split.yaml`** — Added `on_blocked: done` to `route_large` state
+7. **`scripts/tests/test_fsm_schema.py`** — Added 6 `on_blocked` tests mirroring the `on_partial` test suite; fixed pre-existing `TestLLMConfig::test_defaults` assertion (30→1800 after timeout raise in 9fda9ca)
+8. **`scripts/tests/test_fsm_executor.py`** — Added 2 `on_blocked` routing tests mirroring `on_partial` tests
+9. **`scripts/tests/test_builtin_loops.py`** — Added `TestBuiltinLoopOnBlockedCoverage` class asserting all 4 audited states define `on_blocked`
+
+### Verification
+
+All 3529 tests pass (`python -m pytest scripts/tests/ --no-cov -q`).
+
 ## Status
 
-**Open** | Created: 2026-03-15 | Priority: P2
+**Resolved** | Created: 2026-03-15 | Priority: P2
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T23:17:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0c2267ab-ffdb-4f12-b274-1fb55704ed47.jsonl`
 - `/ll:refine-issue` - 2026-03-15T23:05:16 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/346718bd-e365-4d89-b1b7-2c6df93e57b0.jsonl`

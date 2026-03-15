@@ -45,6 +45,7 @@ states:
     on_yes: close_issue
     on_no: reprioritize
     on_error: find_stale
+    on_blocked: find_stale
   close_issue:
     action_type: prompt
     timeout: 120

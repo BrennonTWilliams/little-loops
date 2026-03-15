@@ -249,3 +249,36 @@ class TestBuiltinLoopScratchIsolation:
             assert not re.search(bare_pattern, combined), (
                 f"{loop_name}.yaml still references global tmp path: {forbidden!r}"
             )
+
+
+class TestBuiltinLoopOnBlockedCoverage:
+    """Tests that llm_structured evaluate states in built-in loops define on_blocked handlers."""
+
+    # Each entry: (loop_file, state_name, expected_on_blocked_value)
+    REQUIRED_ON_BLOCKED: list[tuple[str, str, str]] = [
+        ("sprint-build-and-validate.yaml", "route_validation", "fix_issues"),
+        ("sprint-build-and-validate.yaml", "route_review", "fix_issues"),
+        ("issue-staleness-review.yaml", "triage", "find_stale"),
+        ("issue-size-split.yaml", "route_large", "done"),
+    ]
+
+    @pytest.mark.parametrize("loop_file,state_name,expected", REQUIRED_ON_BLOCKED)
+    def test_llm_structured_state_has_on_blocked(
+        self, loop_file: str, state_name: str, expected: str
+    ) -> None:
+        """Each audited llm_structured evaluate state must define on_blocked."""
+        path = BUILTIN_LOOPS_DIR / loop_file
+        assert path.exists(), f"Loop file not found: {path}"
+        data = yaml.safe_load(path.read_text())
+        state_data = data.get("states", {}).get(state_name)
+        assert state_data is not None, f"State '{state_name}' not found in {loop_file}"
+        assert state_data.get("evaluate", {}).get("type") == "llm_structured", (
+            f"State '{state_name}' in {loop_file} is not an llm_structured evaluate state"
+        )
+        assert "on_blocked" in state_data, (
+            f"State '{state_name}' in {loop_file} is missing on_blocked handler"
+        )
+        assert state_data["on_blocked"] == expected, (
+            f"State '{state_name}' in {loop_file}: expected on_blocked={expected!r}, "
+            f"got {state_data['on_blocked']!r}"
+        )

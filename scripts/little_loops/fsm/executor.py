@@ -863,6 +863,8 @@ class FSMExecutor:
             return self._resolve_route(state.on_error, ctx)
         if verdict == "partial" and state.on_partial:
             return self._resolve_route(state.on_partial, ctx)
+        if verdict == "blocked" and state.on_blocked:
+            return self._resolve_route(state.on_blocked, ctx)
 
         return None
 

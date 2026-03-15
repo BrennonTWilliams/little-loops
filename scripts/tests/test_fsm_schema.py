@@ -338,6 +338,64 @@ class TestStateConfig:
         restored = StateConfig.from_dict(original.to_dict())
         assert restored.on_partial == "fix"
 
+    def test_on_blocked_field(self) -> None:
+        """StateConfig accepts on_blocked field."""
+        state = StateConfig(
+            action="check.sh",
+            on_yes="done",
+            on_no="done",
+            on_blocked="recover",
+        )
+        assert state.on_blocked == "recover"
+
+    def test_on_blocked_in_from_dict(self) -> None:
+        """from_dict reads on_blocked key from YAML data."""
+        data = {
+            "action": "check.sh",
+            "on_yes": "done",
+            "on_no": "retry",
+            "on_blocked": "recover",
+        }
+        state = StateConfig.from_dict(data)
+        assert state.on_blocked == "recover"
+
+    def test_on_blocked_in_to_dict(self) -> None:
+        """to_dict serializes on_blocked when set."""
+        state = StateConfig(
+            action="check.sh",
+            on_yes="done",
+            on_blocked="recover",
+        )
+        d = state.to_dict()
+        assert d["on_blocked"] == "recover"
+
+    def test_on_blocked_absent_from_to_dict_when_none(self) -> None:
+        """to_dict omits on_blocked key when not set."""
+        state = StateConfig(action="check.sh", on_yes="done")
+        d = state.to_dict()
+        assert "on_blocked" not in d
+
+    def test_on_blocked_in_get_referenced_states(self) -> None:
+        """get_referenced_states includes on_blocked target."""
+        state = StateConfig(
+            on_yes="done",
+            on_no="retry",
+            on_blocked="recover",
+        )
+        refs = state.get_referenced_states()
+        assert "recover" in refs
+
+    def test_on_blocked_roundtrip(self) -> None:
+        """on_blocked survives to_dict/from_dict roundtrip."""
+        original = StateConfig(
+            action="check.sh",
+            on_yes="done",
+            on_no="retry",
+            on_blocked="recover",
+        )
+        restored = StateConfig.from_dict(original.to_dict())
+        assert restored.on_blocked == "recover"
+
     def test_roundtrip_serialization(self) -> None:
         """Roundtrip through to_dict and from_dict."""
         original = StateConfig(
@@ -427,7 +485,7 @@ class TestLLMConfig:
         assert config.enabled is True
         assert config.model == DEFAULT_LLM_MODEL
         assert config.max_tokens == 256
-        assert config.timeout == 30
+        assert config.timeout == 1800
 
     def test_disabled(self) -> None:
         """LLM disabled configuration."""

@@ -28,6 +28,7 @@ states:
     on_yes: done
     on_no: split_issue
     on_error: done
+    on_blocked: done
   split_issue:
     action_type: prompt
     timeout: 600

@@ -1062,6 +1062,73 @@ class TestRouting:
         assert result.terminated_by == "error"
         assert result.error == "No valid transition"
 
+    def test_on_blocked_shorthand_routes_to_fix_state(self) -> None:
+        """on_blocked shorthand routes to fix state when verdict is 'blocked'."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    on_yes="done",
+                    on_no="done",
+                    on_blocked="fix",
+                ),
+                "fix": StateConfig(terminal=True),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="blocked result", exit_code=0)
+
+        blocked_eval = MagicMock()
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        blocked_eval.return_value = EvaluationResult(
+            verdict="blocked", details={"confidence": 0.9, "confident": False}
+        )
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured", blocked_eval):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.final_state == "fix"
+        assert result.terminated_by == "terminal"
+
+    def test_on_blocked_missing_falls_through_to_error(self) -> None:
+        """When blocked verdict has no on_blocked handler, execution errors."""
+        fsm = FSMLoop(
+            name="test",
+            initial="evaluate",
+            states={
+                "evaluate": StateConfig(
+                    action="/some-slash-command",
+                    action_type="slash_command",
+                    on_yes="done",
+                    on_no="done",
+                    # No on_blocked — blocked verdict should find no route
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        mock_runner = MockActionRunner()
+        mock_runner.set_result("/some-slash-command", output="blocked result", exit_code=0)
+
+        blocked_eval = MagicMock()
+        from little_loops.fsm.evaluators import EvaluationResult
+
+        blocked_eval.return_value = EvaluationResult(
+            verdict="blocked", details={"confidence": 0.9, "confident": False}
+        )
+
+        with patch("little_loops.fsm.executor.evaluate_llm_structured", blocked_eval):
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        assert result.terminated_by == "error"
+        assert result.error == "No valid transition"
+
 
 class TestEvents:
     """Tests for event emission."""
