@@ -9,6 +9,10 @@ discovered_by: capture-issue
 
 # ENH-748: Add `--handoff-threshold` CLI Override to ll-auto, ll-parallel, ll-sprint
 
+## Summary
+
+Add a `--handoff-threshold` CLI flag to `ll-auto`, `ll-parallel`, and `ll-sprint` that overrides `context_monitor.auto_handoff_threshold` from `ll-config.json` for a single run, without modifying shared config.
+
 ## Motivation
 
 The `context_monitor.auto_handoff_threshold` setting in `ll-config.json` controls when automatic handoff is triggered, but changing it requires modifying a shared project config file. Users often want to run a single command with a lower (or higher) threshold for a specific session without touching the config. A `--handoff-threshold` CLI flag enables per-run overrides without side effects.
@@ -19,7 +23,7 @@ The `context_monitor.auto_handoff_threshold` setting in `ll-config.json` control
 - The `context-monitor.sh` hook reads this value at hook invocation time via `ll_config_value "context_monitor.auto_handoff_threshold" "80"`
 - `ll-auto`, `ll-parallel`, and `ll-sprint` have no way to pass a one-off threshold override
 
-## Desired Behavior
+## Expected Behavior
 
 ```bash
 # Trigger auto-handoff at 40% context usage for this run only
@@ -51,13 +55,61 @@ The flag value (1–100) overrides `auto_handoff_threshold` for the duration of 
 
 5. **Update help text** for all three commands to document the new flag.
 
-## Files Likely Affected
+## API/Interface
 
-- `scripts/little_loops/cli/auto.py` (or equivalent entry point)
-- `scripts/little_loops/cli/parallel/__init__.py` / entry point
-- `scripts/little_loops/cli/sprint/__init__.py` / entry point
-- `hooks/scripts/context-monitor.sh` (env var fallback)
-- `config-schema.json` (no schema change needed — this is a CLI flag, not a config key)
+New CLI flag added to three entry points:
+
+```bash
+ll-auto [--handoff-threshold THRESHOLD]
+ll-parallel [--handoff-threshold THRESHOLD] [ISSUES...]
+ll-sprint run SPRINT [--handoff-threshold THRESHOLD]
+```
+
+Environment variable set by the CLI before subprocess spawning:
+
+```bash
+LL_HANDOFF_THRESHOLD=<1-100>
+```
+
+Updated `context-monitor.sh` resolution order:
+
+```bash
+THRESHOLD="${LL_HANDOFF_THRESHOLD:-$(ll_config_value "context_monitor.auto_handoff_threshold" "80")}"
+```
+
+## Scope Boundaries
+
+- **In scope**: `ll-auto`, `ll-parallel`, `ll-sprint run` only
+- **Out of scope**: `ll-loop` (different lifecycle model — has its own config)
+- **Out of scope**: Persisting the override back to `ll-config.json`
+- **Out of scope**: Per-issue threshold overrides — the flag applies to the entire run
+- **Out of scope**: Changes to `config-schema.json` — this is a CLI flag, not a new config key
+- **Out of scope**: Changing the default threshold (remains 80)
+
+## Integration Map
+
+### Files to Modify
+- `scripts/little_loops/cli/auto.py` — add `--handoff-threshold` arg to argparse
+- `scripts/little_loops/cli/parallel.py` — add `--handoff-threshold` arg to argparse
+- `scripts/little_loops/cli/sprint/__init__.py` — add `--handoff-threshold` to `run_parser`
+- `hooks/scripts/context-monitor.sh` — read `LL_HANDOFF_THRESHOLD` env var before config fallback (line 26)
+
+### Dependent Files (Callers/Importers)
+- N/A — CLI entry points are not imported by other modules
+
+### Similar Patterns
+- `parallel.py` existing flags (`--max-workers`, `--dry-run`, `--issues`) — follow same `add_argument` pattern
+- Other env var overrides in `hooks/scripts/` — follow same `${VAR:-default}` shell pattern
+
+### Tests
+- `scripts/tests/test_hooks_integration.py` — add test for `LL_HANDOFF_THRESHOLD` env var override
+- New `test_cli_handoff_threshold.py` or inline tests for arg parsing in auto/parallel/sprint
+
+### Documentation
+- N/A — CLI flags are self-documenting via `--help`
+
+### Configuration
+- `config-schema.json` — N/A (no schema change needed)
 
 ## Acceptance Criteria
 
@@ -66,5 +118,21 @@ The flag value (1–100) overrides `auto_handoff_threshold` for the duration of 
 - [ ] The override takes effect for the run without modifying `ll-config.json`
 - [ ] Existing behavior unchanged when flag is omitted
 
+## Impact
+
+- **Priority**: P3 — Ergonomic improvement; current workaround (editing `ll-config.json`) works but risks polluting shared config
+- **Effort**: Small — Additive flag on 3 existing argparse setups + 1-line shell fallback; no structural changes
+- **Risk**: Low — Non-breaking; omitting the flag preserves current behavior exactly
+- **Breaking Change**: No
+
+## Labels
+
+`enhancement`, `cli`, `context-monitor`, `captured`
+
+## Status
+
+**Open** | Created: 2026-03-14 | Priority: P3
+
 ## Session Log
+- `/ll:format-issue` - 2026-03-15T16:11:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cc316fcb-f8d1-4845-aab1-5e94c57b6ed3.jsonl`
 - `/ll:capture-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55d3be20-340e-4a9d-9286-575d7dc448df.jsonl`
