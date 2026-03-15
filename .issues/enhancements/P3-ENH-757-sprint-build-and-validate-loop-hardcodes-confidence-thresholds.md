@@ -22,23 +22,26 @@ By contrast, `max_issues` is already correctly parameterized via `context:` — 
 
 ## Current Behavior
 
-`loops/sprint-build-and-validate.yaml` lines 41–44 and 51–53:
+`loops/sprint-build-and-validate.yaml` has hardcoded literals in **three** locations:
 
-```yaml
-validate_issues:
-  action: |
-    Flag any issues with:
-    - Readiness score < 85
-    - Outcome confidence < 70
+- **Lines 42–43** (`validate_issues` action):
+  ```yaml
+  - Readiness score < 85
+  - Outcome confidence < 70
+  ```
 
-route_validation:
-  evaluate:
-    prompt: |
-      Do any sprint issues fail readiness checks (readiness < 85
-      or outcome confidence < 70)?
-```
+- **Lines 52–53** (`route_validation` evaluator prompt):
+  ```yaml
+  Do any sprint issues fail readiness checks (readiness < 85
+  or outcome confidence < 70)?
+  ```
 
-Values `85` and `70` are literals, not references to config.
+- **Line 70** (`fix_issues` action):
+  ```yaml
+  If an issue can't reach readiness >= 85 after refinement, consider
+  ```
+
+Values `85` and `70` are literals, not references to config. The `context:` block (lines 7–8) only defines `max_issues: 8`.
 
 ## Expected Behavior
 
@@ -57,11 +60,17 @@ Ideally the loop reads the configured values at runtime (if `ll-loop` supports i
 
 ## Implementation Steps
 
-1. Check whether `ll-loop` supports config-injection into `context:` (e.g. from `ll-config.json` at startup).
-2. If yes: map `commands.confidence_gate.readiness_threshold` → `context.readiness_threshold` and `commands.confidence_gate.outcome_threshold` → `context.outcome_threshold`.
-3. If no: add explicit `context:` defaults (`readiness_threshold: 85`, `outcome_threshold: 70`) and replace the four literal occurrences in the YAML with `${context.readiness_threshold}` / `${context.outcome_threshold}`.
-4. Update `loops/sprint-build-and-validate.yaml` accordingly.
-5. Add a comment in the loop's `context:` block pointing to the config key for reference.
+1. In `loops/sprint-build-and-validate.yaml` `context:` block (after line 8), add:
+   ```yaml
+   context:
+     max_issues: 8
+     readiness_threshold: 85   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
+     outcome_threshold: 70     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
+   ```
+2. Replace all three hardcoded literal occurrences (lines 42, 43, 52, 53, 70) with `${context.readiness_threshold}` and `${context.outcome_threshold}` respectively.
+3. No Python changes required — `ll-loop` does not support automatic config injection, so context defaults in the YAML are the correct approach. Users can override at runtime with `ll-loop run sprint-build-and-validate --context readiness_threshold=90`.
+
+_Note: `ll-loop` does not currently auto-inject `ll-config.json` values into loop context. `BRConfig` is instantiated in `scripts/little_loops/cli/loop/run.py:117` only to read a display color; no config values flow into `fsm.context`. The `--context KEY=VALUE` CLI flag (`run.py:50-57`) provides manual override._
 
 ## Scope Boundaries
 
@@ -84,16 +93,17 @@ N/A — No public API changes. This is a YAML configuration change only.
 - `loops/sprint-build-and-validate.yaml` — replace literal threshold values in `validate_issues` prompt and `route_validation` LLM prompt with context variable references
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/loop_runner.py` (or equivalent) — investigate config injection support; may need to add logic to inject `ll-config.json` values into loop `context:` at startup
+- `scripts/little_loops/cli/loop/run.py:50-57` — applies `--context KEY=VALUE` overrides into `fsm.context`; no changes needed
+- `scripts/little_loops/fsm/executor.py:896-912` — `_build_context()` passes `fsm.context` dict to `InterpolationContext`; resolves `${context.*}` at runtime; no changes needed
 
 ### Similar Patterns
 - `max_issues` in `loops/sprint-build-and-validate.yaml` `context:` block — follow this exact parameterization pattern
 
 ### Tests
-- TBD — if config injection is added to `loop_runner.py`, add a test verifying context variables override defaults
+- No new tests needed — this is a pure YAML change. The interpolation behavior is already covered by `scripts/tests/test_fsm_executor.py:537-549` (`test_context_interpolation`) and `scripts/tests/test_fsm_interpolation.py:32-36`.
 
 ### Documentation
-- `docs/ARCHITECTURE.md` — may reference loop runner context injection design
+- `docs/guides/LOOPS_GUIDE.md:206` — documents `${context.*}` interpolation pattern and `--context KEY=VALUE` CLI override; no changes needed
 
 ### Configuration
 - `.claude/ll-config.json` — `commands.confidence_gate.readiness_threshold` and `commands.confidence_gate.outcome_threshold` are the canonical source of truth
@@ -121,4 +131,6 @@ N/A — No public API changes. This is a YAML configuration change only.
 **Open** | Created: 2026-03-15 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-15T21:01:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95dcfad1-0399-48c5-b931-a232cf57fd74.jsonl`
+- `/ll:format-issue` - 2026-03-15T20:55:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/414699bd-4339-4053-b490-e38ecc9e548d.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
