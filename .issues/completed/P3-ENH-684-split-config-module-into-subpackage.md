@@ -91,9 +91,11 @@ Convert `config.py` into a `config/` subpackage with domain-specific modules.
 `enhancement`, `architecture`, `refactoring`, `auto-generated`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-14T23:49:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fdd1d8e8-174d-45cc-9ef0-1632be4f0751.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 
@@ -103,6 +105,19 @@ Convert `config.py` into a `config/` subpackage with domain-specific modules.
 - **Verdict**: VALID
 - `scripts/little_loops/config.py` is confirmed at 1,012 lines. No `config/` subpackage exists. The issue's claim of 20+ dataclasses in a single file is accurate based on the listed class names (BRConfig, ProjectConfig, IssuesConfig, etc.). Enhancement is still needed.
 
+## Resolution
+
+**Date**: 2026-03-14
+
+- **Deleted**: `scripts/little_loops/config.py` (1,012 lines)
+- **Created**: `scripts/little_loops/config/` subpackage:
+  - `__init__.py` — re-exports all 22 public names; all existing `from little_loops.config import X` unchanged
+  - `features.py` — `REQUIRED_CATEGORIES`, `DEFAULT_CATEGORIES`, `CategoryConfig`, `IssuesConfig`, `ScanConfig`, `SprintsConfig`, `LoopsConfig`, `GitHubSyncConfig`, `SyncConfig`
+  - `automation.py` — `AutomationConfig`, `ParallelAutomationConfig`, `ConfidenceGateConfig`, `CommandsConfig`, `ScoringWeightsConfig`, `DependencyMappingConfig`
+  - `cli.py` — `CliColorsLoggerConfig`, `CliColorsPriorityConfig`, `CliColorsTypeConfig`, `CliColorsConfig`, `RefineStatusConfig`, `CliConfig`
+  - `core.py` — `ProjectConfig`, `BRConfig`, `CLConfig`
+- 2075 tests passed; 1 pre-existing unrelated failure
+
 ## Status
 
-**Open** | Created: 2026-03-12 | Priority: P3
+**Completed** | Created: 2026-03-12 | Resolved: 2026-03-14 | Priority: P3
