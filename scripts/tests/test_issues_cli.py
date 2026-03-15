@@ -1129,7 +1129,9 @@ class TestIssuesCLIShow:
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
-            sys, "argv", ["ll-issues", "show", "--json", "BUG-001", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "show", "--json", "BUG-001", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
@@ -1156,7 +1158,9 @@ class TestIssuesCLIShow:
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
-            sys, "argv", ["ll-issues", "show", "--json", "BUG-001", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "show", "--json", "BUG-001", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 

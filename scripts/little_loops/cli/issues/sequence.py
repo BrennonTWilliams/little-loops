@@ -42,17 +42,19 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
     shown = ordered[:limit]
 
     if getattr(args, "json", False):
-        print_json([
-            {
-                "id": issue.issue_id,
-                "priority": issue.priority,
-                "title": issue.title,
-                "path": str(issue.path),
-                "blocked_by": sorted(graph.blocked_by.get(issue.issue_id, set())),
-                "blocks": issue.blocks,
-            }
-            for issue in shown
-        ])
+        print_json(
+            [
+                {
+                    "id": issue.issue_id,
+                    "priority": issue.priority,
+                    "title": issue.title,
+                    "path": str(issue.path),
+                    "blocked_by": sorted(graph.blocked_by.get(issue.issue_id, set())),
+                    "blocks": issue.blocks,
+                }
+                for issue in shown
+            ]
+        )
         return 0
 
     print(f"Suggested implementation sequence ({len(shown)} of {len(ordered)} issues):\n")
