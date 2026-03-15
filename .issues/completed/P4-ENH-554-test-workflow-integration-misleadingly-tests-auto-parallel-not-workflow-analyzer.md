@@ -139,6 +139,16 @@ _(none)_
 
 ---
 
+## Resolution
+
+- Renamed `scripts/tests/test_workflow_integration.py` → `scripts/tests/test_issue_workflow_integration.py` via `git mv`
+- Updated module docstring to clearly state scope: issue processing pipeline (AutoManager, ParallelOrchestrator, StateManager)
+- Updated references in `docs/development/E2E_TESTING.md` and `docs/development/TESTING.md`
+- All 3464 tests still pass after rename
+
+## Session Log
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl` — COMPLETED: renamed file, updated docstring, updated doc references
+
 ## Status
 
-**Open** | Created: 2026-03-04 | Priority: P4
+**Completed** | Created: 2026-03-04 | Priority: P4
