@@ -128,7 +128,6 @@ class TestContextMonitor:
         finally:
             os.chdir(original_dir)
 
-
     def test_env_var_overrides_config_threshold(
         self, hook_script: Path, test_config: Path, tmp_path: Path
     ):
