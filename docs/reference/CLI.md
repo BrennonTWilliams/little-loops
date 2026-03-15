@@ -283,7 +283,7 @@ Show execution history for a loop.
 
 | Flag | Short | Description |
 |------|-------|-------------|
-| `run_id` | | (Optional positional) Archived run ID to inspect; omit to list archived runs or show live state |
+| `run_id` | | (Optional positional) Archived run ID to inspect; omit to list all archived runs |
 | `--tail` | `-n` | Last N events to show (default: 50) |
 | `--verbose` | `-v` | Show action output preview and LLM call details (model, latency, prompt, response) |
 | `--full` | | Show untruncated prompts and output (implies `--verbose`) |

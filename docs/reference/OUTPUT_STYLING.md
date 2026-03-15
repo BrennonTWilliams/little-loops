@@ -131,7 +131,7 @@ Width is computed dynamically: the maximum of all content line lengths plus 2 pa
 
 ---
 
-## FSM Diagram: `scripts/little_loops/cli/loop/info.py`
+## FSM Diagram: `scripts/little_loops/cli/loop/layout.py`
 
 `_render_fsm_diagram(fsm, verbose)` produces a 2D box-drawing ASCII diagram for `ll-loop show`.
 
