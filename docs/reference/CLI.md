@@ -251,6 +251,10 @@ List available loops.
 
 Show current status of a loop.
 
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | | Output loop state as JSON |
+
 #### `ll-loop stop <loop>`
 
 Stop a running loop.
@@ -300,6 +304,10 @@ Copy a built-in loop to `.loops/` for customization.
 
 Show loop details and FSM structure.
 
+| Flag | Short | Description |
+|------|-------|-------------|
+| `--json` | | Output FSM config as JSON |
+
 **Examples:**
 ```bash
 ll-loop fix-types                     # Run loop (shorthand for run)
@@ -312,6 +320,7 @@ ll-loop list                          # List available loops
 ll-loop list --running                # List running loops
 ll-loop list --json                   # JSON array of available loops
 ll-loop status fix-types              # Show loop status
+ll-loop status fix-types --json       # Loop state as JSON
 ll-loop stop fix-types                # Stop a running loop
 ll-loop resume fix-types              # Resume interrupted loop
 ll-loop history fix-types             # Show execution history
@@ -322,6 +331,7 @@ ll-loop history fix-types --json      # JSON output
 ll-loop history fix-types <run_id>    # Inspect a specific archived run
 ll-loop install fix-types             # Install built-in loop
 ll-loop show fix-types                # Show loop details
+ll-loop show fix-types --json         # FSM config as JSON
 ```
 
 See [LOOPS_GUIDE](../guides/LOOPS_GUIDE.md) for loop configuration details.
@@ -367,6 +377,10 @@ Count active issues. Outputs a single integer by default, or a JSON object with 
 
 Show summary card for a single issue. Accepts short form (`518`), type-prefixed (`FEAT-518`), or full (`P3-FEAT-518`).
 
+| Flag | Description |
+|------|-------------|
+| `--json` | Output issue fields as JSON |
+
 #### `ll-issues sequence` / `ll-issues seq`
 
 Suggest a dependency-ordered implementation sequence.
@@ -374,11 +388,16 @@ Suggest a dependency-ordered implementation sequence.
 | Flag | Description |
 |------|-------------|
 | `--limit` | Maximum issues to show (default: 10) |
+| `--json` | Output sequence as JSON array |
 | `--config` | Path to project root |
 
 #### `ll-issues impact-effort` / `ll-issues ie`
 
 Display an impact vs. effort matrix for active issues.
+
+| Flag | Description |
+|------|-------------|
+| `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
 
 #### `ll-issues refine-status` / `ll-issues rs`
 
@@ -404,8 +423,11 @@ ll-issues count --json                       # JSON with breakdowns
 ll-issues count --type BUG                   # Count bugs only
 ll-issues show FEAT-518
 ll-issues show 518
+ll-issues show FEAT-518 --json        # Issue fields as JSON
 ll-issues sequence --limit 10
+ll-issues sequence --json             # Ordered sequence as JSON
 ll-issues impact-effort
+ll-issues impact-effort --type BUG    # Only bugs
 ll-issues refine-status
 ll-issues refine-status --type BUG --format json
 ```

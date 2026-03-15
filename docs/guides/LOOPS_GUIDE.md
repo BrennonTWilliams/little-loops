@@ -283,11 +283,11 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 |---------|-------------|
 | `ll-loop run <name>` | Run a loop (also: `ll-loop <name>`) |
 | `ll-loop validate <name>` | Check YAML for schema errors and unreachable states |
-| `ll-loop show <name>` | Display states, transitions, and ASCII diagram |
+| `ll-loop show <name>` | Display states, transitions, and ASCII diagram (`--json` for raw FSM config) |
 | `ll-loop test <name>` | Run a single iteration to verify configuration |
 | `ll-loop simulate <name>` | Trace execution interactively without running actions |
 | `ll-loop list` | List available loops (`--running` for active only) |
-| `ll-loop status <name>` | Show current state and iteration count |
+| `ll-loop status <name>` | Show current state and iteration count (`--json` for machine-readable output) |
 | `ll-loop stop <name>` | Stop a running loop |
 | `ll-loop resume <name>` | Resume an interrupted loop from saved state |
 | `ll-loop history <name>` | Show history; pass `run_id` to view a specific archived run |
