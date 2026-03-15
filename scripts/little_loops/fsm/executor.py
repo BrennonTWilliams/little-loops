@@ -29,6 +29,7 @@ from little_loops.fsm.handoff_handler import HandoffHandler
 from little_loops.fsm.interpolation import InterpolationContext, InterpolationError, interpolate
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
+from little_loops.session_log import get_current_session_jsonl
 
 
 @dataclass
@@ -579,15 +580,16 @@ class FSMExecutor:
         )
 
         preview = result.output[-2000:].strip() if result.output else None
-        self._emit(
-            "action_complete",
-            {
-                "exit_code": result.exit_code,
-                "duration_ms": result.duration_ms,
-                "output_preview": preview,
-                "is_prompt": is_slash_command,
-            },
-        )
+        payload: dict[str, Any] = {
+            "exit_code": result.exit_code,
+            "duration_ms": result.duration_ms,
+            "output_preview": preview,
+            "is_prompt": is_slash_command,
+        }
+        if is_slash_command:
+            session_jsonl = get_current_session_jsonl()
+            payload["session_jsonl"] = str(session_jsonl) if session_jsonl else None
+        self._emit("action_complete", payload)
 
         # Capture if requested
         if state.capture:

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import datetime
 from pathlib import Path
 from typing import Any
@@ -224,6 +225,11 @@ def _format_history_event(
             etype_color = "38;5;208"
             status_str = colorize(f"\u2717 exit={exit_code}", "38;5;208")
         detail = f"{status_str}  {duration_ms}ms"
+        is_prompt = event.get("is_prompt", False)
+        session_jsonl = event.get("session_jsonl") if is_prompt else None
+        if session_jsonl:
+            session_display = session_jsonl if verbose else os.path.basename(session_jsonl)
+            detail += f"  session={colorize(session_display, '2')}"
         if verbose:
             output_preview = event.get("output_preview", "")
             if output_preview:
