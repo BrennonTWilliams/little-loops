@@ -55,8 +55,39 @@ Rename the skill from `confidence-check` to `score-confidence` across all releva
 - `commands/help.md` - lists skill in command table
 - `skills/create-loop/reference.md` - references skill
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Key architectural insight**: The skill invocation name `/ll:<name>` is derived **solely from the directory name** under `skills/`. The `SKILL.md` frontmatter has no `name:` field — confirmed across all 18 skills. Renaming the directory is the single change that updates the invocation name; all other edits are reference updates only.
+
+**Complete reference map with line numbers:**
+
+| File | Line(s) | Occurrence |
+|---|---|---|
+| `skills/confidence-check/SKILL.md` | 61 | Error message: `Usage: /ll:confidence-check --all` |
+| `skills/confidence-check/SKILL.md` | 400 | Session log template reference |
+| `skills/confidence-check/SKILL.md` | 540–553 | Six usage pattern invocation examples |
+| `skills/manage-issue/SKILL.md` | 116, 120, 170, 180 | Prose + Skill tool call (`skill: "ll:confidence-check"`) + two halt messages |
+| `skills/issue-workflow/SKILL.md` | 115, 159 | Workflow stage table entries |
+| `skills/create-loop/reference.md` | 715 | Example loop action string |
+| `loops/issue-refinement.yaml` | 81, 89 | Two `action:` strings |
+| `loops/sprint-build-and-validate.yaml` | 38, 68 | Two `action:` strings |
+| `commands/help.md` | 75 | Skills listing |
+| `commands/create-sprint.md` | 369 | Warning message reference |
+| `.claude/CLAUDE.md` | 53 | Planning & Implementation skill list |
+| `README.md` | 131, 208 | Command table + skill table |
+| `CONTRIBUTING.md` | 131 | Directory tree entry |
+| `docs/ARCHITECTURE.md` | 113 | Directory tree entry |
+| `docs/reference/COMMANDS.md` | 15, 17, 164, 432 | Flag tables + section header + skill table |
+| `docs/reference/API.md` | 507–508 | Field-level doc comments |
+| `docs/guides/LOOPS_GUIDE.md` | 334 | Skill name in `--check` flag description |
+| `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` | 264–266 | Three invocation examples |
+
+**No prior skill renames found** in the codebase or issue history. This is the first skill directory rename in this project.
+
 ### Similar Patterns
-- Other recently-renamed skills for naming convention reference
+- No prior skill directory renames exist in this codebase — the pattern for this rename is: `git mv skills/confidence-check skills/score-confidence`, then grep-replace `confidence-check` → `score-confidence` across all files listed above
 
 ### Tests
 - N/A - skill rename does not require test changes unless tests reference the skill name
@@ -70,12 +101,28 @@ Rename the skill from `confidence-check` to `score-confidence` across all releva
 
 ## Implementation Steps
 
-1. Find all references to `confidence-check` in the codebase
-2. Rename the skill directory
-3. Update internal references in the skill file
-4. Update cross-skill references (e.g., `manage-issue` may invoke `confidence-check`)
-5. Update documentation and plugin manifest
-6. Verify no broken references remain with a grep check
+1. Rename the skill directory: `git mv skills/confidence-check skills/score-confidence`
+2. Update internal self-references in `skills/score-confidence/SKILL.md` at lines 61, 400, 540–553 (description text, error message, session log template, usage examples) — **no frontmatter `name:` field exists; directory name is the invocation name**
+3. Update cross-skill callers:
+   - `skills/manage-issue/SKILL.md:116,120,170,180` — prose reference, Skill tool call (`"ll:confidence-check"` → `"ll:score-confidence"`), and two halt messages
+   - `skills/issue-workflow/SKILL.md:115,159` — workflow stage table entries
+   - `skills/create-loop/reference.md:715` — example action string
+4. Update FSM loop files:
+   - `loops/issue-refinement.yaml:81,89` — two `action:` strings
+   - `loops/sprint-build-and-validate.yaml:38,68` — two `action:` strings
+5. Update commands and CLAUDE.md:
+   - `commands/help.md:75` — skills listing
+   - `commands/create-sprint.md:369` — warning message
+   - `.claude/CLAUDE.md:53` — Planning & Implementation skill list
+6. Update documentation:
+   - `README.md:131,208`
+   - `CONTRIBUTING.md:131`
+   - `docs/ARCHITECTURE.md:113`
+   - `docs/reference/COMMANDS.md:15,17,164,432`
+   - `docs/reference/API.md:507-508`
+   - `docs/guides/LOOPS_GUIDE.md:334`
+   - `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:264-266`
+7. Verify no dangling references: `grep -r "confidence-check" . --include="*.md" --include="*.yaml" --include="*.json" -l`
 
 ## Acceptance Criteria
 
@@ -115,6 +162,9 @@ _Verified 2026-03-15 against codebase:_
 **Current**: backlog
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-15T19:23:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
+- `/ll:confidence-check` - 2026-03-15T19:22:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
+- `/ll:refine-issue` - 2026-03-15T19:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
 - `/ll:verify-issues` - 2026-03-15T19:14:32 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
 - `/ll:format-issue` - 2026-03-15T19:12:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
