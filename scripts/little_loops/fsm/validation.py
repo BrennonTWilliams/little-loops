@@ -187,8 +187,8 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
     path = f"states.{state_name}"
 
     has_shorthand = (
-        state.on_success is not None
-        or state.on_failure is not None
+        state.on_yes is not None
+        or state.on_no is not None
         or state.on_error is not None
         or state.on_partial is not None
     )
@@ -198,7 +198,7 @@ def _validate_state_routing(state_name: str, state: StateConfig) -> list[Validat
     if has_shorthand and has_route:
         errors.append(
             ValidationError(
-                message="Both shorthand routing (on_success/on_failure/on_error) "
+                message="Both shorthand routing (on_yes/on_no/on_error) "
                 "and full route table defined. Route table will take precedence.",
                 path=path,
                 severity=ValidationSeverity.WARNING,

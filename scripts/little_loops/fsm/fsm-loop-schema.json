@@ -84,13 +84,21 @@
             "type": "string"
           }
         },
+        "on_yes": {
+          "type": "string",
+          "description": "Shorthand for yes verdict routing"
+        },
+        "on_no": {
+          "type": "string",
+          "description": "Shorthand for no verdict routing"
+        },
         "on_success": {
           "type": "string",
-          "description": "Shorthand for success verdict routing"
+          "description": "Deprecated: use on_yes instead"
         },
         "on_failure": {
           "type": "string",
-          "description": "Shorthand for failure verdict routing"
+          "description": "Deprecated: use on_no instead"
         },
         "on_error": {
           "type": "string",
