@@ -12,6 +12,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.46.0] - 2026-03-15
+
+### Added
+
+- **Update-docs skill** — Automated documentation maintenance triggered by code changes (FEAT-751)
+- **MCP tool action type for FSM Loops** — New `action_type: mcp_tool` with MCP result evaluator support (FEAT-729)
+- **ll-loop positional string input** — `ll-loop run` now accepts a positional string input argument (FEAT-725)
+- Automatic Harnessing Guide for FSM loops (9ff9ae6)
+
+### Fixed
+
+- **Loop `/tmp` scratch files use global names** — Fixed cross-project conflicts from non-unique scratch file names (BUG-744)
+- **format-issue --auto `formatted` flag** — Fixed flag never being set, causing infinite loops in issue-refinement (BUG-743)
+
+### Changed
+
+- **Verbose loop history LLM call details** — Loop history verbose mode now shows full LLM call details (ENH-740)
+- **Stall detection via diff comparison** — FSM loops now detect stalls by comparing state diffs (ENH-714)
+- **Deferred `detect_regression_or_duplicate`** — Lazy evaluation eliminates eager calls for displaced matches (ENH-691)
+
 ## [1.45.0] - 2026-03-14
 
 ### Added
@@ -1271,6 +1291,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.46.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.45.0...v1.46.0
 [1.45.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.44.0...v1.45.0
 [1.44.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.43.0...v1.44.0
 [1.43.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.42.0...v1.43.0
