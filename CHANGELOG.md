@@ -12,6 +12,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.45.0] - 2026-03-14
+
+### Added
+
+- **4-section anchored schema for session handoff** — `handoff` skill now uses a structured 4-section schema for richer session continuity (ecaff979)
+- **Session linking for loop history** — Loop history now captures session IDs for prompt states, enabling cross-session traceability (c1579dc)
+- **Per-state retry limits for FSM** — FSM states support `max_retries` and `on_retry_exhausted` for fine-grained retry control (4f68e5a)
+- **`ll-issues search` subcommand** — New search subcommand with filters and sorting for issue discovery (221c059)
+
+### Fixed
+
+- **FSM yes/no schema** — Updated schema and validation to use `on_yes`/`on_no` fields replacing `on_success`/`on_failure` (357073a)
+- **Loop CLI display** — Updated CLI display to reflect yes/no verdict rename (dd6b854)
+- **Loop config files** — Updated built-in loop configs for yes/no verdict and on_yes/on_no rename (169e588)
+- **Quality checks** — Resolved lint, format, and type check failures (70ce0f4)
+
+### Changed
+
+- **FSM verdict naming** — Renamed `success`/`failure` verdicts to `yes`/`no` and `on_success`/`on_failure` to `on_yes`/`on_no` for clearer semantics (a18e79e, 45c9956)
+- **`review-loop` LLM state detection** — Detects replaceable LLM prompt states for optimization recommendations (63d0b19)
+- **Config module refactor** — Split `config.py` into a `config/` subpackage for better organization (cde1bbe)
+- **Issue history deduplication** — Extracted `get_issue_content()` helper eliminating 10 code duplicates (b1be301)
+- **Issue discovery performance** — Deferred `detect_regression_or_duplicate` to after loop in Passes 2 and 3 (26b8d06)
+
 ## [1.44.0] - 2026-03-14
 
 ### Added
@@ -1247,6 +1271,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.45.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.44.0...v1.45.0
 [1.44.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.43.0...v1.44.0
 [1.43.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.42.0...v1.43.0
 [1.42.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.41.0...v1.42.0
