@@ -591,7 +591,7 @@ class FSMExecutor:
             }
 
         # Route based on verdict
-        verdict = eval_result.verdict if eval_result else "success"
+        verdict = eval_result.verdict if eval_result else "yes"
         return self._route(state, verdict, ctx)
 
     def _run_action(
@@ -780,10 +780,10 @@ class FSMExecutor:
             return None
 
         # Shorthand routing
-        if verdict == "success" and state.on_success:
-            return self._resolve_route(state.on_success, ctx)
-        if verdict == "failure" and state.on_failure:
-            return self._resolve_route(state.on_failure, ctx)
+        if verdict == "yes" and state.on_yes:
+            return self._resolve_route(state.on_yes, ctx)
+        if verdict == "no" and state.on_no:
+            return self._resolve_route(state.on_no, ctx)
         if verdict == "error" and state.on_error:
             return self._resolve_route(state.on_error, ctx)
         if verdict == "partial" and state.on_partial:

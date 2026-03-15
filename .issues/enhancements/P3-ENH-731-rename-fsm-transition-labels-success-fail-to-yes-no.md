@@ -76,13 +76,13 @@ The `on_success`/`on_failure` property names (and internal `"success"`/`"failure
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/fsm/schema.py` — `StateConfig.on_success`/`on_failure` fields (lines 195–196); `to_dict` keys (lines 217–220); `from_dict` lookups (lines 254–255); `get_referenced_states` checks (lines 273–276). **Note**: no Pydantic — plain `@dataclass` with hand-written `from_dict`/`to_dict`, no alias machinery exists.
-- `scripts/little_loops/fsm/evaluators.py` — `DEFAULT_LLM_SCHEMA` `enum` at line 54 lists `"success"/"failure"`; `evaluate_exit_code` returns at lines 92/94; `evaluate_output_numeric` line 144; `_compare_values` line 211; `evaluate_output_json` lines 258/260; `evaluate_output_contains` lines 302/304
-- `scripts/little_loops/fsm/executor.py` — default verdict `"success"` at line 535; `_route` method shorthand dispatch at lines 722/724 (`verdict == "success"` / `verdict == "failure"`)
-- `scripts/little_loops/fsm/validation.py` — `has_shorthand` field checks at lines 178–182; warning message string at line 189 that names `on_success`/`on_failure` literally
+- `scripts/little_loops/fsm/schema.py` — `StateConfig.on_success`/`on_failure` fields (lines 211–212); `to_dict` keys (lines 235–238); `from_dict` lookups (lines 276–277); `get_referenced_states` checks (lines 297–300). **Note**: no Pydantic — plain `@dataclass` with hand-written `from_dict`/`to_dict`, no alias machinery exists.
+- `scripts/little_loops/fsm/evaluators.py` — `DEFAULT_LLM_SCHEMA` `enum` at line 59 lists `"success"/"failure"`; `evaluate_exit_code` returns at lines 106/108; `evaluate_output_numeric` line 149; `_compare_values` line 207; `evaluate_output_json` lines 254/256; `evaluate_output_contains` lines 298/300
+- `scripts/little_loops/fsm/executor.py` — default verdict `"success"` at line 594; `_route` method shorthand dispatch at lines 783/785 (`verdict == "success"` / `verdict == "failure"`)
+- `scripts/little_loops/fsm/validation.py` — `has_shorthand` field checks at lines 190–191; warning message string at line 201 that names `on_success`/`on_failure` literally
 - `scripts/little_loops/fsm/fsm-loop-schema.json` — JSON Schema property definitions for `on_success`/`on_failure` at lines ~87–93
 - `scripts/little_loops/cli/loop/layout.py` — `_EDGE_LABEL_COLORS` dict (`"success"` at line 23, `"fail"` at line 24); edge collection labels at lines 139/141; `_colorize_label` checks at lines 37/43; happy-path tracer reads `on_success` at line 187
-- `scripts/little_loops/cli/loop/info.py` — event log `verdict == "success"` at line 199; compact transition table uses `"success"`/`"fail"` at lines 272–273; verbose transition table uses `"success"`/`"failure"` at lines 531–532 (**inconsistency**: compact uses `"fail"`, verbose uses `"failure"` — both need to become `"no"`); stats counter at lines 398–399
+- `scripts/little_loops/cli/loop/info.py` — event log `verdict == "success"` at line 247; compact transition table uses `"success"`/`"fail"` at lines 453–454; verbose transition table uses `"success"`/`"failure"` at lines 712–713 (**inconsistency**: compact uses `"fail"`, verbose uses `"failure"` — both need to become `"no"`); stats counter at lines 579–580
 - `scripts/little_loops/cli/loop/_helpers.py` — `print_execution_plan` prints `on_success`/`on_failure` labels verbatim at lines 174–178; evaluate verdict check at line 382 uses `verdict in ("success", "target", "progress")`
 - `scripts/little_loops/cli/loop/testing.py` — verdict routing `verdict == "success"` / `verdict == "failure"` with `state_config.on_success`/`on_failure` at lines 148–153
 - `loops/*.yaml` — 18 of 19 loop files (81 occurrences) use `on_success:`/`on_failure:` YAML keys; **additionally, LLM `evaluate.prompt` text inside many loops instructs the model to `Return "success"` / `Return "failure"` — these string literals also need updating to `"yes"`/`"no"`** (e.g., `fix-quality-and-tests.yaml:15-16`, `issue-staleness-review.yaml:41-43`, `plugin-health-check.yaml:76-77`, etc.)
@@ -140,11 +140,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 ## Implementation Steps
 
 1. **Audit scope** — run `grep -rn "on_success\|on_failure\|\"success\"\|\"failure\"" scripts/little_loops/fsm/ scripts/little_loops/cli/loop/ loops/ skills/ docs/` to confirm all touch points
-2. **Update FSM schema** (`schema.py:195–196, 217–220, 254–255, 273–276`) — rename fields to `on_yes`/`on_no`; in `from_dict` add backwards-compat: `on_yes=data.get("on_yes") or data.get("on_success")` (and same for `on_no`/`on_failure`)
+2. **Update FSM schema** (`schema.py:211–212, 235–238, 276–277, 297–300`) — rename fields to `on_yes`/`on_no`; in `from_dict` add backwards-compat: `on_yes=data.get("on_yes") or data.get("on_success")` (and same for `on_no`/`on_failure`)
 3. **Update JSON Schema** (`fsm-loop-schema.json:~87–93`) — rename `on_success`/`on_failure` properties to `on_yes`/`on_no`
-4. **Update evaluators** (`evaluators.py:54, 92, 94, 144, 211, 258, 260, 302, 304, 439, 448, 453, 461`) — change all `"success"`/`"failure"` verdict returns to `"yes"`/`"no"` (includes `evaluate_diff_stall` at lines 439, 448, 453, 461); update `DEFAULT_LLM_SCHEMA` enum from `["success", "failure", "blocked", "partial"]` to `["yes", "no", "blocked", "partial"]`
-5. **Update executor** (`executor.py:535, 722, 724`) — change default verdict `"success"` → `"yes"`; change `verdict == "success"` → `"yes"` and `verdict == "failure"` → `"no"` in `_route`
-6. **Update validation** (`validation.py:178–182, 189`) — update `has_shorthand` field checks and warning message string
+4. **Update evaluators** (`evaluators.py:59, 106, 108, 149, 207, 254, 256, 298, 300, 439, 448, 453, 461`) — change all `"success"`/`"failure"` verdict returns to `"yes"`/`"no"` (includes `evaluate_diff_stall` at lines 439, 448, 453, 461); update `DEFAULT_LLM_SCHEMA` enum from `["success", "failure", "blocked", "partial"]` to `["yes", "no", "blocked", "partial"]`
+5. **Update executor** (`executor.py:594, 783, 785`) — change default verdict `"success"` → `"yes"`; change `verdict == "success"` → `"yes"` and `verdict == "failure"` → `"no"` in `_route`
+6. **Update validation** (`validation.py:190–191, 201`) — update `has_shorthand` field checks and warning message string
 7. **Update CLI rendering** (all in `cli/loop/`):
    - `layout.py:22–43, 139–141, 187` — update `_EDGE_LABEL_COLORS` keys, edge labels `"success"`→`"yes"` / `"fail"`→`"no"`, colorize checks, path tracer
    - `info.py:199, 272–273, 398–399, 531–532` — update all display labels, standardizing compact (`"fail"`→`"no"`) and verbose (`"failure"`→`"no"`)
@@ -187,10 +187,11 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 ## Verification Notes
 
 - **Date**: 2026-03-14
-- **Verdict**: NEEDS_UPDATE
-- Feature not yet implemented; `on_success`/`on_failure` still present throughout. Schema.py line refs have drifted: fields now at **lines 206–207** (not 195–196); `to_dict` keys at **228–231** (not 217–220); `from_dict` lookups at **265–266** (not 254–255); `get_referenced_states` at **284–286** (not 273–276). `evaluators.py` and loop YAML contents unchanged.
+- **Verdict**: CORRECTED
+- Feature not yet implemented; `on_success`/`on_failure` still present throughout. Integration Map line references updated to current state: `schema.py` fields at 211–212, `to_dict` at 235–238, `from_dict` at 276–277, `get_referenced_states` at 297–300; `evaluators.py` DEFAULT_LLM_SCHEMA at 59, `evaluate_exit_code` at 106/108, `evaluate_output_numeric` at 149, `_compare_values` at 207, `evaluate_output_json` at 254/256, `evaluate_output_contains` at 298/300; `executor.py` default verdict at 594, `_route` dispatch at 783/785; `validation.py` `has_shorthand` at 190–191, warning at 201; `info.py` verdict check at 247, compact table at 453–454, verbose table at 712–713, stats at 579–580.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T00:51:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c37a3760-8a4a-47c7-b8f8-7c56ed5544de.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2acb782e-c208-43f1-8534-96bfd95ced6e.jsonl`

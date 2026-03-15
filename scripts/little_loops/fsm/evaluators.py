@@ -56,10 +56,10 @@ DEFAULT_LLM_SCHEMA: dict[str, Any] = {
     "properties": {
         "verdict": {
             "type": "string",
-            "enum": ["success", "failure", "blocked", "partial"],
+            "enum": ["yes", "no", "blocked", "partial"],
             "description": (
-                "- success: The action completed its goal\n"
-                "- failure: The action failed, should retry\n"
+                "- yes: The condition/check evaluated to true\n"
+                "- no: The condition/check evaluated to false\n"
                 "- blocked: Cannot proceed without external help\n"
                 "- partial: Made progress but not complete"
             ),
@@ -98,14 +98,14 @@ def evaluate_exit_code(exit_code: int) -> EvaluationResult:
 
     Returns:
         EvaluationResult with verdict:
-            - 0 -> success
-            - 1 -> failure
+            - 0 -> yes
+            - 1 -> no
             - 2+ -> error
     """
     if exit_code == 0:
-        verdict = "success"
+        verdict = "yes"
     elif exit_code == 1:
-        verdict = "failure"
+        verdict = "no"
     else:
         verdict = "error"
 
@@ -126,8 +126,8 @@ def evaluate_output_numeric(
 
     Returns:
         EvaluationResult with verdict:
-            - Condition met -> success
-            - Condition not met -> failure
+            - Condition met -> yes
+            - Condition not met -> no
             - Parse error -> error
     """
     try:
@@ -146,7 +146,7 @@ def evaluate_output_numeric(
 
     condition_met = _NUMERIC_OPERATORS[operator](value, target)
     return EvaluationResult(
-        verdict="success" if condition_met else "failure",
+        verdict="yes" if condition_met else "no",
         details={"value": value, "target": target, "operator": operator},
     )
 
@@ -204,7 +204,7 @@ def _compare_values(
 
     condition_met = _NUMERIC_OPERATORS[operator](value, target)
     return EvaluationResult(
-        verdict="success" if condition_met else "failure",
+        verdict="yes" if condition_met else "no",
         details={"value": value, "path": path, "target": target, "operator": operator},
     )
 
@@ -225,8 +225,8 @@ def evaluate_output_json(
 
     Returns:
         EvaluationResult with verdict:
-            - Condition met -> success
-            - Condition not met -> failure
+            - Condition met -> yes
+            - Condition not met -> no
             - Parse/path error -> error
     """
     try:
@@ -251,9 +251,9 @@ def evaluate_output_json(
 
     # For non-numeric values, only eq and ne are supported
     if operator == "eq":
-        verdict = "success" if value == target else "failure"
+        verdict = "yes" if value == target else "no"
     elif operator == "ne":
-        verdict = "success" if value != target else "failure"
+        verdict = "yes" if value != target else "no"
     else:
         return EvaluationResult(
             verdict="error",
@@ -283,10 +283,10 @@ def evaluate_output_contains(
 
     Returns:
         EvaluationResult with verdict:
-            - Found (negate=False) -> success
-            - Found (negate=True) -> failure
-            - Not found (negate=False) -> failure
-            - Not found (negate=True) -> success
+            - Found (negate=False) -> yes
+            - Found (negate=True) -> no
+            - Not found (negate=False) -> no
+            - Not found (negate=True) -> yes
     """
     # Try regex first, fall back to substring
     try:
@@ -295,9 +295,9 @@ def evaluate_output_contains(
         matched = pattern in output
 
     if negate:
-        verdict = "failure" if matched else "success"
+        verdict = "no" if matched else "yes"
     else:
-        verdict = "success" if matched else "failure"
+        verdict = "yes" if matched else "no"
 
     return EvaluationResult(
         verdict=verdict,
@@ -376,11 +376,11 @@ def evaluate_diff_stall(
 ) -> EvaluationResult:
     """Detect stalled iterations by comparing git diff --stat between runs.
 
-    On first call, snapshots the current diff and returns 'success'.
+    On first call, snapshots the current diff and returns 'yes'.
     On subsequent calls, compares current diff to the previous snapshot.
     If the diff is identical for max_stall consecutive iterations, returns
-    'failure' (stalled). If different, resets the stall counter and returns
-    'success' (progress).
+    'no' (stalled). If different, resets the stall counter and returns
+    'yes' (progress).
 
     State is persisted in /tmp using a key derived from the scope argument,
     so different loops with different scopes maintain independent stall counters.
@@ -393,8 +393,8 @@ def evaluate_diff_stall(
 
     Returns:
         EvaluationResult with verdict:
-            - success: diff changed since last iteration (progress made)
-            - failure: diff unchanged for max_stall iterations (stalled)
+            - yes: diff changed since last iteration (progress made)
+            - no: diff unchanged for max_stall iterations (stalled)
             - error: git command failed or timed out
     """
     cmd = ["git", "diff", "--stat"]
@@ -436,7 +436,7 @@ def evaluate_diff_stall(
         state_file.write_text(current_diff)
         count_file.write_text("0")
         return EvaluationResult(
-            verdict="success",
+            verdict="yes",
             details={"stall_count": 0, "max_stall": max_stall, "diff_changed": True},
         )
 
@@ -445,12 +445,12 @@ def evaluate_diff_stall(
         count_file.write_text(str(stall_count))
         if stall_count >= max_stall:
             return EvaluationResult(
-                verdict="failure",
+                verdict="no",
                 details={"stall_count": stall_count, "max_stall": max_stall, "diff_changed": False},
             )
-        # Not yet at max_stall threshold — still report success so loop continues
+        # Not yet at max_stall threshold — still report yes so loop continues
         return EvaluationResult(
-            verdict="success",
+            verdict="yes",
             details={"stall_count": stall_count, "max_stall": max_stall, "diff_changed": False},
         )
     else:
@@ -458,7 +458,7 @@ def evaluate_diff_stall(
         state_file.write_text(current_diff)
         count_file.write_text("0")
         return EvaluationResult(
-            verdict="success",
+            verdict="yes",
             details={"stall_count": 0, "max_stall": max_stall, "diff_changed": True},
         )
 

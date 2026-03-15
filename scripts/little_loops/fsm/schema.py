@@ -208,8 +208,8 @@ class StateConfig:
     action_type: Literal["prompt", "slash_command", "shell"] | None = None
     evaluate: EvaluateConfig | None = None
     route: RouteConfig | None = None
-    on_success: str | None = None
-    on_failure: str | None = None
+    on_yes: str | None = None
+    on_no: str | None = None
     on_error: str | None = None
     on_partial: str | None = None
     next: str | None = None
@@ -232,10 +232,10 @@ class StateConfig:
             result["evaluate"] = self.evaluate.to_dict()
         if self.route is not None:
             result["route"] = self.route.to_dict()
-        if self.on_success is not None:
-            result["on_success"] = self.on_success
-        if self.on_failure is not None:
-            result["on_failure"] = self.on_failure
+        if self.on_yes is not None:
+            result["on_yes"] = self.on_yes
+        if self.on_no is not None:
+            result["on_no"] = self.on_no
         if self.on_error is not None:
             result["on_error"] = self.on_error
         if self.on_partial is not None:
@@ -273,8 +273,8 @@ class StateConfig:
             action_type=data.get("action_type"),
             evaluate=evaluate,
             route=route,
-            on_success=data.get("on_success"),
-            on_failure=data.get("on_failure"),
+            on_yes=data.get("on_yes") or data.get("on_success"),
+            on_no=data.get("on_no") or data.get("on_failure"),
             on_error=data.get("on_error"),
             on_partial=data.get("on_partial"),
             next=data.get("next"),
@@ -294,10 +294,10 @@ class StateConfig:
         """
         refs: set[str] = set()
 
-        if self.on_success is not None:
-            refs.add(self.on_success)
-        if self.on_failure is not None:
-            refs.add(self.on_failure)
+        if self.on_yes is not None:
+            refs.add(self.on_yes)
+        if self.on_no is not None:
+            refs.add(self.on_no)
         if self.on_error is not None:
             refs.add(self.on_error)
         if self.on_partial is not None:
