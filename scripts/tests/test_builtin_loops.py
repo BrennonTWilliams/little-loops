@@ -54,10 +54,6 @@ class TestBuiltinLoopFiles:
             "issue-size-split",
             "issue-staleness-review",
             "backlog-flow-optimizer",
-            "plugin-health-check",
-            "pr-review-cycle",
-            "priority-rebalance",
-            "readme-freshness",
             "sprint-build-and-validate",
             "worktree-health",
         }
@@ -217,7 +213,6 @@ class TestBuiltinLoopScratchIsolation:
         "issue-refinement",
         "fix-quality-and-tests",
         "dead-code-cleanup",
-        "pr-review-cycle",
     ]
 
     # Bare /tmp paths that must not appear in any action text

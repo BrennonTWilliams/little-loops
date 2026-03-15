@@ -164,10 +164,6 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `issue-refinement` | Progressively refine all active issues through format → score → refine pipeline |
 | `issue-size-split` | Review issues for sizing and split oversized ones |
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
-| `plugin-health-check` | Audit plugin configuration and check command and skill definitions |
-| `pr-review-cycle` | Full pre-PR pipeline: quality checks, test run, PR description generation |
-| `priority-rebalance` | Review P0-P5 priority distribution across active issues |
-| `readme-freshness` | Compare README and CLAUDE.md against actual project state |
 | `sprint-build-and-validate` | Create a sprint from the backlog and validate all included issues |
 | `worktree-health` | Continuous monitoring of orphaned worktrees and stale branches |
 
