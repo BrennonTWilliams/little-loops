@@ -12,6 +12,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.47.0] - 2026-03-15
+
+### Added
+
+- **--handoff-threshold CLI override** — Added to ll-auto, ll-parallel, ll-sprint for per-run session handoff threshold configuration (8475824)
+- **--type filter for impact-effort** — New `--type` flag on `ll-issues impact-effort` to filter by issue type (b6dd14e)
+- **--json output for ll-loop** — `ll-loop status` and `ll-loop show` now support `--json` for machine-readable output (968ce1c)
+- **--json output for ll-issues** — `ll-issues show` and `ll-issues sequence` now support `--json` for machine-readable output (740bafb)
+
+### Documentation
+
+- Fixed default_max_workers value in SPRINT_GUIDE (ed3bb0b)
+- Fixed two inaccuracies found during reference docs audit (dca73b6)
+- Fixed stale skill counts and documented missing ll-issues subcommands (28d969a)
+- Documented --handoff-threshold flag in CLI reference and SESSION_HANDOFF guide (c12b368)
+- Added check_skill evaluation phase for skill-as-judge verification (fea5775)
+- Documented MCP tool gates as optional evaluation phase (8933eb6)
+- Documented --json and --type flags added in FEAT-701/702/703 (2305d6b)
+
 ## [1.46.0] - 2026-03-15
 
 ### Added
@@ -1291,6 +1310,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.47.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.46.0...v1.47.0
 [1.46.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.45.0...v1.46.0
 [1.45.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.44.0...v1.45.0
 [1.44.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.43.0...v1.44.0
