@@ -3,8 +3,8 @@ discovered_commit: 3e9beeaf2bbe8608104beb89fbc7e2e2259310d8
 discovered_branch: main
 discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
-confidence_score: 90
-outcome_confidence: 78
+confidence_score: 88
+outcome_confidence: 70
 ---
 
 # ENH-693: `parse_frontmatter` silently drops YAML lists and colon-containing values
@@ -32,21 +32,19 @@ Silent data loss is worse than a clear error. Future frontmatter additions using
 
 ## Expected Behavior
 
-Either:
-1. Document the parser as "simple key: value only" and raise/warn when list-item lines are encountered, OR
-2. Use PyYAML for correct YAML parsing
+The parser documents its "simple key: value only" limitation and warns when unsupported syntax is encountered (list-item lines, multi-line block scalars). All current project frontmatter is simple `key: value` pairs — no existing consumer uses lists or block scalars — so adding warnings is sufficient without the risk of a PyYAML migration.
+
+**Selected approach: Option B — Validate and warn** (lower risk; no new dependency; all current frontmatter is simple key:value).
+
+PyYAML (Option A) is deferred — only warranted if a future frontmatter field needs list or block-scalar support.
 
 ## Implementation Steps
 
-**Option A — Add PyYAML:**
-1. Add `pyyaml` to `scripts/pyproject.toml` dependencies
-2. Replace line-by-line parsing in `parse_frontmatter` with `yaml.safe_load(frontmatter_block)`
-3. Run tests to verify all existing frontmatter parses identically
-
-**Option B — Validate and warn:**
-1. In `parse_frontmatter`, detect list-item lines (`line.startswith("- ")`) and log a warning
-2. Detect values containing colons and split only on the first `:` (already done — verify edge cases)
-3. Document the supported subset in a docstring
+1. In `parse_frontmatter` (`frontmatter.py:36-51`), add detection for list-item lines (`line.startswith("- ")`) and call `warnings.warn(f"Unsupported YAML list syntax in frontmatter: {line!r}", stacklevel=2)` — do not parse the line further
+2. Add detection for multi-line block scalars (`value.startswith("|")` or `value.startswith(">")`) and emit the same warning
+3. Split on first `:` is already correct via `split(":", 1)` (line 42) — verify edge cases in existing tests pass unchanged
+4. Add a docstring to `parse_frontmatter` stating: "Parses a subset of YAML: simple `key: value` pairs only. Lists, block scalars, and nested structures are not supported and will emit a warning."
+5. Run `python -m pytest scripts/tests/test_frontmatter.py -v` to verify all tests pass
 
 ## Integration Map
 

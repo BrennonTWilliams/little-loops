@@ -4,8 +4,8 @@ discovered_branch: main
 discovered_date: 2026-03-12
 discovered_by: audit-architecture
 focus_area: integration
-confidence_score: 96
-outcome_confidence: 93
+confidence_score: 94
+outcome_confidence: 86
 ---
 
 # ENH-681: Break circular import: config <-> parallel.types <-> issue_parser
@@ -23,8 +23,8 @@ Circular imports on a path involving the central `config` module are the most da
 
 ## Location
 
-- **File**: `scripts/little_loops/config.py`, `scripts/little_loops/parallel/types.py`, `scripts/little_loops/issue_parser.py`
-- **Module**: `little_loops.config`, `little_loops.parallel.types`, `little_loops.issue_parser`
+- **File**: `scripts/little_loops/config/core.py`, `scripts/little_loops/parallel/types.py`, `scripts/little_loops/issue_parser.py`
+- **Module**: `little_loops.config.core`, `little_loops.parallel.types`, `little_loops.issue_parser`
 
 ## Finding
 
@@ -34,8 +34,8 @@ Three core modules form a circular import triangle. All three legs are already g
 
 **Exact import lines (all three legs):**
 
-- `config.py:14-15` → `parallel/types.py` — TYPE_CHECKING guard (return-type annotation on `create_parallel_config`)
-- `config.py:841` → `parallel/types.py` — **Runtime deferred import** (inside method body; fires on every call to `create_parallel_config`)
+- `config/core.py:30` → `parallel/types.py` — TYPE_CHECKING guard (return-type annotation on `create_parallel_config`)
+- `config/core.py:298` → `parallel/types.py` — **Runtime deferred import** (inside method body; fires on every call to `create_parallel_config`)
 - `parallel/types.py:15-16` → `issue_parser.py` — TYPE_CHECKING guard (`IssueInfo` field type on `QueuedIssue.issue_info`)
 - `issue_parser.py:16-17` → `config.py` — TYPE_CHECKING guard (`BRConfig` parameter annotations on 4 functions)
 
@@ -53,15 +53,15 @@ All three files have `from __future__ import annotations` (config.py:7, parallel
 
 The `TYPE_CHECKING` guard approach is already in use and working. The targeted fix is to eliminate the deferred runtime import at `config.py:841` — the only genuine architectural smell remaining.
 
-**Option A (preferred — minimal change):** Move `ParallelConfig` to the top-level `TYPE_CHECKING` block in `config.py` and make `create_parallel_config` return `Any` at runtime, or restructure the method to receive a pre-built `ParallelConfig` from the caller.
+**Option A (preferred — minimal change):** Move `ParallelConfig` to the top-level `TYPE_CHECKING` block in `config/core.py` and make `create_parallel_config` return `Any` at runtime, or restructure the method to receive a pre-built `ParallelConfig` from the caller.
 
-**Option B:** Extract `ParallelConfig` (and related parallel types) to a `little_loops/parallel/models.py` leaf module (pure dataclasses, no `little_loops` imports) modeled after `dependency_mapper/models.py` and `issue_history/models.py`. `config.py` can then import `ParallelConfig` at the top level without risk. `parallel/types.py` becomes a thin re-export or merges into `parallel/models.py`.
+**Option B:** Extract `ParallelConfig` (and related parallel types) to a `little_loops/parallel/models.py` leaf module (pure dataclasses, no `little_loops` imports) modeled after `dependency_mapper/models.py` and `issue_history/models.py`. `config/core.py` can then import `ParallelConfig` at the top level without risk. `parallel/types.py` becomes a thin re-export or merges into `parallel/models.py`.
 
 **Option C (overkill — avoid):** Create a `core_types.py`. Research found no need for this — the cycle is already handled by existing patterns and no shared types module is necessary.
 
 ### Recommended Approach
 
-Option A is the minimum fix: make the one runtime import in `config.py:841` type-safe by promoting it to the top-level guard and refactoring `create_parallel_config` to not need a runtime import of the return type (it already imports its field values from `self._parallel` which is a `ParallelAutomationConfig`, not a `ParallelConfig`).
+Option A is the minimum fix: make the one runtime import in `config/core.py:298` type-safe by promoting it to the top-level guard and refactoring `create_parallel_config` to not need a runtime import of the return type (it already imports its field values from `self._parallel` which is a `ParallelAutomationConfig`, not a `ParallelConfig`).
 
 ## Scope Boundaries
 
@@ -71,8 +71,8 @@ Option A is the minimum fix: make the one runtime import in `config.py:841` type
 
 ## Implementation Steps
 
-1. **Confirm the runtime import** at `scripts/little_loops/config.py:841` (`from little_loops.parallel.types import ParallelConfig` inside `create_parallel_config`) — this is the only non-guarded cross-leg import
-2. **Remove the deferred import** at `config.py:841`; `ParallelConfig` is already in the `TYPE_CHECKING` block at `config.py:14-15` (covers the return annotation at `config.py:818`)
+1. **Confirm the runtime import** at `scripts/little_loops/config/core.py:298` (`from little_loops.parallel.types import ParallelConfig` inside `create_parallel_config`) — this is the only non-guarded cross-leg import
+2. **Remove the deferred import** at `config/core.py:298`; `ParallelConfig` is already in the `TYPE_CHECKING` block at `config/core.py:30` (covers the return annotation on `create_parallel_config` at `config/core.py:255`)
 3. **Make `create_parallel_config` instantiate `ParallelConfig` without a local import** — since this method already has all field values from `self._parallel` (a `ParallelAutomationConfig`), the pattern is already complete; the runtime import just needs to be removed and replaced with a top-level import or restructured call
 4. **Run `python -c "import little_loops.config; import little_loops.parallel.types; import little_loops.issue_parser"`** to verify no `ImportError`
 5. **Run `python -m pytest scripts/tests/test_config.py scripts/tests/test_parallel_types.py scripts/tests/test_issue_parser.py -v`** to verify all tests pass
@@ -80,7 +80,7 @@ Option A is the minimum fix: make the one runtime import in `config.py:841` type
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/config.py` — remove runtime import at line 841; `create_parallel_config` is the only method that needs to change
+- `scripts/little_loops/config/core.py` — remove runtime import at line 298; `create_parallel_config` (line 255) is the only method that needs to change
 
 ### Files to Leave Unchanged (already correctly guarded)
 - `scripts/little_loops/parallel/types.py` — TYPE_CHECKING guard at lines 15-16 is correct; no change needed
@@ -125,9 +125,9 @@ Option A is the minimum fix: make the one runtime import in `config.py:841` type
 
 ## Verification Notes
 
-- **Date**: 2026-03-14
-- **Verdict**: OUTDATED
-- `config.py` was deleted as part of ENH-684 (config split into subpackage). The runtime deferred import previously at `config.py:841` is now at `config/core.py:298`. The TYPE_CHECKING import (previously `config.py:14-15`) is now at `config/core.py:30`. The circular import still exists — only the file location changed. Issue body references `config.py:841` and `config.py:14-15` which are no longer valid.
+- **Date**: 2026-03-15
+- **Verdict**: UPDATED
+- `config.py` was split into a subpackage as part of ENH-684. All line references updated to `config/core.py` — runtime deferred import at `config/core.py:298`, TYPE_CHECKING guard at `config/core.py:30`, `create_parallel_config` definition at `config/core.py:255`. Issue body is now accurate.
 
 ## Status
 

@@ -4,8 +4,8 @@ discovered_branch: main
 discovered_date: 2026-03-12
 discovered_by: audit-architecture
 focus_area: integration
-confidence_score: 95
-outcome_confidence: 93
+confidence_score: 93
+outcome_confidence: 76
 ---
 
 # ENH-682: Break circular import: dependency_mapper <-> cli.deps

@@ -6,6 +6,8 @@ status: active
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 title: "Add --status flag to ll-issues list subcommand"
+confidence_score: 98
+outcome_confidence: 93
 ---
 
 # ENH-752: Add --status flag to ll-issues list subcommand
@@ -54,4 +56,5 @@ ll-issues list --status deferred --type BUG
 Active
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ccc2230-6d69-46a3-8836-f6cde953377c.jsonl`
 - `/ll:capture-issue` - 2026-03-15T17:27:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c3ed334-160b-448d-80ca-7778ea9713b8.jsonl`
