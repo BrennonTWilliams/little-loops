@@ -9,7 +9,7 @@ from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, terminal_width
+from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, print_json, terminal_width
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -375,6 +375,11 @@ def cmd_show(config: BRConfig, args: argparse.Namespace) -> int:
         return 1
 
     fields = _parse_card_fields(path, config)
+
+    if getattr(args, "json", False):
+        print_json(fields)
+        return 0
+
     card = _render_card(fields)
     print(card)
     return 0

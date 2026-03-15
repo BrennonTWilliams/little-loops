@@ -407,6 +407,62 @@ class TestIssuesCLISequence:
         captured = capsys.readouterr()
         assert "No active issues" in captured.out
 
+    def test_sequence_json_output(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """sequence --json outputs a valid JSON array with required fields."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert isinstance(data, list)
+        assert len(data) > 0
+        item = data[0]
+        assert "id" in item
+        assert "priority" in item
+        assert "title" in item
+        assert "path" in item
+        assert "blocked_by" in item
+        assert "blocks" in item
+        assert isinstance(item["blocked_by"], list)
+
+    def test_sequence_json_no_color_codes(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """sequence --json output contains no ANSI color codes."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "sequence", "--json", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "\033[" not in captured.out
+        data = json.loads(captured.out)
+        assert isinstance(data, list)
+
 
 class TestIssuesCLIImpactEffort:
     """Tests for ll-issues impact-effort sub-command."""
@@ -1034,6 +1090,77 @@ class TestIssuesCLIShow:
         assert "Risk:" not in captured.out
         assert "Labels:" not in captured.out
         assert "History:" not in captured.out
+
+    def test_show_json_output(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show --json outputs valid JSON with required card fields."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "--json", "BUG-001", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        data = json.loads(captured.out)
+        assert isinstance(data, dict)
+        assert data.get("issue_id") == "BUG-001"
+        assert "title" in data
+        assert "priority" in data
+        assert "path" in data
+
+    def test_show_json_no_color_codes(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show --json output contains no ANSI color codes."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "--json", "BUG-001", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "\033[" not in captured.out
+        data = json.loads(captured.out)
+        assert isinstance(data, dict)
+
+    def test_show_json_not_found(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """show --json returns 1 when issue not found (JSON flag does not suppress error)."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "show", "--json", "999", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
 
 
 class TestIssuesCLICount:

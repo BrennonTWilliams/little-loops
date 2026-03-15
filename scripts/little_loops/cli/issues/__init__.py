@@ -172,11 +172,13 @@ Examples:
     seq.add_argument(
         "--limit", type=int, default=10, help="Maximum number of issues to show (default: 10)"
     )
+    seq.add_argument("--json", action="store_true", help="Output as JSON array")
     add_config_arg(seq)
 
     show = subs.add_parser("show", aliases=["s"], help="Show summary card for an issue")
     show.set_defaults(command="show")
     show.add_argument("issue_id", help="Issue ID (e.g., 518, FEAT-518, P3-FEAT-518)")
+    show.add_argument("--json", action="store_true", help="Output as JSON")
     add_config_arg(show)
 
     ie = subs.add_parser("impact-effort", aliases=["ie"], help="Display impact vs effort matrix")

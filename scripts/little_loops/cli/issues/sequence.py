@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 from typing import TYPE_CHECKING
 
-from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize
+from little_loops.cli.output import PRIORITY_COLOR, TYPE_COLOR, colorize, print_json
 
 if TYPE_CHECKING:
     from little_loops.config import BRConfig
@@ -40,6 +40,20 @@ def cmd_sequence(config: BRConfig, args: argparse.Namespace) -> int:
 
     limit = args.limit
     shown = ordered[:limit]
+
+    if getattr(args, "json", False):
+        print_json([
+            {
+                "id": issue.issue_id,
+                "priority": issue.priority,
+                "title": issue.title,
+                "path": str(issue.path),
+                "blocked_by": sorted(graph.blocked_by.get(issue.issue_id, set())),
+                "blocks": issue.blocks,
+            }
+            for issue in shown
+        ])
+        return 0
 
     print(f"Suggested implementation sequence ({len(shown)} of {len(ordered)} issues):\n")
     for issue in shown:

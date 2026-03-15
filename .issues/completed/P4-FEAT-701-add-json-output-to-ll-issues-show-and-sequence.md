@@ -76,7 +76,7 @@ Add `--json` argument to both subparsers and add a JSON output branch in `cmd_sh
        return 0
    ```
 
-4. **`tests/test_issues_cli.py`**: add `--json` test cases to `TestShowSubcommand` (line 566+) and `TestSequenceSubcommand` (line 338+) following the `TestListSubcommand` pattern (lines 256–334): valid JSON, required fields, no ANSI codes, `return 0`
+4. **`tests/test_issues_cli.py`**: add `--json` test cases to `TestIssuesCLIShow` (line 565+) and `TestIssuesCLISequence` (line 337+) following the `TestIssuesCLIList` pattern (lines 71+): valid JSON, required fields, no ANSI codes, `return 0`
 
 ## Integration Map
 
@@ -92,7 +92,7 @@ Add `--json` argument to both subparsers and add a JSON output branch in `cmd_sh
 - `scripts/little_loops/issue_parser.py:200–265` — `IssueInfo` dataclass definition and `.to_dict()` method
 
 ### Tests
-- `scripts/tests/test_issues_cli.py` — `TestShowSubcommand` (line 566+) and `TestSequenceSubcommand` (line 338+); add `--json` test cases here following `TestListSubcommand` patterns (lines 256–334)
+- `scripts/tests/test_issues_cli.py` — `TestIssuesCLIShow` (line 565+) and `TestIssuesCLISequence` (line 337+); add `--json` test cases here following `TestIssuesCLIList` patterns (line 71+)
 
 ### Codebase Research Findings
 
@@ -117,6 +117,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `feature`, `cli`, `ll-issues`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T15:51:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22c491ee-9c66-4e34-98b9-b8404de0886f.jsonl`
 - `/ll:verify-issues` - 2026-03-15T15:13:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eaa8d229-0594-4366-bff7-6d5160769e5e.jsonl`
 - `/ll:refine-issue` - 2026-03-15T15:11:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a8e50bdc-90a5-4bb0-8be1-47f4a3403f55.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
@@ -125,7 +126,17 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P4
+**Completed** | Created: 2026-03-13 | Priority: P4
+
+## Resolution
+
+- Added `--json` flag to `sequence` subparser in `__init__.py` (after `--limit`)
+- Added `--json` flag to `show` subparser in `__init__.py` (before `add_config_arg`)
+- Added JSON branch in `cmd_show` using `_parse_card_fields` dict (already JSON-serializable)
+- Added JSON branch in `cmd_sequence` using inline dict with `id`, `priority`, `title`, `path`, `blocked_by`, `blocks`
+- Added `print_json` import to both `show.py` and `sequence.py`
+- Added 5 new tests: `test_sequence_json_output`, `test_sequence_json_no_color_codes`, `test_show_json_output`, `test_show_json_no_color_codes`, `test_show_json_not_found`
+- All 3509 tests pass, lint clean
 
 ## Verification Notes
 
