@@ -685,7 +685,8 @@ def _render_layered_diagram(
     back_edge_margin = 0
     if non_self_back_initial:
         max_label_len = max(len(lbl) for _, _, lbl in non_self_back_initial)
-        back_edge_margin = max_label_len + 6
+        n_back_initial = len(non_self_back_initial)
+        back_edge_margin = max_label_len + max(6, 2 * n_back_initial + 2)
 
     content_left = 2 + back_edge_margin
 
@@ -798,13 +799,31 @@ def _render_layered_diagram(
             continue
         gap_between = 6
         total_layer_w = sum(box_width[s] for s in layer)
+        # For non-adjacent same-layer edges the label lands in the gap immediately
+        # adjacent to the source box (left of src for right-to-left, right of src
+        # for left-to-right).  Collect those requirements so the gap is wide enough.
+        extra_gap_req: dict[tuple[str, str], int] = {}
+        for src, dst, lbl in same_layer_edges:
+            if layer_of.get(src) != li or layer_of.get(dst) != li:
+                continue
+            try:
+                si, di = layer.index(src), layer.index(dst)
+            except ValueError:
+                continue
+            if abs(si - di) <= 1:
+                continue  # adjacent — already handled by forward_edge_labels
+            if si > di:
+                key = (layer[si - 1], src)  # gap to the left of src
+            else:
+                key = (src, layer[si + 1])  # gap to the right of src
+            extra_gap_req[key] = max(extra_gap_req.get(key, 0), len(lbl))
         # Recalculate gaps with label-aware spacing
         gaps: list[int] = []
         for i in range(len(layer) - 1):
             sname, next_s = layer[i], layer[i + 1]
             label_fwd = forward_edge_labels.get((sname, next_s), "")
             label_rev = forward_edge_labels.get((next_s, sname), "")
-            max_label = max(len(label_fwd), len(label_rev))
+            max_label = max(len(label_fwd), len(label_rev), extra_gap_req.get((sname, next_s), 0))
             gap = max(gap_between, max_label + 6) if max_label > 0 else gap_between
             gaps.append(gap)
         total_layer_w += sum(gaps)
@@ -823,7 +842,8 @@ def _render_layered_diagram(
     # Recalculate back-edge margin if it changed
     if non_self_back:
         max_label_len = max(len(lbl) for _, _, lbl in non_self_back)
-        actual_margin = max_label_len + 6
+        n_back = len(non_self_back)
+        actual_margin = max_label_len + max(6, 2 * n_back + 2)
         if actual_margin != back_edge_margin:
             # Need to recalculate positions (rare case - usually matches)
             back_edge_margin = actual_margin
