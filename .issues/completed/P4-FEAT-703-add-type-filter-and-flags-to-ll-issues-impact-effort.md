@@ -18,7 +18,7 @@ Sprint planning often focuses on a single issue type (e.g., "show me only bug di
 ## Location
 
 - **File**: `scripts/little_loops/cli/issues/impact_effort.py` — `cmd_impact_effort` (line 166)
-- **File**: `scripts/little_loops/cli/issues/__init__.py` — `impact-effort` subparser (lines 182-184)
+- **File**: `scripts/little_loops/cli/issues/__init__.py` — `impact-effort` subparser (lines 184-186)
 
 ## Current Behavior
 
@@ -44,14 +44,14 @@ issues = find_issues(config, type_prefixes=type_prefixes)
 
 ## Acceptance Criteria
 
-- [ ] `ll-issues impact-effort --type BUG` shows only bugs in the matrix
-- [ ] `ll-issues impact-effort --type FEAT` shows only features
-- [ ] Default (no flag) shows all types (unchanged behavior)
-- [ ] Invalid type (e.g. `--type FOO`) rejected by argparse with exit code 2
+- [x] `ll-issues impact-effort --type BUG` shows only bugs in the matrix
+- [x] `ll-issues impact-effort --type FEAT` shows only features
+- [x] Default (no flag) shows all types (unchanged behavior)
+- [x] Invalid type (e.g. `--type FOO`) rejected by argparse with exit code 2
 
 ## Implementation Steps
 
-1. In `scripts/little_loops/cli/issues/__init__.py` at lines 182-184, add `--type` argument to the `impact-effort` subparser — match `list` subparser spec at `__init__.py:73`:
+1. In `scripts/little_loops/cli/issues/__init__.py` at lines 184-186, add `--type` argument to the `impact-effort` subparser — match `list` subparser spec at `__init__.py:73`:
    ```python
    ie.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
    ```
@@ -61,14 +61,14 @@ issues = find_issues(config, type_prefixes=type_prefixes)
    issues = find_issues(config, type_prefixes=type_prefixes)
    ```
 3. Remove the "unused, reserved for future flags" docstring note at `impact_effort.py:179-180` since `args` is now used
-4. Add test `test_impact_effort_filter_by_type` in `TestIssuesCLIImpactEffort` class (`scripts/tests/test_issues_cli.py:411`) following the pattern from `TestIssuesCLIList.test_list_filter_by_type` (`test_issues_cli.py:166-188`): pass `["ll-issues", "impact-effort", "--type", "BUG", ...]`, assert BUG IDs in output and FEAT IDs not in output
+4. Add test `test_impact_effort_filter_by_type` in `TestIssuesCLIImpactEffort` class (`scripts/tests/test_issues_cli.py:467`) following the pattern from `TestIssuesCLIList.test_list_filter_by_type` (`test_issues_cli.py:166`): pass `["ll-issues", "impact-effort", "--type", "BUG", ...]`, assert BUG IDs in output and FEAT IDs not in output
 
 ## Integration Map
 
-- **Modified**: `scripts/little_loops/cli/issues/__init__.py` — `impact-effort` subparser (lines 182-184): add `--type` argument
+- **Modified**: `scripts/little_loops/cli/issues/__init__.py` — `impact-effort` subparser (lines 184-186): add `--type` argument
 - **Modified**: `scripts/little_loops/cli/issues/impact_effort.py` — `cmd_impact_effort()` (line 166): use `args.type`, pass `type_prefixes` to `find_issues` at line 185
 - **Reused**: `scripts/little_loops/issue_parser.py` — `find_issues(config, type_prefixes=...)` signature at line 597-603 (already supports filtering)
-- **Test**: `scripts/tests/test_issues_cli.py:411` — add `test_impact_effort_filter_by_type` in `TestIssuesCLIImpactEffort` class
+- **Test**: `scripts/tests/test_issues_cli.py:467` — add `test_impact_effort_filter_by_type` in `TestIssuesCLIImpactEffort` class
 
 ## Impact
 
@@ -82,6 +82,7 @@ issues = find_issues(config, type_prefixes=type_prefixes)
 `feature`, `cli`, `ll-issues`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T16:14:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3121df56-85b4-49e5-bb6b-db3b263a29d4.jsonl`
 - `/ll:verify-issues` - 2026-03-15T15:13:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eaa8d229-0594-4366-bff7-6d5160769e5e.jsonl`
 - `/ll:refine-issue` - 2026-03-15T15:10:30 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/71caa695-ccb2-4497-99ca-29e51e4c645f.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
@@ -90,7 +91,14 @@ issues = find_issues(config, type_prefixes=type_prefixes)
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P4
+**Completed** | Created: 2026-03-13 | Priority: P4
+
+## Resolution
+
+- Added `--type` argument to `impact-effort` subparser in `scripts/little_loops/cli/issues/__init__.py`
+- Updated `cmd_impact_effort` in `scripts/little_loops/cli/issues/impact_effort.py` to pass `type_prefixes` to `find_issues`
+- Added `test_impact_effort_filter_by_type` to `TestIssuesCLIImpactEffort` in `scripts/tests/test_issues_cli.py`
+- All 7 `TestIssuesCLIImpactEffort` tests pass
 
 ## Verification Notes
 

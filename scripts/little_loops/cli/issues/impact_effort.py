@@ -177,14 +177,15 @@ def cmd_impact_effort(config: BRConfig, args: argparse.Namespace) -> int:
 
     Args:
         config: Project configuration
-        args: Parsed arguments (unused, reserved for future flags)
+        args: Parsed arguments
 
     Returns:
         Exit code (0 = success)
     """
     from little_loops.issue_parser import find_issues
 
-    issues = find_issues(config)
+    type_prefixes = {args.type} if getattr(args, "type", None) else None
+    issues = find_issues(config, type_prefixes=type_prefixes)
 
     if not issues:
         print("No active issues found.")

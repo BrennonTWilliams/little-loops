@@ -54,6 +54,7 @@ Examples:
   %(prog)s show FEAT-518
   %(prog)s sequence --limit 10
   %(prog)s impact-effort
+  %(prog)s impact-effort --type BUG
   %(prog)s refine-status
   %(prog)s refine-status --type BUG
   %(prog)s refine-status --format json
@@ -183,6 +184,7 @@ Examples:
 
     ie = subs.add_parser("impact-effort", aliases=["ie"], help="Display impact vs effort matrix")
     ie.set_defaults(command="impact-effort")
+    ie.add_argument("--type", choices=["BUG", "FEAT", "ENH"], help="Filter by issue type")
     add_config_arg(ie)
 
     refine_s = subs.add_parser(

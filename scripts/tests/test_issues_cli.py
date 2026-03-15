@@ -617,6 +617,32 @@ class TestIssuesCLIImpactEffort:
         assert "BUG-010" in captured.out
         assert "QUICK WINS" in captured.out
 
+    def test_impact_effort_filter_by_type(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """impact-effort --type BUG shows only bugs in the matrix."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys,
+            "argv",
+            ["ll-issues", "impact-effort", "--type", "BUG", "--config", str(temp_project_dir)],
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        assert "BUG-001" in captured.out or "BUG-002" in captured.out or "BUG-003" in captured.out
+        assert "FEAT-001" not in captured.out
+        assert "FEAT-002" not in captured.out
+
 
 class TestIssuesCLIShow:
     """Tests for ll-issues show sub-command."""
