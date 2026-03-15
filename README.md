@@ -84,7 +84,7 @@ little-loops turns Claude Code into a full development workflow engine. It adds 
 
 ## What's Included
 
-- **29 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
+- **28 commands** covering issue discovery, refinement, planning, code quality, git operations, and automation
 - **8 specialized agents** for codebase analysis, pattern finding, and web research
 - **18 skills** for history analysis, dependency mapping, product analysis, confidence checks, and more
 - **12 CLI tools** (`ll-auto`, `ll-parallel`, `ll-sprint`, `ll-loop`, etc.) for autonomous and parallel issue processing
@@ -276,6 +276,7 @@ ll-loop list                     # List all available loops
 ll-loop list --json              # JSON array of available loops
 ll-loop stop <loop-name>         # Stop a running loop
 ll-loop status <loop-name>       # Show loop status
+ll-loop status <loop-name> --json  # Show loop status as JSON
 ll-loop resume <loop-name>       # Resume an interrupted loop
 ll-loop validate <loop-name>     # Validate loop definition
 ll-loop history <loop-name>      # Show loop execution history (lists archived runs)
@@ -284,6 +285,7 @@ ll-loop test <loop-name>         # Run a single test iteration
 ll-loop simulate <loop-name>     # Trace execution interactively
 ll-loop install <loop-name>      # Copy built-in loop to .loops/
 ll-loop show <loop-name>         # Show loop details and structure
+ll-loop show <loop-name> --json  # Show loop details as JSON
 ```
 
 Run `ll-loop --help` for all options. See [Loops Guide](docs/guides/LOOPS_GUIDE.md) for loop authoring.
@@ -371,9 +373,12 @@ ll-issues list --type FEAT --priority P2      # Filter by type and priority
 ll-issues list --flat                         # Flat output for scripting
 ll-issues list --json                         # JSON output for scripting
 ll-issues show FEAT-001                       # Show summary card for an issue
+ll-issues show FEAT-001 --json                # Show issue as JSON
 ll-issues sequence                            # Dependency-ordered implementation sequence
 ll-issues sequence --limit 5                  # Show top 5 issues to work on
+ll-issues sequence --json                     # JSON output for scripting
 ll-issues impact-effort                       # ASCII impact vs effort matrix
+ll-issues impact-effort --type FEAT           # Filter matrix to a specific issue type
 ll-issues refine-status                       # Refinement depth table sorted by commands touched
 ll-issues refine-status --type BUG            # Filter to bugs only
 ll-issues refine-status --format json         # JSONL output for scripting
