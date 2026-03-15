@@ -113,6 +113,10 @@ CODE QUALITY
     Audit documentation for accuracy and completeness
     Scope: full, readme, file:<path>
 
+/ll:update-docs [--since <date|git-ref>] [--fix]
+    Identify stale/missing docs from git commits and completed issues since a date
+    Default since: last commit touching a doc file (or .claude/ll-update-docs.watermark)
+
 GIT & RELEASE
 -------------
 /ll:commit
@@ -228,7 +232,7 @@ Documentation: https://github.com/BrennonTWilliams/little-loops
 **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`, `refine-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`
 **Planning & Implementation**: `create-sprint`, `review-sprint`, `manage-issue`, `iterate-plan`
 **Scanning & Analysis**: `find-dead-code`
-**Code Quality**: `check-code`, `run-tests`, `audit-docs`
+**Code Quality**: `check-code`, `run-tests`, `audit-docs`, `update-docs`
 **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`
 **Automation & Loops**: `create-loop`, `loop-suggester`
 **Meta-Analysis**: `audit-claude-config`, `analyze-workflows`

@@ -63,10 +63,12 @@ Store last-run timestamp in `.claude/ll-update-docs.watermark` so subsequent run
 
 ## Implementation Steps
 
-1. Create `skills/update-docs/SKILL.md` with process above
-2. Create `skills/update-docs/templates.md` for gap report format and stub templates
-3. Add `update-docs` to `skills/` list in `CLAUDE.md` and `.claude-plugin/plugin.json`
-4. Register skill in plugin manifest and help output
+Follow the two-file skill pattern used by all existing skills (e.g. `skills/audit-docs/`, `skills/capture-issue/`):
+
+1. Create `skills/update-docs/SKILL.md` — frontmatter + step-by-step process body (model after `skills/audit-docs/SKILL.md`)
+2. Create `skills/update-docs/templates.md` — gap report format and stub section templates (model after `skills/audit-docs/templates.md`)
+3. Update `CLAUDE.md` — add `update-docs`^ to the **Code Quality** skill list alongside `audit-docs`^
+4. Update `commands/help.md` — add full entry block in CODE QUALITY section and append to Quick Reference list (see Integration Map below for exact locations)
 
 ## Integration Map
 
@@ -185,12 +187,37 @@ Or if a topic filter is useful, `ll-history export "<topic>" --since="$SINCE_DAT
 
 ---
 
+## Resolution
+
+- **Completed**: 2026-03-15
+- **Implemented by**: `/ll:manage-issue feature implement FEAT-751`
+
+### Changes Made
+
+1. **Created** `skills/update-docs/SKILL.md` — full skill definition with 9-step process, `--since`/`--fix` flags, watermark support, and integration notes
+2. **Created** `skills/update-docs/templates.md` — gap report format, action prompt format, stub section template, doc issue template, and watermark file format
+3. **Updated** `.claude/CLAUDE.md:54` — added `update-docs`^ to Code Quality skill list
+4. **Updated** `commands/help.md` — added `/ll:update-docs` entry in CODE QUALITY section and `update-docs` to Quick Reference table
+
+### Acceptance Criteria Verification
+
+- [x] `--since=<date|git-ref>` argument supported (date and git-ref both handled)
+- [x] Parses `git log --since=<ref>` on non-doc source files
+- [x] Scans `.issues/completed/` filtered by completion date via `scan_completed_issues()`
+- [x] Cross-references changes against existing doc files for coverage gaps
+- [x] Produces prioritized list grouped by source (completed issues vs. git changes)
+- [x] Offers to draft stub sections inline (`--fix`) or create issues per gap
+- [x] Does not overlap with `audit-docs` — scope boundary documented in SKILL.md
+
 ## Status
 
-**Open** | Created: 2026-03-14 | Priority: P3
+**Completed** | Created: 2026-03-14 | Completed: 2026-03-15 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T05:52:04 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2af0a79-40cb-4a4e-bd6b-2ea2573c7e3b.jsonl`
+- `/ll:ready-issue` - 2026-03-15T05:44:49 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/160da40d-9e36-48d6-bafb-a6e61c636324.jsonl`
 - `/ll:refine-issue` - 2026-03-15T05:08:43 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5bd2338a-cb49-4e75-a5ae-a3ae2b55958e.jsonl`
 - `/ll:refine-issue` - 2026-03-15T04:57:19 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c186be22-701d-4c89-a0c1-5b746b4d0e5b.jsonl`
 - `/ll:refine-issue` - 2026-03-15T04:47:33 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/140d76f3-1325-4291-9c9d-17c281a9d0cf.jsonl`
+- `/ll:manage-issue feature implement FEAT-751` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eaa8d229-0594-4366-bff7-6d5160769e5e.jsonl`
 - `/ll:capture-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1c90f23-ff83-489f-b756-ad36ef9940cc.jsonl`
