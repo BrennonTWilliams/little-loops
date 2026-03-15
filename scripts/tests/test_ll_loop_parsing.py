@@ -27,6 +27,7 @@ class TestLoopArgumentParsing:
         """Create parser for run subcommand tests."""
         parser = argparse.ArgumentParser(prog="ll-loop run")
         parser.add_argument("loop")
+        parser.add_argument("input", nargs="?", default=None)
         parser.add_argument("--max-iterations", "-n", type=int)
         parser.add_argument("--delay", type=float, default=None, metavar="SECONDS")
         parser.add_argument("--dry-run", action="store_true")
@@ -211,6 +212,32 @@ class TestLoopArgumentParsing:
         parser = self._create_run_parser()
         args = parser.parse_args(["test-loop"])
         assert args.delay is None
+
+    def test_positional_input_parsed(self) -> None:
+        """Positional input arg is parsed correctly."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop", "FEAT-719"])
+        assert args.loop == "my-loop"
+        assert args.input == "FEAT-719"
+
+    def test_positional_input_default_is_none(self) -> None:
+        """Positional input defaults to None when not provided."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop"])
+        assert args.input is None
+
+    def test_positional_input_quoted_string(self) -> None:
+        """Positional input accepts a multi-word quoted string."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop", "What are best practices for Python?"])
+        assert args.input == "What are best practices for Python?"
+
+    def test_positional_input_with_context_flag(self) -> None:
+        """Positional input coexists with --context flag."""
+        parser = self._create_run_parser()
+        args = parser.parse_args(["my-loop", "FEAT-719", "--context", "other=val"])
+        assert args.input == "FEAT-719"
+        assert args.context == ["other=val"]
 
 
 class TestResolveLoopPath:

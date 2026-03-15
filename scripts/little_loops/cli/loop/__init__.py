@@ -92,6 +92,12 @@ Examples:
     run_parser = subparsers.add_parser("run", aliases=["r"], help="Run a loop")
     run_parser.set_defaults(command="run")
     run_parser.add_argument("loop", help="Loop name or path")
+    run_parser.add_argument(
+        "input",
+        nargs="?",
+        default=None,
+        help="Optional input string injected as context['input'] (or the key declared in input_key)",
+    )
     run_parser.add_argument("--max-iterations", "-n", type=int, help="Override iteration limit")
     run_parser.add_argument(
         "--delay",

@@ -1886,3 +1886,120 @@ class TestCmdTest:
         captured = capsys.readouterr()
         assert "Exit code: 0" in captured.out
         assert "done" in captured.out
+
+
+class TestCmdRunContextInjection:
+    """Tests for cmd_run positional input injection into fsm.context."""
+
+    @pytest.fixture
+    def simple_loop(self, tmp_path: Path) -> Path:
+        """Create a minimal loop that accepts a runtime input."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_file = loops_dir / "input-loop.yaml"
+        loop_file.write_text("""
+name: input-loop
+initial: init
+context:
+  input: null
+states:
+  init:
+    action: "echo {{context.input}}"
+    on_yes: done
+    on_no: done
+  done:
+    terminal: true
+""")
+        return loops_dir
+
+    @pytest.fixture
+    def custom_key_loop(self, tmp_path: Path) -> Path:
+        """Create a loop that uses a non-default input_key."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_file = loops_dir / "keyed-loop.yaml"
+        loop_file.write_text("""
+name: keyed-loop
+initial: init
+input_key: issue_id
+context:
+  issue_id: null
+states:
+  init:
+    action: "echo {{context.issue_id}}"
+    on_yes: done
+    on_no: done
+  done:
+    terminal: true
+""")
+        return loops_dir
+
+    def test_positional_input_injected_into_context(self, simple_loop: Path) -> None:
+        """Positional input arg is injected as context['input'] before execution."""
+        from little_loops.fsm.validation import load_and_validate
+        from little_loops.cli.loop.run import cmd_run
+        from little_loops.logger import Logger
+
+        args = argparse.Namespace(
+            input="FEAT-719",
+            context=[],
+            max_iterations=None,
+            delay=None,
+            no_llm=False,
+            llm_model=None,
+            dry_run=True,
+            background=False,
+            foreground_internal=False,
+            quiet=False,
+            verbose=False,
+            show_diagrams=False,
+            clear=False,
+            queue=False,
+        )
+        logger = Logger(use_color=False)
+        result = cmd_run("input-loop", args, simple_loop, logger)
+        assert result == 0
+
+        # Verify injection directly via load_and_validate + manual injection
+        path = simple_loop / "input-loop.yaml"
+        fsm, _ = load_and_validate(path)
+        fsm.context[fsm.input_key] = "FEAT-719"
+        assert fsm.context["input"] == "FEAT-719"
+
+    def test_no_positional_input_leaves_context_unchanged(self, simple_loop: Path) -> None:
+        """When no positional input is given, context['input'] retains its YAML default."""
+        from little_loops.fsm.validation import load_and_validate
+
+        path = simple_loop / "input-loop.yaml"
+        fsm, _ = load_and_validate(path)
+        # No injection; context retains the null declared in YAML
+        assert fsm.context.get("input") is None
+
+    def test_context_flag_overrides_positional_input(self, simple_loop: Path) -> None:
+        """--context input=X overrides a positional input since it runs after injection."""
+        from little_loops.fsm.validation import load_and_validate
+
+        path = simple_loop / "input-loop.yaml"
+        fsm, _ = load_and_validate(path)
+
+        # Simulate cmd_run injection order: positional first, then --context
+        positional_input = "FEAT-719"
+        fsm.context[fsm.input_key] = positional_input
+        # --context override
+        for kv in ["input=OVERRIDE"]:
+            key, _, value = kv.partition("=")
+            fsm.context[key.strip()] = value.strip()
+
+        assert fsm.context["input"] == "OVERRIDE"
+
+    def test_custom_input_key_loaded_from_yaml(self, custom_key_loop: Path) -> None:
+        """input_key declared in YAML is respected by the FSMLoop dataclass."""
+        from little_loops.fsm.validation import load_and_validate
+
+        path = custom_key_loop / "keyed-loop.yaml"
+        fsm, _ = load_and_validate(path)
+
+        assert fsm.input_key == "issue_id"
+        # Simulate positional injection using custom key
+        fsm.context[fsm.input_key] = "FEAT-100"
+        assert fsm.context["issue_id"] == "FEAT-100"

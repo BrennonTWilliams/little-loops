@@ -190,6 +190,10 @@ def print_execution_plan(fsm: FSMLoop) -> None:
     print(f"Max iterations: {fsm.max_iterations}")
     if fsm.timeout:
         print(f"Timeout: {fsm.timeout}s")
+    if fsm.context:
+        print("Context:")
+        for key, value in fsm.context.items():
+            print(f"  {key}: {value!r}")
 
 
 def run_background(

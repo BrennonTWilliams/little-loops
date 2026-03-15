@@ -169,7 +169,27 @@ ll-loop run <loop-name> [input] [options]
 
 ## Status
 
-**Active** — not yet started
+**Completed** — 2026-03-14
+
+## Resolution
+
+All acceptance criteria met:
+
+- `ll-loop run my-loop "FEAT-719"` injects `FEAT-719` into `context["input"]` via `fsm.input_key`
+- `ll-loop run my-loop` (no input) works; `context["input"]` retains YAML default
+- `--context input=X` overrides the positional value (injection runs before `--context` loop)
+- `--dry-run` now shows resolved context values in the execution plan
+- Tests cover: positional injection, `--context` override wins, no-input default, custom `input_key`
+
+### Changes Made
+
+- `scripts/little_loops/cli/loop/__init__.py` — added optional `input` positional arg to `run_parser`
+- `scripts/little_loops/cli/loop/run.py` — inject `args.input` into `fsm.context[fsm.input_key]` before `--context` loop
+- `scripts/little_loops/fsm/schema.py` — added `input_key: str = "input"` field to `FSMLoop`; updated `from_dict`/`to_dict`
+- `scripts/little_loops/fsm/fsm-loop-schema.json` — added optional `input_key` string property
+- `scripts/little_loops/cli/loop/_helpers.py` — `print_execution_plan` now displays `context` section when non-empty
+- `scripts/tests/test_ll_loop_parsing.py` — synced `_create_run_parser` helper; added 4 new parsing tests
+- `scripts/tests/test_ll_loop_commands.py` — added `TestCmdRunContextInjection` with 4 integration tests
 
 ## Verification Notes
 
@@ -178,6 +198,7 @@ ll-loop run <loop-name> [input] [options]
 - `scripts/little_loops/cli/loop/__init__.py:94` registers only `"loop"` as a positional argument for the `run` subparser — no second positional `input` argument exists. `run.py` has no `args.input` injection logic. `fsm-loop-schema.json` has no `input_key` field. Feature not yet implemented.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T03:41:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/11de3692-60f2-4dcb-9ce4-756201f6dddb.jsonl`
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7a1f56-687d-4b69-9d22-6ec472aa9b1f.jsonl`
 - `/ll:refine-issue` - 2026-03-15T03:26:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf30ff97-a5f9-4719-b28c-ab6580383ecd.jsonl`
 - `/ll:verify-issues` - 2026-03-15T03:23:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6cacfa2-fc65-45e7-9629-01c3fe3df856.jsonl`

@@ -57,6 +57,11 @@
     },
     "llm": {
       "$ref": "#/definitions/llmConfig"
+    },
+    "input_key": {
+      "type": "string",
+      "description": "Context key populated by the positional input arg at runtime (default: 'input')",
+      "default": "input"
     }
   },
   "additionalProperties": false,

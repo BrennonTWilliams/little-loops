@@ -394,6 +394,7 @@ class FSMLoop:
     maintain: bool = False
     llm: LLMConfig = field(default_factory=LLMConfig)
     on_handoff: Literal["pause", "spawn", "terminate"] = "pause"
+    input_key: str = "input"
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -419,6 +420,8 @@ class FSMLoop:
             result["maintain"] = self.maintain
         if self.on_handoff != "pause":
             result["on_handoff"] = self.on_handoff
+        if self.input_key != "input":
+            result["input_key"] = self.input_key
 
         llm_dict = self.llm.to_dict()
         if llm_dict:
@@ -451,6 +454,7 @@ class FSMLoop:
             maintain=data.get("maintain", False),
             llm=llm,
             on_handoff=data.get("on_handoff", "pause"),
+            input_key=data.get("input_key", "input"),
         )
 
     def get_all_state_names(self) -> set[str]:

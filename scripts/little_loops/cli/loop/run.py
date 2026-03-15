@@ -47,6 +47,9 @@ def cmd_run(
         fsm.llm.enabled = False
     if args.llm_model:
         fsm.llm.model = args.llm_model
+    # Inject positional input arg before --context so --context can override
+    if getattr(args, "input", None) is not None:
+        fsm.context[fsm.input_key] = args.input
     for kv in getattr(args, "context", None) or []:
         if "=" not in kv:
             raise SystemExit(f"Invalid --context format: {kv!r} (expected KEY=VALUE)")
