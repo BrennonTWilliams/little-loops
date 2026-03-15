@@ -562,8 +562,8 @@ def cmd_show(
 ) -> int:
     """Show loop details and structure."""
     try:
-        fsm, spec = load_loop_with_spec(loop_name, loops_dir, logger)
         path = resolve_loop_path(loop_name, loops_dir)
+        fsm, spec = load_loop_with_spec(loop_name, loops_dir, logger)
     except FileNotFoundError as e:
         logger.error(str(e))
         return 1

@@ -16,7 +16,7 @@ outcome_confidence: 100
 ## Location
 
 - **File**: `scripts/little_loops/cli/loop/info.py`
-- **Line(s)**: 993–994 (at scan commit: 47c81c8; current HEAD)
+- **Line(s)**: 565–566 (at scan commit: 47c81c8; current HEAD)
 - **Anchor**: `in function cmd_show()`
 - **Permalink**: [View on GitHub](https://github.com/BrennonTWilliams/little-loops/blob/47c81c895baaac1acac69d105ed75ff1ec82ed2c/scripts/little_loops/cli/loop/info.py#L507-L509) _(line 993–994 at current HEAD)_
 - **Code**:
@@ -130,6 +130,7 @@ fsm, spec = load_loop_with_spec(loop_name, loops_dir, logger)
 `enhancement`, `ll-loop`, `performance`, `scan-codebase`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T00:46:10 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/266fff5d-c03b-4f7c-93a5-11920f96de27.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: double calls at info.py:993-994
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: double `resolve_loop_path()` call confirmed at `info.py:1053-1054` (lines shifted from 993-994)
@@ -147,9 +148,9 @@ fsm, spec = load_loop_with_spec(loop_name, loops_dir, logger)
 
 ## Verification Notes
 
-- **Date**: 2026-03-13
+- **Date**: 2026-03-14
 - **Verdict**: VALID
-- `scripts/little_loops/cli/loop/info.py` lines 378-379 confirm both `load_loop_with_spec(loop_name, loops_dir, logger)` and then `resolve_loop_path(loop_name, loops_dir)` are called consecutively in `cmd_show`. The `load_loop_with_spec` helper calls `resolve_loop_path` internally, confirming the double-resolution. Enhancement not yet applied.
+- `scripts/little_loops/cli/loop/info.py` lines 565-566 confirm both `load_loop_with_spec(loop_name, loops_dir, logger)` and then `resolve_loop_path(loop_name, loops_dir)` are called consecutively in `cmd_show`. The `load_loop_with_spec` helper calls `resolve_loop_path` internally, confirming the double-resolution. Enhancement not yet applied.
 
 ## Blocked By
 ## Blocks
@@ -157,6 +158,13 @@ fsm, spec = load_loop_with_spec(loop_name, loops_dir, logger)
 
 ---
 
+## Resolution
+
+- **Date**: 2026-03-14
+- **Action**: Reordered calls in `cmd_show()` — `resolve_loop_path` now called once before `load_loop_with_spec`, eliminating the duplicate resolution.
+- **Files changed**: `scripts/little_loops/cli/loop/info.py` (lines 565-566 reordered)
+- **Tests**: 38 passed (`test_ll_loop_execution.py`)
+
 ## Status
 
-**Open** | Created: 2026-03-03 | Priority: P4
+**Completed** | Created: 2026-03-03 | Completed: 2026-03-14 | Priority: P4
