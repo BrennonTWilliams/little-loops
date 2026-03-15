@@ -5,13 +5,23 @@ type: FEAT
 status: active
 discovered_date: 2026-03-14
 discovered_by: capture-issue
+confidence_score: 98
+outcome_confidence: 78
 ---
 
 # FEAT-749: Add ll- CLI Commands to Allowed Tools in settings.json via Init
 
-## Overview
+## Summary
 
 Extend `/ll:init` (and the `ll-config.json` setup flow) to optionally populate the Claude Code `permissions.allow` list in `.claude/settings.json` or `.claude/settings.local.json` with Bash entries for each `ll-` CLI command, using flags optimized for AI coding agent usage.
+
+## Current Behavior
+
+Users must manually add `ll-` CLI commands to their `permissions.allow` list in `.claude/settings.json` or `.claude/settings.local.json`. There is no automated or guided process in `/ll:init` to populate these entries, requiring users to know the correct Bash glob patterns for each command.
+
+## Expected Behavior
+
+After running `/ll:init`, users are prompted to optionally add recommended `ll-` CLI command allow entries to their Claude Code settings file. The init flow detects existing settings files, asks which to update (or to skip), and writes idempotent `Bash(ll-<cmd>:*)` allow entries alongside existing entries without overwriting unrelated configuration.
 
 ## Motivation
 
@@ -66,6 +76,7 @@ Based on `-h` output, the recommended `permissions.allow` Bash patterns for agen
 "Bash(ll-loop show:*)",
 "Bash(ll-loop simulate:*)",
 "Bash(ll-loop test:*)",
+"Bash(ll-workflows:*)",
 "Bash(ll-messages:*)",
 "Bash(ll-messages --stdout:*)",
 "Bash(ll-history summary:*)",
@@ -86,7 +97,7 @@ Note: Broad `Bash(ll-<cmd>:*)` patterns cover all subcommand/flag combinations. 
 
 **Alternative (simpler)**: A single wildcard per binary: `Bash(ll-issues:*)`, `Bash(ll-auto:*)`, etc. — covers all usage with one entry each. Preferred for maintainability; subcommand-level granularity only if the project's security posture requires it.
 
-### Step 2: Settings File Detection Logic (in init skill)
+### Step 2: Settings File Detection Logic (in init skill, as new Step 10 in SKILL.md before current "Display Completion Message")
 
 ```
 1. Check .claude/settings.json exists
@@ -109,21 +120,74 @@ Note: Broad `Bash(ll-<cmd>:*)` patterns cover all subcommand/flag combinations. 
 - **`/ll:init`**: Add as a final optional step after config file creation (similar to how `.gitignore` suggestions work)
 - **`/ll:configure`**: Add a new `configure allowed-tools` sub-option that can run standalone
 
-## API / Interface Changes
+## API/Interface
 
 No config-schema.json changes needed — this operates on `.claude/settings.json` / `.claude/settings.local.json` which are Claude Code's native settings files, not ll-config.json.
 
 Optional: add a `cli.allowed_tools_hint` boolean to `ll-config.json` to suppress the prompt on future init runs once the user has made their choice.
 
-## Files Likely Touched
+## Integration Map
 
+### Files to Modify
 - `skills/init/SKILL.md` — add new final phase for allowed-tools
-- `skills/init/interactive.md` — new Round 8 for allowed-tools opt-in
+- `skills/init/interactive.md` — new Round 11 for allowed-tools opt-in (Rounds 8–10 already exist for Project Advanced, Continuation, and Prompt Optimization)
 - `skills/configure/SKILL.md` — add `allowed-tools` configure option
+
+### Dependent Files (Callers/Importers)
+- N/A — init skill is invoked directly by user, no programmatic callers
+
+### Similar Patterns
+- `skills/init/SKILL.md` Step 9 (`.gitignore` update step) — follow same detection-and-append pattern (check if entries exist, append only if absent)
+
+### Tests
+- TBD — identify integration test for settings file detection and merge logic
+
+### Documentation
+- `docs/reference/API.md` — if `cli.allowed_tools_hint` config key is added, document it
+- `commands/init.md` — update with new allowed-tools phase description
+
+### Configuration
+- `.claude/settings.json` / `.claude/settings.local.json` — written by this feature (Claude Code native files)
+- Optional: `ll-config.json` `cli.allowed_tools_hint` boolean to suppress prompt on future runs
 
 ## Dependencies
 
 None.
 
+## Impact
+
+- **Priority**: P2 — Reduces setup friction for new projects; not blocking but improves first-run experience meaningfully
+- **Effort**: Small — Additive change to existing init skill flow; reuses existing JSON merge patterns
+- **Risk**: Low — No breaking changes; purely additive; init is a user-triggered one-time flow
+- **Breaking Change**: No
+
+## Labels
+
+`feature`, `init`, `configure`, `ux`
+
+## Status
+
+**Open** | Created: 2026-03-14 | Priority: P2
+
+## Verification Notes
+
+_Verified 2026-03-15 by /ll:verify-issues_
+
+**Verdict**: NEEDS_UPDATE — corrections applied.
+
+**Corrections made:**
+1. **Round numbering**: `interactive.md` already has Rounds 8 (Project Advanced), 9 (Continuation), 10 (Prompt Optimization). New allowed-tools round corrected to Round 11 in Integration Map and Implementation Steps.
+2. **Similar Patterns reference**: "Round 7 (.gitignore suggestions step)" was wrong — Round 7 is "Extended Config Gate (Auto-Skipped)". The `.gitignore` logic lives in `SKILL.md` Step 9. Corrected to reference Step 9 pattern.
+3. **Missing CLI command**: `ll-workflows` (entry point in `scripts/pyproject.toml`) was absent from the allow list. Added.
+
+**Confirmed accurate:**
+- All 3 referenced files exist: `skills/init/SKILL.md`, `skills/init/interactive.md`, `skills/configure/SKILL.md`
+- Current behavior claim is accurate: no `permissions.allow` logic exists in init skill
+- `/ll:configure` does not have an `allowed-tools` area (confirmed from configure/SKILL.md)
+- Feature is not yet implemented; issue remains valid and actionable
+
 ## Session Log
+- `/ll:verify-issues` - 2026-03-15T18:54:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
+- `/ll:format-issue` - 2026-03-15T18:51:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
 - `/ll:capture-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/92f6d283-84cd-41ed-b8d5-c0319fe66f82.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
