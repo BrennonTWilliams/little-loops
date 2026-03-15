@@ -341,7 +341,7 @@ class LLMConfig:
     enabled: bool = True
     model: str = DEFAULT_LLM_MODEL
     max_tokens: int = 256
-    timeout: int = 30
+    timeout: int = 1800
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for JSON/YAML serialization."""
@@ -353,7 +353,7 @@ class LLMConfig:
             result["model"] = self.model
         if self.max_tokens != 256:
             result["max_tokens"] = self.max_tokens
-        if self.timeout != 30:
+        if self.timeout != 1800:
             result["timeout"] = self.timeout
 
         return result if result else {}
@@ -365,7 +365,7 @@ class LLMConfig:
             enabled=data.get("enabled", True),
             model=data.get("model", DEFAULT_LLM_MODEL),
             max_tokens=data.get("max_tokens", 256),
-            timeout=data.get("timeout", 30),
+            timeout=data.get("timeout", 1800),
         )
 
 
