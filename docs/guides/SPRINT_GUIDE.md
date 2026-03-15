@@ -311,7 +311,7 @@ Sprint behavior is configured in `.claude/ll-config.json` under the `sprints` ke
   "sprints": {
     "sprints_dir": ".sprints",
     "default_timeout": 3600,
-    "default_max_workers": 4
+    "default_max_workers": 2
   }
 }
 ```
@@ -320,7 +320,7 @@ Sprint behavior is configured in `.claude/ll-config.json` under the `sprints` ke
 |--------|---------|-------------|
 | `sprints_dir` | `.sprints` | Directory where sprint YAML files are stored |
 | `default_timeout` | `3600` | Per-issue timeout in seconds (1 hour) |
-| `default_max_workers` | `4` | Max parallel workers per wave |
+| `default_max_workers` | `2` | Max parallel workers per wave |
 
 Per-sprint options (in the YAML `options` block) override the project config for that sprint. CLI flags (`--max-workers`, `--timeout`) override both.
 
