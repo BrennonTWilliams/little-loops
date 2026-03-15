@@ -90,7 +90,7 @@ If you pick **Custom prompt**, you'll also be asked: *"What does 'done' look lik
 ```
 How are work items discovered?
   ○ Single-shot (no item iteration)      — Run once; no discover state
-  ○ Active issues list (Recommended)     — ll-issues list --json
+  ○ Active issues list (Recommended for issue skills) — ll-issues list --json
   ○ File glob pattern                    — Find files matching a pattern
   ○ Manual list                          — Hard-code items in the loop
 ```
@@ -549,7 +549,7 @@ states:
 
 - **Route `not_found` to the next phase**, not back to `execute`, in `check_mcp` states. If the MCP server isn't configured in `.mcp.json`, retrying the execute state won't fix it — skip to the next evaluation gate instead.
 - **Start with single-shot** to validate the skill works end-to-end before adding discovery. Use `ll-loop run <file>` with a single item to test the evaluation chain.
-- **Use `ll-loop test`** to dry-run the FSM structure before full execution — it validates YAML syntax, transition completeness, and terminal reachability.
+- **Use `ll-loop validate`** to check the FSM structure before full execution — it validates YAML syntax, transition completeness, and terminal reachability.
 - **Add stall detection** for prompt-based skills (especially custom prompts) that may no-op. A skill that says "already done" on every item will silently exhaust your budget without it.
 - **Check `ll-config.json`** has at least one tool command (`test_cmd`, `lint_cmd`, or `type_cmd`) to get the concrete `check_concrete` gate. Without it, the wizard omits the tool phase and your loop has no objective quality check.
 - **Tune `target: 50`** in `check_invariants` if your skill intentionally makes large changes (e.g., a doc rewrite skill). Increase to 150–200 for documentation-heavy skills.
@@ -575,6 +575,6 @@ states:
 ## See Also
 
 - [LOOPS_GUIDE.md](LOOPS_GUIDE.md) — Full FSM loops reference: evaluators, state fields, CLI commands
-- [`skills/create-loop/loop-types.md`](../../skills/create-loop/loop-types.md) — Wizard implementation: Harness Questions section (lines 548–883)
+- [`skills/create-loop/loop-types.md`](../../skills/create-loop/loop-types.md) — Wizard implementation: Harness Questions section (lines 548–912)
 - [`skills/create-loop/reference.md`](../../skills/create-loop/reference.md) — FSM field reference, evaluator catalog, harness state diagrams
 - [`loops/issue-refinement.yaml`](../../loops/issue-refinement.yaml) — Real-world harness-like loop: multi-skill pipeline over active issues with commit cadence
