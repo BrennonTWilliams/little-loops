@@ -32,7 +32,15 @@ states:
       2. Issues with no blocking dependencies
       3. Issues that have been refined (high confidence scores)
     capture: sprint_def
-    next: validate_issues
+    next: route_create
+  route_create:
+    action: "ll-sprint list 2>/dev/null | grep -q ."
+    action_type: shell
+    evaluate:
+      type: exit_code
+    on_yes: validate_issues
+    on_no: create_sprint
+    on_error: create_sprint
   validate_issues:
     action_type: prompt
     timeout: 600

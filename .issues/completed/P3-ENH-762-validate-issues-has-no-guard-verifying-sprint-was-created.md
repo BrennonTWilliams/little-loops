@@ -142,10 +142,16 @@ The `create_sprint` state at `loops/sprint-build-and-validate.yaml:35` also need
 
 `enhancement`, `loops`, `captured`
 
+## Resolution
+
+Added `route_create` evaluate state between `create_sprint` and `validate_issues` in `loops/sprint-build-and-validate.yaml`. The state runs `ll-sprint list 2>/dev/null | grep -q .` as a shell action with `exit_code` evaluation — exits 0 if any sprint exists (routes to `validate_issues`), exits non-zero if no sprint was created (routes back to `create_sprint` for retry). Updated `create_sprint.next` from `validate_issues` to `route_create`.
+
 ## Status
 
-**Open** | Created: 2026-03-15 | Priority: P3
+**Completed** | Created: 2026-03-15 | Resolved: 2026-03-15 | Priority: P3
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T23:28:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22bc43da-1aa2-4923-9deb-40561dd4b042.jsonl`
 - `/ll:refine-issue` - 2026-03-15T23:06:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3e607ee0-ad85-4e70-ba70-ec2a6350e59a.jsonl`
+- `/ll:manage-issue` - 2026-03-15T00:00:00 - improve ENH-762: added route_create guard state
