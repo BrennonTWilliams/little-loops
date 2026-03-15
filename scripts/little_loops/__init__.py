@@ -23,7 +23,7 @@ from little_loops.work_verification import (
     verify_work_was_done,
 )
 
-__version__ = "1.47.0"
+__version__ = "1.48.0"
 __all__ = [
     "BRConfig",
     # git_operations
