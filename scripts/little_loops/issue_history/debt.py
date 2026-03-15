@@ -22,6 +22,7 @@ from little_loops.issue_history.parsing import (
     _extract_paths_from_issue,
     _parse_resolution_action,
 )
+from little_loops.issue_history._utils import get_issue_content
 
 # Cross-cutting concern keywords for smell detection
 _CROSS_CUTTING_KEYWORDS: dict[str, list[str]] = {
@@ -79,13 +80,9 @@ def detect_cross_cutting_smells(
 
     # Analyze each issue
     for issue in issues:
-        if contents is not None and issue.path in contents:
-            content = contents[issue.path]
-        else:
-            try:
-                content = issue.path.read_text(encoding="utf-8")
-            except Exception:
-                continue
+        content = get_issue_content(issue, contents)
+        if content is None:
+            continue
         content_lower = content.lower()
 
         # Extract paths from this issue
@@ -167,13 +164,9 @@ def analyze_agent_effectiveness(
     outcomes_map: dict[tuple[str, str], AgentOutcome] = {}
 
     for issue in issues:
-        if contents is not None and issue.path in contents:
-            content = contents[issue.path]
-        else:
-            try:
-                content = issue.path.read_text(encoding="utf-8")
-            except Exception:
-                continue
+        content = get_issue_content(issue, contents)
+        if content is None:
+            continue
 
         # Detect agent (discovered_by may contain source info in some cases)
         agent = _detect_processing_agent(content, issue.discovered_by)
@@ -283,13 +276,9 @@ def analyze_complexity_proxy(
     issue_to_files: dict[str, list[str]] = {}
     for issue in issues:
         if issue.issue_id in issue_durations:
-            if contents is not None and issue.path in contents:
-                content = contents[issue.path]
-            else:
-                try:
-                    content = issue.path.read_text(encoding="utf-8")
-                except Exception:
-                    continue
+            content = get_issue_content(issue, contents)
+            if content is None:
+                continue
             paths = _extract_paths_from_issue(content)
             if paths:
                 issue_to_files[issue.issue_id] = paths

@@ -10,6 +10,7 @@ from little_loops.issue_history.models import (
     RegressionCluster,
 )
 from little_loops.issue_history.parsing import _extract_paths_from_issue
+from little_loops.issue_history._utils import get_issue_content
 
 
 def analyze_regression_clustering(
@@ -39,17 +40,11 @@ def analyze_regression_clustering(
     # Extract file paths for each bug
     bug_files: dict[str, set[str]] = {}  # issue_id -> set of files
     for bug in bugs:
-        if contents is not None and bug.path in contents:
-            content = contents[bug.path]
-            paths = _extract_paths_from_issue(content)
-            bug_files[bug.issue_id] = set(paths)
+        content = get_issue_content(bug, contents)
+        if content is None:
+            bug_files[bug.issue_id] = set()
         else:
-            try:
-                content = bug.path.read_text(encoding="utf-8")
-                paths = _extract_paths_from_issue(content)
-                bug_files[bug.issue_id] = set(paths)
-            except Exception:
-                bug_files[bug.issue_id] = set()
+            bug_files[bug.issue_id] = set(_extract_paths_from_issue(content))
 
     # Find regression pairs (temporal proximity + file overlap)
     regression_pairs: list[tuple[CompletedIssue, CompletedIssue, set[str]]] = []

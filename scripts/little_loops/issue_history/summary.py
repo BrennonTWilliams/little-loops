@@ -14,6 +14,7 @@ from little_loops.issue_history.models import (
     SubsystemHealth,
 )
 from little_loops.issue_history.parsing import _extract_subsystem
+from little_loops.issue_history._utils import get_issue_content
 
 
 def calculate_summary(issues: list[CompletedIssue]) -> HistorySummary:
@@ -223,13 +224,9 @@ def _analyze_subsystems(
     cutoff = date.today() - timedelta(days=recent_days)
 
     for issue in issues:
-        if contents is not None and issue.path in contents:
-            content = contents[issue.path]
-        else:
-            try:
-                content = issue.path.read_text(encoding="utf-8")
-            except Exception:
-                continue
+        content = get_issue_content(issue, contents)
+        if content is None:
+            continue
 
         subsystem = _extract_subsystem(content)
         if not subsystem:

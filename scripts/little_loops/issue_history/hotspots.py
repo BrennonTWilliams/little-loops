@@ -11,6 +11,7 @@ from little_loops.issue_history.models import (
     HotspotAnalysis,
 )
 from little_loops.issue_history.parsing import _extract_paths_from_issue
+from little_loops.issue_history._utils import get_issue_content
 
 
 def analyze_hotspots(
@@ -30,13 +31,9 @@ def analyze_hotspots(
     dir_data: dict[str, dict[str, Any]] = {}  # dir -> {count, ids, types}
 
     for issue in issues:
-        if contents is not None and issue.path in contents:
-            content = contents[issue.path]
-        else:
-            try:
-                content = issue.path.read_text(encoding="utf-8")
-            except Exception:
-                continue
+        content = get_issue_content(issue, contents)
+        if content is None:
+            continue
 
         paths = _extract_paths_from_issue(content)
 

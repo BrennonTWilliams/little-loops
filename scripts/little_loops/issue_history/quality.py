@@ -20,6 +20,7 @@ from little_loops.issue_history.models import (
     TestGapAnalysis,
 )
 from little_loops.issue_history.parsing import _find_test_file, _parse_resolution_action
+from little_loops.issue_history._utils import get_issue_content
 
 
 def analyze_test_gaps(
@@ -141,13 +142,9 @@ def analyze_rejection_rates(
     reason_counts: dict[str, int] = {}
 
     for issue in issues:
-        if contents is not None and issue.path in contents:
-            content = contents[issue.path]
-        else:
-            try:
-                content = issue.path.read_text(encoding="utf-8")
-            except Exception:
-                continue
+        content = get_issue_content(issue, contents)
+        if content is None:
+            continue
 
         category = _parse_resolution_action(content)
         overall.total_closed += 1
@@ -309,13 +306,9 @@ def detect_manual_patterns(
 
     # Scan issue content for patterns
     for issue in issues:
-        if contents is not None and issue.path in contents:
-            content = contents[issue.path]
-        else:
-            try:
-                content = issue.path.read_text(encoding="utf-8")
-            except Exception:
-                continue
+        content = get_issue_content(issue, contents)
+        if content is None:
+            continue
 
         for pattern_type, config in _MANUAL_PATTERNS.items():
             for pattern in config["patterns"]:
