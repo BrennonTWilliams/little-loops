@@ -186,6 +186,16 @@ For each state not reachable via BFS from `initial` using all outbound transitio
 For each non-terminal state that has no outbound transitions (`on_success`, `on_failure`, `on_partial`, `on_error`, `next`, or any `route.*`):
 - Add Error finding at path `states.<name>` (check_id: FA-6)
 
+### QC-14: Replaceable Prompt State Detection
+
+For each state where `action_type: prompt` OR where `action_type` is absent and the action looks like a natural-language prompt (more than 10 words, no shell metacharacters: `|`, `&&`, `||`, `$`, `;`, `>`, `<`, backtick):
+
+1. Strip template variable references (`{{...}}`, `$identifier`) from the action text, leaving only literal words.
+2. Check the literal text against the **Heuristic Groups** defined in `reference.md` (PR-1): file/path existence (Group A), counting (Group B), simple formatting (Group C), yes/no decision on structured data (Group D), pure template substitution (Group E), and simple string/path operations (Group F).
+3. Check for **Exemption Keywords** defined in `reference.md` (PR-1): if any exemption keyword is present in the action text, skip this state.
+4. Also skip if the action text exceeds 50 words.
+5. If a heuristic group matches and no exemption applies: add a Suggestion finding at path `states.<name>` with check_id `PR-1`, naming the detected pattern group and providing an example alternative.
+
 **Do not output any findings yet.** Proceed to Step 2c to build the narrative, then Step 3 to display everything.
 
 ---
@@ -306,7 +316,7 @@ If user selects "Skip remaining", stop iterating and proceed to Step 5 with chan
 
 ### `--auto` Mode
 
-Apply all fixes that meet the Auto-Apply Rules from `reference.md` (currently only QC-6: add explicit `on_handoff: pause`). Skip everything else.
+Apply all fixes that meet the Auto-Apply Rules from `reference.md` (currently only QC-6: add explicit `on_handoff: pause`). Skip everything else, including all PR-1 (replaceable prompt state) suggestions — these require structural changes that need user approval.
 
 Report:
 ```

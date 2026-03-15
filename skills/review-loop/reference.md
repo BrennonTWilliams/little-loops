@@ -461,6 +461,102 @@ Fix #N: <brief title>
 
 ---
 
+## Programmatic Replacement Checks (PR — deterministic state detection)
+
+These checks are run during Step 2d. They identify `prompt`-type states that perform
+deterministic operations — such as file existence checks, counting, or simple formatting —
+that could be replaced with cheaper, faster `bash` or `python` states.
+
+All PR findings are **Suggestion**-severity and are never auto-applied.
+
+---
+
+### PR-1: Replaceable LLM Prompt State
+
+**Severity**: Suggestion
+**Breaking**: false
+**When to auto-apply**: Never (structural change to state type)
+
+For each state where `action_type: prompt` (or where `action_type` is absent and the action looks like a natural-language prompt — more than 10 words, no shell metacharacters):
+
+1. Strip template variables (e.g. `{{variable}}`, `$var`) from the action text and check the remaining literal text against the heuristic groups below.
+2. If the action matches any heuristic group AND does not contain any exemption keyword, add a Suggestion finding with check_id `PR-1`.
+3. Include the detected pattern label and a concrete alternative in the finding.
+
+#### Heuristic Groups (any match → flag)
+
+| Group | Pattern signals | Suggested replacement |
+|-------|----------------|----------------------|
+| **A — File/path existence** | Phrases like "does … exist", "check if file", "is there a file", "does the path", "file exists?" — asking a yes/no factual question about filesystem state | `bash` state: `[ -f path ] && echo yes \|\| echo no` |
+| **B — Counting/enumeration** | Phrases like "count the number of", "how many", "count all", "total number of", "number of files/lines/matches/errors" | `bash` state: `grep -c pattern file` or `find . \| wc -l` |
+| **C — Simple formatting/transformation** | Phrases like "format X as Y", "convert to JSON/YAML/CSV", "format the output as", "output formatted", "print the value of" with a single deterministic output | `bash` state: `jq`, `printf`, or `python -c "import json; ..."` |
+| **D — Yes/no decision on structured data** | Phrases like "is the count greater/less/equal to", "does the value exceed", "if X is true/false based on" a numeric or structured value — binary decision with no free-text judgment | `bash` state: `[ "$value" -gt "$threshold" ] && echo yes \|\| echo no` |
+| **E — Pure template substitution** | Action consists almost entirely of template variable references (`{{var}}`, `$var`) with fixed connecting text and no analytical instruction | Any `bash` state: `echo "The value is $count"` |
+| **F — Simple string/path operations** | Phrases like "extract the filename from", "get the basename of", "strip the extension from", "split on delimiter" | `bash` state: `basename "$path"`, `"${path%.*}"`, `cut -d: -f1` |
+
+#### Exemption Keywords (do NOT flag if any present)
+
+If the action text contains any of the following words, skip the PR-1 check for that state — these indicate genuine language understanding is required:
+
+`summarize`, `summarise`, `analyze`, `analyse`, `review`, `evaluate`, `assess`, `classify`, `categorize`, `categorise`, `identify`, `determine`, `generate`, `suggest`, `recommend`, `explain`, `describe`, `reason`, `infer`, `diagnose`
+
+Also skip if the action text exceeds 50 words — complex multi-step reasoning is unlikely to be purely deterministic.
+
+#### Finding Format
+
+```
+Suggestion: states.<name>: Prompt state appears deterministic and could be replaced
+with a programmatic state. Detected pattern: <Group label>. Consider replacing with a
+bash state: <example command>.
+```
+
+#### Fix Template
+
+```yaml
+# Example — Group A (file existence)
+# Before:
+states:
+  check_config:
+    action: "Does the file config.json exist in the current directory?"
+    action_type: prompt
+    on_success: proceed
+    on_failure: error
+
+# After:
+states:
+  check_config:
+    action: '[ -f config.json ] && echo yes || echo no'
+    action_type: shell
+    evaluate:
+      type: output_contains
+      value: "yes"
+    on_success: proceed
+    on_failure: error
+
+# Example — Group B (counting)
+# Before:
+states:
+  count_errors:
+    action: "Count the number of lines containing ERROR in build.log"
+    action_type: prompt
+    on_success: done
+    on_failure: fix
+
+# After:
+states:
+  count_errors:
+    action: "grep -c 'ERROR' build.log 2>/dev/null || echo 0"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: eq
+      target: 0
+    on_success: done
+    on_failure: fix
+```
+
+---
+
 ## Auto-Apply Rules (`--auto` mode)
 
 In `--auto` mode, apply only fixes that are:
@@ -471,7 +567,7 @@ In `--auto` mode, apply only fixes that are:
 Eligible for auto-apply in `--auto` mode:
 - **QC-6**: Add explicit `on_handoff: pause` if `max_iterations > 20` and `on_handoff` is absent — safe since `pause` is already the default
 
-Everything else requires user approval.
+Everything else requires user approval, including all **PR-*** findings (structural change to state type; cannot be applied without user confirmation).
 
 After auto-applying, report:
 ```

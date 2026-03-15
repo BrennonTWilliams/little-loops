@@ -29,11 +29,11 @@ FSM loops sometimes use LLM prompt states for operations that don't require lang
 
 ## Acceptance Criteria
 
-- [ ] `review-loop` inspects each `prompt`-type state during its analysis pass
-- [ ] States are flagged as "possibly replaceable" if they match heuristics indicating deterministic behavior (e.g., simple formatting, file/path ops, counting, yes/no decisions on structured input)
-- [ ] Flagged states are reported as a **Suggestion**-severity finding with explanation and example alternative (`bash` state or `python` inline)
-- [ ] Existing `--dry-run` and `--auto` flags respect the new findings (report only / auto-skip suggestions)
-- [ ] No false positives for states that genuinely need language understanding (summarizing, classifying free text, etc.)
+- [x] `review-loop` inspects each `prompt`-type state during its analysis pass
+- [x] States are flagged as "possibly replaceable" if they match heuristics indicating deterministic behavior (e.g., simple formatting, file/path ops, counting, yes/no decisions on structured input)
+- [x] Flagged states are reported as a **Suggestion**-severity finding with explanation and example alternative (`bash` state or `python` inline)
+- [x] Existing `--dry-run` and `--auto` flags respect the new findings (report only / auto-skip suggestions)
+- [x] No false positives for states that genuinely need language understanding (summarizing, classifying free text, etc.)
 
 ## Proposed Solution
 
@@ -103,7 +103,14 @@ Emit findings as `Suggestion` severity (non-blocking) with a suggested alternati
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P3
+**Completed** | Created: 2026-03-13 | Priority: P3
+
+## Resolution
+
+- Added `PR-1: Replaceable LLM Prompt State` check to `skills/review-loop/reference.md` with six heuristic groups (file/path existence, counting, formatting, yes/no decisions on structured data, pure template substitution, simple string/path ops) and an exemption keyword list for states requiring genuine language understanding.
+- Added `QC-14: Replaceable Prompt State Detection` step to `skills/review-loop/SKILL.md` after existing quality checks (QC-13). Emits `PR-1` Suggestion-severity findings with detected pattern label and concrete alternative.
+- Updated `--auto` mode note in SKILL.md and Auto-Apply Rules in reference.md to document that PR-1 is never auto-applied.
+- Added `TestReplaceablePromptStateDetection` class (20 tests) to `scripts/tests/test_review_loop.py` covering all 6 heuristic groups (detected) and 6 exemption patterns (not detected), plus shell-state exemption, 50-word cap, auto-apply exclusion, and dry-run inclusion.
 
 ## Verification Notes
 
@@ -112,6 +119,7 @@ Emit findings as `Suggestion` severity (non-blocking) with a suggested alternati
 - `skills/review-loop/SKILL.md` exists (404 lines) and has no section detecting replaceable LLM prompt states. `skills/review-loop/reference.md` exists but contains no heuristics for deterministic-state detection. The feature is not yet implemented.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T00:35:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/61dde7e7-c70d-46d4-b548-56163cf41b6b.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - captured from user description

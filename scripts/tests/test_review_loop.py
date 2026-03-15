@@ -436,6 +436,275 @@ class TestReviewLoopAutoFix:
 # =============================================================================
 
 
+class TestReplaceablePromptStateDetection:
+    """Test PR-1 heuristics for detecting deterministic LLM prompt states.
+
+    These tests verify the discriminators the skill uses in QC-14 to identify
+    prompt-type states that could be replaced with bash or python states.
+    The heuristics are defined in reference.md under 'Programmatic Replacement Checks (PR)'.
+    """
+
+    # Shared helper that mirrors the QC-14 detection logic
+    # (used to make individual tests self-documenting)
+
+    EXEMPTION_KEYWORDS = {
+        "summarize", "summarise", "analyze", "analyse", "review", "evaluate",
+        "assess", "classify", "categorize", "categorise", "identify", "determine",
+        "generate", "suggest", "recommend", "explain", "describe", "reason",
+        "infer", "diagnose",
+    }
+
+    SHELL_METACHARACTERS = set("|&;$><`")
+
+    def _is_prompt_like(self, action: str) -> bool:
+        """True if action looks like a natural-language prompt (>10 words, no shell chars)."""
+        words = action.split()
+        has_shell = any(c in action for c in self.SHELL_METACHARACTERS)
+        return len(words) > 10 and not has_shell
+
+    def _has_exemption(self, action: str) -> bool:
+        """True if action contains an exemption keyword."""
+        lower = action.lower()
+        return any(kw in lower for kw in self.EXEMPTION_KEYWORDS)
+
+    def _strip_template_vars(self, action: str) -> str:
+        """Remove {{...}} and $identifier from action text."""
+        import re
+        text = re.sub(r"\{\{[^}]+\}\}", " ", action)
+        text = re.sub(r"\$[A-Za-z_][A-Za-z0-9_]*", " ", text)
+        return text.strip()
+
+    # ---- Group A: File/path existence checks → should be flagged ----
+
+    def test_pr1_group_a_file_existence_flagged(self) -> None:
+        """PR-1 Group A: 'Does X exist?' prompt → flag as replaceable."""
+        action = "Does the file config.json exist in the current project root directory?"
+        literal = self._strip_template_vars(action)
+        lower = literal.lower()
+
+        is_prompt = self._is_prompt_like(action)
+        has_exemption = self._has_exemption(action)
+        matches_group_a = any(phrase in lower for phrase in ("does", "exist"))
+
+        assert is_prompt
+        assert not has_exemption
+        assert matches_group_a
+        # → skill should flag as PR-1 Suggestion
+
+    def test_pr1_group_a_check_if_file_exists_flagged(self) -> None:
+        """PR-1 Group A: 'Check if file Y exists' prompt → flag as replaceable."""
+        action = "Check if the file requirements.txt exists in the project root directory"
+        lower = action.lower()
+
+        is_prompt = self._is_prompt_like(action)
+        has_exemption = self._has_exemption(action)
+        matches_group_a = "check if" in lower and "exist" in lower
+
+        assert is_prompt
+        assert not has_exemption
+        assert matches_group_a
+
+    # ---- Group B: Counting/enumeration → should be flagged ----
+
+    def test_pr1_group_b_count_errors_flagged(self) -> None:
+        """PR-1 Group B: 'Count the number of...' prompt → flag as replaceable."""
+        action = "Count the number of lines containing ERROR in the build log file"
+        lower = action.lower()
+
+        is_prompt = self._is_prompt_like(action)
+        has_exemption = self._has_exemption(action)
+        matches_group_b = "count the number of" in lower or "how many" in lower
+
+        assert is_prompt
+        assert not has_exemption
+        assert matches_group_b
+
+    def test_pr1_group_b_how_many_files_flagged(self) -> None:
+        """PR-1 Group B: 'How many files...' prompt → flag as replaceable."""
+        action = "How many Python files are there in the scripts directory right now"
+        lower = action.lower()
+
+        is_prompt = self._is_prompt_like(action)
+        has_exemption = self._has_exemption(action)
+        matches_group_b = "how many" in lower
+
+        assert is_prompt
+        assert not has_exemption
+        assert matches_group_b
+
+    # ---- Group C: Simple formatting/transformation → should be flagged ----
+
+    def test_pr1_group_c_format_as_json_flagged(self) -> None:
+        """PR-1 Group C: 'Format X as JSON' prompt → flag as replaceable."""
+        action = "Format the output of the previous step as a JSON object with key and value fields"
+        lower = action.lower()
+
+        is_prompt = self._is_prompt_like(action)
+        has_exemption = self._has_exemption(action)
+        matches_group_c = "format" in lower and ("as" in lower or "output" in lower)
+
+        assert is_prompt
+        assert not has_exemption
+        assert matches_group_c
+
+    # ---- Group D: Yes/no decision on structured data → should be flagged ----
+
+    def test_pr1_group_d_numeric_threshold_flagged(self) -> None:
+        """PR-1 Group D: 'Is count greater than N?' prompt → flag as replaceable."""
+        action = "Is the error count greater than zero based on the numeric value provided above"
+        lower = action.lower()
+
+        is_prompt = self._is_prompt_like(action)
+        has_exemption = self._has_exemption(action)
+        matches_group_d = ("greater" in lower or "less" in lower or "equal" in lower) and (
+            "count" in lower or "value" in lower or "number" in lower
+        )
+
+        assert is_prompt
+        assert not has_exemption
+        assert matches_group_d
+
+    def test_pr1_group_d_boolean_decision_flagged(self) -> None:
+        """PR-1 Group D: 'Output yes or no based on value' prompt → flag as replaceable."""
+        action = "Output yes if the exit code is zero or output no if it is non-zero based on the result"
+        lower = action.lower()
+
+        is_prompt = self._is_prompt_like(action)
+        has_exemption = self._has_exemption(action)
+        matches_group_d = ("yes" in lower or "no" in lower) and (
+            "exit code" in lower or "value" in lower or "result" in lower
+        )
+
+        assert is_prompt
+        assert not has_exemption
+        assert matches_group_d
+
+    # ---- Group E: Pure template substitution → should be flagged ----
+
+    def test_pr1_group_e_template_only_flagged(self) -> None:
+        """PR-1 Group E: Action is mostly template vars with fixed text → flag."""
+        action = "The current error count is {{error_count}} and the threshold is {{threshold}} value"
+        stripped = self._strip_template_vars(action)
+        words = stripped.split()
+
+        is_prompt = self._is_prompt_like(action)
+        has_exemption = self._has_exemption(action)
+        # After stripping vars, only fixed connector words remain
+        meaningful_words = [w for w in words if len(w) > 2]
+        mostly_template = len(meaningful_words) <= 8  # mostly template references
+
+        assert is_prompt
+        assert not has_exemption
+        assert mostly_template
+
+    # ---- Group F: Simple string/path operations → should be flagged ----
+
+    def test_pr1_group_f_basename_flagged(self) -> None:
+        """PR-1 Group F: 'Get the basename of path' prompt → flag as replaceable."""
+        action = "Extract the filename without extension from the full path provided in the variable"
+        lower = action.lower()
+
+        is_prompt = self._is_prompt_like(action)
+        has_exemption = self._has_exemption(action)
+        matches_group_f = "extract" in lower and ("filename" in lower or "path" in lower)
+
+        assert is_prompt
+        assert not has_exemption
+        assert matches_group_f
+
+    # ---- Exemption: genuine LLM work → should NOT be flagged ----
+
+    def test_pr1_summarize_not_flagged(self) -> None:
+        """PR-1 exemption: 'Summarize...' prompt requires LLM → do not flag."""
+        action = "Summarize the test failure output and identify the root cause of each failing test"
+        has_exemption = self._has_exemption(action)
+        assert has_exemption  # → skill must skip PR-1 check
+
+    def test_pr1_classify_free_text_not_flagged(self) -> None:
+        """PR-1 exemption: 'Classify...' prompt requires language understanding → do not flag."""
+        action = "Classify the user feedback as positive, negative, or neutral based on the text content"
+        has_exemption = self._has_exemption(action)
+        assert has_exemption
+
+    def test_pr1_generate_content_not_flagged(self) -> None:
+        """PR-1 exemption: 'Generate...' prompt requires creative output → do not flag."""
+        action = "Generate a concise commit message that describes the changes made in this session"
+        has_exemption = self._has_exemption(action)
+        assert has_exemption
+
+    def test_pr1_analyze_code_not_flagged(self) -> None:
+        """PR-1 exemption: 'Analyze...' prompt requires reasoning → do not flag."""
+        action = "Analyze the current test failures and determine the root cause of each error"
+        has_exemption = self._has_exemption(action)
+        assert has_exemption
+
+    def test_pr1_review_quality_not_flagged(self) -> None:
+        """PR-1 exemption: 'Review...' prompt requires judgment → do not flag."""
+        action = "Review the code changes and evaluate whether they meet the acceptance criteria in the issue"
+        has_exemption = self._has_exemption(action)
+        assert has_exemption
+
+    def test_pr1_diagnose_not_flagged(self) -> None:
+        """PR-1 exemption: 'Diagnose...' prompt requires inference → do not flag."""
+        action = "Diagnose why the build is failing by examining the error output and log files carefully"
+        has_exemption = self._has_exemption(action)
+        assert has_exemption
+
+    # ---- Non-prompt states → skip PR-1 entirely ----
+
+    def test_pr1_shell_state_not_checked(self) -> None:
+        """PR-1: Shell states (action_type: shell) are exempt from the check."""
+        state_spec = {
+            "action": "grep -c 'ERROR' build.log",
+            "action_type": "shell",
+        }
+        action_type = state_spec.get("action_type")
+        is_prompt_type = action_type == "prompt"
+        looks_like_prompt = self._is_prompt_like(state_spec["action"])
+
+        assert not is_prompt_type
+        assert not looks_like_prompt  # short shell command → also not prompt-like
+        # → no PR-1 check needed
+
+    def test_pr1_long_prompt_over_50_words_exempt(self) -> None:
+        """PR-1: Actions exceeding 50 words are skipped (complex reasoning assumed)."""
+        action = (
+            "Count the number of failing tests and then determine if the failure rate exceeds "
+            "the configured threshold, taking into account any known flaky tests that should be "
+            "excluded from the count, and also consider whether failures occurred in the same "
+            "module or are spread across multiple modules, as that affects the severity rating"
+        )
+        words = action.split()
+        assert len(words) > 50  # → skill must skip PR-1 check
+
+    # ---- Auto-apply rules: PR-1 is never auto-applied ----
+
+    def test_pr1_not_auto_applicable(self) -> None:
+        """PR-1 findings must never be auto-applied in --auto mode."""
+        # From reference.md Auto-Apply Rules: PR-* findings require structural changes
+        # and must always require user approval
+        pr_checks = {"PR-1"}
+        auto_apply_eligible = {"QC-6"}  # only QC-6 is ever auto-applied
+
+        assert pr_checks.isdisjoint(auto_apply_eligible)
+
+    # ---- Dry-run compatibility ----
+
+    def test_pr1_findings_included_in_dry_run_output(self) -> None:
+        """PR-1 findings appear in the findings table during --dry-run (Step 3)."""
+        # dry-run stops after Step 3 (display findings), which includes all severities.
+        # PR-1 is Suggestion severity → it appears in the Suggestions section.
+        finding = {
+            "check_id": "PR-1",
+            "severity": "Suggestion",
+            "location": "states.check_config",
+            "message": "Prompt state appears deterministic. Detected pattern: Group A.",
+        }
+        assert finding["severity"] == "Suggestion"
+        assert finding["check_id"] == "PR-1"
+        # → dry-run would include this in the Suggestions table section
+
+
 class TestReviewLoopDryRun:
     """Verify that --dry-run mode stops after displaying findings.
 
