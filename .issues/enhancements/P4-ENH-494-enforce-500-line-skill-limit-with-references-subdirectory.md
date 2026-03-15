@@ -160,7 +160,6 @@ Note: `manage-issue/SKILL.md` has grown to exactly 500 lines — at the boundary
 Update first - Only 2 skills exceed the 500-line limit (audit-claude-config: 708, confidence-check: 524), making scope smaller than expected. However, the `references/` subdirectory pattern needs to be defined and documented before extracting content. Blocked by ENH-493 (trigger descriptions), ENH-491, and FEAT-441. Implement after those resolve and the pattern convention is established in CONTRIBUTING.md.
 
 ## Blocked By
-- ENH-495
 - ENH-493
 - FEAT-565
 

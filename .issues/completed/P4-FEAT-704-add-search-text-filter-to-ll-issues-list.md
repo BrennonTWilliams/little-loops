@@ -3,6 +3,8 @@ discovered_commit: 3e9beeaf2bbe8608104beb89fbc7e2e2259310d8
 discovered_branch: main
 discovered_date: 2026-03-13T00:36:53Z
 discovered_by: scan-codebase
+closed_date: 2026-03-14
+closed_reason: wont-do
 ---
 
 # FEAT-704: Add `--search` text filter to `ll-issues list`
@@ -74,7 +76,11 @@ Add `--search <term>` argument to the `list` subparser. In `cmd_list`, after `fi
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P4
+**Closed (Won't Do — Superseded)** | Created: 2026-03-13 | Closed: 2026-03-14 | Priority: P4
+
+## Closure Notes
+
+Superseded by `ll-issues search`, which already provides a strict superset of this feature: full-text search across title and body content, combinable type/priority/label/date-range filters, multiple output formats (`--json`, `--format ids/list/table`), and support for active, completed, and deferred issues. Adding `--search` to `ll-issues list` is redundant.
 
 ## Verification Notes
 

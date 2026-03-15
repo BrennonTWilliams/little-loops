@@ -144,5 +144,4 @@ _Codebase Research: full call chain with line refs:_
 **Open** | Created: 2026-03-08 | Priority: P4
 
 ## Blocked By
-- ENH-540
 - ENH-665

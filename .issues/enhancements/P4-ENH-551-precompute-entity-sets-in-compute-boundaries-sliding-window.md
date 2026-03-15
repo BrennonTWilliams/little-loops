@@ -108,8 +108,6 @@ _(FEAT-558 removed from Blocks — completed)_
 
 ## Blocked By
 
-- FEAT-556
-- ENH-549
 - ENH-550
 
 ## Labels

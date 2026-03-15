@@ -126,9 +126,6 @@ _(FEAT-558 removed from Blocks — completed)_
 
 ## Blocked By
 
-- FEAT-556
-- ENH-549
-
 ## Labels
 
 `enhancement`, `performance`, `workflow-analyzer`, `captured`

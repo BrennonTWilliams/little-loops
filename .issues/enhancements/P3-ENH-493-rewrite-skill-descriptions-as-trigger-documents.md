@@ -150,7 +150,6 @@ _Added by `/ll:refine-issue` — reduces implementation ambiguity:_
 ## Blocked By
 - FEAT-659
 - FEAT-638
-- ENH-495
 - FEAT-565
 
 ## Blocks
