@@ -531,7 +531,7 @@ def evaluate_llm_structured(
     uncertain_suffix: bool = False,
     model: str = DEFAULT_LLM_MODEL,
     max_tokens: int = 256,
-    timeout: int = 30,
+    timeout: int = 1800,
 ) -> EvaluationResult:
     """Evaluate action output using LLM with structured output via Claude CLI.
 
@@ -805,9 +805,15 @@ def evaluate(
         )
 
     elif eval_type == "llm_structured":
+        prompt = config.prompt
+        if prompt and context:
+            try:
+                prompt = interpolate(prompt, context)
+            except InterpolationError:
+                pass  # Use raw prompt on resolution failure
         return evaluate_llm_structured(
             output=output,
-            prompt=config.prompt,
+            prompt=prompt,
             schema=config.schema,
             min_confidence=config.min_confidence,
             uncertain_suffix=config.uncertain_suffix,

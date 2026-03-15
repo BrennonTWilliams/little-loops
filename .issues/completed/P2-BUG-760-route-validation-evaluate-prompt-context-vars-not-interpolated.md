@@ -121,9 +121,13 @@ return evaluate_llm_structured(
 
 ## Acceptance Criteria
 
-- [ ] `${context.readiness_threshold}` in evaluate prompts resolves to `85` (or configured value)
-- [ ] `${context.outcome_threshold}` in evaluate prompts resolves to `70` (or configured value)
-- [ ] Unit test confirms context variable interpolation applies to `evaluate.prompt` fields
+- [x] `${context.readiness_threshold}` in evaluate prompts resolves to `85` (or configured value)
+- [x] `${context.outcome_threshold}` in evaluate prompts resolves to `70` (or configured value)
+- [x] Unit test confirms context variable interpolation applies to `evaluate.prompt` fields
+
+## Resolution
+
+**Fixed**: Added `interpolate(config.prompt, context)` in the `llm_structured` branch of `evaluate()` in `scripts/little_loops/fsm/evaluators.py`, following the same try/except guard pattern used by `output_numeric`. Added `test_dispatch_llm_structured_interpolates_prompt` to `scripts/tests/test_fsm_evaluators.py`. All 130 evaluator tests pass.
 
 ## Labels
 
@@ -131,8 +135,9 @@ return evaluate_llm_structured(
 
 ## Status
 
-**Open** | Created: 2026-03-15 | Priority: P2
+**Completed** | Created: 2026-03-15 | Resolved: 2026-03-15 | Priority: P2
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T23:09:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2d17fbbd-36b8-4335-83e3-dd4b0e77d8b2.jsonl`
 - `/ll:refine-issue` - 2026-03-15T23:04:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5c84ab5a-c97c-49a5-bd30-6defbaef2cab.jsonl`
