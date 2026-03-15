@@ -5,6 +5,8 @@ type: ENH
 status: backlog
 discovered_date: 2026-03-14
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 75
 ---
 
 # ENH-748: Add `--handoff-threshold` CLI Override to ll-auto, ll-parallel, ll-sprint
@@ -44,7 +46,7 @@ The flag value (1–100) overrides `auto_handoff_threshold` for the duration of 
    - `scripts/little_loops/cli/sprint/` entry point
    - Validate: integer, range 1–100, optional
 
-2. **Propagate the override** — when the value is provided, write it as an environment variable (e.g. `LL_HANDOFF_THRESHOLD=<value>`) before spawning subprocesses, OR pass it as an override to the config layer so `context-monitor.sh` picks it up.
+2. **Propagate the override** — when the value is provided, set `os.environ["LL_HANDOFF_THRESHOLD"] = str(value)` in the CLI entry point before any subprocess is spawned. Both `subprocess_utils.py` (line 92) and `parallel/worker_pool.py` (line 613) call `os.environ.copy()` when building subprocess environments, so the env var will propagate automatically to Claude subprocesses and the hook. Do NOT use the config layer (`config.automation.*`) — that approach won't reach `context-monitor.sh`.
 
 3. **Update `context-monitor.sh`** — check for the env var override before falling back to `ll_config_value`:
    ```bash
@@ -104,6 +106,7 @@ THRESHOLD="${LL_HANDOFF_THRESHOLD:-$(ll_config_value "context_monitor.auto_hando
 ### Tests
 - `scripts/tests/test_hooks_integration.py` — add test for `LL_HANDOFF_THRESHOLD` env var override
 - New `test_cli_handoff_threshold.py` or inline tests for arg parsing in auto/parallel/sprint
+- Note: `test_hooks_integration.py` exists but has no coverage for this env var yet — new tests must be written
 
 ### Documentation
 - N/A — CLI flags are self-documenting via `--help`
@@ -134,5 +137,7 @@ THRESHOLD="${LL_HANDOFF_THRESHOLD:-$(ll_config_value "context_monitor.auto_hando
 **Open** | Created: 2026-03-14 | Priority: P3
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-15T18:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75ab76d5-fcb5-4a04-bb61-499b62742b41.jsonl`
+- `/ll:verify-issues` - 2026-03-15T17:27:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/12de81ba-1a5b-40f3-b61a-85f37645e9af.jsonl`
 - `/ll:format-issue` - 2026-03-15T16:11:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cc316fcb-f8d1-4845-aab1-5e94c57b6ed3.jsonl`
 - `/ll:capture-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55d3be20-340e-4a9d-9286-575d7dc448df.jsonl`
