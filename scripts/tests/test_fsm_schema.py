@@ -1438,3 +1438,120 @@ class TestValidationError:
         """Severity enum has expected values."""
         assert ValidationSeverity.ERROR.value == "error"
         assert ValidationSeverity.WARNING.value == "warning"
+
+
+class TestMcpToolSchema:
+    """Tests for mcp_tool action_type and mcp_result evaluator in schema."""
+
+    def test_mcp_tool_action_type_is_valid(self) -> None:
+        """action_type='mcp_tool' is accepted by StateConfig."""
+        state = StateConfig(
+            action="browser/navigate",
+            action_type="mcp_tool",
+            params={"url": "https://example.com"},
+            route=RouteConfig(routes={"success": "done"}),
+        )
+        assert state.action_type == "mcp_tool"
+        assert state.params == {"url": "https://example.com"}
+
+    def test_params_round_trips_through_dict(self) -> None:
+        """params field serializes and deserializes correctly."""
+        state = StateConfig(
+            action="db/query",
+            action_type="mcp_tool",
+            params={"sql": "SELECT 1", "limit": 100},
+            route=RouteConfig(routes={"success": "done"}),
+        )
+        d = state.to_dict()
+        assert d["params"] == {"sql": "SELECT 1", "limit": 100}
+
+        restored = StateConfig.from_dict(d)
+        assert restored.params == {"sql": "SELECT 1", "limit": 100}
+        assert restored.action_type == "mcp_tool"
+
+    def test_params_absent_when_empty(self) -> None:
+        """to_dict omits params when it is empty (default)."""
+        state = StateConfig(action="echo hi", on_yes="done")
+        d = state.to_dict()
+        assert "params" not in d
+
+    def test_params_from_dict_defaults_to_empty(self) -> None:
+        """from_dict sets params to {} when key is absent."""
+        state = StateConfig.from_dict({"action": "echo hi", "on_yes": "done"})
+        assert state.params == {}
+
+    def test_mcp_result_evaluator_type_is_valid(self) -> None:
+        """EvaluateConfig accepts type='mcp_result'."""
+        config = EvaluateConfig(type="mcp_result")
+        assert config.type == "mcp_result"
+
+    def test_mcp_result_round_trips_through_dict(self) -> None:
+        """mcp_result evaluator serializes and deserializes correctly."""
+        config = EvaluateConfig(type="mcp_result")
+        d = config.to_dict()
+        assert d["type"] == "mcp_result"
+        restored = EvaluateConfig.from_dict(d)
+        assert restored.type == "mcp_result"
+
+    def test_mcp_tool_state_validation_passes(self) -> None:
+        """An mcp_tool state passes validation."""
+        fsm = FSMLoop(
+            name="test",
+            initial="fetch",
+            states={
+                "fetch": StateConfig(
+                    action="browser/navigate",
+                    action_type="mcp_tool",
+                    params={"url": "https://example.com"},
+                    evaluate=EvaluateConfig(type="mcp_result"),
+                    route=RouteConfig(routes={"success": "done", "tool_error": "done", "not_found": "done", "timeout": "done"}),
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        from little_loops.fsm.validation import validate_fsm
+
+        errors = validate_fsm(fsm)
+        error_only = [e for e in errors if e.severity.value == "error"]
+        assert error_only == []
+
+    def test_params_on_non_mcp_tool_state_fails_validation(self) -> None:
+        """Using params on a non-mcp_tool state is a validation error."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="echo hi",
+                    action_type="shell",
+                    params={"key": "value"},  # invalid: not mcp_tool
+                    on_yes="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        from little_loops.fsm.validation import validate_fsm
+
+        errors = validate_fsm(fsm)
+        error_messages = [str(e) for e in errors]
+        assert any("params" in m and "mcp_tool" in m for m in error_messages)
+
+    def test_params_on_shell_without_action_type_fails_validation(self) -> None:
+        """Using params on a shell state (no explicit action_type) is a validation error."""
+        fsm = FSMLoop(
+            name="test",
+            initial="check",
+            states={
+                "check": StateConfig(
+                    action="echo hi",
+                    params={"key": "value"},  # invalid: heuristic = shell
+                    on_yes="done",
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+        from little_loops.fsm.validation import validate_fsm
+
+        errors = validate_fsm(fsm)
+        error_messages = [str(e) for e in errors]
+        assert any("params" in m and "mcp_tool" in m for m in error_messages)

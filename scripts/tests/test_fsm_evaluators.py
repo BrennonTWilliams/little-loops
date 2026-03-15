@@ -19,6 +19,7 @@ from little_loops.fsm.evaluators import (
     evaluate_diff_stall,
     evaluate_exit_code,
     evaluate_llm_structured,
+    evaluate_mcp_result,
     evaluate_output_contains,
     evaluate_output_json,
     evaluate_output_numeric,
@@ -1083,3 +1084,73 @@ class TestDiffStallEvaluator:
 
         assert result.verdict == "yes"
         assert result.details["max_stall"] == 2
+
+
+class TestMcpResultEvaluator:
+    """Tests for the mcp_result evaluator."""
+
+    @pytest.mark.parametrize(
+        ("output", "exit_code", "expected_verdict"),
+        [
+            # Success: isError=false, exit 0
+            ('{"isError": false, "content": [{"type": "text", "text": "ok"}]}', 0, "success"),
+            # Tool error: isError=true, exit 1
+            ('{"isError": true, "content": [{"type": "text", "text": "fail"}]}', 1, "tool_error"),
+            # Not found: exit 127
+            ("", 127, "not_found"),
+            # Timeout: exit 124
+            ("", 124, "timeout"),
+            # isError defaults to True when exit_code != 0 and not valid JSON
+            ("not-json", 1, "tool_error"),
+            # Empty output with exit 0 → isError defaults to False
+            ("{}", 0, "success"),
+            # isError=true from envelope, regardless of exit code
+            ('{"isError": true}', 0, "tool_error"),
+        ],
+    )
+    def test_mcp_result_routing(self, output: str, exit_code: int, expected_verdict: str) -> None:
+        """MCP result routing covers all expected verdicts."""
+        result = evaluate_mcp_result(output, exit_code)
+        assert result.verdict == expected_verdict
+
+    def test_not_found_details(self) -> None:
+        """not_found verdict includes descriptive error in details."""
+        result = evaluate_mcp_result("", 127)
+        assert result.verdict == "not_found"
+        assert "not found" in result.details["error"].lower()
+        assert result.details["exit_code"] == 127
+
+    def test_timeout_details(self) -> None:
+        """timeout verdict includes descriptive error in details."""
+        result = evaluate_mcp_result("", 124)
+        assert result.verdict == "timeout"
+        assert "timed out" in result.details["error"].lower()
+
+    def test_success_envelope_in_details(self) -> None:
+        """Success verdict includes the full MCP envelope in details."""
+        envelope = {"isError": False, "content": [{"type": "text", "text": "hello"}]}
+        result = evaluate_mcp_result(json.dumps(envelope), 0)
+        assert result.verdict == "success"
+        assert result.details["envelope"] == envelope
+
+    def test_tool_error_envelope_in_details(self) -> None:
+        """tool_error verdict includes the full MCP envelope in details."""
+        envelope = {"isError": True, "content": [{"type": "text", "text": "bad"}]}
+        result = evaluate_mcp_result(json.dumps(envelope), 1)
+        assert result.verdict == "tool_error"
+        assert result.details["envelope"] == envelope
+
+    def test_dispatch_mcp_result(self) -> None:
+        """evaluate() dispatcher routes mcp_result type correctly."""
+        config = EvaluateConfig(type="mcp_result")
+        ctx = InterpolationContext()
+        output = json.dumps({"isError": False, "content": []})
+        result = evaluate(config, output, 0, ctx)
+        assert result.verdict == "success"
+
+    def test_dispatch_mcp_result_not_found(self) -> None:
+        """evaluate() dispatcher handles mcp_result not_found (exit 127)."""
+        config = EvaluateConfig(type="mcp_result")
+        ctx = InterpolationContext()
+        result = evaluate(config, "", 127, ctx)
+        assert result.verdict == "not_found"

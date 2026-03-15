@@ -1,6 +1,6 @@
 ---
 id: FEAT-749
-priority: P3
+priority: P2
 type: FEAT
 status: active
 discovered_date: 2026-03-14

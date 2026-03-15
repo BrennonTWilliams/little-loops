@@ -10,6 +10,7 @@ This module provides the execution engine that runs FSM loops:
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import threading
@@ -24,9 +25,15 @@ from little_loops.fsm.evaluators import (
     evaluate,
     evaluate_exit_code,
     evaluate_llm_structured,
+    evaluate_mcp_result,
 )
 from little_loops.fsm.handoff_handler import HandoffHandler
-from little_loops.fsm.interpolation import InterpolationContext, InterpolationError, interpolate
+from little_loops.fsm.interpolation import (
+    InterpolationContext,
+    InterpolationError,
+    interpolate,
+    interpolate_dict,
+)
 from little_loops.fsm.schema import FSMLoop, StateConfig
 from little_loops.fsm.signal_detector import DetectedSignal, SignalDetector
 from little_loops.session_log import get_current_session_jsonl
@@ -611,30 +618,34 @@ class FSMExecutor:
             ActionResult with output and exit code
         """
         action = interpolate(action_template, ctx)
+        action_mode = self._action_mode(state)
 
-        # Determine if this is a slash command/prompt based on action_type or heuristic
-        is_slash_command = self._is_prompt_action(state)
-
-        self._emit("action_start", {"action": action, "is_prompt": is_slash_command})
+        self._emit("action_start", {"action": action, "is_prompt": action_mode == "prompt"})
 
         def _on_line(line: str) -> None:
             self._emit("action_output", {"line": line})
 
-        result = self.action_runner.run(
-            action,
-            timeout=state.timeout or 120,
-            is_slash_command=is_slash_command,
-            on_output_line=_on_line,
-        )
+        if action_mode == "mcp_tool":
+            # Direct MCP tool call — bypass action_runner entirely
+            interpolated_params = interpolate_dict(state.params, ctx) if state.params else {}
+            cmd = ["mcp-call", action, json.dumps(interpolated_params)]
+            result = self._run_subprocess(cmd, timeout=state.timeout or 30, on_output_line=_on_line)
+        else:
+            result = self.action_runner.run(
+                action,
+                timeout=state.timeout or 120,
+                is_slash_command=action_mode == "prompt",
+                on_output_line=_on_line,
+            )
 
         preview = result.output[-2000:].strip() if result.output else None
         payload: dict[str, Any] = {
             "exit_code": result.exit_code,
             "duration_ms": result.duration_ms,
             "output_preview": preview,
-            "is_prompt": is_slash_command,
+            "is_prompt": action_mode == "prompt",
         }
-        if is_slash_command:
+        if action_mode == "prompt":
             session_jsonl = get_current_session_jsonl()
             payload["session_jsonl"] = str(session_jsonl) if session_jsonl else None
         self._emit("action_complete", payload)
@@ -661,6 +672,68 @@ class FSMExecutor:
 
         return result
 
+    def _run_subprocess(
+        self,
+        cmd: list[str],
+        timeout: int,
+        on_output_line: Any | None = None,
+    ) -> ActionResult:
+        """Run a subprocess directly and return ActionResult.
+
+        Follows the same Popen + stderr-drain-thread pattern as DefaultActionRunner.
+
+        Args:
+            cmd: Command and arguments to execute
+            timeout: Timeout in seconds
+            on_output_line: Optional callback for each stdout line
+
+        Returns:
+            ActionResult with output, stderr, exit_code, duration_ms
+        """
+        start = _now_ms()
+        process = subprocess.Popen(
+            cmd,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        output_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+
+        def _drain_stderr() -> None:
+            assert process.stderr is not None
+            for line in process.stderr:
+                stderr_chunks.append(line)
+
+        stderr_thread = threading.Thread(target=_drain_stderr, daemon=True)
+        stderr_thread.start()
+
+        try:
+            for line in process.stdout:  # type: ignore[union-attr]
+                output_chunks.append(line)
+                if on_output_line:
+                    on_output_line(line.rstrip())
+            process.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            process.wait()
+            stderr_thread.join(timeout=5)
+            return ActionResult(
+                output="".join(output_chunks),
+                stderr="".join(stderr_chunks) or "MCP call timed out",
+                exit_code=124,
+                duration_ms=timeout * 1000,
+            )
+        finally:
+            pass
+        stderr_thread.join(timeout=5)
+        return ActionResult(
+            output="".join(output_chunks),
+            stderr="".join(stderr_chunks),
+            exit_code=process.returncode,
+            duration_ms=_now_ms() - start,
+        )
+
     def _evaluate(
         self,
         state: StateConfig,
@@ -680,10 +753,12 @@ class FSMExecutor:
         if state.evaluate is None:
             # Default evaluation based on action type
             if action_result:
-                # Determine if this is a prompt/slash command for default evaluation
-                is_prompt = self._is_prompt_action(state)
+                action_mode = self._action_mode(state)
 
-                if is_prompt:
+                if action_mode == "mcp_tool":
+                    # MCP tool call: use mcp_result evaluator
+                    result = evaluate_mcp_result(action_result.output, action_result.exit_code)
+                elif action_mode == "prompt":
                     # Slash command or prompt: use LLM evaluation
                     if not self.fsm.llm.enabled:
                         result = EvaluationResult(
@@ -805,11 +880,18 @@ class FSMExecutor:
             return self.current_state
         return interpolate(route, ctx)
 
-    def _is_prompt_action(self, state: StateConfig) -> bool:
-        """Return True if state's action is a slash-command/prompt type."""
-        if state.action_type is not None:
-            return state.action_type in ("prompt", "slash_command")
-        return state.action is not None and state.action.startswith("/")
+    def _action_mode(self, state: StateConfig) -> str:
+        """Return execution mode for the state: 'prompt', 'shell', or 'mcp_tool'."""
+        if state.action_type == "mcp_tool":
+            return "mcp_tool"
+        if state.action_type in ("prompt", "slash_command"):
+            return "prompt"
+        if state.action_type == "shell":
+            return "shell"
+        # Heuristic: / prefix = slash_command (prompt mode)
+        if state.action is not None and state.action.startswith("/"):
+            return "prompt"
+        return "shell"
 
     def _build_context(self) -> InterpolationContext:
         """Build interpolation context for current state.

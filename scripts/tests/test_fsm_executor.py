@@ -365,6 +365,147 @@ class TestActionType:
         assert "echo hello" in mock_runner.calls
 
 
+class TestActionTypeMcpTool:
+    """Tests for action_type=mcp_tool execution in the executor."""
+
+    def _make_mcp_fsm(self, params: dict | None = None, route_verdicts: dict | None = None) -> FSMLoop:
+        """Build a minimal FSM with one mcp_tool state."""
+        route_verdicts = route_verdicts or {"success": "done", "tool_error": "done", "not_found": "done", "timeout": "done"}
+        return FSMLoop(
+            name="test",
+            initial="fetch",
+            states={
+                "fetch": StateConfig(
+                    action="browser/navigate",
+                    action_type="mcp_tool",
+                    params=params or {"url": "https://example.com"},
+                    route=RouteConfig(routes=route_verdicts),
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_mcp_tool_does_not_call_action_runner(self) -> None:
+        """mcp_tool states bypass action_runner entirely."""
+        fsm = self._make_mcp_fsm()
+        mock_runner = MockActionRunner()
+        mock_runner.always_return(exit_code=0)
+
+        success_envelope = json.dumps({"isError": False, "content": []})
+        with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
+            mock_sub.return_value = ActionResult(output=success_envelope, stderr="", exit_code=0, duration_ms=50)
+            executor = FSMExecutor(fsm, action_runner=mock_runner)
+            result = executor.run()
+
+        # action_runner should not have been called
+        assert len(mock_runner.calls) == 0
+        # subprocess was called with mcp-call
+        mock_sub.assert_called_once()
+        cmd = mock_sub.call_args[0][0]
+        assert cmd[0] == "mcp-call"
+        assert cmd[1] == "browser/navigate"
+        assert result.final_state == "done"
+
+    def test_mcp_tool_routes_success(self) -> None:
+        """mcp_tool state with isError=false routes to success."""
+        fsm = self._make_mcp_fsm(route_verdicts={"success": "done"})
+        success_envelope = json.dumps({"isError": False, "content": [{"type": "text", "text": "ok"}]})
+
+        with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
+            mock_sub.return_value = ActionResult(output=success_envelope, stderr="", exit_code=0, duration_ms=50)
+            executor = FSMExecutor(fsm, action_runner=MockActionRunner())
+            result = executor.run()
+
+        assert result.final_state == "done"
+
+    def test_mcp_tool_routes_tool_error(self) -> None:
+        """mcp_tool state with isError=true routes to tool_error."""
+        fsm = self._make_mcp_fsm(route_verdicts={"tool_error": "done"})
+        error_envelope = json.dumps({"isError": True, "content": [{"type": "text", "text": "fail"}]})
+
+        with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
+            mock_sub.return_value = ActionResult(output=error_envelope, stderr="", exit_code=1, duration_ms=50)
+            executor = FSMExecutor(fsm, action_runner=MockActionRunner())
+            result = executor.run()
+
+        assert result.final_state == "done"
+
+    def test_mcp_tool_routes_not_found(self) -> None:
+        """mcp_tool state with exit 127 routes to not_found."""
+        fsm = self._make_mcp_fsm(route_verdicts={"not_found": "done"})
+
+        with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
+            mock_sub.return_value = ActionResult(output="", stderr="", exit_code=127, duration_ms=10)
+            executor = FSMExecutor(fsm, action_runner=MockActionRunner())
+            result = executor.run()
+
+        assert result.final_state == "done"
+
+    def test_mcp_tool_routes_timeout(self) -> None:
+        """mcp_tool state with exit 124 routes to timeout."""
+        fsm = self._make_mcp_fsm(route_verdicts={"timeout": "done"})
+
+        with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
+            mock_sub.return_value = ActionResult(output="", stderr="", exit_code=124, duration_ms=30000)
+            executor = FSMExecutor(fsm, action_runner=MockActionRunner())
+            result = executor.run()
+
+        assert result.final_state == "done"
+
+    def test_mcp_tool_params_interpolated(self) -> None:
+        """mcp_tool params are interpolated with context before calling mcp-call."""
+        fsm = FSMLoop(
+            name="test",
+            initial="fetch",
+            context={"target_url": "https://example.com/page"},
+            states={
+                "fetch": StateConfig(
+                    action="browser/navigate",
+                    action_type="mcp_tool",
+                    params={"url": "${context.target_url}"},
+                    route=RouteConfig(routes={"success": "done", "tool_error": "done"}),
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        success_envelope = json.dumps({"isError": False, "content": []})
+        with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
+            mock_sub.return_value = ActionResult(output=success_envelope, stderr="", exit_code=0, duration_ms=50)
+            executor = FSMExecutor(fsm, action_runner=MockActionRunner())
+            executor.run()
+
+        # The params JSON passed to mcp-call should have the interpolated URL
+        cmd = mock_sub.call_args[0][0]
+        params_arg = json.loads(cmd[2])
+        assert params_arg["url"] == "https://example.com/page"
+
+    def test_mcp_tool_default_evaluator_is_mcp_result(self) -> None:
+        """mcp_tool state without explicit evaluate uses mcp_result by default."""
+        fsm = FSMLoop(
+            name="test",
+            initial="fetch",
+            states={
+                "fetch": StateConfig(
+                    action="browser/navigate",
+                    action_type="mcp_tool",
+                    params={"url": "https://example.com"},
+                    # No explicit evaluate — should default to mcp_result
+                    route=RouteConfig(routes={"success": "done", "tool_error": "done"}),
+                ),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+        success_envelope = json.dumps({"isError": False, "content": []})
+        with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
+            mock_sub.return_value = ActionResult(output=success_envelope, stderr="", exit_code=0, duration_ms=50)
+            executor = FSMExecutor(fsm, action_runner=MockActionRunner())
+            result = executor.run()
+
+        assert result.final_state == "done"
+
+
 class TestVariableInterpolation:
     """Tests for variable interpolation in executor."""
 

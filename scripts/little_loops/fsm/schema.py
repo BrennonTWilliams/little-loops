@@ -61,6 +61,7 @@ class EvaluateConfig:
         "convergence",
         "diff_stall",
         "llm_structured",
+        "mcp_result",
     ]
     operator: str | None = None
     target: int | float | str | None = None
@@ -183,9 +184,11 @@ class StateConfig:
     shorthand (on_success/on_failure) and full routing table syntax.
 
     Attributes:
-        action: Command to execute (shell or slash command)
-        action_type: How to execute the action (prompt, slash_command, shell).
+        action: Command to execute (shell, slash command, or "server/tool-name" for mcp_tool)
+        action_type: How to execute the action (prompt, slash_command, shell, mcp_tool).
             If None, uses heuristic: / prefix = slash_command, else = shell.
+        params: MCP tool arguments (only used with action_type: mcp_tool). Supports
+            ${variable} interpolation in string values.
         evaluate: Evaluator configuration for result interpretation
         route: Full routing table (verdict -> state mapping)
         on_yes: Shorthand for yes verdict routing
@@ -205,7 +208,8 @@ class StateConfig:
     """
 
     action: str | None = None
-    action_type: Literal["prompt", "slash_command", "shell"] | None = None
+    action_type: Literal["prompt", "slash_command", "shell", "mcp_tool"] | None = None
+    params: dict[str, Any] = field(default_factory=dict)
     evaluate: EvaluateConfig | None = None
     route: RouteConfig | None = None
     on_yes: str | None = None
@@ -228,6 +232,8 @@ class StateConfig:
             result["action"] = self.action
         if self.action_type is not None:
             result["action_type"] = self.action_type
+        if self.params:
+            result["params"] = self.params
         if self.evaluate is not None:
             result["evaluate"] = self.evaluate.to_dict()
         if self.route is not None:
@@ -271,6 +277,7 @@ class StateConfig:
         return cls(
             action=data.get("action"),
             action_type=data.get("action_type"),
+            params=data.get("params", {}),
             evaluate=evaluate,
             route=route,
             on_yes=data.get("on_yes") or data.get("on_success"),

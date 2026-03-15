@@ -463,6 +463,63 @@ def evaluate_diff_stall(
         )
 
 
+def evaluate_mcp_result(output: str, exit_code: int) -> EvaluationResult:
+    """Evaluate an MCP tool call result from the mcp-call subprocess.
+
+    Maps exit codes and MCP response envelope fields to routing verdicts.
+
+    Exit code conventions (set by mcp-call):
+        0   → parse isError from JSON envelope
+        1   → tool_error (tool ran but isError: true)
+        124 → timeout (transport-level timeout)
+        127 → not_found (server or tool missing from .mcp.json)
+
+    Args:
+        output: stdout from mcp-call (MCP response envelope JSON)
+        exit_code: Exit code from mcp-call subprocess
+
+    Returns:
+        EvaluationResult with verdict:
+            - success    → isError: false
+            - tool_error → isError: true
+            - not_found  → server/tool not in .mcp.json (exit 127)
+            - timeout    → transport-level timeout (exit 124)
+    """
+    if exit_code == 127:
+        return EvaluationResult(
+            verdict="not_found",
+            details={"exit_code": exit_code, "error": "Server or tool not found in .mcp.json"},
+        )
+
+    if exit_code == 124:
+        return EvaluationResult(
+            verdict="timeout",
+            details={"exit_code": exit_code, "error": "MCP tool call timed out"},
+        )
+
+    # Parse MCP envelope JSON from stdout
+    try:
+        envelope = json.loads(output.strip()) if output.strip() else {}
+    except json.JSONDecodeError:
+        return EvaluationResult(
+            verdict="tool_error",
+            details={"exit_code": exit_code, "error": f"Invalid JSON from mcp-call: {output[:200]}"},
+        )
+
+    is_error = envelope.get("isError", exit_code != 0)
+
+    if is_error:
+        return EvaluationResult(
+            verdict="tool_error",
+            details={"exit_code": exit_code, "envelope": envelope},
+        )
+
+    return EvaluationResult(
+        verdict="success",
+        details={"exit_code": exit_code, "envelope": envelope},
+    )
+
+
 def evaluate_llm_structured(
     output: str,
     prompt: str | None = None,
@@ -752,6 +809,9 @@ def evaluate(
             min_confidence=config.min_confidence,
             uncertain_suffix=config.uncertain_suffix,
         )
+
+    elif eval_type == "mcp_result":
+        return evaluate_mcp_result(output=output, exit_code=exit_code)
 
     else:
         raise ValueError(f"Unknown evaluator type: {eval_type}")

@@ -76,8 +76,13 @@
         },
         "action_type": {
           "type": "string",
-          "description": "How to execute the action: prompt (Claude CLI), slash_command (Claude CLI), or shell (bash). If omitted, uses heuristic: / prefix = slash_command, else = shell.",
-          "enum": ["prompt", "slash_command", "shell"]
+          "description": "How to execute the action: prompt (Claude CLI), slash_command (Claude CLI), shell (bash), or mcp_tool (direct MCP tool call). If omitted, uses heuristic: / prefix = slash_command, else = shell.",
+          "enum": ["prompt", "slash_command", "shell", "mcp_tool"]
+        },
+        "params": {
+          "type": "object",
+          "description": "MCP tool arguments (only used with action_type: mcp_tool). Supports ${variable} interpolation in string values.",
+          "additionalProperties": true
         },
         "evaluate": {
           "$ref": "#/definitions/evaluateConfig"
@@ -161,7 +166,9 @@
             "output_json",
             "output_contains",
             "convergence",
-            "llm_structured"
+            "diff_stall",
+            "llm_structured",
+            "mcp_result"
           ]
         },
         "operator": {

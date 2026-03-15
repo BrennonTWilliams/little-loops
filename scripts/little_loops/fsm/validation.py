@@ -66,6 +66,7 @@ EVALUATOR_REQUIRED_FIELDS: dict[str, list[str]] = {
     "convergence": ["target"],
     "diff_stall": [],
     "llm_structured": [],
+    "mcp_result": [],
 }
 
 # Valid comparison operators
@@ -86,6 +87,7 @@ KNOWN_TOP_LEVEL_KEYS: frozenset[str] = frozenset(
         "maintain",
         "llm",
         "on_handoff",
+        "input_key",
     }
 )
 
@@ -167,6 +169,31 @@ def _validate_evaluator(state_name: str, evaluate: EvaluateConfig) -> list[Valid
                     path=f"{path}.max_stall",
                 )
             )
+
+    return errors
+
+
+def _validate_state_action(state_name: str, state: StateConfig) -> list[ValidationError]:
+    """Validate state action configuration.
+
+    Args:
+        state_name: Name of the state to validate
+        state: The state configuration to validate
+
+    Returns:
+        List of validation errors found
+    """
+    errors: list[ValidationError] = []
+    path = f"states.{state_name}"
+
+    # params field is only valid for mcp_tool states
+    if state.params and state.action_type != "mcp_tool":
+        errors.append(
+            ValidationError(
+                message="'params' field is only valid when action_type is 'mcp_tool'",
+                path=f"{path}.params",
+            )
+        )
 
     return errors
 
@@ -296,6 +323,9 @@ def validate_fsm(fsm: FSMLoop) -> list[ValidationError]:
                         path=f"states.{state_name}",
                     )
                 )
+
+        # Validate action configuration
+        errors.extend(_validate_state_action(state_name, state))
 
         # Validate evaluator if present
         if state.evaluate is not None:
