@@ -387,6 +387,27 @@ Show summary card for a single issue. Accepts short form (`518`), type-prefixed 
 |------|-------------|
 | `--json` | Output issue fields as JSON |
 
+#### `ll-issues search [query]` / `ll-issues sr [query]`
+
+Search issues with filters and sorting.
+
+| Argument/Flag | Description |
+|---------------|-------------|
+| `query` | (Optional) Text to match against title and body (case-insensitive) |
+| `--type` | Filter by type: `BUG`, `FEAT`, `ENH` (repeatable) |
+| `--priority` | Filter by priority: `P0`–`P5` or range e.g. `P0-P2` (repeatable) |
+| `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
+| `--include-completed` | Include completed issues (alias for `--status all`) |
+| `--label` | Filter by label tag (repeatable) |
+| `--since` | Only issues on or after DATE (YYYY-MM-DD) |
+| `--until` | Only issues on or before DATE (YYYY-MM-DD) |
+| `--date-field` | Date field to filter on: `discovered` (default), `updated` |
+| `--sort` | Sort field: `priority` (default), `id`, `date`, `type`, `title` |
+| `--asc` / `--desc` | Sort direction |
+| `--format` | Output format: `table` (default), `list`, `ids` |
+| `--limit` | Cap results at N |
+| `--json` | Output as JSON array |
+
 #### `ll-issues sequence` / `ll-issues seq`
 
 Suggest a dependency-ordered implementation sequence.
@@ -418,6 +439,15 @@ Show refinement depth table sorted by commands touched. Columns: ID, Pri, Title,
 
 The `Norm` column checks filenames against `^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$`. JSON output includes a `"normalized": true/false` boolean field per record.
 
+#### `ll-issues append-log <issue_path> <log_command>` / `ll-issues al`
+
+Append a session log entry to an issue file.
+
+| Argument | Description |
+|----------|-------------|
+| `issue_path` | Path to the issue markdown file |
+| `log_command` | Command name to record (e.g., `/ll:refine-issue`) |
+
 **Examples:**
 ```bash
 ll-issues next-id
@@ -430,12 +460,16 @@ ll-issues count --type BUG                   # Count bugs only
 ll-issues show FEAT-518
 ll-issues show 518
 ll-issues show FEAT-518 --json        # Issue fields as JSON
+ll-issues search "caching"                   # Search by keyword
+ll-issues search --type BUG --priority P0-P2  # Filter bugs by priority range
+ll-issues search --since 2026-01-01 --json   # Issues since date as JSON
 ll-issues sequence --limit 10
 ll-issues sequence --json             # Ordered sequence as JSON
 ll-issues impact-effort
 ll-issues impact-effort --type BUG    # Only bugs
 ll-issues refine-status
 ll-issues refine-status --type BUG --format json
+ll-issues append-log .issues/bugs/P2-BUG-123-foo.md /ll:refine-issue
 ```
 
 ---

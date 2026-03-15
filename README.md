@@ -372,6 +372,11 @@ ll-issues list                                # List all active issues
 ll-issues list --type FEAT --priority P2      # Filter by type and priority
 ll-issues list --flat                         # Flat output for scripting
 ll-issues list --json                         # JSON output for scripting
+ll-issues count                               # Total active issue count
+ll-issues count --type BUG                    # Count bugs only
+ll-issues count --json                        # JSON with breakdowns
+ll-issues search "caching"                    # Search by keyword
+ll-issues search --type BUG --priority P0-P2  # Filter bugs by priority range
 ll-issues show FEAT-001                       # Show summary card for an issue
 ll-issues show FEAT-001 --json                # Show issue as JSON
 ll-issues sequence                            # Dependency-ordered implementation sequence

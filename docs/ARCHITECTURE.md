@@ -23,7 +23,7 @@ flowchart TB
     subgraph "Claude Code Plugin"
         CMD[Commands<br/>28 slash commands]
         AGT[Agents<br/>8 specialized agents]
-        SKL[Skills<br/>17 composable skills]
+        SKL[Skills<br/>18 composable skills]
     end
 
     subgraph "Configuration"
@@ -96,7 +96,7 @@ little-loops/
 │       └── lib/
 │           └── common.sh    # Shared shell functions
 ├── loops/                   # Built-in FSM loop definitions (14 YAML files)
-├── skills/                  # 17 skill definitions
+├── skills/                  # 18 skill definitions
 │   ├── analyze-history/     # Proactive
 │   │   └── SKILL.md
 │   ├── analyze-loop/        # User-invoked
@@ -140,6 +140,8 @@ little-loops/
 │   │   └── SKILL.md
 │   ├── review-loop/         # User-invoked
 │   │   └── SKILL.md
+│   ├── update-docs/         # User-invoked
+│   │   └── SKILL.md
 │   └── workflow-automation-proposer/  # User-invoked
 │       └── SKILL.md
 ├── templates/               # Project type configs
@@ -181,10 +183,13 @@ little-loops/
         │   │   ├── __init__.py      # Entry point (main_issues) + argparse
         │   │   ├── list_cmd.py      # list subcommand
         │   │   ├── next_id.py       # next-id subcommand
+        │   │   ├── count_cmd.py     # count subcommand
+        │   │   ├── search.py        # search subcommand
         │   │   ├── sequence.py      # sequence subcommand
         │   │   ├── impact_effort.py # impact-effort subcommand
         │   │   ├── show.py          # show subcommand
-        │   │   └── refine_status.py # refine-status subcommand
+        │   │   ├── refine_status.py # refine-status subcommand
+        │   │   └── append_log.py    # append-log subcommand
         │   └── loop/
         │       ├── __init__.py      # Entry point (main_loop) + argparse
         │       ├── _helpers.py      # Shared utilities
