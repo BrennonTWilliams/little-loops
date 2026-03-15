@@ -20,8 +20,8 @@ from little_loops.fsm.schema import FSMLoop, StateConfig
 # ---------------------------------------------------------------------------
 
 _EDGE_LABEL_COLORS: dict[str, str] = {
-    "success": "32",
-    "fail": "38;5;208",
+    "yes": "32",
+    "no": "38;5;208",
     "error": "31",
     "partial": "33",
     "next": "2",
@@ -30,17 +30,17 @@ _EDGE_LABEL_COLORS: dict[str, str] = {
 
 
 def _colorize_label(label: str) -> str:
-    """Colorize a (possibly compound) edge label like 'fail/error'."""
+    """Colorize a (possibly compound) edge label like 'no/error'."""
     parts = label.split("/")
     code = ""
     for part in parts:
-        if part in ("fail", "error"):
-            code = _EDGE_LABEL_COLORS["fail"]
+        if part in ("no", "error"):
+            code = _EDGE_LABEL_COLORS["no"]
             break
         if part == "partial" and not code:
             code = _EDGE_LABEL_COLORS["partial"]
-        elif part == "success" and not code:
-            code = _EDGE_LABEL_COLORS["success"]
+        elif part == "yes" and not code:
+            code = _EDGE_LABEL_COLORS["yes"]
         elif part in ("next", "_") and not code:
             code = _EDGE_LABEL_COLORS["next"]
     return colorize(label, code) if code else label
@@ -135,10 +135,10 @@ def _collect_edges(fsm: FSMLoop) -> list[tuple[str, str, str]]:
     """Collect all (source, target, label) edges from an FSM."""
     edges: list[tuple[str, str, str]] = []
     for name, state in fsm.states.items():
-        if state.on_success:
-            edges.append((name, state.on_success, "success"))
-        if state.on_failure:
-            edges.append((name, state.on_failure, "fail"))
+        if state.on_yes:
+            edges.append((name, state.on_yes, "yes"))
+        if state.on_no:
+            edges.append((name, state.on_no, "no"))
         if state.on_error:
             edges.append((name, state.on_error, "error"))
         if state.on_partial:
@@ -182,7 +182,7 @@ def _trace_main_path(
         st = fsm.states.get(current)
         if not st or st.terminal:
             break
-        nxt: str = st.on_success or st.next or ""
+        nxt: str = st.on_yes or st.next or ""
         if not nxt and st.route:
             nxt = next(iter(st.route.routes.values()), "") or st.route.default or ""
         if nxt:

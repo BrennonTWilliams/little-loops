@@ -244,14 +244,14 @@ def _format_history_event(
         verdict = event.get("verdict", "")
         confidence = event.get("confidence", "")
         reason = event.get("reason", "")
-        if verdict == "success":
+        if verdict == "yes":
             etype_color = "32"
-            verdict_str = colorize("\u2713 success", "32")
+            verdict_str = colorize("\u2713 yes", "32")
         else:
             etype_color = "38;5;208"
             verdict_str = colorize(f"\u2717 {verdict}", "38;5;208")
         conf_part = f"  confidence={confidence}" if confidence != "" else ""
-        avail = width - 8 - 2 - _EVENT_TYPE_WIDTH - 2 - len("\u2713 success") - len(conf_part) - 2
+        avail = width - 8 - 2 - _EVENT_TYPE_WIDTH - 2 - len("\u2713 yes") - len(conf_part) - 2
         reason_part = f"  {_truncate(reason, max(avail, 20))}" if reason else ""
         detail = f"{verdict_str}{conf_part}{reason_part}"
         if verbose:
@@ -450,8 +450,8 @@ def _compact_transitions(state: StateConfig) -> str:
     """Return a compact transition string for the overview table."""
     raw: list[tuple[str, str]] = []
     for label, target in [
-        ("success", state.on_success),
-        ("fail", state.on_failure),
+        ("yes", state.on_yes),
+        ("no", state.on_no),
         ("error", state.on_error),
         ("partial", state.on_partial),
         ("next", state.next),
@@ -576,8 +576,8 @@ def cmd_show(
     # Compute stats for header
     n_states = len(fsm.states)
     n_transitions = sum(
-        bool(s.on_success)
-        + bool(s.on_failure)
+        bool(s.on_yes)
+        + bool(s.on_no)
         + bool(s.on_error)
         + bool(s.on_partial)
         + bool(s.next)
@@ -709,8 +709,8 @@ def cmd_show(
             # Collect (label, target) pairs
             raw_transitions: list[tuple[str, str]] = []
             for label, target in [
-                ("success", state.on_success),
-                ("failure", state.on_failure),
+                ("yes", state.on_yes),
+                ("no", state.on_no),
                 ("error", state.on_error),
                 ("partial", state.on_partial),
                 ("next", state.next),

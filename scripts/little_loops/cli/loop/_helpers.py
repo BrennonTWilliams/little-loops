@@ -171,10 +171,10 @@ def print_execution_plan(fsm: FSMLoop) -> None:
                 print(f"    action: {action_display}")
         if state.evaluate:
             print(f"    evaluate: {state.evaluate.type}")
-        if state.on_success:
-            print(f"    on_success {colorize('->', '2')} {colorize(state.on_success, '2')}")
-        if state.on_failure:
-            print(f"    on_failure {colorize('->', '2')} {colorize(state.on_failure, '2')}")
+        if state.on_yes:
+            print(f"    on_yes {colorize('->', '2')} {colorize(state.on_yes, '2')}")
+        if state.on_no:
+            print(f"    on_no {colorize('->', '2')} {colorize(state.on_no, '2')}")
         if state.on_error:
             print(f"    on_error {colorize('->', '2')} {colorize(state.on_error, '2')}")
         if state.next:
@@ -382,14 +382,14 @@ def run_foreground(
                 confidence = event.get("confidence")
                 reason = event.get("reason", "")
                 error = event.get("error", "")
-                if verdict in ("success", "target", "progress"):
+                if verdict in ("yes", "target", "progress"):
                     symbol = colorize("\u2713", "32")  # green checkmark
                     verdict_colored = colorize(verdict, "32")
                 else:
                     symbol = colorize("\u2717", "38;5;208")  # orange x mark
                     verdict_colored = (
                         colorize(verdict, "38;5;208")
-                        if verdict in ("fail", "error")
+                        if verdict in ("no", "error")
                         else colorize(verdict, "2")
                     )
                 # Build verdict line
