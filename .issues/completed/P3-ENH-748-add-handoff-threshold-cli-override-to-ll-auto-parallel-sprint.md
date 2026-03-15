@@ -2,7 +2,7 @@
 id: ENH-748
 priority: P3
 type: ENH
-status: backlog
+status: completed
 discovered_date: 2026-03-14
 discovered_by: capture-issue
 confidence_score: 100
@@ -145,10 +145,20 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ## Acceptance Criteria
 
-- [ ] `--handoff-threshold <int>` accepted by `ll-auto`, `ll-parallel`, `ll-sprint`
-- [ ] Values outside 1–100 produce a validation error
-- [ ] The override takes effect for the run without modifying `ll-config.json`
-- [ ] Existing behavior unchanged when flag is omitted
+- [x] `--handoff-threshold <int>` accepted by `ll-auto`, `ll-parallel`, `ll-sprint`
+- [x] Values outside 1–100 produce a validation error
+- [x] The override takes effect for the run without modifying `ll-config.json`
+- [x] Existing behavior unchanged when flag is omitted
+
+## Resolution
+
+Implemented `--handoff-threshold` CLI flag across `ll-auto`, `ll-parallel`, and `ll-sprint run`.
+
+- Added `add_handoff_threshold_arg()` to `cli_args.py`; added to `add_common_auto_args()` and `__all__`
+- Wired in `auto.py`, `parallel.py`, `sprint/__init__.py`, `sprint/run.py` — sets `LL_HANDOFF_THRESHOLD` env var before subprocess spawning; validation rejects values outside 1–100
+- Updated `context-monitor.sh` line 26 with `${LL_HANDOFF_THRESHOLD:-...}` env var fallback
+- Added `TestAddHandoffThresholdArg` in `test_cli_args.py` and `test_env_var_overrides_config_threshold` in `test_hooks_integration.py`
+- All 3521 tests pass, lint and type checks clean
 
 ## Impact
 
@@ -166,6 +176,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 **Open** | Created: 2026-03-14 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T17:41:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/22fff2b8-f15c-419e-923c-60ee873f1116.jsonl`
 - `/ll:refine-issue` - 2026-03-15T17:36:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b847e6a7-cb2f-485f-85b5-ecf0ee74077a.jsonl`
 - `/ll:confidence-check` - 2026-03-15T18:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/75ab76d5-fcb5-4a04-bb61-499b62742b41.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f844b24a-2a77-4b56-8f27-99f2552bca01.jsonl`

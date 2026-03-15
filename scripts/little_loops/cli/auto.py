@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 from pathlib import Path
 
 from little_loops.cli.output import configure_output
@@ -56,6 +57,11 @@ Examples:
 
     if args.idle_timeout is not None:
         config.automation.idle_timeout_seconds = args.idle_timeout
+
+    if args.handoff_threshold is not None:
+        if not (1 <= args.handoff_threshold <= 100):
+            parser.error("--handoff-threshold must be between 1 and 100")
+        os.environ["LL_HANDOFF_THRESHOLD"] = str(args.handoff_threshold)
 
     # Parse issue ID filters
     only_ids = parse_issue_ids(args.only)

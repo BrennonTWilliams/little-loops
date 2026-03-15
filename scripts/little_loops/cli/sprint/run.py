@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import signal
 import subprocess
 import sys
@@ -96,6 +97,10 @@ def _cmd_sprint_run(
     _sprint_shutdown_requested = False  # Reset in case of multiple runs
     signal.signal(signal.SIGINT, _sprint_signal_handler)
     signal.signal(signal.SIGTERM, _sprint_signal_handler)
+
+    handoff_threshold = getattr(args, "handoff_threshold", None)
+    if handoff_threshold is not None:
+        os.environ["LL_HANDOFF_THRESHOLD"] = str(handoff_threshold)
 
     sprint = manager.load(args.sprint)
     if not sprint:

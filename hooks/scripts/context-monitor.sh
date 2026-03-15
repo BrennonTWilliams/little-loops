@@ -23,7 +23,7 @@ if ! ll_feature_enabled "context_monitor.enabled"; then
 fi
 
 # Read configuration with defaults
-THRESHOLD=$(ll_config_value "context_monitor.auto_handoff_threshold" "80")
+THRESHOLD="${LL_HANDOFF_THRESHOLD:-$(ll_config_value "context_monitor.auto_handoff_threshold" "80")}"
 CONTEXT_LIMIT=$(ll_config_value "context_monitor.context_limit_estimate" "150000")
 STATE_FILE=$(ll_config_value "context_monitor.state_file" ".claude/ll-context-state.json")
 

@@ -132,6 +132,20 @@ def add_idle_timeout_arg(parser: argparse.ArgumentParser) -> None:
     )
 
 
+def add_handoff_threshold_arg(parser: argparse.ArgumentParser) -> None:
+    """Add --handoff-threshold argument for per-run context handoff override.
+
+    Args:
+        parser: The argument parser to add the argument to
+    """
+    parser.add_argument(
+        "--handoff-threshold",
+        type=int,
+        default=None,
+        help="Override auto-handoff context threshold (1-100, default: from config)",
+    )
+
+
 def add_quiet_arg(parser: argparse.ArgumentParser) -> None:
     """Add --quiet/-q argument to suppress output."""
     parser.add_argument(
@@ -232,7 +246,8 @@ def parse_issue_types(value: str | None) -> set[str] | None:
 def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     """Add arguments common to ll-auto command.
 
-    Adds: --resume, --dry-run, --max-issues, --quiet, --only, --skip, --type, --config, --idle-timeout
+    Adds: --resume, --dry-run, --max-issues, --quiet, --only, --skip, --type, --config,
+          --idle-timeout, --handoff-threshold
     """
     add_resume_arg(parser)
     add_dry_run_arg(parser)
@@ -243,6 +258,7 @@ def add_common_auto_args(parser: argparse.ArgumentParser) -> None:
     add_type_arg(parser)
     add_config_arg(parser)
     add_idle_timeout_arg(parser)
+    add_handoff_threshold_arg(parser)
 
 
 def add_common_parallel_args(parser: argparse.ArgumentParser) -> None:
@@ -272,6 +288,7 @@ __all__ = [
     "add_max_workers_arg",
     "add_timeout_arg",
     "add_idle_timeout_arg",
+    "add_handoff_threshold_arg",
     "add_quiet_arg",
     "add_skip_analysis_arg",
     "add_max_issues_arg",

@@ -54,6 +54,7 @@ def main_sprint() -> int:
     from little_loops.cli_args import (
         add_config_arg,
         add_dry_run_arg,
+        add_handoff_threshold_arg,
         add_max_workers_arg,
         add_only_arg,
         add_quiet_arg,
@@ -128,6 +129,7 @@ Examples:
     add_only_arg(run_parser)
     add_skip_analysis_arg(run_parser)
     add_type_arg(run_parser)
+    add_handoff_threshold_arg(run_parser)
 
     # list subcommand
     list_parser = subparsers.add_parser("list", aliases=["l"], help="List all sprints")
@@ -220,6 +222,9 @@ Examples:
     if args.command == "edit":
         return _cmd_sprint_edit(args, manager)
     if args.command == "run":
+        handoff_threshold = getattr(args, "handoff_threshold", None)
+        if handoff_threshold is not None and not (1 <= handoff_threshold <= 100):
+            parser.error("--handoff-threshold must be between 1 and 100")
         return _cmd_sprint_run(args, manager, config)
     if args.command == "analyze":
         return _cmd_sprint_analyze(args, manager)

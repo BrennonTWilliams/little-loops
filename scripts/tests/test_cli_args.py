@@ -281,6 +281,48 @@ class TestAddIdleTimeoutArg:
         assert args.idle_timeout == 0
 
 
+class TestAddHandoffThresholdArg:
+    """Tests for add_handoff_threshold_arg() function."""
+
+    def test_default_is_none(self) -> None:
+        """Defaults to None when flag not provided."""
+        from little_loops.cli_args import add_handoff_threshold_arg
+
+        parser = argparse.ArgumentParser()
+        add_handoff_threshold_arg(parser)
+        args = parser.parse_args([])
+        assert args.handoff_threshold is None
+
+    def test_accepts_integer(self) -> None:
+        """Accepts integer value."""
+        from little_loops.cli_args import add_handoff_threshold_arg
+
+        parser = argparse.ArgumentParser()
+        add_handoff_threshold_arg(parser)
+        args = parser.parse_args(["--handoff-threshold", "60"])
+        assert args.handoff_threshold == 60
+
+    def test_accepts_boundary_values(self) -> None:
+        """Accepts 1 and 100 as boundary values."""
+        from little_loops.cli_args import add_handoff_threshold_arg
+
+        parser = argparse.ArgumentParser()
+        add_handoff_threshold_arg(parser)
+        assert parser.parse_args(["--handoff-threshold", "1"]).handoff_threshold == 1
+        assert parser.parse_args(["--handoff-threshold", "100"]).handoff_threshold == 100
+
+    def test_rejects_non_integer(self) -> None:
+        """Rejects non-integer value."""
+        import pytest
+
+        from little_loops.cli_args import add_handoff_threshold_arg
+
+        parser = argparse.ArgumentParser()
+        add_handoff_threshold_arg(parser)
+        with pytest.raises(SystemExit):
+            parser.parse_args(["--handoff-threshold", "abc"])
+
+
 class TestAddSkipArg:
     """Tests for add_skip_arg() function."""
 
@@ -303,7 +345,7 @@ class TestAddCommonAutoArgs:
     """Tests for add_common_auto_args() function."""
 
     def test_adds_all_expected_arguments(self) -> None:
-        """Adds resume, dry-run, max-issues, only, skip, type, config, idle-timeout."""
+        """Adds resume, dry-run, max-issues, only, skip, type, config, idle-timeout, handoff-threshold."""
         parser = argparse.ArgumentParser()
         add_common_auto_args(parser)
         args = parser.parse_args(
@@ -322,6 +364,8 @@ class TestAddCommonAutoArgs:
                 "/path",
                 "--idle-timeout",
                 "300",
+                "--handoff-threshold",
+                "40",
             ]
         )
         assert args.resume is True
@@ -332,6 +376,7 @@ class TestAddCommonAutoArgs:
         assert args.type == "BUG"
         assert args.config is not None
         assert args.idle_timeout == 300
+        assert args.handoff_threshold == 40
 
 
 class TestAddCommonParallelArgs:

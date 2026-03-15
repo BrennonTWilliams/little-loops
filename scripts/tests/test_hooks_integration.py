@@ -129,6 +129,46 @@ class TestContextMonitor:
             os.chdir(original_dir)
 
 
+    def test_env_var_overrides_config_threshold(
+        self, hook_script: Path, test_config: Path, tmp_path: Path
+    ):
+        """LL_HANDOFF_THRESHOLD env var overrides config auto_handoff_threshold."""
+        import os
+
+        original_dir = os.getcwd()
+        try:
+            os.chdir(tmp_path)
+
+            config_link = tmp_path / ".claude" / "ll-config.json"
+            config_link.parent.mkdir(exist_ok=True)
+            config_link.write_text(test_config.read_text())
+
+            input_data = {
+                "tool_name": "Read",
+                "tool_response": {"content": "x" * 500},
+            }
+            env = os.environ.copy()
+            env["LL_HANDOFF_THRESHOLD"] = "1"  # trigger immediately
+
+            result = subprocess.run(
+                [str(hook_script)],
+                input=json.dumps(input_data),
+                capture_output=True,
+                text=True,
+                timeout=6,
+                env=env,
+            )
+
+            # Hook triggers handoff (exit 2) because LL_HANDOFF_THRESHOLD=1 means any context
+            # usage exceeds threshold. Config threshold is 80, so without the env var the hook
+            # would exit 0. The fact that it triggered confirms env var was used.
+            assert result.returncode == 2
+            assert "handoff" in result.stderr.lower() or "context" in result.stderr.lower()
+
+        finally:
+            os.chdir(original_dir)
+
+
 class TestUserPromptCheck:
     """Test user-prompt-check.sh special character handling."""
 

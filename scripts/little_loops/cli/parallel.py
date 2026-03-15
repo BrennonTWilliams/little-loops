@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import argparse
+import os
 import subprocess
 from pathlib import Path
 
 from little_loops.cli.output import configure_output
 from little_loops.cli_args import (
     add_dry_run_arg,
+    add_handoff_threshold_arg,
     add_idle_timeout_arg,
     add_max_issues_arg,
     add_only_arg,
@@ -118,6 +120,7 @@ Examples:
     add_resume_arg(parser)
     add_timeout_arg(parser)
     add_idle_timeout_arg(parser)
+    add_handoff_threshold_arg(parser)
     add_quiet_arg(parser)
     add_only_arg(parser)
     add_skip_arg(parser)
@@ -154,6 +157,11 @@ Examples:
     priority_filter = (
         [p.strip().upper() for p in args.priority.split(",")] if args.priority else None
     )
+
+    if args.handoff_threshold is not None:
+        if not (1 <= args.handoff_threshold <= 100):
+            parser.error("--handoff-threshold must be between 1 and 100")
+        os.environ["LL_HANDOFF_THRESHOLD"] = str(args.handoff_threshold)
 
     # Parse issue ID filters
     only_ids = parse_issue_ids(args.only)
