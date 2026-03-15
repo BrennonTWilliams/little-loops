@@ -6,6 +6,8 @@ description: |
 initial: assess_backlog
 context:
   max_issues: 8
+  readiness_threshold: 85   # canonical: commands.confidence_gate.readiness_threshold in ll-config.json
+  outcome_threshold: 70     # canonical: commands.confidence_gate.outcome_threshold in ll-config.json
 states:
   assess_backlog:
     action_type: prompt
@@ -39,8 +41,8 @@ states:
       to verify implementation readiness.
 
       Flag any issues with:
-      - Readiness score < 85
-      - Outcome confidence < 70
+      - Readiness score < ${context.readiness_threshold}
+      - Outcome confidence < ${context.outcome_threshold}
       - Missing dependencies
     capture: validation_result
     next: route_validation
@@ -49,8 +51,8 @@ states:
       type: llm_structured
       source: "${captured.validation_result.output}"
       prompt: |
-        Do any sprint issues fail readiness checks (readiness < 85
-        or outcome confidence < 70)?
+        Do any sprint issues fail readiness checks (readiness < ${context.readiness_threshold}
+        or outcome confidence < ${context.outcome_threshold})?
         Return "yes" if all issues pass and are implementation-ready.
         Return "no" if any issues need fixing.
     on_yes: review_sprint
@@ -67,7 +69,7 @@ states:
       1. `/ll:refine-issue [ISSUE_ID] --auto` to fill knowledge gaps
       2. `/ll:confidence-check [ISSUE_ID] --auto` to re-score
 
-      If an issue can't reach readiness >= 85 after refinement, consider
+      If an issue can't reach readiness >= ${context.readiness_threshold} after refinement, consider
       replacing it with another backlog issue.
     next: validate_issues
   review_sprint:

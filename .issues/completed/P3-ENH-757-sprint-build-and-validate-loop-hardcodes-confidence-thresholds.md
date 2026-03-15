@@ -128,9 +128,14 @@ N/A — No public API changes. This is a YAML configuration change only.
 
 ## Status
 
-**Open** | Created: 2026-03-15 | Priority: P3
+**Completed** | Created: 2026-03-15 | Resolved: 2026-03-15 | Priority: P3
+
+## Resolution
+
+Added `readiness_threshold: 85` and `outcome_threshold: 70` to the `context:` block in `loops/sprint-build-and-validate.yaml`. Replaced all three hardcoded literal occurrences (lines 42–43, 52–53, 70) with `${context.readiness_threshold}` and `${context.outcome_threshold}`. No Python changes were required. Users can override at runtime via `ll-loop run sprint-build-and-validate --context readiness_threshold=90`.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T21:03:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db14f153-faad-4c48-ae3f-489c60a50e1a.jsonl`
 - `/ll:refine-issue` - 2026-03-15T21:01:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95dcfad1-0399-48c5-b931-a232cf57fd74.jsonl`
 - `/ll:format-issue` - 2026-03-15T20:55:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/414699bd-4339-4053-b490-e38ecc9e548d.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
