@@ -140,7 +140,7 @@ class TestNewWorkflow(E2ETestFixture):
 
 The project has two types of integration-level tests:
 
-| Feature | Integration Tests (`test_workflow_integration.py`) | E2E Tests (`test_cli_e2e.py`) |
+| Feature | Integration Tests (`test_issue_workflow_integration.py`) | E2E Tests (`test_cli_e2e.py`) |
 |---------|---------------------------------------------------|-------------------------------|
 | Invocation | Direct Python API calls | Actual CLI commands via subprocess |
 | Scope | Component integration | Complete user workflows |

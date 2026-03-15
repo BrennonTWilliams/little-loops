@@ -125,6 +125,7 @@ _(none)_
 `enhancement`, `testing`, `workflow-analyzer`, `captured`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T00:37:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7504ae07-e72f-4658-b122-d43d772e1a1a.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: file tests AutoManager/Orchestrator, not workflow analyzer
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: `test_workflow_integration.py` still imports AutoManager/ParallelOrchestrator; file not yet renamed
 

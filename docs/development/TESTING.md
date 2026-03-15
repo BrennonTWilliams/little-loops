@@ -125,7 +125,7 @@ scripts/tests/
 | Pattern | Purpose | Example |
 |---------|---------|---------|
 | `test_<module>.py` | Unit tests for a module | `test_config.py`, `test_issue_parser.py` |
-| `test_<feature>_integration.py` | Integration tests | `test_workflow_integration.py` |
+| `test_<feature>_integration.py` | Integration tests | `test_issue_workflow_integration.py` |
 | `test_cli_e2e.py` | E2E CLI tests | `test_cli_e2e.py` |
 | `test_<module>_properties.py` | Property-based tests | `test_issue_parser_properties.py` |
 

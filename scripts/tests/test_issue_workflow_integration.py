@@ -1,7 +1,7 @@
-"""Integration tests for the full issue processing workflow.
+"""Integration tests for the issue processing pipeline.
 
 Tests the end-to-end flow of issue processing with mocked subprocess calls
-for Claude CLI and git operations.
+for Claude CLI and git operations (AutoManager, ParallelOrchestrator, StateManager).
 """
 
 from __future__ import annotations
