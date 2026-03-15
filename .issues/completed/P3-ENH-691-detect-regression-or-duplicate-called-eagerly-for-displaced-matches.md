@@ -73,12 +73,21 @@ In Passes 2 and 3, track `(issue_path, is_completed, match_score, matched_terms)
 - **Verdict**: VALID
 - `scripts/little_loops/issue_discovery/search.py` confirms `detect_regression_or_duplicate` is called at lines 199, 234, and 264. Lines 199 and 234 are inside comparison loops (Pass 2 and Pass 3) and are called each time a candidate beats the best match. Line 264 is Pass 3 (also eager). The pattern of calling this function for each intermediate winner — each incurring file reads and git subprocess forks — is confirmed.
 
+## Resolution
+
+- **Completed**: 2026-03-14
+- **Implementation**: Deferred `detect_regression_or_duplicate` in Passes 2 and 3 of `find_existing_issue`. Each pass now tracks its best candidate tuple during the loop and calls `detect_regression_or_duplicate` exactly once after the loop completes, only on the winning match. This matches Pass 1's existing pattern.
+- **Files changed**: `scripts/little_loops/issue_discovery/search.py`
+- **Tests**: 56 passed, 0 failed
+
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T00:01:55 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4f165f7d-0697-47bc-87cd-83899760e91c.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
 - `/ll:scan-codebase` - 2026-03-13T00:36:53Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/44d09b8e-cdcf-4363-844c-3b6dbcf2cf7b.jsonl`
 - `/ll:format-issue` - 2026-03-13T01:15:27Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f103ccc2-c870-4de7-a6e4-0320db6d9313.jsonl`
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:manage-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P3
+**Completed** | Created: 2026-03-13 | Priority: P3

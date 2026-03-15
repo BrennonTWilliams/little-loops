@@ -219,6 +219,8 @@ def find_existing_issue(
     # Pass 2: Title similarity
     title_words = _extract_words(finding_title)
     if title_words:
+        best_pass2: tuple[Path, bool, float, list[str]] | None = None
+        best_pass2_score = best_match.match_score
         for issue_path, is_completed in _get_all_issue_files(config):
             try:
                 # Extract title from issue file
@@ -228,27 +230,29 @@ def find_existing_issue(
                     issue_title = title_match.group(1)
                     issue_words = _extract_words(issue_title)
                     overlap = _calculate_word_overlap(title_words, issue_words)
-                    if overlap > 0.7 and overlap > best_match.match_score:
-                        # Determine classification
-                        if is_completed:
-                            classification, evidence = detect_regression_or_duplicate(
-                                config, issue_path
-                            )
-                        else:
-                            classification = MatchClassification.DUPLICATE
-                            evidence = None
-
-                        best_match = FindingMatch(
-                            issue_path=issue_path,
-                            match_type="similar",
-                            match_score=overlap,
-                            is_completed=is_completed,
-                            matched_terms=list(title_words & issue_words),
-                            classification=classification,
-                            regression_evidence=evidence,
-                        )
+                    if overlap > 0.7 and overlap > best_pass2_score:
+                        best_pass2_score = overlap
+                        best_pass2 = (issue_path, is_completed, overlap, list(title_words & issue_words))
             except Exception:
                 continue
+
+        # Determine classification once for the single best Pass 2 match
+        if best_pass2 is not None:
+            issue_path, is_completed, overlap, matched_terms = best_pass2
+            if is_completed:
+                classification, evidence = detect_regression_or_duplicate(config, issue_path)
+            else:
+                classification = MatchClassification.DUPLICATE
+                evidence = None
+            best_match = FindingMatch(
+                issue_path=issue_path,
+                match_type="similar",
+                match_score=overlap,
+                is_completed=is_completed,
+                matched_terms=matched_terms,
+                classification=classification,
+                regression_evidence=evidence,
+            )
 
     # Pass 3: Content analysis
     if best_match.match_score < 0.5:
@@ -256,24 +260,30 @@ def find_existing_issue(
             config,
             [finding_title, finding_content],
         )
+        best_pass3: tuple[Path, bool, float] | None = None
+        best_pass3_score = best_match.match_score
         for issue_path, score, is_completed in content_matches[:5]:  # Top 5
             adjusted_score = score * 0.8  # Content matches are less precise
-            if adjusted_score > best_match.match_score:
-                # Determine classification
-                if is_completed:
-                    classification, evidence = detect_regression_or_duplicate(config, issue_path)
-                else:
-                    classification = MatchClassification.DUPLICATE
-                    evidence = None
+            if adjusted_score > best_pass3_score:
+                best_pass3_score = adjusted_score
+                best_pass3 = (issue_path, is_completed, adjusted_score)
 
-                best_match = FindingMatch(
-                    issue_path=issue_path,
-                    match_type="content",
-                    match_score=adjusted_score,
-                    is_completed=is_completed,
-                    classification=classification,
-                    regression_evidence=evidence,
-                )
+        # Determine classification once for the single best Pass 3 match
+        if best_pass3 is not None:
+            issue_path, is_completed, adjusted_score = best_pass3
+            if is_completed:
+                classification, evidence = detect_regression_or_duplicate(config, issue_path)
+            else:
+                classification = MatchClassification.DUPLICATE
+                evidence = None
+            best_match = FindingMatch(
+                issue_path=issue_path,
+                match_type="content",
+                match_score=adjusted_score,
+                is_completed=is_completed,
+                classification=classification,
+                regression_evidence=evidence,
+            )
 
     # If no match found, classification is NEW_ISSUE (the default)
     return best_match
