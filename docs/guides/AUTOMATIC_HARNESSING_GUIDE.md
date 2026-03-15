@@ -117,7 +117,10 @@ Which evaluation phases should be included? (multi-select)
   ☑ Tool-based gates (Recommended)   — Shell checks using test/lint/type commands
   ☑ LLM-as-judge                     — Claude assesses output against skill description
   ☑ Diff invariants                  — git diff --stat line count < 50
+  ○ MCP tool gates (Optional)        — Deterministic check via a configured MCP server
 ```
+
+> The wizard surfaces MCP tool gates only when `.mcp.json` contains at least one configured server. This phase is unselected by default — add it when an MCP server can verify something the other phases cannot.
 
 **Tool-gate priority order** (highest-priority configured command wins):
 1. `test_cmd` — most comprehensive
@@ -300,6 +303,70 @@ Runs `git diff --stat HEAD | wc -l | tr -d ' '` and checks that the line count i
 
 Adjust the `target` value for skills that intentionally make large changes.
 
+### MCP Tool Gates (`check_mcp`)
+
+`action_type: mcp_tool` invokes an MCP server tool directly — not via Claude — yielding deterministic output at ~500ms latency. The `mcp_result` evaluator routes on the MCP response envelope rather than an exit code or LLM judgment. This makes it a good fit for verifying external state that the other evaluation phases cannot observe.
+
+**`mcp_result` verdict table:**
+
+| Verdict | Meaning |
+|---------|---------|
+| `success` | Tool ran and succeeded (`isError: false`) |
+| `tool_error` | Tool ran but reported failure (`isError: true`) |
+| `not_found` | Server or tool not registered in `.mcp.json` |
+| `timeout` | Transport-level timeout |
+
+**Generic pattern** (`check_mcp` is a naming convention, not a reserved name):
+
+```yaml
+check_mcp:
+  action_type: mcp_tool
+  action: "server/tool-name"              # server_name/tool_name from .mcp.json
+  params:
+    key: "${captured.current_item.output}"  # ${variable} interpolation supported
+  capture: mcp_result
+  route:
+    success: check_invariants    # or next evaluation state
+    tool_error: execute          # retry the execute state
+    not_found: check_invariants  # server not configured — skip this gate
+    timeout: execute
+```
+
+**Example: Browser UI verification** (one application among many)
+
+A harness that implements a UI feature can use a playwright MCP server to check that the rendered page reflects the change before advancing:
+
+```yaml
+check_mcp:
+  action_type: mcp_tool
+  action: "playwright/screenshot"
+  params:
+    url: "http://localhost:3000"
+  capture: ui_result
+  route:
+    success: check_invariants
+    tool_error: execute
+    not_found: check_invariants  # playwright not configured — skip
+    timeout: execute             # dev server may not be up yet
+```
+
+**Other MCP gate applications:**
+- `database/query` — verify a record was written
+- `github/list_pull_requests` — confirm a PR was created
+- `slack/get_messages` — check a notification was sent
+- `filesystem/read_file` — verify a file was created at the expected path
+
+**Placement**: `check_mcp` slots after `check_concrete` (cheap shell gates first) and before `check_semantic` / `check_invariants`. If the MCP call is expensive or optional, placing it last (just before `check_invariants`) avoids wasted cost on items that fail earlier checks.
+
+**Decision guide — when to reach for each phase:**
+
+| Phase | Use when |
+|-------|---------|
+| `check_concrete` (shell) | A CLI tool exit-codes on pass/fail |
+| `check_mcp` (mcp_tool) | An MCP server can deterministically verify the result |
+| `check_semantic` (LLM judge) | You need judgment about output quality |
+| `check_invariants` (diff size) | You want to catch runaway changes |
+
 ---
 
 ## Stall Detection
@@ -418,6 +485,7 @@ states:
 
 ## Tips
 
+- **Route `not_found` to the next phase**, not back to `execute`, in `check_mcp` states. If the MCP server isn't configured in `.mcp.json`, retrying the execute state won't fix it — skip to the next evaluation gate instead.
 - **Start with single-shot** to validate the skill works end-to-end before adding discovery. Use `ll-loop run <file>` with a single item to test the evaluation chain.
 - **Use `ll-loop test`** to dry-run the FSM structure before full execution — it validates YAML syntax, transition completeness, and terminal reachability.
 - **Add stall detection** for prompt-based skills (especially custom prompts) that may no-op. A skill that says "already done" on every item will silently exhaust your budget without it.
@@ -437,6 +505,7 @@ states:
 | `discover` exits immediately with no items | Discovery command filter too narrow | Check that issues have `status: open`; verify `ll-issues list` returns results |
 | `check_invariants` always fails | Skill makes large diffs legitimately | Increase `target` from 50 to a value appropriate for the skill |
 | Loop runs but nothing changes across iterations | Skill is idempotent / "already done" | Add `check_stall` with `max_stall: 1` to skip no-op items |
+| `check_mcp` always routes to `not_found` | Server not registered in `.mcp.json` | Add the MCP server entry to `.mcp.json` or route `not_found` to the next phase to skip gracefully |
 
 ---
 
