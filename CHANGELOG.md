@@ -12,6 +12,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.48.0] - 2026-03-15
+
+### Changed
+
+- **Parameterized confidence thresholds in sprint-build-and-validate** — Added `readiness_threshold` and `outcome_threshold` to loop context with defaults (85/70), replaced 3 hardcoded occurrences, with runtime override support (8118b99)
+
+### Fixed
+
+- **FSM diagram label truncation** — Corrected back_edge_margin calculation and non-adjacent edge label placement (714e862)
+
+### Documentation
+
+- Marked all 18 skills with ^ suffix in COMMANDS.md Quick Reference to distinguish from commands (3e8f7cd)
+- Refined ENH-753 and ENH-757 with complete codebase reference maps and confidence scoring
+- Corrected skill count from 17 to 18 in CLAUDE.md
+
 ## [1.47.0] - 2026-03-15
 
 ### Added
@@ -1310,6 +1326,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.48.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.47.0...v1.48.0
 [1.47.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.46.0...v1.47.0
 [1.46.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.45.0...v1.46.0
 [1.45.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.44.0...v1.45.0
