@@ -503,7 +503,10 @@ def evaluate_mcp_result(output: str, exit_code: int) -> EvaluationResult:
     except json.JSONDecodeError:
         return EvaluationResult(
             verdict="tool_error",
-            details={"exit_code": exit_code, "error": f"Invalid JSON from mcp-call: {output[:200]}"},
+            details={
+                "exit_code": exit_code,
+                "error": f"Invalid JSON from mcp-call: {output[:200]}",
+            },
         )
 
     is_error = envelope.get("isError", exit_code != 0)

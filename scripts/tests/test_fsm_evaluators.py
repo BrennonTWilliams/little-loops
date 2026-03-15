@@ -861,11 +861,7 @@ class TestLLMStructuredEvaluator:
         # Simulate JSONL: event lines followed by final result line
         event_line = json.dumps({"type": "progress", "text": "thinking..."})
         final_line = json.dumps(
-            {
-                "result": json.dumps(
-                    {"verdict": "no", "confidence": 0.8, "reason": "Tests failed"}
-                )
-            }
+            {"result": json.dumps({"verdict": "no", "confidence": 0.8, "reason": "Tests failed"})}
         )
         mock_result.stdout = f"{event_line}\n{final_line}\n"
 

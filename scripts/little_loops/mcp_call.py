@@ -148,7 +148,10 @@ def call_mcp_tool(
     except FileNotFoundError as e:
         return {"isError": True, "content": [{"type": "text", "text": str(e)}]}, 127
     except json.JSONDecodeError as e:
-        return {"isError": True, "content": [{"type": "text", "text": f"Invalid .mcp.json: {e}"}]}, 2
+        return {
+            "isError": True,
+            "content": [{"type": "text", "text": f"Invalid .mcp.json: {e}"}],
+        }, 2
 
     # Find server config
     server_config = _find_server_config(mcp_config, server_name)
@@ -163,7 +166,9 @@ def call_mcp_tool(
     if not command:
         return {
             "isError": True,
-            "content": [{"type": "text", "text": f"Server '{server_name}' has no 'command' in .mcp.json"}],
+            "content": [
+                {"type": "text", "text": f"Server '{server_name}' has no 'command' in .mcp.json"}
+            ],
         }, 2
 
     args = server_config.get("args", [])
@@ -224,14 +229,18 @@ def call_mcp_tool(
             proc.kill()
             return {
                 "isError": True,
-                "content": [{"type": "text", "text": "No response to initialize request (timeout)"}],
+                "content": [
+                    {"type": "text", "text": "No response to initialize request (timeout)"}
+                ],
             }, 124
 
         if "error" in init_response:
             proc.kill()
             return {
                 "isError": True,
-                "content": [{"type": "text", "text": f"Initialize failed: {init_response['error']}"}],
+                "content": [
+                    {"type": "text", "text": f"Initialize failed: {init_response['error']}"}
+                ],
             }, 1
 
         # Step 2: Send initialized notification
@@ -259,7 +268,9 @@ def call_mcp_tool(
             proc.kill()
             return {
                 "isError": True,
-                "content": [{"type": "text", "text": "No response to tools/call request (timeout)"}],
+                "content": [
+                    {"type": "text", "text": "No response to tools/call request (timeout)"}
+                ],
             }, 124
 
         if "error" in call_response:
@@ -268,7 +279,12 @@ def call_mcp_tool(
             if isinstance(err, dict) and err.get("code") == -32601:
                 return {
                     "isError": True,
-                    "content": [{"type": "text", "text": f"Tool '{tool_name}' not found on server '{server_name}'"}],
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": f"Tool '{tool_name}' not found on server '{server_name}'",
+                        }
+                    ],
                 }, 127
             return {
                 "isError": True,
@@ -300,7 +316,7 @@ def main() -> None:
     """Entry point for mcp-call CLI."""
     if len(sys.argv) < 3:
         print(
-            "Usage: mcp-call server/tool-name '{\"param\": \"value\"}'",
+            'Usage: mcp-call server/tool-name \'{"param": "value"}\'',
             file=sys.stderr,
         )
         sys.exit(2)

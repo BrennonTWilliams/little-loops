@@ -424,9 +424,7 @@ states:
         yaml_content = "name: test\ninitial: fix\nstates:\n  fix:\n    action: |\n"
         for line in long_prompt.splitlines():
             yaml_content += f"      {line}\n"
-        yaml_content += (
-            "    action_type: prompt\n    on_yes: done\n  done:\n    terminal: true\n"
-        )
+        yaml_content += "    action_type: prompt\n    on_yes: done\n  done:\n    terminal: true\n"
         (loops_dir / "test.yaml").write_text(yaml_content)
         monkeypatch.chdir(tmp_path)
         with patch.object(sys, "argv", ["ll-loop", "run", "test", "--dry-run"]):

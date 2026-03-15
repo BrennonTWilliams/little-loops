@@ -1936,8 +1936,8 @@ states:
 
     def test_positional_input_injected_into_context(self, simple_loop: Path) -> None:
         """Positional input arg is injected as context['input'] before execution."""
-        from little_loops.fsm.validation import load_and_validate
         from little_loops.cli.loop.run import cmd_run
+        from little_loops.fsm.validation import load_and_validate
         from little_loops.logger import Logger
 
         args = argparse.Namespace(

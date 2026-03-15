@@ -368,9 +368,16 @@ class TestActionType:
 class TestActionTypeMcpTool:
     """Tests for action_type=mcp_tool execution in the executor."""
 
-    def _make_mcp_fsm(self, params: dict | None = None, route_verdicts: dict | None = None) -> FSMLoop:
+    def _make_mcp_fsm(
+        self, params: dict | None = None, route_verdicts: dict | None = None
+    ) -> FSMLoop:
         """Build a minimal FSM with one mcp_tool state."""
-        route_verdicts = route_verdicts or {"success": "done", "tool_error": "done", "not_found": "done", "timeout": "done"}
+        route_verdicts = route_verdicts or {
+            "success": "done",
+            "tool_error": "done",
+            "not_found": "done",
+            "timeout": "done",
+        }
         return FSMLoop(
             name="test",
             initial="fetch",
@@ -393,7 +400,9 @@ class TestActionTypeMcpTool:
 
         success_envelope = json.dumps({"isError": False, "content": []})
         with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
-            mock_sub.return_value = ActionResult(output=success_envelope, stderr="", exit_code=0, duration_ms=50)
+            mock_sub.return_value = ActionResult(
+                output=success_envelope, stderr="", exit_code=0, duration_ms=50
+            )
             executor = FSMExecutor(fsm, action_runner=mock_runner)
             result = executor.run()
 
@@ -409,10 +418,14 @@ class TestActionTypeMcpTool:
     def test_mcp_tool_routes_success(self) -> None:
         """mcp_tool state with isError=false routes to success."""
         fsm = self._make_mcp_fsm(route_verdicts={"success": "done"})
-        success_envelope = json.dumps({"isError": False, "content": [{"type": "text", "text": "ok"}]})
+        success_envelope = json.dumps(
+            {"isError": False, "content": [{"type": "text", "text": "ok"}]}
+        )
 
         with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
-            mock_sub.return_value = ActionResult(output=success_envelope, stderr="", exit_code=0, duration_ms=50)
+            mock_sub.return_value = ActionResult(
+                output=success_envelope, stderr="", exit_code=0, duration_ms=50
+            )
             executor = FSMExecutor(fsm, action_runner=MockActionRunner())
             result = executor.run()
 
@@ -421,10 +434,14 @@ class TestActionTypeMcpTool:
     def test_mcp_tool_routes_tool_error(self) -> None:
         """mcp_tool state with isError=true routes to tool_error."""
         fsm = self._make_mcp_fsm(route_verdicts={"tool_error": "done"})
-        error_envelope = json.dumps({"isError": True, "content": [{"type": "text", "text": "fail"}]})
+        error_envelope = json.dumps(
+            {"isError": True, "content": [{"type": "text", "text": "fail"}]}
+        )
 
         with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
-            mock_sub.return_value = ActionResult(output=error_envelope, stderr="", exit_code=1, duration_ms=50)
+            mock_sub.return_value = ActionResult(
+                output=error_envelope, stderr="", exit_code=1, duration_ms=50
+            )
             executor = FSMExecutor(fsm, action_runner=MockActionRunner())
             result = executor.run()
 
@@ -435,7 +452,9 @@ class TestActionTypeMcpTool:
         fsm = self._make_mcp_fsm(route_verdicts={"not_found": "done"})
 
         with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
-            mock_sub.return_value = ActionResult(output="", stderr="", exit_code=127, duration_ms=10)
+            mock_sub.return_value = ActionResult(
+                output="", stderr="", exit_code=127, duration_ms=10
+            )
             executor = FSMExecutor(fsm, action_runner=MockActionRunner())
             result = executor.run()
 
@@ -446,7 +465,9 @@ class TestActionTypeMcpTool:
         fsm = self._make_mcp_fsm(route_verdicts={"timeout": "done"})
 
         with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
-            mock_sub.return_value = ActionResult(output="", stderr="", exit_code=124, duration_ms=30000)
+            mock_sub.return_value = ActionResult(
+                output="", stderr="", exit_code=124, duration_ms=30000
+            )
             executor = FSMExecutor(fsm, action_runner=MockActionRunner())
             result = executor.run()
 
@@ -471,7 +492,9 @@ class TestActionTypeMcpTool:
 
         success_envelope = json.dumps({"isError": False, "content": []})
         with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
-            mock_sub.return_value = ActionResult(output=success_envelope, stderr="", exit_code=0, duration_ms=50)
+            mock_sub.return_value = ActionResult(
+                output=success_envelope, stderr="", exit_code=0, duration_ms=50
+            )
             executor = FSMExecutor(fsm, action_runner=MockActionRunner())
             executor.run()
 
@@ -499,7 +522,9 @@ class TestActionTypeMcpTool:
 
         success_envelope = json.dumps({"isError": False, "content": []})
         with patch("little_loops.fsm.executor.FSMExecutor._run_subprocess") as mock_sub:
-            mock_sub.return_value = ActionResult(output=success_envelope, stderr="", exit_code=0, duration_ms=50)
+            mock_sub.return_value = ActionResult(
+                output=success_envelope, stderr="", exit_code=0, duration_ms=50
+            )
             executor = FSMExecutor(fsm, action_runner=MockActionRunner())
             result = executor.run()
 

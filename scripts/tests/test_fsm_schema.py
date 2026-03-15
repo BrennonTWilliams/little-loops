@@ -1504,7 +1504,14 @@ class TestMcpToolSchema:
                     action_type="mcp_tool",
                     params={"url": "https://example.com"},
                     evaluate=EvaluateConfig(type="mcp_result"),
-                    route=RouteConfig(routes={"success": "done", "tool_error": "done", "not_found": "done", "timeout": "done"}),
+                    route=RouteConfig(
+                        routes={
+                            "success": "done",
+                            "tool_error": "done",
+                            "not_found": "done",
+                            "timeout": "done",
+                        }
+                    ),
                 ),
                 "done": StateConfig(terminal=True),
             },
