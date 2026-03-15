@@ -1,8 +1,8 @@
 ---
 discovered_date: 2026-03-13
 discovered_by: capture-issue
-confidence_score: 96
-outcome_confidence: 86
+confidence_score: 100
+outcome_confidence: 82
 ---
 
 # FEAT-725: ll-loop run positional string input argument
@@ -178,6 +178,7 @@ ll-loop run <loop-name> [input] [options]
 - `scripts/little_loops/cli/loop/__init__.py:94` registers only `"loop"` as a positional argument for the `run` subparser — no second positional `input` argument exists. `run.py` has no `args.input` injection logic. `fsm-loop-schema.json` has no `input_key` field. Feature not yet implemented.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8d7a1f56-687d-4b69-9d22-6ec472aa9b1f.jsonl`
 - `/ll:refine-issue` - 2026-03-15T03:26:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/bf30ff97-a5f9-4719-b28c-ab6580383ecd.jsonl`
 - `/ll:verify-issues` - 2026-03-15T03:23:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/c6cacfa2-fc65-45e7-9629-01c3fe3df856.jsonl`
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
