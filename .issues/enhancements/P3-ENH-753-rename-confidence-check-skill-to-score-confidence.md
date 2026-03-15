@@ -4,8 +4,8 @@ priority: P3
 status: backlog
 discovered_date: 2026-03-15
 discovered_by: capture-issue
-confidence_score: 100
-outcome_confidence: 53
+confidence_score: 95
+outcome_confidence: 45
 ---
 
 # ENH-753: Rename `/ll:confidence-check` to `/ll:score-confidence`
@@ -83,6 +83,9 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 | `docs/reference/API.md` | 507–508 | Field-level doc comments |
 | `docs/guides/LOOPS_GUIDE.md` | 334 | Skill name in `--check` flag description |
 | `docs/guides/ISSUE_MANAGEMENT_GUIDE.md` | 264–266 | Three invocation examples |
+| `docs/demo/scenarios.md` | 99 | Demo scenario invocation example |
+| `scripts/tests/test_refine_status.py` | 267, 816 | Test data: session command strings referencing skill name |
+| `scripts/little_loops/issue_parser.py` | 216–217 | Docstring references in `confidence_score`/`outcome_confidence` field docs |
 
 **No prior skill renames found** in the codebase or issue history. This is the first skill directory rename in this project.
 
@@ -90,7 +93,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - No prior skill directory renames exist in this codebase — the pattern for this rename is: `git mv skills/confidence-check skills/score-confidence`, then grep-replace `confidence-check` → `score-confidence` across all files listed above
 
 ### Tests
-- N/A - skill rename does not require test changes unless tests reference the skill name
+- `scripts/tests/test_refine_status.py:267,816` — references `"/ll:confidence-check"` as session command strings in test data; must be updated to `"/ll:score-confidence"`
+- `scripts/little_loops/issue_parser.py:216–217` — docstring references only; update to reflect new skill name
 
 ### Documentation
 - `docs/` references to `confidence-check`
@@ -122,7 +126,11 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
    - `docs/reference/API.md:507-508`
    - `docs/guides/LOOPS_GUIDE.md:334`
    - `docs/guides/ISSUE_MANAGEMENT_GUIDE.md:264-266`
-7. Verify no dangling references: `grep -r "confidence-check" . --include="*.md" --include="*.yaml" --include="*.json" -l`
+   - `docs/demo/scenarios.md:99`
+7. Update Python files:
+   - `scripts/tests/test_refine_status.py:267,816` — update session command strings
+   - `scripts/little_loops/issue_parser.py:216–217` — update docstring references
+8. Verify no dangling references: `grep -r "confidence-check" . --include="*.md" --include="*.yaml" --include="*.json" --include="*.py" -l`
 
 ## Acceptance Criteria
 
@@ -162,6 +170,9 @@ _Verified 2026-03-15 against codebase:_
 **Current**: backlog
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-15T19:37:03 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
+- `/ll:refine-issue` - 2026-03-15T19:34:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
+- `/ll:confidence-check` - 2026-03-15T19:27:48 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
 - `/ll:refine-issue` - 2026-03-15T19:23:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
 - `/ll:confidence-check` - 2026-03-15T19:22:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
 - `/ll:refine-issue` - 2026-03-15T19:20:58 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
