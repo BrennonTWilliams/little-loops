@@ -43,10 +43,10 @@ states:
       prompt: |
         Is the current priority distribution healthy with no issues
         needing reprioritization?
-        Return "success" if the distribution is healthy.
-        Return "failure" if issues need reprioritization.
-    on_success: done
-    on_failure: reprioritize
+        Return "yes" if the distribution is healthy.
+        Return "no" if issues need reprioritization.
+    on_yes: done
+    on_no: reprioritize
     on_error: done
   reprioritize:
     action_type: prompt
@@ -89,10 +89,10 @@ states:
       prompt: |
         Review the priority distribution. Is it healthy?
         - P0: 0-2 issues, P1: 3-5 issues, P2: 5-10 issues
-        Return "success" if the distribution looks reasonable.
-        Return "failure" if it still needs adjustment.
-    on_success: done
-    on_failure: analyze_balance
+        Return "yes" if the distribution looks reasonable.
+        Return "no" if it still needs adjustment.
+    on_yes: done
+    on_no: analyze_balance
     on_error: done
   done:
     terminal: true

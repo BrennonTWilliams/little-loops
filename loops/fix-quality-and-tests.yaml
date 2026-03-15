@@ -13,11 +13,11 @@ states:
       type: llm_structured
       prompt: |
         Did ALL three checks (lint, format, types) pass with zero errors?
-        Return "success" only if all three are clean.
-        Return "failure" if any check found errors.
+        Return "yes" only if all three are clean.
+        Return "no" if any check found errors.
         Return "partial" if the output is ambiguous or incomplete.
-    on_success: check-tests
-    on_failure: fix-lint-format
+    on_yes: check-tests
+    on_no: fix-lint-format
     on_partial: check-quality
     on_error: fix-lint-format
   fix-lint-format:
@@ -76,8 +76,8 @@ states:
       eval "$CMD" 2>&1 | tee .loops/tmp/ll-test-results.txt
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: fix-tests
+    on_yes: done
+    on_no: fix-tests
     on_error: fix-tests
   fix-tests:
     action_type: prompt

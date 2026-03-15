@@ -38,8 +38,8 @@ states:
       path: ".count"
       operator: eq
       target: 0
-    on_success: done
-    on_failure: remove_code
+    on_yes: done
+    on_no: remove_code
     on_error: done
   remove_code:
     action_type: prompt
@@ -73,8 +73,8 @@ states:
       eval "$CMD" 2>&1 | tee .loops/tmp/ll-dead-code-tests.txt
     evaluate:
       type: exit_code
-    on_success: commit
-    on_failure: revert_and_scan
+    on_yes: commit
+    on_no: revert_and_scan
     on_error: revert_and_scan
   revert_and_scan:
     action_type: prompt

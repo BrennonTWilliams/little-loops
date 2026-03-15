@@ -49,10 +49,10 @@ states:
       prompt: |
         Review the discrepancy report. Is everything already up to date
         with no discrepancies to fix?
-        Return "success" if everything is up to date.
-        Return "failure" if there are discrepancies that need fixing.
-    on_success: done
-    on_failure: update_docs
+        Return "yes" if everything is up to date.
+        Return "no" if there are discrepancies that need fixing.
+    on_yes: done
+    on_no: update_docs
     on_error: done
   update_docs:
     action_type: prompt
@@ -83,10 +83,10 @@ states:
       source: "${captured.verify_result.output}"
       prompt: |
         Were any documentation issues found that still need fixing?
-        Return "success" if docs are clean.
-        Return "failure" if fixes are still needed.
-    on_success: commit
-    on_failure: update_docs
+        Return "yes" if docs are clean.
+        Return "no" if fixes are still needed.
+    on_yes: commit
+    on_no: update_docs
     on_error: commit
   commit:
     action_type: prompt

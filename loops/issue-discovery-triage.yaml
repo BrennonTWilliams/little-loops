@@ -65,8 +65,8 @@ states:
       type: output_numeric
       operator: gt
       target: ${captured.baseline.output}
-    on_success: commit
-    on_failure: done
+    on_yes: commit
+    on_no: done
     on_error: done
   commit:
     action_type: prompt

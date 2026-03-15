@@ -38,8 +38,8 @@ states:
     capture: plugin_state
     evaluate:
       type: exit_code
-    on_success: count_assets
-    on_failure: fix_config
+    on_yes: count_assets
+    on_no: fix_config
     on_error: fix_config
   count_assets:
     action: |
@@ -80,10 +80,10 @@ states:
       source: "${captured.counts_result.output}\n${captured.refs_result.output}"
       prompt: |
         Based on both audit results, is the plugin configuration healthy?
-        Return "success" if everything is healthy.
-        Return "failure" if there are issues to fix.
-    on_success: verify_hooks
-    on_failure: fix_config
+        Return "yes" if everything is healthy.
+        Return "no" if there are issues to fix.
+    on_yes: verify_hooks
+    on_no: fix_config
     on_partial: audit_counts
     on_error: verify_hooks
   fix_config:
@@ -128,8 +128,8 @@ states:
     action_type: shell
     evaluate:
       type: exit_code
-    on_success: commit
-    on_failure: fix_hooks
+    on_yes: commit
+    on_no: fix_hooks
     on_error: commit
   fix_hooks:
     action_type: prompt

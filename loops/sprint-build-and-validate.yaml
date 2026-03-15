@@ -51,10 +51,10 @@ states:
       prompt: |
         Do any sprint issues fail readiness checks (readiness < 85
         or outcome confidence < 70)?
-        Return "success" if all issues pass and are implementation-ready.
-        Return "failure" if any issues need fixing.
-    on_success: review_sprint
-    on_failure: fix_issues
+        Return "yes" if all issues pass and are implementation-ready.
+        Return "no" if any issues need fixing.
+    on_yes: review_sprint
+    on_no: fix_issues
     on_error: review_sprint
   fix_issues:
     action_type: prompt
@@ -87,10 +87,10 @@ states:
       source: "${captured.review_result.output}"
       prompt: |
         Did the sprint review find critical issues that block execution?
-        Return "success" if the sprint is healthy and ready to go.
-        Return "failure" if the review found critical issues.
-    on_success: commit
-    on_failure: fix_issues
+        Return "yes" if the sprint is healthy and ready to go.
+        Return "no" if the review found critical issues.
+    on_yes: commit
+    on_no: fix_issues
     on_error: commit
   commit:
     action_type: prompt

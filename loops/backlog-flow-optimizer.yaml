@@ -63,24 +63,24 @@ states:
       type: output_contains
       source: "${captured.diagnosis.output}"
       pattern: "BOTTLENECK_BLOAT"
-    on_success: close_dead_weight
-    on_failure: route_size
+    on_yes: close_dead_weight
+    on_no: route_size
     on_error: done
   route_size:
     evaluate:
       type: output_contains
       source: "${captured.diagnosis.output}"
       pattern: "BOTTLENECK_SIZE"
-    on_success: fix_oversized
-    on_failure: route_priority
+    on_yes: fix_oversized
+    on_no: route_priority
     on_error: done
   route_priority:
     evaluate:
       type: output_contains
       source: "${captured.diagnosis.output}"
       pattern: "BOTTLENECK_PRIORITY"
-    on_success: promote_quick_wins
-    on_failure: done
+    on_yes: promote_quick_wins
+    on_no: done
     on_error: done
   close_dead_weight:
     action_type: prompt

@@ -40,8 +40,8 @@ states:
     capture: "classify"
     evaluate:
       type: exit_code
-    on_success: done
-    on_failure: parse_id
+    on_yes: done
+    on_no: parse_id
     on_error: done
   parse_id:
     action: echo "${captured.classify.output}" | awk 'NR==1{printf $2}'
@@ -49,23 +49,23 @@ states:
     capture: "issue_id"
     evaluate:
       type: exit_code
-    on_success: route_format
+    on_yes: route_format
     on_error: evaluate
   route_format:
     evaluate:
       type: output_contains
       source: "${captured.classify.output}"
       pattern: "NEEDS_FORMAT"
-    on_success: format_issues
-    on_failure: route_score
+    on_yes: format_issues
+    on_no: route_score
     on_error: evaluate
   route_score:
     evaluate:
       type: output_contains
       source: "${captured.classify.output}"
       pattern: "NEEDS_SCORE"
-    on_success: score_issues
-    on_failure: refine_issues
+    on_yes: score_issues
+    on_no: refine_issues
     on_error: evaluate
   format_issues:
     action_type: prompt
@@ -100,8 +100,8 @@ states:
     evaluate:
       type: output_contains
       pattern: "COMMIT"
-    on_success: commit
-    on_failure: evaluate
+    on_yes: commit
+    on_no: evaluate
     on_error: evaluate
   commit:
     action_type: prompt

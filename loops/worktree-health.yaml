@@ -18,8 +18,8 @@ states:
       type: output_numeric
       operator: eq
       target: 0
-    on_success: check_branches
-    on_failure: cleanup_worktrees
+    on_yes: check_branches
+    on_no: cleanup_worktrees
     on_error: check_branches
   cleanup_worktrees:
     action_type: prompt
@@ -39,8 +39,8 @@ states:
       type: output_numeric
       operator: eq
       target: 0
-    on_success: done
-    on_failure: prune_branches
+    on_yes: done
+    on_no: prune_branches
     on_error: done
   prune_branches:
     action: |

@@ -15,8 +15,8 @@ states:
     evaluate:
       type: output_contains
       pattern: ".md"
-    on_success: review_issue
-    on_failure: done
+    on_yes: review_issue
+    on_no: done
     on_error: done
   review_issue:
     action_type: prompt
@@ -38,12 +38,12 @@ states:
       source: "${captured.review_result.output}"
       prompt: |
         Based on the review, what should happen to this issue?
-        Return "success" if the issue should be CLOSED (no longer relevant,
+        Return "yes" if the issue should be CLOSED (no longer relevant,
         already fixed, or duplicated by a newer issue).
-        Return "failure" if the issue should be KEPT (still relevant and
+        Return "no" if the issue should be KEPT (still relevant and
         needs work).
-    on_success: close_issue
-    on_failure: reprioritize
+    on_yes: close_issue
+    on_no: reprioritize
     on_error: find_stale
   close_issue:
     action_type: prompt
