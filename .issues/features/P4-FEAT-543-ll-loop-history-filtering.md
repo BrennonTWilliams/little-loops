@@ -156,12 +156,9 @@ _(ENH-539 removed — completed as duplicate of ENH-626)_
 
 ## Verification Notes
 
-**Verdict**: VALID — 2026-03-05
+**Verdict**: NEEDS_UPDATE — 2026-03-14
 
-- `scripts/little_loops/cli/loop/info.py` exists; `cmd_history()` at lines 65–91 (shifted from issue's 62–84 since scan commit)
-- `scripts/little_loops/cli/loop/__init__.py` `history_parser` confirms only `loop` and `--tail` args — no `--event`, `--state`, `--json`, `--since`
-- `TestCmdHistory` and `TestHistoryTail` classes confirmed in `test_ll_loop_commands.py` at lines 135 and 182 (updated from 101/148)
-- Issue accurately describes the missing filtering capability
+- `cmd_history()` has drifted to `info.py:**391**` (issue body says 297–325). `history_parser` args span `__init__.py` lines **206–228** (issue body says 205–220; `--json` is at line 228, beyond the stated range). `--json`, `--verbose`, `--full` already implemented (via ENH-740); `--event`, `--state`, `--since` still absent.
 
 ## Tradeoff Review Note
 
@@ -180,6 +177,7 @@ _(ENH-539 removed — completed as duplicate of ENH-626)_
 Update first — HIGH utility (debugging 200+ event logs is a real pain point), but the `--since` duration parser is a non-trivial utility that will also be needed by `ll-messages` and `ll-history`. Before implementing, extract the duration string parser (`"1h"` → seconds, `"30m"` → seconds, `"2d"` → seconds) as a shared utility in `little_loops/text_utils.py` or a new `time_utils.py`. This reduces maintenance overhead (one implementation vs three) and makes the feature scope cleaner. Once that utility exists, the filtering implementation is straightforward.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-15T00:11:18 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:verify-issues` - 2026-03-06T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f8de0c26-1ae9-4a68-b489-a58a6458da2f.jsonl` — VALID: no --event, --state, --json, --since flags
 - `/ll:verify-issues` - 2026-03-07T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/cb0f358f-581f-41c1-aedf-c51ecbc7de35.jsonl` — VALID: filters still absent; removed stale Blocked By ENH-539 (completed as duplicate of ENH-626)
 - `/ll:ready-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7bc8b254-8ac0-409d-b79d-9795de6dc39e.jsonl` — BLOCKED: ENH-537 and ENH-538 still active; corrected line numbers (info.py 62-84→215-237, __init__.py 127-131→189-197, test classes 135/182→251/298)

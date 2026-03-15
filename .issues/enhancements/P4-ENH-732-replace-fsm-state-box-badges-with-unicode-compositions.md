@@ -52,14 +52,15 @@ The `mcp` action type is not yet implemented (tracked in FEAT-729), but the badg
 ---
 ## Verification Notes
 
-- **Date**: 2026-03-13
-- **Verdict**: VALID
-- `scripts/little_loops/cli/loop/layout.py` constructs badges as `f"[{state.action_type}]"` at lines 85, 464-465, with `"[shell]"` as fallback at lines 87, 467. No `_ACTION_TYPE_BADGES` dict exists. Feature not yet implemented.
+- **Date**: 2026-03-14
+- **Verdict**: NEEDS_UPDATE
+- Feature not yet implemented; no `_ACTION_TYPE_BADGES` dict. Third badge site is at **line 1367** (not ~1334 as stated in Implementation Steps). Actual badge sites: lines 83–98, 463–469, and 1367–1377. Update Implementation Steps step 2 from "lines ~85, ~466, ~1334" to "lines ~85, ~466, ~1367".
 
 ## Status
 
 Active — not yet started.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:capture-issue` - 2026-03-13T22:51:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`

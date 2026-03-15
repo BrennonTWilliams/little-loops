@@ -133,6 +133,7 @@ After a `prompt`/`slash_command` state completes:
 - `scripts/little_loops/fsm/executor.py` emits `action_complete` at lines 583–588 with `is_prompt` (line 588) but no `session_jsonl` field — confirmed by grep. `scripts/little_loops/session_log.py` has `get_current_session_jsonl()` at line 62, not yet called from `executor.py`. `scripts/little_loops/cli/loop/info.py` has `_format_history_event` at line 152 with no `session_jsonl` handling. Feature not yet implemented.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:capture-issue` - 2026-03-13T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/711e6b32-70cb-4d26-8b4e-bc302750cb79.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
 - `/ll:format-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`

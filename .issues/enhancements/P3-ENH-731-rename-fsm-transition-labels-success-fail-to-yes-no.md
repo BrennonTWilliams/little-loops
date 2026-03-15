@@ -186,11 +186,12 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Verification Notes
 
-- **Date**: 2026-03-13
-- **Verdict**: VALID
-- `scripts/little_loops/fsm/schema.py` has `on_success`/`on_failure` fields at lines 195–196, 217–220, 254–255, 273–276 — no `on_yes`/`on_no` fields exist. `evaluators.py` still returns `"success"`/`"failure"` verdict strings at lines 54, 92, 94, 144, 211, 258, 260, 302, 304. All built-in loop YAMLs in `loops/` use `on_success:`/`on_failure:` YAML keys. Feature not yet implemented.
+- **Date**: 2026-03-14
+- **Verdict**: NEEDS_UPDATE
+- Feature not yet implemented; `on_success`/`on_failure` still present throughout. Schema.py line refs have drifted: fields now at **lines 206–207** (not 195–196); `to_dict` keys at **228–231** (not 217–220); `from_dict` lookups at **265–266** (not 254–255); `get_referenced_states` at **284–286** (not 273–276). `evaluators.py` and loop YAML contents unchanged.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 
 - `/ll:capture-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2acb782e-c208-43f1-8534-96bfd95ced6e.jsonl`
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6f511c85-9ee7-4764-8b06-753e10552cf2.jsonl`

@@ -123,14 +123,15 @@ _Codebase Research: full call chain with line refs:_
 
 ## Verification Notes
 
-**Verdict**: OUTDATED — 2026-03-12
+**Verdict**: OUTDATED — 2026-03-14
 
-- `_render_2d_diagram()` no longer exists in `info.py`; diagram rendering was refactored into `layout.py` with `_render_layered_diagram()` (line 569) and `_render_fsm_diagram()` (line 1151)
-- `info.py` is now 570 lines (was referenced as 463-964); all implementation step line references are invalid
+- `_render_2d_diagram()` no longer exists in `info.py`; diagram rendering was refactored into `layout.py`
+- `info.py` is now **751 lines** (previously noted as 570); all implementation step line references remain invalid
 - ENH-638 referenced as prerequisite does not exist in any .issues directory
 - **Action needed**: Rewrite implementation steps to target `layout.py` functions; remove or update ENH-638 dependency reference
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:capture-issue` - 2026-03-08T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb1dacf-d3dc-4461-88d7-450e60c8640a.jsonl`
 - `/ll:format-issue` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5a9e18cb-659a-48f7-9438-2e4c4fdddd25.jsonl`
 - `/ll:confidence-check` - 2026-03-09T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0a53c6fa-fc4b-421b-b487-38a43f4dff4a.jsonl`
