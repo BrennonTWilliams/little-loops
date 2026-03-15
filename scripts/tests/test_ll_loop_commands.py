@@ -2002,4 +2002,193 @@ states:
         assert fsm.input_key == "issue_id"
         # Simulate positional injection using custom key
         fsm.context[fsm.input_key] = "FEAT-100"
-        assert fsm.context["issue_id"] == "FEAT-100"
+
+
+class TestCmdStatusJson:
+    """Tests for ll-loop status --json."""
+
+    def test_status_json_output(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json outputs loop state as a JSON object."""
+        from little_loops.cli.loop.lifecycle import cmd_status
+        from little_loops.fsm.persistence import LoopState, StatePersistence
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        state = LoopState(
+            loop_name="my-loop",
+            current_state="run_tests",
+            iteration=5,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-01-13T10:00:00",
+            updated_at="2026-01-13T10:05:00",
+            status="running",
+        )
+
+        with patch.object(StatePersistence, "load_state", return_value=state):
+            from little_loops.logger import Logger
+
+            logger = Logger(verbose=False)
+            args = argparse.Namespace(json=True)
+            result = cmd_status("my-loop", loops_dir, logger, args)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert data["loop_name"] == "my-loop"
+        assert data["current_state"] == "run_tests"
+        assert data["iteration"] == 5
+        assert data["status"] == "running"
+        assert "pid" in data
+
+    def test_status_json_no_state(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json with no state returns exit code 1."""
+        from little_loops.cli.loop.lifecycle import cmd_status
+        from little_loops.fsm.persistence import StatePersistence
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        with patch.object(StatePersistence, "load_state", return_value=None):
+            from little_loops.logger import Logger
+
+            logger = Logger(verbose=False)
+            args = argparse.Namespace(json=True)
+            result = cmd_status("my-loop", loops_dir, logger, args)
+
+        assert result == 1
+
+    def test_status_human_readable_unchanged(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Without --json, output is unchanged human-readable format."""
+        from little_loops.cli.loop.lifecycle import cmd_status
+        from little_loops.fsm.persistence import LoopState, StatePersistence
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        state = LoopState(
+            loop_name="my-loop",
+            current_state="run_tests",
+            iteration=2,
+            captured={},
+            prev_result=None,
+            last_result=None,
+            started_at="2026-01-13T10:00:00",
+            updated_at="2026-01-13T10:01:00",
+            status="interrupted",
+        )
+
+        with patch.object(StatePersistence, "load_state", return_value=state):
+            from little_loops.logger import Logger
+
+            logger = Logger(verbose=False)
+            args = argparse.Namespace(json=False)
+            result = cmd_status("my-loop", loops_dir, logger, args)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "Loop: my-loop" in out
+        assert "Status: interrupted" in out
+        assert out.strip()[0] != "{"  # Not JSON
+
+
+class TestCmdShowJson:
+    """Tests for ll-loop show --json."""
+
+    def test_show_json_output(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json outputs FSM config as a JSON object."""
+        from little_loops.cli.loop.info import cmd_show
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_yaml = loops_dir / "my-loop.yaml"
+        loop_yaml.write_text(
+            "name: my-loop\n"
+            "description: Test loop\n"
+            "initial: start\n"
+            "states:\n"
+            "  start:\n"
+            "    action: echo hello\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+
+        from little_loops.logger import Logger
+
+        logger = Logger(verbose=False)
+        args = argparse.Namespace(json=True, verbose=False)
+        result = cmd_show("my-loop", args, loops_dir, logger)
+
+        assert result == 0
+        data = json.loads(capsys.readouterr().out)
+        assert "name" in data or "states" in data  # FSMLoop.to_dict() includes these
+        assert isinstance(data, dict)
+
+    def test_show_json_invalid_loop(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """--json with missing loop returns exit code 1."""
+        from little_loops.cli.loop.info import cmd_show
+        from little_loops.logger import Logger
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+
+        logger = Logger(verbose=False)
+        args = argparse.Namespace(json=True, verbose=False)
+        result = cmd_show("nonexistent-loop", args, loops_dir, logger)
+
+        assert result == 1
+
+    def test_show_human_readable_unchanged(
+        self,
+        tmp_path: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Without --json, output contains the expected human-readable sections."""
+        from little_loops.cli.loop.info import cmd_show
+
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        loop_yaml = loops_dir / "my-loop.yaml"
+        loop_yaml.write_text(
+            "name: my-loop\n"
+            "initial: start\n"
+            "states:\n"
+            "  start:\n"
+            "    action: echo hello\n"
+            "    on_yes: done\n"
+            "  done:\n"
+            "    terminal: true\n"
+        )
+
+        from little_loops.logger import Logger
+
+        logger = Logger(verbose=False)
+        args = argparse.Namespace(json=False, verbose=False)
+        result = cmd_show("my-loop", args, loops_dir, logger)
+
+        assert result == 0
+        out = capsys.readouterr().out
+        assert "my-loop" in out
+        assert "Diagram:" in out

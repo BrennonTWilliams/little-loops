@@ -37,8 +37,10 @@ def cmd_status(
     loop_name: str,
     loops_dir: Path,
     logger: Logger,
+    args: argparse.Namespace | None = None,
 ) -> int:
     """Show loop status."""
+    from little_loops.cli.output import print_json
     from little_loops.fsm.persistence import StatePersistence
 
     persistence = StatePersistence(loop_name, loops_dir)
@@ -48,6 +50,16 @@ def cmd_status(
         logger.error(f"No state found for: {loop_name}")
         return 1
 
+    running_dir = loops_dir / ".running"
+    pid_file = running_dir / f"{loop_name}.pid"
+    pid = _read_pid_file(pid_file)
+
+    if getattr(args, "json", False):
+        d = state.to_dict()
+        d["pid"] = pid
+        print_json(d)
+        return 0
+
     print(f"Loop: {state.loop_name}")
     print(f"Status: {state.status}")
     print(f"Current state: {state.current_state}")
@@ -56,9 +68,6 @@ def cmd_status(
     print(f"Updated: {state.updated_at}")
 
     # Show PID info if available (background mode)
-    running_dir = loops_dir / ".running"
-    pid_file = running_dir / f"{loop_name}.pid"
-    pid = _read_pid_file(pid_file)
     if pid is not None:
         if _process_alive(pid):
             print(f"PID: {pid} (running)")

@@ -571,6 +571,10 @@ def cmd_show(
         logger.error(f"Invalid loop: {e}")
         return 1
 
+    if getattr(args, "json", False):
+        print_json(fsm.to_dict())
+        return 0
+
     tw = terminal_width()
 
     # Compute stats for header

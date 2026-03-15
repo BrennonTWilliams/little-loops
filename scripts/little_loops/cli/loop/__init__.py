@@ -164,6 +164,7 @@ Examples:
     status_parser = subparsers.add_parser("status", aliases=["st"], help="Show loop status")
     status_parser.set_defaults(command="status")
     status_parser.add_argument("loop", help="Loop name")
+    status_parser.add_argument("--json", action="store_true", help="Output loop state as JSON")
 
     # Stop subcommand
     stop_parser = subparsers.add_parser("stop", help="Stop a running loop")
@@ -284,6 +285,7 @@ Examples:
     show_parser.add_argument(
         "--verbose", "-v", action="store_true", help="Show full action text and evaluate prompt"
     )
+    show_parser.add_argument("--json", action="store_true", help="Output FSM config as JSON")
 
     args = parser.parse_args(argv)
 
@@ -297,7 +299,7 @@ Examples:
     elif args.command == "list":
         return cmd_list(args, loops_dir)
     elif args.command == "status":
-        return cmd_status(args.loop, loops_dir, logger)
+        return cmd_status(args.loop, loops_dir, logger, args)
     elif args.command == "stop":
         return cmd_stop(args.loop, loops_dir, logger)
     elif args.command == "resume":

@@ -17,7 +17,7 @@ The `ll-loop history`, `status`, and `show` subcommands lack `--json` output mod
 
 ## Location
 
-- **File**: `scripts/little_loops/cli/loop/info.py` — `cmd_history` (lines 225-248), `cmd_show` (lines 370-570)
+- **File**: `scripts/little_loops/cli/loop/info.py` — `cmd_history` (lines 397-448), `cmd_show` (lines 557-757)
 - **File**: `scripts/little_loops/cli/loop/lifecycle.py` — `cmd_status` (lines 36-74)
 - **File**: `scripts/little_loops/cli/loop/__init__.py` — subparser definitions
 
@@ -39,10 +39,10 @@ Add `--json` argument to the `history`, `status`, and `show` subparsers. In each
 
 ## Acceptance Criteria
 
-- [ ] `ll-loop history --json <loop>` outputs event list as JSON
-- [ ] `ll-loop status --json <loop>` outputs loop state as JSON
-- [ ] `ll-loop show --json <loop>` outputs FSM config as JSON
-- [ ] Human-readable output remains the default
+- [x] `ll-loop history --json <loop>` outputs event list as JSON
+- [x] `ll-loop status --json <loop>` outputs loop state as JSON
+- [x] `ll-loop show --json <loop>` outputs FSM config as JSON
+- [x] Human-readable output remains the default
 
 ## Implementation Steps
 
@@ -83,7 +83,9 @@ return cmd_status(args.loop, loops_dir, logger, args)
 **PID for `status` JSON** — `_read_pid_file()` returns `int | None` (`lifecycle.py:22-33`). Recommend including in output:
 ```python
 d = state.to_dict()
-d["pid"] = _read_pid_file(loop_name, loops_dir)
+running_dir = loops_dir / ".running"
+pid_file = running_dir / f"{loop_name}.pid"
+d["pid"] = _read_pid_file(pid_file)
 print_json(d)
 ```
 
@@ -120,6 +122,7 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 `feature`, `cli`, `ll-loop`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-15T16:04:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b7756d1b-485d-458f-b460-d73ffbb35470.jsonl`
 - `/ll:verify-issues` - 2026-03-15T15:13:29 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/eaa8d229-0594-4366-bff7-6d5160769e5e.jsonl`
 - `/ll:refine-issue` - 2026-03-15T15:11:54 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/47847ab1-3690-456f-8bbd-e8c2d6719032.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a26704e-7913-498d-addf-8cd6c2ce63ff.jsonl`
@@ -128,7 +131,16 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P4
+**Completed** | Created: 2026-03-13 | Resolved: 2026-03-15 | Priority: P4
+
+## Resolution
+
+- Added `--json` flag to `status` subparser in `cli/loop/__init__.py`
+- Added `--json` flag to `show` subparser in `cli/loop/__init__.py`
+- Updated dispatch for `status` to forward `args` to `cmd_status`
+- Updated `cmd_status` in `lifecycle.py` to accept optional `args` and output JSON via `state.to_dict()` with `pid` included
+- Added JSON branch to `cmd_show` in `info.py` using `fsm.to_dict()`
+- Added 6 tests covering JSON output and human-readable preservation for both commands
 
 ## Verification Notes
 
