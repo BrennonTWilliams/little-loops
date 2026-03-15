@@ -118,9 +118,10 @@ Which evaluation phases should be included? (multi-select)
   ☑ LLM-as-judge                     — Claude assesses output against skill description
   ☑ Diff invariants                  — git diff --stat line count < 50
   ○ MCP tool gates (Optional)        — Deterministic check via a configured MCP server
+  ○ Skill-based evaluation (Optional) — Invoke a skill to exercise and verify the feature as a user would
 ```
 
-> The wizard surfaces MCP tool gates only when `.mcp.json` contains at least one configured server. This phase is unselected by default — add it when an MCP server can verify something the other phases cannot.
+> The wizard surfaces MCP tool gates only when `.mcp.json` contains at least one configured server. This phase is unselected by default — add it when an MCP server can verify something the other phases cannot. Prefer `check_skill` when a skill can actively exercise the feature end-to-end; prefer `check_mcp` when a single deterministic tool call is sufficient.
 
 **Tool-gate priority order** (highest-priority configured command wins):
 1. `test_cmd` — most comprehensive
@@ -358,12 +359,73 @@ check_mcp:
 
 **Placement**: `check_mcp` slots after `check_concrete` (cheap shell gates first) and before `check_semantic` / `check_invariants`. If the MCP call is expensive or optional, placing it last (just before `check_invariants`) avoids wasted cost on items that fail earlier checks.
 
+### Skill-as-Judge (`check_skill`)
+
+`action_type: slash_command` (or `prompt`) invokes a skill whose job is to *use* the feature rather than inspect it — browser navigation, form submission, multi-step UX flows, or any end-to-end user simulation. The skill runs as a full agentic Claude session and produces natural-language output; an `llm_structured` evaluator parses its verdict (YES/NO with rationale) and routes accordingly.
+
+**How it differs from `check_mcp`:**
+
+| | `check_mcp` | `check_skill` |
+|---|---|---|
+| Execution | Single deterministic tool call | Full agentic Claude session |
+| Latency | ~500ms | 30–300s |
+| Output | Structured MCP envelope | Natural-language rationale |
+| Best for | Verifying discrete external state | Exercising complex user flows |
+
+**YAML pattern:**
+
+```yaml
+check_skill:
+  action: "/ll:act-as-user 'Navigate to /dashboard and verify the new filter works'"
+  action_type: slash_command
+  timeout: 300
+  evaluate:
+    type: llm_structured
+    prompt: >
+      Did the skill successfully complete the user flow without errors?
+      Did it confirm the expected feature is present and working?
+      Answer YES or NO with what it observed.
+  on_yes: check_invariants
+  on_no: execute
+```
+
+For skills invoked as free-form prompts (no fixed slash command), use `action_type: prompt`:
+
+```yaml
+check_skill:
+  action: "Use the scrape-docs skill to fetch /api/users and confirm the new 'role' field appears in the response"
+  action_type: prompt
+  timeout: 180
+  evaluate:
+    type: llm_structured
+    prompt: >
+      Did the skill confirm the 'role' field is present in the API response?
+      Answer YES or NO with what it observed.
+  on_yes: check_invariants
+  on_no: execute
+```
+
+**Placement**: `check_skill` slots after `check_concrete` and `check_mcp` (cheap/deterministic gates first) and before `check_semantic` / `check_invariants`. When `check_skill` covers quality assessment, `check_semantic` can be omitted — the skill already provides semantic judgment from a user perspective.
+
+**Cost caveat**: Only add `check_skill` when a skill can verify something the other phases cannot observe — actual rendered UI, end-to-end user flow, or external system state. The full agentic session cost is only justified when deterministic checks fall short.
+
+**Full 6-phase ordering (with `check_skill`):**
+
+```
+check_concrete   → cheapest (exit code, <1s)
+check_mcp        → deterministic tool call (~500ms)
+check_skill      → agentic user simulation (30–300s)
+check_semantic   → LLM text quality judgment (can omit when check_skill covers it)
+check_invariants → diff size (cheapest final gate)
+```
+
 **Decision guide — when to reach for each phase:**
 
 | Phase | Use when |
 |-------|---------|
 | `check_concrete` (shell) | A CLI tool exit-codes on pass/fail |
 | `check_mcp` (mcp_tool) | An MCP server can deterministically verify the result |
+| `check_skill` (slash_command + llm_structured) | A skill can exercise the feature end-to-end as a user would |
 | `check_semantic` (LLM judge) | You need judgment about output quality |
 | `check_invariants` (diff size) | You want to catch runaway changes |
 
@@ -506,6 +568,7 @@ states:
 | `check_invariants` always fails | Skill makes large diffs legitimately | Increase `target` from 50 to a value appropriate for the skill |
 | Loop runs but nothing changes across iterations | Skill is idempotent / "already done" | Add `check_stall` with `max_stall: 1` to skip no-op items |
 | `check_mcp` always routes to `not_found` | Server not registered in `.mcp.json` | Add the MCP server entry to `.mcp.json` or route `not_found` to the next phase to skip gracefully |
+| `check_skill` always returns NO | Skill prompt too broad or skill has no browser/nav capability | Narrow the skill instruction; ensure the skill has access to the target system; check timeout is long enough |
 
 ---
 

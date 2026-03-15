@@ -88,7 +88,7 @@ Transitions:
 
 ### Harness (Multi-Item variant)
 ```
-States: discover, execute, [check_concrete], [check_semantic], [check_invariants], advance, done
+States: discover, execute, [check_concrete], [check_mcp], [check_skill], [check_semantic], [check_invariants], advance, done
 Initial: discover
 
 Transitions:
@@ -96,11 +96,23 @@ Transitions:
     - on_yes -> execute
     - on_no -> done
   execute:
-    - next -> check_concrete (or check_semantic / check_invariants / advance if earlier phases omitted)
+    - next -> check_concrete (or check_mcp / check_skill / check_semantic / check_invariants / advance if earlier phases omitted)
   check_concrete:          (present if tool-based gates enabled)
-    - on_yes -> check_semantic (or check_invariants / advance / done)
+    - on_yes -> check_mcp (or check_skill / check_semantic / check_invariants / advance)
     - on_no -> execute
-  check_semantic:          (present if LLM-as-judge enabled)
+  check_mcp:               (present if MCP tool gates enabled)
+    - route[success] -> check_skill (or check_semantic / check_invariants / advance)
+    - route[tool_error] -> execute
+    - route[not_found] -> check_skill (skip gate — server not configured)
+    - route[timeout] -> execute
+  check_skill:             (present if skill-based evaluation enabled)
+    action: "/ll:<skill-name> <task-description>"
+    action_type: slash_command
+    timeout: 300
+    evaluate.type: llm_structured
+    - on_yes -> check_semantic (or check_invariants / advance; omit check_semantic when check_skill covers quality)
+    - on_no -> execute
+  check_semantic:          (present if LLM-as-judge enabled; can omit when check_skill covers quality)
     - on_yes -> check_invariants (or advance / done)
     - on_no -> execute
   check_invariants:        (present if diff invariants enabled)
@@ -111,18 +123,48 @@ Transitions:
   done: [terminal]
 ```
 
+**`check_skill` field reference:**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `action` | `str` | yes | Slash command (e.g. `/ll:act-as-user 'verify ...'`) or plain prompt |
+| `action_type` | `slash_command \| prompt` | recommended | `slash_command` for `/ll:*` commands; `prompt` for free-form instructions |
+| `timeout` | `int` | no | Seconds before abort. Recommended: 120–300 |
+| `evaluate.type` | `llm_structured` | yes | Parses natural-language skill output for YES/NO verdict |
+| `evaluate.prompt` | `str` | yes | Question posed to the LLM evaluator about the skill's output |
+| `on_yes` | `str` | yes | State to transition to on pass |
+| `on_no` | `str` | yes | State to transition to on fail (typically `execute` for retry) |
+
+**`check_skill` vs `check_mcp` comparison:**
+
+| | `check_mcp` | `check_skill` |
+|---|---|---|
+| `action_type` | `mcp_tool` | `slash_command` or `prompt` |
+| Evaluator | `mcp_result` (envelope routing) | `llm_structured` (YES/NO text) |
+| Latency | ~500ms | 30–300s |
+| Capability | Single deterministic tool call | Full agentic Claude session |
+| Best for | External state verification | End-to-end user flow simulation |
+
 ### Harness (Single-Shot variant)
 ```
-States: execute, [check_concrete], [check_semantic], [check_invariants], done
+States: execute, [check_concrete], [check_mcp], [check_skill], [check_semantic], [check_invariants], done
 Initial: execute
 
 Transitions:
   execute:
-    - next -> check_concrete (or check_semantic / check_invariants / done)
+    - next -> check_concrete (or check_mcp / check_skill / check_semantic / check_invariants / done)
   check_concrete:          (present if tool-based gates enabled)
+    - on_yes -> check_mcp (or check_skill / check_semantic / check_invariants / done)
+    - on_no -> execute
+  check_mcp:               (present if MCP tool gates enabled)
+    - route[success] -> check_skill (or check_semantic / check_invariants / done)
+    - route[tool_error] -> execute
+    - route[not_found] -> check_skill (skip gate)
+    - route[timeout] -> execute
+  check_skill:             (present if skill-based evaluation enabled)
     - on_yes -> check_semantic (or check_invariants / done)
     - on_no -> execute
-  check_semantic:          (present if LLM-as-judge enabled)
+  check_semantic:          (present if LLM-as-judge enabled; can omit when check_skill covers quality)
     - on_yes -> check_invariants (or done)
     - on_no -> execute
   check_invariants:        (present if diff invariants enabled)

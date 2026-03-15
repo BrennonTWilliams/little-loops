@@ -619,9 +619,17 @@ questions:
         description: "Claude assesses output quality against skill description"
       - label: "Diff invariants"
         description: "Check git diff --stat to catch runaway or off-scope changes"
+      - label: "Skill-based evaluation (Optional)"
+        description: "Invoke a skill to act as a user and verify the feature end-to-end"
 ```
 
-**Default selection**: All available phases are pre-selected (Recommended).
+**If "Skill-based evaluation" is selected**, ask:
+```
+Which skill should act as evaluator?
+  (Enter a skill name, e.g. "scrape-docs", or describe what to verify)
+```
+
+**Default selection**: All available phases are pre-selected (Recommended). Skill-based evaluation is unselected by default — add it when a skill can verify something the other phases cannot observe.
 
 ---
 
@@ -678,9 +686,20 @@ states:
     action_type: shell
     evaluate:
       type: exit_code
-    on_yes: check_semantic   # or check_invariants or done if later phases omitted
+    on_yes: check_skill      # or check_semantic / check_invariants / done if later phases omitted
     on_no: execute
-  check_semantic:                # include if LLM-as-judge selected
+  check_skill:                   # include if skill-based evaluation selected
+    action: "/ll:<skill-name> <task-description>"
+    action_type: slash_command
+    timeout: 300
+    evaluate:
+      type: llm_structured
+      prompt: >
+        Did the skill confirm the feature works as expected from a user perspective?
+        Answer YES or NO with what it observed.
+    on_yes: check_semantic   # or check_invariants / done if semantic omitted
+    on_no: execute
+  check_semantic:                # include if LLM-as-judge selected (can omit when check_skill covers quality)
     action: "echo 'Evaluating output quality'"
     action_type: shell
     evaluate:
@@ -729,9 +748,20 @@ states:
     action_type: shell
     evaluate:
       type: exit_code
-    on_yes: check_semantic   # or check_invariants or advance
+    on_yes: check_skill      # or check_semantic / check_invariants / advance if later phases omitted
     on_no: execute
-  check_semantic:                # include if LLM-as-judge selected
+  check_skill:                   # include if skill-based evaluation selected
+    action: "/ll:<skill-name> <task-description>"
+    action_type: slash_command
+    timeout: 300
+    evaluate:
+      type: llm_structured
+      prompt: >
+        Did the skill confirm the feature works as expected from a user perspective?
+        Answer YES or NO with what it observed.
+    on_yes: check_semantic   # or check_invariants / advance if semantic omitted
+    on_no: execute
+  check_semantic:                # include if LLM-as-judge selected (can omit when check_skill covers quality)
     action: "echo 'Evaluating output quality'"
     action_type: shell
     evaluate:
