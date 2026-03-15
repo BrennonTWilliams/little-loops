@@ -409,38 +409,38 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 
 | Command | Description |
 |---------|-------------|
-| `init` | Initialize project configuration |
+| `init`^ | Initialize project configuration |
 | `help` | Show command help |
-| `configure` | Interactive configuration editor |
+| `configure`^ | Interactive configuration editor |
 | `toggle-autoprompt` | Toggle automatic prompt optimization |
 | `check-code` | Run lint, format, type checks |
 | `run-tests` | Execute test suites |
 | `find-dead-code` | Identify unused code |
-| `capture-issue` | Capture issues from conversation or description |
-| `format-issue` | Format issue files (interactive or --auto mode) |
+| `capture-issue`^ | Capture issues from conversation or description |
+| `format-issue`^ | Format issue files (interactive or --auto mode) |
 | `scan-codebase` | Find issues in code (technical analysis) |
 | `scan-product` | Find issues in code (product-focused analysis) |
-| `product-analyzer` | Analyze codebase against product goals for feature gaps |
+| `product-analyzer`^ | Analyze codebase against product goals for feature gaps |
 | `prioritize-issues` | Assign P0-P5 priorities |
 | `ready-issue` | Validate and fix issue files |
 | `verify-issues` | Check issues against code |
 | `align-issues` | Validate issues against key documents |
 | `normalize-issues` | Fix issue filenames lacking valid IDs |
 | `sync-issues` | Sync local issues with GitHub Issues |
-| `manage-issue` | Full issue lifecycle management |
+| `manage-issue`^ | Full issue lifecycle management |
 | `iterate-plan` | Update implementation plans |
-| `confidence-check` | Pre-implementation confidence check for readiness |
+| `confidence-check`^ | Pre-implementation confidence check for readiness |
 | `refine-issue` | Refine issues with codebase-driven research |
 | `tradeoff-review-issues` | Evaluate issues for utility vs complexity |
-| `issue-workflow` | Quick reference for issue management workflow |
-| `issue-size-review` | Evaluate issue size/complexity and propose decomposition |
-| `map-dependencies` | Analyze cross-issue dependencies based on file overlap |
+| `issue-workflow`^ | Quick reference for issue management workflow |
+| `issue-size-review`^ | Evaluate issue size/complexity and propose decomposition |
+| `map-dependencies`^ | Analyze cross-issue dependencies based on file overlap |
 | `audit-architecture` | Analyze code structure |
-| `audit-docs` | Check documentation accuracy |
-| `update-docs` | Identify stale or missing docs from recent commits and completed issues |
-| `audit-claude-config` | Comprehensive config audit |
+| `audit-docs`^ | Check documentation accuracy |
+| `update-docs`^ | Identify stale or missing docs from recent commits and completed issues |
+| `audit-claude-config`^ | Comprehensive config audit |
 | `analyze-workflows` | Analyze user message patterns for automation |
-| `analyze-history` | Analyze issue history for project health and trends |
+| `analyze-history`^ | Analyze issue history for project health and trends |
 | `commit` | Create git commits |
 | `describe-pr` | Generate PR descriptions |
 | `open-pr` | Open a pull request for current branch |
@@ -448,11 +448,11 @@ Synthesize workflow patterns into concrete automation proposals. Final step (Ste
 | `manage-release` | Manage releases, tags, and changelogs |
 | `handoff` | Generate session handoff prompt |
 | `resume` | Resume from continuation prompt |
-| `create-loop` | Interactive FSM loop creation |
+| `create-loop`^ | Interactive FSM loop creation |
 | `loop-suggester` | Suggest loops from message history |
-| `review-loop` | Review and improve existing FSM loop configurations |
-| `analyze-loop` | Analyze loop execution history and synthesize issues from failure patterns |
-| `workflow-automation-proposer` | Synthesize workflow patterns into automation proposals |
+| `review-loop`^ | Review and improve existing FSM loop configurations |
+| `analyze-loop`^ | Analyze loop execution history and synthesize issues from failure patterns |
+| `workflow-automation-proposer`^ | Synthesize workflow patterns into automation proposals |
 | `create-sprint` | Create sprint with curated issue list |
 | `review-sprint` | Review sprint health and suggest improvements |
 
