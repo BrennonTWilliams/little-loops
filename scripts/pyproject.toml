@@ -66,6 +66,7 @@ dev = [
     "mutmut>=3.0",
     "ruff>=0.1.0",
     "mypy>=1.0",
+    "hatch>=1.0",
 ]
 llm = []
 
