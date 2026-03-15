@@ -12,6 +12,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.49.0] - 2026-03-15
+
+### Changed
+
+- **Add route_create guard to sprint-build-and-validate** — Prevents invalid route creation in sprint build loops (f5dfd76)
+- **Remove one-off workflow loops from built-in catalog** — Cleans up catalog of ad-hoc loops not intended for general use (b8dad90)
+
+### Fixed
+
+- **FSM on_blocked shorthand field and routing branch** — Added `on_blocked` shorthand support with proper routing branch handling (a428d91)
+- **LLM evaluation timeout raised to 1800s** — Default timeout increased from 30s to prevent premature evaluation failures (9fda9ca)
+- **Context variable interpolation in llm_structured evaluate prompt** — Properly interpolates context vars in evaluation prompts (f565209)
+
+### Documentation
+
+- Fixed three inaccuracies in harnessing guide (bae4fdf)
+
 ## [1.48.0] - 2026-03-15
 
 ### Changed
@@ -1326,6 +1343,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.49.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.48.0...v1.49.0
 [1.48.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.47.0...v1.48.0
 [1.47.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.46.0...v1.47.0
 [1.46.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.45.0...v1.46.0
