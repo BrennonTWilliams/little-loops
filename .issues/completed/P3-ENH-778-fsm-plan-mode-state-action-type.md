@@ -3,7 +3,7 @@ id: ENH-778
 title: "Add plan_call Action Type for FSM States"
 type: ENH
 priority: P3
-status: backlog
+status: wont_do
 discovered_date: 2026-03-16
 discovered_by: capture-issue
 confidence_score: 90
@@ -192,6 +192,14 @@ Zero existing usages of `EnterPlanMode`/`ExitPlanMode` in `scripts/`. These are 
 - `scripts/little_loops/fsm/evaluators.py:421-423` — `/tmp/ll-*` naming convention
 - `docs/claude-code/settings.md:841` — `EnterPlanMode`/`ExitPlanMode` docs reference
 
+## Resolution
+
+**Status**: Won't Do — 2026-03-16
+
+`EnterPlanMode`/`ExitPlanMode` are Claude Code UI tools that toggle session state in the *parent* process. The FSM executor spawns Claude as a child subprocess (`claude -p`), which has no connection to the parent session's plan mode. There is no CLI flag or API to invoke plan mode programmatically from a subprocess.
+
+The "think before acting" intent can already be achieved with a regular `prompt` action using a planning-framed prompt (e.g., "Produce a step-by-step plan only, do not implement"). No new action type is needed.
+
 ## Verification Notes
 
 _Added by `/ll:verify-issues` — 2026-03-16:_
@@ -201,6 +209,7 @@ _Added by `/ll:verify-issues` — 2026-03-16:_
 - The codebase research note (EnterPlanMode/ExitPlanMode not wired in Python) is confirmed: no usages in `scripts/` — this is a key implementation constraint to resolve before coding.
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-16T17:32:20 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
 - `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
 - `/ll:verify-issues` - 2026-03-16T17:28:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
 - `/ll:refine-issue` - 2026-03-16T17:25:24 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef6f9fdc-6be2-4332-a31a-ac306dde4386.jsonl`
