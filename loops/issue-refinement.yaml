@@ -82,7 +82,6 @@ states:
     next: check_commit
   refine_issues:
     action_type: prompt
-    timeout: 600
     action: |
       Run these commands in order for issue ${captured.issue_id.output}:
       1. /ll:refine-issue ${captured.issue_id.output} --auto
@@ -110,5 +109,6 @@ states:
   done:
     terminal: true
 max_iterations: 200
-timeout: 14400
+default_timeout: 3600
+timeout: 86400
 on_handoff: spawn
