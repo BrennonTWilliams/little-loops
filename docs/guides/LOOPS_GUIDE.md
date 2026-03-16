@@ -173,6 +173,7 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `apo-contrastive` | Contrastive APO — generate N variants → score comparatively → select best → repeat |
 | `apo-opro` | OPRO-style prompt optimization — history-guided proposal until convergence |
 | `apo-beam` | Beam search prompt optimization — generate N variants, score all, advance the winner |
+| `apo-textgrad` | TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement |
 
 ## Beyond the Basics
 
@@ -282,7 +283,7 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 
 Automatic Prompt Optimization (APO) loops apply iterative improvement techniques to refine prompts using LLM-driven evaluation. They are a practical alternative to manual prompt engineering: instead of tweaking prompts by hand, you describe your criteria and let the loop drive convergence.
 
-Four built-in APO loops ship with little-loops:
+Five built-in APO loops ship with little-loops:
 
 ### `apo-feedback-refinement` — Feedback-Driven Refinement
 
@@ -401,14 +402,64 @@ generate_variants → score_variants → select_best → route_convergence
 
 ---
 
+### `apo-textgrad` — TextGrad (Example-Driven Gradient Descent)
+
+**Technique**: Test the current prompt against a batch of input/output example pairs → compute a structured "text gradient" (failure pattern, root cause, and fix instruction) → apply the gradient to the prompt → repeat until the pass rate reaches the target.
+
+**When to use**: You have a prompt and a concrete set of input/output examples where the prompt fails on a predictable subset. This is the most targeted APO strategy: failures on specific examples produce specific signals, driving faster convergence than holistic feedback for prompts with clear success criteria (classification, extraction, structured generation).
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `prompt_file` | `system.md` | Path to the prompt file to improve |
+| `examples_file` | `examples.json` | Path to a JSON array of `{"input": ..., "expected": ...}` pairs |
+| `target_pass_rate` | `90` | Pass rate (0–100) at which the loop considers the prompt converged |
+
+**`examples_file` format**:
+
+```json
+[
+  { "input": "Support ticket text...", "expected": "HIGH" },
+  { "input": "Another ticket...", "expected": "LOW" }
+]
+```
+
+Each object must have an `input` field (the text to pass to the prompt) and an `expected` field (the correct output). Arrays of 10–20 examples are typical; larger sets increase signal quality at the cost of more LLM calls per iteration.
+
+**Invocation**:
+
+```bash
+# Run with defaults (system.md + examples.json in current directory)
+ll-loop apo-textgrad
+
+# Point at specific prompt and examples files
+ll-loop apo-textgrad \
+  --context prompt_file=prompts/extractor.md \
+  --context examples_file=tests/extraction-examples.json \
+  --context target_pass_rate=95
+
+# Install to project for customization
+ll-loop install apo-textgrad
+```
+
+**FSM flow**:
+```
+test_on_examples → compute_gradient → route_convergence
+                                      ├─ CONVERGED → done
+                                      └─ CONTINUE → apply_gradient → test_on_examples
+```
+
+---
+
 ### Choosing Between APO Loops
 
-| | `apo-feedback-refinement` | `apo-contrastive` | `apo-opro` | `apo-beam` |
-|---|---|---|---|---|
-| Exploration per iteration | Low (single candidate) | Medium (N candidates, comparative) | Low (history-guided single candidate) | High (N parallel candidates, independent) |
-| Convergence speed | Fastest when feedback is precise | Moderate | Moderate | Slowest (most LLM calls) |
-| Local optima risk | High | Moderate | Moderate | Low |
-| Best for | Targeted improvement with clear criteria | Broad style exploration | Long runs where history improves proposals | Escaping plateaus, high-variance search spaces |
+| | `apo-feedback-refinement` | `apo-contrastive` | `apo-opro` | `apo-beam` | `apo-textgrad` |
+|---|---|---|---|---|---|
+| Exploration per iteration | Low (single candidate) | Medium (N candidates, comparative) | Low (history-guided single candidate) | High (N parallel candidates, independent) | Low (single targeted refinement) |
+| Convergence speed | Fastest when feedback is precise | Moderate | Moderate | Slowest (most LLM calls) | Fast when examples have clear correct answers |
+| Local optima risk | High | Moderate | Moderate | Low | Low (example failures provide precise signal) |
+| Best for | Targeted improvement with clear criteria | Broad style exploration | Long runs where history improves proposals | Escaping plateaus, high-variance search spaces | Prompts with measurable pass/fail examples (classification, extraction) |
 
 ### Tips for APO Loops
 

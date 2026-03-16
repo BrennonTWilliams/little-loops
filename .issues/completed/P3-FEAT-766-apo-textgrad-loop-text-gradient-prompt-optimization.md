@@ -2,7 +2,7 @@
 id: FEAT-766
 type: FEAT
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 100
@@ -115,7 +115,7 @@ states:
 
 ### Files to Modify
 - `loops/apo-textgrad.yaml` — **primary deliverable**: new built-in YAML (no Python changes required)
-- `scripts/tests/test_builtin_loops.py:48-61` — **required**: add `"apo-textgrad"` to the `expected` set in `test_expected_loops_exist`
+- `scripts/tests/test_builtin_loops.py:48-66` — **required**: add `"apo-textgrad"` to the `expected` set in `test_expected_loops_exist`
 - `docs/guides/LOOPS_GUIDE.md` — add `apo-textgrad` entry with `examples_file` format guidance and `ll-loop apo-textgrad` invocation example
 
 ### Dependent Files (No Changes Needed)
@@ -130,13 +130,13 @@ states:
 - `scripts/little_loops/fsm/interpolation.py:65` — valid namespaces: `context`, `captured`, `prev`, `result`, `state`, `loop`, `env`
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py:28-43` — auto-covers new YAML; no additional test code needed beyond `expected` set update
-- `scripts/tests/test_builtin_loops.py:46-64` — `test_expected_loops_exist` uses strict two-way equality (`expected == actual` at line 64); adding `apo-textgrad.yaml` without adding `"apo-textgrad"` to the set will fail the test
-- `scripts/tests/test_builtin_loops.py:257-287` — `REQUIRED_ON_BLOCKED` (lines 261-266) enforces `on_blocked` only for `llm_structured` evaluate states; `apo-textgrad` uses `output_contains` routing, so no entry needed in this list; `on_blocked: done` on the three prompt states is best practice only
+- `scripts/tests/test_builtin_loops.py:29-44` — auto-covers new YAML; no additional test code needed beyond `expected` set update
+- `scripts/tests/test_builtin_loops.py:46-68` — `test_expected_loops_exist` uses strict two-way equality (`expected == actual` at line 68); adding `apo-textgrad.yaml` without adding `"apo-textgrad"` to the set will fail the test
+- `scripts/tests/test_builtin_loops.py:261-287` — `REQUIRED_ON_BLOCKED` (lines 265-270) enforces `on_blocked` only for `llm_structured` evaluate states; `apo-textgrad` uses `output_contains` routing, so no entry needed in this list; `on_blocked: done` on the three prompt states is best practice only
 
 ### Documentation
-- `docs/guides/LOOPS_GUIDE.md:171` — insert new table row after the `rl-policy` row (end of built-in loops table); format: `| \`apo-textgrad\` | TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement |`
-- No per-loop extended sections exist in LOOPS_GUIDE.md (table rows only); `examples_file` format guidance and when-to-use explanation belong in a new `### APO Loops` subsection added below the table (before line 173 `## Beyond the Basics`)
+- `docs/guides/LOOPS_GUIDE.md:175` — insert new table row after the `apo-beam` row (end of built-in loops table); format: `| \`apo-textgrad\` | TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement |`
+- No per-loop extended sections exist in LOOPS_GUIDE.md (table rows only); `examples_file` format guidance and when-to-use explanation belong in a new `### APO Loops` subsection added below the table (before line 177 `## Beyond the Basics`)
 
 ### Configuration
 - N/A — no schema changes needed
@@ -194,11 +194,22 @@ ll-loop show apo-textgrad
 
 `feat`, `loops`, `apo`, `prompt-engineering`
 
+## Resolution
+
+**Completed** | 2026-03-15
+
+- Created `loops/apo-textgrad.yaml` with `test_on_examples → compute_gradient → route_convergence → apply_gradient` FSM
+- Added `"apo-textgrad"` to `expected` set in `scripts/tests/test_builtin_loops.py`
+- Updated `docs/guides/LOOPS_GUIDE.md`: table row, five-loop count, full `### apo-textgrad` section with `examples_file` format, and `apo-textgrad` column in the comparison table
+- All 18 `test_builtin_loops.py` tests pass
+
 ## Status
 
-**Open** | Created: 2026-03-15 | Priority: P3
+**Completed** | Created: 2026-03-15 | Priority: P3
 
 ## Session Log
+- `/ll:manage-issue` - 2026-03-15T00:00:00Z - conversation
+- `/ll:ready-issue` - 2026-03-16T03:36:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1a3fca7b-5ab5-4aba-a7c9-e1f341e85e89.jsonl`
 - `/ll:refine-issue` - 2026-03-16T02:10:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55097244-61de-41f8-ab8e-e7217e1b3e90.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - conversation
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55097244-61de-41f8-ab8e-e7217e1b3e90.jsonl`

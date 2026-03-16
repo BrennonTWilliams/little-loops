@@ -1,0 +1,57 @@
+name: apo-textgrad
+description: "TextGrad-style prompt optimization — test on examples, compute failure gradient, apply refinement"
+initial: test_on_examples
+max_iterations: 20
+timeout: 3600
+on_handoff: spawn
+context:
+  prompt_file: system.md
+  examples_file: examples.json
+  target_pass_rate: 90
+states:
+  test_on_examples:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Read the prompt from ${context.prompt_file}.
+      Read the test examples from ${context.examples_file}.
+      Run the prompt against each example and compare output to expected.
+      For each example output: "Example N: PASS/FAIL — <one-line reason if FAIL>"
+      On the final line output: PASS_RATE=<integer 0-100>
+    capture: test_results
+    on_blocked: done
+    next: compute_gradient
+  compute_gradient:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Analyze these test results to compute a text gradient — a structured description of the failures:
+      ${captured.test_results.output}
+      Output:
+      1. FAILURE_PATTERN: <common theme across all failures>
+      2. ROOT_CAUSE: <what is wrong in the current prompt that causes this>
+      3. GRADIENT: <precise instruction for how to change the prompt to fix this>
+      If PASS_RATE=100 or PASS_RATE exceeds ${context.target_pass_rate}, output CONVERGED on its own line instead.
+    capture: gradient
+    on_blocked: done
+    next: route_convergence
+  route_convergence:
+    evaluate:
+      type: output_contains
+      source: "${captured.gradient.output}"
+      pattern: "CONVERGED"
+    on_yes: done
+    on_no: apply_gradient
+  apply_gradient:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Apply this text gradient to improve the prompt:
+      Current prompt: (read from ${context.prompt_file})
+      Gradient: ${captured.gradient.output}
+      Produce a refined prompt that addresses the ROOT_CAUSE and follows the GRADIENT instruction.
+      Output the full refined prompt, then overwrite ${context.prompt_file} with it.
+    on_blocked: done
+    next: test_on_examples
+  done:
+    terminal: true

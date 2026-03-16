@@ -63,6 +63,7 @@ class TestBuiltinLoopFiles:
             "apo-contrastive",
             "apo-opro",
             "apo-beam",
+            "apo-textgrad",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual
