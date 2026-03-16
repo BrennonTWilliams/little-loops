@@ -51,6 +51,7 @@ The wizard currently offers templates and questions phrased as use-cases (e.g., 
 ### Files to Modify
 - `skills/create-loop/SKILL.md` — wizard logic, loop-type question options, and template definitions
 - `skills/create-loop/templates.md` — all four pre-built template definitions (separate file, not inline in SKILL.md)
+- `skills/create-loop/loop-types.md` — label-dependent routing (`If user selected "Fix errors until clean":` at line 9, `"Maintain code quality continuously":` at line 202, `"Drive a metric toward a target":` at line 331, `"Run a sequence of steps":` at line 434, `"Harness a skill or prompt":` at line 550); any SKILL.md Step 1 label rename must be reflected here
 
 ### Dependent Files (Callers/Importers)
 - `commands/loop-suggester.md` — references `/ll:create-loop` in comparison docs; does not reference template names directly, so no update needed after rename
@@ -126,6 +127,7 @@ Verified 2026-03-15 against codebase. All core claims confirmed accurate:
 **Correction applied**: Integration Map listed `skills/loop-suggester/SKILL.md` — this path does not exist. `loop-suggester` is a command at `commands/loop-suggester.md` and does not reference create-loop template names directly.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T23:50:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4a6f7f86-5e6a-45f1-a1df-d24d55c9a6fc.jsonl`
 - `/ll:refine-issue` - 2026-03-16T23:38:44 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/46067e65-3dd1-4058-a36b-dc2c5cfbade9.jsonl`
 - `/ll:verify-issues` - 2026-03-15T19:32:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
 - `/ll:format-issue` - 2026-03-15T19:29:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5e43041b-8ea4-411c-bfcc-e55b7286039c.jsonl`
