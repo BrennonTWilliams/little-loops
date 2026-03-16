@@ -16,6 +16,8 @@ arguments:
 
 # Initialize Configuration
 
+<!-- PLUGIN_VERSION: 1.50.0 -->
+
 You are tasked with initializing little-loops configuration for a project by creating `.claude/ll-config.json`.
 
 ## Arguments
@@ -321,6 +323,58 @@ Add little-loops state files to `.gitignore` to prevent committing runtime state
 - Only add entries that aren't already present (exact line match)
 - Add a blank line before the comment header if appending to existing content
 - Track whether the file was created or updated for the completion message
+
+### 9.5. Hook Dependency Validation
+
+**Skip this step if** `--dry-run` is set.
+
+After config is written, validate that hook script runtime dependencies are available and the pip package is version-aligned with the plugin. This is a **non-blocking** check — display warnings but always proceed to Step 10.
+
+Run the following checks via Bash:
+
+1. **jq available** (required by all hook scripts):
+   ```bash
+   which jq 2>/dev/null
+   ```
+   If not found:
+   ```
+   Warning: 'jq' not found in PATH — hook scripts (context-monitor, session-start, etc.) will fail silently
+   Install: https://stedolan.github.io/jq/download/
+   ```
+
+2. **python3 available** (required by session-start.sh):
+   ```bash
+   which python3 2>/dev/null
+   ```
+   If not found:
+   ```
+   Warning: 'python3' not found in PATH — session-start.sh will fail silently
+   ```
+
+3. **pyyaml installed** (required by session-start.sh config merge):
+   ```bash
+   python3 -c "import yaml" 2>/dev/null
+   ```
+   If import fails:
+   ```
+   Warning: 'pyyaml' not installed — session-start.sh will fail silently
+   Install: pip install pyyaml
+   ```
+
+4. **little_loops pip package installed and version-aligned**:
+   ```bash
+   python3 -c "import importlib.metadata; print(importlib.metadata.version('little-loops'))" 2>/dev/null
+   ```
+   - If the command fails → warn: `'little-loops' pip package not installed — ll-* CLI tools unavailable. Install: pip install -e "./scripts"`
+   - If installed → compare returned version against the `PLUGIN_VERSION` embedded in this skill (the `<!-- PLUGIN_VERSION: X.Y.Z -->` comment near the top, updated at each release alongside plugin.json, pyproject.toml, `__init__.py`, and CHANGELOG.md)
+   - If versions differ → warn:
+     ```
+     Warning: pip package version (X.Y.Z) does not match plugin version (A.B.C)
+     Run: pip install --upgrade little-loops   (or: pip install -e "./scripts" for development)
+     ```
+   - If versions match → no output (silent success)
+
+**Always proceed to Step 10 regardless of results.**
 
 ### 10. Update Allowed Tools
 
