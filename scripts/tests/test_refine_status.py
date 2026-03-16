@@ -1392,7 +1392,11 @@ class TestColumnElision:
             bugs_dir,
             "P2-BUG-801-narrow-test.md",
             "A moderately long title for the narrow test",
-            session_commands=["/ll:verify-issues", "/ll:refine-issue", "/ll:tradeoff-review-issues"],
+            session_commands=[
+                "/ll:verify-issues",
+                "/ll:refine-issue",
+                "/ll:tradeoff-review-issues",
+            ],
         )
 
         terminal_cols = 60
@@ -1457,7 +1461,9 @@ class TestColumnElision:
         header = out.splitlines()[0]
         # Default columns: all of these should appear at 160 cols
         for col_header in ("ID", "Pri", "Title", "source", "norm", "fmt"):
-            assert col_header in header, f"Expected '{col_header}' in wide-terminal header: {header!r}"
+            assert col_header in header, (
+                f"Expected '{col_header}' in wide-terminal header: {header!r}"
+            )
 
     def test_medium_terminal_fits(
         self,
@@ -1475,7 +1481,11 @@ class TestColumnElision:
             bugs_dir,
             "P2-BUG-803-medium-test.md",
             "Medium terminal test issue",
-            session_commands=["/ll:verify-issues", "/ll:refine-issue", "/ll:tradeoff-review-issues"],
+            session_commands=[
+                "/ll:verify-issues",
+                "/ll:refine-issue",
+                "/ll:tradeoff-review-issues",
+            ],
         )
 
         terminal_cols = 80
@@ -1614,7 +1624,11 @@ class TestColumnElision:
             bugs_dir,
             "P2-BUG-806-custom-elide.md",
             "Custom elide order test",
-            session_commands=["/ll:verify-issues", "/ll:refine-issue", "/ll:tradeoff-review-issues"],
+            session_commands=[
+                "/ll:verify-issues",
+                "/ll:refine-issue",
+                "/ll:tradeoff-review-issues",
+            ],
         )
 
         # Narrow enough to trigger elision

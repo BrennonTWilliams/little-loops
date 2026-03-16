@@ -672,24 +672,26 @@ class TestCmdResumeExitCodes:
 class TestCmdRunHandoffThreshold:
     """Tests for --handoff-threshold handling in cmd_run (ENH-768)."""
 
-    def _make_args(self, handoff_threshold: int | None = None, **kwargs: object) -> argparse.Namespace:
-        defaults = dict(
-            input=None,
-            context=[],
-            max_iterations=None,
-            delay=None,
-            no_llm=False,
-            llm_model=None,
-            dry_run=True,
-            background=False,
-            foreground_internal=False,
-            quiet=False,
-            verbose=False,
-            show_diagrams=False,
-            clear=False,
-            queue=False,
-            handoff_threshold=handoff_threshold,
-        )
+    def _make_args(
+        self, handoff_threshold: int | None = None, **kwargs: object
+    ) -> argparse.Namespace:
+        defaults = {
+            "input": None,
+            "context": [],
+            "max_iterations": None,
+            "delay": None,
+            "no_llm": False,
+            "llm_model": None,
+            "dry_run": True,
+            "background": False,
+            "foreground_internal": False,
+            "quiet": False,
+            "verbose": False,
+            "show_diagrams": False,
+            "clear": False,
+            "queue": False,
+            "handoff_threshold": handoff_threshold,
+        }
         defaults.update(kwargs)
         return argparse.Namespace(**defaults)
 
@@ -702,7 +704,9 @@ class TestCmdRunHandoffThreshold:
         )
         return loops_dir
 
-    def test_handoff_threshold_sets_env_var(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    def test_handoff_threshold_sets_env_var(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
         """Setting --handoff-threshold writes LL_HANDOFF_THRESHOLD to env."""
         import os
 
@@ -737,9 +741,7 @@ class TestCmdRunHandoffThreshold:
 
         assert "LL_HANDOFF_THRESHOLD" not in os.environ
 
-    def test_handoff_threshold_out_of_range_raises(
-        self, tmp_path: Path
-    ) -> None:
+    def test_handoff_threshold_out_of_range_raises(self, tmp_path: Path) -> None:
         """--handoff-threshold outside 1-100 raises SystemExit."""
         from little_loops.cli.loop.run import cmd_run
         from little_loops.logger import Logger
