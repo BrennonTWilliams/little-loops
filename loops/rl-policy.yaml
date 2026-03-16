@@ -40,6 +40,7 @@ states:
       target: done
       progress: improve
       stall: act
+      error: failed
   improve:
     action: |
       # Update the policy based on the observed reward.
@@ -50,4 +51,7 @@ states:
     next: act
   done:
     terminal: true
+  failed:
+    terminal: true
 max_iterations: 100
+on_handoff: pause

@@ -42,6 +42,10 @@ states:
       target: done
       progress: exploit
       stall: explore
+      error: failed
   done:
     terminal: true
+  failed:
+    terminal: true
 max_iterations: 50
+on_handoff: pause
