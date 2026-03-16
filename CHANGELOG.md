@@ -12,6 +12,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Windows compatibility testing
 - Performance benchmarks for large repositories
 
+## [1.50.0] - 2026-03-16
+
+### Added
+
+- **Loop-level `default_timeout` for FSM executor** — Per-state action timeout fallback eliminates hardcoded timeouts and per-state annotations (ENH-777)
+- **APO built-in loops** — OPRO, beam search, and TextGrad loops for automatic prompt optimization (1694797, 1dc689d, 5e471a8, a87703f)
+- **RL built-in loop types** — `rl-bandit`, `rl-rlhf`, and `rl-policy` reinforcement-learning loop variants (affc355)
+- **TDD issue implementation loop** — Built-in loop for test-driven development workflows (0dcb159)
+- **`--handoff-threshold` flag** — Added to `ll-loop run` and `resume` for session handoff control (32b9360)
+- **`--status` flag for `ll-issues list`** — Filter issues by status in the list subcommand (a476fb3)
+- **`allowed-tools` area in configure skill and init wizard** — Configure allowed tools interactively (748d398)
+
+### Fixed
+
+- **Friendly error for missing context variables** — Loop executor now surfaces clear messages when context vars are absent (5c6e8d6)
+- **APO convergence check on_error routing** — Route to `generate_variants` instead of failing on convergence errors (e3bc2ab)
+- **`general-task` loop on_error routing** — Added on_error routing and failure terminal to prevent silent hangs (31336cd)
+
+### Changed
+
+- **Dynamic column elision in refine-status** — Narrow terminal widths now gracefully elide lower-priority columns (814f12b)
+
 ## [1.49.0] - 2026-03-15
 
 ### Changed
@@ -1343,6 +1365,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Git operations constrained to repository directory
 - Claude CLI invoked with `--dangerously-skip-permissions` (documented requirement for automation)
 
+[1.50.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.49.0...v1.50.0
 [1.49.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.48.0...v1.49.0
 [1.48.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.47.0...v1.48.0
 [1.47.0]: https://github.com/BrennonTWilliams/little-loops/compare/v1.46.0...v1.47.0
