@@ -3165,3 +3165,59 @@ class TestInterpolationErrorHandling:
         assert "input" in result.error
         # Should not be a raw Python exception message like "Path 'input' not found in context"
         assert "--context" in result.error or "ll-loop run" in result.error
+
+
+class TestDefaultTimeout:
+    """Tests for loop-level default_timeout fallback chain."""
+
+    @dataclass
+    class TimeoutCapturingRunner:
+        """Action runner that records the timeout passed to run()."""
+
+        captured_timeouts: list[int] = field(default_factory=list)
+
+        def run(
+            self,
+            action: str,
+            timeout: int,
+            is_slash_command: bool,
+            on_output_line: Any = None,
+        ) -> ActionResult:
+            self.captured_timeouts.append(timeout)
+            return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
+
+    def _make_fsm(self, state_timeout: int | None = None, default_timeout: int | None = None) -> FSMLoop:
+        """Build a minimal FSMLoop with a single prompt state."""
+        state_kwargs: dict[str, Any] = {"action_type": "prompt", "action": "echo hi", "next": "done"}
+        if state_timeout is not None:
+            state_kwargs["timeout"] = state_timeout
+        return FSMLoop(
+            name="test",
+            initial="work",
+            default_timeout=default_timeout,
+            states={
+                "work": StateConfig(**state_kwargs),
+                "done": StateConfig(terminal=True),
+            },
+        )
+
+    def test_state_timeout_used_when_set(self) -> None:
+        """Per-state timeout takes precedence over default_timeout."""
+        fsm = self._make_fsm(state_timeout=300, default_timeout=3600)
+        runner = self.TimeoutCapturingRunner()
+        FSMExecutor(fsm, action_runner=runner).run()
+        assert runner.captured_timeouts == [300]
+
+    def test_default_timeout_used_when_state_has_none(self) -> None:
+        """default_timeout is used when state has no timeout."""
+        fsm = self._make_fsm(state_timeout=None, default_timeout=600)
+        runner = self.TimeoutCapturingRunner()
+        FSMExecutor(fsm, action_runner=runner).run()
+        assert runner.captured_timeouts == [600]
+
+    def test_hardcoded_fallback_when_neither_set(self) -> None:
+        """Hardcoded 3600s fallback applies when neither state nor loop timeout is set."""
+        fsm = self._make_fsm(state_timeout=None, default_timeout=None)
+        runner = self.TimeoutCapturingRunner()
+        FSMExecutor(fsm, action_runner=runner).run()
+        assert runner.captured_timeouts == [3600]

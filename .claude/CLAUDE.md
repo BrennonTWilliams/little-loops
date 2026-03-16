@@ -1,4 +1,4 @@
-<!-- Last updated: 2026-02-25 -->
+<!-- Last updated: 2026-03-15 -->
 # little-loops (ll) - Claude Code Plugin
 
 Development workflow toolkit for Claude Code with issue management, code quality commands, and automated processing.
@@ -49,7 +49,7 @@ docs/           # Architecture, API, troubleshooting
 Run `/ll:help` for full list. Both commands (`commands/*.md`) and skills (`skills/*/SKILL.md`) are invoked via `/ll:<name>`. Skills are marked with ^.
 
 - **Issue Discovery**: `capture-issue`^, `scan-codebase`, `scan-product`, `audit-architecture`, `product-analyzer`^
-- **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`^, `refine-issue`, `verify-issues`, `tradeoff-review-issues`, `ready-issue`, `issue-workflow`^, `issue-size-review`^, `map-dependencies`^
+- **Issue Refinement**: `normalize-issues`, `prioritize-issues`, `align-issues`, `format-issue`^ (template structure), `refine-issue` (codebase research), `verify-issues`, `tradeoff-review-issues`, `ready-issue`, `issue-workflow`^, `issue-size-review`^, `map-dependencies`^
 - **Planning & Implementation**: `create-sprint`, `review-sprint`, `manage-issue`^, `iterate-plan`, `confidence-check`^
 - **Code Quality**: `check-code`, `run-tests`, `audit-docs`^, `update-docs`^, `find-dead-code`
 - **Git & Release**: `commit`, `open-pr`, `describe-pr`, `manage-release`, `sync-issues`, `cleanup-worktrees`

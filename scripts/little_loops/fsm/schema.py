@@ -404,6 +404,7 @@ class FSMLoop:
     max_iterations: int = 50
     backoff: float | None = None
     timeout: int | None = None
+    default_timeout: int | None = None
     maintain: bool = False
     llm: LLMConfig = field(default_factory=LLMConfig)
     on_handoff: Literal["pause", "spawn", "terminate"] = "pause"
@@ -429,6 +430,8 @@ class FSMLoop:
             result["backoff"] = self.backoff
         if self.timeout is not None:
             result["timeout"] = self.timeout
+        if self.default_timeout is not None:
+            result["default_timeout"] = self.default_timeout
         if self.maintain:
             result["maintain"] = self.maintain
         if self.on_handoff != "pause":
@@ -464,6 +467,7 @@ class FSMLoop:
             max_iterations=data.get("max_iterations", 50),
             backoff=data.get("backoff"),
             timeout=data.get("timeout"),
+            default_timeout=data.get("default_timeout"),
             maintain=data.get("maintain", False),
             llm=llm,
             on_handoff=data.get("on_handoff", "pause"),

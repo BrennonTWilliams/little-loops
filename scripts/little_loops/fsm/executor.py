@@ -637,11 +637,11 @@ class FSMExecutor:
             # Direct MCP tool call — bypass action_runner entirely
             interpolated_params = interpolate_dict(state.params, ctx) if state.params else {}
             cmd = ["mcp-call", action, json.dumps(interpolated_params)]
-            result = self._run_subprocess(cmd, timeout=state.timeout or 30, on_output_line=_on_line)
+            result = self._run_subprocess(cmd, timeout=state.timeout or self.fsm.default_timeout or 30, on_output_line=_on_line)
         else:
             result = self.action_runner.run(
                 action,
-                timeout=state.timeout or 120,
+                timeout=state.timeout or self.fsm.default_timeout or 3600,
                 is_slash_command=action_mode == "prompt",
                 on_output_line=_on_line,
             )
