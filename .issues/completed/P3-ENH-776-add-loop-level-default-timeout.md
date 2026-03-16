@@ -156,6 +156,7 @@ state.timeout → fsm.default_timeout → hardcoded (3600 for prompt/LLM, 30 for
 - **Action needed**: Move to `completed/` directory (requires explicit user approval — skipped in auto mode)
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-16T20:24:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/082d4a47-ca5b-4d0c-bdd8-b514032fde8c.jsonl`
 - `/ll:confidence-check` - 2026-03-16T19:26:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:refine-issue` - 2026-03-16T19:25:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:confidence-check` - 2026-03-16T19:21:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`

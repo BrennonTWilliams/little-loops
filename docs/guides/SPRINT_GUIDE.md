@@ -90,7 +90,7 @@ options:
 | `created` | yes | ISO 8601 timestamp; set automatically on creation |
 | `issues` | yes | List of issue IDs (e.g., `BUG-001`, `FEAT-010`) |
 | `options.timeout` | no | Per-issue timeout in seconds (default: 3600) |
-| `options.max_workers` | no | Max parallel workers per wave (default: from config) |
+| `options.max_workers` | no | Max parallel workers per wave (default: 2) |
 
 Issue IDs in the sprint list are resolved to actual files at runtime. The sprint itself only stores IDs — the file search happens when you run.
 

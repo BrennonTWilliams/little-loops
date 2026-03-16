@@ -191,8 +191,7 @@ Use interactive mode for high-priority issues where quality matters. Use `--auto
 ### Enriching with Codebase Research
 
 ```
-/ll:refine-issue                     ← refine all issues
-/ll:refine-issue P2-BUG-042-...md   ← refine one issue
+/ll:refine-issue [issue-id]          ← refine one issue (issue_id required)
 ```
 
 Searches the actual codebase to fill knowledge gaps in each issue. It reads relevant files, traces call paths, finds callers and similar patterns, then populates or updates:
@@ -307,7 +306,7 @@ Run this before sprint planning. Issues with unresolved dependencies shouldn't b
 ### Planning First
 
 ```
-/ll:manage-issue plan [issue-id]
+/ll:manage-issue [type] plan [issue-id]
 ```
 
 Before writing code, generate a detailed implementation plan. The skill reads the issue, researches the codebase, and produces a step-by-step plan that you approve before execution begins. The plan covers:
@@ -417,7 +416,7 @@ When you want to queue up a week of work:
 3. /ll:prioritize-issues           ← assign P0-P5 to all issues
 4. /ll:tradeoff-review-issues      ← prune low-value issues
 5. /ll:format-issue --auto         ← promote survivors to v2.0 template
-6. /ll:refine-issue                ← enrich with codebase research
+6. /ll:refine-issue [issue-id]     ← enrich with codebase research (run per issue)
 7. /ll:verify-issues               ← test claims against code
 8. /ll:ready-issue                 ← validate quality gate
 9. /ll:map-dependencies            ← identify ordering constraints

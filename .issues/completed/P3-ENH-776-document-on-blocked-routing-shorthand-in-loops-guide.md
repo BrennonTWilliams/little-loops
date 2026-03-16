@@ -41,9 +41,9 @@ The Routing section in `docs/guides/LOOPS_GUIDE.md` should:
 
 ## Acceptance Criteria
 
-- [ ] `on_blocked` appears in the shorthand routing table in `LOOPS_GUIDE.md` alongside `on_yes`, `on_no`, `on_partial`
-- [ ] `blocked` verdict is explained (when `llm_structured` emits it — e.g., missing prerequisite, ambiguous state)
-- [ ] At least one example state shows `on_blocked: <target_state>` routing
+- [x] `on_blocked` appears in the shorthand routing table in `LOOPS_GUIDE.md` alongside `on_yes`, `on_no`, `on_partial`
+- [x] `blocked` verdict is explained (when `llm_structured` emits it — e.g., missing prerequisite, ambiguous state)
+- [x] At least one example state shows `on_blocked: <target_state>` routing
 
 ## Implementation Steps
 
@@ -125,6 +125,11 @@ N/A - No public API changes (documentation-only enhancement)
 - Executor: `scripts/little_loops/fsm/executor.py`
 
 
+## Resolution
+
+- **Status**: COMPLETED — 2026-03-16
+- Updated `docs/guides/LOOPS_GUIDE.md` line 240: added `on_blocked` to shorthand list and inserted paragraph + example mirroring `generalized-fsm-loop.md:445–456`
+
 ## Verification Notes
 
 - **Verdict**: VALID — gap confirmed as of 2026-03-16
@@ -134,6 +139,7 @@ N/A - No public API changes (documentation-only enhancement)
 - All referenced code files exist: `scripts/little_loops/fsm/schema.py`, `scripts/little_loops/fsm/executor.py`
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-16T20:24:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8cfbbc21-6b64-450a-a7fd-588221611c38.jsonl`
 - `/ll:confidence-check` - 2026-03-16T19:26:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:refine-issue` - 2026-03-16T19:25:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:confidence-check` - 2026-03-16T19:21:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`

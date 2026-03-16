@@ -237,7 +237,7 @@ The captured value is accessible as `${captured.lint_count.output}`, `${captured
 
 ### Routing
 
-States use **shorthand** (`on_yes`, `on_no`, `on_partial`) or a **route table** for verdict-to-state mapping:
+States use **shorthand** (`on_yes`, `on_no`, `on_partial`, `on_blocked`) or a **route table** for verdict-to-state mapping:
 
 ```yaml
 route:
@@ -248,6 +248,19 @@ route:
 ```
 
 Use `$current` as a target to retry the current state. Use `_` for a default route when no other verdict matches.
+
+An additional shorthand, `on_blocked`, routes when the evaluator returns a `blocked` verdict (i.e., the action cannot proceed without external intervention):
+
+```yaml
+states:
+  fix:
+    action: "/ll:manage-issue bug fix"
+    on_yes: "verify"
+    on_no: "fix"
+    on_blocked: "escalate"
+```
+
+`on_blocked` is resolved alongside `on_yes`/`on_no`/`on_error` in the shorthand lookup. It is equivalent to adding `blocked: "escalate"` to a full `route` table. If a `blocked` verdict is returned and no `on_blocked` target is defined, the loop terminates with a fatal routing error — define `on_blocked` on any state whose action can return a `blocked` verdict.
 
 ### Action Types
 
