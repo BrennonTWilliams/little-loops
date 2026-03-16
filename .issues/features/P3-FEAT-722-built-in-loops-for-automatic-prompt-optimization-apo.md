@@ -5,8 +5,8 @@ type: FEAT
 status: open
 discovered_date: 2026-03-13
 discovered_by: capture-issue
-confidence_score: 93
-outcome_confidence: 79
+confidence_score: 98
+outcome_confidence: 92
 ---
 
 # FEAT-722: Built-in Loops for Automatic Prompt Optimization (APO) Techniques
@@ -226,6 +226,7 @@ Not used in any current loop yet — fully implemented at `evaluators.py:308-370
 - No APO loop YAML files exist in `loops/` (confirmed by filename search). No `builtins/` directory exists under `scripts/little_loops/`. `ll-loop list` and `ll-loop run` have no `--builtin` flag. Feature not yet implemented.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-15T12:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f2a9635-b943-494d-b273-e6a6ca4c03c9.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/747c5f9b-360d-4e87-ae12-b8e2fc7167bf.jsonl`
 - `/ll:refine-issue` - 2026-03-16T00:58:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88954013-7439-4bde-96ee-7533696b0537.jsonl`
 - `/ll:refine-issue` - 2026-03-16T00:52:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42bbd8c6-c965-46f9-b9f1-23535801a250.jsonl`

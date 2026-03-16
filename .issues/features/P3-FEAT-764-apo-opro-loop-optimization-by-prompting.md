@@ -5,6 +5,8 @@ priority: P3
 status: open
 discovered_date: 2026-03-15
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # FEAT-764: APO Loop — OPRO (Optimization by PROmpting)
@@ -58,13 +60,18 @@ Add `loops/apo-opro.yaml` following the patterns established in FEAT-722 (`apo-f
 ```yaml
 name: apo-opro
 description: "OPRO-style prompt optimization — history-guided proposal until convergence"
-initial: propose_candidate
+initial: init_history
 max_iterations: 25
 context:
   prompt_file: system.md
   eval_criteria: ""
   target_score: 90
 states:
+  init_history:
+    action: echo "No previous candidates."
+    action_type: shell
+    capture: score_history
+    next: propose_candidate
   propose_candidate:
     action_type: prompt
     action: |
@@ -136,10 +143,20 @@ states:
 ### Configuration
 - N/A — no schema changes needed; `output_contains` evaluator already registered
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- **Critical — interpolation raises on missing captured keys**: `interpolation.py:102-124` `_get_nested` raises `InterpolationError("Path '...' not found in captured")` when the referenced slot hasn't been populated. The original proposed YAML had `initial: propose_candidate` which reads `${captured.score_history.output}` on the first iteration — this would crash before any candidate is proposed. Fix applied above: `initial: init_history` seeds `score_history` with `"No previous candidates."` via a shell action.
+- **`capture:` slot is overwritten each iteration**: `rl-rlhf.yaml:46` confirms a slot name like `score_history` is always overwritten by the most recent state that captures to it — the running history must be explicitly reconstructed in `update_history` (already done in proposed YAML).
+- **`test_expected_loops_exist` assert is at line 64** (not 61): the `expected` set spans `test_builtin_loops.py:48-62`; the `assert expected == actual` is on line 64.
+- **`LOOPS_GUIDE.md` table spans lines 157-171** (not 157-169): `apo-opro` row sorts before `backlog-flow-optimizer` alphabetically, so it goes first in the table.
+- **`REQUIRED_ON_BLOCKED` audit list** (`test_builtin_loops.py:261-266`) only audits specific named `llm_structured` states in four named loops; OPRO's `on_blocked: done` on prompt states is best-practice, not test-enforced.
+
 ## Implementation Steps
 
 1. Read `loops/issue-refinement.yaml` and `loops/backlog-flow-optimizer.yaml` to internalize the `capture:` accumulation and `output_contains` routing patterns
-2. Author `loops/apo-opro.yaml` following the YAML shape in Proposed Solution above; validate field names against `schema.py:179-227` `StateConfig` fields
+2. Author `loops/apo-opro.yaml` following the YAML shape in Proposed Solution above; ensure `initial: init_history` (not `propose_candidate`) — `interpolation.py:122-123` raises `InterpolationError` on any missing captured key, so `score_history` must be seeded before `propose_candidate` runs; validate remaining field names against `schema.py:179-227` `StateConfig` fields
 3. Add `"apo-opro"` to `expected` set in `scripts/tests/test_builtin_loops.py:48-61`
 4. Run `python -m pytest scripts/tests/test_builtin_loops.py -v` — all 3 auto-tests (`parse`, `validate`, `expected_set`) must pass
 5. Add `apo-opro` row to the built-in loops table in `docs/guides/LOOPS_GUIDE.md:157-169`; the format is a single two-column table row — `| \`apo-opro\` | [one-line description from YAML] |`; no separate technique section or invocation example block is needed
@@ -185,5 +202,8 @@ ll-loop show apo-opro
 **Open** | Created: 2026-03-15 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T02:58:39 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5174c024-3fd6-45af-99ec-40b65318a9fe.jsonl`
 - `/ll:refine-issue` - 2026-03-16T01:43:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/985aba8f-2b18-4a2d-9edb-1476f791cb38.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - conversation
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7b13fa42-ae65-4611-bb1d-5fee30b6940b.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/7cfa2c78-0022-4007-b1b6-448ac982f4aa.jsonl`
