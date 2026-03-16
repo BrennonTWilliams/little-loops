@@ -1,0 +1,54 @@
+name: apo-beam
+description: "Beam search prompt optimization — generate N variants, score all, advance the winner"
+initial: generate_variants
+max_iterations: 20
+timeout: 3600
+on_handoff: spawn
+context:
+  prompt_file: system.md
+  eval_criteria: ""
+  beam_width: 4
+  target_score: 90
+states:
+  generate_variants:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Read the current best prompt from ${context.prompt_file}.
+      Generate exactly ${context.beam_width} distinct variations of it.
+      Vary structure, phrasing, examples, and persona — not just minor wording.
+      Output each variant numbered 1 through ${context.beam_width}, separated by "---VARIANT---".
+    capture: variants
+    next: score_variants
+  score_variants:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Score each of these prompt variants against the criteria: ${context.eval_criteria}
+      Variants:
+      ${captured.variants.output}
+      For each variant output: "Variant N: <score 0-100> — <one-line rationale>"
+      On the final line output: BEST_VARIANT=N (the number of the highest-scoring variant)
+    capture: scores
+    next: select_best
+  select_best:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Scores: ${captured.scores.output}
+      Extract the best variant (indicated by BEST_VARIANT=N) from:
+      ${captured.variants.output}
+      If the best score exceeds ${context.target_score}, output the variant text followed by CONVERGED on its own line.
+      Otherwise output the variant text followed by CONTINUE on its own line.
+      Also overwrite ${context.prompt_file} with the winning variant text.
+    capture: best_candidate
+    next: route_convergence
+  route_convergence:
+    evaluate:
+      type: output_contains
+      source: "${captured.best_candidate.output}"
+      pattern: "CONVERGED"
+    on_yes: done
+    on_no: generate_variants
+  done:
+    terminal: true

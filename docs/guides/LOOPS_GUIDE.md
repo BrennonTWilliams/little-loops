@@ -172,6 +172,7 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `apo-feedback-refinement` | Feedback-driven APO — generate → evaluate → refine until convergence |
 | `apo-contrastive` | Contrastive APO — generate N variants → score comparatively → select best → repeat |
 | `apo-opro` | OPRO-style prompt optimization — history-guided proposal until convergence |
+| `apo-beam` | Beam search prompt optimization — generate N variants, score all, advance the winner |
 
 ## Beyond the Basics
 
@@ -281,7 +282,7 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 
 Automatic Prompt Optimization (APO) loops apply iterative improvement techniques to refine prompts using LLM-driven evaluation. They are a practical alternative to manual prompt engineering: instead of tweaking prompts by hand, you describe your criteria and let the loop drive convergence.
 
-Two built-in APO loops ship with little-loops:
+Four built-in APO loops ship with little-loops:
 
 ### `apo-feedback-refinement` — Feedback-Driven Refinement
 
@@ -359,14 +360,55 @@ generate_variants → score_and_select → route_convergence
 
 ---
 
-### Choosing Between the Two
+### `apo-beam` — Beam Search Optimization
 
-| | `apo-feedback-refinement` | `apo-contrastive` |
-|---|---|---|
-| Exploration per iteration | Low (single candidate) | High (N candidates) |
-| Convergence speed | Faster when feedback is precise | Slower but less likely to plateau |
-| LLM calls per iteration | 2 | 2 |
-| Best for | Targeted, criteria-driven improvement | Broad exploration of prompt styles |
+**Technique**: Generate N variants in parallel → score all → advance the highest-scoring winner → repeat until convergence.
+
+**When to use**: You have already tried linear refinement (`apo-feedback-refinement` or `apo-contrastive`) and hit a plateau. Beam search explores `beam_width` directions simultaneously each iteration rather than following a single candidate forward. This makes it less likely to stay trapped in a local optimum and more likely to find a qualitatively different high-scoring prompt region.
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `prompt_file` | `system.md` | Path to the prompt file to improve |
+| `eval_criteria` | `""` | Criteria used to score each variant |
+| `beam_width` | `4` | Number of distinct variants generated per iteration |
+| `target_score` | `90` | Score (0–100) at which the loop emits `CONVERGED` and terminates |
+
+**Invocation**:
+
+```bash
+# Run with defaults (beam_width=4)
+ll-loop apo-beam
+
+# Wider beam for higher-stakes optimization
+ll-loop apo-beam \
+  --context prompt_file=prompts/triage.md \
+  --context eval_criteria="correctly triage support tickets by severity" \
+  --context beam_width=6 \
+  --context target_score=88
+
+# Install to project for customization
+ll-loop install apo-beam
+```
+
+**FSM flow**:
+```
+generate_variants → score_variants → select_best → route_convergence
+                                                    ├─ CONVERGED → done
+                                                    └─ CONTINUE → generate_variants
+```
+
+---
+
+### Choosing Between APO Loops
+
+| | `apo-feedback-refinement` | `apo-contrastive` | `apo-opro` | `apo-beam` |
+|---|---|---|---|---|
+| Exploration per iteration | Low (single candidate) | Medium (N candidates, comparative) | Low (history-guided single candidate) | High (N parallel candidates, independent) |
+| Convergence speed | Fastest when feedback is precise | Moderate | Moderate | Slowest (most LLM calls) |
+| Local optima risk | High | Moderate | Moderate | Low |
+| Best for | Targeted improvement with clear criteria | Broad style exploration | Long runs where history improves proposals | Escaping plateaus, high-variance search spaces |
 
 ### Tips for APO Loops
 

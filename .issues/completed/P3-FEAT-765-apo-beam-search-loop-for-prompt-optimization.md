@@ -2,7 +2,7 @@
 id: FEAT-765
 type: FEAT
 priority: P3
-status: open
+status: completed
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 100
@@ -17,7 +17,7 @@ Add a built-in FSM loop `apo-beam` that implements beam search for prompt optimi
 
 ## Current Behavior
 
-`ll-loop` has no built-in loop implementing beam search over the prompt space. Users who want to explore multiple prompt variants simultaneously and select the strongest must design a custom FSM from scratch. FEAT-722 (the parent APO initiative) plans a single-path refinement loop (`apo-feedback-refinement`) that only refines one candidate per iteration — it cannot explore multiple directions simultaneously. Neither `apo-beam.yaml` nor `apo-feedback-refinement.yaml` exist yet; both are planned deliverables from FEAT-722. As of 2026-03-15, `loops/` contains no `apo-*.yaml` files.
+`ll-loop` has no built-in loop implementing beam search over the prompt space. Users who want to explore multiple prompt variants simultaneously and select the strongest must design a custom FSM from scratch. FEAT-722 (the parent APO initiative, now completed) delivered single-path refinement loops (`apo-feedback-refinement`, `apo-contrastive`, `apo-opro`) that refine or compare candidates per iteration — none implement beam search with parallel generation and winner selection. `apo-beam.yaml` does not exist yet.
 
 ## Expected Behavior
 
@@ -44,13 +44,13 @@ Single-path refinement loops can get stuck in local optima. Beam search explores
 
 ## Acceptance Criteria
 
-- [ ] `loops/apo-beam.yaml` exists and passes `test_all_parse_as_yaml` and `test_all_validate_as_valid_fsm`
-- [ ] Loop generates multiple variants per iteration (controlled by `context.beam_width`)
-- [ ] Loop scores all variants and selects the highest-scoring one
-- [ ] Loop terminates on convergence (emits `CONVERGED` token) or `max_iterations`
-- [ ] `scripts/tests/test_builtin_loops.py` `expected` set updated to include `apo-beam`
-- [ ] `on_blocked` omitted from `action_type: prompt` states (see Integration Map — `on_blocked` is only valid on `llm_structured` evaluate states)
-- [ ] `docs/guides/LOOPS_GUIDE.md` documents the loop with usage example
+- [x] `loops/apo-beam.yaml` exists and passes `test_all_parse_as_yaml` and `test_all_validate_as_valid_fsm`
+- [x] Loop generates multiple variants per iteration (controlled by `context.beam_width`)
+- [x] Loop scores all variants and selects the highest-scoring one
+- [x] Loop terminates on convergence (emits `CONVERGED` token) or `max_iterations`
+- [x] `scripts/tests/test_builtin_loops.py` `expected` set updated to include `apo-beam`
+- [x] `on_blocked` omitted from `action_type: prompt` states (see Integration Map — `on_blocked` is only valid on `llm_structured` evaluate states)
+- [x] `docs/guides/LOOPS_GUIDE.md` documents the loop with usage example
 
 ## Proposed Solution
 
@@ -127,8 +127,8 @@ states:
 - FEAT-722 implementation notes: "multi-candidate generation is new territory — generate N variants in a single prompt state as a numbered list, then scoring all in the next state" — this is the exact pattern used here
 
 ### Tests
-- `scripts/tests/test_builtin_loops.py:28-43` — auto-covers new YAML; no additional test code needed beyond `expected` set update
-- `scripts/tests/test_builtin_loops.py:48-62` — `expected` set currently has 13 stems; adding `"apo-beam"` makes 14; bidirectional equality check means both the YAML and the set entry must be added together
+- `scripts/tests/test_builtin_loops.py:29-44` — auto-covers new YAML; no additional test code needed beyond `expected` set update
+- `scripts/tests/test_builtin_loops.py:48-65` — `expected` set currently has 16 stems; adding `"apo-beam"` makes 17; bidirectional equality check means both the YAML and the set entry must be added together
 - `scripts/tests/test_builtin_loops.py:254-284` — `TestBuiltinLoopOnBlockedCoverage`: enforces `on_blocked` only for `llm_structured` evaluate states; `apo-beam` uses only `output_contains` routing, so it is NOT in the enforced set and must NOT add `on_blocked` to action states (research confirms `on_blocked` appears exclusively on `llm_structured` evaluate states across all existing loops)
 
 ### Documentation
@@ -143,7 +143,7 @@ states:
 2. Author `loops/apo-beam.yaml` following the YAML shape in Proposed Solution above
 3. Add `"apo-beam"` to `expected` set in `scripts/tests/test_builtin_loops.py:48-61`
 4. Run `python -m pytest scripts/tests/test_builtin_loops.py -v` — all 3 auto-tests must pass
-5. Add `apo-beam` entry to `docs/guides/LOOPS_GUIDE.md:157-171` built-in loops table: `| \`apo-beam\` | Beam search prompt optimization — generate N variants, score all, advance the winner |`
+5. Add `apo-beam` entry to `docs/guides/LOOPS_GUIDE.md:157-175` built-in loops table (after line 174 `apo-opro` row): `| \`apo-beam\` | Beam search prompt optimization — generate N variants, score all, advance the winner |`
 
 ## API/Interface
 
@@ -181,9 +181,19 @@ ll-loop install apo-beam
 
 ## Status
 
-**Open** | Created: 2026-03-15 | Priority: P3
+**Completed** | Created: 2026-03-15 | Priority: P3
+
+## Resolution
+
+Implemented `loops/apo-beam.yaml` with a 4-state FSM: `generate_variants` → `score_variants` → `select_best` → `route_convergence`. Uses `output_contains` routing on `CONVERGED`/`CONTINUE` sentinel tokens following the `backlog-flow-optimizer` pattern. All 7 acceptance criteria met; 18 tests pass.
+
+- `loops/apo-beam.yaml` — new built-in loop (generate_variants → score_variants → select_best → route_convergence)
+- `scripts/tests/test_builtin_loops.py` — added `"apo-beam"` to `expected` set (17 entries)
+- `docs/guides/LOOPS_GUIDE.md` — added `apo-beam` to built-in loops table, added detailed section with context variable table and invocation examples, updated comparison table to cover all 4 APO loops, updated intro text from "Two" to "Four"
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-16T03:28:34 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f248881-4da0-409c-a0dd-16d6672bc709.jsonl`
 - `/ll:refine-issue` - 2026-03-16T02:11:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b918c53-10e7-4c18-8f65-7a0fdd85cd04.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - conversation
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1ae078c-0743-4f48-bee3-15017b2d071b.jsonl`
+- `/ll:manage-issue` - 2026-03-15T00:00:00Z - conversation
