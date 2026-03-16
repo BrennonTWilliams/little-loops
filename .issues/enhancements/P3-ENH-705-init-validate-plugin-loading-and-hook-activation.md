@@ -5,69 +5,55 @@ confidence_score: 95
 outcome_confidence: 78
 ---
 
-# ENH-705: Init should validate plugin loading and hook activation
+# ENH-705: Init should validate hook script dependencies and version alignment
 
 ## Summary
 
-When a user enables hook-dependent features (context monitoring, handoff) during `/ll:init`, the init process does not verify that little-loops is actually loaded as a Claude Code plugin. If it isn't, those features silently do nothing — hooks never fire. Init should detect this condition and warn the user clearly.
+Init should verify that hook runtime dependencies (`jq`, `python3`, `pyyaml`) are available, and that the installed `little_loops` pip package version matches the loaded plugin version. Missing dependencies cause silent hook failures; a mismatched pip/plugin version causes behavioral drift between hook scripts and CLI tools.
 
 ## Current Behavior
 
-`/ll:init` successfully configures features like `context_monitor.enabled: true` and `continuation.auto_detect_on_session_start: true`, writes `.claude/ll-config.json`, and reports success. If little-loops is not loaded as a plugin (e.g., only installed via CLAUDE.md instructions or scripts in PATH), the PostToolUse and PreCompact hooks never fire, but the user receives no warning.
+`/ll:init` successfully writes `.claude/ll-config.json` and reports success with no runtime dependency checks. If `jq` is missing from PATH, all hook scripts fail silently — PostToolUse, SessionStart, Stop, and PreCompact hooks produce no output and no error. If the user upgrades the Claude Code plugin without reinstalling the pip package (or vice versa), the hook scripts and CLI tools diverge in behavior with no warning at setup time.
 
 ## Expected Behavior
 
-When init enables features that depend on hooks (`context_monitor`, handoff thresholds, precompact state), it should:
-1. Detect whether little-loops appears to be loaded as a plugin (check for `.claude-plugin/plugin.json` in the loaded plugins, or inspect the Claude Code settings)
-2. If not loaded as a plugin, display a clear warning explaining that these features require plugin loading
-3. Optionally offer guidance on how to register the plugin
+After writing the config, init should:
+1. Check that `jq` is available in PATH (required by all hook scripts)
+2. Check that `python3` is available (required by `session-start.sh`)
+3. Check that `pyyaml` is installed (`python3 -c "import yaml"` — required by `session-start.sh` config merge)
+4. Check that the `little-loops` pip package is installed (`importlib.metadata.version('little-loops')`)
+5. If installed, verify the pip package version matches the plugin version — warn if they differ
+
+All checks are non-blocking: display warnings and proceed.
 
 ## Motivation
 
-Silent failure is confusing. A user who follows the init wizard and enables handoff automation reasonably expects it to work. When nothing happens at 80% context, they have no signal that the feature is unconfigured. Adding a validation step surfaces the problem at setup time rather than leaving users to discover it empirically.
+Silent failure is confusing. A user who installs little-loops on a new machine and runs `/ll:init` reasonably expects hooks to work. When nothing happens at 80% context, they have no signal that `jq` is missing. Similarly, a user who upgrades only the Claude Code plugin has no indication that their `ll-*` CLI tools are out of sync. Surfacing these issues at init time is far better than leaving users to discover them empirically.
 
 ## Proposed Solution
 
-Add a **Step 9.5** validation step in `skills/init/SKILL.md` (after Step 9: Update .gitignore, before Step 10: Display Completion Message), following the same non-blocking pattern as the existing Step 7.5 command availability check (`SKILL.md:212-243`):
+Add a **Step 9.5** validation step in `skills/init/SKILL.md` (after Step 9: Update .gitignore, before Step 10: Update Allowed Tools), following the same non-blocking pattern as the existing Step 7.5 command availability check (`SKILL.md:212-243`):
 
-1. Check `.claude/settings.json` (or `.claude/settings.local.json`) for a plugin entry referencing `little-loops` or `.claude-plugin/plugin.json`. Note: `CLAUDE_PLUGIN_ROOT` env var is only available at hook runtime, not during init execution, so settings file inspection is the reliable detection method.
-2. Determine which hook-dependent features are active:
-   - Explicitly enabled: `context_monitor.enabled: true` (set in interactive Round 3a, `interactive.md:457-462`)
-   - Implicitly enabled by schema default: `continuation.enabled: true` and `continuation.auto_detect_on_session_start: true` (`config-schema.json:369-375`) — these are never configured during init because Round 9 is auto-skipped (`interactive.md:590-596`)
-3. If any hook-dependent features are active but plugin loading can't be confirmed, output a warning block:
-   ```
-   ⚠ Hook-dependent features enabled but plugin loading not confirmed.
-     Features: context_monitor, continuation/handoff auto-trigger
-     These features require little-loops to be registered as a Claude Code plugin.
-     Hooks affected: PostToolUse (context-monitor.sh), SessionStart (session-start.sh)
-     See: https://docs.anthropic.com/claude-code/plugins
-   ```
-4. Do not block init — warn and continue (consistent with Step 7.5 behavior)
+1. Check `which jq` — warn if not found (required by all hooks)
+2. Check `which python3` — warn if not found (required by `session-start.sh`)
+3. Check `python3 -c "import yaml"` — warn if pyyaml not installed (required by `session-start.sh` config merge)
+4. Check `python3 -c "import importlib.metadata; print(importlib.metadata.version('little-loops'))"` — warn if not installed; if installed, compare version to `PLUGIN_VERSION` comment embedded in the skill and warn if they differ
+5. Do not block init — warn and continue
 
 ## Scope Boundaries
 
 - **In scope**: Adding a post-write validation step to `skills/init/SKILL.md`
-- **Out of scope**: Automatically installing the plugin, modifying Claude Code settings
+- **Out of scope**: Automatically installing missing dependencies, modifying system PATH
 
 ## Implementation Steps
 
-1. **Add Step 9.5 to `skills/init/SKILL.md`** (insert between Step 9 at ~line 320 and Step 10 at ~line 324):
-   - Title: "### 9.5. Plugin Loading Validation"
-   - Follow the structure of Step 7.5 (`SKILL.md:212-243`): non-blocking, skipped for `--dry-run`
-   - Check `.claude/settings.json` and `.claude/settings.local.json` for plugin registration
-   - Detect hook-dependent features: check written config for `context_monitor.enabled: true`, and note that `continuation` is implicitly enabled by schema defaults (`config-schema.json:369-375`)
-   - If features active but plugin not confirmed, emit structured warning block
+1. **Add `<!-- PLUGIN_VERSION: 1.50.0 -->` comment** near the top of `skills/init/SKILL.md` (after the frontmatter/title block) — read by Step 9.5 as the authoritative plugin version for comparison; updated alongside the 4 existing version locations at release time
 
-2. **Determine detection logic for plugin registration**:
-   - Read `.claude/settings.json` (if it exists) and look for a `plugins` array or `permissions` entries referencing the little-loops plugin path
-   - Fallback: check if `.claude-plugin/plugin.json` exists in the project root (confirms manifest exists, but not that Claude Code has loaded it)
-   - Model after the `validate_enabled_features()` pattern in `hooks/scripts/session-start.sh:101-144` — check condition, emit warning, continue
-
-3. **Update Step 10 completion message** (`SKILL.md:324-352`):
-   - If the plugin warning was emitted in Step 9.5, include a reminder in the "Next steps" section about plugin registration
-
-4. **Optionally update `skills/init/interactive.md`**:
-   - In the wizard summary output, if hook-dependent features were selected in Round 3a (`interactive.md:183-204`), include the plugin status note
+2. **Add Step 9.5 to `skills/init/SKILL.md`** (insert between Step 9 at ~line 323 and Step 10 at ~line 325):
+   - Title: "### 9.5. Hook Dependency Validation"
+   - Skip if `--dry-run` is set
+   - Follow the structure of Step 7.5 (`SKILL.md:212-243`): non-blocking, warn-and-continue
+   - Run four Bash checks; emit warnings for any failures; always proceed to Step 10
 
 ## Impact
 
@@ -79,38 +65,42 @@ Add a **Step 9.5** validation step in `skills/init/SKILL.md` (after Step 9: Upda
 ## Integration Map
 
 ### Files to Modify
-- `skills/init/SKILL.md` — add Step 9.5 plugin validation (insert between ~line 320 and ~line 324)
-- `skills/init/interactive.md` — optionally add plugin status note to wizard summary when hook features selected in Round 3a
+- `skills/init/SKILL.md` — add `PLUGIN_VERSION` comment and Step 9.5 hook dependency validation (insert between ~line 323 and ~line 325)
 
 ### Dependent Files (Callers/Importers)
 - N/A — init skill is invoked directly by users, not imported
 
 ### Similar Patterns
 - `skills/init/SKILL.md:212-243` — Step 7.5 command availability check: non-blocking, post-confirm, warn-and-continue pattern (direct structural analog)
-- `hooks/scripts/session-start.sh:101-144` — `validate_enabled_features()`: checks enabled feature flags against sub-config completeness, emits `[little-loops] Warning:` to stderr
-- `commands/align-issues.md:32-56` — Pre-check gate with remediation steps (blocking variant, shows both wizard and manual JSON paths)
+- `hooks/scripts/session-start.sh` — uses `which jq` / `command -v` pattern for detecting missing dependencies before executing hook logic
+
+### Dependency Check Summary
+
+| Dep | Used By | Check Command | Install Hint |
+|-----|---------|--------------|--------------|
+| `jq` | ALL hooks | `which jq` | OS package manager |
+| `python3` | session-start.sh | `which python3` | OS package manager |
+| `pyyaml` | session-start.sh | `python3 -c "import yaml"` | `pip install pyyaml` |
+| `little_loops` package | ll-* CLI tools | `importlib.metadata.version('little-loops')` | `pip install -e "./scripts"` |
+| version alignment | (correctness) | compare metadata version to PLUGIN_VERSION | `pip install --upgrade` |
 
 ### Tests
 - No existing test coverage for init skill validation logic
 - `scripts/tests/test_hooks_integration.py` — hook integration tests (model for testing hook-dependent behavior)
-- `scripts/tests/test_config.py` — config module tests (model for testing config key detection)
 
 ### Documentation
 - Warning is self-documenting in init output
-- `docs/guides/GETTING_STARTED.md` — could reference the plugin validation warning
 
 ### Configuration
-- Reads: `context_monitor.enabled` (`config-schema.json:413-416`, default `false`)
-- Reads: `continuation.enabled` (`config-schema.json:369-372`, default `true`)
-- Reads: `continuation.auto_detect_on_session_start` (`config-schema.json:373-375`, default `true`)
-- Inspects: `.claude/settings.json` for plugin registration entries
-- No new config keys added
+- No config keys read or written
+- Reads `PLUGIN_VERSION` comment embedded in `skills/init/SKILL.md`
+- Reads pip package version via `importlib.metadata`
 
 ## Verification Notes
 
 - **Date**: 2026-03-13
 - **Verdict**: VALID
-- `skills/init/SKILL.md` has no "Step 9.5 Plugin Loading Validation" step. The referenced Step 7.5 pattern exists in the file. `hooks/hooks.json` exists and confirms hook-dependent features are real. The feature is not yet implemented.
+- `skills/init/SKILL.md` has no "Step 9.5" step. The referenced Step 7.5 pattern exists in the file. Hook scripts confirmed to require `jq` (all hooks) and `python3` + `pyyaml` (`session-start.sh`). Version is defined in 4 locations (plugin.json, pyproject.toml, `__init__.py`, CHANGELOG.md) with no cross-check at setup time.
 
 ## Labels
 
