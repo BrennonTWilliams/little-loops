@@ -291,6 +291,8 @@ Which evaluation phases should be included? (multi-select)
   ○ Skill-based evaluation (Optional) — Invoke a skill to exercise and verify the feature as a user would
 ```
 
+> **Note**: `check_mcp` is not offered by the wizard. If your harness requires an MCP tool call for evaluation, add a `check_mcp` state manually to the generated YAML after wizard completion. See [`check_mcp`](#check_mcp) in the Evaluation Phases Explained section for the required fields.
+
 **Tool-gate priority order** (highest-priority configured command wins):
 1. `test_cmd` — most comprehensive
 2. `lint_cmd` — fast feedback
@@ -453,7 +455,7 @@ Add a `check_stall` state when a skill might loop without making any code change
 - You see a harness exhausting `max_iterations` without git commits
 - The skill being harnessed sometimes returns "already done"
 
-**Placement**: Insert `check_stall` between `execute` and the first check state (or between `check_invariants` and `advance`).
+**Placement**: Insert `check_stall` between `check_invariants` and `advance` (as shown in the example below). Alternatively, insert it between `execute` and the first check state — in that placement, use `on_yes: check_concrete` (or whichever check state comes first) instead of `on_yes: advance`.
 
 ```yaml
 check_stall:
@@ -465,6 +467,11 @@ check_stall:
     max_stall: 2           # optional: consecutive no-change iterations before stall
   on_yes: advance          # progress detected — move on
   on_no: skip_item         # stalled — skip without consuming more iterations
+
+skip_item:
+  action: echo "Skipping ${current_item} after stall detection"
+  action_type: shell
+  next: done
 ```
 
 **`diff_stall` field reference:**
