@@ -7,6 +7,8 @@ status: backlog
 discovered_date: "2026-03-15"
 discovered_by: capture-issue
 labels: [cli, ux, table-rendering]
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # ENH-750: ll-issues refine-status: dynamic terminal width table rendering
@@ -118,5 +120,7 @@ Key files:
 ---
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-16T01:17:42 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f07d141f-c10b-4237-8f07-e0a5d89864ca.jsonl`
 - `/ll:format-issue` - 2026-03-16T00:56:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8bc41a61-b249-4f82-b1e4-50bab87ac931.jsonl`
 - `/ll:capture-issue` - 2026-03-15T04:11:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0e4ff8a-9271-4c55-a606-a120317ccfad.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/572a622a-9f9a-4c1c-bba4-ab1e066ec125.jsonl`

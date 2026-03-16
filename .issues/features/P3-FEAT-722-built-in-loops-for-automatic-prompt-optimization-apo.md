@@ -5,7 +5,7 @@ type: FEAT
 status: open
 discovered_date: 2026-03-13
 discovered_by: capture-issue
-confidence_score: 90
+confidence_score: 93
 outcome_confidence: 79
 ---
 
@@ -106,6 +106,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 ### Tests
 - `scripts/tests/test_builtin_loops.py` — **auto-covers new YAML files**: `test_all_parse_as_yaml` and `test_all_validate_as_valid_fsm` iterate all files in `BUILTIN_LOOPS_DIR`; new APO files are tested for free
+- `scripts/tests/test_builtin_loops.py:48-61` — **⚠️ MUST update `test_expected_loops_exist`**: this test asserts exact set equality over `loops/` filenames; adding `apo-feedback-refinement.yaml` and `apo-contrastive.yaml` will fail until both names are added to the `expected` set. Update this test in the same step as authoring the YAML files.
+- `scripts/tests/test_builtin_loops.py:254-284` — **⚠️ `on_blocked` required for `llm_structured` states**: `TestBuiltinLoopOnBlockedCoverage` enforces `on_blocked` handlers on audited loops. If any APO loop state uses `evaluate.type: llm_structured`, add it to `REQUIRED_ON_BLOCKED` with its expected `on_blocked` value, and define `on_blocked` in the YAML.
 - `scripts/tests/test_ll_loop_commands.py` — add tests for new `--builtin` CLI flags if added
 - `scripts/tests/test_ll_loop_parsing.py:26-37` — `_create_run_parser()` helper pattern to follow for testing new flag definitions
 
@@ -166,7 +168,7 @@ _Enriched by `/ll:refine-issue` — infrastructure already exists; core work is 
    ```
    **LLM output tag convention**: each evaluation state emits exactly one uppercase token on its own line (e.g., `CONVERGED`, `NEEDS_REFINE`) to enable `output_contains` routing — see `backlog-flow-optimizer.yaml:35-58` for the canonical pattern.
 
-2. **Author `loops/apo-contrastive.yaml`** — FSM: `generate_variants → score_variants → select_best → route_convergence → [loop|done]`. Use `capture: scored_variants` to store scoring output. **Note**: multi-candidate generation is new territory — no existing loop does this. Recommend generating N variants in a single prompt state as a numbered list, then scoring all in the next state, then selecting/committing the winner. Example convergence check: use `output_contains` on `CONVERGED` tag emitted by `select_best` when selected score exceeds threshold; or use the `convergence` evaluator at `evaluators.py:308-370` (verdicts: `target`, `progress`, `stall`) for numeric score-based tracking.
+2. **Author `loops/apo-contrastive.yaml`** — FSM: `generate_variants → score_variants → select_best → route_convergence → [loop|done]`. Use `capture: scored_variants` to store scoring output. **Note**: multi-candidate generation is new territory — no existing loop does this. Recommend generating N variants in a single prompt state as a numbered list, then scoring all in the next state, then selecting/committing the winner. **Use `output_contains` for convergence routing** (emit `CONVERGED` from `select_best` when score exceeds threshold) — avoid the `convergence` evaluator (`evaluators.py:308-370`) as it has no production usage in existing loops and adds implementation risk for first-time users. The `convergence` evaluator remains an option for future iteration once the simpler approach is validated.
 
 3. **Add `--builtin` filter to `ll-loop list`** (optional, UX improvement) — add `store_true` arg at `cli/loop/__init__.py:149-155`; modify `cmd_list()` at `info.py:101-136` to skip project loops section when `--builtin` is set.
 4. **Add `--builtin` flag to `ll-loop run`** (optional) — add `store_true` arg at `cli/loop/__init__.py:92-139`; modify `cmd_run()` at `run.py:32` to call `get_builtin_loops_dir() / f"{loop_name}.yaml"` directly when flag is set, bypassing `resolve_loop_path()`.
@@ -197,7 +199,7 @@ on_stall: done        # exit if no improvement
 ```
 Not used in any current loop yet — fully implemented at `evaluators.py:308-370`.
 
-**Interpolation namespaces in any string field**: `${context.*}`, `${captured.<state>.output}`, `${prev.output}`, `${state.iteration}`, `${loop.elapsed}`, `${env.*}`
+**Interpolation namespaces in any string field**: `${context.*}`, `${captured.<state>.output}`, `${prev.output}`, `${state.iteration}`, `${loop.elapsed}`, `${env.*}` — **use `${context.prompt_file}` not `${var.prompt_file}`**; `var` is not a valid namespace and will fail silently or raise at runtime
 
 ## Impact
 
@@ -224,6 +226,7 @@ Not used in any current loop yet — fully implemented at `evaluators.py:308-370
 - No APO loop YAML files exist in `loops/` (confirmed by filename search). No `builtins/` directory exists under `scripts/little_loops/`. `ll-loop list` and `ll-loop run` have no `--builtin` flag. Feature not yet implemented.
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/747c5f9b-360d-4e87-ae12-b8e2fc7167bf.jsonl`
 - `/ll:refine-issue` - 2026-03-16T00:58:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88954013-7439-4bde-96ee-7533696b0537.jsonl`
 - `/ll:refine-issue` - 2026-03-16T00:52:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42bbd8c6-c965-46f9-b9f1-23535801a250.jsonl`
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`

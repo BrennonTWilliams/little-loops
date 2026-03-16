@@ -5,6 +5,8 @@ type: ENH
 status: active
 discovered_date: 2026-03-13
 discovered_by: capture-issue
+confidence_score: 98
+outcome_confidence: 78
 ---
 
 # ENH-732: Replace FSM State Box Badges with Unicode Compositions
@@ -23,7 +25,7 @@ The current badges (`[prompt]`, `[slash_command]`, `[shell]`, `[mcp]`) are verbo
 
 ## Expected Behavior
 
-Replace each action type badge with the following composition:
+Replace each action type badge with the following composition, positioned in the **top-right corner** of the state box (replacing the current inline badge that appears alongside the state name):
 
 | Action Type     | Current Badge    | New Badge |
 |----------------|-----------------|-----------|
@@ -31,6 +33,8 @@ Replace each action type badge with the following composition:
 | `slash_command` | `[slash_command]`| `/━►`     |
 | `shell`         | `[shell]`        | `❯_`      |
 | `mcp`           | `[mcp]`          | `⚡`       |
+
+The badge must be right-aligned within the top border row of the box so it appears in the top-right corner, rather than inline next to the state name. The state name continues to occupy the remaining horizontal space on the name row.
 
 The `mcp` action type is not yet implemented (tracked in FEAT-729), but the badge mapping should be added in anticipation of that feature.
 
@@ -46,9 +50,10 @@ The `mcp` action type is not yet implemented (tracked in FEAT-729), but the badg
 
 1. Add a `_ACTION_TYPE_BADGES` dict in `scripts/little_loops/cli/loop/layout.py` mapping action type strings to their unicode compositions.
 2. Replace all three badge-construction sites in `layout.py` that currently construct `badge = f"[{state.action_type}]"` (and the `[shell]` fallback) with lookups into `_ACTION_TYPE_BADGES`, falling back to `f"[{action_type}]"` for unknown types. (Sites are near the `_render_state_box`, `_render_compact_state`, and `_render_legend` functions — at approximately lines 85, 466, 1367 per Verification Notes.)
-3. Verify width calculations remain correct — the new badges have different display widths than the old bracket strings (e.g., `[slash_command]` is 15 chars; `/━►` is 3 chars, but `━` and `►` may have terminal display widths > 1).
-4. Consider using `wcwidth` or a `_BADGE_DISPLAY_WIDTHS` override table for display-width calculation if terminal rendering is a concern.
-5. Update any snapshot/golden-file tests in `scripts/tests/` that assert on rendered diagram output containing the old badge strings.
+3. Move the badge from its current inline position (next to the state name) to the **top-right corner** of the state box: right-align the badge within the top border row so it occupies the rightmost characters of that row, and remove it from the state name row.
+4. Verify width calculations remain correct — the new badges have different display widths than the old bracket strings (e.g., `[slash_command]` is 15 chars; `/━►` is 3 chars, but `━` and `►` may have terminal display widths > 1).
+5. Consider using `wcwidth` or a `_BADGE_DISPLAY_WIDTHS` override table for display-width calculation if terminal rendering is a concern.
+6. Update any snapshot/golden-file tests in `scripts/tests/` that assert on rendered diagram output containing the old badge strings or the old inline badge placement.
 
 ## Integration Map
 
@@ -104,3 +109,4 @@ Active — not yet started.
 - `/ll:verify-issues` - 2026-03-15T00:11:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/623195d5-5e50-40d6-b2b9-5b105ad77689.jsonl`
 - `/ll:capture-issue` - 2026-03-13T22:51:23Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fa4d2baf-3524-4c44-a9ad-16fe76a5f6b8.jsonl`
