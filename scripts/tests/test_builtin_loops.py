@@ -56,6 +56,9 @@ class TestBuiltinLoopFiles:
             "backlog-flow-optimizer",
             "sprint-build-and-validate",
             "worktree-health",
+            "rl-bandit",
+            "rl-rlhf",
+            "rl-policy",
         }
         actual = {f.stem for f in BUILTIN_LOOPS_DIR.glob("*.yaml")}
         assert expected == actual

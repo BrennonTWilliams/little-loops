@@ -909,4 +909,366 @@ states:
     next: discover
   done:
     terminal: true
+
+---
+
+## RL Loops
+
+If user selected any of the three RL loop types, follow the steps below for that type.
+
+---
+
+### RL Bandit Questions
+
+If user selected "RL: Bandit (explore vs exploit)":
+
+#### Step R1 — Explore and Exploit Actions
+
+Ask:
+
+```yaml
+questions:
+  - question: "What shell command or prompt runs an exploration step (try a new option)?"
+    header: "Explore action"
+    multiSelect: false
+    options:
+      - label: "Custom shell command"
+        description: "Run a shell command that implements exploration"
+      - label: "Claude prompt"
+        description: "Use a Claude prompt action_type"
+
+  - question: "What shell command or prompt runs an exploitation step (use best known option)?"
+    header: "Exploit action"
+    multiSelect: false
+    options:
+      - label: "Custom shell command"
+        description: "Run a shell command that implements exploitation"
+      - label: "Claude prompt"
+        description: "Use a Claude prompt action_type"
+```
+
+Both actions must print a numeric reward score between 0.0 and 1.0 as their last output line.
+
+#### Step R2 — Reward Target
+
+Ask:
+
+```yaml
+questions:
+  - question: "What reward target should terminate the loop (0.0–1.0)?"
+    header: "Reward target"
+    multiSelect: false
+    options:
+      - label: "0.8 (Recommended)"
+        description: "Stop when reward reaches 0.8"
+      - label: "0.9"
+        description: "High-quality threshold"
+      - label: "0.7"
+        description: "Good-enough threshold"
+      - label: "Custom"
+        description: "Specify your own value"
+```
+
+#### Step R3 — Iteration Budget
+
+Ask:
+
+```yaml
+questions:
+  - question: "What is the maximum number of rounds?"
+    header: "Max iterations"
+    multiSelect: false
+    options:
+      - label: "50 (Recommended)"
+      - label: "100"
+      - label: "20 (fast test)"
+```
+
+#### RL Bandit YAML Generation
+
+Generate using these values:
+- `explore_action` — shell command or prompt from Step R1
+- `explore_action_type` — "shell" or "prompt"
+- `exploit_action` — shell command or prompt from Step R1
+- `exploit_action_type` — "shell" or "prompt"
+- `reward_target` — float from Step R2 (e.g. 0.8)
+- `max_iterations` — integer from Step R3
+
+```yaml
+name: <loop-name>
+description: |
+  Epsilon-greedy bandit loop toward reward target <reward_target>.
+initial: explore
+context:
+  reward_target: <reward_target>
+  epsilon: 0.1
+states:
+  explore:
+    action: |
+      <explore_action>
+    action_type: <explore_action_type>
+    capture: round_result
+    next: reward
+  exploit:
+    action: |
+      <exploit_action>
+    action_type: <exploit_action_type>
+    capture: round_result
+    next: reward
+  reward:
+    action: |
+      echo "${captured.round_result.output}" | tail -1 | tr -d '[:space:]'
+    action_type: shell
+    evaluate:
+      type: convergence
+      target: "${context.reward_target}"
+      direction: maximize
+      tolerance: 0.05
+    route:
+      target: done
+      progress: exploit
+      stall: explore
+  done:
+    terminal: true
+max_iterations: <max_iterations>
+```
+
+---
+
+### RL RLHF Questions
+
+If user selected "RL: RLHF-style (generate → score → refine)":
+
+#### Step H1 — Generation and Refinement Actions
+
+Ask:
+
+```yaml
+questions:
+  - question: "What command or prompt generates the initial candidate output?"
+    header: "Generate action"
+    multiSelect: false
+    options:
+      - label: "Claude prompt"
+        description: "Use a Claude prompt to generate output"
+      - label: "Custom shell command"
+        description: "Run a shell command that produces output"
+
+  - question: "What command or prompt refines the candidate given feedback?"
+    header: "Refine action"
+    multiSelect: false
+    options:
+      - label: "Claude prompt"
+        description: "Use a Claude prompt with feedback context"
+      - label: "Custom shell command"
+        description: "Run a shell command that improves output"
+```
+
+#### Step H2 — Scoring Action and Quality Target
+
+Ask:
+
+```yaml
+questions:
+  - question: "What command scores the candidate output (must print integer 0–10 on last line)?"
+    header: "Score action"
+    multiSelect: false
+    options:
+      - label: "Claude prompt evaluation"
+        description: "Use a Claude prompt to score quality"
+      - label: "Custom shell command"
+        description: "Run a deterministic scoring script"
+
+  - question: "What minimum quality score (0–10) should terminate the loop?"
+    header: "Quality target"
+    multiSelect: false
+    options:
+      - label: "8 (Recommended)"
+        description: "High quality threshold"
+      - label: "7"
+        description: "Good-enough threshold"
+      - label: "9"
+        description: "Near-perfect threshold"
+```
+
+#### Step H3 — Iteration Budget
+
+Ask:
+
+```yaml
+questions:
+  - question: "What is the maximum number of refinement rounds?"
+    header: "Max iterations"
+    multiSelect: false
+    options:
+      - label: "30 (Recommended)"
+      - label: "50"
+      - label: "10 (fast test)"
+```
+
+#### RL RLHF YAML Generation
+
+Generate using these values:
+- `generate_action` / `generate_action_type` — from Step H1
+- `refine_action` / `refine_action_type` — from Step H1
+- `score_action` / `score_action_type` — from Step H2
+- `quality_target` — integer from Step H2 (e.g. 8)
+- `max_iterations` — integer from Step H3
+
+```yaml
+name: <loop-name>
+description: |
+  RLHF-style generate-score-refine loop targeting quality score >= <quality_target>.
+initial: generate
+states:
+  generate:
+    action: |
+      <generate_action>
+    action_type: <generate_action_type>
+    capture: candidate
+    next: score
+  score:
+    action: |
+      <score_action>
+    action_type: <score_action_type>
+    evaluate:
+      type: output_numeric
+      operator: ge
+      target: <quality_target>
+    on_yes: done
+    on_no: refine
+    on_error: done
+  refine:
+    action: |
+      <refine_action>
+    action_type: <refine_action_type>
+    capture: candidate
+    next: score
+  done:
+    terminal: true
+max_iterations: <max_iterations>
+```
+
+---
+
+### RL Policy Questions
+
+If user selected "RL: Policy iteration (act → observe → improve)":
+
+#### Step P1 — Act and Observe Actions
+
+Ask:
+
+```yaml
+questions:
+  - question: "What command executes the policy action in the environment?"
+    header: "Act action"
+    multiSelect: false
+    options:
+      - label: "Custom shell command"
+        description: "Run a shell command that acts in the environment"
+      - label: "Claude prompt"
+        description: "Use a Claude prompt to decide and act"
+
+  - question: "What command observes the environment outcome and prints reward (0.0–1.0) on last line?"
+    header: "Observe action"
+    multiSelect: false
+    options:
+      - label: "Custom shell command"
+        description: "Run a shell command that measures environment state"
+      - label: "Claude prompt"
+        description: "Use a Claude prompt to interpret environment state"
+```
+
+#### Step P2 — Policy Improvement and Reward Target
+
+Ask:
+
+```yaml
+questions:
+  - question: "What command updates the policy based on the observed reward?"
+    header: "Improve action"
+    multiSelect: false
+    options:
+      - label: "Claude prompt"
+        description: "Use a Claude prompt to refine the policy"
+      - label: "Custom shell command"
+        description: "Run a script that adjusts policy parameters"
+
+  - question: "What reward target should terminate the loop (0.0–1.0)?"
+    header: "Reward target"
+    multiSelect: false
+    options:
+      - label: "0.85 (Recommended)"
+      - label: "0.9"
+      - label: "0.7"
+      - label: "Custom"
+```
+
+#### Step P3 — Iteration Budget
+
+Ask:
+
+```yaml
+questions:
+  - question: "What is the maximum number of policy iterations?"
+    header: "Max iterations"
+    multiSelect: false
+    options:
+      - label: "100 (Recommended)"
+      - label: "50"
+      - label: "200"
+```
+
+#### RL Policy YAML Generation
+
+Generate using these values:
+- `act_action` / `act_action_type` — from Step P1
+- `observe_action` / `observe_action_type` — from Step P1
+- `improve_action` / `improve_action_type` — from Step P2
+- `reward_target` — float from Step P2 (e.g. 0.85)
+- `max_iterations` — integer from Step P3
+
+```yaml
+name: <loop-name>
+description: |
+  Policy iteration loop toward reward target <reward_target>.
+initial: act
+context:
+  reward_target: <reward_target>
+states:
+  act:
+    action: |
+      <act_action>
+    action_type: <act_action_type>
+    capture: action_result
+    next: observe
+  observe:
+    action: |
+      <observe_action>
+    action_type: <observe_action_type>
+    capture: observation
+    next: score
+  score:
+    action: |
+      echo "${captured.observation.output}" | tail -1 | tr -d '[:space:]'
+    action_type: shell
+    evaluate:
+      type: convergence
+      target: "${context.reward_target}"
+      direction: maximize
+      tolerance: 0.05
+    route:
+      target: done
+      progress: improve
+      stall: act
+  improve:
+    action: |
+      <improve_action>
+    action_type: <improve_action_type>
+    next: act
+  done:
+    terminal: true
+max_iterations: <max_iterations>
+```
 ```

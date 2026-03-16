@@ -44,12 +44,12 @@ Reinforcement learning workflows are inherently iterative and well-suited to FSM
 
 ## Acceptance Criteria
 
-- [ ] `/ll:create-loop` wizard lists at least 3 RL loop types: `rl-bandit`, `rl-rlhf`, `rl-policy`
-- [ ] Each RL loop type produces a valid, runnable FSM YAML configuration
-- [ ] RL loops support a configurable `max_iterations` parameter to bound execution
-- [ ] RL loops support a convergence condition (e.g., `min_improvement_threshold`) that terminates early when met
-- [ ] RL loop YAML templates pass existing FSM schema validation
-- [ ] Existing non-RL loop types are unaffected (no regression)
+- [x] `/ll:create-loop` wizard lists at least 3 RL loop types: `rl-bandit`, `rl-rlhf`, `rl-policy`
+- [x] Each RL loop type produces a valid, runnable FSM YAML configuration
+- [x] RL loops support a configurable `max_iterations` parameter to bound execution
+- [x] RL loops support a convergence condition (e.g., `min_improvement_threshold`) that terminates early when met
+- [x] RL loop YAML templates pass existing FSM schema validation
+- [x] Existing non-RL loop types are unaffected (no regression)
 
 ## Proposed Solution
 
@@ -167,7 +167,27 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 
 ## Status
 
-**Open** | Created: 2026-03-13 | Priority: P3
+**Completed** | Created: 2026-03-13 | Completed: 2026-03-15 | Priority: P3
+
+## Resolution
+
+Implemented 3 RL built-in loop types as YAML templates and registered them in the `/ll:create-loop` wizard.
+
+### Changes Made
+
+- `loops/rl-bandit.yaml` — epsilon-greedy bandit: `explore → reward ← exploit`, `convergence` evaluator routing `target→done, progress→exploit, stall→explore`
+- `loops/rl-rlhf.yaml` — RLHF-style: `generate → score → refine → done`, `output_numeric` evaluator (ge target 8)
+- `loops/rl-policy.yaml` — policy iteration: `act → observe → score → improve → done`, `convergence` evaluator
+- `skills/create-loop/SKILL.md` — added 3 RL options to AskUserQuestion block and type mapping
+- `skills/create-loop/loop-types.md` — appended `## RL Loops` section with question flows and YAML generation for all 3 types
+- `skills/create-loop/reference.md` — appended state diagrams for all 3 RL loop types
+- `docs/guides/LOOPS_GUIDE.md` — added RL loop entries to built-in loops table
+- `scripts/tests/test_builtin_loops.py` — added `rl-bandit`, `rl-rlhf`, `rl-policy` to expected set
+
+### Verification
+
+- `python -m pytest scripts/tests/test_builtin_loops.py -v` — 18 passed (all 3 new YAML files parse and validate as valid FSMs)
+- `ruff check scripts/` — all checks passed
 
 ## Verification Notes
 
@@ -184,3 +204,4 @@ _No documents linked. Run `/ll:normalize-issues` to discover and link relevant d
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 - `/ll:refine-issue` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
+- `/ll:manage-issue feature implement FEAT-723` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/current.jsonl`

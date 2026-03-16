@@ -1,0 +1,47 @@
+name: rl-bandit
+description: |
+  Epsilon-greedy bandit loop — alternates between exploring new options and
+  exploiting the best known one. Computes a reward score each round and
+  routes toward convergence on the reward target. Replace explore/exploit
+  actions with your strategy logic; each must print a reward score (0.0–1.0)
+  as its last line of output.
+initial: explore
+context:
+  reward_target: 0.8
+  epsilon: 0.1
+states:
+  explore:
+    action: |
+      # Exploration: try a new option/strategy.
+      # Replace with your exploration logic and print reward score (0.0–1.0) on the last line.
+      echo "Exploring a new option..."
+      echo "0.0"
+    action_type: shell
+    capture: round_result
+    next: reward
+  exploit:
+    action: |
+      # Exploitation: use the best known option/strategy.
+      # Replace with your exploitation logic and print reward score (0.0–1.0) on the last line.
+      echo "Exploiting the best known option..."
+      echo "0.0"
+    action_type: shell
+    capture: round_result
+    next: reward
+  reward:
+    action: |
+      # Extract the numeric reward from the last round and emit it for evaluation.
+      echo "${captured.round_result.output}" | tail -1 | tr -d '[:space:]'
+    action_type: shell
+    evaluate:
+      type: convergence
+      target: "${context.reward_target}"
+      direction: maximize
+      tolerance: 0.05
+    route:
+      target: done
+      progress: exploit
+      stall: explore
+  done:
+    terminal: true
+max_iterations: 50

@@ -166,6 +166,9 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `issue-staleness-review` | Find old issues, review relevance, and close or reprioritize stale ones |
 | `sprint-build-and-validate` | Create a sprint from the backlog and validate all included issues |
 | `worktree-health` | Continuous monitoring of orphaned worktrees and stale branches |
+| `rl-bandit` | Epsilon-greedy bandit loop — explore vs exploit rounds routing on reward convergence |
+| `rl-rlhf` | RLHF-style loop — generate candidate output, score quality, refine until target met |
+| `rl-policy` | Policy iteration loop — act, observe reward, improve policy toward a target |
 
 ## Beyond the Basics
 

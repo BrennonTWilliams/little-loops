@@ -724,3 +724,74 @@ states:
 ```
 
 **Most users can omit these fields** — they are useful only when a state might loop indefinitely on bad input and you want automatic skip behavior instead of exhausting the global iteration budget.
+
+---
+
+## RL Loop State Structures
+
+### rl-bandit — Epsilon-Greedy Bandit
+
+```
+States: explore, exploit, reward, done
+Initial: explore
+
+Transitions:
+  explore:  next -> reward
+  exploit:  next -> reward
+  reward:   route[target] -> done
+            route[progress] -> exploit
+            route[stall] -> explore
+  done:     [terminal]
+```
+
+Key fields:
+- `explore` / `exploit`: `action_type: shell`, `capture: round_result`, `next: reward`
+- `reward`: `action_type: shell`, `evaluate.type: convergence`, `direction: maximize`, `route: {target, progress, stall}`
+- `context.reward_target`: convergence target (0.0–1.0)
+
+---
+
+### rl-rlhf — Generate → Score → Refine
+
+```
+States: generate, score, refine, done
+Initial: generate
+
+Transitions:
+  generate: next -> score
+  score:    on_yes -> done
+            on_no -> refine
+            on_error -> done
+  refine:   next -> score
+  done:     [terminal]
+```
+
+Key fields:
+- `generate` / `refine`: `capture: candidate`, `next: score`
+- `score`: `evaluate.type: output_numeric`, `operator: ge`, `target: <quality_target>` (integer 0–10)
+- `on_yes` / `on_no` / `on_error` at state level for routing (not inside `route:`)
+
+---
+
+### rl-policy — Act → Observe → Score → Improve
+
+```
+States: act, observe, score, improve, done
+Initial: act
+
+Transitions:
+  act:      next -> observe
+  observe:  next -> score
+  score:    route[target] -> done
+            route[progress] -> improve
+            route[stall] -> act
+  improve:  next -> act
+  done:     [terminal]
+```
+
+Key fields:
+- `act`: `capture: action_result`, `next: observe`
+- `observe`: `capture: observation`, `next: score`
+- `score`: `action_type: shell` (extracts numeric reward), `evaluate.type: convergence`, `direction: maximize`, `route: {target, progress, stall}`
+- `improve`: `next: act`
+- `context.reward_target`: convergence target (0.0–1.0)

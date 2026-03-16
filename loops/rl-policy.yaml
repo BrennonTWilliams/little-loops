@@ -1,0 +1,53 @@
+name: rl-policy
+description: |
+  Policy iteration loop — an agent acts in an environment, observes the outcome,
+  scores the reward, and improves its policy until the reward target is reached.
+  Replace act/observe/score actions with your environment interactions and
+  policy update logic.
+initial: act
+context:
+  reward_target: 0.85
+states:
+  act:
+    action: |
+      # Execute the current policy action in the environment.
+      # Replace with your policy action (e.g., run a command, call an API, invoke a skill).
+      echo "Executing policy action..."
+      echo "action_taken"
+    action_type: shell
+    capture: action_result
+    next: observe
+  observe:
+    action: |
+      # Observe the environment response to the action and print reward (0.0–1.0) on last line.
+      # Replace with your observation and reward computation logic.
+      echo "Action result: ${captured.action_result.output}"
+      echo "0.0"
+    action_type: shell
+    capture: observation
+    next: score
+  score:
+    action: |
+      # Extract the numeric reward from the observation for convergence evaluation.
+      echo "${captured.observation.output}" | tail -1 | tr -d '[:space:]'
+    action_type: shell
+    evaluate:
+      type: convergence
+      target: "${context.reward_target}"
+      direction: maximize
+      tolerance: 0.05
+    route:
+      target: done
+      progress: improve
+      stall: act
+  improve:
+    action: |
+      # Update the policy based on the observed reward.
+      # Replace with your policy improvement logic.
+      echo "Improving policy based on observation:"
+      echo "${captured.observation.output}"
+    action_type: shell
+    next: act
+  done:
+    terminal: true
+max_iterations: 100

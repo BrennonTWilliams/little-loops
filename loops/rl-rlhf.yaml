@@ -1,0 +1,49 @@
+name: rl-rlhf
+description: |
+  RLHF-style iterative improvement loop — generates a candidate output,
+  scores its quality (0–10), and refines until the quality target is met.
+  Replace generate/refine actions with your content generation logic and
+  the score action with your quality assessment command.
+initial: generate
+context:
+  quality_dimension: "correctness, clarity, and completeness"
+states:
+  generate:
+    action: |
+      # Generate initial candidate output.
+      # Replace with your generation logic (e.g., run a prompt or script).
+      echo "Replace this with your generation logic."
+    action_type: shell
+    capture: candidate
+    next: score
+  score:
+    action: |
+      # Evaluate the candidate and print a numeric quality score (0–10) on the last line.
+      # Replace with your scoring logic.
+      echo "Candidate to evaluate:"
+      echo "${captured.candidate.output}"
+      echo ""
+      echo "Replace with your scoring logic. Print an integer score 0–10."
+      echo "5"
+    action_type: shell
+    evaluate:
+      type: output_numeric
+      operator: ge
+      target: 8
+    on_yes: done
+    on_no: refine
+    on_error: done
+  refine:
+    action: |
+      # Refine the candidate based on evaluation feedback.
+      # Replace with your refinement logic. Print the improved version.
+      echo "Previous candidate:"
+      echo "${captured.candidate.output}"
+      echo ""
+      echo "Replace with your refinement logic."
+    action_type: shell
+    capture: candidate
+    next: score
+  done:
+    terminal: true
+max_iterations: 30
