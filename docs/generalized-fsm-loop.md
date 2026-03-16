@@ -441,6 +441,21 @@ states:
     on_error: "alert"
 ```
 
+An additional shorthand, `on_blocked`, routes when the evaluator returns a `blocked` verdict (i.e., the action cannot proceed without external intervention):
+
+```yaml
+states:
+  fix:
+    action: "/ll:manage-issue bug fix"
+    on_yes: "verify"
+    on_no: "fix"
+    on_blocked: "escalate"
+```
+
+<!-- TODO: update-docs stub — BUG-761 — drafted 2026-03-15 -->
+`on_blocked` is resolved after `on_yes`/`on_no`/`on_error` in the shorthand lookup. It is equivalent to adding `blocked: "escalate"` to a full `route` table and is the recommended way to handle blocked states without switching to a full route table.
+<!-- END TODO stub -->
+
 This is equivalent to:
 
 ```yaml
@@ -482,7 +497,7 @@ states:
 
 1. If `next` is present → unconditional transition (no evaluation)
 2. If `route` is present → use full routing table
-3. If `on_yes`/`on_no`/`on_error` → use shorthand routing
+3. If `on_yes`/`on_no`/`on_error`/`on_blocked` → use shorthand routing
 4. If `terminal: true` → end loop
 5. Otherwise → error (no valid transition)
 

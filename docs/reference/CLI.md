@@ -366,6 +366,8 @@ List active issues with optional filters.
 |------|-------------|
 | `--type` | Filter by type: `BUG`, `FEAT`, `ENH` |
 | `--priority` | Filter by priority: `P0`–`P5` |
+| `--status` | Filter by status: `active` (default), `completed`, `deferred`, `all` |
+| `--include-completed` | Include completed issues (alias for `--status all`) |
 | `--flat` | Output flat list for scripting |
 | `--json` | Output as JSON array |
 | `--config` | Path to project root |
@@ -440,6 +442,10 @@ Show refinement depth table sorted by commands touched. Columns: ID, Pri, Title,
 | `--config` | Path to project root |
 
 The `Norm` column checks filenames against `^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$`. JSON output includes a `"normalized": true/false` boolean field per record.
+
+<!-- TODO: update-docs stub — ENH-750 — drafted 2026-03-15 -->
+**Narrow terminal support**: When the table exceeds the available terminal width, columns are automatically elided in priority order. The elision order defaults to dropping lesser-used command columns first, preserving `id`, `priority`, and `title` (always pinned). The order is configurable via `refine_status.elide_order` in `ll-config.json` — see [CONFIGURATION.md](CONFIGURATION.md#refine_status).
+<!-- END TODO stub -->
 
 #### `ll-issues append-log <issue_path> <log_command>` / `ll-issues al`
 
