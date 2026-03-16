@@ -42,6 +42,7 @@ states:
       pattern: "CONVERGED"
     on_yes: done
     on_no: apply_gradient
+    on_error: test_on_examples
   apply_gradient:
     action_type: prompt
     timeout: 300

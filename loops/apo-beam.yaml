@@ -50,5 +50,6 @@ states:
       pattern: "CONVERGED"
     on_yes: done
     on_no: generate_variants
+    on_error: generate_variants
   done:
     terminal: true
