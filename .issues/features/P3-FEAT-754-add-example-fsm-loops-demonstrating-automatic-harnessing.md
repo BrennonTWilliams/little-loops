@@ -6,7 +6,7 @@ status: open
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 100
-outcome_confidence: 93
+outcome_confidence: 97
 ---
 
 # FEAT-754: Add Example FSM Loops Demonstrating Automatic Harnessing
@@ -314,3 +314,4 @@ states:
 - `/ll:format-issue` - 2026-03-15T19:06:57 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/121e4920-b20f-4051-b1be-b7df4a928d30.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fac56d79-3579-4d9f-92ac-185268df5162.jsonl`

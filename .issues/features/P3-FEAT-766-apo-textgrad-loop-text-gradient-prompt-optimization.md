@@ -5,6 +5,8 @@ priority: P3
 status: open
 discovered_date: 2026-03-15
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # FEAT-766: APO Loop — TextGrad (Text Gradient Descent)
@@ -199,3 +201,4 @@ ll-loop show apo-textgrad
 ## Session Log
 - `/ll:refine-issue` - 2026-03-16T02:10:31 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55097244-61de-41f8-ab8e-e7217e1b3e90.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - conversation
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/55097244-61de-41f8-ab8e-e7217e1b3e90.jsonl`

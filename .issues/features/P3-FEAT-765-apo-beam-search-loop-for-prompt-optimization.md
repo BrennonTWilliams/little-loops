@@ -5,6 +5,8 @@ priority: P3
 status: open
 discovered_date: 2026-03-15
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 100
 ---
 
 # FEAT-765: APO Loop — Beam Search Over Prompt Space
@@ -184,3 +186,4 @@ ll-loop install apo-beam
 ## Session Log
 - `/ll:refine-issue` - 2026-03-16T02:11:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/5b918c53-10e7-4c18-8f65-7a0fdd85cd04.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - conversation
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b1ae078c-0743-4f48-bee3-15017b2d071b.jsonl`
