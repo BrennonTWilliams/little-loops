@@ -171,6 +171,7 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `rl-policy` | Policy iteration loop — act, observe reward, improve policy toward a target |
 | `apo-feedback-refinement` | Feedback-driven APO — generate → evaluate → refine until convergence |
 | `apo-contrastive` | Contrastive APO — generate N variants → score comparatively → select best → repeat |
+| `apo-opro` | OPRO-style prompt optimization — history-guided proposal until convergence |
 
 ## Beyond the Basics
 
