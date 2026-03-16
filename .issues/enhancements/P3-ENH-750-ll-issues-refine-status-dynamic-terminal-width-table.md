@@ -49,15 +49,29 @@ In `refine_status.py`, after computing `term_cols`, calculate the total table wi
 - The `_elide_columns` helper should be gated by a check for JSON mode before it is called, or accept a `json_mode: bool` guard parameter.
 
 Key files:
-- `scripts/little_loops/cli/issues/refine_status.py` — `_STATIC_COLUMN_SPECS`, width constants, rendering loop (lines 14–88, 245–298)
+- `scripts/little_loops/cli/issues/refine_status.py` — `_STATIC_COLUMN_SPECS`, width constants, column rendering loop
 - `scripts/little_loops/cli/output.py` — `terminal_width()` helper
 - `config-schema.json` — add optional `elide_order` field under `refine_status`
 
 ## Integration Map
 
-- `refine_status.py`: add `_elide_columns(active_cols, term_cols, …) -> list[str]` helper called before the render loop; skip entirely when `--json` is active
-- `config-schema.json` / `ll-config.json`: optional `refine_status.elide_order: list[str]` (default: see Implementation Steps); columns absent from list are pinned
-- No changes required to other CLI commands
+### Files to Modify
+- `scripts/little_loops/cli/issues/refine_status.py` — add `_elide_columns()` helper and integrate into render loop; gate on `--json` mode
+
+### Dependent Files (Callers/Importers)
+- N/A — `refine_status.py` is a standalone CLI command; no other modules call into it
+
+### Similar Patterns
+- `scripts/little_loops/cli/output.py` — `terminal_width()` already used here; no changes needed
+
+### Tests
+- `scripts/tests/test_refine_status.py` — extend with narrow/medium/wide terminal scenarios, pinned column tests, and JSON-mode invariant tests
+
+### Documentation
+- N/A — no docs reference this rendering behavior
+
+### Configuration
+- `config-schema.json` — add optional `refine_status.elide_order: list[str]` field; columns absent from list are pinned
 
 ## Implementation Steps
 
@@ -70,10 +84,20 @@ Key files:
    - Pinned columns are never dropped regardless of width
    - `--json` mode is unaffected by terminal width / elision logic
 
+## Scope Boundaries
+
+- **In scope**: `ll-issues refine-status` column elision logic only
+- **Out of scope**: `--json` mode — field set remains stable regardless of terminal width (required for downstream consumers/scripts/pipes)
+- **Out of scope**: Any other CLI command beyond `ll-issues refine-status`
+- **Out of scope**: Per-issue row truncation — elision applies to columns only, not cell content
+- **Not affected**: Wide-terminal behavior — no change when the full table fits within terminal width
+
 ## Impact
 
-- **Scope**: Single CLI command (`ll-issues refine-status`)
-- **Risk**: Low — purely additive; existing wide-terminal behavior unchanged
+- **Priority**: P3 — Usability improvement; not blocking but affects everyday use in narrow terminals
+- **Effort**: Small — Additive change within a single file (`refine_status.py`); reuses existing `terminal_width()` and column-width constants; new config key follows established patterns
+- **Risk**: Low — purely additive; existing wide-terminal behavior unchanged; JSON mode explicitly excluded
+- **Breaking Change**: No
 - **Affected users**: Anyone using split-pane terminals, IDE terminals, or CI log output
 
 ## Related Key Documentation
@@ -94,4 +118,5 @@ Key files:
 ---
 
 ## Session Log
+- `/ll:format-issue` - 2026-03-16T00:56:59 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8bc41a61-b249-4f82-b1e4-50bab87ac931.jsonl`
 - `/ll:capture-issue` - 2026-03-15T04:11:04Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0e4ff8a-9271-4c55-a606-a120317ccfad.jsonl`
