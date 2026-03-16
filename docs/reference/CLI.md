@@ -443,9 +443,7 @@ Show refinement depth table sorted by commands touched. Columns: ID, Pri, Title,
 
 The `Norm` column checks filenames against `^P[0-5]-(BUG|FEAT|ENH)-[0-9]{3,}-[a-z0-9-]+\.md$`. JSON output includes a `"normalized": true/false` boolean field per record.
 
-<!-- TODO: update-docs stub — ENH-750 — drafted 2026-03-15 -->
-**Narrow terminal support**: When the table exceeds the available terminal width, columns are automatically elided in priority order. The elision order defaults to dropping lesser-used command columns first, preserving `id`, `priority`, and `title` (always pinned). The order is configurable via `refine_status.elide_order` in `ll-config.json` — see [CONFIGURATION.md](CONFIGURATION.md#refine_status).
-<!-- END TODO stub -->
+**Narrow terminal support**: When the table exceeds the available terminal width, columns are automatically elided in priority order. The default drop sequence is `source` → `norm` → `fmt` → `confidence` → `ready` → `total`; any remaining command columns are then dropped rightmost-first. `id`, `priority`, and `title` are always pinned. The `title` column maintains a minimum width of 20 characters. The drop order is configurable via `refine_status.elide_order` in `ll-config.json` — see [CONFIGURATION.md](CONFIGURATION.md#refine_status).
 
 #### `ll-issues append-log <issue_path> <log_command>` / `ll-issues al`
 

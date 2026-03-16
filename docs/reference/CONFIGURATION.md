@@ -386,7 +386,6 @@ Observation masking via scratch pad files to reduce context bloat in automation 
 | `enabled` | `false` | Enable scratch pad instructions for automation sessions |
 | `threshold_lines` | `200` | Line count threshold above which tool outputs are redirected to scratch files (50-1000) |
 
-<!-- TODO: update-docs stub — ENH-750 — drafted 2026-03-15 -->
 ### `refine_status`
 
 Display settings for `ll-issues refine-status` / `ll-issues rs`:
@@ -394,7 +393,7 @@ Display settings for `ll-issues refine-status` / `ll-issues rs`:
 | Key | Default | Description |
 |-----|---------|-------------|
 | `columns` | `[]` (all defaults) | Ordered list of columns to display. Valid names: `id`, `priority`, `title`, `source`, `norm`, `fmt`, `ready`, `confidence`, `total`. Empty list uses the default set. |
-| `elide_order` | `[]` (implementation default) | Ordered list of columns to drop (first to last) when the table exceeds terminal width. `id`, `priority`, and `title` are always pinned and cannot be elided. Command columns not listed are dropped rightmost-first after this list is exhausted. |
+| `elide_order` | `["source", "norm", "fmt", "confidence", "ready", "total"]` | Ordered list of columns to drop (first to last) when the table exceeds terminal width. `id`, `priority`, and `title` are always pinned and cannot be elided. Any column omitted from this list (other than pinned columns) is dropped rightmost-first after the explicit list is exhausted. Empty list (`[]`) restores the default drop sequence. |
 
 **Example** — drop `source` and `fmt` before other columns on narrow terminals:
 
@@ -405,7 +404,6 @@ Display settings for `ll-issues refine-status` / `ll-issues rs`:
   }
 }
 ```
-<!-- END TODO stub -->
 
 ### `dependency_mapping`
 
