@@ -345,7 +345,9 @@ class TestIssuesCLIList:
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
-            sys, "argv", ["ll-issues", "list", "--flat", "--limit", "2", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "list", "--flat", "--limit", "2", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
@@ -353,7 +355,7 @@ class TestIssuesCLIList:
 
         assert result == 0
         captured = capsys.readouterr()
-        lines = [l for l in captured.out.splitlines() if l.strip()]
+        lines = [line for line in captured.out.splitlines() if line.strip()]
         assert len(lines) == 2
 
     def test_limit_short_flag(
@@ -368,7 +370,9 @@ class TestIssuesCLIList:
         config_path.write_text(json.dumps(sample_config))
 
         with patch.object(
-            sys, "argv", ["ll-issues", "list", "--flat", "-n", "2", "--config", str(temp_project_dir)]
+            sys,
+            "argv",
+            ["ll-issues", "list", "--flat", "-n", "2", "--config", str(temp_project_dir)],
         ):
             from little_loops.cli import main_issues
 
@@ -376,7 +380,7 @@ class TestIssuesCLIList:
 
         assert result == 0
         captured = capsys.readouterr()
-        lines = [l for l in captured.out.splitlines() if l.strip()]
+        lines = [line for line in captured.out.splitlines() if line.strip()]
         assert len(lines) == 2
 
     def test_limit_zero_raises_error(
@@ -443,7 +447,7 @@ class TestIssuesCLIList:
 
         assert result == 0
         captured = capsys.readouterr()
-        lines = [l for l in captured.out.splitlines() if l.strip()]
+        lines = [line for line in captured.out.splitlines() if line.strip()]
         # issues_dir has 5 issues (3 bugs + 2 features)
         assert len(lines) == 5
 
@@ -1637,7 +1641,16 @@ class TestListSorting:
         with patch.object(
             sys,
             "argv",
-            ["ll-issues", "list", "--flat", "--sort", "confidence", "--asc", "--config", str(temp_project_dir)],
+            [
+                "ll-issues",
+                "list",
+                "--flat",
+                "--sort",
+                "confidence",
+                "--asc",
+                "--config",
+                str(temp_project_dir),
+            ],
         ):
             from little_loops.cli.issues import main_issues
 
@@ -1685,7 +1698,16 @@ class TestListSorting:
         with patch.object(
             sys,
             "argv",
-            ["ll-issues", "list", "--flat", "--sort", "priority", "--desc", "--config", str(temp_project_dir)],
+            [
+                "ll-issues",
+                "list",
+                "--flat",
+                "--sort",
+                "priority",
+                "--desc",
+                "--config",
+                str(temp_project_dir),
+            ],
         ):
             from little_loops.cli.issues import main_issues
 

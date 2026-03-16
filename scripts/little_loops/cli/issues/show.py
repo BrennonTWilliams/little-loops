@@ -5,7 +5,6 @@ from __future__ import annotations
 import argparse
 import re
 import textwrap
-from collections import Counter
 from pathlib import Path
 from typing import TYPE_CHECKING
 

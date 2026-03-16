@@ -3186,9 +3186,15 @@ class TestDefaultTimeout:
             self.captured_timeouts.append(timeout)
             return ActionResult(output="ok", stderr="", exit_code=0, duration_ms=10)
 
-    def _make_fsm(self, state_timeout: int | None = None, default_timeout: int | None = None) -> FSMLoop:
+    def _make_fsm(
+        self, state_timeout: int | None = None, default_timeout: int | None = None
+    ) -> FSMLoop:
         """Build a minimal FSMLoop with a single prompt state."""
-        state_kwargs: dict[str, Any] = {"action_type": "prompt", "action": "echo hi", "next": "done"}
+        state_kwargs: dict[str, Any] = {
+            "action_type": "prompt",
+            "action": "echo hi",
+            "next": "done",
+        }
         if state_timeout is not None:
             state_kwargs["timeout"] = state_timeout
         return FSMLoop(

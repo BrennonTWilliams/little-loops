@@ -89,10 +89,27 @@ Examples:
         help="Output flat list (current format) for scripting compatibility",
     )
     ls.add_argument("--json", action="store_true", help="Output as JSON array")
-    ls.add_argument("--limit", "-n", type=int, metavar="N", default=None, help="Cap output at N issues (must be ≥ 1)")
+    ls.add_argument(
+        "--limit",
+        "-n",
+        type=int,
+        metavar="N",
+        default=None,
+        help="Cap output at N issues (must be ≥ 1)",
+    )
     ls.add_argument(
         "--sort",
-        choices=["priority", "id", "type", "title", "created", "completed", "confidence", "outcome", "refinement"],
+        choices=[
+            "priority",
+            "id",
+            "type",
+            "title",
+            "created",
+            "completed",
+            "confidence",
+            "outcome",
+            "refinement",
+        ],
         default="priority",
         help="Sort field (default: priority)",
     )
@@ -154,7 +171,18 @@ Examples:
     )
     sr.add_argument(
         "--sort",
-        choices=["priority", "id", "date", "type", "title", "created", "completed", "confidence", "outcome", "refinement"],
+        choices=[
+            "priority",
+            "id",
+            "date",
+            "type",
+            "title",
+            "created",
+            "completed",
+            "confidence",
+            "outcome",
+            "refinement",
+        ],
         default="priority",
         help="Sort field (default: priority)",
     )

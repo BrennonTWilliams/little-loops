@@ -78,6 +78,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     limit = getattr(args, "limit", None)
     if limit is not None and limit < 1:
         import sys
+
         print(f"Error: --limit must be a positive integer, got {limit}", file=sys.stderr)
         return 1
 

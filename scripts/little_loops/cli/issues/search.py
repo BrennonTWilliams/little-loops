@@ -132,8 +132,11 @@ def _sort_issues(
             return (score,)
         if sort_field == "refinement":
             refinement_commands = {
-                "/ll:verify-issues", "/ll:refine-issue", "/ll:tradeoff-review-issues",
-                "/ll:map-dependencies", "/ll:ready-issue",
+                "/ll:verify-issues",
+                "/ll:refine-issue",
+                "/ll:tradeoff-review-issues",
+                "/ll:map-dependencies",
+                "/ll:ready-issue",
             }
             counts: dict[str, int] = getattr(issue, "session_command_counts", {}) or {}
             total = sum(counts.get(cmd, 0) for cmd in refinement_commands)
@@ -186,7 +189,10 @@ def cmd_search(config: BRConfig, args: argparse.Namespace) -> int:
 
     sort_field = getattr(args, "sort", "priority") or "priority"
     need_content = bool(
-        query or since_date or until_date or getattr(args, "label", None)
+        query
+        or since_date
+        or until_date
+        or getattr(args, "label", None)
         or sort_field in {"date", "created", "completed"}
     )
 
