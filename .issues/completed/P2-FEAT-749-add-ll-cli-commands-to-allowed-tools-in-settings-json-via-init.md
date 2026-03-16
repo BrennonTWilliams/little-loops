@@ -145,6 +145,16 @@ None.
 
 `feature`, `init`, `configure`, `ux`
 
+## Resolution
+
+**Completed** | 2026-03-15
+
+Implemented across 4 files:
+- `skills/init/SKILL.md`: Added Step 10 (Update Allowed Tools) with full detection/prompt/merge logic; renamed old Step 10 → Step 11; updated dry-run preview and completion message
+- `skills/init/interactive.md`: Added Round 11 (Allowed Tools, always shown); updated TOTAL from 4→5; updated Round 7 to route to Round 11; updated summary table
+- `skills/configure/SKILL.md`: Added `allowed-tools` to argument-hint, Area Mapping, `--list` output, paginated selection, and Arguments list
+- `skills/configure/areas.md`: Added `allowed-tools` area handler with detection, 2-question round, and merge logic
+
 ## Status
 
 **Open** | Created: 2026-03-14 | Priority: P2
