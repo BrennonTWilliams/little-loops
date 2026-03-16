@@ -78,6 +78,12 @@ Examples:
         help="Filter by priority level",
     )
     ls.add_argument(
+        "--status",
+        choices=["active", "completed", "deferred", "all"],
+        default="active",
+        help="Filter by status (default: active)",
+    )
+    ls.add_argument(
         "--flat",
         action="store_true",
         help="Output flat list (current format) for scripting compatibility",

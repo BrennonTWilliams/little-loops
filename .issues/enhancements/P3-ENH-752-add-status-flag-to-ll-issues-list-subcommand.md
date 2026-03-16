@@ -6,8 +6,8 @@ status: active
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 title: "Add --status flag to ll-issues list subcommand"
-confidence_score: 98
-outcome_confidence: 93
+confidence_score: 90
+outcome_confidence: 86
 ---
 
 # ENH-752: Add --status flag to ll-issues list subcommand
@@ -78,16 +78,17 @@ ll-issues list [--status {active,completed,deferred,all}]
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli/issues.py` — Add `--status` arg to `list` subparser; pass filter to issue loading
+- `scripts/little_loops/cli/issues/__init__.py` — Add `--status` arg to the `ls` subparser (line ~75–86)
+- `scripts/little_loops/cli/issues/list_cmd.py` — Update `cmd_list` to accept `args.status` and pass it to `_load_issues_with_status`
 
 ### Dependent Files (Callers/Importers)
 - N/A — `ll-issues list` is a CLI entry point, not imported by other modules
 
 ### Similar Patterns
-- `scripts/little_loops/cli/issues.py` — `search` subcommand `--status` implementation is the pattern to follow
+- `scripts/little_loops/cli/issues/search.py` — `_load_issues_with_status()` is the reusable loader; `cmd_search` --status wiring is the pattern to follow
 
 ### Tests
-- `scripts/tests/` — Check for existing `list` subcommand tests; add a test for `--status completed` and `--status all`
+- `scripts/tests/test_issues_cli.py` — Add tests for `--status completed` and `--status all` against the `list` subcommand
 
 ### Documentation
 - N/A — CLI help text updated in-place via argparse
@@ -112,4 +113,5 @@ Active
 ## Session Log
 - `/ll:format-issue` - 2026-03-16T00:58:13 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88954013-7439-4bde-96ee-7533696b0537.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/4ccc2230-6d69-46a3-8836-f6cde953377c.jsonl`
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/675e308f-c7e8-4625-a4df-553d19df9f24.jsonl`
 - `/ll:capture-issue` - 2026-03-15T17:27:32Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2c3ed334-160b-448d-80ca-7778ea9713b8.jsonl`
