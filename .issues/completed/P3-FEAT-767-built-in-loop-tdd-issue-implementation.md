@@ -2,10 +2,13 @@
 id: FEAT-767
 type: FEAT
 priority: P3
+status: superseded
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 98
 outcome_confidence: 90
+resolution: Superseded by the existing TDD feature flag in manage-issue, which already drives the red-green-refactor cycle without a dedicated built-in loop.
+resolution_date: 2026-03-16
 ---
 
 # FEAT-767: Built-in Loop for TDD Issue Implementation
@@ -193,7 +196,11 @@ The FSM YAML file (`tdd-issue-impl.yaml`) exposes one context variable:
 
 ## Status
 
-Active
+Superseded
+
+## Resolution
+
+Closed as superseded. The existing TDD feature flag in `/ll:manage-issue` already provides the red-green-refactor cycle natively, making a dedicated `tdd-issue-impl` built-in loop redundant.
 
 ## Session Log
 - `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
