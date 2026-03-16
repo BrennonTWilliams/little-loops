@@ -5,6 +5,8 @@ priority: P3
 status: active
 discovered_date: 2026-03-15
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 93
 ---
 
 # ENH-772: Add --sort Argument to ll-issues list
@@ -66,19 +68,32 @@ Also extend `ll-issues search --sort` choices with: `created`, `completed`, `con
 - `refinement`: sum counts for `/ll:verify-issues`, `/ll:refine-issue`, `/ll:tradeoff-review-issues`, `/ll:map-dependencies`, `/ll:ready-issue` from `issue.session_command_counts`
 
 ### Key Existing Code to Reuse
-- `_parse_discovered_date(content)` — `search.py:17`
-- `_parse_completion_date(content, file_path)` — `issue_history/parsing.py:~54`
-- `_sort_issues()` — `search.py:103` (extend, don't duplicate)
-- `IssueInfo.confidence_score`, `IssueInfo.outcome_confidence` — already populated by `IssueParser`
-- `IssueInfo.session_command_counts` — already populated, used by `refine-status` command
+- `_parse_discovered_date(content)` — `search.py:17-30` (takes raw file content, regex-parses frontmatter)
+- `_parse_completion_date(content, file_path)` — `issue_history/parsing.py:80-103` (not `~54`; returns `None` only on OSError)
+- `_sort_issues(items, sort_field, descending)` — `search.py:103-128` (extend, don't duplicate)
+  - Current signature: `list[tuple[IssueInfo, str, date | None]]` → `list[tuple[IssueInfo, str, date | None]]`
+  - Adding `completed` key requires expanding to a 4-tuple: `(IssueInfo, str, date | None, date | None)` (disc_date, completed_date)
+- `IssueInfo.confidence_score`, `IssueInfo.outcome_confidence` — `issue_parser.py:233-234`, already populated by `IssueParser`
+- `IssueInfo.session_command_counts` — `issue_parser.py:236`, `dict[str, int]`, populated via `count_session_commands(content)`
+- `need_content` flag pattern — `search.py:172`; set `True` when sort key requires file content reads
+
+### Grouped Rendering Caveat (Critical)
+`cmd_list` in non-flat mode re-buckets issues into `{"BUG": [], "FEAT": [], "ENH": []}` at `list_cmd.py:69-73` before rendering. This means sort keys other than `type` will only have visible effect with `--flat` output. Two implementation options:
+1. **Simplest**: Apply sort within each type bucket (sort happens before the re-bucket, output is sorted within each group)
+2. **Alternative**: Document that `--sort` is only meaningful with `--flat` in list mode
+
+Option 1 is recommended for consistency with user expectations.
 
 ## Implementation Steps
 
-1. **Extend `_sort_issues()`** in `search.py` — add `created`/`completed`/`confidence`/`outcome`/`refinement` branches; update tuple signature to include completed date
-2. **Update `__init__.py`** — add `--sort`/`--asc`/`--desc` to `list` parser; extend `search --sort` choices
-3. **Update `list_cmd.py`** — load content on demand when sort key needs it; build enriched tuples; call `_sort_issues()`; update JSON output
-4. **Update `search.py cmd_search`** — pass completed date in enriched tuples when needed
-5. **Tests** — add cases in `scripts/tests/` for new sort keys on both `list` and `search`
+1. **Extend `_sort_issues()` in `search.py:103`** — expand tuple to 4-tuple `(IssueInfo, str, date|None, date|None)`, add branches for `created` (alias `date`), `completed`, `confidence` (sentinel `9999`), `outcome` (sentinel `9999`), `refinement` (sum of refinement command counts); update `key()` unpacking from `issue, _status, disc_date = item` to include `comp_date`
+2. **Update `__init__.py:72-92`** (list parser) — add `--sort choices=[...]`, `--asc`, `--desc` mirroring search parser at lines `147-153`; extend `search --sort` choices at line `147` with new keys
+3. **Update `list_cmd.py`** — after filter comprehension, set `need_content = sort_key in {"created", "completed", "confidence", "outcome", "refinement"}`; load content on demand; build 4-tuple enriched list; call `_sort_issues()`; update JSON output to include `discovered_date`
+4. **Update `cmd_search` in `search.py`** — expand enriched tuples from 3-tuple to 4-tuple, populating `comp_date` when `sort_field == "completed"` via `_parse_completion_date()` from `issue_history/parsing.py:80`; update default-descending logic to include `"created"` alongside existing `"date"` check
+5. **Tests** — add `TestListSorting` class in `scripts/tests/test_issues_cli.py` following `TestSearchSorting` pattern at `test_issues_search.py:534-619`; use `--flat --sort <key> --format ids` (or check output order); extend `search_issues_dir` fixture or create `list_sort_issues_dir` with frontmatter fields `confidence_score`, `outcome_confidence`, session log entries; use `lines.index("ID-NNN") < lines.index("ID-NNN")` assertion idiom
 
 ## Session Log
+- `/ll:verify-issues` - 2026-03-16T17:27:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
+- `/ll:refine-issue` - 2026-03-16T17:21:01 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/04f3d100-af21-43e6-8a78-b678385890bf.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef26d0b4-df23-48b7-b46f-a500ba15fda8.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/f9a440ea-dc3a-4df6-95fd-943f0b4536ac.jsonl`
