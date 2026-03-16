@@ -14,6 +14,7 @@ allowed-tools:
   - Grep
   - Edit
   - Bash(find:*)
+  - Bash(git:*)
 ---
 
 # Confidence Check Skill
@@ -393,14 +394,63 @@ outcome_confidence: 62
 ---
 ```
 
-After updating the frontmatter, append a session log entry to the issue file:
+### Phase 4.5: Findings Write-Back
+
+**Skip this phase if**: `CHECK_MODE` is true (no writes in check mode).
+
+After presenting the output, determine whether there are findings to write back. Track `HAS_FINDINGS=false`; set to `true` if any of the following have content:
+- **Concerns** (present when readiness tier is PROCEED WITH CAUTION)
+- **Gaps to Address** (present when readiness score < 70)
+- **Outcome Risk Factors** (present when outcome confidence < 60)
+
+**Interactive mode** (`AUTO_MODE` is false):
+
+If `HAS_FINDINGS` is true, use `AskUserQuestion` to ask:
+> "Should I update the issue file to include these findings (concerns, gaps, and risk factors)?"
+
+Options: Yes / No
+
+**Auto mode bypass**: When `AUTO_MODE` is true and `HAS_FINDINGS` is true, skip the `AskUserQuestion` prompt and proceed automatically.
+
+**Auto mode with no findings** (`AUTO_MODE` is true and `HAS_FINDINGS` is false): Skip (clean bill of health — no update needed).
+
+If the user confirms (interactive) or `AUTO_MODE` is true with findings, append a `## Confidence Check Notes` section to the issue file using the Edit tool. Insert it before `## Session Log` (or before `## Status` if no session log exists):
+
+```markdown
+## Confidence Check Notes
+
+_Added by `/ll:confidence-check` on [YYYY-MM-DD]_
+
+**Readiness Score**: [N]/100 → [tier label]
+**Outcome Confidence**: [N]/100 → [label]
+
+### Concerns
+- [concern 1]
+- [concern 2]
+
+### Gaps to Address
+- [gap 1]
+_(omit this subsection if no gaps)_
+
+### Outcome Risk Factors
+- [risk 1]
+_(omit this subsection if no risk factors)_
+```
+
+After appending findings (or skipping if no findings/user declined), stage the updated issue file:
+
+```bash
+git add "[issue-file-path]"
+```
+
+After the findings write-back step, append a session log entry to the issue file:
 
 ```markdown
 ## Session Log
 - `/ll:confidence-check` - [ISO timestamp] - `[path to current session JSONL]`
 ```
 
-To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `---` / `## Status` footer.
+To find the current session JSONL: look in `~/.claude/projects/` for the directory matching the current project (path encoded with dashes), find the most recently modified `.jsonl` file (excluding `agent-*`). If `## Session Log` already exists, append below the header. If not, add before `## Status` footer.
 
 ### Auto Mode Behavior
 
