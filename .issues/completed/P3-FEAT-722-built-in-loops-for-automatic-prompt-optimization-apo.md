@@ -2,7 +2,7 @@
 id: FEAT-722
 priority: P3
 type: FEAT
-status: open
+status: completed
 discovered_date: 2026-03-13
 discovered_by: capture-issue
 confidence_score: 98
@@ -43,12 +43,12 @@ The loop generates improved prompt candidates, evaluates them against the datase
 
 ## Acceptance Criteria
 
-- [ ] At least 2 built-in APO loop configurations ship with little-loops (e.g., `apo-feedback-refinement`, `apo-contrastive`)
-- [ ] Built-ins are discoverable via `ll-loop list --builtin` or equivalent
-- [ ] Each built-in documents its technique, required variables, and expected outputs
-- [ ] Built-ins are parameterized (users can pass in their prompt file, eval criteria, iteration count, etc.)
-- [ ] `ll-loop run --builtin <name>` loads and executes the built-in without a user-managed YAML file
-- [ ] Documentation explains each APO technique and when to use it
+- [x] At least 2 built-in APO loop configurations ship with little-loops (e.g., `apo-feedback-refinement`, `apo-contrastive`)
+- [x] Built-ins are discoverable via `ll-loop list --builtin` or equivalent
+- [x] Each built-in documents its technique, required variables, and expected outputs
+- [x] Built-ins are parameterized (users can pass in their prompt file, eval criteria, iteration count, etc.)
+- [x] `ll-loop run --builtin <name>` loads and executes the built-in without a user-managed YAML file
+- [x] Documentation explains each APO technique and when to use it
 
 ## API/Interface
 
@@ -226,6 +226,7 @@ Not used in any current loop yet — fully implemented at `evaluators.py:308-370
 - No APO loop YAML files exist in `loops/` (confirmed by filename search). No `builtins/` directory exists under `scripts/little_loops/`. `ll-loop list` and `ll-loop run` have no `--builtin` flag. Feature not yet implemented.
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-16T03:08:17 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a590fac7-717d-4396-af44-4bfba0feb1a2.jsonl`
 - `/ll:confidence-check` - 2026-03-15T12:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/1f2a9635-b943-494d-b273-e6a6ca4c03c9.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/747c5f9b-360d-4e87-ae12-b8e2fc7167bf.jsonl`
 - `/ll:refine-issue` - 2026-03-16T00:58:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88954013-7439-4bde-96ee-7533696b0537.jsonl`
@@ -238,6 +239,31 @@ Not used in any current loop yet — fully implemented at `evaluators.py:308-370
 - `/ll:format-issue` - 2026-03-13T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d2503a31-5075-415e-95d5-959cac6eec58.jsonl`
 - `/ll:verify-issues` - 2026-03-13T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/34ee1913-aa14-4e60-9d80-efda0df3efc0.jsonl`
 
+## Resolution
+
+- **Status**: Completed
+- **Date**: 2026-03-15
+- **Implemented by**: `/ll:manage-issue`
+
+### Changes Made
+
+1. **`loops/apo-feedback-refinement.yaml`** — New built-in: feedback-driven refinement loop. FSM: `generate_candidate → evaluate_candidate → route_convergence → (apply_candidate|refine) → done`. Uses `output_contains` routing on CONVERGED/NEEDS_REFINE tags. Context slots: `prompt_file`, `eval_criteria`, `quality_threshold`.
+
+2. **`loops/apo-contrastive.yaml`** — New built-in: contrastive optimization loop. FSM: `generate_variants → score_and_select → route_convergence → (done|generate_variants)`. Generates N variants per iteration and selects the best. Context slots: `prompt_file`, `eval_criteria`, `num_variants`, `quality_threshold`.
+
+3. **`scripts/tests/test_builtin_loops.py`** — Updated `test_expected_loops_exist` to include both new loop names.
+
+4. **`scripts/little_loops/cli/loop/__init__.py`** — Added `--builtin` flag to `list` subparser and `run` subparser.
+
+5. **`scripts/little_loops/cli/loop/info.py`** — `cmd_list()` skips project loops when `--builtin` is set, showing only built-ins.
+
+6. **`scripts/little_loops/cli/loop/run.py`** — `cmd_run()` resolves directly from `get_builtin_loops_dir()` when `--builtin` is set, bypassing `resolve_loop_path()`.
+
+7. **`docs/guides/LOOPS_GUIDE.md`** — Added APO loops to the built-in loops table; added new "Prompt Optimization Loops (APO)" section with full technique descriptions, context variable tables, invocation examples, FSM diagrams, and usage tips.
+
+## Session Log
+- `/ll:manage-issue` - 2026-03-15T00:00:00Z - current session
+
 ---
 
-**Open** | Created: 2026-03-13 | Priority: P3
+**Completed** | Created: 2026-03-13 | Priority: P3

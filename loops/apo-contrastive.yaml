@@ -1,0 +1,71 @@
+name: apo-contrastive
+description: |
+  Contrastive prompt optimization (APO technique): generates multiple prompt variants
+  per iteration, scores them comparatively, selects and writes back the best-performing
+  variant, and repeats until quality converges or max_iterations is reached.
+  Each iteration replaces the prompt file with the current best candidate.
+initial: generate_variants
+context:
+  prompt_file: system.md
+  eval_criteria: "clarity, specificity, and effectiveness"
+  num_variants: 3
+  quality_threshold: 90
+states:
+  generate_variants:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Read the current prompt from ${context.prompt_file}.
+      Generate ${context.num_variants} distinct improved variants of this prompt.
+      Each variant should take a different approach to satisfying:
+      ${context.eval_criteria}
+
+      Format your response exactly as:
+      VARIANT 1:
+      <full prompt text>
+
+      VARIANT 2:
+      <full prompt text>
+
+      (continue for all ${context.num_variants} variants)
+    capture: variants
+    next: score_and_select
+  score_and_select:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Evaluate these ${context.num_variants} prompt variants against the criteria:
+      ${context.eval_criteria}
+
+      VARIANTS:
+      ${captured.variants.output}
+
+      For each variant:
+      1. Assign a score from 0 to 100
+      2. Note its key strength and primary weakness
+
+      Then select the highest-scoring variant and write its full text to
+      ${context.prompt_file}, replacing the current file contents entirely.
+
+      Output a summary line: "Best score: <N>/100"
+
+      If the best score is >= ${context.quality_threshold}, end your response with exactly:
+      CONVERGED
+
+      Otherwise end with exactly:
+      CONTINUE
+    capture: selection_result
+    next: route_convergence
+  route_convergence:
+    evaluate:
+      type: output_contains
+      source: "${captured.selection_result.output}"
+      pattern: "CONVERGED"
+    on_yes: done
+    on_no: generate_variants
+    on_error: done
+  done:
+    terminal: true
+max_iterations: 15
+timeout: 3600
+on_handoff: spawn

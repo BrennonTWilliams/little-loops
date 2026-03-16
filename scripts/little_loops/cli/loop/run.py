@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import (
+    get_builtin_loops_dir,
     print_execution_plan,
     register_loop_signal_handlers,
     resolve_loop_path,
@@ -29,7 +30,13 @@ def cmd_run(
     from little_loops.fsm.validation import load_and_validate
 
     try:
-        path = resolve_loop_path(loop_name, loops_dir)
+        if getattr(args, "builtin", False):
+            path = get_builtin_loops_dir() / f"{loop_name}.yaml"
+            if not path.exists():
+                logger.error(f"Built-in loop not found: {loop_name!r}")
+                return 1
+        else:
+            path = resolve_loop_path(loop_name, loops_dir)
         fsm, _ = load_and_validate(path)
     except FileNotFoundError as e:
         logger.error(str(e))

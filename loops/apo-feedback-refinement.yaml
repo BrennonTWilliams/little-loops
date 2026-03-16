@@ -1,0 +1,80 @@
+name: apo-feedback-refinement
+description: |
+  Feedback-driven prompt refinement (APO technique): reads the target prompt,
+  generates an improved candidate, evaluates it against criteria, applies feedback
+  to the file, and repeats until the evaluator reports convergence or max_iterations
+  is reached. The prompt file is updated in-place at each refinement step.
+initial: generate_candidate
+context:
+  prompt_file: system.md
+  eval_criteria: "clarity, specificity, and effectiveness"
+  quality_threshold: 85
+states:
+  generate_candidate:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Read the current prompt from ${context.prompt_file}.
+      Generate one improved variant that better satisfies the evaluation criteria:
+      ${context.eval_criteria}
+
+      Output the full improved prompt text only — no preamble, no explanation,
+      no markdown fences. Just the raw prompt text.
+    capture: candidate
+    next: evaluate_candidate
+  evaluate_candidate:
+    action_type: prompt
+    timeout: 180
+    action: |
+      Evaluate this prompt candidate against the criteria: ${context.eval_criteria}
+
+      CANDIDATE:
+      ${captured.candidate.output}
+
+      Respond with:
+      1. A score from 0 to 100
+      2. Specific strengths (1-3 bullets)
+      3. Specific weaknesses and how to address them (1-3 bullets)
+
+      If the score is >= ${context.quality_threshold}, end your response with exactly:
+      CONVERGED
+
+      Otherwise end with exactly:
+      NEEDS_REFINE
+    capture: eval_result
+    next: route_convergence
+  route_convergence:
+    evaluate:
+      type: output_contains
+      source: "${captured.eval_result.output}"
+      pattern: "CONVERGED"
+    on_yes: apply_candidate
+    on_no: refine
+    on_error: refine
+  apply_candidate:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Write the following improved prompt to ${context.prompt_file}, replacing
+      the current file contents entirely:
+
+      ${captured.candidate.output}
+
+      Confirm the file has been updated.
+    next: done
+  refine:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Based on this evaluation feedback:
+      ${captured.eval_result.output}
+
+      Update ${context.prompt_file} to address the identified weaknesses.
+      Apply the feedback directly — do not narrate, just edit the file.
+      Confirm the file has been updated.
+    next: generate_candidate
+  done:
+    terminal: true
+max_iterations: 20
+timeout: 3600
+on_handoff: spawn

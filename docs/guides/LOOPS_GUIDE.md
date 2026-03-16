@@ -169,6 +169,8 @@ ll-loop install <name>       # Copies to .loops/ for editing
 | `rl-bandit` | Epsilon-greedy bandit loop — explore vs exploit rounds routing on reward convergence |
 | `rl-rlhf` | RLHF-style loop — generate candidate output, score quality, refine until target met |
 | `rl-policy` | Policy iteration loop — act, observe reward, improve policy toward a target |
+| `apo-feedback-refinement` | Feedback-driven APO — generate → evaluate → refine until convergence |
+| `apo-contrastive` | Contrastive APO — generate N variants → score comparatively → select best → repeat |
 
 ## Beyond the Basics
 
@@ -274,6 +276,104 @@ scope:
 
 If a conflicting loop is already running, `ll-loop run` will error. Use `--queue` to wait for the conflict to resolve instead.
 
+## Prompt Optimization Loops (APO)
+
+Automatic Prompt Optimization (APO) loops apply iterative improvement techniques to refine prompts using LLM-driven evaluation. They are a practical alternative to manual prompt engineering: instead of tweaking prompts by hand, you describe your criteria and let the loop drive convergence.
+
+Two built-in APO loops ship with little-loops:
+
+### `apo-feedback-refinement` — Feedback-Driven Refinement
+
+**Technique**: Generate one improved candidate → evaluate against criteria → apply feedback → repeat until convergence.
+
+**When to use**: You have a single target prompt and a clear quality rubric. Good for system prompts that produce inconsistent outputs — the evaluator diagnoses what's wrong and the refinement step fixes it.
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `prompt_file` | `system.md` | Path to the prompt file to improve |
+| `eval_criteria` | `"clarity, specificity, and effectiveness"` | Criteria the evaluator uses to score candidates |
+| `quality_threshold` | `85` | Score (0–100) at which the loop considers the prompt converged |
+
+**Invocation**:
+
+```bash
+# Run with defaults (improves system.md in the current directory)
+ll-loop apo-feedback-refinement
+
+# Override context variables
+ll-loop apo-feedback-refinement \
+  --context prompt_file=prompts/classifier.md \
+  --context eval_criteria="accuracy and conciseness" \
+  --context quality_threshold=90
+
+# Load explicitly from built-ins (bypasses project .loops/)
+ll-loop run --builtin apo-feedback-refinement --context prompt_file=system.md
+```
+
+**FSM flow**:
+```
+generate_candidate → evaluate_candidate → route_convergence
+                                          ├─ CONVERGED → apply_candidate → done
+                                          └─ NEEDS_REFINE → refine → generate_candidate
+```
+
+---
+
+### `apo-contrastive` — Contrastive Optimization
+
+**Technique**: Generate N diverse variants → score comparatively → select the best → update the file → repeat until convergence.
+
+**When to use**: You want broader exploration of the prompt space per iteration. Each round explores N distinct directions and keeps the winner, so the loop avoids local optima that single-candidate refinement can get stuck in.
+
+**Required context variables**:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `prompt_file` | `system.md` | Path to the prompt file to improve |
+| `eval_criteria` | `"clarity, specificity, and effectiveness"` | Criteria used to score each variant |
+| `num_variants` | `3` | Number of distinct variants to generate per iteration |
+| `quality_threshold` | `90` | Score (0–100) at which the loop considers the prompt converged |
+
+**Invocation**:
+
+```bash
+# Run with defaults
+ll-loop apo-contrastive
+
+# Tune for deeper search
+ll-loop apo-contrastive \
+  --context prompt_file=prompts/system.md \
+  --context num_variants=5 \
+  --context quality_threshold=95
+```
+
+**FSM flow**:
+```
+generate_variants → score_and_select → route_convergence
+                                       ├─ CONVERGED → done
+                                       └─ CONTINUE → generate_variants
+```
+
+---
+
+### Choosing Between the Two
+
+| | `apo-feedback-refinement` | `apo-contrastive` |
+|---|---|---|
+| Exploration per iteration | Low (single candidate) | High (N candidates) |
+| Convergence speed | Faster when feedback is precise | Slower but less likely to plateau |
+| LLM calls per iteration | 2 | 2 |
+| Best for | Targeted, criteria-driven improvement | Broad exploration of prompt styles |
+
+### Tips for APO Loops
+
+- **Start with a concrete `eval_criteria`**: vague criteria produce vague scores. Instead of `"good"`, try `"responds only with valid JSON, handles edge cases, and explains its reasoning"`.
+- **Set `quality_threshold` conservatively**: start at 80 and raise once the loop reaches it. Overly strict thresholds burn iterations without improvement.
+- **Check the prompt file after each run**: the loop writes back to the file in-place. Use `git diff` to review the evolution across iterations.
+- **Install to customize**: run `ll-loop install apo-feedback-refinement` to copy the YAML to `.loops/` and edit state actions or add custom evaluation logic.
+
 ## CLI Quick Reference
 
 ### Subcommands
@@ -285,7 +385,7 @@ If a conflicting loop is already running, `ll-loop run` will error. Use `--queue
 | `ll-loop show <name>` | Display states, transitions, and ASCII diagram (`--json` for raw FSM config) |
 | `ll-loop test <name>` | Run a single iteration to verify configuration |
 | `ll-loop simulate <name>` | Trace execution interactively without running actions |
-| `ll-loop list` | List available loops (`--running` for active only) |
+| `ll-loop list` | List available loops (`--running` for active only, `--builtin` for built-ins only) |
 | `ll-loop status <name>` | Show current state and iteration count (`--json` for machine-readable output) |
 | `ll-loop stop <name>` | Stop a running loop |
 | `ll-loop resume <name>` | Resume an interrupted loop from saved state |

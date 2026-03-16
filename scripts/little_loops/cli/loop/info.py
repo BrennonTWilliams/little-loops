@@ -77,10 +77,12 @@ def cmd_list(
             )
         return 0
 
-    # Collect project loops
+    builtin_only = getattr(args, "builtin", False)
+
+    # Collect project loops (skipped when --builtin is set)
     project_names: set[str] = set()
     yaml_files: list[Path] = []
-    if loops_dir.exists():
+    if not builtin_only and loops_dir.exists():
         yaml_files = list(loops_dir.glob("*.yaml"))
         project_names = {p.stem for p in yaml_files}
 
