@@ -370,6 +370,7 @@ List active issues with optional filters.
 | `--include-completed` | Include completed issues (alias for `--status all`) |
 | `--flat` | Output flat list for scripting |
 | `--json` | Output as JSON array |
+| `--limit` / `-n` | Cap output at N issues (must be ≥ 1) |
 | `--config` | Path to project root |
 
 #### `ll-issues count` / `ll-issues c`

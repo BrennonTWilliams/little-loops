@@ -333,6 +333,120 @@ class TestIssuesCLIList:
         data = json.loads(captured.out)
         assert isinstance(data, list)
 
+    def test_limit_caps_output(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --limit N returns at most N issues."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "--flat", "--limit", "2", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        lines = [l for l in captured.out.splitlines() if l.strip()]
+        assert len(lines) == 2
+
+    def test_limit_short_flag(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list -n N works as short alias for --limit."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "--flat", "-n", "2", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        lines = [l for l in captured.out.splitlines() if l.strip()]
+        assert len(lines) == 2
+
+    def test_limit_zero_raises_error(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --limit 0 returns exit code 1 with an error message."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "--limit", "0", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "Error" in captured.err
+
+    def test_limit_negative_raises_error(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list --limit -1 returns exit code 1 with an error message."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "--limit", "-1", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 1
+        captured = capsys.readouterr()
+        assert "Error" in captured.err
+
+    def test_limit_omitted_returns_all(
+        self,
+        temp_project_dir: Path,
+        sample_config: dict[str, Any],
+        issues_dir: Path,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """list without --limit returns all issues unchanged."""
+        config_path = temp_project_dir / ".claude" / "ll-config.json"
+        config_path.write_text(json.dumps(sample_config))
+
+        with patch.object(
+            sys, "argv", ["ll-issues", "list", "--flat", "--config", str(temp_project_dir)]
+        ):
+            from little_loops.cli import main_issues
+
+            result = main_issues()
+
+        assert result == 0
+        captured = capsys.readouterr()
+        lines = [l for l in captured.out.splitlines() if l.strip()]
+        # issues_dir has 5 issues (3 bugs + 2 features)
+        assert len(lines) == 5
+
 
 class TestIssuesCLISequence:
     """Tests for ll-issues sequence sub-command."""

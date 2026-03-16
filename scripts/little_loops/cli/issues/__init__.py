@@ -89,6 +89,7 @@ Examples:
         help="Output flat list (current format) for scripting compatibility",
     )
     ls.add_argument("--json", action="store_true", help="Output as JSON array")
+    ls.add_argument("--limit", "-n", type=int, metavar="N", default=None, help="Cap output at N issues (must be ≥ 1)")
     add_config_arg(ls)
 
     sr = subs.add_parser("search", aliases=["sr"], help="Search issues with filters and sorting")

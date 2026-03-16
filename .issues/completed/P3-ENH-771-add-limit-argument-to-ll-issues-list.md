@@ -3,7 +3,7 @@ id: ENH-771
 title: "Add --limit argument to ll-issues list"
 type: ENH
 priority: P3
-status: backlog
+status: completed
 discovered_date: 2026-03-15
 discovered_by: capture-issue
 confidence_score: 98
@@ -88,7 +88,17 @@ ll-issues list [--limit N] [other flags]
 
 - ENH-752: Add `--status` flag to `ll-issues list` (same subcommand)
 
+## Resolution
+
+Implemented `--limit`/`-n` argument on `ll-issues list`:
+- Registered argument in `scripts/little_loops/cli/issues/__init__.py`
+- Added validation (error on ≤ 0) and slice in `scripts/little_loops/cli/issues/list_cmd.py`
+- Added 5 tests in `scripts/tests/test_issues_cli.py::TestIssuesCLIList`
+- Updated `docs/reference/CLI.md` with the new flag
+
 ## Session Log
+- `/ll:manage-issue` - 2026-03-16T00:00:00Z - implementation complete
+- `/ll:ready-issue` - 2026-03-16T17:36:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/025322be-da35-4532-9ce7-4b88c2d8fa99.jsonl`
 - `/ll:verify-issues` - 2026-03-16T17:27:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8de8f7f-036d-410c-b49a-697d879afa38.jsonl`
 - `/ll:refine-issue` - 2026-03-16T17:20:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/ef6f9fdc-6be2-4332-a31a-ac306dde4386.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - captured from user description
