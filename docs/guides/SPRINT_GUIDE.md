@@ -91,6 +91,7 @@ options:
 | `issues` | yes | List of issue IDs (e.g., `BUG-001`, `FEAT-010`) |
 | `options.timeout` | no | Per-issue timeout in seconds (default: 3600) |
 | `options.max_workers` | no | Max parallel workers per wave (default: 2) |
+| `options.max_iterations` | no | Max Claude iterations per issue (default: 100) |
 
 Issue IDs in the sprint list are resolved to actual files at runtime. The sprint itself only stores IDs — the file search happens when you run.
 
@@ -130,6 +131,8 @@ You can accept one strategy, mix strategies, or skip auto-grouping and specify i
 ll-sprint create sprint-name --issues BUG-001,FEAT-010,ENH-020
 ll-sprint create sprint-name --issues BUG-001,FEAT-010 --description "Q1 fixes"
 ll-sprint create sprint-name --issues BUG-001,FEAT-010 --max-workers 3 --timeout 7200
+ll-sprint create sprint-name --issues BUG-001,FEAT-010,ENH-020 --skip BUG-001    # exclude specific IDs
+ll-sprint create sprint-name --issues BUG-001,FEAT-010,ENH-020 --type bug,feat   # filter by issue type
 ```
 
 The CLI creates a sprint immediately without interactive prompting. Use this when you already know exactly which issues to include.
@@ -163,10 +166,15 @@ The skill is interactive: it proposes changes and you approve or reject each one
 
 ```bash
 ll-sprint run sprint-name
-ll-sprint run sprint-name --dry-run       # show plan without executing
+ll-sprint run sprint-name --dry-run                       # show plan without executing
 ll-sprint run sprint-name --max-workers 3
 ll-sprint run sprint-name --timeout 7200
-ll-sprint run sprint-name --skip BUG-010  # exclude specific issues
+ll-sprint run sprint-name --skip BUG-010                  # exclude specific issues
+ll-sprint run sprint-name --only BUG-001,FEAT-010         # run only these issues (allowlist)
+ll-sprint run sprint-name --type bug,feat                 # filter by issue type at run time
+ll-sprint run sprint-name --skip-analysis                 # bypass pre-execution dependency analysis
+ll-sprint run sprint-name --quiet                         # suppress progress output
+ll-sprint run sprint-name --handoff-threshold 80          # context window handoff threshold (1–100)
 ```
 
 ### Pre-flight
@@ -176,6 +184,7 @@ Before the first wave runs, `ll-sprint` validates the sprint:
 - Issue files exist on disk
 - No dependency cycles
 - Wave structure computed and displayed
+- Issues already in `completed/` are auto-skipped silently; if all issues are already completed, the sprint exits with success immediately
 
 The execution plan is printed before any work begins:
 
@@ -223,11 +232,13 @@ After each wave completes:
 
 ### Failed Issues
 
-If an issue fails within a wave, the runner:
+If an issue fails during a **multi-issue parallel wave**, the runner:
 
 1. Records the failure
 2. Retries once sequentially (outside the worktree)
 3. If the retry also fails, marks it as failed and continues with the next wave
+
+Issues that fail in a **single-issue wave** are immediately marked as failed — no retry is attempted.
 
 A sprint with some failures still completes — it doesn't stop at the first failure. Failed issues are reported in the summary with their reason.
 
@@ -276,6 +287,7 @@ ll-sprint edit sprint-1 --add BUG-099,FEAT-020    # add issues
 ll-sprint edit sprint-1 --remove BUG-010           # remove issues
 ll-sprint edit sprint-1 --prune                    # remove completed/invalid refs
 ll-sprint edit sprint-1 --revalidate               # re-run dependency analysis
+ll-sprint delete sprint-1                          # delete a sprint entirely
 ```
 
 `--prune` scans each issue ID in the sprint and removes any that no longer have a file on disk (either completed and archived, or deleted). Use this to clean up a sprint that's been running for a while.
@@ -289,10 +301,12 @@ ll-sprint edit sprint-1 --revalidate               # re-run dependency analysis
 ## Inspecting Sprints
 
 ```bash
-ll-sprint list                   # all sprints, one per line
-ll-sprint list --verbose         # sprints with issue counts and descriptions
-ll-sprint show sprint-1          # sprint details + wave visualization
-ll-sprint analyze sprint-1       # file conflict analysis
+ll-sprint list                          # all sprints, one per line
+ll-sprint list --verbose                # sprints with issue counts and descriptions
+ll-sprint list --json                   # output as JSON array
+ll-sprint show sprint-1                 # sprint details + wave visualization
+ll-sprint show sprint-1 --skip-analysis # skip dependency analysis step
+ll-sprint analyze sprint-1              # file conflict analysis
 ll-sprint analyze sprint-1 --format json
 ```
 

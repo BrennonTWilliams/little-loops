@@ -10,6 +10,43 @@ status: active
 
 Audit of `docs/guides/SPRINT_GUIDE.md` found 3 accuracy issues and 6 completeness gaps. One auto-fix was applied directly (A1). The remaining 8 findings are tracked here.
 
+## Current Behavior
+
+`docs/guides/SPRINT_GUIDE.md` contains 2 accuracy issues and 6 completeness gaps:
+- Retry logic is documented as applying to all failures, but it only applies to multi-issue parallel waves
+- `options.max_iterations` field is missing from the sprint YAML anatomy table
+- `ll-sprint delete`, `--only`, `--skip-analysis`, `--quiet`, `--type`, `--handoff-threshold`, `--json` flags are undocumented
+- Pre-flight auto-skip of already-completed issues is not documented
+- `ll-sprint create --skip` and `--type` flags are not documented
+
+## Expected Behavior
+
+All 8 findings resolved:
+- A2: Retry description qualified to clarify it only applies to parallel-wave failures
+- A3: `max_iterations` row added to the sprint options table
+- C1–C6: All undocumented subcommands and flags documented in relevant sections
+
+## Proposed Solution
+
+Each finding includes its own targeted fix instruction. See **Accuracy Findings** and **Completeness Findings** below for specific file locations and suggested text. No code changes required — documentation updates only.
+
+## Scope Boundaries
+
+- Only `docs/guides/SPRINT_GUIDE.md` and its inline examples
+- No code changes (all referenced behaviors are correctly implemented)
+- A1 was already auto-fixed and is not tracked here
+
+## Impact
+
+- **Priority**: P3 — Documentation accuracy issue; no user-facing behavior broken
+- **Effort**: Small — 8 targeted doc edits, no code changes
+- **Risk**: Low — Documentation-only changes
+- **Breaking Change**: No
+
+## Labels
+
+`documentation`, `sprint`, `accuracy`, `completeness`
+
 ---
 
 ## Accuracy Findings
@@ -87,3 +124,25 @@ The `create` subcommand supports `--skip <ids>` (exclude specific issues) and `-
 - `scripts/little_loops/cli/sprint/create.py` — create flags (C5)
 - `scripts/little_loops/cli/sprint/manage.py` — delete subcommand (C1)
 - `scripts/little_loops/sprint.py` — `SprintOptions` (A3)
+
+
+## Resolution
+
+All 8 findings resolved in `docs/guides/SPRINT_GUIDE.md`:
+- **A2**: Retry description qualified — now states retries only apply to multi-issue parallel-wave failures; single-issue wave failures are immediately marked failed
+- **A3**: `options.max_iterations` row added to the sprint YAML anatomy table
+- **C1**: `ll-sprint delete sprint-1` added to the "Editing a Sprint" examples
+- **C2**: `--only BUG-001,FEAT-010` example added to run section
+- **C3**: `--skip-analysis` added to both run and show example blocks
+- **C4**: Pre-flight auto-skip behavior documented in the "Pre-flight" section
+- **C5**: `--skip` and `--type` examples added to the "Direct CLI" create section
+- **C6**: `--json` (list), `--quiet` (run), `--type` (run), `--handoff-threshold` (run) all documented in relevant example blocks
+
+## Status
+
+**Completed** | Created: 2026-03-16 | Resolved: 2026-03-16 | Priority: P3
+
+## Session Log
+- `/ll:ready-issue` - 2026-03-16T20:30:35 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/400f9675-d92a-409d-9e57-9a61a1134490.jsonl`
+- `/ll:verify-issues` - 2026-03-16T20:15:53 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/b2f8fb9f-5760-41e6-b718-11e29dd2cd54.jsonl`
+- `/ll:manage-issue` - 2026-03-16T20:36:14 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
