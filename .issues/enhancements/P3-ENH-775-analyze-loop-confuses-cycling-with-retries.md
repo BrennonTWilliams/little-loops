@@ -3,6 +3,8 @@ discovered_date: 2026-03-16
 discovered_by: scan-codebase
 source_loop: issue-refinement
 source_state: check_commit
+confidence_score: 100
+outcome_confidence: 75
 ---
 
 # ENH-775: analyze-loop conflates intentional state cycling with stuck retries
@@ -10,6 +12,18 @@ source_state: check_commit
 ## Summary
 
 The `analyze-loop` skill's "ENH — Retry flood" heuristic triggers whenever the same state appears in `state_enter` events 5 or more times, regardless of whether those re-entries are intentional design or actual retry failures. In the `issue-refinement` loop this produced two false positive signals: `check_commit` flagged as "retried 8x" and `route_format` flagged as "retried 9x". Neither state uses a retry counter — both use normal `on_no` routing as part of their designed control flow. True retries (which increment a retry counter and eventually hit `on_retry_exhausted`) are fundamentally different from intentional cycling via `on_yes`/`on_no` routing.
+
+## Current Behavior
+
+`analyze-loop` flags any state that appears in `state_enter` events 5 or more times as a "retry flood" signal, regardless of whether the re-entries are intentional (via `on_no`/`on_yes` routing) or actual retries (via `on_retry`). This produces false positive signals for states that use normal cycling as their designed control flow. Example: `check_commit` visited 8x (expected for 8 completed prompt actions) and `route_format` visited 9x (expected for 9 evaluated issues) were both flagged as problems.
+
+## Expected Behavior
+
+`analyze-loop` distinguishes true retries (states with `on_retry`/`max_retries` configured) from intentional cycling (states re-entered via `on_no`/`on_yes`). Only true retry states trigger the "retry flood" signal. Intentional cycling states are noted informally in analysis output without generating issue signals, unless >20 consecutive re-entries with no intervening state occur (indicating a genuinely stuck loop).
+
+## Motivation
+
+False positive signals in `analyze-loop` output erode trust in the tool — when users investigate false positives and find they're expected behavior, they start treating all signals as noise. The `issue-refinement` loop generated 2 false positives (`check_commit` and `route_format`) that could mislead an agent into "fixing" correctly functioning states. Accurate signal generation is critical for `analyze-loop` to remain a reliable diagnostic tool rather than a source of implementation noise.
 
 ## Root Cause
 
@@ -40,7 +54,7 @@ The `analyze-loop` skill's "ENH — Retry flood" heuristic triggers whenever the
 | Has `on_retry_exhausted` | Usually | No |
 | Progress indicator | Same state, no progress | Different state visited between cycles |
 
-## Proposed Fix
+## Proposed Solution
 
 Update `skills/analyze-loop/SKILL.md`, Signal Rules, "ENH — Retry flood" section to distinguish true retries from intentional cycling:
 
@@ -57,9 +71,41 @@ Update `skills/analyze-loop/SKILL.md`, Signal Rules, "ENH — Retry flood" secti
 
 **How to detect**: Check whether the state configuration has `on_retry:` or `max_retries:` fields. If absent, any re-entry is cycling, not retrying.
 
-## Files to Modify
+## Integration Map
 
+### Files to Modify
 - `skills/analyze-loop/SKILL.md` — update "ENH — Retry flood" signal rule to distinguish true retries (via `on_retry`) from intentional cycling (via `on_no`/`on_yes`)
+
+### Dependent Files (Callers/Importers)
+- `skills/analyze-loop/` — no Python callers; skill is invoked directly by users via `/ll:analyze-loop`
+- `.issues/` — any analyze-loop-generated issue files may reference old signal terminology
+
+### Similar Patterns
+- Other signal rules in `skills/analyze-loop/SKILL.md` (SIGKILL, performance anomalies) — check for similar raw-count-based heuristics that could have the same conflation problem
+
+### Tests
+- N/A — analyze-loop is a pure SKILL.md with no Python module or test files
+
+### Documentation
+- N/A — no external docs reference analyze-loop signal rules
+
+### Configuration
+- N/A — no configuration files affected
+
+## Implementation Steps
+
+1. Read `skills/analyze-loop/SKILL.md` retry flood signal rule to understand current detection logic
+2. Update "ENH — Retry flood" detection to check for `on_retry`/`max_retries` presence in state config before classifying re-entries as retries
+3. Add intentional cycling detection rule: note high-frequency cycling states in analysis output; escalate only when >20 consecutive re-entries with no intervening state
+4. Update signal title/description to accurately distinguish "retry flood" (true retries) from "cycling without progress" (stuck loops)
+5. Verify by re-running analyze-loop over `issue-refinement` loop history — confirm no false positives on `check_commit` or `route_format`
+
+## Scope Boundaries
+
+- Out of scope: Changes to FSM execution engine or loop YAML format
+- Out of scope: Changes to other signal rules (SIGKILL, performance anomalies, etc.)
+- Out of scope: Changing how loop history is stored or parsed
+- Out of scope: Updating existing loop configurations to remove cycling patterns
 
 ## Acceptance Criteria
 
@@ -69,6 +115,13 @@ Update `skills/analyze-loop/SKILL.md`, Signal Rules, "ENH — Retry flood" secti
 - [ ] Re-running `analyze-loop` over `issue-refinement` history does not produce false positive signals on `check_commit` or `route_format`
 - [ ] Analysis output notes high-frequency cycling states as informational (not as issues)
 
+## Impact
+
+- **Priority**: P3 — Quality improvement; does not block functionality but degrades tool reliability when false positives appear
+- **Effort**: Small — Single SKILL.md heuristic update with a clear, well-specified change
+- **Risk**: Low — Detection logic change only; no FSM execution, YAML format, or API changes
+- **Breaking Change**: No
+
 ## Labels
 
 `enhancement`, `loops`, `analyze-loop`, `captured`
@@ -76,3 +129,9 @@ Update `skills/analyze-loop/SKILL.md`, Signal Rules, "ENH — Retry flood" secti
 ## Status
 
 **Open** | Created: 2026-03-16 | Priority: P3
+
+
+## Session Log
+- `/ll:verify-issues` - 2026-03-16T19:31:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:format-issue` - 2026-03-16T19:30:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`

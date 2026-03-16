@@ -4,6 +4,8 @@ type: FEAT
 priority: P3
 discovered_date: 2026-03-15
 discovered_by: capture-issue
+confidence_score: 98
+outcome_confidence: 90
 ---
 
 # FEAT-767: Built-in Loop for TDD Issue Implementation
@@ -42,6 +44,27 @@ Running `ll-loop tdd-issue-impl FEAT-700` (or `ll-loop run tdd-issue-impl
 The loop should support `ll-loop run tdd-issue-impl --dry-run` to preview the
 FSM plan and `ll-loop simulate tdd-issue-impl` for interactive walk-through.
 
+## Use Case
+
+**Who**: A developer using the little-loops automation toolchain to implement a backlog issue.
+
+**Context**: They have a specific issue ID (e.g., `FEAT-700`) and want a reproducible, hands-off TDD cycle — write failing tests, implement, fix quality, verify — without manually chaining multiple commands.
+
+**Goal**: Run `ll-loop run tdd-issue-impl --context ISSUE_ID=FEAT-700` and have the loop drive the full red-green-refactor pipeline, retrying on failure, until all tests pass and the issue is marked complete.
+
+**Outcome**: The issue is implemented with a passing test suite, clean linting/types, acceptance criteria verified, and optionally a commit staged — all with a reproducible history in `ll-loop history`.
+
+## Acceptance Criteria
+
+- [ ] `ll-loop validate tdd-issue-impl` exits 0 (valid FSM YAML)
+- [ ] `ll-loop list` includes `tdd-issue-impl` in the built-in loop catalogue
+- [ ] `ll-loop run tdd-issue-impl --context ISSUE_ID=FEAT-XXX` resolves the issue file, drives the TDD cycle states (`resolve_issue → check_plan → plan → write_tests → implement → run_tests → check_code → verify_issue → done`), and terminates with a clear pass/fail summary
+- [ ] `ll-loop run tdd-issue-impl --dry-run` previews the FSM plan without executing any steps
+- [ ] `ll-loop simulate tdd-issue-impl` supports interactive walk-through
+- [ ] If `ISSUE_ID` is unset or resolves to no file, the `init` state emits a clear error and exits non-zero
+- [ ] Test failures route back to `implement`; quality failures route to `fix_quality`; after max iterations the loop exits with a descriptive failure message
+- [ ] `docs/guides/LOOPS_GUIDE.md` includes a new entry for `tdd-issue-impl` under the built-in loops catalogue
+
 ## Motivation
 
 TDD is the preferred implementation discipline for this project. A dedicated
@@ -50,8 +73,8 @@ orchestration, and produces a reproducible audit trail via `ll-loop history`.
 
 ## Proposed Solution
 
-Add a new YAML file at `scripts/little_loops/loops/tdd-issue-impl.yaml` (the
-location from which built-in loops are loaded) with an FSM that encodes:
+Add a new YAML file at `loops/tdd-issue-impl.yaml` (the project-root `loops/`
+directory from which built-in loops are loaded — see `_helpers.py:get_builtin_loops_dir`) with an FSM that encodes:
 
 ```
 init → resolve_issue → check_plan → plan → write_tests → implement →
@@ -90,19 +113,55 @@ The optional positional argument accepted by `ll-loop run` via `--context
 ISSUE_ID=<value>` means no changes to the `ll-loop` CLI are needed; the
 built-in loop documents the convention in its `description` field.
 
+## API/Interface
+
+The public interface is the `ll-loop` CLI invocation contract (no Python API changes):
+
+```bash
+# Run TDD cycle for a specific issue
+ll-loop run tdd-issue-impl --context ISSUE_ID=FEAT-700
+
+# Preview FSM plan without executing
+ll-loop run tdd-issue-impl --dry-run
+
+# Interactive FSM walk-through
+ll-loop simulate tdd-issue-impl
+
+# Validate the YAML file structure
+ll-loop validate tdd-issue-impl
+```
+
+The FSM YAML file (`tdd-issue-impl.yaml`) exposes one context variable:
+
+| Variable | Type | Default | Description |
+|----------|------|---------|-------------|
+| `ISSUE_ID` | string | `""` | Issue ID to implement (e.g., `FEAT-700`, `700`, `P4-FEAT-700`) |
+
 ## Integration Map
 
-- **`scripts/little_loops/loops/`** — new `tdd-issue-impl.yaml` built-in loop file
-- **`ll-loop` CLI** — no changes; uses existing `--context KEY=VALUE` mechanism
-- **`/ll:manage-issue`** — invoked for plan + implement steps
-- **`/ll:check-code`** — invoked for quality gate
-- **`/ll:verify-issues`** — invoked for final acceptance check
-- **`ll-issues show`** — used to resolve issue ID to metadata
+### Files to Modify
+- `loops/tdd-issue-impl.yaml` — new built-in loop file (create; project-root `loops/` is where `get_builtin_loops_dir()` resolves)
+- `docs/guides/LOOPS_GUIDE.md` — add entry under built-in loops catalogue
+
+### Dependent Files (Callers/Importers)
+- N/A — new file; `ll-loop` CLI discovers built-in loops by scanning the loops directory automatically
+
+### Similar Patterns
+- `scripts/little_loops/loops/` — study existing built-in loops (e.g., `issue-refinement`, `fix-quality-and-tests`) for FSM YAML conventions and `action_type: shell` / `action_type: prompt` patterns
+
+### Tests
+- TBD — add `ll-loop validate tdd-issue-impl` to the test or CI validation suite; consider a smoke-test scenario
+
+### Documentation
+- `docs/guides/LOOPS_GUIDE.md` — new built-in loop catalogue entry
+
+### Configuration
+- N/A — no configuration file changes required; invocation uses existing `--context KEY=VALUE` mechanism
 
 ## Implementation Steps
 
-1. Identify the directory where built-in loops are stored (likely
-   `scripts/little_loops/loops/` — confirm with `ll-loop list --json`).
+1. Place the new loop at `loops/tdd-issue-impl.yaml` — this is the project-root
+   `loops/` directory loaded by `get_builtin_loops_dir()` in `scripts/little_loops/cli/loop/_helpers.py:83`.
 2. Study an existing multi-state built-in loop (`issue-refinement` or
    `fix-quality-and-tests`) for FSM YAML conventions.
 3. Author `tdd-issue-impl.yaml` with the states above; use `action_type:
@@ -115,9 +174,10 @@ built-in loop documents the convention in its `description` field.
 
 ## Impact
 
-- **Scope**: single new YAML file + one doc entry; no Python changes required.
-- **Risk**: low — no changes to existing built-in loops or CLI.
-- **Value**: encodes TDD workflow as a first-class automation primitive.
+- **Priority**: P3 — useful automation primitive; not blocking active work
+- **Effort**: Small — single new YAML file + one doc entry; no Python changes required
+- **Risk**: Low — additive only; no changes to existing built-in loops or CLI
+- **Breaking Change**: No
 
 ## Related Key Documentation
 
@@ -136,4 +196,7 @@ built-in loop documents the convention in its `description` field.
 Active
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:verify-issues` - 2026-03-16T19:41:02 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:format-issue` - 2026-03-16T19:37:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z

@@ -134,6 +134,8 @@ N/A - No public API changes (documentation-only enhancement)
 - All referenced code files exist: `scripts/little_loops/fsm/schema.py`, `scripts/little_loops/fsm/executor.py`
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-16T19:26:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:refine-issue` - 2026-03-16T19:25:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:confidence-check` - 2026-03-16T19:21:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:refine-issue` - 2026-03-16T19:20:11 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:confidence-check` - 2026-03-16T19:16:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`

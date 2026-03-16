@@ -10,7 +10,7 @@ labels:
   - enhancement
   - loops
   - schema
-confidence_score: 80
+confidence_score: 100
 outcome_confidence: 93
 ---
 
@@ -77,14 +77,14 @@ Remove all explicit per-state `timeout:` values.
 
 ## Acceptance Criteria
 
-- [ ] `FSMLoop` has `default_timeout: int | None = None` field
-- [ ] `to_dict()` serializes `default_timeout` when non-None
-- [ ] `from_dict()` deserializes `default_timeout` from YAML
-- [ ] Executor uses `state.timeout or self.fsm.default_timeout or 3600` for prompt states
-- [ ] Executor uses `state.timeout or self.fsm.default_timeout or 30` for MCP tool states
-- [ ] `loops/issue-refinement.yaml` uses `default_timeout: 3600` with no per-state timeout overrides
-- [ ] Tests verify: state with no `timeout` uses `default_timeout`; state with `timeout` overrides it; fallback is 3600 (prompt) / 30 (MCP)
-- [ ] `docs/generalized-fsm-loop.md` documents the new field
+- [x] `FSMLoop` has `default_timeout: int | None = None` field
+- [x] `to_dict()` serializes `default_timeout` when non-None
+- [x] `from_dict()` deserializes `default_timeout` from YAML
+- [x] Executor uses `state.timeout or self.fsm.default_timeout or 3600` for prompt states
+- [x] Executor uses `state.timeout or self.fsm.default_timeout or 30` for MCP tool states
+- [x] `loops/issue-refinement.yaml` uses `default_timeout: 3600` with no per-state timeout overrides
+- [x] Tests verify: state with no `timeout` uses `default_timeout`; state with `timeout` overrides it; fallback is 3600 (prompt) / 30 (MCP)
+- [x] `docs/generalized-fsm-loop.md` documents the new field
 
 ## Integration Map
 
@@ -114,7 +114,7 @@ Remove all explicit per-state `timeout:` values.
 - `scripts/little_loops/fsm/persistence.py:290` — persists FSMLoop; serialization via `to_dict()` covers this
 
 ### Tests
-- `scripts/tests/test_fsm_executor.py:3171` — `class` for `default_timeout` fallback chain tests (already added)
+- `scripts/tests/test_fsm_executor.py:3170` — `class TestDefaultTimeout` for `default_timeout` fallback chain tests (already added)
   - Line 3204 — `test_state_timeout_used_when_set`
   - Line 3211 — `test_default_timeout_used_when_state_has_none`
   - Line 3219 — hardcoded 3600s fallback when neither is set
@@ -156,6 +156,8 @@ state.timeout → fsm.default_timeout → hardcoded (3600 for prompt/LLM, 30 for
 - **Action needed**: Move to `completed/` directory (requires explicit user approval — skipped in auto mode)
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-16T19:26:51 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
+- `/ll:refine-issue` - 2026-03-16T19:25:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:confidence-check` - 2026-03-16T19:21:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:refine-issue` - 2026-03-16T19:20:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:verify-issues` - 2026-03-16T19:09:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
