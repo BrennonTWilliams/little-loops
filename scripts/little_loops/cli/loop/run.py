@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import atexit
 import os
+import re
 from pathlib import Path
 
 from little_loops.cli.loop._helpers import (
@@ -72,6 +73,26 @@ def cmd_run(
     if args.dry_run:
         print_execution_plan(fsm)
         return 0
+
+    # Pre-run validation: check required context variables are present
+    _ctx_var_re = re.compile(r"\$\{context\.([^}.]+)")
+    missing_keys: set[str] = set()
+    for state in fsm.states.values():
+        templates = [state.action] if state.action else []
+        if state.evaluate and state.evaluate.prompt:
+            templates.append(state.evaluate.prompt)
+        for template in templates:
+            for m in _ctx_var_re.finditer(template):
+                key = m.group(1)
+                if key not in fsm.context:
+                    missing_keys.add(key)
+    if missing_keys:
+        for key in sorted(missing_keys):
+            logger.error(
+                f"Missing required context variable: '{key}'. "
+                f"Run with: ll-loop run {loop_name} --context {key}=VALUE"
+            )
+        return 1
 
     # Background mode: spawn detached process and return
     if getattr(args, "background", False):

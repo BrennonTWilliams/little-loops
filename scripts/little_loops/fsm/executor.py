@@ -545,6 +545,14 @@ class FSMExecutor:
                             break
                         time.sleep(min(0.1, deadline - time.time()))
 
+        except InterpolationError as exc:
+            return self._finish(
+                "error",
+                error=(
+                    f"Missing context variable in state '{self.current_state}': {exc}. "
+                    f"Run with: ll-loop run {self.fsm.name} --context KEY=VALUE"
+                ),
+            )
         except Exception as exc:
             return self._finish("error", error=str(exc))
 

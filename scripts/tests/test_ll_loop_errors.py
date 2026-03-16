@@ -303,6 +303,44 @@ states:
         assert result == 1
         assert captured.err != ""  # Error in stderr
 
+    def test_missing_context_input_clear_error(
+        self,
+        tmp_path: Path,
+        monkeypatch: pytest.MonkeyPatch,
+        capsys: pytest.CaptureFixture[str],
+    ) -> None:
+        """Running a loop with missing required context variable shows a helpful error."""
+        loops_dir = tmp_path / ".loops"
+        loops_dir.mkdir()
+        (loops_dir / "general-task.yaml").write_text(
+            """
+name: general-task
+initial: execute
+max_iterations: 100
+states:
+  execute:
+    action: "${context.input}"
+    action_type: prompt
+    next: done
+    on_error: failed
+  done:
+    terminal: true
+  failed:
+    terminal: true
+"""
+        )
+
+        monkeypatch.chdir(tmp_path)
+        with patch.object(sys, "argv", ["ll-loop", "run", "general-task"]):
+            from little_loops.cli import main_loop
+
+            result = main_loop()
+
+        captured = capsys.readouterr()
+        assert result == 1
+        assert "input" in captured.err
+        assert "--context" in captured.err or "context" in captured.err.lower()
+
     def test_error_messages_not_empty(
         self,
         tmp_path: Path,

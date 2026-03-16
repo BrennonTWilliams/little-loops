@@ -83,7 +83,10 @@ Recommended approach: B + C — make `InterpolationError` produce a user-friendl
 ### Dependent Files (Callers/Importers)
 - `scripts/little_loops/fsm/interpolation.py:123` — `raise InterpolationError(...)` throw site; imported by `executor.py:620` via `interpolate()`
 - `scripts/little_loops/fsm/executor.py:620` — `action = interpolate(action_template, ctx)` call in `_run_action()`
+- `scripts/little_loops/fsm/executor.py:566` — first call to `_run_action()` in `_execute_state()` (unconditional-transition branch, taken here since `execute` state has `next: check_done`)
+- `scripts/little_loops/fsm/executor.py:583` — second call to `_run_action()` in `_execute_state()` (evaluation branch); the bare `except Exception` at 548–549 covers both call sites
 - `scripts/little_loops/fsm/executor.py:548–549` — outer `except Exception as exc: return self._finish("error", error=str(exc))`
+- `scripts/little_loops/fsm/schema.py:410` — `input_key: str = "input"` default on `FSMLoop`; `run.py:59` uses `fsm.input_key` as the context dict key when injecting the positional arg
 
 ### Similar Patterns
 - `scripts/little_loops/fsm/validation.py` — existing loop validation; model new pre-run checks after this
@@ -93,14 +96,14 @@ Recommended approach: B + C — make `InterpolationError` produce a user-friendl
 ### Tests
 - `scripts/tests/test_ll_loop_errors.py` — add test: `ll-loop run general-task` without input raises clear error
 - `scripts/tests/test_fsm_executor.py` — add test: `InterpolationError` in action produces friendly message, not raw traceback
-- `scripts/tests/test_ll_loop_execution.py` — add integration test: `general-task` runs successfully when input is provided. **Before writing this test**, verify the test harness supports positional `input` args for `ll-loop run` (check how other tests in this file invoke the CLI — if they only use `--context key=value`, use that form here rather than the positional form).
+- `scripts/tests/test_ll_loop_execution.py` — add integration test: `general-task` runs successfully when input is provided. All existing tests in this file invoke `ll-loop run` via `sys.argv` patches with named flags only; none use positional args. **Use `--context input=<value>` form** (not positional) for consistency with existing test patterns.
 
 ### Documentation
 - `docs/guides/LOOPS_GUIDE.md` — may need update documenting required `input` context for `general-task`
 
 ## Implementation Steps
 
-1. **Fix executor error handling** — In `executor.py`, add `except InterpolationError as exc` above the bare `except Exception` at line 548, surfacing: `"Missing required context variable: {key}. Run with: ll-loop run general-task <input>"`. `InterpolationError` is already imported at line 33 and already caught at line 795 (evaluate path — `except InterpolationError: eval_input = raw_output`); confirm the new clause at line 548 does not change behavior for that existing catch site (it won't — they are in separate try blocks).
+1. **Fix executor error handling** — In `executor.py`, add `except InterpolationError as exc` above the bare `except Exception` at line 548, surfacing: `"Missing required context variable: {key}. Run with: ll-loop run general-task <input>"`. `InterpolationError` is already imported at line 33. The existing `except InterpolationError` at lines 795–796 (evaluate path — `except InterpolationError: eval_input = raw_output`) is in a **separate try block** inside `_evaluate()` and is unaffected. The raw exception message from `interpolation.py:123` is `"Path 'input' not found in context"` — it includes the key name (`input`) but not the state name or loop name; the new clause should augment it with that context.
 2. **Add pre-run CLI validation** — In `run.py`, after the context injection block (line 64), scan all state action templates for `${context.*}` references and verify each key is present in `fsm.context`. Fail early with a clear usage message.
 3. **Patch YAML defensively** — In `.loops/general-task.yaml`, add `on_error: failed` to the `execute` state so that any future unhandled errors route to the terminal `failed` state rather than crashing the loop.
 4. **Add tests** — In `test_ll_loop_errors.py`, add a test that `ll-loop run general-task` without input produces a clear error (not a raw traceback). In `test_fsm_executor.py`, add a unit test that `InterpolationError` in `_run_action` is caught and returned as a clean error message.
@@ -117,11 +120,29 @@ Recommended approach: B + C — make `InterpolationError` produce a user-friendl
 
 `bug`, `loops`, `captured`
 
+## Resolution
+
+**Fixed** | Resolved: 2026-03-15
+
+### Changes Made
+
+1. **`scripts/little_loops/fsm/executor.py`** — Added `except InterpolationError as exc` clause above the bare `except Exception` in the main run loop. Surfaces a user-friendly message: `"Missing context variable in state '{state}': {exc}. Run with: ll-loop run {loop} --context KEY=VALUE"` instead of leaking raw exception text.
+
+2. **`scripts/little_loops/cli/loop/run.py`** — Added pre-run context validation after the context injection block. Scans all state `action` and `evaluate.prompt` templates for `${context.*}` references and checks each key is present in `fsm.context`. Returns exit code 1 with a clear error before the executor starts.
+
+3. **`.loops/general-task.yaml`** — Added `on_error: failed` to the `execute` state so any future unhandled error routes to the terminal `failed` state rather than crashing the loop.
+
+4. **Tests added**:
+   - `test_ll_loop_errors.py::TestErrorMessages::test_missing_context_input_clear_error` — CLI-level test that `ll-loop run general-task` without context returns exit 1 with a helpful error message.
+   - `test_fsm_executor.py::TestInterpolationErrorHandling::test_missing_context_variable_produces_friendly_message` — Executor unit test that `InterpolationError` from a missing context var is caught and produces a user-friendly error message (not raw traceback text).
+
 ## Status
 
-**Open** | Created: 2026-03-15 | Priority: P2
+**Resolved** | Created: 2026-03-15 | Priority: P2
 
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-16T04:45:28 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a6c21f3e-13a6-40d9-872c-cb220c332833.jsonl`
+- `/ll:refine-issue` - 2026-03-16T04:43:23 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/db11b97a-99ed-44d5-8074-688319230a2d.jsonl`
 - `/ll:refine-issue` - 2026-03-16T04:32:36 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/0bcdd99a-efd4-491b-a30d-9c016b3f4d8b.jsonl`
 - `/ll:confidence-check` - 2026-03-15T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/003dda2e-ca3f-4e2f-90a7-91ad21760958.jsonl`

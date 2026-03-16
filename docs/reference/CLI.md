@@ -23,7 +23,7 @@ These flags appear across multiple tools:
 | `--type` | | Comma-separated issue types: `BUG`, `FEAT`, `ENH` | `ll-auto`, `ll-parallel`, `ll-sprint` |
 | `--config` | | Path to project root (default: current directory) | `ll-auto`, `ll-parallel`, `ll-sprint`, `ll-sync` |
 | `--timeout` | `-t` | Timeout in seconds per issue | `ll-parallel`, `ll-sprint run` |
-| `--handoff-threshold` | | Override auto-handoff context threshold (1-100, default: from config) | `ll-auto`, `ll-parallel`, `ll-sprint run` |
+| `--handoff-threshold` | | Override auto-handoff context threshold (1-100, default: from config) | `ll-auto`, `ll-parallel`, `ll-sprint run`, `ll-loop run`, `ll-loop resume` |
 | `--format` | `-f` | Output format: `text`, `json`, `markdown` | `ll-history`, `ll-deps`, `ll-sprint analyze`, `ll-verify-docs`, `ll-check-links` |
 
 ---
@@ -239,6 +239,7 @@ Run a loop.
 | `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step |
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
 | `--context KEY=VALUE` | | Override a context variable (repeatable) |
+| `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 
 #### `ll-loop validate <loop>` / `ll-loop val <loop>`
 
@@ -276,6 +277,7 @@ Resume an interrupted loop.
 | `--show-diagrams` | | Display FSM box diagram with active state highlighted after each step |
 | `--clear` | | Clear terminal before each iteration (combine with `--show-diagrams` for live in-place rendering; suppressed when stdout is not a tty) |
 | `--delay` | | Sleep N seconds between iterations (useful for recording) |
+| `--handoff-threshold` | | Override auto-handoff context threshold (1-100) |
 
 #### `ll-loop history <loop>` / `ll-loop h <loop>`
 

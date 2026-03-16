@@ -8,6 +8,7 @@ states:
     action: "${context.input}"
     action_type: prompt
     next: check_done
+    on_error: failed
 
   check_done:
     action: "echo 'Evaluating task completion'"

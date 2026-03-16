@@ -3135,3 +3135,33 @@ class TestPerStateRetryLimits:
         # (it resets only when a DIFFERENT state is processed next iteration)
         # Just verify the executor ran without error and reached terminal state
         assert executor.current_state == "done"
+
+
+class TestInterpolationErrorHandling:
+    """Tests for friendly InterpolationError messages in the executor."""
+
+    def test_missing_context_variable_produces_friendly_message(self) -> None:
+        """InterpolationError from a missing context var yields a clear error, not a raw traceback."""
+        fsm = FSMLoop(
+            name="general-task",
+            initial="execute",
+            states={
+                "execute": StateConfig(
+                    action="${context.input}",
+                    next="done",
+                ),
+                "done": StateConfig(terminal=True),
+                "failed": StateConfig(terminal=True),
+            },
+        )
+        # No context provided — context.input is missing
+        mock_runner = MockActionRunner()
+        executor = FSMExecutor(fsm, action_runner=mock_runner)
+        result = executor.run()
+
+        assert result.terminated_by == "error"
+        assert result.error is not None
+        assert "context" in result.error.lower() or "missing" in result.error.lower()
+        assert "input" in result.error
+        # Should not be a raw Python exception message like "Path 'input' not found in context"
+        assert "--context" in result.error or "ll-loop run" in result.error
