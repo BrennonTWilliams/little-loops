@@ -6,7 +6,7 @@ status: active
 discovered_date: 2026-03-14
 discovered_by: capture-issue
 confidence_score: 98
-outcome_confidence: 78
+outcome_confidence: 79
 ---
 
 # FEAT-749: Add ll- CLI Commands to Allowed Tools in settings.json via Init
@@ -98,7 +98,7 @@ Idempotency: any existing `Bash(ll-` entries (including old subcommand-specific 
 
 No config-schema.json changes needed — this operates on `.claude/settings.json` / `.claude/settings.local.json` which are Claude Code's native settings files, not ll-config.json.
 
-Optional: add a `cli.allowed_tools_hint` boolean to `ll-config.json` to suppress the prompt on future init runs once the user has made their choice.
+`cli.allowed_tools_hint` (a boolean to suppress the prompt on future init runs) is **out of scope** for the initial implementation. Omitted to keep the scope small; can be added later if re-prompting proves annoying in practice.
 
 ## Integration Map
 
@@ -125,12 +125,10 @@ No unit tests — merge is inline (Read/Write tools), matching the `.gitignore` 
 - [ ] Deny list untouched after merge
 
 ### Documentation
-- `docs/reference/API.md` — if `cli.allowed_tools_hint` config key is added, document it
 - `commands/init.md` — update with new allowed-tools phase description
 
 ### Configuration
 - `.claude/settings.json` / `.claude/settings.local.json` — written by this feature (Claude Code native files)
-- Optional: `ll-config.json` `cli.allowed_tools_hint` boolean to suppress prompt on future runs
 
 ## Dependencies
 
@@ -169,6 +167,7 @@ _Verified 2026-03-15 by /ll:verify-issues_
 - Feature is not yet implemented; issue remains valid and actionable
 
 ## Session Log
+- `/ll:confidence-check` - 2026-03-15T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/d8f8df48-fdc2-4d5b-9f5f-95f168709047.jsonl`
 - `/ll:refine-issue` - 2026-03-16T01:26:12 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/93df5671-2743-4b52-aada-babab544472e.jsonl`
 - `/ll:verify-issues` - 2026-03-15T18:54:50 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`
 - `/ll:format-issue` - 2026-03-15T18:51:56 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/17fe5945-f06b-4c69-8093-7caebe31db0d.jsonl`

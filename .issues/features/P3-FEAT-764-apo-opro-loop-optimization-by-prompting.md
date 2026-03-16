@@ -124,6 +124,8 @@ states:
 - `loops/fix-quality-and-tests.yaml` — gold standard for `action_type: prompt` + LLM-driven evaluate states with `on_blocked`
 - `scripts/little_loops/fsm/interpolation.py:65` — valid namespaces: `context`, `captured`, `prev`, `result`, `state`, `loop`, `env`; use `${context.prompt_file}` not `${var.prompt_file}`
 
+> **Note**: `loops/apo-feedback-refinement.yaml` does **not** exist yet (FEAT-722 is unimplemented). Do not look for it as a reference — use `loops/issue-refinement.yaml` and `loops/backlog-flow-optimizer.yaml` instead.
+
 ### Tests
 - `scripts/tests/test_builtin_loops.py:28-43` — `test_all_parse_as_yaml` and `test_all_validate_as_valid_fsm` auto-cover new YAML; no additional test code needed beyond `expected` set update
 - `scripts/tests/test_builtin_loops.py:254-284` — `TestBuiltinLoopOnBlockedCoverage` enforces `on_blocked` on audited loops using `llm_structured`; OPRO uses `output_contains` routing (not `llm_structured`), so `on_blocked` is a best-practice add, not enforced — but include anyway per FEAT-722 implementation guidance
@@ -140,7 +142,7 @@ states:
 2. Author `loops/apo-opro.yaml` following the YAML shape in Proposed Solution above; validate field names against `schema.py:179-227` `StateConfig` fields
 3. Add `"apo-opro"` to `expected` set in `scripts/tests/test_builtin_loops.py:48-61`
 4. Run `python -m pytest scripts/tests/test_builtin_loops.py -v` — all 3 auto-tests (`parse`, `validate`, `expected_set`) must pass
-5. Add `apo-opro` entry to `docs/guides/LOOPS_GUIDE.md` with usage example
+5. Add `apo-opro` row to the built-in loops table in `docs/guides/LOOPS_GUIDE.md:157-169`; the format is a single two-column table row — `| \`apo-opro\` | [one-line description from YAML] |`; no separate technique section or invocation example block is needed
 
 ## API/Interface
 
@@ -183,4 +185,5 @@ ll-loop show apo-opro
 **Open** | Created: 2026-03-15 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T01:43:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/985aba8f-2b18-4a2d-9edb-1476f791cb38.jsonl`
 - `/ll:capture-issue` - 2026-03-15T00:00:00Z - conversation
