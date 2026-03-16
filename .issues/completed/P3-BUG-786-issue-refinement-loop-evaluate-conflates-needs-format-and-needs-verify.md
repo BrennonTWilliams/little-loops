@@ -32,6 +32,20 @@ Both `formatted=False` and `has_verify=False` produce identical output (`NEEDS_F
 
 When an issue is already fully formatted but `has_verify=False` (e.g. because `parse_session_log` returns `[]` due to BUG-785), every loop iteration re-runs `/ll:format-issue` unnecessarily. Observed: FEAT-638 had format-issue called 9 times across one run, with the second invocation already reporting "0 structural gaps, 0 actionable quality findings — no changes needed."
 
+## Expected Behavior
+
+When `formatted=True` and `has_verify=False`, the `evaluate` state should emit `NEEDS_VERIFY <id>` and route to a `verify_only` state that runs only `/ll:verify-issues`. The `format_issues` state (which runs `/ll:format-issue` first) should only be reached when `formatted=False`. Issues already formatted should never have `/ll:format-issue` called on them.
+
+## Steps to Reproduce
+
+1. Ensure at least one active issue has `formatted=True` in `ll-issues refine-status --json` output.
+2. Ensure that issue has no `/ll:verify-issues` entry in its session log (or trigger BUG-785 to produce a false-negative `has_verify=False`).
+3. Start the loop: `ll-loop run issue-refinement`
+4. Observe: `evaluate` state emits `NEEDS_FORMAT <id>` despite `formatted=True`.
+5. Loop routes to `format_issues`, which calls `/ll:format-issue <id> --auto`.
+6. `/ll:format-issue` reports "0 structural gaps, 0 actionable quality findings — no changes needed."
+7. Next iteration repeats from step 4 indefinitely.
+
 ## Root Cause
 
 The evaluate script does not distinguish between "needs formatting" and "needs verification" as separate failure modes. The single `NEEDS_FORMAT` signal hides which step is actually needed, and the loop has no `NEEDS_VERIFY`-only route that skips format-issue.
@@ -136,15 +150,35 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 - BUG-785: Root cause of `has_verify=False` persisting for FEAT-638 despite verify running (parser reads wrong section)
 - BUG-773 (active): Prompt states missing timeout/on-error in issue-refinement loop
 
+## Impact
+
+- **Priority**: P3 - Correctness issue causing redundant work (observed: up to 9 unnecessary `/ll:format-issue` calls per run) but does not break functionality; loop converges once BUG-785 is resolved or session log is recognised.
+- **Effort**: Small - Loop YAML only: split one classifier condition, update one `on_no` transition, add two new states (`route_verify`, `verify_only`). No Python changes.
+- **Risk**: Low - Self-contained YAML change; all existing states and routes unchanged; schema validation already covered by `test_builtin_loops.py`.
+- **Breaking Change**: No
+
 ## Labels
 
 `bug`, `loops`, `issue-refinement`, `captured`
 
+## Resolution
+
+**Fixed** in `loops/issue-refinement.yaml`:
+
+1. Split the `or` classifier condition into two separate `if` blocks — `NEEDS_FORMAT` emitted only when `formatted=False`, `NEEDS_VERIFY` emitted only when `has_verify=False` (both use `sys.exit(1)`).
+2. Updated `route_format.on_no` from `route_score` → `route_verify`.
+3. Added `route_verify` state: `output_contains "NEEDS_VERIFY"` → `verify_only`; falls through to `route_score`.
+4. Added `verify_only` state: runs only `/ll:verify-issues --auto`, `next: check_commit`.
+
+Issues that are already formatted but lack a verify session log entry now route to `verify_only` instead of being re-formatted unnecessarily.
+
 ## Status
 
-**Open** | Created: 2026-03-16 | Priority: P3
+**Completed** | Created: 2026-03-16 | Resolved: 2026-03-16 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-16T20:59:26 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/254dbd2b-b3d5-4a4c-be8d-d81c1f13e712.jsonl`
 - `/ll:confidence-check` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/846dd31f-a623-4c2c-a94c-fed5d665b7f6.jsonl`
 - `/ll:refine-issue` - 2026-03-16T20:30:06 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6197d55e-7699-4fd1-8daf-6cfcd67f79f2.jsonl`
 - `/ll:capture-issue` - 2026-03-16T20:08:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:manage-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/95df0110-cc70-4df0-89dd-c815f4a10cd0.jsonl`
