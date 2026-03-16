@@ -6,6 +6,8 @@ status: active
 discovered_date: 2026-03-16
 discovered_by: capture-issue
 title: "ll-auto --only should preserve argument order"
+confidence_score: 100
+outcome_confidence: 86
 ---
 
 # ENH-788: ll-auto --only should preserve argument order
@@ -41,11 +43,13 @@ When `--only` is not provided, the existing priority sort is preserved.
 
 ## Implementation Steps
 
-1. In `cli_args.py`: add `parse_issue_ids_ordered(value) -> list[str] | None` that splits on commas and preserves order (no set conversion).
-2. In `issue_parser.py:find_issues()`: accept `only_ids` as `list[str] | set[str] | None`. When it's a list, build a dict keyed by `issue_id`, then reorder results to match the list after filtering, skipping the sort.
-3. In `cli/auto.py`: call `parse_issue_ids_ordered` instead of `parse_issue_ids` for `--only`.
-4. Update `find_highest_priority_issue` if it also threads `only_ids` through (it does — but order doesn't apply there, so leave as set).
-5. Add/update tests covering ordered execution via `--only`.
+1. In `cli_args.py`: add `parse_issue_ids_ordered(value: str | None) -> list[str] | None` — same as `parse_issue_ids` but use a list comprehension instead of set comprehension at line 196.
+2. In `issue_parser.py:find_issues()` (line 597): change `only_ids: set[str] | None` to `only_ids: list[str] | set[str] | None`. When it's a list, build `order = {id: i for i, id in enumerate(only_ids)}`, sort filtered results by `order[info.issue_id]`, skipping the existing priority sort.
+3. In `cli/parallel.py:167`: call `parse_issue_ids_ordered` instead of `parse_issue_ids` for `--only` (the `find_issues()` fix in step 2 handles the sort).
+4. In `cli/auto.py:67`: call `parse_issue_ids_ordered` instead of `parse_issue_ids` for `--only`.
+5. In `issue_manager.py:_get_next_issue()` (line 773): when `self.only_ids` is a `list`, sort `candidates` by `self.only_ids.index(i.issue_id)` before `candidates[0]` — this fixes ordering for the AutoManager path where `find_issues()` is called without `only_ids`.
+6. Leave `find_highest_priority_issue` (`issue_parser.py:664`) typed as `set[str] | None` — order irrelevant.
+7. Update tests: add `TestParseIssueIdsOrdered` in `test_cli_args.py`; add `test_find_issues_only_ids_ordered` in `test_issue_parser.py`; update `test_cli.py:1326-1351` to match new list type.
 
 ## Success Metrics
 
@@ -61,25 +65,49 @@ When `--only` is not provided, the existing priority sort is preserved.
 ## Integration Map
 
 ### Files to Modify
-- `scripts/little_loops/cli_args.py` — add `parse_issue_ids_ordered()` returning `list[str]`
-- `scripts/little_loops/issue_parser.py` — update `find_issues()` to accept `list[str] | set[str] | None` for `only_ids`; skip sort and reorder by list when `only_ids` is a list
-- `scripts/little_loops/cli/auto.py` — call `parse_issue_ids_ordered` instead of `parse_issue_ids` for `--only`
+- `scripts/little_loops/cli_args.py` — add `parse_issue_ids_ordered()` returning `list[str]`; existing `parse_issue_ids()` returns `set[str] | None` via set comprehension at line 196
+- `scripts/little_loops/issue_parser.py` — update `find_issues()` (line 597) to accept `list[str] | set[str] | None` for `only_ids`; skip sort and reorder by list when `only_ids` is a list; the sort at line 660 is `issues.sort(key=lambda x: (x.priority_int, x.issue_id))`
+- `scripts/little_loops/issue_manager.py` — **primary fix for `ll-auto`**: `_get_next_issue()` at line 773 builds `candidates = [i for i in ready_issues if i.issue_id in self.only_ids ...]` and returns `candidates[0]`; when `only_ids` is a list, sort candidates by their index in `only_ids` before taking `candidates[0]`; `self.only_ids` stored at line 711 from `AutoManager.__init__` parameter
+- `scripts/little_loops/cli/auto.py` — call `parse_issue_ids_ordered` instead of `parse_issue_ids` for `--only`; passes result to `AutoManager` at lines 71-81
 
 ### Dependent Files (Callers/Importers)
-- `scripts/little_loops/cli/auto.py` — primary caller of `find_issues()` and `parse_issue_ids`
-- Any other CLI entry points that pass `only_ids` to `find_issues()`
+- `scripts/little_loops/cli/auto.py:67` — `only_ids = parse_issue_ids(args.only)` → passes to `AutoManager.__init__`; AutoManager stores it and uses in `_get_next_issue()`, NOT in `find_issues()` call (line 721 calls `find_issues` without `only_ids`)
+- `scripts/little_loops/cli/parallel.py:167` — also calls `parse_issue_ids(args.only)`, passes as `only_ids=` at line 190; this caller DOES pass `only_ids` to `find_issues()`, so the `find_issues()` list-reorder fix applies here
+- `scripts/little_loops/cli/sprint/run.py:121` — calls `parse_issue_ids()` but sprint already preserves order via list iteration at line 129; no change needed
 
 ### Similar Patterns
-- `find_highest_priority_issue` also threads `only_ids` through — leave as set (order doesn't apply)
+- `find_highest_priority_issue` (`issue_parser.py:664`) delegates to `find_issues()` and returns `issues[0]`; leave `only_ids` typed as `set[str] | None` there — order is irrelevant to its semantics
 
 ### Tests
-- `scripts/tests/` — add/update tests for ordered execution via `--only`; verify priority sort still applies without `--only`
+- `scripts/tests/test_cli_args.py:29-60` — `TestParseIssueIds` with 4 tests; `test_multiple_issues` at line 43 asserts `== {"BUG-001", "FEAT-002", "ENH-003"}` (set) — add parallel tests for `parse_issue_ids_ordered`
+- `scripts/tests/test_cli.py:1326-1351` — currently asserts `only_ids == {"BUG-001", "BUG-002"}` (set equality); update after `parse_issue_ids_ordered` introduced
+- `scripts/tests/test_issue_parser.py:803-933` — `TestFindIssues` with 7 tests; no test for `only_ids` currently; add test asserting list-ordered result
+- `scripts/tests/test_cli_args.py:357,400` — integration tests covering `--only`
 
 ### Documentation
 - N/A
 
 ### Configuration
 - N/A
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Critical: Two distinct execution paths for `--only`, requiring different fixes:**
+
+1. **`ll-auto` path** (`AutoManager`): `find_issues()` is called at `issue_manager.py:721` **without** `only_ids`. The `only_ids` filter is applied later in `_get_next_issue()` at line 773. Fix is in `issue_manager.py`, not `find_issues()`.
+
+2. **`ll-parallel` path** (`cli/parallel.py:190`): `find_issues()` IS called with `only_ids`. Fix is in `find_issues()` sort bypass at `issue_parser.py:660`.
+
+**Data flow for `ll-auto`:**
+```
+parse_issue_ids("BUG-010,FEAT-005") → set (order lost at cli_args.py:196)
+AutoManager(only_ids=set) → self.only_ids = set (issue_manager.py:711)
+find_issues(config, category)  [no only_ids]  (issue_manager.py:721)
+_get_next_issue(): candidates = [i for i in ready_issues if i.issue_id in self.only_ids]
+return candidates[0]  ← order determined by dep_graph, not --only arg
+```
 
 ## Impact
 
@@ -97,5 +125,7 @@ When `--only` is not provided, the existing priority sort is preserved.
 **Open** | Created: 2026-03-16 | Priority: P3
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T23:24:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f41b047-87a9-4dc6-bd79-b70fcba93e87.jsonl`
 - `/ll:format-issue` - 2026-03-16T23:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
 - `/ll:capture-issue` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f7bf6f5-8d0a-49aa-a2dc-02169a6d3f97.jsonl`

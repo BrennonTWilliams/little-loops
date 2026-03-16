@@ -5,6 +5,8 @@ priority: P3
 status: active
 discovered_date: 2026-03-16
 discovered_by: capture-issue
+confidence_score: 96
+outcome_confidence: 78
 ---
 
 # FEAT-790: Create evaluation-quality FSM Loop for Issues
@@ -95,21 +97,130 @@ Reads (no changes): `.claude/ll-config.json` (for `test_cmd`), `.issues/` (via `
 - `loops/evaluation-quality.yaml` — the FSM loop definition
 
 ### Files to Read (no changes)
-- `.claude/ll-config.json` — `test_cmd`, `lint_cmd`
-- `.issues/` — via `ll-issues list --format json`
+- `.claude/ll-config.json` — `project.test_cmd`; read via Python: `cfg.get('project', {}).get('test_cmd', 'pytest')` (exact pattern from `loops/fix-quality-and-tests.yaml:64-81`)
+- `.issues/` — via `ll-issues list --json` (note: flag is `--json`, not `--format json` — matches `loops/issue-refinement.yaml` usage)
 
 ### Files Written
 - `.loops/quality-report-YYYY-MM-DD.md` — quality health snapshot
 
 ### Loops Delegated To
-- `loops/issue-refinement.yaml` — invoked by `remediate_issues` state
-- `loops/fix-quality-and-tests.yaml` — invoked by `remediate_code` state
-- `loops/backlog-flow-optimizer.yaml` — invoked by `remediate_backlog` state
+- `loops/issue-refinement.yaml` — invoked by `remediate_issues` state via `ll-loop run issue-refinement`
+- `loops/fix-quality-and-tests.yaml` — invoked by `remediate_code` state via `ll-loop run fix-quality-and-tests`
+- `loops/backlog-flow-optimizer.yaml` — invoked by `remediate_backlog` state via `ll-loop run backlog-flow-optimizer`
 
 ### Similar Patterns
-- `loops/backlog-flow-optimizer.yaml` — measure (shell) → diagnose (prompt) → route chain → act → loop pattern
-- `loops/issue-refinement.yaml` — `ll-issues list --format json` + Python classifier pattern for shell evaluate state
-- `loops/fix-quality-and-tests.yaml` — `test_cmd` from `ll-config.json` pattern
+- `loops/backlog-flow-optimizer.yaml` — `output_contains` route chain (each `on_no` falls to next route state); prompt emits single tag line; route terminates at `done` when no match; `context:` block for thresholds
+- `loops/issue-refinement.yaml` — `ll-issues list --json` → Python3 inline classifier; `exit_code` evaluate with `sys.exit(1)` to signal "work remains"
+- `loops/fix-quality-and-tests.yaml:64-81` — exact `test_cmd` extraction pattern (Python3 reads `.claude/ll-config.json`); `tee .loops/tmp/ll-test-results.txt` for capturing output; `set -o pipefail`
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**`test_cmd` extraction pattern** (copy-paste from `fix-quality-and-tests.yaml:64-81`):
+```yaml
+evaluate_code:
+  action_type: shell
+  timeout: 600
+  action: |
+    CMD=$(python3 -c "
+    import json, pathlib
+    p = pathlib.Path('.claude/ll-config.json')
+    cfg = json.loads(p.read_text()) if p.exists() else {}
+    print(cfg.get('project', {}).get('test_cmd', 'pytest'))
+    ")
+    mkdir -p .loops/tmp
+    set -o pipefail
+    eval "$CMD" 2>&1 | tee .loops/tmp/eval-test-results.txt
+    # Also run lint separately
+    ruff check scripts/ 2>&1 | tee .loops/tmp/eval-lint-results.txt || true
+  capture: code_results
+  next: score
+```
+
+**`ll-issues list` + Python classifier pattern** (from `loops/issue-refinement.yaml`):
+```yaml
+sample:
+  action_type: shell
+  action: |
+    ll-issues list --json | python3 -c "
+    import json, sys
+    issues = json.load(sys.stdin)
+    total = len(issues)
+    scored = sum(1 for i in issues if i.get('confidence_score'))
+    unscored = total - scored
+    avg_conf = sum(i.get('confidence_score', 0) for i in issues if i.get('confidence_score')) / max(scored, 1)
+    print(f'total_active: {total}')
+    print(f'scored: {scored}')
+    print(f'unscored: {unscored}')
+    print(f'avg_confidence_score: {avg_conf:.1f}')
+    "
+    ll-history summary 2>/dev/null || echo "(no history available)"
+  capture: metrics
+  next: evaluate_code
+```
+
+**`output_contains` route chain** (from `backlog-flow-optimizer.yaml:61-84`):
+```yaml
+route_action:
+  evaluate:
+    type: output_contains
+    source: "${captured.scores.output}"
+    pattern: "PRIMARY_CONCERN: NONE"
+  on_yes: report
+  on_no: route_issues
+
+route_issues:
+  evaluate:
+    type: output_contains
+    source: "${captured.scores.output}"
+    pattern: "PRIMARY_CONCERN: ISSUES"
+  on_yes: remediate_issues
+  on_no: route_code
+
+route_code:
+  evaluate:
+    type: output_contains
+    source: "${captured.scores.output}"
+    pattern: "PRIMARY_CONCERN: CODE"
+  on_yes: remediate_code
+  on_no: remediate_backlog   # fallback — backlog is the remaining case
+```
+
+**Subprocess loop delegation pattern** (prompt state approach — no direct subprocess invocation in existing loops; delegate via prompt):
+```yaml
+remediate_issues:
+  action_type: prompt
+  timeout: 600
+  action: |
+    Run the issue-refinement loop to address low-confidence issues:
+    ```
+    ll-loop run issue-refinement
+    ```
+    Wait for completion before proceeding.
+  next: report
+```
+
+**Structured scoring prompt** (for `score` state):
+```
+Synthesize the following metrics into a quality health report.
+
+Metrics:
+${captured.metrics.output}
+
+Code results:
+${captured.code_results.output}
+
+Output a structured block followed by a PRIMARY_CONCERN tag:
+
+SCORES:
+issue_quality: <0-100>
+code_health: <0-100>
+backlog_health: <0-100>
+overall: <0-100>
+
+PRIMARY_CONCERN: <NONE|ISSUES|CODE|BACKLOG>
+```
 
 ## Impact
 
@@ -129,5 +240,7 @@ Reads (no changes): `.claude/ll-config.json` (for `test_cmd`), `.issues/` (via `
 - [ ] Not started
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T23:24:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f41b047-87a9-4dc6-bd79-b70fcba93e87.jsonl`
 - `/ll:format-issue` - 2026-03-16T23:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
 - `/ll:capture-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f7bf6f5-8d0a-49aa-a2dc-02169a6d3f97.jsonl`

@@ -5,6 +5,8 @@ priority: P3
 status: active
 discovered_date: 2026-03-16
 discovered_by: capture-issue
+confidence_score: 100
+outcome_confidence: 85
 ---
 
 # FEAT-789: Create context-health-monitor FSM Loop
@@ -91,16 +93,115 @@ No changes to existing hooks or scripts required. Optionally reads `.claude/ll-c
 - `loops/context-health-monitor.yaml` — the FSM loop definition
 
 ### Files to Read (no changes)
-- `hooks/scripts/context-monitor.sh` — reference for what `.claude/ll-context-state.json` contains
-- `.claude/ll-context-state.json` — token estimate state written by the hook
+- `hooks/scripts/context-monitor.sh` — writes `.claude/ll-context-state.json` with fields: `session_start`, `estimated_tokens`, `tool_calls`, `threshold_crossed_at`, `handoff_complete`, `breakdown` (dict by tool name), `last_compaction`; file only exists during an active session — `assess_context` must handle absence gracefully
+- `.claude/ll-context-state.json` — may not exist; use `jq -r '.estimated_tokens // "n/a"' .claude/ll-context-state.json 2>/dev/null || echo "n/a"` pattern
 
 ### Similar Patterns
-- `loops/docs-sync.yaml` — shell measure → prompt fix → verify → loop back pattern
-- `loops/backlog-flow-optimizer.yaml` — `context:` block with configurable thresholds, diagnose→route→act pattern
+- `loops/docs-sync.yaml` — shell measure → prompt fix → verify → loop back pattern; uses `exit_code` evaluate with `on_yes`/`on_no` pointing to same next state to capture output
+- `loops/backlog-flow-optimizer.yaml` — `context:` block with configurable thresholds (`target_active_max: 20`); `output_contains` route chain where each `on_no` falls to next route state; prompt states emit tag on its own line captured for downstream routing
+- `loops/worktree-health.yaml` — `output_numeric` + `eq`/`gt` operator for file size/count thresholds; `maintain: true` / `backoff: 300` for monitor mode
 
 ### Configuration
 - No schema changes required
 - No `ll-config.json` changes required (thresholds live in loop `context:` block)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**YAML schema reference (all fields are from live loops):**
+
+```yaml
+name: context-health-monitor
+description: |
+  Monitor context health via scratch file accumulation and session log size.
+  Compact scratch files and archive stale outputs when pressure is detected.
+initial: assess_context
+context:
+  scratch_size_kb_warn: 500
+  log_age_days_warn: 7
+  scratch_dir: .loops/tmp
+max_iterations: 10
+timeout: 3600
+
+states:
+  assess_context:
+    action_type: shell
+    action: |
+      echo "=== Scratch Dir ==="
+      SCRATCH_SIZE=$(du -sk ${context.scratch_dir} 2>/dev/null | awk '{print $1}' || echo 0)
+      FILE_COUNT=$(find ${context.scratch_dir} -maxdepth 1 -type f 2>/dev/null | wc -l | tr -d ' ')
+      echo "scratch_kb: $SCRATCH_SIZE"
+      echo "file_count: $FILE_COUNT"
+      # Include token estimate if available
+      TOKENS=$(jq -r '.estimated_tokens // "n/a"' .claude/ll-context-state.json 2>/dev/null || echo "n/a")
+      echo "estimated_tokens: $TOKENS"
+      find ${context.scratch_dir} -maxdepth 1 -type f -size +100k 2>/dev/null | sort -k5 -rn || true
+    capture: snapshot
+    next: self_assess
+
+  self_assess:
+    action_type: prompt
+    timeout: 120
+    action: |
+      Evaluate this context health snapshot and emit a diagnosis tag:
+
+      ${captured.snapshot.output}
+
+      Thresholds: scratch_size_warn=${context.scratch_size_kb_warn}KB
+
+      Emit exactly one of:
+      PRESSURE_SCRATCH
+      PRESSURE_OUTPUTS
+      CONTEXT_HEALTHY
+    capture: diagnosis
+    next: route
+
+  route:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "CONTEXT_HEALTHY"
+    on_yes: done
+    on_no: route_scratch
+
+  route_scratch:
+    evaluate:
+      type: output_contains
+      source: "${captured.diagnosis.output}"
+      pattern: "PRESSURE_SCRATCH"
+    on_yes: compact_scratch
+    on_no: archive_outputs
+
+  compact_scratch:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Compact large scratch files in ${context.scratch_dir}. For each file >100KB,
+      summarize to essential findings and overwrite. Delete clearly stale files.
+      Do NOT delete files referenced in active issues.
+    next: verify
+
+  archive_outputs:
+    action_type: prompt
+    timeout: 300
+    action: |
+      Archive stale outputs from ${context.scratch_dir}. Move files older than
+      ${context.log_age_days_warn} days to .loops/archive/. Delete zero-byte files.
+    next: verify
+
+  verify:
+    action_type: shell
+    action: |
+      SCRATCH_SIZE=$(du -sk ${context.scratch_dir} 2>/dev/null | awk '{print $1}' || echo 0)
+      echo "post_remediation_kb: $SCRATCH_SIZE"
+    next: assess_context
+
+  done:
+    terminal: true
+```
+
+**Key pattern**: `context:` block values referenced as `${context.<key>}` inside state fields. `captured.<name>.output` interpolated in prompt actions.
 
 ## Impact
 
@@ -120,5 +221,7 @@ No changes to existing hooks or scripts required. Optionally reads `.claude/ll-c
 - [ ] Not started
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T23:24:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/2f41b047-87a9-4dc6-bd79-b70fcba93e87.jsonl`
 - `/ll:format-issue` - 2026-03-16T23:15:46 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/03ef4a48-cdf1-402c-a6f3-262d76f4c071.jsonl`
 - `/ll:capture-issue` - 2026-03-16T00:00:00Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`
+- `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/8f7bf6f5-8d0a-49aa-a2dc-02169a6d3f97.jsonl`

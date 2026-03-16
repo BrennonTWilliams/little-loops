@@ -74,7 +74,9 @@ Update `skills/analyze-loop/SKILL.md`, Signal Rules, "ENH — Retry flood" secti
 ## Integration Map
 
 ### Files to Modify
-- `skills/analyze-loop/SKILL.md` — update "ENH — Retry flood" signal rule to distinguish true retries (via `on_retry`) from intentional cycling (via `on_no`/`on_yes`)
+- `skills/analyze-loop/SKILL.md:111-115` — update "ENH — Retry flood" signal rule to distinguish true retries (via `on_retry`) from intentional cycling (via `on_no`/`on_yes`)
+- `skills/analyze-loop/SKILL.md:76-83` — add `retry_exhausted` event type to the event parsing table (currently missing; the event exists in the executor but the skill doesn't document or use it)
+- `docs/reference/COMMANDS.md:380` — update the summary line "Same state entered 5+ times (retry flood) → ENH P3" to reflect the new disambiguation logic
 
 ### Dependent Files (Callers/Importers)
 - `skills/analyze-loop/` — no Python callers; skill is invoked directly by users via `/ll:analyze-loop`
@@ -87,18 +89,62 @@ Update `skills/analyze-loop/SKILL.md`, Signal Rules, "ENH — Retry flood" secti
 - N/A — analyze-loop is a pure SKILL.md with no Python module or test files
 
 ### Documentation
-- N/A — no external docs reference analyze-loop signal rules
+- `docs/reference/COMMANDS.md:380` — references the signal rule summary; must be updated to reflect new logic
+- `thoughts/shared/plans/2026-03-13-FEAT-719-management.md:37` — historical plan doc; update is optional (thought file, not user-facing)
 
 ### Configuration
 - N/A — no configuration files affected
 
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+**Event stream structure** (`scripts/little_loops/fsm/executor.py:496-502`):
+- `state_enter` is emitted identically for every mode of re-entry: `on_no` cycling, `on_yes` cycling, and true `max_retries` retries. No field in the event indicates how the state was entered.
+
+**`retry_exhausted` event** (`executor.py:468-493`):
+- Emitted when `retry_count > state_config.max_retries` — the ONLY event that unambiguously identifies true retry behavior
+- Fields: `state`, `retries`, `next`
+- Fires instead of `state_enter` once limit is exceeded
+- NOT currently in the skill's event parsing table (`SKILL.md:76-83`)
+- No live loop history currently contains this event (no loop YAML uses `max_retries` yet)
+
+**`route` event** (`executor.py:529-535`):
+- Fields: `from` (str), `to` (str) — no field for which transition key was used
+- Available in the event stream; can be used to detect consecutive same-state routing (`from == to`)
+
+**Consecutive vs. total re-entry** — the executor's `_retry_counts` (`executor.py:392-447`):
+- Only increments on CONSECUTIVE same-state entries (when `current_state == _prev_state`)
+- Resets when ANY different state is visited
+- `check_commit` (on_no: evaluate) and `route_format` (on_no: route_verify) NEVER produce consecutive entries because they always route to different states
+- The skill does NOT have access to this counter — it is never written to events
+
+**Implementation choice (critical)**: The proposed solution says "check whether the state configuration has `on_retry:` or `max_retries:` fields" — this requires loading the loop YAML, which the skill currently does NOT do. Two valid approaches:
+1. **YAML-loading approach** (authoritative): Add a step to load `ll-loop show <loop_name>` or read the YAML, then check each flagged state for `max_retries` presence before emitting the signal
+2. **Event-stream-only approach** (simpler): Use `route` events — if `from == to` (state routes to itself), that's a true consecutive cycling pattern. Combine with `retry_exhausted` event presence. States like `check_commit` (on_no: evaluate, `to != from`) are correctly excluded.
+
 ## Implementation Steps
 
-1. Read `skills/analyze-loop/SKILL.md` retry flood signal rule to understand current detection logic
-2. Update "ENH — Retry flood" detection to check for `on_retry`/`max_retries` presence in state config before classifying re-entries as retries
-3. Add intentional cycling detection rule: note high-frequency cycling states in analysis output; escalate only when >20 consecutive re-entries with no intervening state
-4. Update signal title/description to accurately distinguish "retry flood" (true retries) from "cycling without progress" (stuck loops)
-5. Verify by re-running analyze-loop over `issue-refinement` loop history — confirm no false positives on `check_commit` or `route_format`
+1. Read `skills/analyze-loop/SKILL.md:111-115` (retry flood signal rule) and `SKILL.md:76-83` (event parsing table)
+2. Choose detection approach (see Integration Map research findings for trade-offs):
+   - **Recommended**: Event-stream-only — use `route` events to check if `from == to` (state routes to itself consecutively); also check for `retry_exhausted` events. Avoids adding a YAML-loading step.
+   - **Alternative**: Load YAML via `ll-loop show <loop_name>` and check each flagged state for `max_retries` field presence
+3. Update `SKILL.md:111-115` "ENH — Retry flood" to split into two cases:
+   - True retry flood: only trigger when consecutive same-state re-entries detected (route from == to, or retry_exhausted present)
+   - Intentional cycling: note in output but do NOT generate an issue signal; only escalate if >20 consecutive same-state entries with no intervening different state
+4. Add `retry_exhausted` event type to the event parsing table at `SKILL.md:76-83`
+5. Update signal title from "retried Nx" to "retry flood" (only for true retry states)
+6. Update `docs/reference/COMMANDS.md:380` summary line to reflect the new disambiguation
+7. Verify by re-running `ll-loop history issue-refinement --json` and confirming the updated skill does NOT flag `check_commit` or `route_format` — both use `on_no` routing to different states (never route to themselves)
+
+### Codebase Research Findings
+
+_Added by `/ll:refine-issue` — based on codebase analysis:_
+
+- Reference `loops/issue-refinement.yaml:107-121` to see `check_commit` state (on_no: evaluate → routes to different state → never consecutive)
+- Reference `loops/issue-refinement.yaml:57-64` to see `route_format` state (on_no: route_verify → routes to different state → never consecutive)
+- Reference `scripts/tests/test_fsm_executor.py:2968-3138` (`TestPerStateRetryLimits`) for how `retry_exhausted` event is structured and when it fires — useful for understanding the event to add to the skill's parsing table
+- Reference `scripts/little_loops/fsm/executor.py:529-535` for the `route` event structure (`from`, `to` fields — no transition key label)
 
 ## Scope Boundaries
 
@@ -132,6 +178,7 @@ Update `skills/analyze-loop/SKILL.md`, Signal Rules, "ENH — Retry flood" secti
 
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T23:41:15 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/a0364dd7-6557-4614-a167-51d913f25bbc.jsonl`
 - `/ll:verify-issues` - 2026-03-16T19:31:09 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:format-issue` - 2026-03-16T19:30:05 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
 - `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/3cb5b34b-15fc-4f5c-b73a-5ce3439be412.jsonl`
