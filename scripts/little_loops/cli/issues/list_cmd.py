@@ -88,7 +88,7 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     issues_with_status = [(item[0], item[1]) for item in enriched]
 
     if not issues_with_status:
-        print("No issues found.")
+        print("No active issues")
         return 0
 
     if getattr(args, "json", False):
@@ -124,8 +124,6 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
     lines: list[str] = []
     for prefix, label in type_labels.items():
         group = buckets[prefix]
-        if not group:
-            continue
         header = colorize(f"{label} ({len(group)})", f"{TYPE_COLOR.get(prefix, '0')};1")
         lines.append(header)
         for issue, stat in group:
@@ -135,6 +133,6 @@ def cmd_list(config: BRConfig, args: argparse.Namespace) -> int:
             status_tag = f" [{stat}]" if stat != "active" else ""
             lines.append(f"  {colored_priority}  {colored_id}  {issue.title}{status_tag}")
         lines.append("")
-    lines.append(f"Total: {len(issues_with_status)} issue(s) found")
+    lines.append(f"Total: {len(issues_with_status)} active issues")
     print("\n".join(lines))
     return 0

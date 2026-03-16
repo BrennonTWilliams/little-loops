@@ -921,7 +921,16 @@ issues:
             def run(self) -> int:
                 return 1
 
+        def mock_process_fails(info: Any, **kwargs: Any) -> Any:
+            from little_loops.issue_manager import IssueProcessingResult
+
+            return IssueProcessingResult(success=False, duration=0.1, issue_id=info.issue_id)
+
         monkeypatch.setattr("little_loops.cli.sprint.run.ParallelOrchestrator", MockOrchestrator)
+        monkeypatch.setattr(
+            "little_loops.issue_manager.process_issue_inplace",
+            mock_process_fails,
+        )
         monkeypatch.chdir(tmp_path)
         cli._sprint_shutdown_requested = False
 

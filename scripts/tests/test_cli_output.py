@@ -262,28 +262,25 @@ class TestIssueListNoColor:
         bugs_dir.mkdir(parents=True)
         (bugs_dir / "P1-BUG-001-test.md").write_text("# BUG-001: Test bug\n")
 
+        bug_cat = type("Cat", (), {"prefix": "BUG", "dir": "bugs"})()
+        issues_ns = type("I", (), {"base_dir": ".issues", "categories": {"bugs": bug_cat}})()
         config = type(
-            "C", (), {"project_root": tmp_path, "issues": type("I", (), {"base_dir": ".issues"})()}
+            "C",
+            (),
+            {
+                "project_root": tmp_path,
+                "issues": issues_ns,
+                "issue_categories": ["bugs"],
+                "issue_priorities": ["P0", "P1", "P2", "P3", "P4", "P5"],
+                "get_issue_dir": lambda self, cat: tmp_path / ".issues" / cat,
+                "get_completed_dir": lambda self: tmp_path / ".issues" / "completed",
+                "get_deferred_dir": lambda self: tmp_path / ".issues" / "deferred",
+            },
         )()  # type: ignore[misc]
         args = argparse.Namespace(type=None, priority=None, flat=False)
 
         with patch.object(output_mod, "_USE_COLOR", False):
-            with patch(
-                "little_loops.issue_parser.find_issues",
-                return_value=[
-                    type(
-                        "Issue",
-                        (),
-                        {
-                            "path": bugs_dir / "P1-BUG-001-test.md",
-                            "title": "Test bug",
-                            "issue_id": "BUG-001",
-                            "priority": "P1",
-                        },
-                    )()
-                ],
-            ):
-                result = cmd_list(config, args)
+            result = cmd_list(config, args)
 
         assert result == 0
         captured = capsys.readouterr()
