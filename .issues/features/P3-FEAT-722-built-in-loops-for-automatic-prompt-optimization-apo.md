@@ -36,7 +36,7 @@ APO is a well-established research area with practical, automatable workflows. L
 A developer has a system prompt for a Claude-powered feature that produces inconsistent outputs. They run:
 
 ```bash
-ll-loop run --builtin apo-feedback-refinement --var prompt_file=system.md --var eval_dataset=examples.json
+ll-loop apo-feedback-refinement --context prompt_file=system.md --context eval_dataset=examples.json
 ```
 
 The loop generates improved prompt candidates, evaluates them against the dataset, selects the best-performing variant, and repeats for N iterations — surfacing the optimized prompt at the end.
@@ -53,15 +53,21 @@ The loop generates improved prompt candidates, evaluates them against the datase
 ## API/Interface
 
 ```bash
-# Discover available built-ins
-ll-loop list --builtin
+# Discover available built-ins (already works — ll-loop list shows built-ins labeled [built-in])
+ll-loop list
 
-# Run a built-in with variable overrides
-ll-loop run --builtin apo-feedback-refinement --var iterations=5 --var prompt=my-prompt.md
+# Run a built-in with context overrides (resolve_loop_path() fallback already finds built-ins)
+ll-loop apo-feedback-refinement --context iterations=5 --context prompt=my-prompt.md
 
-# Show built-in definition (for inspection/customization)
-ll-loop show --builtin apo-contrastive
+# Show built-in definition (ll-loop show already works for any loop name)
+ll-loop show apo-contrastive
+
+# Optional UX improvements (require CLI changes per Proposed Solution steps 3–4):
+ll-loop list --builtin          # filter to built-ins only
+ll-loop run --builtin apo-feedback-refinement --context iterations=5  # explicit disambiguation
 ```
+
+_Note: The correct flag for context variable overrides is `--context KEY=VALUE` (not `--var`). See `scripts/little_loops/cli/loop/__init__.py:139-145` and `run.py:53-57`._
 
 ## Proposed Solution
 
@@ -94,7 +100,8 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 - `loops/fix-quality-and-tests.yaml` — gold standard model for `action_type: prompt` + `evaluate.type: llm_structured` pattern; use for APO evaluate states
 - `loops/issue-refinement.yaml` — model for `context: {}` variable slots, `capture:` for storing intermediate outputs, and `${captured.*.output}` interpolation in subsequent states
-- `loops/pr-review-cycle.yaml:86-93` — `output_numeric` evaluator example (for scoring/iteration-count checks in APO loops)
+- `loops/issue-discovery-triage.yaml:52-70` — `output_numeric` with `target: ${captured.baseline.output}` (cross-state numeric comparison for convergence; note: `loops/pr-review-cycle.yaml` does not exist — prior reference was stale)
+- `scripts/little_loops/fsm/evaluators.py:308-370` — `convergence` evaluator (verdicts: `target`, `progress`, `stall`; fields: `target`, `tolerance`, `direction: minimize|maximize`, `previous: "${captured.prev_score.output}"`). Better semantic fit for APO score tracking than `output_numeric` — unused in current loops but fully implemented
 - `scripts/little_loops/fsm/interpolation.py:65` — `InterpolationContext.resolve()`: supported namespaces are `context`, `captured`, `prev`, `result`, `state`, `loop`, `env`; APO loops should use `${context.prompt_file}` and `${captured.eval_result.output}` patterns
 
 ### Tests
@@ -114,12 +121,83 @@ _Added by `/ll:refine-issue` — based on codebase analysis:_
 
 _Enriched by `/ll:refine-issue` — infrastructure already exists; core work is YAML authoring:_
 
-1. **Author `loops/apo-feedback-refinement.yaml`** — FSM: `generate_candidate → evaluate_candidate → refine → check_convergence → [loop|done]`. Model after `loops/fix-quality-and-tests.yaml` using `action_type: prompt` + `evaluate.type: llm_structured`. Required `context` slots: `prompt_file`, `eval_criteria`, `iterations` (default 5).
-2. **Author `loops/apo-contrastive.yaml`** — FSM: `generate_variants → score_variants → select_best → check_convergence → [loop|done]`. Use `capture: scored_variants` to store scoring output and `${captured.scored_variants.output}` in the select state.
+1. **Author `loops/apo-feedback-refinement.yaml`** — FSM: `generate_candidate → evaluate_candidate → route_convergence → refine → [loop|done]`. Model after `loops/fix-quality-and-tests.yaml` using `action_type: prompt` + `evaluate.type: llm_structured`. Required `context` slots with defaults (follow `sprint-build-and-validate.yaml:7-10` pattern):
+   ```yaml
+   name: apo-feedback-refinement
+   description: Iteratively refines a prompt using LLM feedback evaluation
+   initial: generate_candidate
+   max_iterations: 20
+   context:
+     prompt_file: system.md
+     eval_criteria: ""
+     iterations: 5
+   states:
+     generate_candidate:
+       action_type: prompt
+       action: |
+         Read the prompt from ${context.prompt_file}. Generate an improved variant
+         that addresses the evaluation criteria: ${context.eval_criteria}
+         Output the full improved prompt text.
+       capture: candidate
+       next: evaluate_candidate
+     evaluate_candidate:
+       action_type: prompt
+       action: |
+         Evaluate this prompt candidate against the criteria: ${context.eval_criteria}
+         Candidate: ${captured.candidate.output}
+         Output a score 0-100 and analysis. End with CONVERGED or NEEDS_REFINE on its own line.
+       capture: eval_result
+       next: route_convergence
+     route_convergence:
+       evaluate:
+         type: output_contains
+         source: "${captured.eval_result.output}"
+         pattern: "CONVERGED"
+       on_yes: done
+       on_no: refine
+     refine:
+       action_type: prompt
+       action: |
+         Based on this evaluation: ${captured.eval_result.output}
+         Update the prompt in ${context.prompt_file} to address the feedback.
+       next: generate_candidate
+     done:
+       terminal: true
+   ```
+   **LLM output tag convention**: each evaluation state emits exactly one uppercase token on its own line (e.g., `CONVERGED`, `NEEDS_REFINE`) to enable `output_contains` routing — see `backlog-flow-optimizer.yaml:35-58` for the canonical pattern.
+
+2. **Author `loops/apo-contrastive.yaml`** — FSM: `generate_variants → score_variants → select_best → route_convergence → [loop|done]`. Use `capture: scored_variants` to store scoring output. **Note**: multi-candidate generation is new territory — no existing loop does this. Recommend generating N variants in a single prompt state as a numbered list, then scoring all in the next state, then selecting/committing the winner. Example convergence check: use `output_contains` on `CONVERGED` tag emitted by `select_best` when selected score exceeds threshold; or use the `convergence` evaluator at `evaluators.py:308-370` (verdicts: `target`, `progress`, `stall`) for numeric score-based tracking.
+
 3. **Add `--builtin` filter to `ll-loop list`** (optional, UX improvement) — add `store_true` arg at `cli/loop/__init__.py:149-155`; modify `cmd_list()` at `info.py:101-136` to skip project loops section when `--builtin` is set.
 4. **Add `--builtin` flag to `ll-loop run`** (optional) — add `store_true` arg at `cli/loop/__init__.py:92-139`; modify `cmd_run()` at `run.py:32` to call `get_builtin_loops_dir() / f"{loop_name}.yaml"` directly when flag is set, bypassing `resolve_loop_path()`.
 5. **Tests** — new APO YAML files are auto-validated by `scripts/tests/test_builtin_loops.py:28-43`; add `--builtin` flag tests to `scripts/tests/test_ll_loop_commands.py` if flags are added.
 6. **Document APO techniques** in `docs/guides/LOOPS_GUIDE.md` — add technique descriptions, required variables, and `ll-loop run` invocation examples.
+
+### Codebase Research Findings (YAML Authoring Reference)
+
+_Added by `/ll:refine-issue` — full schema and patterns:_
+
+**Complete `StateConfig` fields** (`schema.py:179-227`): `action`, `action_type` (`prompt`|`shell`|`slash_command`|`mcp_tool`), `params`, `evaluate`, `route`, `on_yes`, `on_no`, `on_error`, `on_partial`, `on_blocked`, `next`, `terminal`, `capture`, `timeout`, `max_retries`, `on_retry_exhausted`, `on_maintain`
+
+**Top-level loop fields**: `name`, `description`, `initial`, `states`, `context`, `max_iterations` (default 50), `backoff`, `timeout`, `maintain`, `scope`, `llm`, `on_handoff`, `input_key`
+
+**Route-only state pattern** (zero-cost dispatcher, no action): set `evaluate.source: "${captured.state_name.output}"` with no `action` field — evaluator reads prior capture directly. Used in `backlog-flow-optimizer.yaml:61-84` and `issue-refinement.yaml:54-69`.
+
+**`convergence` evaluator** (best fit for APO numeric score tracking):
+```yaml
+evaluate:
+  type: convergence
+  target: 95          # score threshold (0-100)
+  tolerance: 2.0
+  direction: maximize
+  previous: "${captured.prev_score.output}"
+on_target: done
+on_progress: refine
+on_stall: done        # exit if no improvement
+```
+Not used in any current loop yet — fully implemented at `evaluators.py:308-370`.
+
+**Interpolation namespaces in any string field**: `${context.*}`, `${captured.<state>.output}`, `${prev.output}`, `${state.iteration}`, `${loop.elapsed}`, `${env.*}`
 
 ## Impact
 
@@ -146,6 +224,8 @@ _Enriched by `/ll:refine-issue` — infrastructure already exists; core work is 
 - No APO loop YAML files exist in `loops/` (confirmed by filename search). No `builtins/` directory exists under `scripts/little_loops/`. `ll-loop list` and `ll-loop run` have no `--builtin` flag. Feature not yet implemented.
 
 ## Session Log
+- `/ll:refine-issue` - 2026-03-16T00:58:22 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/88954013-7439-4bde-96ee-7533696b0537.jsonl`
+- `/ll:refine-issue` - 2026-03-16T00:52:08 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/42bbd8c6-c965-46f9-b9f1-23535801a250.jsonl`
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 - `/ll:refine-issue` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
 - `/ll:confidence-check` - 2026-03-14T00:00:00Z - `~/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/337af39a-dc8b-48d6-9e2a-cd244f708584.jsonl`
