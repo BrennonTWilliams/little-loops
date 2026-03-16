@@ -31,7 +31,9 @@ Users can run `ll-loop apo-opro` to iteratively optimize a prompt using the OPRO
 
 ## Motivation
 
-OPRO (DeepMind, 2023) is a well-studied gradient-free optimization method applicable to prompt engineering. It outperforms naive refinement by giving the optimizer full visibility of prior attempts and their outcomes — making it less likely to re-explore dead ends. Adding this as a built-in loop makes a research-grade technique immediately accessible to little-loops users.
+OPRO (DeepMind, 2023) is the foundational gradient-free LLM-as-optimizer technique: give the optimizer full visibility of prior candidates and scores, and it proposes better variants without re-exploring dead ends. It is the simplest correct implementation of the LLM-as-optimizer pattern — well-studied, transparent, and easy to reason about.
+
+By 2025-2026, more capable methods have emerged (DSPy/MIPROv2 for joint instruction+example optimization, TextGrad for multi-step pipelines, PhaseEvo for efficient search). OPRO remains actively cited and extended, but is best positioned as a solid starting point rather than state-of-the-art. Adding it as a built-in loop makes the foundational technique immediately accessible and provides a reference implementation that users can understand before reaching for heavier alternatives.
 
 ## Use Case
 
@@ -186,6 +188,13 @@ ll-loop show apo-opro
 - **Effort**: Small — YAML authoring only; no Python changes required
 - **Risk**: Low — additive; no existing behavior changed
 - **Breaking Change**: No
+
+### Known Limitations
+
+- **Model-size sensitivity**: OPRO requires a large frontier model as the optimizer. On models under ~13B parameters it consistently underperforms plain CoT baselines (ACL 2024 findings). Best results with GPT-4-class or Gemini Pro.
+- **Token cost**: Each optimization run can consume 96K+ input tokens across iterations. `max_iterations: 25` is a reasonable cap but users should expect significant API spend on long runs.
+- **Single-objective only**: The history-guided proposal pattern degrades on multi-objective tasks where tradeoffs between criteria cannot be collapsed to a single score.
+- **When to prefer alternatives**: Users with DSPy already in their stack should prefer MIPROv2 (joint instruction+few-shot optimization); users optimizing multi-step pipelines should prefer TextGrad (FEAT-766).
 
 ## Related Issues
 
