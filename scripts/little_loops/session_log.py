@@ -31,10 +31,10 @@ def parse_session_log(content: str) -> list[str]:
     Returns:
         List of distinct command names (e.g. ["/ll:refine-issue", "/ll:ready-issue"]).
     """
-    log_match = _SESSION_LOG_SECTION_RE.search(content)
-    if not log_match:
+    matches = list(_SESSION_LOG_SECTION_RE.finditer(content))
+    if not matches:
         return []
-    cmds = _COMMAND_RE.findall(log_match.group(1))
+    cmds = _COMMAND_RE.findall(matches[-1].group(1))
     # Deduplicate while preserving insertion order
     return list(dict.fromkeys(cmds))
 
@@ -50,11 +50,11 @@ def count_session_commands(content: str) -> dict[str, int]:
     Returns:
         Mapping of command name to occurrence count (e.g. {"/ll:refine-issue": 3}).
     """
-    log_match = _SESSION_LOG_SECTION_RE.search(content)
-    if not log_match:
+    matches = list(_SESSION_LOG_SECTION_RE.finditer(content))
+    if not matches:
         return {}
     counts: dict[str, int] = {}
-    for cmd in _COMMAND_RE.findall(log_match.group(1)):
+    for cmd in _COMMAND_RE.findall(matches[-1].group(1)):
         counts[cmd] = counts.get(cmd, 0) + 1
     return counts
 
@@ -111,12 +111,10 @@ def append_session_log_entry(
     content = issue_path.read_text()
 
     if "## Session Log" in content:
-        # Append entry after existing section header (count=1 to only replace first occurrence)
-        content = content.replace(
-            "## Session Log\n",
-            f"## Session Log\n{entry}\n",
-            1,
-        )
+        # Insert entry after the last ## Session Log header (real section, not a fake in code block)
+        idx = content.rfind("## Session Log\n")
+        insert_pos = idx + len("## Session Log\n")
+        content = content[:insert_pos] + entry + "\n" + content[insert_pos:]
     else:
         # Add new section before --- Status footer if present, else at end
         if "\n---\n\n## Status" in content:

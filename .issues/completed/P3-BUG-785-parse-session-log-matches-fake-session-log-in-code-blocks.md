@@ -126,11 +126,22 @@ log_match = matches[-1]  # real section is always last
 
 `bug`, `session-log`, `parser`, `captured`
 
+## Resolution
+
+Fixed using the last-match strategy (`finditer` + `matches[-1]`) for `parse_session_log` and `count_session_commands`, `rfind` for `append_session_log_entry`, and replaced the inline duplicate regex in `show.py` with calls to the fixed module functions.
+
+### Changes Made
+- `session_log.py`: `parse_session_log` and `count_session_commands` use `finditer` + `matches[-1]` instead of `.search()`
+- `session_log.py`: `append_session_log_entry` uses `rfind("## Session Log\n")` to insert at the last (real) section
+- `show.py`: Replaced inline `re.search()` duplicate with `parse_session_log` + `count_session_commands` calls
+- `test_session_log.py`: Added `test_ignores_fake_session_log_heading_in_code_block` regression test
+
 ## Status
 
-**Open** | Created: 2026-03-16 | Priority: P3
+**Completed** | Created: 2026-03-16 | Resolved: 2026-03-16 | Priority: P3
 
 ## Session Log
+- `/ll:ready-issue` - 2026-03-16T20:46:37 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/97b08a87-143c-47fb-a60e-ebfe0fbd3459.jsonl`
 - `/ll:confidence-check` - 2026-03-16T00:00:00 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/846dd31f-a623-4c2c-a94c-fed5d665b7f6.jsonl`
 - `/ll:refine-issue` - 2026-03-16T20:27:40 - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/6197d55e-7699-4fd1-8daf-6cfcd67f79f2.jsonl`
 - `/ll:capture-issue` - 2026-03-16T20:08:11Z - `/Users/brennon/.claude/projects/-Users-brennon-AIProjects-brenentech-little-loops/fffc83c9-009a-4696-8010-040737bf7247.jsonl`

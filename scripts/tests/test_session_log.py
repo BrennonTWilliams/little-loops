@@ -208,3 +208,28 @@ class TestParseSessionLog:
             "\n---\n\n**Open**"
         )
         assert parse_session_log(content) == ["/ll:refine-issue"]
+
+    def test_ignores_fake_session_log_heading_in_code_block(self) -> None:
+        """Real ## Session Log at end must be used; fake one in fenced code block ignored.
+
+        Mirrors the FEAT-638 structure: fake heading inside a code block example appears
+        early in the issue body, the real section is at the bottom after other ## sections.
+        The last-match strategy (finditer + matches[-1]) selects the real section.
+        """
+        content = (
+            "# Issue\n\n"
+            "## Implementation Steps\n\n"
+            "Append a session log entry:\n\n"
+            "```markdown\n"
+            "## Session Log\n"
+            "- `/ll:fake-command` - 2026-01-01T00:00:00 - `/fake.jsonl`\n"
+            "```\n\n"
+            "## Status\n\n"
+            "**Open**\n\n"
+            "## Session Log\n"
+            "- `/ll:capture-issue` - 2026-01-10T00:00:00 - `/real.jsonl`\n"
+            "- `/ll:refine-issue` - 2026-01-11T00:00:00 - `/real.jsonl`\n"
+        )
+        result = parse_session_log(content)
+        assert result == ["/ll:capture-issue", "/ll:refine-issue"]
+        assert "/ll:fake-command" not in result
