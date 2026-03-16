@@ -18,8 +18,11 @@ states:
       for issue in issues:
           cmds = issue.get('commands', [])
           has_verify = '/ll:verify-issues' in cmds
-          if not issue.get('formatted', False) or not has_verify:
+          if not issue.get('formatted', False):
               print(f'NEEDS_FORMAT {issue[\"id\"]}')
+              sys.exit(1)
+          if not has_verify:
+              print(f'NEEDS_VERIFY {issue[\"id\"]}')
               sys.exit(1)
           cs = issue.get('confidence_score')
           oc = issue.get('outcome_confidence')
@@ -57,6 +60,14 @@ states:
       source: "${captured.classify.output}"
       pattern: "NEEDS_FORMAT"
     on_yes: format_issues
+    on_no: route_verify
+    on_error: evaluate
+  route_verify:
+    evaluate:
+      type: output_contains
+      source: "${captured.classify.output}"
+      pattern: "NEEDS_VERIFY"
+    on_yes: verify_only
     on_no: route_score
     on_error: evaluate
   route_score:
@@ -67,6 +78,12 @@ states:
     on_yes: score_issues
     on_no: refine_issues
     on_error: evaluate
+  verify_only:
+    action_type: prompt
+    action: |
+      Run this command for issue ${captured.issue_id.output}:
+      /ll:verify-issues ${captured.issue_id.output} --auto
+    next: check_commit
   format_issues:
     action_type: prompt
     action: |
