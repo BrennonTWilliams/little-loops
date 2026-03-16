@@ -1,0 +1,40 @@
+name: "general-task"
+initial: execute
+max_iterations: 100
+on_handoff: spawn
+
+states:
+  execute:
+    action: "${context.input}"
+    action_type: prompt
+    next: check_done
+
+  check_done:
+    action: "echo 'Evaluating task completion'"
+    action_type: shell
+    evaluate:
+      type: llm_structured
+      prompt: >
+        Was the following task fully and completely fulfilled?
+        Task: ${context.input}
+
+        Review all work done so far. Answer YES only if the task is entirely
+        complete with no remaining steps. Answer NO if there is still work to do.
+    on_yes: done
+    on_no: continue_work
+    on_error: failed
+
+  continue_work:
+    action: >
+      The original task is: ${context.input}
+
+      Continue working on this task. Pick up where the previous work left off
+      and complete any remaining steps. Be thorough and finish completely.
+    action_type: prompt
+    next: check_done
+
+  done:
+    terminal: true
+
+  failed:
+    terminal: true
