@@ -1,12 +1,26 @@
 # Automatic Harnessing Guide
 
-Harness loops let you wrap any skill or custom prompt in a production-ready `discover → execute → evaluate → advance` FSM without hand-authoring 100+ lines of YAML. The `/ll:create-loop` wizard asks four questions and generates the full configuration, including tool gates, LLM-as-judge evaluation, and diff invariant checks derived from your project config.
+The hard problem in automated iteration isn't running the skill — it's knowing when the output is actually good. A harness loop is a quality evaluation pipeline that applies a skill or prompt to work items, then evaluates the result from multiple angles before advancing: mechanical tests catch regressions, LLM judgment assesses semantic quality, user-simulation skills verify the experience as a real user would, and diff invariants catch runaway changes. The wizard auto-derives this evaluation framework from your project config so you don't write it by hand.
 
 ---
 
 ## What Is a Harness Loop?
 
-A harness loop is a pre-structured FSM pattern that repeatedly applies a skill or prompt to a list of work items (or once in single-shot mode), evaluating success after each run. The wizard auto-derives evaluation criteria from your `ll-config.json` tool commands and the skill's own description, so you get a quality loop without writing evaluators by hand.
+A harness loop is a pre-structured FSM pattern that repeatedly applies a skill or prompt to a list of work items (or once in single-shot mode), evaluating success after each run through a layered quality pipeline.
+
+### The Evaluation Pipeline
+
+Each harness applies up to five evaluation phases in sequence, cheapest first:
+
+| Phase | What it checks |
+|-------|----------------|
+| `check_concrete` | Exit code from test/lint/type command — objective, fast |
+| `check_mcp` | MCP server tool call — deterministic external state |
+| `check_skill` | Full agentic user simulation — did it work as a real user would? |
+| `check_semantic` | LLM judges output quality — semantic correctness |
+| `check_invariants` | Diff line count — catches runaway changes |
+
+Each phase is optional; the wizard pre-selects based on your project config. All five can be active simultaneously, or you can use any subset.
 
 **Conceptual cycle:**
 
@@ -40,7 +54,164 @@ A harness loop is a pre-structured FSM pattern that repeatedly applies a skill o
                                   └─────────┘
 ```
 
-Each evaluation phase is optional and the wizard pre-selects all available ones based on your project config.
+---
+
+## Evaluation Phases Explained
+
+### Tool-Based Gates (`check_concrete`)
+
+Runs the highest-priority configured tool command from `ll-config.json` as a shell action with an `exit_code` evaluator. Exit code 0 = pass, non-zero = fail (retry execute).
+
+This phase provides fast, objective feedback. It runs before the LLM judge, so failures are caught cheaply.
+
+### MCP Tool Gates (`check_mcp`)
+
+`action_type: mcp_tool` invokes an MCP server tool directly — not via Claude — yielding deterministic output at ~500ms latency. The `mcp_result` evaluator routes on the MCP response envelope rather than an exit code or LLM judgment. This makes it a good fit for verifying external state that the other evaluation phases cannot observe.
+
+**`mcp_result` verdict table:**
+
+| Verdict | Meaning |
+|---------|---------|
+| `success` | Tool ran and succeeded (`isError: false`) |
+| `tool_error` | Tool ran but reported failure (`isError: true`) |
+| `not_found` | Server or tool not registered in `.mcp.json` |
+| `timeout` | Transport-level timeout |
+
+**Generic pattern** (`check_mcp` is a naming convention, not a reserved name):
+
+```yaml
+check_mcp:
+  action_type: mcp_tool
+  action: "server/tool-name"              # server_name/tool_name from .mcp.json
+  params:
+    key: "${captured.current_item.output}"  # ${variable} interpolation supported
+  capture: mcp_result
+  route:
+    success: check_invariants    # or next evaluation state
+    tool_error: execute          # retry the execute state
+    not_found: check_invariants  # server not configured — skip this gate
+    timeout: execute
+```
+
+**Example: Browser UI verification** (one application among many)
+
+A harness that implements a UI feature can use a playwright MCP server to check that the rendered page reflects the change before advancing:
+
+```yaml
+check_mcp:
+  action_type: mcp_tool
+  action: "playwright/screenshot"
+  params:
+    url: "http://localhost:3000"
+  capture: ui_result
+  route:
+    success: check_invariants
+    tool_error: execute
+    not_found: check_invariants  # playwright not configured — skip
+    timeout: execute             # dev server may not be up yet
+```
+
+**Other MCP gate applications:**
+- `database/query` — verify a record was written
+- `github/list_pull_requests` — confirm a PR was created
+- `slack/get_messages` — check a notification was sent
+- `filesystem/read_file` — verify a file was created at the expected path
+
+**Placement**: `check_mcp` slots after `check_concrete` (cheap shell gates first) and before `check_semantic` / `check_invariants`. If the MCP call is expensive or optional, placing it last (just before `check_invariants`) avoids wasted cost on items that fail earlier checks.
+
+### Skill-as-Judge (`check_skill`)
+
+`check_skill` is the highest-fidelity evaluation mode in the pipeline: it invokes a skill whose job is to *use* the feature as a real user would, then judges whether the user experience actually worked. This is the only phase that evaluates from the perspective that actually matters — a real user completing a real workflow. Browser navigation, form submission, multi-step UX flows, or any end-to-end user simulation all belong here.
+
+The skill runs as a full agentic Claude session and produces natural-language output; an `llm_structured` evaluator parses its verdict (YES/NO with rationale) and routes accordingly.
+
+**How it differs from `check_mcp`:**
+
+| | `check_mcp` | `check_skill` |
+|---|---|---|
+| Execution | Single deterministic tool call | Full agentic Claude session |
+| Latency | ~500ms | 30–300s |
+| Output | Structured MCP envelope | Natural-language rationale |
+| Best for | Verifying discrete external state | Exercising complex user flows |
+
+**YAML pattern:**
+
+```yaml
+check_skill:
+  action: "/ll:act-as-user 'Navigate to /dashboard and verify the new filter works'"
+  action_type: slash_command
+  timeout: 300
+  evaluate:
+    type: llm_structured
+    prompt: >
+      Did the skill successfully complete the user flow without errors?
+      Did it confirm the expected feature is present and working?
+      Answer YES or NO with what it observed.
+  on_yes: check_invariants
+  on_no: execute
+```
+
+For skills invoked as free-form prompts (no fixed slash command), use `action_type: prompt`:
+
+```yaml
+check_skill:
+  action: "Use the scrape-docs skill to fetch /api/users and confirm the new 'role' field appears in the response"
+  action_type: prompt
+  timeout: 180
+  evaluate:
+    type: llm_structured
+    prompt: >
+      Did the skill confirm the 'role' field is present in the API response?
+      Answer YES or NO with what it observed.
+  on_yes: check_invariants
+  on_no: execute
+```
+
+**Placement**: `check_skill` slots after `check_concrete` and `check_mcp` (cheap/deterministic gates first) and before `check_semantic` / `check_invariants`. When `check_skill` covers quality assessment, `check_semantic` can be omitted — the skill already provides semantic judgment from a user perspective.
+
+**Cost consideration**: `check_skill` runs a full agentic session (30–300s, proportional cost). Use it when a skill can verify something the other phases cannot observe — actual rendered UI, end-to-end user flow, or external system state that deterministic checks can't reach.
+
+### LLM-as-Judge (`check_semantic`)
+
+Uses an `llm_structured` evaluator where Claude assesses whether the previous action achieved its intent. The evaluation prompt is auto-derived from the skill's description:
+
+```yaml
+evaluate:
+  type: llm_structured
+  prompt: >
+    Did the previous action successfully complete: <skill-description>?
+    Answer YES or NO with brief rationale.
+```
+
+For custom prompts, the wizard uses your "What does 'done' look like?" answer as the evaluation criterion.
+
+### Diff Invariants (`check_invariants`)
+
+Runs `git diff --stat HEAD | wc -l | tr -d ' '` and checks that the line count is less than 50 using an `output_numeric` evaluator. This catches runaway changes — if a skill modifies far more than expected, the loop retries rather than advancing.
+
+Adjust the `target` value for skills that intentionally make large changes.
+
+---
+
+**Full 6-phase ordering (with all phases active):**
+
+```
+check_concrete   → cheapest (exit code, <1s)
+check_mcp        → deterministic tool call (~500ms)
+check_skill      → agentic user simulation (30–300s)
+check_semantic   → LLM text quality judgment (can omit when check_skill covers it)
+check_invariants → diff size (cheapest final gate)
+```
+
+**Decision guide — when to reach for each phase:**
+
+| Phase | Use when |
+|-------|---------|
+| `check_concrete` (shell) | A CLI tool exit-codes on pass/fail |
+| `check_mcp` (mcp_tool) | An MCP server can deterministically verify the result |
+| `check_skill` (slash_command + llm_structured) | A skill can exercise the feature end-to-end as a user would |
+| `check_semantic` (LLM judge) | You need judgment about output quality |
+| `check_invariants` (diff size) | You want to catch runaway changes |
 
 ---
 
@@ -48,8 +219,8 @@ Each evaluation phase is optional and the wizard pre-selects all available ones 
 
 Use a harness loop when you want to:
 
-- **Run a skill repeatedly over a list** — refining every open issue, checking every file, processing a batch of items in priority order
 - **Wrap a skill in quality gates** — ensure tests pass and the LLM confirms success before advancing to the next item
+- **Run a skill repeatedly over a list** — refining every open issue, checking every file, processing a batch of items in priority order
 - **Set up a single polished iteration** — execute a skill once with full evaluation rather than just calling it manually
 
 Compare to hand-authoring a loop:
@@ -110,7 +281,7 @@ If you pick **Manual list**, you'll enter comma-separated items.
 
 ### Step H3: Evaluation Phases
 
-The wizard reads `.claude/ll-config.json` to detect configured tool commands and presents only relevant options. All available phases are pre-selected.
+The wizard reads `.claude/ll-config.json` to detect configured tool commands and presents only relevant options. All available phases are pre-selected. (See [Evaluation Phases Explained](#evaluation-phases-explained) above for what each phase does.)
 
 ```
 Which evaluation phases should be included? (multi-select)
@@ -270,161 +441,6 @@ states:
 ```
 
 > **`max_retries` + `on_retry_exhausted`**: Adding these to `execute` is the key safeguard in multi-item loops. Without them, one item that never passes evaluation will consume the entire `max_iterations` budget. With them, the loop skips the stuck item and moves on after `max_retries` attempts.
-
----
-
-## Evaluation Phases Explained
-
-### Tool-Based Gates (`check_concrete`)
-
-Runs the highest-priority configured tool command from `ll-config.json` as a shell action with an `exit_code` evaluator. Exit code 0 = pass, non-zero = fail (retry execute).
-
-This phase provides fast, objective feedback. It runs before the LLM judge, so failures are caught cheaply.
-
-### LLM-as-Judge (`check_semantic`)
-
-Uses an `llm_structured` evaluator where Claude assesses whether the previous action achieved its intent. The evaluation prompt is auto-derived from the skill's description:
-
-```yaml
-evaluate:
-  type: llm_structured
-  prompt: >
-    Did the previous action successfully complete: <skill-description>?
-    Answer YES or NO with brief rationale.
-```
-
-For custom prompts, the wizard uses your "What does 'done' look like?" answer as the evaluation criterion.
-
-### Diff Invariants (`check_invariants`)
-
-Runs `git diff --stat HEAD | wc -l | tr -d ' '` and checks that the line count is less than 50 using an `output_numeric` evaluator. This catches runaway changes — if a skill modifies far more than expected, the loop retries rather than advancing.
-
-Adjust the `target` value for skills that intentionally make large changes.
-
-### MCP Tool Gates (`check_mcp`)
-
-`action_type: mcp_tool` invokes an MCP server tool directly — not via Claude — yielding deterministic output at ~500ms latency. The `mcp_result` evaluator routes on the MCP response envelope rather than an exit code or LLM judgment. This makes it a good fit for verifying external state that the other evaluation phases cannot observe.
-
-**`mcp_result` verdict table:**
-
-| Verdict | Meaning |
-|---------|---------|
-| `success` | Tool ran and succeeded (`isError: false`) |
-| `tool_error` | Tool ran but reported failure (`isError: true`) |
-| `not_found` | Server or tool not registered in `.mcp.json` |
-| `timeout` | Transport-level timeout |
-
-**Generic pattern** (`check_mcp` is a naming convention, not a reserved name):
-
-```yaml
-check_mcp:
-  action_type: mcp_tool
-  action: "server/tool-name"              # server_name/tool_name from .mcp.json
-  params:
-    key: "${captured.current_item.output}"  # ${variable} interpolation supported
-  capture: mcp_result
-  route:
-    success: check_invariants    # or next evaluation state
-    tool_error: execute          # retry the execute state
-    not_found: check_invariants  # server not configured — skip this gate
-    timeout: execute
-```
-
-**Example: Browser UI verification** (one application among many)
-
-A harness that implements a UI feature can use a playwright MCP server to check that the rendered page reflects the change before advancing:
-
-```yaml
-check_mcp:
-  action_type: mcp_tool
-  action: "playwright/screenshot"
-  params:
-    url: "http://localhost:3000"
-  capture: ui_result
-  route:
-    success: check_invariants
-    tool_error: execute
-    not_found: check_invariants  # playwright not configured — skip
-    timeout: execute             # dev server may not be up yet
-```
-
-**Other MCP gate applications:**
-- `database/query` — verify a record was written
-- `github/list_pull_requests` — confirm a PR was created
-- `slack/get_messages` — check a notification was sent
-- `filesystem/read_file` — verify a file was created at the expected path
-
-**Placement**: `check_mcp` slots after `check_concrete` (cheap shell gates first) and before `check_semantic` / `check_invariants`. If the MCP call is expensive or optional, placing it last (just before `check_invariants`) avoids wasted cost on items that fail earlier checks.
-
-### Skill-as-Judge (`check_skill`)
-
-`action_type: slash_command` (or `prompt`) invokes a skill whose job is to *use* the feature rather than inspect it — browser navigation, form submission, multi-step UX flows, or any end-to-end user simulation. The skill runs as a full agentic Claude session and produces natural-language output; an `llm_structured` evaluator parses its verdict (YES/NO with rationale) and routes accordingly.
-
-**How it differs from `check_mcp`:**
-
-| | `check_mcp` | `check_skill` |
-|---|---|---|
-| Execution | Single deterministic tool call | Full agentic Claude session |
-| Latency | ~500ms | 30–300s |
-| Output | Structured MCP envelope | Natural-language rationale |
-| Best for | Verifying discrete external state | Exercising complex user flows |
-
-**YAML pattern:**
-
-```yaml
-check_skill:
-  action: "/ll:act-as-user 'Navigate to /dashboard and verify the new filter works'"
-  action_type: slash_command
-  timeout: 300
-  evaluate:
-    type: llm_structured
-    prompt: >
-      Did the skill successfully complete the user flow without errors?
-      Did it confirm the expected feature is present and working?
-      Answer YES or NO with what it observed.
-  on_yes: check_invariants
-  on_no: execute
-```
-
-For skills invoked as free-form prompts (no fixed slash command), use `action_type: prompt`:
-
-```yaml
-check_skill:
-  action: "Use the scrape-docs skill to fetch /api/users and confirm the new 'role' field appears in the response"
-  action_type: prompt
-  timeout: 180
-  evaluate:
-    type: llm_structured
-    prompt: >
-      Did the skill confirm the 'role' field is present in the API response?
-      Answer YES or NO with what it observed.
-  on_yes: check_invariants
-  on_no: execute
-```
-
-**Placement**: `check_skill` slots after `check_concrete` and `check_mcp` (cheap/deterministic gates first) and before `check_semantic` / `check_invariants`. When `check_skill` covers quality assessment, `check_semantic` can be omitted — the skill already provides semantic judgment from a user perspective.
-
-**Cost caveat**: Only add `check_skill` when a skill can verify something the other phases cannot observe — actual rendered UI, end-to-end user flow, or external system state. The full agentic session cost is only justified when deterministic checks fall short.
-
-**Full 6-phase ordering (with `check_skill`):**
-
-```
-check_concrete   → cheapest (exit code, <1s)
-check_mcp        → deterministic tool call (~500ms)
-check_skill      → agentic user simulation (30–300s)
-check_semantic   → LLM text quality judgment (can omit when check_skill covers it)
-check_invariants → diff size (cheapest final gate)
-```
-
-**Decision guide — when to reach for each phase:**
-
-| Phase | Use when |
-|-------|---------|
-| `check_concrete` (shell) | A CLI tool exit-codes on pass/fail |
-| `check_mcp` (mcp_tool) | An MCP server can deterministically verify the result |
-| `check_skill` (slash_command + llm_structured) | A skill can exercise the feature end-to-end as a user would |
-| `check_semantic` (LLM judge) | You need judgment about output quality |
-| `check_invariants` (diff size) | You want to catch runaway changes |
 
 ---
 
